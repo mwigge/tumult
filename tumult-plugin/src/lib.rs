@@ -3,6 +3,7 @@
 //! Provides the `TumultPlugin` trait for native Rust plugins and the
 //! script plugin manifest parser for community plugins.
 
+pub mod executor;
 pub mod manifest;
 pub mod registry;
 pub mod traits;

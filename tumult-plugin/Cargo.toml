@@ -10,7 +10,11 @@ description = "Plugin system for Tumult chaos engineering platform"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
-tokio-minimal = { workspace = true }
+tokio = { version = "1", features = ["process", "time", "rt", "macros"] }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 indexmap = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["process", "time", "rt", "macros", "rt-multi-thread"] }
