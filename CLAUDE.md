@@ -45,23 +45,33 @@ Tumult is a Rust-native chaos engineering platform. Fast, portable, observable.
 
 ### Development
 
-**Before starting any feature — mandatory repo hygiene:**
+**Branch workflow — every piece of work gets a branch:**
 ```bash
 git checkout main
 git fetch origin
 git pull --ff-only           # fast-forward only; if it fails, investigate before proceeding
-git branch                   # confirm clean main with no leftover branches
 git status                   # confirm working tree is clean
 git checkout -b {type}/{description}   # create the feature branch
+# ... do the work (TDD: tests first, then implementation) ...
+# ... all gates pass locally ...
+git push -u origin {type}/{description}
+gh pr create --title "..." --body "..."   # CI runs automatically
+# ... CI passes (Check, Format, Clippy, Test) ...
+gh pr merge --squash --delete-branch      # self-approve, merge, auto-delete branch
+git checkout main && git pull --ff-only   # back to clean main
 ```
 
 - **Branch per feature**: `{type}/{description}` — one feature, one branch, no exceptions
 - **Branch scope**: keep it small and focused; if a branch grows beyond ~10 commits or ~400 lines changed, consider splitting
-- **TDD**: write the failing test first, then the implementation — use `/tdd-workflow`
+- **Self-approve**: no PR review required, but CI must pass (Check, Format, Clippy, Test)
+- **Auto-delete**: branches are deleted on merge — always start from clean main
+- **TDD is non-negotiable**: write the failing test FIRST, then the minimum code to pass — use `/tdd-workflow`
 - **Commit messages**: Conventional Commits (see rules below) — describe *what is being built*, never the process
-- **Before every commit**: run quality gates (see below)
+- **Before every commit**: run quality gates locally (see below)
+- **Before every push**: run full pipeline: `cargo fmt --check && cargo clippy -- -D warnings && cargo test`
 - **Rust style**: `cargo fmt`, `cargo clippy`, all public functions documented
 - Keep functions small and single-purpose; if you need a comment to explain what a block does, extract it
+- **Fix warnings immediately** — nothing is left for the future
 
 ### Testing (Shift Left)
 
