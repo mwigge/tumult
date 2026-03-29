@@ -8,6 +8,7 @@ description = "Core engine for Tumult chaos engineering platform"
 
 [dependencies]
 tumult-plugin = { path = "../tumult-plugin" }
+tumult-baseline = { path = "../tumult-baseline" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
