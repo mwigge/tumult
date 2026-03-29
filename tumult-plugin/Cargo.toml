@@ -1,0 +1,16 @@
+[package]
+name = "tumult-plugin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Plugin system for Tumult chaos engineering platform"
+
+[dependencies]
+serde = { workspace = true }
+toon-format = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+indexmap = { workspace = true }
