@@ -1,0 +1,10 @@
+[package]
+name = "tumult-baseline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Baseline acquisition and statistical methods for Tumult experiments"
+
+[dependencies]
+thiserror = { workspace = true }
