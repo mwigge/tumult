@@ -1,0 +1,21 @@
+[package]
+name = "tumult-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "CLI binary for the Tumult chaos engineering platform"
+
+[[bin]]
+name = "tumult"
+path = "src/main.rs"
+
+[dependencies]
+tumult-core = { path = "../tumult-core" }
+tumult-plugin = { path = "../tumult-plugin" }
+tumult-otel = { path = "../tumult-otel" }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

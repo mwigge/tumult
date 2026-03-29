@@ -47,7 +47,7 @@ clap = { version = "4", features = ["derive"] }
 
 # OpenTelemetry
 opentelemetry = { version = "0.31", features = ["trace", "metrics", "logs"] }
-opentelemetry-sdk = { version = "0.31", features = ["trace", "metrics", "logs", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.31", features = ["trace", "metrics", "logs", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "trace", "metrics", "logs"] }
 opentelemetry-semantic-conventions = "0.31"
 
