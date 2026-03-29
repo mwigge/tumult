@@ -450,6 +450,127 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
+    // ── Full experiment construction + TOON round-trip ────────
+
+    fn build_sample_experiment() -> Experiment {
+        Experiment {
+            title: "Database failover validates automatic reconnection".into(),
+            description: Some("Kill PostgreSQL primary and verify app reconnects".into()),
+            tags: vec!["database".into(), "resilience".into()],
+            configuration: HashMap::from([(
+                "db_host".into(),
+                ConfigValue::Env {
+                    key: "DATABASE_HOST".into(),
+                },
+            )]),
+            secrets: HashMap::new(),
+            controls: vec![],
+            steady_state_hypothesis: Some(Hypothesis {
+                title: "Application responds healthy".into(),
+                probes: vec![Activity {
+                    name: "health-check".into(),
+                    activity_type: ActivityType::Probe,
+                    provider: Provider::Http {
+                        method: HttpMethod::Get,
+                        url: "http://localhost:8080/health".into(),
+                        headers: HashMap::new(),
+                        body: None,
+                        timeout_s: Some(5.0),
+                    },
+                    tolerance: Some(Tolerance::Exact {
+                        value: serde_json::Value::Number(200.into()),
+                    }),
+                    pause_before_s: None,
+                    pause_after_s: None,
+                    background: false,
+                }],
+            }),
+            method: vec![Activity {
+                name: "kill-db-connections".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Native {
+                    plugin: "tumult-db".into(),
+                    function: "terminate_connections".into(),
+                    arguments: HashMap::from([(
+                        "database".into(),
+                        serde_json::Value::String("myapp".into()),
+                    )]),
+                },
+                tolerance: None,
+                pause_before_s: None,
+                pause_after_s: Some(5.0),
+                background: false,
+            }],
+            rollbacks: vec![Activity {
+                name: "restore-connections".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Native {
+                    plugin: "tumult-db".into(),
+                    function: "reset_connection_pool".into(),
+                    arguments: HashMap::new(),
+                },
+                tolerance: None,
+                pause_before_s: None,
+                pause_after_s: None,
+                background: false,
+            }],
+            estimate: Some(Estimate {
+                expected_outcome: ExpectedOutcome::Recovered,
+                expected_recovery_s: Some(15.0),
+                expected_degradation: Some(DegradationLevel::Moderate),
+                expected_data_loss: Some(false),
+                confidence: Some(Confidence::High),
+                rationale: Some("Tested monthly with consistent recovery".into()),
+                prior_runs: Some(5),
+            }),
+            baseline: Some(BaselineConfig {
+                duration_s: 120.0,
+                warmup_s: Some(15.0),
+                interval_s: 2.0,
+                method: BaselineMethod::MeanStddev,
+                sigma: Some(2.0),
+                confidence: Some(0.95),
+            }),
+            load: None,
+            regulatory: Some(RegulatoryMapping {
+                frameworks: vec!["DORA".into()],
+                requirements: vec![RegulatoryRequirement {
+                    id: "DORA-Art24".into(),
+                    description: "ICT resilience testing".into(),
+                    evidence: "Recovery within RTO".into(),
+                }],
+            }),
+        }
+    }
+
+    #[test]
+    fn full_experiment_round_trips_through_toon() {
+        let exp = build_sample_experiment();
+        let decoded: Experiment = toon_round_trip(&exp);
+        assert_eq!(decoded, exp);
+    }
+
+    #[test]
+    fn full_experiment_has_all_sections() {
+        let exp = build_sample_experiment();
+        assert_eq!(
+            exp.title,
+            "Database failover validates automatic reconnection"
+        );
+        assert_eq!(exp.tags, vec!["database", "resilience"]);
+        assert!(exp.estimate.is_some());
+        assert!(exp.baseline.is_some());
+        assert!(exp.regulatory.is_some());
+        assert!(exp.steady_state_hypothesis.is_some());
+        assert_eq!(exp.method.len(), 1);
+        assert_eq!(exp.rollbacks.len(), 1);
+        assert_eq!(exp.method[0].activity_type, ActivityType::Action);
+        assert_eq!(
+            exp.steady_state_hypothesis.as_ref().unwrap().probes[0].activity_type,
+            ActivityType::Probe
+        );
+    }
+
     // ── Helper: round-trip through TOON ────────────────────────
 
     fn toon_round_trip<T>(value: &T) -> T
