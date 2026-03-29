@@ -78,6 +78,62 @@ mod tests {
         drop(metrics);
     }
 
+    // ── Attribute coverage ──────────────────────────────────────
+
+    #[test]
+    fn all_attributes_are_dot_separated() {
+        let attrs = [
+            attributes::EXPERIMENT_ID,
+            attributes::EXPERIMENT_NAME,
+            attributes::EXPERIMENT_RUN_NUMBER,
+            attributes::TARGET_SYSTEM,
+            attributes::TARGET_TECHNOLOGY,
+            attributes::TARGET_COMPONENT,
+            attributes::TARGET_ENVIRONMENT,
+            attributes::FAULT_TYPE,
+            attributes::FAULT_SUBTYPE,
+            attributes::FAULT_SEVERITY,
+            attributes::FAULT_BLAST_RADIUS,
+            attributes::ACTION_NAME,
+            attributes::PROBE_NAME,
+            attributes::PLUGIN_NAME,
+            attributes::OUTCOME,
+            attributes::HYPOTHESIS_MET,
+            attributes::RECOVERY_TIME_S,
+            attributes::EXECUTION_TARGET,
+            attributes::DURATION_MS,
+        ];
+        for attr in attrs {
+            assert!(
+                attr.contains('.'),
+                "attribute '{attr}' must be dot-separated"
+            );
+            assert!(
+                attr.starts_with("resilience."),
+                "attribute '{attr}' must start with 'resilience.'"
+            );
+        }
+    }
+
+    // ── Instrumentation integration ────────────────────────────
+
+    #[test]
+    fn record_action_and_probe_sequence_does_not_panic() {
+        let meter = opentelemetry::global::meter("integration-test");
+        let metrics = TumultMetrics::new(&meter);
+
+        // Simulate a full experiment sequence
+        instrument::record_experiment(&metrics, true);
+
+        let start = std::time::Instant::now();
+        instrument::record_action(&metrics, "tumult-db", "kill-connections", start, true);
+        instrument::record_probe(&metrics, "tumult-http", "health-check", start, true);
+        instrument::record_probe(&metrics, "tumult-http", "health-check", start, false);
+        instrument::record_deviation(&metrics);
+        instrument::record_action(&metrics, "tumult-db", "restore-pool", start, true);
+        instrument::record_experiment(&metrics, false);
+    }
+
     // ── TumultTelemetry ────────────────────────────────────────
 
     #[test]

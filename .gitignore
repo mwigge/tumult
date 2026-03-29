@@ -1,6 +1,5 @@
-# Claude Code
-.claude/
-
-# OpenSpec
-openspec/
+# Build
 target/
+
+# Environment
+.env
