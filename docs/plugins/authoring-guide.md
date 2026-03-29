@@ -6,7 +6,7 @@ Create community plugins for Tumult without a Rust toolchain. A plugin is a dire
 
 ```
 tumult-nginx/
-├── plugin.json          # manifest declaring actions and probes
+├── plugin.toon          # manifest declaring actions and probes
 ├── actions/
 │   ├── kill-worker.sh   # action: kill an nginx worker process
 │   └── reload-config.sh # action: force config reload
@@ -17,7 +17,7 @@ tumult-nginx/
 
 ## Manifest Format
 
-The manifest file (`plugin.json`) declares the plugin's identity and capabilities:
+The manifest file (`plugin.toon`) declares the plugin's identity and capabilities:
 
 ```json
 {
@@ -129,7 +129,7 @@ Place your plugin directory in `./plugins/` next to your experiment file:
 my-project/
 ├── plugins/
 │   └── tumult-nginx/
-│       ├── plugin.json
+│       ├── plugin.toon
 │       ├── actions/
 │       │   └── kill-worker.sh
 │       └── probes/

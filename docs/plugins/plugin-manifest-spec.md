@@ -1,6 +1,6 @@
 # Plugin Manifest Specification
 
-The plugin manifest declares a script plugin's identity and capabilities. It is a JSON file named `plugin.json` in the plugin's root directory.
+The plugin manifest declares a script plugin's identity and capabilities. It is a TOON file named `plugin.toon` in the plugin's root directory.
 
 ## Fields
 
@@ -42,42 +42,27 @@ All values are passed as strings. Scripts are responsible for type conversion.
 
 ## Example Manifest
 
+The manifest is encoded in TOON format. Generate it programmatically using the `tumult-plugin` crate's `ScriptPluginManifest` type with `toon_format::encode_default()`, or construct it following the field tables above.
+
+The structure (shown here in JSON for readability) contains:
+
 ```json
 {
   "name": "tumult-kafka",
   "version": "0.2.0",
   "description": "Kafka chaos actions and probes",
   "actions": [
-    {
-      "name": "kill-broker",
-      "script": "actions/kill-broker.sh",
-      "description": "Kill a Kafka broker process via SSH"
-    },
-    {
-      "name": "partition-topic",
-      "script": "actions/partition-topic.sh",
-      "description": "Create network partition for a topic"
-    },
-    {
-      "name": "corrupt-message",
-      "script": "actions/corrupt-message.sh",
-      "description": "Inject corrupt messages into a topic"
-    }
+    {"name": "kill-broker", "script": "actions/kill-broker.sh", "description": "Kill a Kafka broker"},
+    {"name": "partition-topic", "script": "actions/partition-topic.sh", "description": "Partition a topic"}
   ],
   "probes": [
-    {
-      "name": "consumer-lag",
-      "script": "probes/consumer-lag.sh",
-      "description": "Check consumer group lag via kafka-consumer-groups"
-    },
-    {
-      "name": "broker-health",
-      "script": "probes/broker-health.sh",
-      "description": "Verify broker cluster health via JMX"
-    }
+    {"name": "consumer-lag", "script": "probes/consumer-lag.sh", "description": "Check consumer lag"},
+    {"name": "broker-health", "script": "probes/broker-health.sh", "description": "Verify broker health"}
   ]
 }
 ```
+
+When encoded to TOON by `toon_format::encode_default()`, this produces a compact, token-efficient representation.
 
 ## Naming Conventions
 
