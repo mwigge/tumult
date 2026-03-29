@@ -4,5 +4,6 @@
 //! hypothesis evaluation, and journal output for the Tumult platform.
 
 pub mod engine;
+pub mod execution;
 pub mod journal;
 pub mod types;
