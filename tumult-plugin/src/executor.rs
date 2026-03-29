@@ -53,7 +53,8 @@ pub async fn execute_script(
 
     let env_vars = build_env_vars(arguments);
 
-    let mut cmd = tokio::process::Command::new(script_path);
+    let mut cmd = tokio::process::Command::new("/bin/sh");
+    cmd.arg(script_path);
     cmd.envs(&env_vars);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -83,8 +84,12 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_test_script(dir: &Path, name: &str, content: &str) -> std::path::PathBuf {
+        use std::io::Write;
         let script_path = dir.join(name);
-        fs::write(&script_path, content).unwrap();
+        let mut file = fs::File::create(&script_path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+        file.sync_all().unwrap();
+        drop(file); // Ensure file handle is closed before chmod + exec
         fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
         script_path
     }
