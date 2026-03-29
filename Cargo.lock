@@ -2405,7 +2405,6 @@ dependencies = [
  "tokio",
  "toon-format",
  "tracing",
- "tumult-otel",
  "tumult-plugin",
  "uuid",
 ]
@@ -2430,7 +2429,6 @@ dependencies = [
 name = "tumult-plugin"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "indexmap",
  "serde",
  "thiserror",
