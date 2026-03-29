@@ -18,6 +18,7 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 indexmap = { workspace = true }
+regex-lite = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
