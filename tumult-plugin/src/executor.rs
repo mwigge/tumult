@@ -53,7 +53,8 @@ pub async fn execute_script(
 
     let env_vars = build_env_vars(arguments);
 
-    let mut cmd = tokio::process::Command::new(script_path);
+    let mut cmd = tokio::process::Command::new("/bin/sh");
+    cmd.arg(script_path);
     cmd.envs(&env_vars);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
