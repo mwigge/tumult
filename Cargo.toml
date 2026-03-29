@@ -5,6 +5,7 @@ members = [
     "tumult-core",
     "tumult-plugin",
     "tumult-otel",
+    "tumult-baseline",
     # Phase 1
     # "tumult-ssh",
     # "tumult-stress",
@@ -67,6 +68,12 @@ anyhow = "1"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
+
+# Analytics (Phase 2) — Arrow columnar format + Parquet + DuckDB
+# arrow = { version = "55", features = ["json", "ipc", "ffi"] }
+# parquet = { version = "55", features = ["arrow", "snap", "zstd"] }
+# arrow-flight = { version = "55" }
+# duckdb = { version = "1", features = ["bundled"] }
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
