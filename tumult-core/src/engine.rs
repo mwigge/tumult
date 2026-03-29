@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::types::{ConfigValue, Experiment, ExperimentStatus};
+use crate::types::{ConfigValue, Experiment, ExperimentStatus, SecretValue, Tolerance};
 
 use thiserror::Error;
 
@@ -12,6 +12,18 @@ pub enum EngineError {
     EmptyMethod,
     #[error("configuration key '{key}' references env var '{env_key}' which is not set")]
     ConfigResolutionFailed { key: String, env_key: String },
+    #[error("secret '{group}.{key}' references env var '{env_key}' which is not set")]
+    SecretResolutionFailed {
+        group: String,
+        key: String,
+        env_key: String,
+    },
+    #[error("secret '{group}.{key}' references file '{path}' which does not exist")]
+    SecretFileNotFound {
+        group: String,
+        key: String,
+        path: String,
+    },
     #[error("experiment file parse error: {0}")]
     ParseError(String),
 }
@@ -50,6 +62,67 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
 /// Parse an experiment from a TOON string.
 pub fn parse_experiment(toon: &str) -> Result<Experiment, EngineError> {
     toon_format::decode_default(toon).map_err(|e| EngineError::ParseError(e.to_string()))
+}
+
+/// Resolve secret values by reading environment variables or files.
+pub fn resolve_secrets(
+    secrets: &HashMap<String, HashMap<String, SecretValue>>,
+) -> Result<HashMap<String, HashMap<String, String>>, EngineError> {
+    let mut resolved = HashMap::new();
+    for (group, group_secrets) in secrets {
+        let mut group_resolved = HashMap::new();
+        for (key, value) in group_secrets {
+            let val = match value {
+                SecretValue::Env { key: env_key } => {
+                    std::env::var(env_key).map_err(|_| EngineError::SecretResolutionFailed {
+                        group: group.clone(),
+                        key: key.clone(),
+                        env_key: env_key.clone(),
+                    })?
+                }
+                SecretValue::File { path } => {
+                    if !path.exists() {
+                        return Err(EngineError::SecretFileNotFound {
+                            group: group.clone(),
+                            key: key.clone(),
+                            path: path.display().to_string(),
+                        });
+                    }
+                    std::fs::read_to_string(path).map_err(|_| EngineError::SecretFileNotFound {
+                        group: group.clone(),
+                        key: key.clone(),
+                        path: path.display().to_string(),
+                    })?
+                }
+            };
+            group_resolved.insert(key.clone(), val);
+        }
+        resolved.insert(group.clone(), group_resolved);
+    }
+    Ok(resolved)
+}
+
+/// Evaluate a tolerance check: does the actual value match the expected?
+pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> bool {
+    match tolerance {
+        Tolerance::Exact { value } => actual == value,
+        Tolerance::Range { from, to } => {
+            if let Some(n) = actual.as_f64() {
+                n >= *from && n <= *to
+            } else {
+                false
+            }
+        }
+        Tolerance::Regex { pattern } => {
+            if let Some(s) = actual.as_str() {
+                regex_lite::Regex::new(pattern)
+                    .map(|re| re.is_match(s))
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        }
+    }
 }
 
 /// Determine the experiment status from method results.
@@ -219,6 +292,156 @@ mod tests {
             determine_status(None, None, true),
             ExperimentStatus::Completed
         );
+    }
+
+    // ── resolve_secrets ────────────────────────────────────────
+
+    #[test]
+    fn resolve_env_secret() {
+        std::env::set_var("TEST_SECRET_TUMULT_PW", "s3cret");
+        let secrets = HashMap::from([(
+            "db".into(),
+            HashMap::from([(
+                "password".into(),
+                SecretValue::Env {
+                    key: "TEST_SECRET_TUMULT_PW".into(),
+                },
+            )]),
+        )]);
+        let resolved = resolve_secrets(&secrets).unwrap();
+        assert_eq!(resolved["db"]["password"], "s3cret");
+        std::env::remove_var("TEST_SECRET_TUMULT_PW");
+    }
+
+    #[test]
+    fn resolve_file_secret() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("token.txt");
+        std::fs::write(&path, "my-token-123").unwrap();
+
+        let secrets = HashMap::from([(
+            "api".into(),
+            HashMap::from([("token".into(), SecretValue::File { path: path.clone() })]),
+        )]);
+        let resolved = resolve_secrets(&secrets).unwrap();
+        assert_eq!(resolved["api"]["token"], "my-token-123");
+    }
+
+    #[test]
+    fn resolve_missing_env_secret_returns_error() {
+        std::env::remove_var("NONEXISTENT_SECRET_TUMULT");
+        let secrets = HashMap::from([(
+            "db".into(),
+            HashMap::from([(
+                "password".into(),
+                SecretValue::Env {
+                    key: "NONEXISTENT_SECRET_TUMULT".into(),
+                },
+            )]),
+        )]);
+        let result = resolve_secrets(&secrets);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("NONEXISTENT_SECRET_TUMULT"));
+    }
+
+    #[test]
+    fn resolve_missing_file_secret_returns_error() {
+        let secrets = HashMap::from([(
+            "db".into(),
+            HashMap::from([(
+                "password".into(),
+                SecretValue::File {
+                    path: "/nonexistent/secret.txt".into(),
+                },
+            )]),
+        )]);
+        let result = resolve_secrets(&secrets);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_empty_secrets_succeeds() {
+        let resolved = resolve_secrets(&HashMap::new()).unwrap();
+        assert!(resolved.is_empty());
+    }
+
+    // ── evaluate_tolerance ─────────────────────────────────────
+
+    #[test]
+    fn exact_tolerance_matches_integer() {
+        let actual = serde_json::Value::Number(200.into());
+        let tolerance = Tolerance::Exact {
+            value: serde_json::Value::Number(200.into()),
+        };
+        assert!(evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn exact_tolerance_rejects_mismatch() {
+        let actual = serde_json::Value::Number(500.into());
+        let tolerance = Tolerance::Exact {
+            value: serde_json::Value::Number(200.into()),
+        };
+        assert!(!evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn exact_tolerance_matches_string() {
+        let actual = serde_json::Value::String("OK".into());
+        let tolerance = Tolerance::Exact {
+            value: serde_json::Value::String("OK".into()),
+        };
+        assert!(evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn range_tolerance_accepts_within() {
+        let actual = serde_json::json!(50.0);
+        let tolerance = Tolerance::Range {
+            from: 0.0,
+            to: 100.0,
+        };
+        assert!(evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn range_tolerance_rejects_outside() {
+        let actual = serde_json::json!(150.0);
+        let tolerance = Tolerance::Range {
+            from: 0.0,
+            to: 100.0,
+        };
+        assert!(!evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn regex_tolerance_matches_pattern() {
+        let actual = serde_json::Value::String("OK: all systems operational".into());
+        let tolerance = Tolerance::Regex {
+            pattern: "^OK".into(),
+        };
+        assert!(evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn regex_tolerance_rejects_non_match() {
+        let actual = serde_json::Value::String("ERROR: timeout".into());
+        let tolerance = Tolerance::Regex {
+            pattern: "^OK".into(),
+        };
+        assert!(!evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn regex_tolerance_returns_false_for_non_string() {
+        let actual = serde_json::json!(42);
+        let tolerance = Tolerance::Regex {
+            pattern: ".*".into(),
+        };
+        assert!(!evaluate_tolerance(&actual, &tolerance));
     }
 
     // ── parse_experiment ───────────────────────────────────────
