@@ -1,42 +1,57 @@
-# Resilience Testing Metadata Standard
+# Tumult Metadata Model
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Last Updated**: 2026-03-29
-**Status**: Community Standard
 **Namespace**: `resilience.*`
 
 ---
 
 ## Abstract
 
-This document defines a vendor-neutral metadata standard for resilience testing (chaos engineering). It provides a structured vocabulary for describing experiments, targets, faults, measurements, outcomes, and regulatory evidence. The standard follows [OpenTelemetry Semantic Convention](https://opentelemetry.io/docs/specs/semconv/) naming rules and is designed to be carried as span attributes, resource attributes, and metric dimensions within OTel-instrumented systems.
+This document defines the Tumult Metadata Model for resilience testing. It provides a structured vocabulary for describing experiments, targets, faults, measurements, outcomes, scoring, and regulatory evidence. The model follows [OpenTelemetry Semantic Convention](https://opentelemetry.io/docs/specs/semconv/) naming rules and is designed to be carried as span attributes, resource attributes, and metric dimensions within OTel-instrumented systems.
 
 The namespace is **`resilience.*`**. All attributes defined here live under this single root.
+
+### Requirement Tiers
+
+The model is organised into three tiers:
+
+| Tier | Groups | When |
+|------|--------|------|
+| **Required** | `experiment`, `target`, `fault`, `outcome` | Every experiment |
+| **Phase data** (required if enabled) | `estimate`, `baseline`, `during`, `post`, `analysis` | When five-phase execution is active |
+| **Optional enrichment** | `taxonomy`, `safety`, `environment`, `load`, `regulatory`, `score` | Enhances analytics, compliance, and scoring |
 
 ---
 
 ## Table of Contents
 
 - [1. Conventions](#1-conventions)
-- [2. Attribute Groups](#2-attribute-groups)
+- [2. Required Attribute Groups](#2-required-attribute-groups)
   - [2.1 resilience.experiment.*](#21-resilienceexperiment)
   - [2.2 resilience.target.*](#22-resiliencetarget)
   - [2.3 resilience.fault.*](#23-resiliencefault)
-  - [2.4 resilience.estimate.*](#24-resilienceestimate)
-  - [2.5 resilience.baseline.*](#25-resiliencebaseline)
-  - [2.6 resilience.during.*](#26-resilienceduring)
-  - [2.7 resilience.post.*](#27-resiliencepost)
-  - [2.8 resilience.outcome.*](#28-resilienceoutcome)
-  - [2.9 resilience.safety.*](#29-resiliencesafety)
-  - [2.10 resilience.environment.*](#210-resilienceenvironment)
-  - [2.11 resilience.regulatory.*](#211-resilienceregulatory)
-  - [2.12 resilience.analysis.*](#212-resilienceanalysis)
-- [3. Fault Subtype Taxonomy](#3-fault-subtype-taxonomy)
-- [4. Time Standard](#4-time-standard)
-- [5. Cardinality Rules](#5-cardinality-rules)
-- [6. OTel Integration Rules](#6-otel-integration-rules)
-- [7. Scientific Rules](#7-scientific-rules)
-- [8. Conformance](#8-conformance)
+  - [2.4 resilience.outcome.*](#24-resilienceoutcome)
+- [3. Phase Data Attribute Groups](#3-phase-data-attribute-groups)
+  - [3.1 resilience.estimate.*](#31-resilienceestimate)
+  - [3.2 resilience.baseline.*](#32-resiliencebaseline)
+  - [3.3 resilience.during.*](#33-resilienceduring)
+  - [3.4 resilience.post.*](#34-resiliencepost)
+  - [3.5 resilience.analysis.*](#35-resilienceanalysis)
+- [4. Optional Enrichment Groups](#4-optional-enrichment-groups)
+  - [4.1 resilience.taxonomy.*](#41-resiliencetaxonomy) (NEW)
+  - [4.2 resilience.safety.*](#42-resiliencesafety)
+  - [4.3 resilience.environment.*](#43-resilienceenvironment)
+  - [4.4 resilience.load.*](#44-resilienceload) (NEW)
+  - [4.5 resilience.regulatory.*](#45-resilienceregulatory)
+  - [4.6 resilience.score.*](#46-resiliencescore) (NEW — 3 layers)
+- [5. Fault Subtype Taxonomy](#5-fault-subtype-taxonomy)
+- [6. Time Standard](#6-time-standard)
+- [7. Cardinality Rules](#7-cardinality-rules)
+- [8. OTel Integration Rules](#8-otel-integration-rules)
+- [9. Scientific Rules](#9-scientific-rules)
+- [10. Scoring Methodology](#10-scoring-methodology)
+- [11. Conformance](#11-conformance)
 
 ---
 
@@ -53,7 +68,9 @@ The namespace is **`resilience.*`**. All attributes defined here live under this
 
 ---
 
-## 2. Attribute Groups
+## 2. Required Attribute Groups
+
+These four groups MUST be present on every experiment.
 
 ### 2.1 resilience.experiment.*
 
@@ -104,7 +121,17 @@ The fault being injected.
 
 ---
 
-### 2.4 resilience.estimate.*
+### 2.4 resilience.outcome.*
+
+Final outcome of the experiment run. Moved here as a required group — see original definition below.
+
+---
+
+## 3. Phase Data Attribute Groups
+
+These groups are required when five-phase execution is active (estimate → baseline → during → post → analysis).
+
+### 3.1 resilience.estimate.*
 
 Pre-experiment predictions. These are recorded before fault injection begins and are compared against actual outcomes in `resilience.analysis.*`.
 
@@ -538,4 +565,114 @@ Implementations MAY extend this standard with additional attributes under a vend
 
 ---
 
-*This document is released as a community standard for resilience testing metadata. Contributions and feedback are welcome.*
+---
+
+## 10. Scoring Methodology (Optional — 3 Layers)
+
+The scoring model is optional but enables deep analytics when populated. Scores are computed in DuckDB from journal data — not during experiment execution.
+
+### Layer 1 — Experiment Quality (`resilience.score.quality.*`)
+
+Six orthogonal signals computed per experiment. Scientific basis: cyclomatic complexity (McCabe, 1976), FMEA severity (IEC 60812:2018), chaos engineering principles (Basiri et al., 2016).
+
+| Attribute | Type | Description | Values |
+|---|---|---|---|
+| `resilience.score.quality.complexity` | `string` | Structural complexity based on step count, config params, rollback presence. | `low`, `medium`, `high`, `critical` |
+| `resilience.score.quality.blast_radius` | `string` | Fault propagation scope based on fault type analysis. | `contained`, `moderate`, `broad`, `systemic` |
+| `resilience.score.quality.risk` | `string` | Operational risk combining hypothesis absence, rollback quality, deviation history. | `low`, `medium`, `high`, `critical` |
+| `resilience.score.quality.rollback` | `string` | Rollback completeness: action present, verification probe, idempotent pattern. | `none`, `weak`, `good`, `excellent` |
+| `resilience.score.quality.grade` | `string` | Run history grade based on success rate over trailing 10 runs. | `A` (>=90%), `B` (>=70%), `C` (>=50%), `D` (<50%) |
+| `resilience.score.quality.otel_score` | `float` | Continuous 0-100 score for time-series trending. Weighted combination of complexity, risk, probe count, rollback ratio. | `0.0` to `100.0` |
+| `resilience.score.quality.needs_review` | `boolean` | Automatically set when risk is HIGH/CRITICAL AND blast_radius is BROAD/SYSTEMIC. | |
+
+#### FMEA Extension (`resilience.fault.fmea_*`)
+
+Optional FMEA (Failure Mode and Effects Analysis) attributes per IEC 60812:2018:
+
+| Attribute | Type | Description |
+|---|---|---|
+| `resilience.fault.fmea_severity` | `int` | Severity rating 1-10 (10 = most severe). |
+| `resilience.fault.fmea_detectability` | `int` | Detectability rating 1-10 (10 = hardest to detect). |
+| `resilience.fault.fmea_rpn` | `int` | Risk Priority Number = severity x detectability. |
+
+### Layer 2 — DORA Four Keys (`resilience.score.dora.*`)
+
+Operational performance metrics. Requires external data (CI/CD events, incident management). This layer is an **integration point** — Tumult does not compute these values directly but accepts them from external systems for correlation.
+
+Scientific basis: Forsgren, Humble, Kim (2018), *Accelerate*; Google DORA State of DevOps Reports.
+
+| Attribute | Type | Description |
+|---|---|---|
+| `resilience.score.dora.deployment_frequency_per_day` | `float` | Deployments per calendar day. |
+| `resilience.score.dora.lead_time_hours` | `float` | Mean time from commit to production deploy. |
+| `resilience.score.dora.change_failure_rate` | `float` | Proportion of deployments causing incidents (0.0-1.0). |
+| `resilience.score.dora.mttr_hours` | `float` | Mean time to recovery from incidents. |
+| `resilience.score.dora.chaos_coverage_pct` | `float` | Proportion of services with experiment runs in period (0.0-1.0). |
+
+### Layer 3 — Regulatory Confidence (`resilience.score.regulatory.*`)
+
+Per-control compliance confidence. Scientific basis: ISO 31000:2018 risk treatment confidence model. The multiplicative formula ensures a single failing factor reduces overall confidence proportionally.
+
+| Attribute | Type | Description |
+|---|---|---|
+| `resilience.score.regulatory.framework` | `string` | Framework identifier (DORA, NIS2, PCI-DSS, ISO-22301, ISO-27001, SOC2). |
+| `resilience.score.regulatory.control_id` | `string` | Specific control (e.g. DORA-Art25.1, PCI-DSS-12.10.2). |
+| `resilience.score.regulatory.confidence` | `float` | Confidence score 0.0-1.0, computed as: `base_weight x quality_score x complexity_factor x rollback_factor x min(probe_count/threshold, 1.0) x outcome_factor`. |
+| `resilience.score.regulatory.outcome_factor` | `float` | PASSED=1.0, FAILED_ROLLBACK_OK=0.85, FAILED=0.30. A failed experiment with successful rollback is stronger evidence than untested. |
+
+### Scoring References
+
+1. McCabe, T.J. (1976). *A Complexity Measure*. IEEE TSE, 2(4), 308-320.
+2. IEC 60812:2018. *Failure modes and effects analysis (FMEA and FMECA)*.
+3. Forsgren, N., Humble, J. & Kim, G. (2018). *Accelerate*. IT Revolution Press.
+4. ISO 31000:2018. *Risk management — Guidelines*.
+5. Basiri, A. et al. (2016). *Chaos Engineering*. IEEE Software, 33(3), 35-41.
+6. EU Regulation 2022/2554. *Digital Operational Resilience Act (DORA)*.
+
+---
+
+## Appendix A: resilience.taxonomy.* (Optional Classification)
+
+Domain classification for slicing experiments by what is being tested. Optional — enhances analytics but is not required for experiment execution.
+
+| Attribute | Type | Requirement | Description | Enum Values |
+|---|---|---|---|---|
+| `resilience.taxonomy.track` | `string` | Optional | Testing track. | `chaos`, `security`, `performance`, `continuity` |
+| `resilience.taxonomy.category` | `string` | Optional | Fault injection category. | `fault_injection`, `latency`, `resource_stress`, `state_manipulation`, `dependency_failure` |
+| `resilience.taxonomy.domain` | `string` | Optional | Infrastructure domain. | `compute`, `network`, `storage`, `data`, `platform`, `application` |
+| `resilience.taxonomy.component` | `string` | Optional | Specific component class. | `cpu`, `memory`, `io`, `disk`, `broker`, `primary`, `replica`, `pod`, `node`, `gateway` |
+| `resilience.taxonomy.scenario` | `string` | Optional | Named scenario pattern. | `cpu_stress`, `memory_pressure`, `io_saturation`, `partition`, `failover`, `leader_election`, `connection_kill` |
+
+### Analytics Example
+
+```sql
+SELECT
+    taxonomy_domain,
+    taxonomy_scenario,
+    AVG(post_recovery_time_s) as avg_mttr,
+    COUNT(*) as runs
+FROM journals
+WHERE taxonomy_track = 'chaos'
+GROUP BY taxonomy_domain, taxonomy_scenario
+ORDER BY avg_mttr DESC
+```
+
+---
+
+## Appendix B: resilience.load.* (Optional Load Integration)
+
+Attributes for correlating experiments with load testing tools (k6, JMeter).
+
+| Attribute | Type | Requirement | Description |
+|---|---|---|---|
+| `resilience.load.tool` | `string` | Optional | Load testing tool. Values: `k6`, `jmeter`. |
+| `resilience.load.vus` | `int` | Optional | Virtual users / threads. |
+| `resilience.load.duration_s` | `float` | Optional | Load test duration in seconds. |
+| `resilience.load.throughput_rps` | `float` | Optional | Observed requests per second. |
+| `resilience.load.latency_p95_ms` | `float` | Optional | 95th percentile response time in milliseconds. |
+| `resilience.load.error_rate` | `float` | Optional | Error rate 0.0-1.0 during load. |
+| `resilience.load.thresholds_met` | `boolean` | Optional | Whether all load thresholds passed. |
+
+---
+
+*Tumult Metadata Model v2.0. The `resilience.*` namespace is designed for OTel compatibility and can be adopted by any resilience testing platform.*
