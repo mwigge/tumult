@@ -5,11 +5,15 @@
 
 pub mod anomaly;
 pub mod stats;
+pub mod tolerance;
 
 pub use anomaly::{check_baseline_anomaly, AnomalyCheck};
 pub use stats::{
     derive_iqr_bounds, derive_mean_stddev_bounds, derive_percentile, mean, percentile, stddev,
     BaselineBounds,
+};
+pub use tolerance::{
+    compliance_ratio, derive_tolerance, is_within_tolerance, recovery_index, Method,
 };
 
 #[cfg(test)]
