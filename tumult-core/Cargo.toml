@@ -8,10 +8,9 @@ description = "Core engine for Tumult chaos engineering platform"
 
 [dependencies]
 tumult-plugin = { path = "../tumult-plugin" }
-tumult-otel = { path = "../tumult-otel" }
 serde = { workspace = true }
 toon-format = { workspace = true }
-tokio = { workspace = true }
+tokio-minimal = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }

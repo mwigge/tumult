@@ -25,10 +25,10 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-edition = "2024"
-rust-version = "1.85"
+edition = "2021"
+rust-version = "1.75"
 license = "Apache-2.0"
-repository = "https://github.com/tumult-chaos/tumult"
+repository = "https://github.com/mwigge/tumult"
 description = "Rust-native chaos engineering platform with TOON format and OpenTelemetry observability"
 keywords = ["chaos-engineering", "resilience", "observability", "opentelemetry", "toon"]
 categories = ["command-line-utilities", "development-tools::testing"]
@@ -39,8 +39,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toon-format = "0.4"
 
-# Async runtime
+# Async runtime — library crates should override with minimal features
 tokio = { version = "1", features = ["full"] }
+tokio-minimal = { package = "tokio", version = "1", features = ["rt", "macros"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -69,9 +70,6 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
-
-# Async trait
-async-trait = "0.1"
 
 # Collections
 indexmap = { version = "2", features = ["serde"] }
