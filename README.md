@@ -240,14 +240,24 @@ tumult.experiment (root span)
     └── tumult.action
 ```
 
-Configure export via standard OTel environment variables:
+All span attributes use the `resilience.*` namespace — a community standard for resilience testing. See `docs/resilience-metadata-standard.md`.
+
+Tumult speaks OTLP only. Use an [OTel Collector](https://opentelemetry.io/docs/collector/) to route telemetry to any backend:
 
 ```bash
+# Configure via standard OTel environment variables
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 export OTEL_SERVICE_NAME=tumult
+
+# Tumult-specific
+export TUMULT_OTEL_ENABLED=true    # default: true
+export TUMULT_OTEL_CONSOLE=false   # also print spans to stderr
+
 tumult run experiment.toon
-# → traces appear in Jaeger/Tempo/Datadog
+# → traces/metrics/logs flow to OTel Collector → your backend
 ```
+
+The Collector fans out to any backend: SigNoz, Grafana (Tempo + Loki + Mimir), Datadog, Elastic, ClickHouse, S3 — your choice. Tumult does not know or care what is downstream.
 
 ---
 
