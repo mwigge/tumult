@@ -5,6 +5,7 @@
 
 pub mod attributes;
 pub mod config;
+pub mod instrument;
 pub mod metrics;
 pub mod telemetry;
 
