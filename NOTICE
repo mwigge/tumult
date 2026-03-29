@@ -1,0 +1,39 @@
+Tumult — Rust-Native Chaos Engineering Platform
+Copyright 2026 Tumult Contributors
+
+This project is licensed under the Apache License, Version 2.0.
+
+================================================================================
+
+ACKNOWLEDGEMENTS
+
+Tumult is inspired by and builds upon the concepts pioneered by the
+Chaos Toolkit project (https://chaostoolkit.org/).
+
+Chaos Toolkit is an open-source chaos engineering platform created by
+Russ Miles and the ChaosIQ team, licensed under the Apache License 2.0.
+https://github.com/chaostoolkit/chaostoolkit
+
+Tumult's experiment model — including the concepts of steady-state
+hypothesis, method (actions and probes), rollbacks, controls, and the
+declarative experiment format — is directly inspired by Chaos Toolkit's
+pioneering work in making chaos engineering accessible and standardized.
+
+We are grateful to the Chaos Toolkit community for establishing the
+foundational patterns that Tumult reimagines in Rust with TOON format
+and OpenTelemetry-first observability.
+
+================================================================================
+
+THIRD-PARTY COMPONENTS
+
+This project uses the following notable open-source components:
+
+- TOON (Token-Oriented Object Notation) — https://github.com/toon-format/spec
+  A token-efficient data format by Johann Schopplich. MIT License.
+
+- OpenTelemetry Rust SDK — https://github.com/open-telemetry/opentelemetry-rust
+  Observability framework. Apache License 2.0.
+
+- Agentic QE Framework — https://agentic-qe.dev/
+  Quality engineering framework by Dragan Spiridonov.
