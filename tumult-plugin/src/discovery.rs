@@ -24,8 +24,7 @@ pub enum DiscoveryError {
 
 /// Discover script plugins from a single directory.
 ///
-/// Each subdirectory containing a `plugin.json` file is treated as a plugin.
-/// (Will support `plugin.toon` when TOON file parsing is available.)
+/// Each subdirectory containing a `plugin.toon` file is treated as a plugin.
 pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
     let mut plugins = Vec::new();
 
@@ -40,7 +39,7 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
             continue;
         }
 
-        let manifest_path = path.join("plugin.json");
+        let manifest_path = path.join("plugin.toon");
         if manifest_path.exists() {
             let content = std::fs::read_to_string(&manifest_path).map_err(|e| {
                 DiscoveryError::ManifestParse {
@@ -49,9 +48,11 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
                 }
             })?;
             let manifest: ScriptPluginManifest =
-                serde_json::from_str(&content).map_err(|e| DiscoveryError::ManifestParse {
-                    path: manifest_path,
-                    source: Box::new(e),
+                toon_format::decode_default(&content).map_err(|e| {
+                    DiscoveryError::ManifestParse {
+                        path: manifest_path,
+                        source: Box::new(e),
+                    }
                 })?;
             plugins.push(manifest);
         }
@@ -112,8 +113,8 @@ mod tests {
     fn write_manifest(dir: &Path, name: &str, manifest: &ScriptPluginManifest) {
         let plugin_dir = dir.join(name);
         fs::create_dir_all(&plugin_dir).unwrap();
-        let json = serde_json::to_string_pretty(manifest).unwrap();
-        fs::write(plugin_dir.join("plugin.json"), json).unwrap();
+        let toon = toon_format::encode_default(manifest).unwrap();
+        fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
     }
 
     fn sample_manifest(name: &str) -> ScriptPluginManifest {
@@ -180,7 +181,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let plugin_dir = dir.path().join("bad-plugin");
         fs::create_dir(&plugin_dir).unwrap();
-        fs::write(plugin_dir.join("plugin.json"), "not valid json").unwrap();
+        fs::write(plugin_dir.join("plugin.toon"), "not valid toon {{{}").unwrap();
 
         let result = discover_plugins_in_dir(dir.path());
         assert!(result.is_err());
