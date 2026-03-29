@@ -3,8 +3,10 @@
 //! Provides functions to calculate statistical baselines from probe samples
 //! and derive tolerance thresholds for steady-state hypothesis evaluation.
 
+pub mod anomaly;
 pub mod stats;
 
+pub use anomaly::{check_baseline_anomaly, AnomalyCheck};
 pub use stats::{
     derive_iqr_bounds, derive_mean_stddev_bounds, derive_percentile, mean, percentile, stddev,
     BaselineBounds,
