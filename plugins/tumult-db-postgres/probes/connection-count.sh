@@ -1,14 +1,9 @@
 #!/bin/sh
 # Probe: count active PostgreSQL connections
-# Outputs: integer count
-#
-# Environment variables:
-#   TUMULT_PG_HOST     - PostgreSQL host (default: localhost)
-#   TUMULT_PG_PORT     - PostgreSQL port (default: 5432)
-#   TUMULT_PG_USER     - PostgreSQL user (default: postgres)
-#   TUMULT_PG_DATABASE - Target database (optional, counts all if omitted)
-#   TUMULT_PG_PASSWORD - Password (optional)
-set -e
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "${SCRIPT_DIR}/../../lib/validate.sh"
 
 HOST="${TUMULT_PG_HOST:-localhost}"
 PORT="${TUMULT_PG_PORT:-5432}"
@@ -21,10 +16,11 @@ fi
 
 export PGPASSWORD="${TUMULT_PG_PASSWORD:-}"
 
-if [ -n "${TUMULT_PG_DATABASE}" ]; then
-    QUERY="SELECT count(*) FROM pg_stat_activity WHERE datname = '${TUMULT_PG_DATABASE}';"
+if [ -n "${TUMULT_PG_DATABASE:-}" ]; then
+    validate_identifier "TUMULT_PG_DATABASE" "${TUMULT_PG_DATABASE}"
+    psql -h "${HOST}" -p "${PORT}" -U "${USER}" -d postgres -t -A -c \
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = \$\$${TUMULT_PG_DATABASE}\$\$;"
 else
-    QUERY="SELECT count(*) FROM pg_stat_activity;"
+    psql -h "${HOST}" -p "${PORT}" -U "${USER}" -d postgres -t -A -c \
+        "SELECT count(*) FROM pg_stat_activity;"
 fi
-
-psql -h "${HOST}" -p "${PORT}" -U "${USER}" -d postgres -t -A -c "${QUERY}"
