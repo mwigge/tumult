@@ -10,6 +10,8 @@ set -e
 
 CONTAINER="${TUMULT_CONTAINER_ID:?TUMULT_CONTAINER_ID is required}"
 RUNTIME="${TUMULT_RUNTIME:-docker}"
+
+case "${RUNTIME}" in docker|podman) ;; *) echo "error: TUMULT_RUNTIME must be docker or podman, got: ${RUNTIME}" >&2; exit 1;; esac
 CPU_QUOTA="${TUMULT_CPU_QUOTA:-50000}"
 CPU_PERIOD="${TUMULT_CPU_PERIOD:-100000}"
 

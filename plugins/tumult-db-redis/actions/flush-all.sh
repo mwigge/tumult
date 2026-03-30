@@ -17,9 +17,9 @@ if ! command -v redis-cli >/dev/null 2>&1; then
     exit 1
 fi
 
-AUTH_ARG=""
-[ -n "${TUMULT_REDIS_AUTH}" ] && AUTH_ARG="-a ${TUMULT_REDIS_AUTH}"
+
+export REDISCLI_AUTH="${TUMULT_REDIS_AUTH:-}"
 
 echo "flushing all data from Redis at ${HOST}:${PORT}"
-redis-cli -h "${HOST}" -p "${PORT}" ${AUTH_ARG} FLUSHALL
+redis-cli -h "${HOST}" -p "${PORT}" FLUSHALL
 echo "all data flushed"
