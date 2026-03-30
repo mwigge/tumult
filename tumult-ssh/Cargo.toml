@@ -1,0 +1,17 @@
+[package]
+name = "tumult-ssh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SSH remote execution for the Tumult chaos engineering platform"
+
+[dependencies]
+russh = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
