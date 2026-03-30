@@ -1,3 +1,9 @@
+---
+title: Plugin Authoring Guide
+parent: Plugins
+nav_order: 1
+---
+
 # Plugin Authoring Guide
 
 Create community plugins for Tumult without a Rust toolchain. A plugin is a directory with a manifest and executable scripts.

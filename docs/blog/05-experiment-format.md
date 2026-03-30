@@ -1,6 +1,12 @@
-# <img src="../images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Writing Your First Experiment: The TOON Format in Depth
+---
+title: "Writing Your First Experiment: The TOON Format in Depth"
+parent: Blog
+nav_order: 5
+---
 
-![Tumult Banner](../images/tumult-banner.png)
+# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Writing Your First Experiment: The TOON Format in Depth
+
+![Tumult Banner](/tumult/images/tumult-banner.png)
 
 *Part 5 of the Tumult series. [← Part 4: The Plugin System](./04-plugin-system.md)*
 

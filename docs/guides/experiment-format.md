@@ -1,3 +1,9 @@
+---
+title: Experiment Format
+parent: Guides
+nav_order: 1
+---
+
 # Experiment Format
 
 Tumult experiments are defined in TOON (Token-Oriented Object Notation) — the only supported format. TOON is human-readable, token-efficient, and serde-compatible.
