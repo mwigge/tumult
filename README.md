@@ -85,24 +85,39 @@ cargo install tumult --features kubernetes,aws
 
 See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
 
-## Analytics
+## Data-Driven Chaos Engineering
 
-Tumult embeds DuckDB and Apache Arrow for SQL analytics over experiment journals:
+Tumult is **data-driven by design**. Every experiment produces structured evidence — not just pass/fail, but columnar analytics data that flows through a modern data pipeline.
+
+The traditional chaos engineering workflow produces a journal file and hopes someone reads it. Tumult replaces that with a real analytics backbone:
+
+```
+Experiment → TOON Journal → Apache Arrow (columnar) → DuckDB (embedded SQL) → Parquet (export)
+```
+
+Every probe result, every action timing, every hypothesis evaluation is captured as structured columnar data — queryable with SQL, exportable as Parquet for any data tool, and token-efficient for LLM analysis.
 
 ```bash
-# Run experiments over time...
+# Run experiments — data is captured automatically
 tumult run experiment.toon
 
-# Analyze with SQL
-tumult analyze journals/ --query "SELECT status, count(*), avg(duration_ms) FROM experiments GROUP BY status"
+# Query your experiment data with SQL
+tumult analyze journals/ --query "
+    SELECT status, count(*) as runs, avg(duration_ms) as avg_ms,
+           avg(resilience_score) as avg_resilience
+    FROM experiments GROUP BY status"
 
-# Export to Parquet for external tools
+# Export to Parquet — portable to Spark, Polars, pandas, Jupyter
 tumult export journal.toon --format parquet
 ```
 
-The data pipeline: **TOON Journal → Arrow RecordBatch → DuckDB (SQL) → Parquet (export)**
+**Why this matters:**
+- **Transparency** — all experiment evidence is in standard Parquet format, auditable by anyone
+- **Reusability** — query across hundreds of experiment runs with SQL, no custom scripts
+- **LLM-friendly** — TOON journals are 40-50% fewer tokens than JSON equivalents
+- **No infrastructure** — DuckDB is embedded, Arrow is in-memory, Parquet is a file
 
-See [docs/guides/analytics-guide.md](docs/guides/analytics-guide.md) for details.
+See [Analytics Guide](docs/guides/analytics-guide.md) for table schemas, SQL examples, and export options.
 
 ## Phasing & Roadmap
 
