@@ -1,3 +1,9 @@
+---
+title: "ADR-009: Load Testing"
+parent: Architecture Decisions
+nav_order: 9
+---
+
 # ADR-009: Load Tool Integration as Background Activity
 
 ## Status

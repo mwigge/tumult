@@ -1,3 +1,9 @@
+---
+title: "ADR-002: Data Formats"
+parent: Architecture Decisions
+nav_order: 2
+---
+
 # ADR-002: Data Formats: TOON, resilience.* Namespace, and Epoch Nanoseconds
 
 **Status:** Accepted

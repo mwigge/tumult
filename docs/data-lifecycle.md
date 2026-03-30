@@ -1,3 +1,9 @@
+---
+title: Data Lifecycle
+parent: Reference
+nav_order: 1
+---
+
 # Tumult Data Lifecycle
 
 Five-phase data lifecycle for resilience testing experiments. Every experiment progresses through these phases sequentially. The journal captures all five phases as structured evidence.
