@@ -6,7 +6,7 @@
 use crate::stats::{mean, percentile, stddev};
 
 /// Result of an anomaly check on baseline data.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AnomalyCheck {
     pub anomaly_detected: bool,
     pub reason: Option<String>,
