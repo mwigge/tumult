@@ -1,0 +1,17 @@
+name: tumult-db-mysql
+version: 0.1.0
+description: MySQL chaos actions and probes
+author: tumult
+
+actions[2]:
+  - name: kill-connections
+    script: actions/kill-connections.sh
+    description: Kill active MySQL connections to a database
+  - name: lock-table
+    script: actions/lock-table.sh
+    description: Acquire exclusive lock on a table
+
+probes[1]:
+  - name: connection-count
+    script: probes/connection-count.sh
+    description: Count active MySQL connections
