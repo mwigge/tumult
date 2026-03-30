@@ -5,7 +5,7 @@
 # Environment variables:
 #   TUMULT_TARGET_IP   - IP address to partition (required)
 #   TUMULT_DIRECTION   - Block direction: both, ingress, egress (default: both)
-set -e
+set -eu
 
 TARGET_IP="${TUMULT_TARGET_IP:?TUMULT_TARGET_IP is required}"
 DIRECTION="${TUMULT_DIRECTION:-both}"

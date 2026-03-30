@@ -4,7 +4,7 @@
 #
 # Environment variables:
 #   TUMULT_TARGET_HOST - Hostname to resolve (required)
-set -e
+set -eu
 
 TARGET="${TUMULT_TARGET_HOST:?TUMULT_TARGET_HOST is required}"
 
