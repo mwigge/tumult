@@ -37,7 +37,12 @@ if [ -n "${TUMULT_OTEL_ENDPOINT:-}" ]; then
     export K6_OTEL_EXPORTER_OTLP_ENDPOINT="${TUMULT_OTEL_ENDPOINT}"
 fi
 
+K6_PID=""
+cleanup() { [ -n "${K6_PID}" ] && kill "${K6_PID}" 2>/dev/null; rm -f "${PIDFILE}"; }
+trap cleanup INT TERM
+
 echo "starting k6: ${VUS} VUs, ${DURATION}, script=${SCRIPT}"
 ${K6} ${K6_ARGS} "${SCRIPT}" &
-echo $! > "${PIDFILE}"
-echo "k6 started (PID: $(cat "${PIDFILE}"))"
+K6_PID=$!
+echo "${K6_PID}" > "${PIDFILE}"
+echo "k6 started (PID: ${K6_PID})"
