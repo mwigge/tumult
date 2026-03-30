@@ -56,6 +56,63 @@ pub fn resolve_config(
 /// Validate an experiment definition before execution.
 ///
 /// Checks: method is non-empty, regex patterns compile, hypothesis probes exist.
+///
+/// # Examples
+///
+/// ```
+/// use tumult_core::engine::validate_experiment;
+/// use tumult_core::types::*;
+/// use std::collections::HashMap;
+///
+/// let experiment = Experiment {
+///     title: "validate-demo".into(),
+///     description: None,
+///     tags: vec![],
+///     configuration: HashMap::new(),
+///     secrets: HashMap::new(),
+///     controls: vec![],
+///     steady_state_hypothesis: None,
+///     method: vec![Activity {
+///         name: "action-1".into(),
+///         activity_type: ActivityType::Action,
+///         provider: Provider::Native {
+///             plugin: "test".into(),
+///             function: "noop".into(),
+///             arguments: HashMap::new(),
+///         },
+///         tolerance: None,
+///         pause_before_s: None,
+///         pause_after_s: None,
+///         background: false,
+///     }],
+///     rollbacks: vec![],
+///     estimate: None,
+///     baseline: None,
+///     load: None,
+///     regulatory: None,
+/// };
+///
+/// assert!(validate_experiment(&experiment).is_ok());
+///
+/// // An experiment with no method steps fails validation
+/// let empty = Experiment {
+///     title: "empty".into(),
+///     description: None,
+///     tags: vec![],
+///     configuration: HashMap::new(),
+///     secrets: HashMap::new(),
+///     controls: vec![],
+///     steady_state_hypothesis: None,
+///     method: vec![],
+///     rollbacks: vec![],
+///     estimate: None,
+///     baseline: None,
+///     load: None,
+///     regulatory: None,
+/// };
+///
+/// assert!(validate_experiment(&empty).is_err());
+/// ```
 pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
     if experiment.method.is_empty() {
         return Err(EngineError::EmptyMethod);
