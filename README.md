@@ -206,3 +206,24 @@ See [CLI Reference](docs/guides/cli-reference.md) for full command documentation
 | Python extensions | Script plugins + Native plugins | No runtime dependencies; community simple scripts. |
 | JSON experiments | TOON experiments | Highly Token-Efficient for automated analysis. |
 | opentracing control | Built-in OTel (Always On) | Native Observability, not opt-in. |
+
+---
+
+## Acknowledgements
+
+Tumult is inspired by and builds upon the concepts pioneered by the [Chaos Toolkit](https://chaostoolkit.org/) project. Chaos Toolkit's experiment model — steady-state hypothesis, method, rollbacks, controls, and declarative experiment format — established the foundational patterns that Tumult reimagines in Rust.
+
+We are grateful to [Russ Miles](https://github.com/russmiles), the ChaosIQ team, and the entire Chaos Toolkit community for making chaos engineering accessible and standardized.
+
+Tumult also leverages:
+- [TOON](https://github.com/toon-format/spec) by Johann Schopplich — token-efficient data format
+- [OpenTelemetry](https://opentelemetry.io/) — vendor-neutral observability standard
+- [Agentic QE Framework](https://agentic-qe.dev/) by Dragan Spiridonov — autonomous quality engineering
+
+---
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+Copyright 2026 Tumult Contributors.
