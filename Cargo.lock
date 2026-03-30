@@ -5725,6 +5725,7 @@ dependencies = [
  "chrono",
  "indexmap",
  "opentelemetry",
+ "opentelemetry_sdk",
  "regex-lite",
  "serde",
  "serde_json",
