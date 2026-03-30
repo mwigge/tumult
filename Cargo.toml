@@ -7,7 +7,7 @@ members = [
     "tumult-otel",
     "tumult-baseline",
     # Phase 1
-    # "tumult-ssh",
+    "tumult-ssh",
     # "tumult-stress",
     # "tumult-containers",
     # "tumult-process",
@@ -80,3 +80,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # Collections
 indexmap = { version = "2", features = ["serde"] }
+
+# SSH
+russh = "0.58"
+async-trait = "0.1"
