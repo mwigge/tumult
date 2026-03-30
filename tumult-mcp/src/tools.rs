@@ -178,6 +178,91 @@ method[1]:
     Ok(format!("Created {}", output_path))
 }
 
+/// Query trace data from a journal — returns activity spans with trace/span IDs.
+///
+/// This is Option B: MCP observability resource. Agents can query past
+/// experiment traces to understand execution timelines and correlate
+/// with external observability systems.
+pub fn query_traces(journal_path: &str) -> Result<String, String> {
+    use tumult_core::journal::read_journal;
+
+    let journal =
+        read_journal(Path::new(journal_path)).map_err(|e| format!("read error: {}", e))?;
+
+    let mut output = format!(
+        "Experiment: {} ({})\nStatus: {:?}\nTrace data:\n\n",
+        journal.experiment_title, journal.experiment_id, journal.status
+    );
+
+    // Hypothesis before
+    if let Some(ref hyp) = journal.steady_state_before {
+        output += &format!("Hypothesis Before: {}\n", hyp.title);
+        for probe in &hyp.probe_results {
+            output += &format!(
+                "  {} [{:?}] trace={} span={} {}ms\n",
+                probe.name,
+                probe.status,
+                if probe.trace_id.is_empty() {
+                    "(none)"
+                } else {
+                    &probe.trace_id
+                },
+                if probe.span_id.is_empty() {
+                    "(none)"
+                } else {
+                    &probe.span_id
+                },
+                probe.duration_ms,
+            );
+        }
+    }
+
+    // Method
+    output += "\nMethod:\n";
+    for result in &journal.method_results {
+        output += &format!(
+            "  {} [{:?}] trace={} span={} {}ms\n",
+            result.name,
+            result.status,
+            if result.trace_id.is_empty() {
+                "(none)"
+            } else {
+                &result.trace_id
+            },
+            if result.span_id.is_empty() {
+                "(none)"
+            } else {
+                &result.span_id
+            },
+            result.duration_ms,
+        );
+    }
+
+    // Hypothesis after
+    if let Some(ref hyp) = journal.steady_state_after {
+        output += &format!("\nHypothesis After: {}\n", hyp.title);
+        for probe in &hyp.probe_results {
+            output += &format!(
+                "  {} [{:?}] trace={} span={} {}ms\n",
+                probe.name, probe.status, probe.trace_id, probe.span_id, probe.duration_ms,
+            );
+        }
+    }
+
+    // Rollbacks
+    if !journal.rollback_results.is_empty() {
+        output += "\nRollbacks:\n";
+        for result in &journal.rollback_results {
+            output += &format!(
+                "  {} [{:?}] trace={} span={} {}ms\n",
+                result.name, result.status, result.trace_id, result.span_id, result.duration_ms,
+            );
+        }
+    }
+
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,6 +435,34 @@ mod tests {
         let path = dir.path().join("existing.toon");
         std::fs::write(&path, "existing").unwrap();
         let result = create_experiment(path.to_str().unwrap(), None);
+        assert!(result.is_err());
+    }
+
+    // ── query_traces ──────────────────────────────────────────
+
+    #[test]
+    fn query_traces_returns_activity_spans() {
+        let dir = TempDir::new().unwrap();
+        let exp_path = write_valid_experiment(dir.path());
+
+        // Run experiment to generate a journal
+        let journal_toon = run_experiment(&exp_path, "always").unwrap();
+        let journal_path = dir.path().join("journal.toon");
+        std::fs::write(&journal_path, journal_toon).unwrap();
+
+        let result = query_traces(journal_path.to_str().unwrap());
+        assert!(result.is_ok());
+        let output = result.unwrap();
+
+        // Should contain experiment info
+        assert!(output.contains("MCP test experiment"));
+        assert!(output.contains("Method:"));
+        assert!(output.contains("echo-action"));
+    }
+
+    #[test]
+    fn query_traces_nonexistent_returns_error() {
+        let result = query_traces("/nonexistent/journal.toon");
         assert!(result.is_err());
     }
 }
