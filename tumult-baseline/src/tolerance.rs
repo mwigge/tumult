@@ -9,7 +9,7 @@ use crate::stats::{
 };
 
 /// Supported baseline methods.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Method {
     /// Fixed threshold — no derivation needed.
     Static { lower: f64, upper: f64 },
