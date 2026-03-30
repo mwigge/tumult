@@ -1,0 +1,23 @@
+name: tumult-process
+version: 0.1.0
+description: Process kill, suspend, and resume actions with probes
+author: tumult
+
+actions[3]:
+  - name: kill-process
+    script: actions/kill-process.sh
+    description: Kill a process by PID, name, or pattern
+  - name: suspend-process
+    script: actions/suspend-process.sh
+    description: Suspend a process (SIGSTOP)
+  - name: resume-process
+    script: actions/resume-process.sh
+    description: Resume a suspended process (SIGCONT)
+
+probes[2]:
+  - name: process-exists
+    script: probes/process-exists.sh
+    description: Check if a process is running
+  - name: process-resources
+    script: probes/process-resources.sh
+    description: Get process CPU and memory usage
