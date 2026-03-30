@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
+tumult-analytics = { path = "../tumult-analytics" }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-otel = { path = "../tumult-otel" }
 clap = { workspace = true }
