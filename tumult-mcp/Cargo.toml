@@ -1,0 +1,24 @@
+[package]
+name = "tumult-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "MCP server adapter exposing Tumult chaos engineering as tools"
+
+[[bin]]
+name = "tumult-mcp"
+path = "src/main.rs"
+
+[dependencies]
+tumult-core = { path = "../tumult-core" }
+tumult-analytics = { path = "../tumult-analytics" }
+tumult-plugin = { path = "../tumult-plugin" }
+rust-mcp-sdk = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toon-format = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
