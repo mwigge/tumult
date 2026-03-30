@@ -21,6 +21,15 @@ pub fn export_parquet(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsE
     Ok(())
 }
 
+/// Export a RecordBatch to Arrow IPC (Feather) format.
+pub fn export_arrow_ipc(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
+    let file = File::create(path)?;
+    let mut writer = arrow::ipc::writer::FileWriter::try_new(file, &batch.schema())?;
+    writer.write(batch)?;
+    writer.finish()?;
+    Ok(())
+}
+
 pub fn export_csv(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
     let file = File::create(path)?;
     let mut writer = CsvWriterBuilder::new().with_header(true).build(file);
@@ -59,6 +68,14 @@ mod tests {
         let p = d.path().join("t.parquet");
         export_parquet(&sample_batch(), &p).unwrap();
         assert!(p.exists());
+    }
+    #[test]
+    fn arrow_ipc_creates_file() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("t.arrow");
+        export_arrow_ipc(&sample_batch(), &p).unwrap();
+        assert!(p.exists());
+        assert!(std::fs::metadata(&p).unwrap().len() > 0);
     }
     #[test]
     fn csv_creates_file() {
