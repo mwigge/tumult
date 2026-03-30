@@ -18,7 +18,7 @@ if command -v python3 >/dev/null 2>&1; then
     python3 -c "
 import json, sys
 metrics = {}
-with open('${RESULTS}') as f:
+with open(sys.argv[1]) as f:
     for line in f:
         try:
             d = json.loads(line)
@@ -44,7 +44,7 @@ for name, m in metrics.items():
             'count': m['count']
         }
 print(json.dumps(result, indent=2))
-"
+" "${RESULTS}"
 else
     # Fallback: just count lines
     LINES=$(wc -l < "${RESULTS}")
