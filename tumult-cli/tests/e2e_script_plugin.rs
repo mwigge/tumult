@@ -168,7 +168,10 @@ fn e2e_script_plugin_produces_complete_journal() {
     let hyp_before = journal.steady_state_before.as_ref().unwrap();
     assert!(hyp_before.met);
     assert_eq!(hyp_before.probe_results.len(), 1);
-    assert_eq!(hyp_before.probe_results[0].status, ActivityStatus::Succeeded);
+    assert_eq!(
+        hyp_before.probe_results[0].status,
+        ActivityStatus::Succeeded
+    );
 
     // Method: action script ran successfully
     assert_eq!(journal.method_results.len(), 1);
