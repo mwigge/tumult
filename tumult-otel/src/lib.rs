@@ -142,8 +142,46 @@ mod tests {
             enabled: false,
             ..TelemetryConfig::default()
         };
-        // Should not panic even when disabled
         let telemetry = TumultTelemetry::new(config);
         assert!(!telemetry.is_enabled());
+        telemetry.shutdown(); // should not panic
+    }
+
+    #[test]
+    fn telemetry_enabled_without_endpoint_does_not_panic() {
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: None,
+            ..TelemetryConfig::default()
+        };
+        let telemetry = TumultTelemetry::new(config);
+        assert!(telemetry.is_enabled());
+        assert_eq!(telemetry.service_name(), "tumult");
+        telemetry.shutdown();
+    }
+
+    #[test]
+    fn telemetry_enabled_with_endpoint_initializes() {
+        let rt = tokio_minimal::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://localhost:4317".into()),
+            ..TelemetryConfig::default()
+        };
+        let telemetry = TumultTelemetry::new(config);
+        assert!(telemetry.is_enabled());
+        telemetry.shutdown();
+    }
+
+    #[test]
+    fn telemetry_debug_trait_works() {
+        let config = TelemetryConfig::default();
+        let telemetry = TumultTelemetry::new(config);
+        let debug = format!("{:?}", telemetry);
+        assert!(debug.contains("TumultTelemetry"));
     }
 }

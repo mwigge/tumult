@@ -20,6 +20,7 @@ use crate::execution::{
 };
 use crate::types::*;
 
+use opentelemetry::trace::TraceContextExt;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -233,8 +234,8 @@ fn evaluate_hypothesis(
             success: outcome.success,
             output: outcome.output.clone(),
             error: outcome.error.clone(),
-            trace_id: String::new(),
-            span_id: String::new(),
+            trace_id: current_trace_id(),
+            span_id: current_span_id(),
         });
 
         // Check tolerance if defined
@@ -303,8 +304,8 @@ fn execute_activities(
             success: outcome.success,
             output: outcome.output,
             error: outcome.error,
-            trace_id: String::new(),
-            span_id: String::new(),
+            trace_id: current_trace_id(),
+            span_id: current_span_id(),
         });
 
         controls.emit(&LifecycleEvent::AfterActivity {
@@ -347,6 +348,28 @@ fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Optio
             Some(0.0)
         },
     })
+}
+
+/// Get the current trace ID from the active span context.
+fn current_trace_id() -> String {
+    let ctx = opentelemetry::Context::current();
+    let sc = ctx.span().span_context().clone();
+    if sc.is_valid() {
+        sc.trace_id().to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Get the current span ID from the active span context.
+fn current_span_id() -> String {
+    let ctx = opentelemetry::Context::current();
+    let sc = ctx.span().span_context().clone();
+    if sc.is_valid() {
+        sc.span_id().to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// Get current time as epoch nanoseconds.
