@@ -27,16 +27,21 @@ if ! command -v psql >/dev/null 2>&1; then
     exit 1
 fi
 
-export PGPASSWORD="${TUMULT_PG_PASSWORD:-}"
+# Use .pgpass file to avoid /proc/environ exposure
+PGPASS_FILE=$(mktemp)
+echo "*:*:*:*:${TUMULT_PG_PASSWORD:-}" > "${PGPASS_FILE}"
+chmod 600 "${PGPASS_FILE}"
+export PGPASSFILE="${PGPASS_FILE}"
 
 echo "opening ${COUNT} idle connections to ${DATABASE} for ${DURATION}s"
 
 PIDS=""
-# Trap to clean up background processes on signal/exit
+# Trap to clean up background processes and pgpass file on signal/exit
 cleanup() {
     for PID in ${PIDS}; do
         kill "${PID}" 2>/dev/null || true
     done
+    rm -f "${PGPASS_FILE}"
 }
 trap cleanup EXIT INT TERM
 

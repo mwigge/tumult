@@ -1,7 +1,33 @@
 //! Tumult Plugin — Plugin trait definitions, registry, and manifest loader.
 //!
-//! Provides the `TumultPlugin` trait for native Rust plugins and the
+//! Provides the [`TumultPlugin`] trait for native Rust plugins and the
 //! script plugin manifest parser for community plugins.
+//!
+//! # Overview
+//!
+//! Tumult uses a dual plugin model:
+//!
+//! - **Native plugins** implement the [`TumultPlugin`] trait in Rust.
+//!   They are compiled into the binary and registered at startup via
+//!   [`PluginRegistry::register_native`].
+//! - **Script plugins** are directories containing a `plugin.toon` manifest
+//!   and shell-script actions/probes. They are discovered at runtime by
+//!   [`discovery`] and registered with [`PluginRegistry::register_script`].
+//!
+//! # Key types
+//!
+//! | Type | Purpose |
+//! |------------------------|---------------------------------------------|
+//! | [`TumultPlugin`] | Trait that native plugins implement |
+//! | [`PluginRegistry`] | Central lookup for actions and probes |
+//! | [`ScriptPluginManifest`]| Deserialized `plugin.toon` descriptor |
+//! | [`ActionDescriptor`] | Metadata for a single chaos action |
+//! | [`ProbeDescriptor`] | Metadata for a single steady-state probe |
+//!
+//! # Plugin discovery
+//!
+//! The [`discovery`] module scans configured plugin directories for
+//! `plugin.toon` manifests and auto-registers every valid script plugin.
 
 pub mod discovery;
 pub mod executor;
