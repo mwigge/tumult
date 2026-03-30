@@ -198,6 +198,7 @@ mod tests {
 
     struct MockPlugin;
 
+    impl crate::traits::private::Sealed for MockPlugin {}
     impl TumultPlugin for MockPlugin {
         fn name(&self) -> &str {
             "mock-plugin"
