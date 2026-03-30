@@ -40,7 +40,7 @@ fn run_script(relative: &str, extra_env: &[(&str, &str)]) -> (i32, String, Strin
     cmd.arg(&path);
     cmd.env("TUMULT_PG_HOST", "localhost");
     cmd.env("TUMULT_PG_PORT", "5432");
-    cmd.env("TUMULT_PG_USER", &pg_user());
+    cmd.env("TUMULT_PG_USER", pg_user());
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
