@@ -20,7 +20,8 @@ use crate::execution::{
 };
 use crate::types::*;
 
-use opentelemetry::trace::TraceContextExt;
+use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry::KeyValue;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -281,10 +282,23 @@ fn evaluate_hypothesis(
     let mut probe_results = Vec::with_capacity(hypothesis.probes.len());
     let mut all_met = true;
 
+    let tracer = opentelemetry::global::tracer("tumult-engine");
+
     for probe in &hypothesis.probes {
         controls.emit(&LifecycleEvent::BeforeActivity {
             name: probe.name.clone(),
         });
+
+        // Create an OTel span for this probe
+        let span = tracer
+            .span_builder("tumult.probe".to_string())
+            .with_attributes(vec![KeyValue::new(
+                "resilience.probe.name",
+                probe.name.clone(),
+            )])
+            .start(&tracer);
+        let cx = opentelemetry::Context::current_with_span(span);
+        let _guard = cx.attach();
 
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(probe);
@@ -344,6 +358,8 @@ fn execute_activities(
 ) -> Vec<ActivityResult> {
     let mut results = Vec::with_capacity(activities.len());
 
+    let tracer = opentelemetry::global::tracer("tumult-engine");
+
     for activity in activities {
         // Honour pause_before_s
         if let Some(pause) = activity.pause_before_s {
@@ -355,6 +371,24 @@ fn execute_activities(
         controls.emit(&LifecycleEvent::BeforeActivity {
             name: activity.name.clone(),
         });
+
+        // Create an OTel span for this activity
+        let span_name = match activity.activity_type {
+            ActivityType::Action => "tumult.action",
+            ActivityType::Probe => "tumult.probe",
+        };
+        let span = tracer
+            .span_builder(span_name.to_string())
+            .with_attributes(vec![
+                KeyValue::new("resilience.action.name", activity.name.clone()),
+                KeyValue::new(
+                    "resilience.activity.type",
+                    format!("{:?}", activity.activity_type),
+                ),
+            ])
+            .start(&tracer);
+        let cx = opentelemetry::Context::current_with_span(span);
+        let _guard = cx.attach();
 
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(activity);
