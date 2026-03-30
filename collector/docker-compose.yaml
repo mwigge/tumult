@@ -1,0 +1,31 @@
+# Quick-start: OTel Collector + Jaeger for Tumult development
+#
+# Provides a local observability stack for development and testing.
+# Traces are viewable in the Jaeger UI at http://localhost:16686
+#
+# Usage:
+#   cd collector/
+#   docker compose up -d
+#
+# Then run Tumult with OTLP pointing here:
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 tumult run experiment.toon
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.98.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-dev.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger collector HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true

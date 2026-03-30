@@ -7,4 +7,5 @@ pub mod controls;
 pub mod engine;
 pub mod execution;
 pub mod journal;
+pub mod runner;
 pub mod types;
