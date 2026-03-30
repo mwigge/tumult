@@ -5760,6 +5760,7 @@ dependencies = [
  "rust-mcp-sdk",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "toon-format",
  "tracing",
