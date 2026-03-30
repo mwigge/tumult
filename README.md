@@ -154,10 +154,28 @@ regulatory:
 
 ## Quick Start
 
+### Prerequisites
+
+- **Rust 1.75+** — install via [rustup.rs](https://rustup.rs/)
+- **Platforms**: macOS (Intel/Apple Silicon), Linux (x86_64, aarch64), Windows (x86_64)
+- **Git** (for cloning the repo)
+
+### Install
+
 ```bash
-# Build from source
+# Clone and build
+git clone https://github.com/mwigge/tumult.git
+cd tumult
 cargo build --release
 
+# Binary is at target/release/tumult (~1.8MB stripped)
+# Optionally copy to your PATH:
+cp target/release/tumult /usr/local/bin/
+```
+
+### Usage
+
+```bash
 # Create a new experiment
 tumult init
 
