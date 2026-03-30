@@ -5,7 +5,7 @@
 # Environment variables:
 #   TUMULT_KAFKA_BOOTSTRAP - Bootstrap servers (default: localhost:9092)
 #   TUMULT_KAFKA_DIR       - Kafka install directory (default: /opt/kafka)
-set -e
+set -eu
 
 BOOTSTRAP="${TUMULT_KAFKA_BOOTSTRAP:-localhost:9092}"
 KAFKA_DIR="${TUMULT_KAFKA_DIR:-/opt/kafka}"

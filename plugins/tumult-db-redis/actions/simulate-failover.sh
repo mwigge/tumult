@@ -6,7 +6,7 @@
 #   TUMULT_REDIS_PORT - Redis port (default: 6379)
 #   TUMULT_REDIS_AUTH - AUTH password (optional)
 #   TUMULT_DURATION   - Sleep duration in seconds (default: 5)
-set -e
+set -eu
 
 HOST="${TUMULT_REDIS_HOST:-localhost}"
 PORT="${TUMULT_REDIS_PORT:-6379}"

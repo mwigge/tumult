@@ -7,7 +7,7 @@
 #   TUMULT_PG_PORT     - PostgreSQL port (default: 5432)
 #   TUMULT_PG_USER     - PostgreSQL user (default: postgres)
 #   TUMULT_PG_PASSWORD - Password (optional)
-set -e
+set -eu
 
 HOST="${TUMULT_PG_HOST:-localhost}"
 PORT="${TUMULT_PG_PORT:-5432}"

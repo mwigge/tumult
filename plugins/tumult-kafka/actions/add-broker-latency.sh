@@ -7,7 +7,7 @@
 #   TUMULT_DELAY_MS   - Latency in milliseconds (default: 100)
 #   TUMULT_JITTER_MS  - Jitter in milliseconds (default: 10)
 #   TUMULT_KAFKA_PORT - Kafka port to target (default: 9092)
-set -e
+set -eu
 
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
 DELAY="${TUMULT_DELAY_MS:-100}"

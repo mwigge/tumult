@@ -5,7 +5,7 @@
 # Environment variables:
 #   TUMULT_CONTAINER_ID   - Container ID or name (required)
 #   TUMULT_RUNTIME        - Container runtime: docker or podman (default: docker)
-set -e
+set -eu
 
 CONTAINER="${TUMULT_CONTAINER_ID:?TUMULT_CONTAINER_ID is required}"
 RUNTIME="${TUMULT_RUNTIME:-docker}"
