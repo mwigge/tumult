@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "MCP server adapter exposing Tumult chaos engineering as tools"
 
+[lib]
+name = "tumult_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tumult-mcp"
 path = "src/main.rs"
@@ -22,3 +26,6 @@ toon-format = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
