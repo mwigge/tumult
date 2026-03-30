@@ -4,6 +4,46 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.0] — Phase 1: Essential Plugins
+
+### Added
+
+- **tumult-ssh**: SSH remote execution crate
+  - Connection manager with russh 0.58 (pure Rust, no C dependencies)
+  - Key-based (Ed25519, RSA, ECDSA) and SSH agent authentication
+  - Remote command execution with stdout/stderr capture
+  - File upload via SSH channel with timeout enforcement
+  - Passphrase redaction in Debug output
+  - ADR-006: SSH as universal remote transport
+
+- **tumult-stress**: Script plugin for stress-ng
+  - Actions: cpu-stress, memory-stress, io-stress, combined-stress
+  - Probes: cpu-utilization, memory-utilization, io-utilization
+  - Works on both Linux (/proc) and macOS (sysctl/vm_stat)
+
+- **tumult-containers**: Script plugin for Docker/Podman
+  - Actions: kill, stop, pause, unpause, limit-cpu, limit-memory
+  - Probes: container-status, container-health
+  - Supports Docker and Podman via TUMULT_RUNTIME
+
+- **tumult-process**: Script plugin for process chaos
+  - Actions: kill (by PID/name/pattern), suspend (SIGSTOP), resume (SIGCONT)
+  - Probes: process-exists, process-resources (JSON output)
+
+- Cross-compile release workflow for 6 targets (Linux + macOS)
+- serde defaults on all optional fields — minimal experiment files work
+- Plugin script test suite (14 tests validating manifests, probes, error handling)
+
+### Fixed
+
+- Init template uses /proc/cpuinfo + /proc/meminfo probes (works out of the box)
+- Process timeout enforcement in CLI executor
+- Hypothesis probe with tolerance but no output now fails correctly
+
+### Security
+
+- RSA timing side-channel (RUSTSEC-2023-0071) documented with Ed25519 mitigation
+
 ## [0.1.0] — Phase 0: Foundation
 
 ### Added
