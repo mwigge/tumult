@@ -1,3 +1,9 @@
+---
+title: "ADR-006: SSH Transport"
+parent: Architecture Decisions
+nav_order: 6
+---
+
 # ADR-006: SSH as Universal Remote Transport
 
 ## Status

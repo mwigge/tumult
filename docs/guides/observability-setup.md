@@ -1,3 +1,9 @@
+---
+title: Observability Setup
+parent: Guides
+nav_order: 6
+---
+
 # Observability Setup
 
 Tumult emits OpenTelemetry traces, metrics, and logs for every experiment run. This guide covers how to configure where that telemetry goes.

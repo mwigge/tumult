@@ -1,3 +1,9 @@
+---
+title: tumult-ssh
+parent: Plugins
+nav_order: 3
+---
+
 # tumult-ssh — SSH Remote Execution
 
 Remote command execution and file transfer over SSH for the Tumult chaos engineering platform.

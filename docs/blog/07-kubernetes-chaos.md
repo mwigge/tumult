@@ -1,6 +1,12 @@
-# <img src="../images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes
+---
+title: "Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes"
+parent: Blog
+nav_order: 7
+---
 
-![Tumult Banner](../images/tumult-banner.png)
+# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes
+
+![Tumult Banner](/tumult/images/tumult-banner.png)
 
 *Part 7 of the Tumult series. [← Part 6: Data-Driven Chaos: Analytics Pipeline](./06-analytics-pipeline.md)*
 

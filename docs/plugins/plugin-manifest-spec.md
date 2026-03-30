@@ -1,3 +1,9 @@
+---
+title: Plugin Manifest Specification
+parent: Plugins
+nav_order: 2
+---
+
 # Plugin Manifest Specification
 
 The plugin manifest declares a script plugin's identity and capabilities. It is a TOON file named `plugin.toon` in the plugin's root directory.
