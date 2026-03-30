@@ -5,7 +5,7 @@
 # Environment variables:
 #   TUMULT_INTERFACE      - Network interface (default: eth0)
 #   TUMULT_CORRUPTION_PCT - Corruption percentage (default: 5)
-set -e
+set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 

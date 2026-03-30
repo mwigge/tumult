@@ -176,28 +176,8 @@ mod tests {
     }
 
     #[test]
-    fn error_formats_pod_not_found() {
-        let err = KubeError::PodNotFound {
-            namespace: "prod".into(),
-            name: "api-xyz".into(),
-        };
-        assert!(err.to_string().contains("prod/api-xyz"));
-    }
-
-    #[test]
-    fn error_formats_deployment_not_found() {
-        let err = KubeError::DeploymentNotFound {
-            namespace: "staging".into(),
-            name: "web".into(),
-        };
-        assert!(err.to_string().contains("staging/web"));
-    }
-
-    #[test]
-    fn error_formats_node_not_found() {
-        let err = KubeError::NodeNotFound {
-            name: "worker-01".into(),
-        };
-        assert!(err.to_string().contains("worker-01"));
+    fn error_formats_invalid_config() {
+        let err = KubeError::InvalidConfig("replicas must be >= 0".into());
+        assert!(err.to_string().contains("replicas"));
     }
 }

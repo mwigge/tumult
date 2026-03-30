@@ -5,7 +5,7 @@
 # Environment variables:
 #   TUMULT_PID       - Process ID to check (optional, preferred)
 #   TUMULT_NAME      - Process name to check (optional)
-set -e
+set -eu
 
 if [ -n "${TUMULT_PID}" ]; then
     PID="${TUMULT_PID}"
