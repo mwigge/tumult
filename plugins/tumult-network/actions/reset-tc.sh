@@ -3,7 +3,7 @@
 #
 # Environment variables:
 #   TUMULT_INTERFACE  - Network interface (default: eth0)
-set -e
+set -eu
 
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
 

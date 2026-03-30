@@ -5,7 +5,7 @@
 #   TUMULT_PID       - Process ID to suspend (optional, preferred)
 #   TUMULT_NAME      - Process name to suspend via pkill (optional)
 #   TUMULT_PATTERN   - Process pattern to suspend via pkill -f (optional)
-set -e
+set -eu
 
 if [ -n "${TUMULT_PID}" ]; then
     echo "suspending PID ${TUMULT_PID}"

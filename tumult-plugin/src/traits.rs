@@ -18,21 +18,19 @@ pub struct ProbeDescriptor {
     pub arguments: Vec<String>,
 }
 
-/// Output from executing an action.
+/// Output from executing a plugin action or probe.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ActionOutput {
+pub struct PluginOutput {
     pub status: i32,
     pub stdout: String,
     pub stderr: String,
 }
 
-/// Output from executing a probe.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProbeOutput {
-    pub status: i32,
-    pub stdout: String,
-    pub stderr: String,
-}
+/// Backwards-compatible type alias for action output.
+pub type ActionOutput = PluginOutput;
+
+/// Backwards-compatible type alias for probe output.
+pub type ProbeOutput = PluginOutput;
 
 /// Trait that all native Rust plugins must implement.
 ///
