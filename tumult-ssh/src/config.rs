@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Authentication method for SSH connections.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is manually implemented to redact the passphrase field.
+#[derive(Clone)]
 pub enum AuthMethod {
     /// Authenticate with a private key file.
     Key {
@@ -13,6 +15,29 @@ pub enum AuthMethod {
     },
     /// Authenticate via SSH agent (ssh-agent / pageant).
     Agent,
+}
+
+impl std::fmt::Debug for AuthMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Key {
+                key_path,
+                passphrase,
+            } => f
+                .debug_struct("Key")
+                .field("key_path", key_path)
+                .field(
+                    "passphrase",
+                    if passphrase.is_some() {
+                        &"[REDACTED]"
+                    } else {
+                        &"None"
+                    },
+                )
+                .finish(),
+            Self::Agent => write!(f, "Agent"),
+        }
+    }
 }
 
 /// Configuration for an SSH connection.
@@ -109,5 +134,43 @@ mod tests {
         assert_eq!(config.port, 2222);
         assert_eq!(config.connect_timeout, Duration::from_secs(30));
         assert_eq!(config.command_timeout, Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn with_key_stores_correct_path() {
+        let path = PathBuf::from("/home/ops/.ssh/id_ed25519");
+        let config = SshConfig::with_key("host", "user", path.clone());
+        match &config.auth {
+            AuthMethod::Key {
+                key_path,
+                passphrase,
+            } => {
+                assert_eq!(key_path, &path);
+                assert!(passphrase.is_none());
+            }
+            _ => panic!("expected Key auth"),
+        }
+    }
+
+    #[test]
+    fn debug_redacts_passphrase() {
+        let auth = AuthMethod::Key {
+            key_path: PathBuf::from("/tmp/key"),
+            passphrase: Some("s3cret".into()),
+        };
+        let debug = format!("{:?}", auth);
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("s3cret"));
+    }
+
+    #[test]
+    fn debug_shows_none_passphrase() {
+        let auth = AuthMethod::Key {
+            key_path: PathBuf::from("/tmp/key"),
+            passphrase: None,
+        };
+        let debug = format!("{:?}", auth);
+        assert!(debug.contains("None"));
+        assert!(!debug.contains("REDACTED"));
     }
 }
