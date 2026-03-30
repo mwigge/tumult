@@ -1,0 +1,29 @@
+name: tumult-db-postgres
+version: 0.1.0
+description: PostgreSQL chaos actions and probes
+author: tumult
+
+actions[4]:
+  - name: kill-connections
+    script: actions/kill-connections.sh
+    description: Terminate active database connections
+  - name: lock-table
+    script: actions/lock-table.sh
+    description: Acquire exclusive lock on a table
+  - name: inject-latency
+    script: actions/inject-latency.sh
+    description: Inject query latency via pg_sleep
+  - name: exhaust-connections
+    script: actions/exhaust-connections.sh
+    description: Exhaust connection pool by opening idle connections
+
+probes[3]:
+  - name: connection-count
+    script: probes/connection-count.sh
+    description: Count active database connections
+  - name: replication-lag
+    script: probes/replication-lag.sh
+    description: Measure replication lag in seconds
+  - name: pool-utilization
+    script: probes/pool-utilization.sh
+    description: Check connection pool utilization percentage
