@@ -260,8 +260,9 @@ pub struct RegulatoryMapping {
 
 // ── Experiment (the top-level definition) ──────────────────────
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Experiment {
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub description: Option<String>,
