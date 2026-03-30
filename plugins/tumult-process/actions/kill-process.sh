@@ -8,9 +8,15 @@
 #   TUMULT_SIGNAL    - Signal to send (default: KILL)
 #
 # Priority: PID > NAME > PATTERN (first match wins)
-set -e
+set -eu
 
 SIGNAL="${TUMULT_SIGNAL:-KILL}"
+
+# Validate signal name
+case "${SIGNAL}" in
+    HUP|INT|QUIT|ABRT|KILL|TERM|STOP|CONT|USR1|USR2|ALRM|PIPE|SEGV|0|1|2|3|6|9|14|15|17|18|19|23) ;;
+    *) echo "error: invalid signal: ${SIGNAL}" >&2; exit 1 ;;
+esac
 
 if [ -n "${TUMULT_PID}" ]; then
     echo "killing PID ${TUMULT_PID} with signal ${SIGNAL}"
