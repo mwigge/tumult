@@ -1,0 +1,26 @@
+name: tumult-kafka
+version: 0.1.0
+description: Kafka broker chaos actions and consumer/producer probes
+author: tumult
+
+actions[3]:
+  - name: kill-broker
+    script: actions/kill-broker.sh
+    description: Kill a Kafka broker process
+  - name: partition-broker
+    script: actions/partition-broker.sh
+    description: Network partition a Kafka broker via iptables
+  - name: add-broker-latency
+    script: actions/add-broker-latency.sh
+    description: Add network latency to a Kafka broker
+
+probes[3]:
+  - name: consumer-lag
+    script: probes/consumer-lag.sh
+    description: Check consumer group lag
+  - name: under-replicated
+    script: probes/under-replicated.sh
+    description: Count under-replicated partitions
+  - name: broker-count
+    script: probes/broker-count.sh
+    description: Count active brokers in the cluster
