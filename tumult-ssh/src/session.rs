@@ -145,7 +145,6 @@ impl SshSession {
         })
     }
 
-    /// Upload a file to the remote host via SCP.
     /// Upload a file to the remote host via SSH channel.
     ///
     /// Uses `cat > path` on the remote end. Requires a POSIX shell.
@@ -153,7 +152,7 @@ impl SshSession {
     pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
         let content = tokio::fs::read(local_path)
             .await
-            .map_err(|e| SshError::ScpFailed(format!("read local file: {}", e)))?;
+            .map_err(|e| SshError::UploadFailed(format!("read local file: {}", e)))?;
 
         let mut channel = self
             .handle
@@ -169,17 +168,17 @@ impl SshSession {
         channel
             .exec(true, cmd)
             .await
-            .map_err(|e| SshError::ScpFailed(e.to_string()))?;
+            .map_err(|e| SshError::UploadFailed(e.to_string()))?;
 
         channel
             .data(&content[..])
             .await
-            .map_err(|e| SshError::ScpFailed(e.to_string()))?;
+            .map_err(|e| SshError::UploadFailed(e.to_string()))?;
 
         channel
             .eof()
             .await
-            .map_err(|e| SshError::ScpFailed(e.to_string()))?;
+            .map_err(|e| SshError::UploadFailed(e.to_string()))?;
 
         // Wait for completion with timeout
         let wait_fut = async {
@@ -199,7 +198,7 @@ impl SshSession {
             }
 
             if got_exit_status && !exit_ok {
-                return Err(SshError::ScpFailed(
+                return Err(SshError::UploadFailed(
                     "remote write exited with non-zero status".to_string(),
                 ));
             }
