@@ -439,7 +439,7 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
 
 // ── Trend command ─────────────────────────────────────────────
 
-pub fn cmd_trend(journals_path: &Path, metric: &str, _last: Option<&str>) -> Result<()> {
+pub fn cmd_trend(journals_path: &Path, metric: &str, last: Option<&str>) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
 
@@ -450,9 +450,12 @@ pub fn cmd_trend(journals_path: &Path, metric: &str, _last: Option<&str>) -> Res
         for entry in std::fs::read_dir(journals_path)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) == Some("toon") {
-                if let Ok(journal) = read_journal(&path) {
-                    store.ingest_journal(&journal)?;
-                    count += 1;
+                match read_journal(&path) {
+                    Ok(journal) => {
+                        store.ingest_journal(&journal)?;
+                        count += 1;
+                    }
+                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
                 }
             }
         }
@@ -480,11 +483,26 @@ pub fn cmd_trend(journals_path: &Path, metric: &str, _last: Option<&str>) -> Res
         );
     }
 
+    // Parse --last flag into nanosecond cutoff
+    let time_filter = if let Some(window) = last {
+        let days: i64 = window.trim_end_matches('d').parse().with_context(|| {
+            format!(
+                "--last must be a number of days (e.g., 30d), got: {}",
+                window
+            )
+        })?;
+        let cutoff_ns =
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) - (days * 86400 * 1_000_000_000);
+        format!(" AND started_at_ns >= {}", cutoff_ns)
+    } else {
+        String::new()
+    };
+
     let sql = format!(
         "SELECT experiment_id, title, status, {metric}, \
          started_at_ns \
          FROM experiments \
-         WHERE {metric} IS NOT NULL \
+         WHERE {metric} IS NOT NULL{time_filter} \
          ORDER BY started_at_ns"
     );
 
@@ -546,12 +564,15 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
         for entry in std::fs::read_dir(journals_path)? {
             let path = entry?.path();
             if path.extension().and_then(|e| e.to_str()) == Some("toon") {
-                if let Ok(journal) = read_journal(&path) {
-                    if journal.regulatory.is_some() {
-                        journals_with_regulatory += 1;
+                match read_journal(&path) {
+                    Ok(journal) => {
+                        if journal.regulatory.is_some() {
+                            journals_with_regulatory += 1;
+                        }
+                        store.ingest_journal(&journal)?;
+                        count += 1;
                     }
-                    store.ingest_journal(&journal)?;
-                    count += 1;
+                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
                 }
             }
         }
