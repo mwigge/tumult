@@ -1,3 +1,9 @@
+---
+title: tumult-loadtest
+parent: Plugins
+nav_order: 11
+---
+
 # tumult-loadtest — Load Testing Integration
 
 Integrates k6 and JMeter with the Tumult experiment lifecycle for resilience testing under realistic traffic.

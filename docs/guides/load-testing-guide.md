@@ -1,3 +1,9 @@
+---
+title: Load Testing Guide
+parent: Guides
+nav_order: 7
+---
+
 # Load Testing Guide
 
 Resilience testing under realistic traffic — combining chaos with load simulation.

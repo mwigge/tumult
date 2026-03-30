@@ -1,3 +1,9 @@
+---
+title: Statistical Baselines
+parent: Guides
+nav_order: 4
+---
+
 # Baseline Guide
 
 Tumult's baseline engine replaces static thresholds with data-driven tolerance derivation. Instead of guessing "latency must be < 500ms", the engine measures the system and derives "latency should stay within 2 standard deviations of the measured 45ms mean."
