@@ -7,7 +7,7 @@
 #   TUMULT_DELAY_MS   - Latency in milliseconds (default: 100)
 #   TUMULT_JITTER_MS  - Jitter in milliseconds (default: 10)
 #   TUMULT_TARGET_IP  - Only affect traffic to this IP (optional)
-set -e
+set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 

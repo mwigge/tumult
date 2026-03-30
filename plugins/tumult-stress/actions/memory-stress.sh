@@ -5,7 +5,7 @@
 #   TUMULT_WORKERS  - Number of memory workers (default: 1)
 #   TUMULT_TIMEOUT  - Duration in seconds (default: 30)
 #   TUMULT_BYTES    - Memory per worker (default: 256m)
-set -e
+set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 
