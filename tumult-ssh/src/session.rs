@@ -56,8 +56,12 @@ impl SshSession {
             reason: e.to_string(),
         })?;
 
-        // Authenticate
-        authenticate(&mut handle, &config).await?;
+        // Authenticate (bounded by connect_timeout to prevent auth stalls)
+        tokio::time::timeout(config.connect_timeout, authenticate(&mut handle, &config))
+            .await
+            .map_err(|_| SshError::Timeout {
+                seconds: config.connect_timeout.as_secs_f64(),
+            })??;
 
         Ok(Self { handle, config })
     }
@@ -77,7 +81,8 @@ impl SshSession {
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let mut exit_code: u32 = 1;
+        let mut exit_code: Option<u32> = None;
+        let mut exit_signal: Option<String> = None;
 
         loop {
             let msg = if let Some(timeout) = self.config.command_timeout {
@@ -100,43 +105,64 @@ impl SshSession {
                     }
                 }
                 Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
-                    exit_code = exit_status;
+                    exit_code = Some(exit_status);
                 }
-                Some(russh::ChannelMsg::Eof) | None => {
-                    break;
+                Some(russh::ChannelMsg::ExitSignal {
+                    signal_name,
+                    core_dumped,
+                    ..
+                }) => {
+                    let sig = format!(
+                        "killed by signal: {:?}{}",
+                        signal_name,
+                        if core_dumped { " (core dumped)" } else { "" }
+                    );
+                    exit_signal = Some(sig);
                 }
+                // Don't break on Eof — ExitStatus may arrive after Eof per RFC 4254
+                Some(russh::ChannelMsg::Eof) => {}
+                None => break,
                 _ => {}
             }
         }
 
+        // Determine exit code: explicit status > signal > default failure
+        let code = exit_code.unwrap_or(if exit_signal.is_some() { 137 } else { 1 });
+
+        // Append signal info to stderr if present
+        let mut stderr_str = String::from_utf8_lossy(&stderr).trim().to_string();
+        if let Some(sig) = exit_signal {
+            if !stderr_str.is_empty() {
+                stderr_str.push('\n');
+            }
+            stderr_str.push_str(&sig);
+        }
+
         Ok(CommandResult {
-            exit_code,
+            exit_code: code,
             stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
-            stderr: String::from_utf8_lossy(&stderr).trim().to_string(),
+            stderr: stderr_str,
         })
     }
 
     /// Upload a file to the remote host via SCP.
+    /// Upload a file to the remote host via SSH channel.
+    ///
+    /// Uses `cat > path` on the remote end. Requires a POSIX shell.
+    /// The file is written with mode 755 (executable).
     pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
         let content = tokio::fs::read(local_path)
             .await
             .map_err(|e| SshError::ScpFailed(format!("read local file: {}", e)))?;
 
-        let _filename = local_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-
-        // Use a command to write the file content via stdin
         let mut channel = self
             .handle
             .channel_open_session()
             .await
             .map_err(|e| SshError::ChannelError(e.to_string()))?;
 
-        // Use cat to write file — simpler than SCP protocol
         let cmd = format!(
-            "cat > {} && chmod 644 {}",
+            "cat > {} && chmod 755 {}",
             shell_escape(remote_path),
             shell_escape(remote_path)
         );
@@ -155,20 +181,39 @@ impl SshSession {
             .await
             .map_err(|e| SshError::ScpFailed(e.to_string()))?;
 
-        // Wait for completion
-        loop {
-            match channel.wait().await {
-                Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
-                    if exit_status != 0 {
-                        return Err(SshError::ScpFailed(format!(
-                            "remote write exited with code {}",
-                            exit_status
-                        )));
+        // Wait for completion with timeout
+        let wait_fut = async {
+            let mut got_exit_status = false;
+            let mut exit_ok = true;
+
+            loop {
+                match channel.wait().await {
+                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                        got_exit_status = true;
+                        exit_ok = exit_status == 0;
                     }
+                    Some(russh::ChannelMsg::Eof) => {}
+                    None => break,
+                    _ => {}
                 }
-                Some(russh::ChannelMsg::Eof) | None => break,
-                _ => {}
             }
+
+            if got_exit_status && !exit_ok {
+                return Err(SshError::ScpFailed(
+                    "remote write exited with non-zero status".to_string(),
+                ));
+            }
+            Ok(())
+        };
+
+        if let Some(timeout) = self.config.command_timeout {
+            tokio::time::timeout(timeout, wait_fut)
+                .await
+                .map_err(|_| SshError::Timeout {
+                    seconds: timeout.as_secs_f64(),
+                })??;
+        } else {
+            wait_fut.await?;
         }
 
         Ok(())
