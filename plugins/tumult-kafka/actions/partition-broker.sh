@@ -6,7 +6,7 @@
 #   TUMULT_BROKER_IP     - IP of the broker to partition (required)
 #   TUMULT_CLUSTER_IPS   - Comma-separated IPs of other brokers (required)
 #   TUMULT_KAFKA_PORT    - Kafka port (default: 9092)
-set -e
+set -eu
 
 BROKER_IP="${TUMULT_BROKER_IP:?TUMULT_BROKER_IP is required}"
 CLUSTER_IPS="${TUMULT_CLUSTER_IPS:?TUMULT_CLUSTER_IPS is required}"

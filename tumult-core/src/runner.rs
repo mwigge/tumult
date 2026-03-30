@@ -351,7 +351,9 @@ fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Optio
 
 /// Get current time as epoch nanoseconds.
 fn epoch_nanos_now() -> i64 {
-    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    chrono::Utc::now()
+        .timestamp_nanos_opt()
+        .expect("timestamp overflow: clock outside i64 nanosecond range")
 }
 
 #[cfg(test)]

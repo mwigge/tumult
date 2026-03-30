@@ -6,7 +6,7 @@
 #   TUMULT_BROKER_ID   - Broker ID (used to find the right process)
 #   TUMULT_SIGNAL      - Signal to send (default: KILL)
 #   TUMULT_KAFKA_DIR   - Kafka install directory (default: /opt/kafka)
-set -e
+set -eu
 
 SIGNAL="${TUMULT_SIGNAL:-KILL}"
 KAFKA_DIR="${TUMULT_KAFKA_DIR:-/opt/kafka}"

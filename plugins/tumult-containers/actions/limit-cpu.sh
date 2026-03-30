@@ -6,7 +6,7 @@
 #   TUMULT_RUNTIME        - Container runtime: docker or podman (default: docker)
 #   TUMULT_CPU_QUOTA      - CPU quota in microseconds per period (default: 50000 = 50%)
 #   TUMULT_CPU_PERIOD     - CPU period in microseconds (default: 100000)
-set -e
+set -eu
 
 CONTAINER="${TUMULT_CONTAINER_ID:?TUMULT_CONTAINER_ID is required}"
 RUNTIME="${TUMULT_RUNTIME:-docker}"

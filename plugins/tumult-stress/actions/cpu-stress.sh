@@ -5,7 +5,7 @@
 #   TUMULT_WORKERS  - Number of CPU workers (default: number of CPUs)
 #   TUMULT_TIMEOUT  - Duration in seconds (default: 30)
 #   TUMULT_LOAD     - CPU load percentage 0-100 (default: 100)
-set -e
+set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 
