@@ -6,7 +6,7 @@
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Node, Pod};
 use k8s_openapi::api::networking::v1::NetworkPolicy;
-use kube::api::{Api, DeleteParams, Patch, PatchParams, PostParams};
+use kube::api::{Api, DeleteParams, Patch, PatchParams};
 use kube::Client;
 
 use crate::error::KubeError;
@@ -102,6 +102,7 @@ pub async fn drain_node(
         .await?;
 
     let mut deleted = 0;
+    let mut errors: Vec<String> = Vec::new();
     let mut dp = DeleteParams::default();
     if let Some(grace) = grace_period_seconds {
         dp = dp.grace_period(grace);
@@ -119,14 +120,18 @@ pub async fn drain_node(
         }
 
         let ns_pods: Api<Pod> = Api::namespaced(client.clone(), &pod_ns);
-        let _ = ns_pods.delete(&pod_name, &dp).await;
-        deleted += 1;
+        let result = ns_pods.delete(&pod_name, &dp).await;
+        match result {
+            Ok(_) => deleted += 1,
+            Err(e) => errors.push(format!("{}/{}: {}", pod_ns, pod_name, e)),
+        }
     }
 
-    Ok(format!(
-        "node {} drained: cordoned + {} pods evicted",
-        name, deleted
-    ))
+    let mut msg = format!("node {} drained: cordoned + {} pods evicted", name, deleted);
+    if !errors.is_empty() {
+        msg.push_str(&format!("; errors: {}", errors.join(", ")));
+    }
+    Ok(msg)
 }
 
 /// Apply a network policy to a namespace.
@@ -141,7 +146,9 @@ pub async fn apply_network_policy(
         .name
         .clone()
         .unwrap_or_else(|| "tumult-policy".into());
-    policies.create(&PostParams::default(), &policy).await?;
+    policies
+        .patch(&name, &PatchParams::apply("tumult"), &Patch::Apply(&policy))
+        .await?;
     Ok(format!("network policy {}/{} applied", namespace, name))
 }
 
