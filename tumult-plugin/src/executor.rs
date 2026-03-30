@@ -59,9 +59,10 @@ pub async fn execute_script(
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
+    cmd.kill_on_drop(true); // Kill child process if future is dropped (timeout)
+
     let output: Output = if let Some(duration) = timeout {
-        let child = cmd.spawn()?;
-        match tokio::time::timeout(duration, child.wait_with_output()).await {
+        match tokio::time::timeout(duration, cmd.output()).await {
             Ok(result) => result?,
             Err(_) => return Err(ExecutorError::Timeout(duration.as_secs_f64())),
         }
