@@ -1,0 +1,29 @@
+name: tumult-stress
+version: 0.1.0
+description: CPU, memory, and IO stress injection via stress-ng
+author: tumult
+
+actions[4]:
+  - name: cpu-stress
+    script: actions/cpu-stress.sh
+    description: Inject CPU stress using stress-ng
+  - name: memory-stress
+    script: actions/memory-stress.sh
+    description: Inject memory pressure using stress-ng
+  - name: io-stress
+    script: actions/io-stress.sh
+    description: Inject IO stress using stress-ng
+  - name: combined-stress
+    script: actions/combined-stress.sh
+    description: Inject combined CPU + memory + IO stress
+
+probes[3]:
+  - name: cpu-utilization
+    script: probes/cpu-utilization.sh
+    description: Measure current CPU utilization percentage
+  - name: memory-utilization
+    script: probes/memory-utilization.sh
+    description: Measure current memory utilization percentage
+  - name: io-utilization
+    script: probes/io-utilization.sh
+    description: Measure current IO wait percentage
