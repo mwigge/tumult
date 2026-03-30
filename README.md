@@ -244,6 +244,19 @@ tumult run experiment.toon --rollback-strategy always
 
 # List discovered plugins
 tumult discover
+
+# Analyze experiment results with SQL
+tumult analyze journal.toon
+tumult analyze journals/ --query "SELECT status, count(*) FROM experiments GROUP BY status"
+
+# Cross-run trend analysis
+tumult trend journals/ --metric resilience_score
+
+# Regulatory compliance report
+tumult compliance journals/ --framework dora
+
+# Export to Parquet for external tools
+tumult export journal.toon --format parquet
 ```
 
 See [CLI Reference](docs/guides/cli-reference.md) for full command documentation.
