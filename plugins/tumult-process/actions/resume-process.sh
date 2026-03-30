@@ -5,7 +5,7 @@
 #   TUMULT_PID       - Process ID to resume (optional, preferred)
 #   TUMULT_NAME      - Process name to resume via pkill (optional)
 #   TUMULT_PATTERN   - Process pattern to resume via pkill -f (optional)
-set -e
+set -eu
 
 if [ -n "${TUMULT_PID}" ]; then
     echo "resuming PID ${TUMULT_PID}"

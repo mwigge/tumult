@@ -1,7 +1,7 @@
 #!/bin/sh
 # Probe: get Redis connection and memory stats as JSON
 # Outputs structured data for journal capture across experiment phases
-set -e
+set -eu
 
 HOST="${TUMULT_REDIS_HOST:-localhost}"
 PORT="${TUMULT_REDIS_PORT:-6379}"

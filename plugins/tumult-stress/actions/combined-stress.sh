@@ -8,7 +8,7 @@
 #   TUMULT_VM_BYTES    - Memory per worker (default: 256m)
 #   TUMULT_HDD_WORKERS - IO workers (default: 1)
 #   TUMULT_TIMEOUT     - Duration in seconds (default: 30)
-set -e
+set -eu
 
 CPU_WORKERS="${TUMULT_CPU_WORKERS:-2}"
 CPU_LOAD="${TUMULT_CPU_LOAD:-80}"

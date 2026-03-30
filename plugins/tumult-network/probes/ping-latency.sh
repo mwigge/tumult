@@ -5,7 +5,7 @@
 # Environment variables:
 #   TUMULT_TARGET_HOST - Host to ping (required)
 #   TUMULT_PING_COUNT  - Number of pings (default: 3)
-set -e
+set -eu
 
 TARGET="${TUMULT_TARGET_HOST:?TUMULT_TARGET_HOST is required}"
 COUNT="${TUMULT_PING_COUNT:-3}"
