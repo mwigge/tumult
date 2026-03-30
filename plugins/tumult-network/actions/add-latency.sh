@@ -9,9 +9,14 @@
 #   TUMULT_TARGET_IP  - Only affect traffic to this IP (optional)
 set -e
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
 DELAY="${TUMULT_DELAY_MS:-100}"
 JITTER="${TUMULT_JITTER_MS:-10}"
+
+validate_number "TUMULT_DELAY_MS" "${DELAY}"
+validate_number "TUMULT_JITTER_MS" "${JITTER}"
 
 if [ "$(uname -s)" != "Linux" ]; then
     echo "error: tc netem requires Linux" >&2
