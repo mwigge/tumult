@@ -138,6 +138,10 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize OpenTelemetry from environment
+    let otel_config = tumult_otel::config::TelemetryConfig::from_env();
+    let telemetry = tumult_otel::telemetry::TumultTelemetry::new(otel_config);
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -201,6 +205,9 @@ async fn main() -> anyhow::Result<()> {
             anyhow::bail!("report command requires tumult-report (Phase 3)");
         }
     }
+
+    // Flush OTel spans before exit
+    telemetry.shutdown();
 
     Ok(())
 }

@@ -14,6 +14,7 @@ serde_json = { workspace = true }
 toon-format = { workspace = true }
 tokio-minimal = { workspace = true }
 tracing = { workspace = true }
+opentelemetry = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
