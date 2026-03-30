@@ -105,7 +105,7 @@ All SSH operations return `Result<_, SshError>` with these variants:
 | `KeyParseError` | Private key file is malformed |
 | `ExecutionFailed` | Command could not be started |
 | `ChannelError` | SSH channel operation failed |
-| `ScpFailed` | File transfer failed |
+| `UploadFailed` | File transfer failed |
 | `Timeout` | Connection or command timed out |
 
 ## Security Notes

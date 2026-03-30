@@ -6,6 +6,7 @@ use crate::config::TelemetryConfig;
 ///
 /// Initializes OpenTelemetry tracer, meter, and logger providers.
 /// Call `shutdown()` before process exit to flush pending telemetry.
+#[derive(Debug)]
 pub struct TumultTelemetry {
     config: TelemetryConfig,
 }
