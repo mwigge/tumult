@@ -282,6 +282,13 @@ fn execute_activities(
     let mut results = Vec::with_capacity(activities.len());
 
     for activity in activities {
+        // Honour pause_before_s
+        if let Some(pause) = activity.pause_before_s {
+            if pause > 0.0 {
+                std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+            }
+        }
+
         controls.emit(&LifecycleEvent::BeforeActivity {
             name: activity.name.clone(),
         });
@@ -303,6 +310,13 @@ fn execute_activities(
         controls.emit(&LifecycleEvent::AfterActivity {
             name: activity.name.clone(),
         });
+
+        // Honour pause_after_s
+        if let Some(pause) = activity.pause_after_s {
+            if pause > 0.0 {
+                std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+            }
+        }
 
         results.push(result);
     }

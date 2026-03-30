@@ -8,9 +8,14 @@
 #   TUMULT_CORRELATION  - Loss correlation percentage (default: 25)
 set -e
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
 LOSS="${TUMULT_LOSS_PCT:-10}"
 CORRELATION="${TUMULT_CORRELATION:-25}"
+
+validate_number "TUMULT_LOSS_PCT" "${LOSS}"
+validate_number "TUMULT_CORRELATION" "${CORRELATION}"
 
 if [ "$(uname -s)" != "Linux" ]; then
     echo "error: tc netem requires Linux" >&2

@@ -7,9 +7,14 @@
 #   TUMULT_HDD_BYTES - Bytes per write operation (default: 1g)
 set -e
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 WORKERS="${TUMULT_WORKERS:-1}"
 TIMEOUT="${TUMULT_TIMEOUT:-30}"
 HDD_BYTES="${TUMULT_HDD_BYTES:-1g}"
+
+validate_integer "TUMULT_WORKERS" "${WORKERS}"
+validate_integer "TUMULT_TIMEOUT" "${TIMEOUT}"
 
 if ! command -v stress-ng >/dev/null 2>&1; then
     echo "error: stress-ng not found. Install with: apt install stress-ng" >&2
