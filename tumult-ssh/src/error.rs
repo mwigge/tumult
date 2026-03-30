@@ -33,8 +33,8 @@ pub enum SshError {
     #[error("channel error: {0}")]
     ChannelError(String),
 
-    #[error("SCP transfer failed: {0}")]
-    ScpFailed(String),
+    #[error("upload failed: {0}")]
+    UploadFailed(String),
 
     #[error("session closed")]
     SessionClosed,
