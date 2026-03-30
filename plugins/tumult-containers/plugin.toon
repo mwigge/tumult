@@ -3,7 +3,7 @@ version: 0.1.0
 description: Container chaos actions and probes for Docker and Podman
 author: tumult
 
-actions[4]:
+actions[6]:
   - name: kill-container
     script: actions/kill-container.sh
     description: Kill a running container (SIGKILL)
@@ -16,6 +16,12 @@ actions[4]:
   - name: unpause-container
     script: actions/unpause-container.sh
     description: Unpause a paused container
+  - name: limit-cpu
+    script: actions/limit-cpu.sh
+    description: Inject CPU resource limit on a container
+  - name: limit-memory
+    script: actions/limit-memory.sh
+    description: Inject memory resource limit on a container
 
 probes[2]:
   - name: container-status
