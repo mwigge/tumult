@@ -21,7 +21,7 @@ times = []
 errors = 0
 total = 0
 
-with open('${RESULTS}') as f:
+with open(sys.argv[1]) as f:
     reader = csv.DictReader(f)
     for row in reader:
         total += 1
@@ -48,7 +48,7 @@ result = {
     'max_ms': times[-1],
 }
 print(json.dumps(result))
-"
+" "${RESULTS}"
 else
     # Fallback: line count
     LINES=$(wc -l < "${RESULTS}")
