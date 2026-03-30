@@ -1,3 +1,9 @@
+---
+title: Resilience Metadata Standard
+parent: Reference
+nav_order: 2
+---
+
 # Tumult Metadata Model
 
 **Version**: 2.0.0

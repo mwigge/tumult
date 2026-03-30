@@ -1,3 +1,9 @@
+---
+title: "ADR-007: Kubernetes Native"
+parent: Architecture Decisions
+nav_order: 7
+---
+
 # ADR-007: Native Rust Plugin for Kubernetes
 
 ## Status

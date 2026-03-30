@@ -1,3 +1,9 @@
+---
+title: "ADR-008: Arrow + DuckDB"
+parent: Architecture Decisions
+nav_order: 8
+---
+
 # ADR-008: Arrow + DuckDB as Embedded Analytics Engine
 
 ## Status

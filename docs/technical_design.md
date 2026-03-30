@@ -1,3 +1,9 @@
+---
+title: Technical Design
+parent: Reference
+nav_order: 4
+---
+
 # Tumult Technical Design Specification
 **Version:** 1.1.0  
 **Status:** Draft / Technical Foundation  
