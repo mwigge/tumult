@@ -1,3 +1,5 @@
+use tumult_cli::commands;
+
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -125,7 +127,46 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _cli = Cli::parse();
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Run {
+            experiment,
+            journal_path,
+            dry_run,
+            rollback_strategy,
+            baseline_mode: _,
+        } => {
+            let strategy = match rollback_strategy {
+                RollbackStrategy::Always => tumult_core::execution::RollbackStrategy::Always,
+                RollbackStrategy::Deviated => tumult_core::execution::RollbackStrategy::OnDeviation,
+                RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
+            };
+            commands::cmd_run(&experiment, &journal_path, dry_run, strategy)?;
+        }
+        Commands::Validate { experiment } => {
+            commands::cmd_validate(&experiment)?;
+        }
+        Commands::Discover { plugin } => {
+            commands::cmd_discover(plugin.as_deref())?;
+        }
+        Commands::Init { plugin } => {
+            commands::cmd_init(plugin.as_deref())?;
+        }
+        Commands::Analyze { .. } => {
+            anyhow::bail!("analyze command requires tumult-analytics (Phase 2)");
+        }
+        Commands::Export { .. } => {
+            anyhow::bail!("export command requires tumult-analytics (Phase 2)");
+        }
+        Commands::Compliance { .. } => {
+            anyhow::bail!("compliance command requires tumult-regulatory (Phase 2)");
+        }
+        Commands::Report { .. } => {
+            anyhow::bail!("report command requires tumult-report (Phase 3)");
+        }
+    }
+
     Ok(())
 }
 
