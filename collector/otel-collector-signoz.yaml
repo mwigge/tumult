@@ -1,0 +1,60 @@
+# OTel Collector configuration for SigNoz backend
+#
+# Forwards Tumult telemetry to a SigNoz instance.
+# SigNoz provides traces (via ClickHouse), metrics, and logs in one UI.
+#
+# Prerequisites:
+#   - SigNoz running at signoz.example.com (or localhost:4317 for local)
+#   - See https://signoz.io/docs/install/ for setup
+#
+# Usage:
+#   otelcol --config otel-collector-signoz.yaml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  resource:
+    attributes:
+      - key: service.name
+        value: tumult
+        action: upsert
+
+exporters:
+  otlp/signoz:
+    endpoint: signoz-otel-collector:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/signoz]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/signoz]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/signoz]
+
+  telemetry:
+    logs:
+      level: info

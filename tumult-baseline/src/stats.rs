@@ -1,7 +1,7 @@
 //! Statistical functions for baseline derivation.
 
 /// Upper and lower bounds for a baseline tolerance.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BaselineBounds {
     pub lower: f64,
     pub upper: f64,
