@@ -47,6 +47,39 @@ impl AnalyticsStore {
         Ok(())
     }
 
+    /// Ingest a single experiment journal into the analytics store.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tumult_analytics::AnalyticsStore;
+    /// use tumult_core::types::*;
+    ///
+    /// let store = AnalyticsStore::in_memory().unwrap();
+    ///
+    /// let journal = Journal {
+    ///     experiment_title: "demo".into(),
+    ///     experiment_id: "e-001".into(),
+    ///     status: ExperimentStatus::Completed,
+    ///     started_at_ns: 1_700_000_000_000_000_000,
+    ///     ended_at_ns: 1_700_000_060_000_000_000,
+    ///     duration_ms: 60_000,
+    ///     steady_state_before: None,
+    ///     steady_state_after: None,
+    ///     method_results: vec![],
+    ///     rollback_results: vec![],
+    ///     estimate: None,
+    ///     baseline_result: None,
+    ///     during_result: None,
+    ///     post_result: None,
+    ///     load_result: None,
+    ///     analysis: None,
+    ///     regulatory: None,
+    /// };
+    ///
+    /// store.ingest_journal(&journal).unwrap();
+    /// assert_eq!(store.experiment_count().unwrap(), 1);
+    /// ```
     pub fn ingest_journal(&self, journal: &Journal) -> Result<(), AnalyticsError> {
         let exp_batch = journal_to_experiment_batch(journal)?;
         let act_batch = journal_to_activity_batch(journal)?;
