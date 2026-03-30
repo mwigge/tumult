@@ -4,6 +4,8 @@ use crate::types::{Activity, ActivityResult, ActivityStatus, ActivityType};
 
 use thiserror::Error;
 
+// Retained for future provider-level error propagation.
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum ExecutionError {
     #[error("activity '{name}' failed: {reason}")]
@@ -63,9 +65,10 @@ pub fn make_result(params: ResultParams<'_>) -> ActivityResult {
 
 /// Check if all activity results succeeded.
 pub fn all_succeeded(results: &[ActivityResult]) -> bool {
-    results
-        .iter()
-        .all(|r| r.status == ActivityStatus::Succeeded)
+    !results.is_empty()
+        && results
+            .iter()
+            .all(|r| r.status == ActivityStatus::Succeeded)
 }
 
 /// Count activities by type in a method.
@@ -190,8 +193,8 @@ mod tests {
     // ── all_succeeded ──────────────────────────────────────────
 
     #[test]
-    fn all_succeeded_empty_is_true() {
-        assert!(all_succeeded(&[]));
+    fn all_succeeded_empty_is_false() {
+        assert!(!all_succeeded(&[]));
     }
 
     #[test]
