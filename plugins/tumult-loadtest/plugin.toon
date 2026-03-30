@@ -1,0 +1,26 @@
+name: tumult-loadtest
+version: 0.1.0
+description: Load testing integration — k6 and JMeter drivers
+author: tumult
+
+actions[4]:
+  - name: k6-start
+    script: drivers/k6-start.sh
+    description: Start a k6 load test
+  - name: k6-stop
+    script: drivers/k6-stop.sh
+    description: Stop a running k6 load test
+  - name: jmeter-start
+    script: drivers/jmeter-start.sh
+    description: Start a JMeter load test in non-GUI mode
+  - name: jmeter-stop
+    script: drivers/jmeter-stop.sh
+    description: Stop a running JMeter load test
+
+probes[2]:
+  - name: k6-metrics
+    script: drivers/k6-metrics.sh
+    description: Capture k6 end-of-test summary metrics
+  - name: jmeter-metrics
+    script: drivers/jmeter-metrics.sh
+    description: Parse JMeter JTL results for key metrics
