@@ -1,0 +1,23 @@
+name: tumult-db-redis
+version: 0.1.0
+description: Redis chaos actions and probes
+author: tumult
+
+actions[3]:
+  - name: flush-all
+    script: actions/flush-all.sh
+    description: Flush all data from Redis (FLUSHALL)
+  - name: block-clients
+    script: actions/block-clients.sh
+    description: Block client connections using CLIENT PAUSE
+  - name: simulate-failover
+    script: actions/simulate-failover.sh
+    description: Trigger DEBUG SLEEP to simulate a hung Redis
+
+probes[2]:
+  - name: redis-ping
+    script: probes/redis-ping.sh
+    description: Check if Redis is responsive (PING)
+  - name: redis-info
+    script: probes/redis-info.sh
+    description: Get Redis connection and memory stats
