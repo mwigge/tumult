@@ -21,7 +21,12 @@ if ! command -v psql >/dev/null 2>&1; then
     exit 1
 fi
 
-export PGPASSWORD="${TUMULT_PG_PASSWORD:-}"
+# Use .pgpass file to avoid /proc/environ credential exposure (DB-04)
+PGPASS_FILE=$(mktemp)
+trap "rm -f ${PGPASS_FILE}" EXIT INT TERM
+echo "*:*:*:*:${TUMULT_PG_PASSWORD:-}" > "${PGPASS_FILE}"
+chmod 600 "${PGPASS_FILE}"
+export PGPASSFILE="${PGPASS_FILE}"
 
 echo "locking table ${TABLE} in ${DATABASE} for ${DURATION}s"
 psql -h "${HOST}" -p "${PORT}" -U "${USER}" -d "${DATABASE}" -c \
