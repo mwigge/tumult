@@ -370,45 +370,49 @@ fn init_at(path: &Path, plugin: Option<&str>) -> Result<()> {
 fn generate_template(plugin: Option<&str>) -> String {
     let plugin_name = plugin.unwrap_or("tumult-example");
     format!(
-        r#"title: My chaos experiment
-description: Describe what this experiment validates
+        r#"title: System information check
+description: Verify system is accessible and report CPU and memory info
 
-tags[2]: resilience, testing
+tags[2]: resilience, baseline
 
 steady_state_hypothesis:
-  title: System is healthy
+  title: System is reachable
   probes[1]:
-    - name: health-check
+    - name: system-check
       activity_type: probe
       provider:
         type: process
-        path: echo
-        arguments[1]: healthy
+        path: uname
+        arguments[1]: "-a"
         timeout_s: 5.0
       tolerance:
         type: regex
-        pattern: "^healthy"
-      background: false
+        pattern: "."
 
-method[1]:
-  - name: inject-fault
-    activity_type: action
+method[2]:
+  - name: check-cpu
+    activity_type: probe
     provider:
       type: process
-      path: echo
-      arguments[1]: "fault injected via {plugin_name}"
-      timeout_s: 30.0
-    background: false
+      path: sh
+      arguments[2]: "-c", "cat /proc/cpuinfo 2>/dev/null | head -20 || sysctl -n machdep.cpu.brand_string"
+      timeout_s: 10.0
+  - name: check-memory
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat /proc/meminfo 2>/dev/null | head -5 || sysctl -n hw.memsize"
+      timeout_s: 10.0
 
 rollbacks[1]:
-  - name: restore-state
+  - name: log-complete
     activity_type: action
     provider:
       type: process
       path: echo
-      arguments[1]: "rollback via {plugin_name}"
-      timeout_s: 30.0
-    background: false
+      arguments[1]: "system check completed via {plugin_name}"
+      timeout_s: 5.0
 "#
     )
 }

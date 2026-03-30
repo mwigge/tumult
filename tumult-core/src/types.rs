@@ -127,17 +127,21 @@ pub enum Provider {
     Native {
         plugin: String,
         function: String,
+        #[serde(default)]
         arguments: HashMap<String, serde_json::Value>,
     },
     Process {
         path: String,
+        #[serde(default)]
         arguments: Vec<String>,
+        #[serde(default)]
         env: HashMap<String, String>,
         timeout_s: Option<f64>,
     },
     Http {
         method: HttpMethod,
         url: String,
+        #[serde(default)]
         headers: HashMap<String, String>,
         body: Option<String>,
         timeout_s: Option<f64>,
@@ -177,9 +181,13 @@ pub struct Activity {
     pub name: String,
     pub activity_type: ActivityType,
     pub provider: Provider,
+    #[serde(default)]
     pub tolerance: Option<Tolerance>,
+    #[serde(default)]
     pub pause_before_s: Option<f64>,
+    #[serde(default)]
     pub pause_after_s: Option<f64>,
+    #[serde(default)]
     pub background: bool,
 }
 
@@ -255,17 +263,29 @@ pub struct RegulatoryMapping {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Experiment {
     pub title: String,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub configuration: HashMap<String, ConfigValue>,
+    #[serde(default)]
     pub secrets: HashMap<String, HashMap<String, SecretValue>>,
+    #[serde(default)]
     pub controls: Vec<Control>,
+    #[serde(default)]
     pub steady_state_hypothesis: Option<Hypothesis>,
+    #[serde(default)]
     pub method: Vec<Activity>,
+    #[serde(default)]
     pub rollbacks: Vec<Activity>,
+    #[serde(default)]
     pub estimate: Option<Estimate>,
+    #[serde(default)]
     pub baseline: Option<BaselineConfig>,
+    #[serde(default)]
     pub load: Option<LoadConfig>,
+    #[serde(default)]
     pub regulatory: Option<RegulatoryMapping>,
 }
 
