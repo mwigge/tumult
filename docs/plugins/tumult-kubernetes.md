@@ -1,3 +1,9 @@
+---
+title: tumult-kubernetes
+parent: Plugins
+nav_order: 4
+---
+
 # tumult-kubernetes — Kubernetes Chaos
 
 Native Rust plugin using `kube-rs` for Kubernetes chaos engineering. Follows patterns from LitmusChaos, Chaos Mesh, and Chaos Toolkit.
