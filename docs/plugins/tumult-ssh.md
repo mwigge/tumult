@@ -108,9 +108,36 @@ All SSH operations return `Result<_, SshError>` with these variants:
 | `ScpFailed` | File transfer failed |
 | `Timeout` | Connection or command timed out |
 
+## Security Notes
+
+### Host Key Verification
+
+Host key verification is currently **accept-all** (see ADR-006). This is acceptable for trusted internal networks and ephemeral cloud instances, but NOT for production use over untrusted networks. Known_hosts verification is planned for a future release.
+
+### RSA Key Vulnerability (RUSTSEC-2023-0071)
+
+The `russh` 0.58 dependency tree includes `rsa` 0.10.0-rc.12, which has a known timing side-channel vulnerability ([Marvin Attack](https://rustsec.org/advisories/RUSTSEC-2023-0071), CVSS 5.9 medium). This affects **RSA key authentication only**.
+
+**Mitigation:** Use **Ed25519 keys** (recommended) or **ECDSA keys** instead of RSA keys. Ed25519 is not affected by this vulnerability and is the preferred key type for modern SSH.
+
+```bash
+# Generate an Ed25519 key (recommended)
+ssh-keygen -t ed25519 -C "tumult-chaos" -f ~/.ssh/tumult_ed25519
+
+# Use it in your experiment
+execution_target:
+  type: ssh
+  host: target-host
+  user: ops
+  key_path: ~/.ssh/tumult_ed25519
+```
+
+No upstream fix is currently available for the RSA crate. This advisory will be resolved when `russh` updates its dependency.
+
 ## Implementation Notes
 
 - Uses `russh` 0.58 — pure Rust, no C dependencies
 - Async-native with tokio
-- Host key verification is currently accept-all (see ADR-006)
-- File upload uses `cat > path` via SSH channel — no SFTP subsystem needed
+- File upload uses `cat > path && chmod 755` via SSH channel — no SFTP subsystem needed
+- Authentication is bounded by `connect_timeout` to prevent stalls
+- Upload operations respect `command_timeout`
