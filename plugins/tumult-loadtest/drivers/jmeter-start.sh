@@ -40,7 +40,12 @@ if [ -n "${TUMULT_JMETER_DURATION:-}" ]; then
     ARGS="${ARGS} -Jduration=${TUMULT_JMETER_DURATION}"
 fi
 
+JMETER_PID=""
+cleanup() { [ -n "${JMETER_PID}" ] && kill "${JMETER_PID}" 2>/dev/null; rm -f "${PIDFILE}"; }
+trap cleanup INT TERM
+
 echo "starting JMeter: plan=${PLAN} results=${RESULTS}"
 ${JMETER} ${ARGS} &
-echo $! > "${PIDFILE}"
-echo "JMeter started (PID: $(cat "${PIDFILE}"))"
+JMETER_PID=$!
+echo "${JMETER_PID}" > "${PIDFILE}"
+echo "JMeter started (PID: ${JMETER_PID})"
