@@ -1,3 +1,9 @@
+---
+title: tumult-stress
+parent: Plugins
+nav_order: 8
+---
+
 # tumult-stress — CPU, Memory, and IO Stress
 
 Script-based plugin for injecting resource stress via [stress-ng](https://github.com/ColinIanKing/stress-ng).

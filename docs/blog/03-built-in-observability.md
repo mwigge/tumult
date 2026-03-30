@@ -1,6 +1,12 @@
-# <img src="../images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Built-In Proof: Native Observability with OpenTelemetry
+---
+title: "Built-In Proof: Native Observability with OpenTelemetry"
+parent: Blog
+nav_order: 3
+---
 
-![Tumult Banner](../images/tumult-banner.png)
+# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Built-In Proof: Native Observability with OpenTelemetry
+
+![Tumult Banner](/tumult/images/tumult-banner.png)
 
 *Part 3 of the Tumult series. [← Part 2: The AI Advantage](./02-ai-advantage.md)*
 

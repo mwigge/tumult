@@ -1,3 +1,9 @@
+---
+title: CLI Reference
+parent: Guides
+nav_order: 3
+---
+
 # CLI Reference
 
 Tumult provides a single binary `tumult` with the following commands.
