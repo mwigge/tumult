@@ -1,7 +1,7 @@
 #!/bin/sh
 # Probe: current memory utilization percentage
 # Outputs a single float value (0-100)
-set -e
+set -eu
 
 OS="$(uname -s)"
 case "${OS}" in

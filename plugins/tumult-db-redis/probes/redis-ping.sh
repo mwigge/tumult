@@ -1,7 +1,7 @@
 #!/bin/sh
 # Probe: check if Redis is responsive
 # Outputs: "PONG" on success, error message on failure
-set -e
+set -eu
 
 HOST="${TUMULT_REDIS_HOST:-localhost}"
 PORT="${TUMULT_REDIS_PORT:-6379}"
