@@ -1,0 +1,101 @@
+# Tumult E2E Test Infrastructure
+#
+# Provides all services needed for integration and e2e testing:
+# - PostgreSQL (chaos target + probe testing)
+# - Redis (chaos target + probe testing)
+# - Kafka (KRaft mode, no ZooKeeper) (broker chaos + consumer lag probes)
+# - SSH server (remote execution testing)
+# - Jaeger (OTel trace verification)
+# - OTel Collector (OTLP receiver → Jaeger)
+#
+# Usage:
+#   cd infra/
+#   docker compose up -d
+#   # Run e2e tests...
+#   docker compose down -v
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "15432:5432"
+    environment:
+      POSTGRES_USER: tumult
+      POSTGRES_PASSWORD: tumult_test
+      POSTGRES_DB: tumult_test
+    volumes:
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tumult -d tumult_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Kafka (KRaft mode — no ZooKeeper) ───────────────────────
+  kafka:
+    image: apache/kafka:3.8.0
+    ports:
+      - "19092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      CLUSTER_ID: tumult-test-cluster-001
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── SSH Server ───────────────────────────────────────────────
+  sshd:
+    build:
+      context: .
+      dockerfile: Dockerfile.sshd
+    ports:
+      - "12222:22"
+    healthcheck:
+      test: ["CMD-SHELL", "ssh-keyscan -p 22 localhost >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── OTel Collector ───────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.98.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ../collector/otel-collector-dev.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "14317:4317"   # OTLP gRPC
+      - "14318:4318"   # OTLP HTTP
+    depends_on:
+      - jaeger
+
+  # ── Jaeger (trace UI) ───────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    ports:
+      - "16686:16686"  # Jaeger UI
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
