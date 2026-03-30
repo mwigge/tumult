@@ -4,7 +4,7 @@
 #
 # Environment variables:
 #   TUMULT_DNS_PORT  - DNS port to block (default: 53)
-set -e
+set -eu
 
 DNS_PORT="${TUMULT_DNS_PORT:-53}"
 

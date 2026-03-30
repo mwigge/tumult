@@ -6,7 +6,7 @@
 #   TUMULT_KAFKA_BOOTSTRAP - Bootstrap servers (default: localhost:9092)
 #   TUMULT_CONSUMER_GROUP  - Consumer group to check (required)
 #   TUMULT_KAFKA_DIR       - Kafka install directory (default: /opt/kafka)
-set -e
+set -eu
 
 BOOTSTRAP="${TUMULT_KAFKA_BOOTSTRAP:-localhost:9092}"
 GROUP="${TUMULT_CONSUMER_GROUP:?TUMULT_CONSUMER_GROUP is required}"
