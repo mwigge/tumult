@@ -1,0 +1,21 @@
+[package]
+name = "tumult-analytics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Embedded analytics for Tumult — DuckDB, Arrow, Parquet"
+
+[dependencies]
+tumult-core = { path = "../tumult-core" }
+arrow = { workspace = true }
+parquet = { workspace = true }
+duckdb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toon-format = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

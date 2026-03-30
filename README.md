@@ -76,8 +76,33 @@ cargo install tumult --features kubernetes,aws
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
 | **tumult-process** | Script | Process kill/suspend/resume by PID/name/pattern, resource probes |
+| **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
+| **tumult-db-postgres** | Script | Kill connections, lock tables, inject latency, exhaust connection pool |
+| **tumult-db-mysql** | Script | Kill connections, lock tables |
+| **tumult-db-redis** | Script | FLUSHALL, CLIENT PAUSE, DEBUG SLEEP, connection/memory probes |
+| **tumult-kafka** | Script | Kill broker, partition broker, add latency, consumer lag probes |
+| **tumult-network** | Script | tc netem latency/loss/corruption, DNS block, host partition |
 
 See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
+
+## Analytics
+
+Tumult embeds DuckDB and Apache Arrow for SQL analytics over experiment journals:
+
+```bash
+# Run experiments over time...
+tumult run experiment.toon
+
+# Analyze with SQL
+tumult analyze journals/ --query "SELECT status, count(*), avg(duration_ms) FROM experiments GROUP BY status"
+
+# Export to Parquet for external tools
+tumult export journal.toon --format parquet
+```
+
+The data pipeline: **TOON Journal → Arrow RecordBatch → DuckDB (SQL) → Parquet (export)**
+
+See [docs/guides/analytics-guide.md](docs/guides/analytics-guide.md) for details.
 
 ## Phasing & Roadmap
 
@@ -85,8 +110,10 @@ See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
 |-------|-------|--------|
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process | Done |
-| **2 — Platform Plugins** | Kubernetes, Databases, Kafka | Next |
+| **2 — Platform Plugins** | K8s, databases, Kafka, network, analytics | In Progress |
 | **3 — Automation + Cloud** | tumult-mcp, Cloud SDKs, HTML reporting | Planned |
+| **4 — Persistent Analytics** | DuckDB persistence, cross-run trends, backup/export | Planned |
+| **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Planned |
 
 ## Example Experiment
 

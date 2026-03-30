@@ -153,11 +153,16 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init { plugin } => {
             commands::cmd_init(plugin.as_deref())?;
         }
-        Commands::Analyze { .. } => {
-            anyhow::bail!("analyze command requires tumult-analytics (Phase 2)");
+        Commands::Analyze { journals, query } => {
+            commands::cmd_analyze(&journals, query.as_deref())?;
         }
-        Commands::Export { .. } => {
-            anyhow::bail!("export command requires tumult-analytics (Phase 2)");
+        Commands::Export { journal, format } => {
+            let fmt = match format {
+                ExportFormat::Parquet => "parquet",
+                ExportFormat::Csv => "csv",
+                ExportFormat::Json => "json",
+            };
+            commands::cmd_export(&journal, fmt, None)?;
         }
         Commands::Compliance { .. } => {
             anyhow::bail!("compliance command requires tumult-regulatory (Phase 2)");
