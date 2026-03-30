@@ -10,9 +10,7 @@ use std::sync::Arc;
 
 use tumult_core::controls::{ControlHandler, ControlRegistry, LifecycleEvent};
 use tumult_core::execution::RollbackStrategy;
-use tumult_core::runner::{
-    run_experiment, ActivityExecutor, ActivityOutcome, RunConfig,
-};
+use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
 use tumult_core::types::*;
 
 // ── Mock Plugin Executor ──────────────────────────────────────
@@ -202,10 +200,7 @@ fn full_experiment_run_produces_complete_journal() {
             serde_json::Value::Number(200.into()),
         )],
     ));
-    exp.method = vec![
-        action("inject-fault"),
-        action("wait-for-propagation"),
-    ];
+    exp.method = vec![action("inject-fault"), action("wait-for-propagation")];
     exp.rollbacks = vec![action("cleanup-fault")];
     exp.estimate = Some(Estimate {
         expected_outcome: ExpectedOutcome::Recovered,
@@ -268,7 +263,10 @@ fn full_experiment_run_produces_complete_journal() {
 
     // Analysis computed
     assert!(journal.analysis.is_some());
-    assert_eq!(journal.analysis.as_ref().unwrap().estimate_accuracy, Some(1.0));
+    assert_eq!(
+        journal.analysis.as_ref().unwrap().estimate_accuracy,
+        Some(1.0)
+    );
 
     // Regulatory preserved
     assert!(journal.regulatory.is_some());
@@ -374,8 +372,7 @@ fn baselined_hypothesis_fails_when_outside_range() {
     ));
 
     // Probe returns 150.0 (outside range) — hypothesis fails before method
-    let plugin = MockPlugin::new()
-        .on("latency-probe", true, Some("150.0"));
+    let plugin = MockPlugin::new().on("latency-probe", true, Some("150.0"));
     let controls = ControlRegistry::new();
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
@@ -734,9 +731,10 @@ fn one_failing_hypothesis_probe_causes_abort() {
     ));
 
     // db-health returns 503 → one probe fails → hypothesis fails
-    let plugin = MockPlugin::new()
-        .on("api-health", true, Some("200"))
-        .on("db-health", true, Some("503"));
+    let plugin =
+        MockPlugin::new()
+            .on("api-health", true, Some("200"))
+            .on("db-health", true, Some("503"));
     let controls = ControlRegistry::new();
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
