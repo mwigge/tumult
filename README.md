@@ -77,7 +77,45 @@ cargo install tumult --features kubernetes,aws
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
 | **tumult-process** | Script | Process kill/suspend/resume by PID/name/pattern, resource probes |
 
+| **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
+| **tumult-db-postgres** | Script | Kill connections, lock tables, inject latency, exhaust connection pool |
+| **tumult-db-mysql** | Script | Kill connections, lock tables |
+| **tumult-db-redis** | Script | FLUSHALL, CLIENT PAUSE, DEBUG SLEEP, connection/memory probes |
+| **tumult-kafka** | Script | Kill broker, partition broker, add latency, consumer lag probes |
+| **tumult-network** | Script | tc netem latency/loss/corruption, DNS block, host partition |
+
 See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
+
+## Data-Driven Chaos Engineering
+
+Tumult is **data-driven by design**. Every experiment produces structured evidence — not just pass/fail, but columnar analytics data that flows through a modern data pipeline.
+
+```
+Experiment → TOON Journal → Apache Arrow (columnar) → DuckDB (embedded SQL) → Parquet (export)
+```
+
+Every probe result, every action timing, every hypothesis evaluation is captured as structured columnar data — queryable with SQL, exportable as Parquet for any data tool, and token-efficient for LLM analysis.
+
+```bash
+# Run experiments — data is captured automatically
+tumult run experiment.toon
+
+# Query your experiment data with SQL
+tumult analyze journals/ --query "
+    SELECT status, count(*) as runs, avg(duration_ms) as avg_ms
+    FROM experiments GROUP BY status"
+
+# Export to Parquet — portable to Spark, Polars, pandas, Jupyter
+tumult export journal.toon --format parquet
+```
+
+**Why this matters:**
+- **Transparency** — all experiment evidence is in standard Parquet format, auditable by anyone
+- **Reusability** — query across hundreds of experiment runs with SQL, no custom scripts
+- **LLM-friendly** — TOON journals are 40-50% fewer tokens than JSON equivalents
+- **No infrastructure** — DuckDB is embedded, Arrow is in-memory, Parquet is a file
+
+See [Analytics Guide](docs/guides/analytics-guide.md) for table schemas, SQL examples, and export options.
 
 ## Phasing & Roadmap
 
@@ -85,8 +123,10 @@ See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
 |-------|-------|--------|
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process | Done |
-| **2 — Platform Plugins** | Kubernetes, Databases, Kafka | Next |
+| **2 — Platform Plugins** | K8s, databases, Kafka, network, analytics | In Progress |
 | **3 — Automation + Cloud** | tumult-mcp, Cloud SDKs, HTML reporting | Planned |
+| **4 — Persistent Analytics** | DuckDB persistence, cross-run trends, backup/export | Planned |
+| **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Planned |
 
 ## Example Experiment
 
