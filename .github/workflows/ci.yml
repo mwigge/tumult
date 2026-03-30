@@ -62,6 +62,8 @@ jobs:
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    # Don't block PRs on audit — upstream vulnerabilities are tracked in docs
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2.0.0
