@@ -17,7 +17,12 @@ if ! command -v psql >/dev/null 2>&1; then
     exit 1
 fi
 
-export PGPASSWORD="${TUMULT_PG_PASSWORD:-}"
+# Use .pgpass file to avoid /proc/environ exposure
+PGPASS_FILE=$(mktemp)
+trap "rm -f ${PGPASS_FILE}" EXIT INT TERM
+echo "*:*:*:*:${TUMULT_PG_PASSWORD:-}" > "${PGPASS_FILE}"
+chmod 600 "${PGPASS_FILE}"
+export PGPASSFILE="${PGPASS_FILE}"
 
 RESULT=$(psql -h "${HOST}" -p "${PORT}" -U "${USER}" -d postgres -t \
     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = \$\$${DATABASE}\$\$ AND pid <> pg_backend_pid();" 2>&1)

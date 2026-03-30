@@ -67,6 +67,68 @@ impl Default for RunConfig {
 /// registry for lifecycle hooks, and a run configuration.
 ///
 /// Returns a Journal containing the complete experiment results.
+///
+/// # Examples
+///
+/// ```
+/// use tumult_core::runner::{
+///     run_experiment, ActivityExecutor, ActivityOutcome, RunConfig,
+/// };
+/// use tumult_core::controls::ControlRegistry;
+/// use tumult_core::types::*;
+/// use std::collections::HashMap;
+///
+/// // A mock executor that always succeeds
+/// struct MockExecutor;
+/// impl ActivityExecutor for MockExecutor {
+///     fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+///         ActivityOutcome {
+///             success: true,
+///             output: Some("ok".into()),
+///             error: None,
+///             duration_ms: 10,
+///         }
+///     }
+/// }
+///
+/// let experiment = Experiment {
+///     title: "demo".into(),
+///     description: None,
+///     tags: vec![],
+///     configuration: HashMap::new(),
+///     secrets: HashMap::new(),
+///     controls: vec![],
+///     steady_state_hypothesis: None,
+///     method: vec![Activity {
+///         name: "noop-action".into(),
+///         activity_type: ActivityType::Action,
+///         provider: Provider::Native {
+///             plugin: "test".into(),
+///             function: "noop".into(),
+///             arguments: HashMap::new(),
+///         },
+///         tolerance: None,
+///         pause_before_s: None,
+///         pause_after_s: None,
+///         background: false,
+///     }],
+///     rollbacks: vec![],
+///     estimate: None,
+///     baseline: None,
+///     load: None,
+///     regulatory: None,
+/// };
+///
+/// let journal = run_experiment(
+///     &experiment,
+///     &MockExecutor,
+///     &ControlRegistry::new(),
+///     &RunConfig::default(),
+/// )
+/// .unwrap();
+///
+/// assert_eq!(journal.status, ExperimentStatus::Completed);
+/// ```
 pub fn run_experiment(
     experiment: &Experiment,
     executor: &dyn ActivityExecutor,

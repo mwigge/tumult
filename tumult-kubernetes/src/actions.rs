@@ -86,23 +86,44 @@ pub async fn uncordon_node(client: Client, name: &str) -> Result<String, KubeErr
     Ok(format!("node {} uncordoned", name))
 }
 
+/// Result of a node drain operation.
+#[derive(Debug, Clone)]
+pub struct DrainResult {
+    pub node: String,
+    pub evicted: Vec<String>,
+    pub failed: Vec<(String, String)>,
+    pub skipped_daemonsets: usize,
+}
+
+impl std::fmt::Display for DrainResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "node {} drained: {} evicted, {} failed, {} daemonset pods skipped",
+            self.node,
+            self.evicted.len(),
+            self.failed.len(),
+            self.skipped_daemonsets
+        )
+    }
+}
+
 /// Drain a node: cordon it, then delete all non-DaemonSet pods on it.
 pub async fn drain_node(
     client: Client,
     name: &str,
     grace_period_seconds: Option<u32>,
-) -> Result<String, KubeError> {
-    // First cordon the node
+) -> Result<DrainResult, KubeError> {
     cordon_node(client.clone(), name).await?;
 
-    // List pods on this node
     let pods: Api<Pod> = Api::all(client.clone());
     let pod_list = pods
         .list(&kube::api::ListParams::default().fields(&format!("spec.nodeName={}", name)))
         .await?;
 
-    let mut deleted = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let mut evicted = Vec::new();
+    let mut failed = Vec::new();
+    let mut skipped_daemonsets = 0;
     let mut dp = DeleteParams::default();
     if let Some(grace) = grace_period_seconds {
         dp = dp.grace_period(grace);
@@ -112,26 +133,26 @@ pub async fn drain_node(
         let pod_name = pod.metadata.name.unwrap_or_default();
         let pod_ns = pod.metadata.namespace.unwrap_or_else(|| "default".into());
 
-        // Skip DaemonSet-managed pods
         if let Some(refs) = &pod.metadata.owner_references {
             if refs.iter().any(|r| r.kind == "DaemonSet") {
+                skipped_daemonsets += 1;
                 continue;
             }
         }
 
         let ns_pods: Api<Pod> = Api::namespaced(client.clone(), &pod_ns);
-        let result = ns_pods.delete(&pod_name, &dp).await;
-        match result {
-            Ok(_) => deleted += 1,
-            Err(e) => errors.push(format!("{}/{}: {}", pod_ns, pod_name, e)),
+        match ns_pods.delete(&pod_name, &dp).await {
+            Ok(_) => evicted.push(format!("{}/{}", pod_ns, pod_name)),
+            Err(e) => failed.push((format!("{}/{}", pod_ns, pod_name), e.to_string())),
         }
     }
 
-    let mut msg = format!("node {} drained: cordoned + {} pods evicted", name, deleted);
-    if !errors.is_empty() {
-        msg.push_str(&format!("; errors: {}", errors.join(", ")));
-    }
-    Ok(msg)
+    Ok(DrainResult {
+        node: name.to_string(),
+        evicted,
+        failed,
+        skipped_daemonsets,
+    })
 }
 
 /// Apply a network policy to a namespace.
