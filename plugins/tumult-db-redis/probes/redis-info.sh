@@ -11,11 +11,11 @@ if ! command -v redis-cli >/dev/null 2>&1; then
     exit 1
 fi
 
-AUTH_ARG=""
-[ -n "${TUMULT_REDIS_AUTH}" ] && AUTH_ARG="-a ${TUMULT_REDIS_AUTH}"
+
+export REDISCLI_AUTH="${TUMULT_REDIS_AUTH:-}"
 
 # Fetch key metrics and format as JSON
-INFO=$(redis-cli -h "${HOST}" -p "${PORT}" ${AUTH_ARG} INFO 2>/dev/null)
+INFO=$(redis-cli -h "${HOST}" -p "${PORT}" INFO 2>/dev/null)
 
 CONNECTED=$(echo "${INFO}" | grep "^connected_clients:" | cut -d: -f2 | tr -d '\r')
 USED_MEM=$(echo "${INFO}" | grep "^used_memory:" | cut -d: -f2 | tr -d '\r')
