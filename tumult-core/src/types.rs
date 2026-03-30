@@ -191,6 +191,25 @@ pub struct Activity {
     pub background: bool,
 }
 
+impl Default for Activity {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            activity_type: ActivityType::Action,
+            provider: Provider::Process {
+                path: "echo".into(),
+                arguments: vec![],
+                env: HashMap::new(),
+                timeout_s: None,
+            },
+            tolerance: None,
+            pause_before_s: None,
+            pause_after_s: None,
+            background: false,
+        }
+    }
+}
+
 // ── Hypothesis ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
