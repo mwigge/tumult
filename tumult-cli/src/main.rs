@@ -16,10 +16,12 @@ struct Cli {
     command: Commands,
 }
 
+/// Maps to tumult_core::execution::RollbackStrategy
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum RollbackStrategy {
     Always,
-    Deviated,
+    #[value(alias = "deviated")]
+    OnDeviation,
     Never,
 }
 
@@ -68,7 +70,7 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
         /// Rollback strategy
-        #[arg(long, default_value_t = RollbackStrategy::Deviated, value_enum)]
+        #[arg(long, default_value_t = RollbackStrategy::OnDeviation, value_enum)]
         rollback_strategy: RollbackStrategy,
         /// Baseline mode
         #[arg(long, default_value_t = BaselineMode::Full, value_enum)]
@@ -154,7 +156,9 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let strategy = match rollback_strategy {
                 RollbackStrategy::Always => tumult_core::execution::RollbackStrategy::Always,
-                RollbackStrategy::Deviated => tumult_core::execution::RollbackStrategy::OnDeviation,
+                RollbackStrategy::OnDeviation => {
+                    tumult_core::execution::RollbackStrategy::OnDeviation
+                }
                 RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
             };
             commands::cmd_run(&experiment, &journal_path, dry_run, strategy)?;
@@ -265,7 +269,7 @@ mod tests {
         assert_eq!(experiment, PathBuf::from("experiment.toon"));
         assert_eq!(journal_path, PathBuf::from("journal.toon"));
         assert!(!dry_run);
-        assert_eq!(rollback_strategy, RollbackStrategy::Deviated);
+        assert_eq!(rollback_strategy, RollbackStrategy::OnDeviation);
         assert_eq!(baseline_mode, BaselineMode::Full);
     }
 
