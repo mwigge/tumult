@@ -1,0 +1,32 @@
+name: tumult-network
+version: 0.1.0
+description: Network chaos — latency, packet loss, DNS/NTP disruption, partition
+author: tumult
+
+actions[6]:
+  - name: add-latency
+    script: actions/add-latency.sh
+    description: Add network latency using tc netem
+  - name: add-packet-loss
+    script: actions/add-packet-loss.sh
+    description: Add packet loss using tc netem
+  - name: add-corruption
+    script: actions/add-corruption.sh
+    description: Add packet corruption using tc netem
+  - name: reset-tc
+    script: actions/reset-tc.sh
+    description: Remove all tc netem rules (rollback)
+  - name: block-dns
+    script: actions/block-dns.sh
+    description: Block DNS resolution via iptables
+  - name: partition-host
+    script: actions/partition-host.sh
+    description: Network partition a host via iptables DROP
+
+probes[2]:
+  - name: ping-latency
+    script: probes/ping-latency.sh
+    description: Measure round-trip latency to a host
+  - name: dns-resolve
+    script: probes/dns-resolve.sh
+    description: Check if DNS resolution works for a hostname
