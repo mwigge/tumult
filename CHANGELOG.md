@@ -4,6 +4,54 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.0] — Phase 2: Platform Plugins + Analytics
+
+### Added
+
+- **tumult-analytics**: Embedded analytics crate
+  - TOON Journal → Arrow RecordBatch conversion
+  - DuckDB embedded SQL engine with zero-copy Arrow ingestion
+  - `tumult analyze` command with default summary + custom SQL queries
+  - `tumult export` command for Parquet and CSV export
+  - ADR-008: Arrow + DuckDB as embedded analytics engine
+
+- **tumult-kubernetes**: Native Kubernetes chaos plugin (kube-rs 3.1)
+  - Actions: pod delete, deployment scale, node cordon/uncordon/drain, network policy
+  - Probes: pod ready, pods by label, deployment status, node status, service endpoints
+  - Label selector targeting (LitmusChaos/Chaos Mesh patterns)
+  - ADR-007: Native vs script plugin for Kubernetes
+
+- **tumult-db-postgres**: PostgreSQL chaos plugin
+  - Actions: kill connections, lock tables, inject latency, exhaust connection pool
+  - Probes: connection count, replication lag, pool utilization
+
+- **tumult-db-mysql**: MySQL chaos plugin
+  - Actions: kill connections, lock tables
+
+- **tumult-db-redis**: Redis chaos plugin
+  - Actions: FLUSHALL, CLIENT PAUSE, DEBUG SLEEP
+  - Probes: redis ping, redis info (connection/memory stats)
+
+- **tumult-kafka**: Kafka broker chaos plugin
+  - Actions: kill broker, partition broker, add broker latency
+  - Probes: consumer lag, under-replicated partitions, broker count
+
+- **tumult-network**: Network chaos plugin
+  - Actions: tc netem latency/loss/corruption, DNS block, host partition
+  - Probes: ping latency, DNS resolve
+
+- **tumult-loadtest**: Load testing integration
+  - k6 driver with OTLP trace correlation
+  - JMeter driver with JTL metrics parsing
+  - Example k6 scripts for HTTP and gRPC
+
+### Security
+
+- Input validation library (plugins/lib/validate.sh)
+- SQL injection prevention: identifier validation, dollar-quoting
+- Credential protection: MYSQL_PWD and REDISCLI_AUTH env vars
+- Container runtime allowlist validation
+
 ## [0.2.0] — Phase 1: Essential Plugins
 
 ### Added
