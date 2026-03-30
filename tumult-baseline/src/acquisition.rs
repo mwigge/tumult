@@ -93,6 +93,33 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
 ///
 /// This function computes statistics, checks for anomalies, and derives
 /// tolerance bounds from the samples.
+///
+/// # Examples
+///
+/// ```
+/// use tumult_baseline::{
+///     derive_baseline, AcquisitionConfig, ProbeSamples,
+/// };
+/// use tumult_baseline::tolerance::Method;
+///
+/// let samples = vec![ProbeSamples {
+///     name: "api-latency".into(),
+///     values: vec![100.0, 102.0, 98.0, 101.0, 99.0, 100.0, 103.0, 97.0],
+///     errors: 0,
+///     total_attempts: 8,
+/// }];
+///
+/// let config = AcquisitionConfig {
+///     method: Method::MeanStddev { sigma: 2.0 },
+///     min_samples: 5,
+/// };
+///
+/// let result = derive_baseline(&samples, &config).unwrap();
+/// assert_eq!(result.probes.len(), 1);
+/// assert!(!result.anomaly_detected);
+/// assert!(result.tolerance_lower < 100.0);
+/// assert!(result.tolerance_upper > 100.0);
+/// ```
 pub fn derive_baseline(
     probe_samples: &[ProbeSamples],
     config: &AcquisitionConfig,

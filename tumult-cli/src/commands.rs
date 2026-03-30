@@ -244,6 +244,39 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 
     validate_experiment(&experiment)?;
 
+    // SRE-10: Warn on unsupported provider types
+    let all_activities = experiment
+        .method
+        .iter()
+        .chain(experiment.rollbacks.iter())
+        .chain(
+            experiment
+                .steady_state_hypothesis
+                .as_ref()
+                .map(|h| h.probes.iter())
+                .into_iter()
+                .flatten(),
+        );
+    for activity in all_activities {
+        match &activity.provider {
+            Provider::Http { .. } => {
+                eprintln!(
+                    "warning: activity '{}' uses HTTP provider (not yet supported at runtime)",
+                    activity.name
+                );
+            }
+            Provider::Native {
+                plugin, function, ..
+            } => {
+                eprintln!(
+                    "warning: activity '{}' uses native provider {}::{} (not yet wired to CLI executor)",
+                    activity.name, plugin, function
+                );
+            }
+            Provider::Process { .. } => {} // supported
+        }
+    }
+
     // Validate configuration references
     let config_result = resolve_config(&experiment.configuration);
     let secrets_result = resolve_secrets(&experiment.secrets);

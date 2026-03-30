@@ -2,6 +2,36 @@
 //!
 //! Provides functions to calculate statistical baselines from probe samples
 //! and derive tolerance thresholds for steady-state hypothesis evaluation.
+//!
+//! # Overview
+//!
+//! During Phase 1 (Baseline) of a chaos experiment, probes sample the
+//! system's steady-state behaviour. This crate takes those raw samples and
+//! derives statistical bounds that later phases use to decide whether the
+//! system has deviated from normal.
+//!
+//! # Statistical methods
+//!
+//! The [`tolerance::Method`] enum selects the bounding strategy:
+//!
+//! | Method | Description |
+//! |---------------|-------------------------------------------------------|
+//! | `MeanStddev` | mean +/- N sigma — good for normally distributed data |
+//! | `Iqr` | Q1/Q3 +/- 1.5*IQR — robust against outliers |
+//! | `Percentile` | p-th percentile * multiplier — tail-latency thresholds|
+//! | `Static` | operator-defined fixed bounds |
+//!
+//! # Anomaly detection
+//!
+//! [`check_baseline_anomaly`] runs a coefficient-of-variation check over the
+//! collected samples. If variance is too high the baseline is flagged and the
+//! runner can abort before injecting chaos.
+//!
+//! # Key entry point
+//!
+//! [`derive_baseline`] is the main function — it accepts [`ProbeSamples`]
+//! and an [`AcquisitionConfig`], returning an [`AcquisitionResult`] with
+//! per-probe statistics and tolerance bounds.
 
 pub mod acquisition;
 pub mod anomaly;
