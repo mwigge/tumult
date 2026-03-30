@@ -437,6 +437,211 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
     Ok(())
 }
 
+// ── Trend command ─────────────────────────────────────────────
+
+pub fn cmd_trend(journals_path: &Path, metric: &str, _last: Option<&str>) -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+    use tumult_core::journal::read_journal;
+
+    let store = AnalyticsStore::in_memory()?;
+    let mut count = 0;
+
+    if journals_path.is_dir() {
+        for entry in std::fs::read_dir(journals_path)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toon") {
+                if let Ok(journal) = read_journal(&path) {
+                    store.ingest_journal(&journal)?;
+                    count += 1;
+                }
+            }
+        }
+    } else if journals_path.is_file() {
+        let journal = read_journal(journals_path)?;
+        store.ingest_journal(&journal)?;
+        count = 1;
+    } else {
+        bail!("path does not exist: {}", journals_path.display());
+    }
+
+    println!("Loaded {} journal(s)\n", count);
+
+    let valid_metrics = [
+        "resilience_score",
+        "duration_ms",
+        "estimate_accuracy",
+        "method_step_count",
+    ];
+    if !valid_metrics.contains(&metric) {
+        bail!(
+            "unknown metric: {}. Valid: {}",
+            metric,
+            valid_metrics.join(", ")
+        );
+    }
+
+    let sql = format!(
+        "SELECT experiment_id, title, status, {metric}, \
+         started_at_ns \
+         FROM experiments \
+         WHERE {metric} IS NOT NULL \
+         ORDER BY started_at_ns"
+    );
+
+    let columns = store.query_columns(&sql)?;
+    let rows = store.query(&sql)?;
+
+    if rows.is_empty() {
+        println!("No data points for metric: {}", metric);
+        return Ok(());
+    }
+
+    println!("Trend: {} ({} data points)\n", metric, rows.len());
+    println!(
+        "{}",
+        columns
+            .iter()
+            .map(|c| format!("{:<20}", c))
+            .collect::<Vec<_>>()
+            .join("")
+    );
+    println!("{}", "-".repeat(columns.len() * 20));
+    for row in &rows {
+        println!(
+            "{}",
+            row.iter()
+                .map(|v| format!("{:<20}", v))
+                .collect::<Vec<_>>()
+                .join("")
+        );
+    }
+
+    // Summary stats
+    let stats = store.query(&format!(
+        "SELECT count(*) as runs, \
+         min({metric}) as min, max({metric}) as max, avg({metric}) as avg \
+         FROM experiments WHERE {metric} IS NOT NULL"
+    ))?;
+    if let Some(row) = stats.first() {
+        println!(
+            "\nSummary: {} runs, min={}, max={}, avg={}",
+            row[0], row[1], row[2], row[3]
+        );
+    }
+
+    Ok(())
+}
+
+// ── Compliance command ────────────────────────────────────────
+
+pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+    use tumult_core::journal::read_journal;
+
+    let store = AnalyticsStore::in_memory()?;
+    let mut count = 0;
+    let mut journals_with_regulatory = 0;
+
+    if journals_path.is_dir() {
+        for entry in std::fs::read_dir(journals_path)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toon") {
+                if let Ok(journal) = read_journal(&path) {
+                    if journal.regulatory.is_some() {
+                        journals_with_regulatory += 1;
+                    }
+                    store.ingest_journal(&journal)?;
+                    count += 1;
+                }
+            }
+        }
+    } else if journals_path.is_file() {
+        let journal = read_journal(journals_path)?;
+        if journal.regulatory.is_some() {
+            journals_with_regulatory += 1;
+        }
+        store.ingest_journal(&journal)?;
+        count = 1;
+    } else {
+        bail!("path does not exist: {}", journals_path.display());
+    }
+
+    println!("=== {} Compliance Report ===\n", framework);
+    println!("Journals analyzed: {}", count);
+    println!("With regulatory tagging: {}\n", journals_with_regulatory);
+
+    // Overall status
+    let rows = store.query(
+        "SELECT status, count(*) as runs FROM experiments GROUP BY status ORDER BY runs DESC",
+    )?;
+    println!("Experiment Results:");
+    for row in &rows {
+        println!("  {}: {} run(s)", row[0], row[1]);
+    }
+
+    // Compliance derivation
+    let total = store.query("SELECT count(*) FROM experiments")?;
+    let completed = store.query("SELECT count(*) FROM experiments WHERE status = 'Completed'")?;
+    let total_n: f64 = total[0][0].parse().unwrap_or(0.0);
+    let completed_n: f64 = completed[0][0].parse().unwrap_or(0.0);
+    let success_rate = if total_n > 0.0 {
+        completed_n / total_n * 100.0
+    } else {
+        0.0
+    };
+
+    println!("\nCompliance Status:");
+    println!("  Success rate: {:.1}%", success_rate);
+    println!(
+        "  Overall: {}",
+        if success_rate >= 95.0 {
+            "COMPLIANT"
+        } else if success_rate >= 80.0 {
+            "PARTIAL"
+        } else {
+            "NON-COMPLIANT"
+        }
+    );
+
+    // Framework-specific guidance
+    println!("\n{} Requirements:", framework);
+    match framework {
+        "DORA" => {
+            println!("  Art. 24: ICT resilience testing programme");
+            println!("  Art. 25: Testing of ICT tools and systems");
+            println!(
+                "  Evidence: {} experiment runs, {:.1}% success rate",
+                count, success_rate
+            );
+        }
+        "NIS2" => {
+            println!("  Art. 21: Cybersecurity risk-management measures");
+            println!("  Art. 23: Incident handling and reporting");
+            println!(
+                "  Evidence: {} experiment runs, {:.1}% success rate",
+                count, success_rate
+            );
+        }
+        "PCI-DSS" => {
+            println!("  Req. 11.4: External and internal penetration testing");
+            println!("  Req. 12.10: Incident response plan testing");
+            println!(
+                "  Evidence: {} experiment runs, {:.1}% success rate",
+                count, success_rate
+            );
+        }
+        _ => {
+            println!(
+                "  Evidence: {} experiment runs, {:.1}% success rate",
+                count, success_rate
+            );
+        }
+    }
+
+    println!("\n=== End Report ===");
+    Ok(())
+}
+
 // ── Init command ──────────────────────────────────────────────
 
 pub fn cmd_init(plugin: Option<&str>) -> Result<()> {

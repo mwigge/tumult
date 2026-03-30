@@ -117,6 +117,17 @@ enum Commands {
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Cross-run trend analysis
+    Trend {
+        /// Directory containing journal files
+        journals: PathBuf,
+        /// Metric to track
+        #[arg(long, default_value = "resilience_score")]
+        metric: String,
+        /// Time window (e.g., 30d, 90d)
+        #[arg(long)]
+        last: Option<String>,
+    },
     /// Interactive experiment creation
     Init {
         /// Start with a specific plugin
@@ -164,8 +175,27 @@ async fn main() -> anyhow::Result<()> {
             };
             commands::cmd_export(&journal, fmt)?;
         }
-        Commands::Compliance { .. } => {
-            anyhow::bail!("compliance command requires tumult-regulatory (Phase 2)");
+        Commands::Compliance {
+            journals,
+            framework,
+        } => {
+            let fw = match framework {
+                ComplianceFramework::Dora => "DORA",
+                ComplianceFramework::Nis2 => "NIS2",
+                ComplianceFramework::PciDss => "PCI-DSS",
+                ComplianceFramework::Iso22301 => "ISO-22301",
+                ComplianceFramework::Iso27001 => "ISO-27001",
+                ComplianceFramework::Soc2 => "SOC2",
+                ComplianceFramework::BaselIii => "Basel-III",
+            };
+            commands::cmd_compliance(&journals, fw)?;
+        }
+        Commands::Trend {
+            journals,
+            metric,
+            last,
+        } => {
+            commands::cmd_trend(&journals, &metric, last.as_deref())?;
         }
         Commands::Report { .. } => {
             anyhow::bail!("report command requires tumult-report (Phase 3)");
