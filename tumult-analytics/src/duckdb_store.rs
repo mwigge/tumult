@@ -69,7 +69,7 @@ impl AnalyticsStore {
     pub fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
         let mut stmt = self.conn.prepare(sql)?;
         let mut rows_iter = stmt.query(params![])?;
-        let column_count = rows_iter.as_ref().unwrap().column_count();
+        let column_count = rows_iter.as_ref().map(|r| r.column_count()).unwrap_or(0);
         let mut result = Vec::new();
         while let Some(row) = rows_iter.next()? {
             let mut values = Vec::with_capacity(column_count);
@@ -90,8 +90,8 @@ impl AnalyticsStore {
         let rows = stmt.query(params![])?;
         let names = rows
             .as_ref()
-            .unwrap()
-            .column_names()
+            .map(|r| r.column_names())
+            .unwrap_or_default()
             .into_iter()
             .map(|s| s.to_string())
             .collect();
