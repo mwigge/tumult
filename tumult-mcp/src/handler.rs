@@ -77,6 +77,15 @@ pub struct CreateExperimentTool {
     pub plugin: Option<String>,
 }
 
+#[macros::mcp_tool(
+    name = "tumult_query_traces",
+    description = "Query trace data from a journal — returns activity spans with trace/span IDs for observability correlation."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct QueryTracesTool {
+    pub journal_path: String,
+}
+
 // ── Process executor (shared pattern with CLI) ────────────────
 
 pub struct ProcessExecutor;
@@ -147,6 +156,7 @@ impl ServerHandler for TumultHandler {
                 ListJournalsTool::tool(),
                 DiscoverTool::tool(),
                 CreateExperimentTool::tool(),
+                QueryTracesTool::tool(),
             ],
             meta: None,
             next_cursor: None,
@@ -186,6 +196,10 @@ impl ServerHandler for TumultHandler {
                 let args: CreateExperimentTool = parse_args(&params)?;
                 tools::create_experiment(&args.output_path, args.plugin.as_deref())
             }
+            "tumult_query_traces" => {
+                let args: QueryTracesTool = parse_args(&params)?;
+                tools::query_traces(&args.journal_path)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -212,8 +226,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_seven_tools_listed() {
-        // Verify we expose exactly 7 tools
+    fn all_eight_tools_listed() {
         let tools = vec![
             RunExperimentTool::tool(),
             ValidateTool::tool(),
@@ -222,8 +235,9 @@ mod tests {
             ListJournalsTool::tool(),
             DiscoverTool::tool(),
             CreateExperimentTool::tool(),
+            QueryTracesTool::tool(),
         ];
-        assert_eq!(tools.len(), 7);
+        assert_eq!(tools.len(), 8);
     }
 
     #[test]
@@ -236,6 +250,7 @@ mod tests {
             ListJournalsTool::tool(),
             DiscoverTool::tool(),
             CreateExperimentTool::tool(),
+            QueryTracesTool::tool(),
         ];
         for tool in &tools {
             assert!(
