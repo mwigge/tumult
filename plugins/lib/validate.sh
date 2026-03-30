@@ -32,12 +32,11 @@ validate_integer() {
 validate_number() {
     VAR_NAME="$1"
     VALUE="$2"
-    case "${VALUE}" in
-        ''|*[!0-9.]*)
-            echo "error: ${VAR_NAME} must be a number, got: '${VALUE}'" >&2
-            exit 1
-            ;;
-    esac
+    # Must match: integer (123) or decimal (1.5) — no multiple dots, no leading/trailing dot alone
+    if ! echo "${VALUE}" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+        echo "error: ${VAR_NAME} must be a number, got: '${VALUE}'" >&2
+        exit 1
+    fi
 }
 
 # Validate that a value is one of an allowed set

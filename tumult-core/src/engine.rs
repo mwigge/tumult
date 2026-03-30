@@ -26,6 +26,8 @@ pub enum EngineError {
     },
     #[error("experiment file parse error: {0}")]
     ParseError(String),
+    #[error("invalid regex pattern in activity '{activity}': {pattern}")]
+    InvalidRegex { activity: String, pattern: String },
 }
 
 /// Resolve configuration values by reading environment variables.
@@ -52,10 +54,37 @@ pub fn resolve_config(
 }
 
 /// Validate an experiment definition before execution.
+///
+/// Checks: method is non-empty, regex patterns compile, hypothesis probes exist.
 pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
     if experiment.method.is_empty() {
         return Err(EngineError::EmptyMethod);
     }
+
+    // Validate all regex tolerance patterns compile
+    let all_activities = experiment
+        .method
+        .iter()
+        .chain(experiment.rollbacks.iter())
+        .chain(
+            experiment
+                .steady_state_hypothesis
+                .as_ref()
+                .map(|h| h.probes.iter())
+                .into_iter()
+                .flatten(),
+        );
+    for activity in all_activities {
+        if let Some(Tolerance::Regex { pattern }) = &activity.tolerance {
+            if regex_lite::Regex::new(pattern).is_err() {
+                return Err(EngineError::InvalidRegex {
+                    activity: activity.name.clone(),
+                    pattern: pattern.clone(),
+                });
+            }
+        }
+    }
+
     Ok(())
 }
 

@@ -5,7 +5,7 @@
 #   TUMULT_WORKERS  - Number of IO workers (default: 1)
 #   TUMULT_TIMEOUT  - Duration in seconds (default: 30)
 #   TUMULT_HDD_BYTES - Bytes per write operation (default: 1g)
-set -e
+set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 

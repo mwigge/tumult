@@ -6,7 +6,7 @@
 #   TUMULT_INTERFACE   - Network interface (default: eth0)
 #   TUMULT_LOSS_PCT    - Packet loss percentage (default: 10)
 #   TUMULT_CORRELATION  - Loss correlation percentage (default: 25)
-set -e
+set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 
