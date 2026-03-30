@@ -1,6 +1,6 @@
 # Execution Flow
 
-Tumult experiments follow a five-phase lifecycle. Each phase produces data that feeds into the next.
+Tumult experiments follow a five-phase lifecycle. Each phase produces data that feeds into the next. The execution is orchestrated by the `run_experiment()` function in `tumult-core::runner`.
 
 ## Phase Overview
 
@@ -12,6 +12,16 @@ Phase 3: POST         Remove fault, measure recovery
 Phase 4: ANALYSIS     Compare estimate vs actual, compute scores
 ```
 
+## Implementation
+
+The runner takes four inputs:
+- `Experiment` — the parsed experiment definition
+- `ActivityExecutor` — trait for executing actions/probes (plugin system)
+- `ControlRegistry` — lifecycle event handlers
+- `RunConfig` — rollback strategy, baseline mode, dry-run flag
+
+Returns a `Journal` containing the complete experiment results with all phases.
+
 ## Detailed Flow
 
 ### 1. Parse and Validate
@@ -19,19 +29,19 @@ Phase 4: ANALYSIS     Compare estimate vs actual, compute scores
 ```
 tumult run experiment.toon
     │
-    ├── Parse TOON → Experiment struct
-    ├── Validate: method not empty, plugin refs exist
-    ├── Resolve config (env vars, inline values)
-    └── Resolve secrets (env vars, file paths)
+    ├── Parse TOON → Experiment struct   (engine::parse_experiment)
+    ├── Validate: method not empty       (engine::validate_experiment)
+    ├── Resolve config (env vars, inline) (engine::resolve_config)
+    └── Resolve secrets (env vars, files) (engine::resolve_secrets)
 ```
 
 ### 2. Initialize
 
 ```
-    ├── Init OTel (if enabled)
-    ├── Start root span: tumult.experiment
-    ├── Register controls (lifecycle hooks)
-    └── Record estimate (Phase 0) in journal
+    ├── CONTROL: BeforeExperiment
+    ├── Generate experiment UUID
+    ├── Record start timestamp (epoch nanoseconds)
+    └── Record estimate (Phase 0) — preserved in journal as-is
 ```
 
 ### 3. Start Load (if configured)
@@ -41,49 +51,52 @@ tumult run experiment.toon
     └── Wait for load to stabilize
 ```
 
-### 4. Baseline (Phase 1)
+### 4. Baseline Acquisition (Phase 1)
+
+Baseline acquisition uses `tumult-baseline::acquisition::derive_baseline()`:
 
 ```
-    ├── CONTROL: before_hypothesis
-    ├── Warmup: discard first N seconds
-    ├── Sample: run probes at interval for duration
-    ├── Derive: calculate mean, stddev, percentiles
-    ├── Anomaly check: CV > 0.5? range > 10x median?
+    ├── Warmup: discard first N seconds of samples
+    ├── Sample: collect probe values at interval for duration
+    ├── Per-probe statistics: mean, stddev, p50, p95, p99, min, max
+    ├── Anomaly check: CV > 0.5? range > 10x median? insufficient samples?
     ├── Derive tolerance bounds (method: mean±Nσ, percentile, IQR)
-    └── CONTROL: after_hypothesis
+    └── Produce AcquisitionResult with ProbeStats per probe
 ```
 
 ### 5. Hypothesis BEFORE
 
 ```
-    ├── Run all hypothesis probes
-    ├── Evaluate tolerances
-    └── If ANY probe fails → ABORT → skip to rollbacks
+    ├── CONTROL: BeforeHypothesis
+    ├── For each probe in hypothesis:
+    │   ├── CONTROL: BeforeActivity{name}
+    │   ├── Execute probe via ActivityExecutor
+    │   ├── Evaluate tolerance (exact, range, or regex)
+    │   └── CONTROL: AfterActivity{name}
+    ├── If ANY probe fails tolerance → HypothesisResult.met = false
+    ├── CONTROL: AfterHypothesis
+    └── If not met → ABORT → skip method, go to rollbacks
 ```
 
 ### 6. Method Execution (Phase 2)
 
 ```
-    ├── CONTROL: before_method
-    ├── For each step (sequential):
-    │   ├── CONTROL: before_activity
-    │   ├── Wait pause_before_s
-    │   ├── Execute action/probe via plugin
-    │   ├── Record OTel span + metrics
-    │   ├── Wait pause_after_s
-    │   ├── Record ActivityResult
-    │   └── CONTROL: after_activity
-    ├── Background activities run concurrently via tokio::spawn
-    ├── During-phase sampling: continuous probes capture degradation curve
-    └── CONTROL: after_method
+    ├── CONTROL: BeforeMethod
+    ├── For each activity in method:
+    │   ├── CONTROL: BeforeActivity{name}
+    │   ├── Execute via ActivityExecutor
+    │   ├── Build ActivityResult with status, output, timing, trace IDs
+    │   └── CONTROL: AfterActivity{name}
+    └── CONTROL: AfterMethod
 ```
 
 ### 7. Hypothesis AFTER
 
 ```
-    ├── Run all hypothesis probes again
-    ├── Compare against baseline-derived tolerances
-    └── If ANY probe fails → mark DEVIATED
+    ├── CONTROL: BeforeHypothesis
+    ├── Run all hypothesis probes again (same as step 5)
+    ├── CONTROL: AfterHypothesis
+    └── If ANY probe fails → status = DEVIATED
 ```
 
 ### 8. Recovery (Phase 3)
@@ -96,49 +109,56 @@ tumult run experiment.toon
     └── Record PostResult
 ```
 
-### 9. Rollbacks
+### 9. Determine Status
 
 ```
-    ├── Evaluate rollback strategy:
-    │   ├── always → execute
-    │   ├── on-deviation → execute only if deviated
-    │   └── never → skip
+    ├── engine::determine_status(hypothesis_before, hypothesis_after, actions_succeeded)
+    │   ├── hypothesis_before failed → Aborted
+    │   ├── actions failed → Failed
+    │   ├── hypothesis_after failed → Deviated
+    │   └── all passed → Completed
+```
+
+### 10. Rollbacks
+
+```
+    ├── execution::should_rollback(strategy, deviated):
+    │   ├── Always → execute
+    │   ├── OnDeviation → execute only if deviated or aborted
+    │   └── Never → skip
+    ├── CONTROL: BeforeRollback
     ├── For each rollback action:
-    │   ├── CONTROL: before_activity
-    │   ├── Execute via plugin
-    │   └── CONTROL: after_activity
-    └── CONTROL: after_rollback
+    │   ├── CONTROL: BeforeActivity{name}
+    │   ├── Execute via ActivityExecutor
+    │   └── CONTROL: AfterActivity{name}
+    └── CONTROL: AfterRollback
 ```
 
-### 10. Stop Load
+### 11. Stop Load
 
 ```
     ├── Stop k6/JMeter
     └── Collect load metrics (throughput, latency, error rate)
 ```
 
-### 11. Analysis (Phase 4)
+### 12. Analysis (Phase 4)
 
 ```
-    ├── Compare estimate vs actual outcome
-    ├── Calculate estimate accuracy
-    ├── Determine trend (improving/stable/degrading)
-    ├── Generate regulatory evidence
-    └── Compute resilience score (optional)
+    ├── runner::compute_analysis():
+    │   ├── Compare estimate.expected_outcome vs actual ExperimentStatus
+    │   ├── estimate_accuracy: 1.0 if prediction matched, 0.0 otherwise
+    │   ├── resilience_score: 1.0 if completed, 0.0 otherwise
+    │   └── estimate_recovery_delta_s: (actual - estimated) recovery time
 ```
 
-### 12. Finalize
+### 13. Finalize
 
 ```
-    ├── Determine ExperimentStatus:
-    │   ├── completed (hypothesis met, all actions succeeded)
-    │   ├── deviated (hypothesis failed after method)
-    │   ├── aborted (hypothesis failed before method)
-    │   ├── failed (action execution error)
-    │   └── interrupted (Ctrl+C or timeout)
-    ├── CONTROL: after_experiment
+    ├── Record end timestamp
+    ├── Calculate duration_ms
+    ├── CONTROL: AfterExperiment
+    ├── Build Journal with all phases and results
     ├── Write journal.toon
-    ├── End root span
     └── Flush OTel
 ```
 
