@@ -152,8 +152,16 @@ fn execute_process(
 
             ActivityOutcome {
                 success: exit_status.success(),
-                output: if stdout.is_empty() { None } else { Some(stdout) },
-                error: if stderr.is_empty() { None } else { Some(stderr) },
+                output: if stdout.is_empty() {
+                    None
+                } else {
+                    Some(stdout)
+                },
+                error: if stderr.is_empty() {
+                    None
+                } else {
+                    Some(stderr)
+                },
                 duration_ms,
             }
         }
@@ -174,8 +182,12 @@ pub fn cmd_run(
     dry_run: bool,
     rollback_strategy: RollbackStrategy,
 ) -> Result<()> {
-    let content = std::fs::read_to_string(experiment_path)
-        .with_context(|| format!("failed to read experiment file: {}", experiment_path.display()))?;
+    let content = std::fs::read_to_string(experiment_path).with_context(|| {
+        format!(
+            "failed to read experiment file: {}",
+            experiment_path.display()
+        )
+    })?;
 
     let experiment = parse_experiment(&content)
         .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
@@ -193,45 +205,25 @@ pub fn cmd_run(
 
     let executor = ProviderExecutor;
     let controls = ControlRegistry::new();
-    let run_config = RunConfig {
-        rollback_strategy,
-    };
+    let run_config = RunConfig { rollback_strategy };
 
-    println!(
-        "Running experiment: {}",
-        experiment.title
-    );
+    println!("Running experiment: {}", experiment.title);
 
     let journal = run_experiment(&experiment, &executor, &controls, &run_config)?;
 
     write_journal(&journal, journal_path)?;
 
     println!("Status: {:?}", journal.status);
-    println!(
-        "Duration: {}ms",
-        journal.duration_ms
-    );
-    println!(
-        "Method steps: {} executed",
-        journal.method_results.len()
-    );
+    println!("Duration: {}ms", journal.duration_ms);
+    println!("Method steps: {} executed", journal.method_results.len());
     if !journal.rollback_results.is_empty() {
-        println!(
-            "Rollbacks: {} executed",
-            journal.rollback_results.len()
-        );
+        println!("Rollbacks: {} executed", journal.rollback_results.len());
     }
-    println!(
-        "Journal written to: {}",
-        journal_path.display()
-    );
+    println!("Journal written to: {}", journal_path.display());
 
     // Exit with non-zero if experiment did not complete successfully
     if journal.status != ExperimentStatus::Completed {
-        bail!(
-            "experiment finished with status: {:?}",
-            journal.status
-        );
+        bail!("experiment finished with status: {:?}", journal.status);
     }
 
     Ok(())
@@ -240,8 +232,12 @@ pub fn cmd_run(
 // ── Validate command ──────────────────────────────────────────
 
 pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
-    let content = std::fs::read_to_string(experiment_path)
-        .with_context(|| format!("failed to read experiment file: {}", experiment_path.display()))?;
+    let content = std::fs::read_to_string(experiment_path).with_context(|| {
+        format!(
+            "failed to read experiment file: {}",
+            experiment_path.display()
+        )
+    })?;
 
     let experiment = parse_experiment(&content)
         .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
@@ -308,15 +304,16 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     // Check filter early — even when no plugins, a filter for a specific one should error
     if let Some(filter) = plugin_filter {
         if !plugin_names.iter().any(|n| n == filter) {
-            bail!("plugin '{}' not found. Discovered {} plugin(s)", filter, plugin_names.len());
+            bail!(
+                "plugin '{}' not found. Discovered {} plugin(s)",
+                filter,
+                plugin_names.len()
+            );
         }
         // Show details for specific plugin
         println!("Plugin: {}", filter);
         let all_actions = registry.list_all_actions();
-        let actions: Vec<_> = all_actions
-            .iter()
-            .filter(|(p, _)| p == filter)
-            .collect();
+        let actions: Vec<_> = all_actions.iter().filter(|(p, _)| p == filter).collect();
         if !actions.is_empty() {
             println!("\nActions:");
             for (_, desc) in &actions {
@@ -351,7 +348,10 @@ pub fn cmd_init(plugin: Option<&str>) -> Result<()> {
 
 fn init_at(path: &Path, plugin: Option<&str>) -> Result<()> {
     if path.exists() {
-        bail!("{} already exists — remove it first or use a different name", path.display());
+        bail!(
+            "{} already exists — remove it first or use a different name",
+            path.display()
+        );
     }
 
     let template = generate_template(plugin);
@@ -425,10 +425,7 @@ fn print_dry_run(experiment: &Experiment) {
 
     if let Some(ref estimate) = experiment.estimate {
         println!("Phase 0 — Estimate:");
-        println!(
-            "  Expected outcome: {:?}",
-            estimate.expected_outcome
-        );
+        println!("  Expected outcome: {:?}", estimate.expected_outcome);
         if let Some(recovery) = estimate.expected_recovery_s {
             println!("  Expected recovery: {}s", recovery);
         }
@@ -451,12 +448,13 @@ fn print_dry_run(experiment: &Experiment) {
         println!();
     }
 
-    println!(
-        "Phase 2 — Method ({} steps):",
-        experiment.method.len()
-    );
+    println!("Phase 2 — Method ({} steps):", experiment.method.len());
     for (i, activity) in experiment.method.iter().enumerate() {
-        let bg = if activity.background { " [background]" } else { "" };
+        let bg = if activity.background {
+            " [background]"
+        } else {
+            ""
+        };
         println!(
             "  {}. {} ({:?}){}",
             i + 1,
@@ -468,10 +466,7 @@ fn print_dry_run(experiment: &Experiment) {
     println!();
 
     if !experiment.rollbacks.is_empty() {
-        println!(
-            "Rollbacks ({} steps):",
-            experiment.rollbacks.len()
-        );
+        println!("Rollbacks ({} steps):", experiment.rollbacks.len());
         for activity in &experiment.rollbacks {
             println!("  - {} ({:?})", activity.name, activity.activity_type);
         }
@@ -825,6 +820,10 @@ mod tests {
         let outcome = executor.execute(&activity);
 
         assert!(!outcome.success);
-        assert!(outcome.error.as_ref().unwrap().contains("not yet available"));
+        assert!(outcome
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("not yet available"));
     }
 }

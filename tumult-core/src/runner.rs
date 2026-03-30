@@ -161,7 +161,11 @@ pub fn run_experiment(
     let hypothesis_after_met = hypothesis_after.as_ref().map(|h| h.met);
 
     // ── Determine status ──────────────────────────────────────
-    let status = determine_status(hypothesis_before_met, hypothesis_after_met, actions_succeeded);
+    let status = determine_status(
+        hypothesis_before_met,
+        hypothesis_after_met,
+        actions_succeeded,
+    );
 
     // ── Rollbacks ─────────────────────────────────────────────
     let deviated = status == ExperimentStatus::Deviated;
@@ -307,10 +311,7 @@ fn execute_activities(
 }
 
 /// Compute Phase 4 analysis from estimate and actual results.
-fn compute_analysis(
-    experiment: &Experiment,
-    status: &ExperimentStatus,
-) -> Option<AnalysisResult> {
+fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Option<AnalysisResult> {
     let estimate = experiment.estimate.as_ref()?;
 
     // Compare estimate vs actual outcome
@@ -326,7 +327,11 @@ fn compute_analysis(
         estimate_accuracy,
         estimate_recovery_delta_s: None,
         trend: None,
-        resilience_score: if actual_recovered { Some(1.0) } else { Some(0.0) },
+        resilience_score: if actual_recovered {
+            Some(1.0)
+        } else {
+            Some(0.0)
+        },
     })
 }
 
@@ -375,7 +380,6 @@ mod tests {
                 call_count: Arc::new(AtomicUsize::new(0)),
             }
         }
-
     }
 
     impl ActivityExecutor for MockExecutor {
@@ -653,7 +657,6 @@ mod tests {
         let controls = ControlRegistry::new();
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Never,
-            ..default_config()
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -669,7 +672,6 @@ mod tests {
         let controls = ControlRegistry::new();
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
-            ..default_config()
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -762,7 +764,6 @@ mod tests {
         controls.register(Box::new(recorder));
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
-            ..default_config()
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -782,7 +783,6 @@ mod tests {
         controls.register(Box::new(recorder));
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
-            ..default_config()
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -805,11 +805,26 @@ mod tests {
             .collect();
 
         // Verify ordering: experiment → hypothesis-before → method → hypothesis-after → rollback → experiment-end
-        let exp_idx = event_names.iter().position(|&e| e == "BeforeExperiment").unwrap();
-        let hyp_before_idx = event_names.iter().position(|&e| e == "BeforeHypothesis").unwrap();
-        let method_idx = event_names.iter().position(|&e| e == "BeforeMethod").unwrap();
-        let rollback_idx = event_names.iter().position(|&e| e == "BeforeRollback").unwrap();
-        let exp_end_idx = event_names.iter().position(|&e| e == "AfterExperiment").unwrap();
+        let exp_idx = event_names
+            .iter()
+            .position(|&e| e == "BeforeExperiment")
+            .unwrap();
+        let hyp_before_idx = event_names
+            .iter()
+            .position(|&e| e == "BeforeHypothesis")
+            .unwrap();
+        let method_idx = event_names
+            .iter()
+            .position(|&e| e == "BeforeMethod")
+            .unwrap();
+        let rollback_idx = event_names
+            .iter()
+            .position(|&e| e == "BeforeRollback")
+            .unwrap();
+        let exp_end_idx = event_names
+            .iter()
+            .position(|&e| e == "AfterExperiment")
+            .unwrap();
 
         assert!(exp_idx < hyp_before_idx);
         assert!(hyp_before_idx < method_idx);
@@ -862,8 +877,14 @@ mod tests {
 
         assert!(journal.analysis.is_some());
         // Estimate: recovered, Actual: completed (recovered) → accuracy 1.0
-        assert_eq!(journal.analysis.as_ref().unwrap().estimate_accuracy, Some(1.0));
-        assert_eq!(journal.analysis.as_ref().unwrap().resilience_score, Some(1.0));
+        assert_eq!(
+            journal.analysis.as_ref().unwrap().estimate_accuracy,
+            Some(1.0)
+        );
+        assert_eq!(
+            journal.analysis.as_ref().unwrap().resilience_score,
+            Some(1.0)
+        );
     }
 
     #[test]
