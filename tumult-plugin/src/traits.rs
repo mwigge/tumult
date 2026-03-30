@@ -32,12 +32,16 @@ pub type ActionOutput = PluginOutput;
 /// Backwards-compatible type alias for probe output.
 pub type ProbeOutput = PluginOutput;
 
+pub(crate) mod private {
+    pub trait Sealed {}
+}
+
 /// Trait that all native Rust plugins must implement.
 ///
-/// Plugins declare their available actions and probes via descriptors.
-/// Execution is handled separately by the engine, which calls into
-/// the plugin via the registry.
-pub trait TumultPlugin: Send + Sync {
+/// This trait is sealed — it cannot be implemented outside this crate.
+/// Native plugins must be contributed to the main repository or use
+/// the script plugin mechanism instead.
+pub trait TumultPlugin: Send + Sync + private::Sealed {
     fn name(&self) -> &str;
     fn version(&self) -> &str;
     fn description(&self) -> &str;

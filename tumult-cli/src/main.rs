@@ -175,7 +175,7 @@ async fn main() -> anyhow::Result<()> {
             let fmt = match format {
                 ExportFormat::Parquet => "parquet",
                 ExportFormat::Csv => "csv",
-                ExportFormat::Json => anyhow::bail!("JSON export not yet implemented"),
+                ExportFormat::Json => "json",
             };
             commands::cmd_export(&journal, fmt)?;
         }

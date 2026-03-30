@@ -414,11 +414,11 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
 
     let journal = read_journal(journal_path)
         .with_context(|| format!("failed to read journal: {}", journal_path.display()))?;
-    let (exp_batch, _act_batch) = journal_to_record_batch(&[journal])?;
 
     let ext = match format {
         "parquet" => "parquet",
         "csv" => "csv",
+        "json" => "json",
         _ => bail!("unsupported format: {}", format),
     };
     let stem = journal_path
@@ -429,8 +429,18 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
     let out_path = std::path::PathBuf::from(format!("{}.{}", stem, ext));
 
     match format {
-        "parquet" => export_parquet(&exp_batch, &out_path)?,
-        "csv" => export_csv(&exp_batch, &out_path)?,
+        "parquet" | "csv" => {
+            let (exp_batch, _) = journal_to_record_batch(std::slice::from_ref(&journal))?;
+            match format {
+                "parquet" => export_parquet(&exp_batch, &out_path)?,
+                "csv" => export_csv(&exp_batch, &out_path)?,
+                _ => unreachable!(),
+            }
+        }
+        "json" => {
+            let json = serde_json::to_string_pretty(&journal)?;
+            std::fs::write(&out_path, json)?;
+        }
         _ => unreachable!(),
     }
     println!("Exported to: {}", out_path.display());
@@ -498,13 +508,15 @@ pub fn cmd_trend(journals_path: &Path, metric: &str, last: Option<&str>) -> Resu
         String::new()
     };
 
-    let sql = format!(
-        "SELECT experiment_id, title, status, {metric}, \
-         started_at_ns \
-         FROM experiments \
-         WHERE {metric} IS NOT NULL{time_filter} \
-         ORDER BY started_at_ns"
-    );
+    // Pre-built queries keyed by metric — no format! interpolation (DB-03)
+    let base_sql = match metric {
+        "resilience_score" => "SELECT experiment_id, title, status, resilience_score, started_at_ns FROM experiments WHERE resilience_score IS NOT NULL",
+        "duration_ms" => "SELECT experiment_id, title, status, duration_ms, started_at_ns FROM experiments WHERE duration_ms IS NOT NULL",
+        "estimate_accuracy" => "SELECT experiment_id, title, status, estimate_accuracy, started_at_ns FROM experiments WHERE estimate_accuracy IS NOT NULL",
+        "method_step_count" => "SELECT experiment_id, title, status, method_step_count, started_at_ns FROM experiments WHERE method_step_count IS NOT NULL",
+        _ => unreachable!("validated above"),
+    };
+    let sql = format!("{}{} ORDER BY started_at_ns", base_sql, time_filter);
 
     let columns = store.query_columns(&sql)?;
     let rows = store.query(&sql)?;
@@ -534,12 +546,15 @@ pub fn cmd_trend(journals_path: &Path, metric: &str, last: Option<&str>) -> Resu
         );
     }
 
-    // Summary stats
-    let stats = store.query(&format!(
-        "SELECT count(*) as runs, \
-         min({metric}) as min, max({metric}) as max, avg({metric}) as avg \
-         FROM experiments WHERE {metric} IS NOT NULL"
-    ))?;
+    // Summary stats — pre-built per metric
+    let stats_sql = match metric {
+        "resilience_score" => "SELECT count(*) as runs, min(resilience_score) as min, max(resilience_score) as max, avg(resilience_score) as avg FROM experiments WHERE resilience_score IS NOT NULL",
+        "duration_ms" => "SELECT count(*) as runs, min(duration_ms) as min, max(duration_ms) as max, avg(duration_ms) as avg FROM experiments WHERE duration_ms IS NOT NULL",
+        "estimate_accuracy" => "SELECT count(*) as runs, min(estimate_accuracy) as min, max(estimate_accuracy) as max, avg(estimate_accuracy) as avg FROM experiments WHERE estimate_accuracy IS NOT NULL",
+        "method_step_count" => "SELECT count(*) as runs, min(method_step_count) as min, max(method_step_count) as max, avg(method_step_count) as avg FROM experiments WHERE method_step_count IS NOT NULL",
+        _ => unreachable!("validated above"),
+    };
+    let stats = store.query(stats_sql)?;
     if let Some(row) = stats.first() {
         println!(
             "\nSummary: {} runs, min={}, max={}, avg={}",
