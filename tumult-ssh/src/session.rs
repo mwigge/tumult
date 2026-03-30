@@ -274,8 +274,16 @@ async fn authenticate(
     Ok(())
 }
 
-/// Client handler for russh — accepts all host keys.
-/// In production, this should verify host keys against known_hosts.
+/// Client handler for russh.
+///
+/// **SECURITY WARNING**: Currently accepts all host keys without verification.
+/// This makes connections vulnerable to MITM attacks. Acceptable for:
+/// - Trusted internal networks
+/// - Ephemeral cloud instances where host keys change on every provision
+/// - Development/testing environments
+///
+/// NOT acceptable for production use over untrusted networks.
+/// TODO: Implement known_hosts verification with opt-in/opt-out configuration.
 struct ClientHandler;
 
 impl client::Handler for ClientHandler {
