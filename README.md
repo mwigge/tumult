@@ -1,4 +1,4 @@
-# <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
+# Tumult — Rust-Native Chaos Engineering Platform
 
 ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
