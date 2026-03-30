@@ -7,14 +7,13 @@ Five-phase data lifecycle for resilience testing experiments. Every experiment p
 ## Phase Overview
 
 ```
-  Phase 0        Phase 1         Phase 2          Phase 3         Phase 4
-  ESTIMATE       BASELINE        DURING           POST            ANALYSIS
-  ─────────┬─────────────┬──────────────┬──────────────┬──────────────────
-           │             │              │              │
-  Operator │  Measure    │  Fault       │  Recovery    │  Cross-run
-  predicts │  before     │  active      │  after       │  learning
-  outcome  │  fault      │              │  rollback    │
-           │             │              │              │
+Phase,Name,Action,Data Output
+0,ESTIMATE,Pre-run prediction (Human or AI-agent),resilience.estimate.*
+1,BASELINE,"Connect, sample, and derive thresholds",resilience.baseline.*
+2,DURING,Fault injection + load + continuous sampling,resilience.during.*
+3,POST,Fault removal + recovery measurement,resilience.post.*
+4,ANALYSIS,SQL-based trend/compliance reporting,resilience.analysis.*
+5,VERIFY,Continuous background steady-state checks,resilience.verify.*
 ```
 
 ---

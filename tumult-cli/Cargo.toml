@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "CLI binary for the Tumult chaos engineering platform"
 
+[lib]
+name = "tumult_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tumult"
 path = "src/main.rs"
@@ -19,3 +23,8 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+toon-format = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = { workspace = true }

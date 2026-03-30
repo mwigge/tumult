@@ -3,3 +3,6 @@ target/
 
 # Environment
 .env
+
+# Content
+docs/blog/
