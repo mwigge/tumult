@@ -176,3 +176,99 @@ fn runner_without_tracer_returns_empty_trace_ids() {
     // This is acceptable — the runner doesn't require OTel to function
     assert_eq!(journal.method_results.len(), 1);
 }
+
+#[test]
+fn runner_all_activities_share_same_trace_id() {
+    use opentelemetry::global;
+    use opentelemetry::trace::Tracer;
+    use opentelemetry_sdk::trace::SdkTracerProvider;
+
+    let provider = SdkTracerProvider::builder().build();
+    global::set_tracer_provider(provider.clone());
+
+    let tracer = global::tracer("tumult-test");
+    let _guard = {
+        use opentelemetry::trace::TraceContextExt;
+        let span = tracer.start("test-root");
+        let cx = opentelemetry::Context::current_with_span(span);
+        cx.attach()
+    };
+
+    // Experiment with hypothesis + 2 method steps
+    let exp = Experiment {
+        title: "Multi-step span test".into(),
+        method: vec![
+            Activity {
+                name: "step-1".into(),
+                ..Default::default()
+            },
+            Activity {
+                name: "step-2".into(),
+                ..Default::default()
+            },
+        ],
+        steady_state_hypothesis: Some(Hypothesis {
+            title: "Healthy".into(),
+            probes: vec![Activity {
+                name: "probe-1".into(),
+                activity_type: ActivityType::Probe,
+                // MockExecutor returns "200" which parses as JSON number 200
+                tolerance: Some(Tolerance::Exact {
+                    value: serde_json::Value::Number(200.into()),
+                }),
+                ..Default::default()
+            }],
+        }),
+        ..Default::default()
+    };
+
+    let journal = run_experiment(
+        &exp,
+        &MockExecutor,
+        &ControlRegistry::new(),
+        &RunConfig::default(),
+    )
+    .unwrap();
+
+    // All activities should share the same trace_id (they're in the same trace)
+    let trace_ids: Vec<&str> = journal
+        .method_results
+        .iter()
+        .map(|r| r.trace_id.as_str())
+        .collect();
+    assert!(
+        trace_ids.iter().all(|t| !t.is_empty()),
+        "all trace_ids should be non-empty"
+    );
+    assert!(
+        trace_ids.windows(2).all(|w| w[0] == w[1]),
+        "all activities should share the same trace_id"
+    );
+
+    // But each should have a DIFFERENT span_id (unique per activity)
+    let span_ids: Vec<&str> = journal
+        .method_results
+        .iter()
+        .map(|r| r.span_id.as_str())
+        .collect();
+    assert_ne!(
+        span_ids[0], span_ids[1],
+        "each activity should have a unique span_id"
+    );
+
+    // Hypothesis probes should also share the trace but have unique spans
+    if let Some(ref hyp) = journal.steady_state_before {
+        let hyp_trace = &hyp.probe_results[0].trace_id;
+        assert_eq!(
+            hyp_trace, trace_ids[0],
+            "hypothesis should share trace_id with method"
+        );
+        let hyp_span = &hyp.probe_results[0].span_id;
+        assert_ne!(
+            hyp_span, &span_ids[0],
+            "hypothesis should have different span_id from method"
+        );
+    }
+
+    let _ = provider.shutdown();
+}
