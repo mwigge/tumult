@@ -1,3 +1,9 @@
+---
+title: tumult-network
+parent: Plugins
+nav_order: 5
+---
+
 # tumult-network — Network Chaos
 
 Script-based plugin for network fault injection. Covers latency, packet loss, corruption, DNS disruption, and host partitioning. Foundation for Kafka and database network chaos.

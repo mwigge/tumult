@@ -1,3 +1,9 @@
+---
+title: "ADR-004: Plugin System"
+parent: Architecture Decisions
+nav_order: 4
+---
+
 # ADR-004: Plugin System: Script-Based Community Plugins with Discovery
 
 **Status:** Accepted

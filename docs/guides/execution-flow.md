@@ -1,3 +1,9 @@
+---
+title: Execution Flow
+parent: Guides
+nav_order: 2
+---
+
 # Execution Flow
 
 Tumult experiments follow a five-phase lifecycle. Each phase produces data that feeds into the next. The execution is orchestrated by the `run_experiment()` function in `tumult-core::runner`.

@@ -1,3 +1,9 @@
+---
+title: "ADR-005: Five-Phase Model"
+parent: Architecture Decisions
+nav_order: 5
+---
+
 # ADR-005: Five-Phase Data Model with Statistical Baseline Methods
 
 **Status:** Accepted

@@ -1,3 +1,9 @@
+---
+title: tumult-kafka
+parent: Plugins
+nav_order: 7
+---
+
 # tumult-kafka — Kafka Broker Chaos
 
 Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, network partitions, latency injection, and consumer/cluster probes.

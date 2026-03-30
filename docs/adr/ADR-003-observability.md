@@ -1,3 +1,9 @@
+---
+title: "ADR-003: Observability"
+parent: Architecture Decisions
+nav_order: 3
+---
+
 # ADR-003: Observability: OpenTelemetry-First with Span Hierarchy
 
 **Status:** Accepted

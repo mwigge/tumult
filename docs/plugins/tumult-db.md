@@ -1,3 +1,9 @@
+---
+title: tumult-db
+parent: Plugins
+nav_order: 6
+---
+
 # tumult-db — Database Chaos
 
 Script-based plugins for PostgreSQL, MySQL, and Redis chaos engineering.

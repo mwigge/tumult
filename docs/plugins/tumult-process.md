@@ -1,3 +1,9 @@
+---
+title: tumult-process
+parent: Plugins
+nav_order: 10
+---
+
 # tumult-process — Process Chaos
 
 Script-based plugin for process kill, suspend, and resume operations.

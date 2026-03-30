@@ -1,6 +1,12 @@
-# <img src="../images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Plugin System: Chaos Engineering Without a Rust Toolchain
+---
+title: "The Plugin System: Chaos Engineering Without a Rust Toolchain"
+parent: Blog
+nav_order: 4
+---
 
-![Tumult Banner](../images/tumult-banner.png)
+# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Plugin System: Chaos Engineering Without a Rust Toolchain
+
+![Tumult Banner](/tumult/images/tumult-banner.png)
 
 *Part 4 of the Tumult series. [← Part 3: Built-In Proof: Native Observability](./03-built-in-observability.md)*
 

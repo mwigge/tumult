@@ -1,3 +1,9 @@
+---
+title: Analytics Guide
+parent: Guides
+nav_order: 5
+---
+
 # Analytics Guide
 
 Tumult embeds DuckDB and Apache Arrow for SQL analytics over experiment journals.
