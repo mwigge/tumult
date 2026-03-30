@@ -340,6 +340,103 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+// ── Analyze command ───────────────────────────────────────────
+
+pub fn cmd_analyze(journals_path: &Path, query: Option<&str>) -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+    use tumult_core::journal::read_journal;
+
+    let store = AnalyticsStore::in_memory()?;
+    let mut count = 0;
+
+    if journals_path.is_file() {
+        let journal = read_journal(journals_path)
+            .with_context(|| format!("failed to read journal: {}", journals_path.display()))?;
+        store.ingest_journal(&journal)?;
+        count = 1;
+    } else if journals_path.is_dir() {
+        for entry in std::fs::read_dir(journals_path)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toon") {
+                match read_journal(&path) {
+                    Ok(journal) => {
+                        store.ingest_journal(&journal)?;
+                        count += 1;
+                    }
+                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
+                }
+            }
+        }
+    } else {
+        bail!("path does not exist: {}", journals_path.display());
+    }
+
+    println!("Loaded {} journal(s) into analytics store\n", count);
+
+    if let Some(sql) = query {
+        let columns = store.query_columns(sql)?;
+        let rows = store.query(sql)?;
+        println!("{}", columns.join("\t"));
+        println!(
+            "{}",
+            columns
+                .iter()
+                .map(|c| "-".repeat(c.len().max(8)))
+                .collect::<Vec<_>>()
+                .join("\t")
+        );
+        for row in &rows {
+            println!("{}", row.join("\t"));
+        }
+        println!("\n{} row(s)", rows.len());
+    } else {
+        let rows = store.query(
+            "SELECT status, count(*) as count, avg(duration_ms) as avg_duration_ms, \
+             avg(resilience_score) as avg_resilience \
+             FROM experiments GROUP BY status ORDER BY count DESC",
+        )?;
+        println!("Experiment Summary:");
+        println!("Status\t\tCount\tAvg Duration (ms)\tAvg Resilience");
+        println!("------\t\t-----\t-----------------\t--------------");
+        for row in &rows {
+            println!("{}\t\t{}\t{}\t\t\t{}", row[0], row[1], row[2], row[3]);
+        }
+    }
+    Ok(())
+}
+
+// ── Export command ─────────────────────────────────────────────
+
+pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
+    use tumult_analytics::arrow_convert::journal_to_record_batch;
+    use tumult_analytics::export::{export_csv, export_parquet};
+    use tumult_core::journal::read_journal;
+
+    let journal = read_journal(journal_path)
+        .with_context(|| format!("failed to read journal: {}", journal_path.display()))?;
+    let (exp_batch, _act_batch) = journal_to_record_batch(&[journal])?;
+
+    let ext = match format {
+        "parquet" => "parquet",
+        "csv" => "csv",
+        _ => bail!("unsupported format: {}", format),
+    };
+    let stem = journal_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_str()
+        .unwrap_or("journal");
+    let out_path = std::path::PathBuf::from(format!("{}.{}", stem, ext));
+
+    match format {
+        "parquet" => export_parquet(&exp_batch, &out_path)?,
+        "csv" => export_csv(&exp_batch, &out_path)?,
+        _ => unreachable!(),
+    }
+    println!("Exported to: {}", out_path.display());
+    Ok(())
+}
+
 // ── Init command ──────────────────────────────────────────────
 
 pub fn cmd_init(plugin: Option<&str>) -> Result<()> {
