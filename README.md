@@ -68,14 +68,25 @@ Native plugins (for performance-critical or SDK-heavy tasks like kube-rs or clou
 cargo install tumult --features kubernetes,aws
 ```
 
+## Available Plugins
+
+| Plugin | Type | Capabilities |
+|--------|------|-------------|
+| **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
+| **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
+| **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
+| **tumult-process** | Script | Process kill/suspend/resume by PID/name/pattern, resource probes |
+
+See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
+
 ## Phasing & Roadmap
 
-| Phase | Scope | Outcome |
-|-------|-------|---------|
-| **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Core run functionality, OTel traces, TOON journals. |
-| **1 — Essential Plugins** | Remote execution (SSH), stress (CPU/Mem/IO), process/container kill. | Practical baseline chaos on servers and containers. |
-| **2 — Platform Plugins** | Kubernetes, Databases, Kafka. | Application-level chaos on critical infrastructure. |
-| **3 — Automation + Cloud** | tumult-mcp, Cloud SDKs (AWS/GCP/Azure), HTML reporting. | Automated orchestration (MCP) and comprehensive cloud failure models. |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
+| **1 — Essential Plugins** | SSH, stress, containers, process | Done |
+| **2 — Platform Plugins** | Kubernetes, Databases, Kafka | Next |
+| **3 — Automation + Cloud** | tumult-mcp, Cloud SDKs, HTML reporting | Planned |
 
 ## Example Experiment
 
