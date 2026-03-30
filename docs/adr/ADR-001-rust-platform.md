@@ -1,3 +1,9 @@
+---
+title: "ADR-001: Rust Platform"
+parent: Architecture Decisions
+nav_order: 1
+---
+
 # ADR-001: Rust for Chaos Engineering
 
 **Status:** Accepted
