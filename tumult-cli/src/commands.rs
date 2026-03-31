@@ -181,6 +181,7 @@ pub fn cmd_run(
     journal_path: &Path,
     dry_run: bool,
     rollback_strategy: RollbackStrategy,
+    auto_ingest: bool,
 ) -> Result<()> {
     let content = std::fs::read_to_string(experiment_path).with_context(|| {
         format!(
@@ -221,12 +222,31 @@ pub fn cmd_run(
     }
     println!("Journal written to: {}", journal_path.display());
 
+    // Auto-ingest into persistent analytics store
+    if auto_ingest {
+        match auto_ingest_journal(&journal) {
+            Ok(true) => println!("Ingested into persistent analytics store"),
+            Ok(false) => println!("Already in analytics store (duplicate)"),
+            Err(e) => eprintln!("warning: auto-ingest failed: {}", e),
+        }
+    }
+
     // Exit with non-zero if experiment did not complete successfully
     if journal.status != ExperimentStatus::Completed {
         bail!("experiment finished with status: {:?}", journal.status);
     }
 
     Ok(())
+}
+
+fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
+    use tumult_analytics::AnalyticsStore;
+
+    let db_path = AnalyticsStore::default_path();
+    let store = AnalyticsStore::open(&db_path)
+        .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
+    let ingested = store.ingest_journal(journal)?;
+    Ok(ingested)
 }
 
 // ── Validate command ──────────────────────────────────────────
@@ -375,34 +395,49 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
 
 // ── Analyze command ───────────────────────────────────────────
 
-pub fn cmd_analyze(journals_path: &Path, query: Option<&str>) -> Result<()> {
+pub fn cmd_analyze(journals_path: Option<&Path>, query: Option<&str>) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
 
-    let store = AnalyticsStore::in_memory()?;
-    let mut count = 0;
+    let (store, count) = if let Some(path) = journals_path {
+        let store = AnalyticsStore::in_memory()?;
+        let mut count = 0;
 
-    if journals_path.is_file() {
-        let journal = read_journal(journals_path)
-            .with_context(|| format!("failed to read journal: {}", journals_path.display()))?;
-        store.ingest_journal(&journal)?;
-        count = 1;
-    } else if journals_path.is_dir() {
-        for entry in std::fs::read_dir(journals_path)? {
-            let path = entry?.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toon") {
-                match read_journal(&path) {
-                    Ok(journal) => {
-                        store.ingest_journal(&journal)?;
-                        count += 1;
+        if path.is_file() {
+            let journal = read_journal(path)
+                .with_context(|| format!("failed to read journal: {}", path.display()))?;
+            store.ingest_journal(&journal)?;
+            count = 1;
+        } else if path.is_dir() {
+            for entry in std::fs::read_dir(path)? {
+                let entry_path = entry?.path();
+                if entry_path.extension().and_then(|e| e.to_str()) == Some("toon") {
+                    match read_journal(&entry_path) {
+                        Ok(journal) => {
+                            store.ingest_journal(&journal)?;
+                            count += 1;
+                        }
+                        Err(e) => eprintln!("warning: skipping {}: {}", entry_path.display(), e),
                     }
-                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
                 }
             }
+        } else {
+            bail!("path does not exist: {}", path.display());
         }
+        (store, count)
     } else {
-        bail!("path does not exist: {}", journals_path.display());
-    }
+        // Use persistent store
+        let db_path = AnalyticsStore::default_path();
+        if !db_path.exists() {
+            bail!(
+                "no persistent store found at {}. Run experiments first or specify a journals path.",
+                db_path.display()
+            );
+        }
+        let store = AnalyticsStore::open(&db_path)?;
+        let count = store.experiment_count()?;
+        (store, count)
+    };
 
     println!("Loaded {} journal(s) into analytics store\n", count);
 
@@ -855,6 +890,129 @@ fn print_dry_run(experiment: &Experiment) {
     println!("=== END DRY RUN ===");
 }
 
+// ── Import command ──────────────────────────────────────────
+
+pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+
+    if !parquet_dir.is_dir() {
+        bail!("not a directory: {}", parquet_dir.display());
+    }
+
+    let exp_path = parquet_dir.join("experiments.parquet");
+    let act_path = parquet_dir.join("activities.parquet");
+
+    if !exp_path.exists() {
+        bail!("experiments.parquet not found in {}", parquet_dir.display());
+    }
+    if !act_path.exists() {
+        bail!("activities.parquet not found in {}", parquet_dir.display());
+    }
+
+    let db_path = AnalyticsStore::default_path();
+    let store = AnalyticsStore::open(&db_path)?;
+    store.import_tables(&exp_path, &act_path)?;
+
+    let stats = store.stats()?;
+    println!("Imported from: {}", parquet_dir.display());
+    println!(
+        "Store now contains: {} experiments, {} activities",
+        stats.experiment_count, stats.activity_count
+    );
+    Ok(())
+}
+
+// ── Store management commands ───────────────────────────────
+
+pub fn cmd_store_stats() -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+
+    let db_path = AnalyticsStore::default_path();
+    if !db_path.exists() {
+        println!("No persistent store found at: {}", db_path.display());
+        println!("Run an experiment to create it automatically.");
+        return Ok(());
+    }
+
+    let store = AnalyticsStore::open(&db_path)?;
+    let stats = store.stats()?;
+    let version = store.schema_version()?;
+
+    println!("Store: {}", db_path.display());
+    println!("Schema version: {}", version);
+    println!("Experiments: {}", stats.experiment_count);
+    println!("Activities: {}", stats.activity_count);
+
+    if let Ok(size) = std::fs::metadata(&db_path) {
+        let mb = size.len() as f64 / (1024.0 * 1024.0);
+        println!("File size: {:.2} MB", mb);
+    }
+
+    Ok(())
+}
+
+pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+
+    let db_path = AnalyticsStore::default_path();
+    if !db_path.exists() {
+        bail!("no persistent store found at: {}", db_path.display());
+    }
+
+    std::fs::create_dir_all(output_dir)?;
+
+    let store = AnalyticsStore::open(&db_path)?;
+    let exp_path = output_dir.join("experiments.parquet");
+    let act_path = output_dir.join("activities.parquet");
+
+    store.export_tables(&exp_path, &act_path)?;
+
+    let stats = store.stats()?;
+    println!("Backed up to: {}", output_dir.display());
+    println!("  experiments.parquet — {} rows", stats.experiment_count);
+    println!("  activities.parquet — {} rows", stats.activity_count);
+    Ok(())
+}
+
+pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+
+    let db_path = AnalyticsStore::default_path();
+    if !db_path.exists() {
+        bail!("no persistent store found at: {}", db_path.display());
+    }
+
+    let store = AnalyticsStore::open(&db_path)?;
+    let purged = store.purge_older_than_days(older_than_days)?;
+
+    let stats = store.stats()?;
+    println!(
+        "Purged {} experiment(s) older than {} days",
+        purged, older_than_days
+    );
+    println!(
+        "Remaining: {} experiments, {} activities",
+        stats.experiment_count, stats.activity_count
+    );
+    Ok(())
+}
+
+pub fn cmd_store_path() -> Result<()> {
+    use tumult_analytics::AnalyticsStore;
+
+    let db_path = AnalyticsStore::default_path();
+    println!("{}", db_path.display());
+    if db_path.exists() {
+        if let Ok(size) = std::fs::metadata(&db_path) {
+            let mb = size.len() as f64 / (1024.0 * 1024.0);
+            println!("Size: {:.2} MB", mb);
+        }
+    } else {
+        println!("(not yet created)");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -938,6 +1096,7 @@ mod tests {
             &journal_path,
             false,
             RollbackStrategy::OnDeviation,
+            false,
         );
 
         assert!(result.is_ok());
@@ -955,6 +1114,7 @@ mod tests {
             &journal_path,
             true,
             RollbackStrategy::OnDeviation,
+            false,
         );
 
         assert!(result.is_ok());
@@ -968,6 +1128,7 @@ mod tests {
             Path::new("journal.toon"),
             false,
             RollbackStrategy::OnDeviation,
+            false,
         );
         assert!(result.is_err());
     }
@@ -982,6 +1143,7 @@ mod tests {
             &dir.path().join("journal.toon"),
             false,
             RollbackStrategy::OnDeviation,
+            false,
         );
         assert!(result.is_err());
     }
@@ -996,6 +1158,7 @@ mod tests {
             &dir.path().join("journal.toon"),
             false,
             RollbackStrategy::OnDeviation,
+            false,
         );
         assert!(result.is_err());
     }
@@ -1200,5 +1363,62 @@ mod tests {
             .as_ref()
             .unwrap()
             .contains("not yet available"));
+    }
+
+    // ── Phase 4: Import/Export roundtrip ──────────────────────
+
+    #[test]
+    fn import_rejects_missing_directory() {
+        let result = cmd_import(Path::new("/nonexistent/path"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn import_rejects_missing_parquet_files() {
+        let d = TempDir::new().unwrap();
+        let result = cmd_import(d.path());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("experiments.parquet not found"));
+    }
+
+    // ── Phase 4: Run with auto-ingest ─────────────────────────
+
+    #[test]
+    fn cmd_run_with_auto_ingest() {
+        let d = TempDir::new().unwrap();
+        let exp_path = write_valid_experiment(d.path());
+        let journal_path = d.path().join("out.toon");
+
+        // Run with auto-ingest disabled (avoids touching real ~/.tumult)
+        let result = cmd_run(
+            &exp_path,
+            &journal_path,
+            false,
+            RollbackStrategy::OnDeviation,
+            false,
+        );
+        assert!(result.is_ok());
+        assert!(journal_path.exists());
+    }
+
+    #[test]
+    fn cmd_run_dry_run_does_not_ingest() {
+        let d = TempDir::new().unwrap();
+        let exp_path = write_valid_experiment(d.path());
+        let journal_path = d.path().join("out.toon");
+
+        let result = cmd_run(
+            &exp_path,
+            &journal_path,
+            true,
+            RollbackStrategy::OnDeviation,
+            true,
+        );
+        assert!(result.is_ok());
+        // Journal should NOT be written in dry-run mode
+        assert!(!journal_path.exists());
     }
 }
