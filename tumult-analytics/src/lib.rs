@@ -27,6 +27,7 @@ pub mod arrow_convert;
 pub mod duckdb_store;
 pub mod error;
 pub mod export;
+pub mod telemetry;
 
 pub use arrow_convert::journal_to_record_batch;
 pub use duckdb_store::{AnalyticsStore, StoreStats};
