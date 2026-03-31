@@ -289,19 +289,20 @@ fn evaluate_hypothesis(
             name: probe.name.clone(),
         });
 
-        // Create an OTel span for this probe
+        // Create an OTel span for this probe with target + fault attributes
+        let mut attrs = vec![KeyValue::new("resilience.probe.name", probe.name.clone())];
+        attrs.extend(target_attributes(probe));
+        attrs.extend(fault_attributes(probe));
         let span = tracer
             .span_builder("tumult.probe".to_string())
-            .with_attributes(vec![KeyValue::new(
-                "resilience.probe.name",
-                probe.name.clone(),
-            )])
+            .with_attributes(attrs)
             .start(&tracer);
         let cx = opentelemetry::Context::current_with_span(span);
         let _guard = cx.attach();
 
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(probe);
+        set_span_status_from_outcome(outcome.success, &outcome.error);
 
         let result = make_result(ResultParams {
             activity: probe,
@@ -377,21 +378,25 @@ fn execute_activities(
             ActivityType::Action => "tumult.action",
             ActivityType::Probe => "tumult.probe",
         };
+        let mut attrs = vec![
+            KeyValue::new("resilience.action.name", activity.name.clone()),
+            KeyValue::new(
+                "resilience.activity.type",
+                format!("{:?}", activity.activity_type),
+            ),
+        ];
+        attrs.extend(target_attributes(activity));
+        attrs.extend(fault_attributes(activity));
         let span = tracer
             .span_builder(span_name.to_string())
-            .with_attributes(vec![
-                KeyValue::new("resilience.action.name", activity.name.clone()),
-                KeyValue::new(
-                    "resilience.activity.type",
-                    format!("{:?}", activity.activity_type),
-                ),
-            ])
+            .with_attributes(attrs)
             .start(&tracer);
         let cx = opentelemetry::Context::current_with_span(span);
         let _guard = cx.attach();
 
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(activity);
+        set_span_status_from_outcome(outcome.success, &outcome.error);
 
         let result = make_result(ResultParams {
             activity,
@@ -444,6 +449,56 @@ fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Optio
             Some(0.0)
         },
     })
+}
+
+/// Extract target attributes from an activity's provider.
+fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
+    match &activity.provider {
+        Provider::Process { path, .. } => vec![
+            KeyValue::new("resilience.target.type", "process"),
+            KeyValue::new("resilience.target.name", path.clone()),
+        ],
+        Provider::Http { url, method, .. } => vec![
+            KeyValue::new("resilience.target.type", "http"),
+            KeyValue::new("resilience.target.name", url.clone()),
+            KeyValue::new(
+                "resilience.target.endpoint",
+                format!("{:?} {}", method, url),
+            ),
+        ],
+        Provider::Native {
+            plugin, function, ..
+        } => vec![
+            KeyValue::new("resilience.target.type", "native"),
+            KeyValue::new("resilience.target.name", plugin.clone()),
+            KeyValue::new(
+                "resilience.target.component",
+                format!("{}::{}", plugin, function),
+            ),
+        ],
+    }
+}
+
+/// Extract fault attributes from an activity.
+fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
+    let fault_type = match activity.activity_type {
+        ActivityType::Action => "injection",
+        ActivityType::Probe => "observation",
+    };
+    vec![
+        KeyValue::new("resilience.fault.type", fault_type),
+        KeyValue::new("resilience.fault.name", activity.name.clone()),
+    ]
+}
+
+/// Set span error status if the outcome failed.
+fn set_span_status_from_outcome(success: bool, error: &Option<String>) {
+    if !success {
+        let ctx = opentelemetry::Context::current();
+        let span = ctx.span();
+        let desc = error.as_deref().unwrap_or("activity failed");
+        span.set_status(opentelemetry::trace::Status::error(desc.to_string()));
+    }
 }
 
 /// Get the current trace ID from the active span context.
