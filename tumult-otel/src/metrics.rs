@@ -32,11 +32,15 @@ impl TumultMetrics {
                 .f64_histogram("tumult_action_duration_seconds")
                 .with_description("Action execution duration")
                 .with_unit("s")
+                .with_boundaries(vec![
+                    0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0,
+                ])
                 .build(),
             probe_duration_seconds: meter
                 .f64_histogram("tumult_probe_duration_seconds")
                 .with_description("Probe execution duration")
                 .with_unit("s")
+                .with_boundaries(vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0])
                 .build(),
             hypothesis_deviations_total: meter
                 .u64_counter("tumult_hypothesis_deviations_total")
