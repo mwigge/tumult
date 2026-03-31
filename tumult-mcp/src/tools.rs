@@ -263,6 +263,60 @@ pub fn query_traces(journal_path: &str) -> Result<String, String> {
     Ok(output)
 }
 
+/// Query the persistent analytics store stats.
+/// If `store_path` is empty, uses the default path.
+pub fn store_stats(store_path: &str) -> Result<String, String> {
+    let path = std::path::PathBuf::from(store_path);
+    if !path.exists() {
+        return Err(format!("store not found: {}", store_path));
+    }
+
+    let store =
+        tumult_analytics::AnalyticsStore::open(&path).map_err(|e| format!("open error: {}", e))?;
+    let stats = store.stats().map_err(|e| format!("stats error: {}", e))?;
+    let version = store
+        .schema_version()
+        .map_err(|e| format!("version error: {}", e))?;
+
+    let mut output = format!("store: {}\n", store_path);
+    output += &format!("schema_version: {}\n", version);
+    output += &format!("experiments: {}\n", stats.experiment_count);
+    output += &format!("activities: {}\n", stats.activity_count);
+
+    if let Ok(meta) = std::fs::metadata(&path) {
+        let mb = meta.len() as f64 / (1024.0 * 1024.0);
+        output += &format!("size_mb: {:.2}\n", mb);
+    }
+
+    Ok(output)
+}
+
+/// Analyze using the persistent store directly (no journal loading).
+pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, String> {
+    let path = std::path::PathBuf::from(store_path);
+    if !path.exists() {
+        return Err(format!("store not found: {}", store_path));
+    }
+
+    let store =
+        tumult_analytics::AnalyticsStore::open(&path).map_err(|e| format!("open error: {}", e))?;
+
+    let columns = store
+        .query_columns(query)
+        .map_err(|e| format!("query error: {}", e))?;
+    let rows = store
+        .query(query)
+        .map_err(|e| format!("query error: {}", e))?;
+
+    let mut output = columns.join("\t") + "\n";
+    for row in &rows {
+        output += &row.join("\t");
+        output += "\n";
+    }
+    output += &format!("{} row(s)", rows.len());
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,5 +518,55 @@ mod tests {
     fn query_traces_nonexistent_returns_error() {
         let result = query_traces("/nonexistent/journal.toon");
         assert!(result.is_err());
+    }
+
+    // ── store_stats ──────────────────────────────────────────
+
+    #[test]
+    fn store_stats_with_temp_store() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("analytics.duckdb");
+        let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
+        drop(store);
+
+        let result = store_stats(db_path.to_str().unwrap());
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("experiments: 0"));
+        assert!(output.contains("schema_version: 1"));
+    }
+
+    #[test]
+    fn store_stats_missing_store_returns_error() {
+        let result = store_stats("/nonexistent/analytics.duckdb");
+        assert!(result.is_err());
+    }
+
+    // ── analyze with persistent store ────────────────────────
+
+    #[test]
+    fn analyze_persistent_queries_store() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("analytics.duckdb");
+
+        // Pre-populate a persistent store
+        {
+            let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
+            let exp_path = write_valid_experiment(dir.path());
+            let journal_toon = run_experiment(&exp_path, "always").unwrap();
+            // Write journal to file, then read back via tumult_core
+            let journal_file = dir.path().join("journal.toon");
+            std::fs::write(&journal_file, &journal_toon).unwrap();
+            let journal = tumult_core::journal::read_journal(&journal_file).unwrap();
+            store.ingest_journal(&journal).unwrap();
+        }
+
+        let result = analyze_persistent(
+            db_path.to_str().unwrap(),
+            "SELECT count(*) as n FROM experiments",
+        );
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("1 row(s)"));
     }
 }
