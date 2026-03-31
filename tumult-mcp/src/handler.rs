@@ -198,6 +198,7 @@ impl ServerHandler for TumultHandler {
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, CallToolError> {
         tracing::info!(tool = %params.name, "MCP tool call");
+        let _span = crate::telemetry::begin_tool_call(&params.name);
 
         let result = match params.name.as_str() {
             "tumult_run_experiment" => {
@@ -241,10 +242,16 @@ impl ServerHandler for TumultHandler {
         };
 
         match result {
-            Ok(content) => Ok(CallToolResult::text_content(vec![content.into()])),
-            Err(e) => Ok(CallToolResult::text_content(vec![
-                format!("Error: {}", e).into()
-            ])),
+            Ok(content) => {
+                crate::telemetry::event_tool_completed(&params.name, true);
+                Ok(CallToolResult::text_content(vec![content.into()]))
+            }
+            Err(e) => {
+                crate::telemetry::event_tool_error(&params.name, &e);
+                Ok(CallToolResult::text_content(vec![
+                    format!("Error: {}", e).into()
+                ]))
+            }
         }
     }
 }

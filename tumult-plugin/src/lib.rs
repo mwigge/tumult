@@ -33,6 +33,7 @@ pub mod discovery;
 pub mod executor;
 pub mod manifest;
 pub mod registry;
+pub mod telemetry;
 pub mod traits;
 
 pub use manifest::ScriptPluginManifest;

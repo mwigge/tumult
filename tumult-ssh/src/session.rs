@@ -36,6 +36,12 @@ pub struct SshSession {
 impl SshSession {
     /// Connect to a remote host using the provided configuration.
     pub async fn connect(config: SshConfig) -> Result<Self, SshError> {
+        let auth_label = match &config.auth {
+            crate::config::AuthMethod::Key { .. } => "key",
+            crate::config::AuthMethod::Agent => "agent",
+        };
+        let _span = crate::telemetry::begin_connect(&config.host, config.port, auth_label);
+
         let ssh_config = Arc::new(client::Config {
             ..Default::default()
         });
@@ -63,11 +69,16 @@ impl SshSession {
                 seconds: config.connect_timeout.as_secs_f64(),
             })??;
 
+        crate::telemetry::event_auth_success(auth_label);
         Ok(Self { handle, config })
     }
 
     /// Execute a command on the remote host.
     pub async fn execute(&self, command: &str) -> Result<CommandResult, SshError> {
+        let _span = crate::telemetry::begin_execute(
+            command,
+            self.config.command_timeout.map(|d| d.as_secs_f64()),
+        );
         let mut channel = self
             .handle
             .channel_open_session()
@@ -138,11 +149,17 @@ impl SshSession {
             stderr_str.push_str(&sig);
         }
 
-        Ok(CommandResult {
+        let result = CommandResult {
             exit_code: code,
             stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
             stderr: stderr_str,
-        })
+        };
+        crate::telemetry::event_command_completed(
+            i64::from(result.exit_code),
+            result.stdout.len(),
+            result.stderr.len(),
+        );
+        Ok(result)
     }
 
     /// Upload a file to the remote host via SSH channel.
@@ -150,6 +167,12 @@ impl SshSession {
     /// Uses `cat > path` on the remote end. Requires a POSIX shell.
     /// The file is written with mode 755 (executable).
     pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
+        let file_size = tokio::fs::metadata(local_path)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let _span = crate::telemetry::begin_upload(remote_path, file_size);
+
         let content = tokio::fs::read(local_path)
             .await
             .map_err(|e| SshError::UploadFailed(format!("read local file: {}", e)))?;
