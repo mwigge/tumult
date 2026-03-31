@@ -1,0 +1,787 @@
+{
+  "description": "Docker container resource usage (CPU, memory, network I/O, block I/O) and host-level metrics (CPU, memory, disk, network) collected by the Tumult OTel Collector.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-containers",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "graph-container-cpu",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 6,
+      "i": "graph-container-memory",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 6,
+      "i": "graph-container-net-rx",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 7
+    },
+    {
+      "h": 6,
+      "i": "graph-container-net-tx",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 7
+    },
+    {
+      "h": 6,
+      "i": "graph-container-blockio",
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 1,
+      "i": "row-host",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 19
+    },
+    {
+      "h": 6,
+      "i": "graph-host-cpu",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 20
+    },
+    {
+      "h": 6,
+      "i": "graph-host-memory",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 20
+    },
+    {
+      "h": 6,
+      "i": "graph-host-disk",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 26
+    },
+    {
+      "h": 6,
+      "i": "graph-host-network",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 26
+    }
+  ],
+  "panelMap": {
+    "row-containers": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-container-cpu", "moved": false, "static": false, "w": 6, "x": 0, "y": 1 },
+        { "h": 6, "i": "graph-container-memory", "moved": false, "static": false, "w": 6, "x": 6, "y": 1 },
+        { "h": 6, "i": "graph-container-net-rx", "moved": false, "static": false, "w": 6, "x": 0, "y": 7 },
+        { "h": 6, "i": "graph-container-net-tx", "moved": false, "static": false, "w": 6, "x": 6, "y": 7 },
+        { "h": 6, "i": "graph-container-blockio", "moved": false, "static": false, "w": 12, "x": 0, "y": 13 }
+      ]
+    },
+    "row-host": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-host-cpu", "moved": false, "static": false, "w": 6, "x": 0, "y": 20 },
+        { "h": 6, "i": "graph-host-memory", "moved": false, "static": false, "w": 6, "x": 6, "y": 20 },
+        { "h": 6, "i": "graph-host-disk", "moved": false, "static": false, "w": 6, "x": 0, "y": 26 },
+        { "h": 6, "i": "graph-host-network", "moved": false, "static": false, "w": 6, "x": 6, "y": 26 }
+      ]
+    }
+  },
+  "tags": ["tumult", "chaos", "infrastructure", "containers", "docker", "host"],
+  "title": "Tumult — Containers & Host Metrics",
+  "uploadedGrafana": false,
+  "uuid": "tumult-containers-host-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-containers",
+      "panelTypes": "row",
+      "title": "Docker Containers"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "CPU usage (nanoseconds) rate per container — higher rate = more CPU consumed",
+      "fillSpans": false,
+      "id": "graph-container-cpu",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.cpu.usage.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.cpu.usage.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-container-cpu",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Container CPU Usage Rate",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Memory usage in bytes per container",
+      "fillSpans": false,
+      "id": "graph-container-memory",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.memory.usage.total--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.memory.usage.total",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-container-memory",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Container Memory Usage",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Network bytes received per second per container",
+      "fillSpans": false,
+      "id": "graph-container-net-rx",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.network.io.usage.rx_bytes--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.network.io.usage.rx_bytes",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-container-net-rx",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Container Network Receive (bytes/s)",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Network bytes transmitted per second per container",
+      "fillSpans": false,
+      "id": "graph-container-net-tx",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.network.io.usage.tx_bytes--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.network.io.usage.tx_bytes",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-container-net-tx",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Container Network Transmit (bytes/s)",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Block I/O bytes (read + write) per second per container",
+      "fillSpans": false,
+      "id": "graph-container-blockio",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.blockio.io_service_bytes_recursive--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.blockio.io_service_bytes_recursive",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "operation--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "operation",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}} {{operation}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-container-blockio",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Container Block I/O (bytes/s)",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "description": "",
+      "id": "row-host",
+      "panelTypes": "row",
+      "title": "Host Metrics"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Host CPU utilisation by state (user, system, idle, iowait, etc.)",
+      "fillSpans": false,
+      "id": "graph-host-cpu",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "system.cpu.time--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "system.cpu.time",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "state--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "state",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{state}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-host-cpu",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Host CPU Time by State",
+      "yAxisUnit": "s"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Host memory usage by state (used, free, cached, buffered)",
+      "fillSpans": false,
+      "id": "graph-host-memory",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "system.memory.usage--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "system.memory.usage",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "state--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "state",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{state}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-host-memory",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Host Memory Usage by State",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Disk I/O bytes read and written per second by device",
+      "fillSpans": false,
+      "id": "graph-host-disk",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "system.disk.io--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "system.disk.io",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "device--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "device",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "direction--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "direction",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{device}} {{direction}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-host-disk",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Host Disk I/O (bytes/s)",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Host network bytes received and transmitted per second by interface",
+      "fillSpans": false,
+      "id": "graph-host-network",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "system.network.io--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "system.network.io",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "device--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "device",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "direction--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "direction",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{device}} {{direction}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-host-network",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Host Network I/O (bytes/s)",
+      "yAxisUnit": "bytes"
+    }
+  ]
+}
