@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use indexmap::IndexMap;
 use tumult_core::controls::{ControlHandler, ControlRegistry, LifecycleEvent};
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
@@ -170,11 +171,12 @@ fn hypothesis(title: &str, probes: Vec<Activity>) -> Hypothesis {
 
 fn experiment_builder() -> Experiment {
     Experiment {
+        version: "v1".into(),
         title: "Integration test experiment".into(),
         description: Some("Tests the full five-phase lifecycle".into()),
         tags: vec!["integration".into(), "test".into()],
-        configuration: HashMap::new(),
-        secrets: HashMap::new(),
+        configuration: IndexMap::new(),
+        secrets: IndexMap::new(),
         controls: vec![],
         steady_state_hypothesis: None,
         method: vec![action("inject-fault")],

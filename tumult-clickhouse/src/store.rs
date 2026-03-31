@@ -84,6 +84,7 @@ struct ValueRow {
 pub struct ClickHouseStore {
     client: Client,
     database: String,
+    query_timeout: std::time::Duration,
 }
 
 impl ClickHouseStore {
@@ -118,7 +119,7 @@ impl ClickHouseStore {
             }
         }
         Err(last_err.unwrap_or_else(|| {
-            AnalyticsError::Io(std::io::Error::other("connection failed after all retries"))
+            AnalyticsError::ClickHouse("connection failed after all retries".into())
         }))
     }
 
@@ -135,6 +136,7 @@ impl ClickHouseStore {
         let store = Self {
             client,
             database: config.database.clone(),
+            query_timeout: config.query_timeout,
         };
 
         store.init_schema().await?;
@@ -217,12 +219,28 @@ impl ClickHouseStore {
     }
 
     fn ch_err(e: clickhouse::error::Error) -> AnalyticsError {
-        AnalyticsError::Io(std::io::Error::other(e.to_string()))
+        AnalyticsError::ClickHouse(e.to_string())
+    }
+
+    /// Wrap an async operation with the configured query timeout.
+    async fn with_timeout<T, F>(&self, fut: F) -> Result<T, AnalyticsError>
+    where
+        F: std::future::Future<Output = Result<T, AnalyticsError>>,
+    {
+        tokio::time::timeout(self.query_timeout, fut)
+            .await
+            .map_err(|_| {
+                AnalyticsError::ClickHouse(format!(
+                    "query timed out after {:?}",
+                    self.query_timeout
+                ))
+            })?
     }
 
     async fn execute_ddl(&self, sql: &str) -> Result<(), AnalyticsError> {
         crate::telemetry::event_ddl_executed(sql);
-        self.client.query(sql).execute().await.map_err(Self::ch_err)
+        self.with_timeout(async { self.client.query(sql).execute().await.map_err(Self::ch_err) })
+            .await
     }
 
     /// Async ingest using typed Row inserts (no SQL interpolation).
@@ -231,12 +249,15 @@ impl ClickHouseStore {
 
         // Check duplicate via parameterized bind
         let count = self
-            .client
-            .query("SELECT count() as count FROM experiments WHERE experiment_id = ?")
-            .bind(&journal.experiment_id)
-            .fetch_one::<CountRow>()
-            .await
-            .map_err(Self::ch_err)?;
+            .with_timeout(async {
+                self.client
+                    .query("SELECT count() as count FROM experiments WHERE experiment_id = ?")
+                    .bind(&journal.experiment_id)
+                    .fetch_one::<CountRow>()
+                    .await
+                    .map_err(Self::ch_err)
+            })
+            .await?;
 
         if count.count > 0 {
             telemetry::event_journal_duplicate(&journal.experiment_id);
@@ -268,9 +289,7 @@ impl ClickHouseStore {
             .await
             .map_err(Self::ch_err)?;
         insert.write(&exp_row).await.map_err(Self::ch_err)?;
-        insert.end().await.map_err(|e: clickhouse::error::Error| {
-            AnalyticsError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        insert.end().await.map_err(Self::ch_err)?;
 
         // Type-safe insert for activity results
         let mut activity_count = 0usize;
@@ -364,22 +383,28 @@ impl ClickHouseStore {
 
     pub async fn experiment_count_async(&self) -> Result<usize, AnalyticsError> {
         let row = self
-            .client
-            .query("SELECT count() as count FROM experiments")
-            .fetch_one::<CountRow>()
-            .await
-            .map_err(Self::ch_err)?;
+            .with_timeout(async {
+                self.client
+                    .query("SELECT count() as count FROM experiments")
+                    .fetch_one::<CountRow>()
+                    .await
+                    .map_err(Self::ch_err)
+            })
+            .await?;
         Ok(row.count as usize)
     }
 
     pub async fn stats_async(&self) -> Result<StoreStats, AnalyticsError> {
         let exp = self.experiment_count_async().await?;
         let act_row = self
-            .client
-            .query("SELECT count() as count FROM activity_results")
-            .fetch_one::<CountRow>()
-            .await
-            .map_err(Self::ch_err)?;
+            .with_timeout(async {
+                self.client
+                    .query("SELECT count() as count FROM activity_results")
+                    .fetch_one::<CountRow>()
+                    .await
+                    .map_err(Self::ch_err)
+            })
+            .await?;
         Ok(StoreStats {
             experiment_count: exp,
             activity_count: act_row.count as usize,
@@ -425,11 +450,14 @@ impl ClickHouseStore {
 
     pub async fn schema_version_async(&self) -> Result<i64, AnalyticsError> {
         let row = self
-            .client
-            .query("SELECT value FROM schema_meta WHERE key = 'version' LIMIT 1")
-            .fetch_one::<ValueRow>()
-            .await
-            .map_err(Self::ch_err)?;
+            .with_timeout(async {
+                self.client
+                    .query("SELECT value FROM schema_meta WHERE key = 'version' LIMIT 1")
+                    .fetch_one::<ValueRow>()
+                    .await
+                    .map_err(Self::ch_err)
+            })
+            .await?;
         row.value.parse::<i64>().map_err(|_| {
             AnalyticsError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,

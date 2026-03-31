@@ -303,11 +303,11 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) 
                     if fields.len() >= 5 {
                         if let Ok(pct) = fields[4].trim_end_matches('%').parse::<u64>() {
                             let meter = opentelemetry::global::meter("tumult-analytics");
-                            let gauge = meter.u64_gauge("resilience.store.disk_usage_pct").build();
+                            let gauge = meter.u64_gauge("tumult.store.disk_usage_pct").build();
                             gauge.record(
                                 pct,
                                 &[opentelemetry::KeyValue::new(
-                                    "resilience.store.path",
+                                    "tumult.store.path",
                                     db_path.display().to_string(),
                                 )],
                             );
@@ -1457,11 +1457,12 @@ mod tests {
     fn write_valid_experiment(dir: &Path) -> std::path::PathBuf {
         let path = dir.join("test-experiment.toon");
         let exp = Experiment {
+            version: "v1".into(),
             title: "CLI test experiment".into(),
             description: Some("Tests CLI command execution".into()),
             tags: vec!["test".into()],
-            configuration: std::collections::HashMap::new(),
-            secrets: std::collections::HashMap::new(),
+            configuration: indexmap::IndexMap::new(),
+            secrets: indexmap::IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![Activity {
@@ -1498,11 +1499,12 @@ mod tests {
     fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
         let path = dir.join("empty-method.toon");
         let exp = Experiment {
+            version: "v1".into(),
             title: "Empty method experiment".into(),
             description: None,
             tags: vec![],
-            configuration: std::collections::HashMap::new(),
-            secrets: std::collections::HashMap::new(),
+            configuration: indexmap::IndexMap::new(),
+            secrets: indexmap::IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![],
