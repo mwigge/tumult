@@ -86,6 +86,33 @@ pub struct QueryTracesTool {
     pub journal_path: String,
 }
 
+#[macros::mcp_tool(
+    name = "tumult_store_stats",
+    description = "Get persistent analytics store statistics — experiment count, activity count, schema version, file size."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct StoreStatsTool {
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}
+fn default_store_path() -> String {
+    tumult_analytics::AnalyticsStore::default_path()
+        .to_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+#[macros::mcp_tool(
+    name = "tumult_analyze_store",
+    description = "SQL query over the persistent analytics store (accumulated history from all runs)."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct AnalyzeStoreTool {
+    pub query: String,
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}
+
 // ── Process executor (shared pattern with CLI) ────────────────
 
 pub struct ProcessExecutor;
@@ -157,6 +184,8 @@ impl ServerHandler for TumultHandler {
                 DiscoverTool::tool(),
                 CreateExperimentTool::tool(),
                 QueryTracesTool::tool(),
+                StoreStatsTool::tool(),
+                AnalyzeStoreTool::tool(),
             ],
             meta: None,
             next_cursor: None,
@@ -200,6 +229,14 @@ impl ServerHandler for TumultHandler {
                 let args: QueryTracesTool = parse_args(&params)?;
                 tools::query_traces(&args.journal_path)
             }
+            "tumult_store_stats" => {
+                let args: StoreStatsTool = parse_args(&params)?;
+                tools::store_stats(&args.store_path)
+            }
+            "tumult_analyze_store" => {
+                let args: AnalyzeStoreTool = parse_args(&params)?;
+                tools::analyze_persistent(&args.store_path, &args.query)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -226,7 +263,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_eight_tools_listed() {
+    fn all_ten_tools_listed() {
         let tools = vec![
             RunExperimentTool::tool(),
             ValidateTool::tool(),
@@ -236,8 +273,10 @@ mod tests {
             DiscoverTool::tool(),
             CreateExperimentTool::tool(),
             QueryTracesTool::tool(),
+            StoreStatsTool::tool(),
+            AnalyzeStoreTool::tool(),
         ];
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 10);
     }
 
     #[test]
@@ -251,6 +290,8 @@ mod tests {
             DiscoverTool::tool(),
             CreateExperimentTool::tool(),
             QueryTracesTool::tool(),
+            StoreStatsTool::tool(),
+            AnalyzeStoreTool::tool(),
         ];
         for tool in &tools {
             assert!(

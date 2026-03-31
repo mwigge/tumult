@@ -5739,6 +5739,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "opentelemetry",
  "serde_json",
  "tempfile",
  "tokio",
