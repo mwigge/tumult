@@ -13,6 +13,7 @@ toon-format = { workspace = true }
 tokio = { version = "1", features = ["process", "time", "rt", "macros"] }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+opentelemetry = { workspace = true }
 indexmap = { workspace = true }
 
 [dev-dependencies]
