@@ -5,12 +5,12 @@ use opentelemetry::{global, KeyValue};
 
 const TRACER: &str = "tumult-clickhouse";
 
-pub struct SpanGuard {
+pub(crate) struct SpanGuard {
     _guard: opentelemetry::ContextGuard,
 }
 
 /// Span for ClickHouse connection + schema init.
-pub fn begin_connect(url: &str, database: &str) -> SpanGuard {
+pub(crate) fn begin_connect(url: &str, database: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
     let span = tracer
         .span_builder("clickhouse.connect")
@@ -28,7 +28,7 @@ pub fn begin_connect(url: &str, database: &str) -> SpanGuard {
 }
 
 /// Event: schema initialized.
-pub fn event_schema_initialized(database: &str, version: i64) {
+pub(crate) fn event_schema_initialized(database: &str, version: i64) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "clickhouse.schema.initialized",
@@ -40,7 +40,7 @@ pub fn event_schema_initialized(database: &str, version: i64) {
 }
 
 /// Event: ClickHouse DDL executed.
-pub fn event_ddl_executed(statement: &str) {
+pub(crate) fn event_ddl_executed(statement: &str) {
     let cx = opentelemetry::Context::current();
     let preview = if statement.len() > 128 {
         format!("{}...", &statement[..128])
@@ -54,7 +54,7 @@ pub fn event_ddl_executed(statement: &str) {
 }
 
 /// Gauge: record ClickHouse store size metrics.
-pub fn record_store_gauges(experiment_count: usize, activity_count: usize) {
+pub(crate) fn record_store_gauges(experiment_count: usize, activity_count: usize) {
     let meter = global::meter(TRACER);
 
     let g = meter.u64_gauge("clickhouse.store.experiments").build();

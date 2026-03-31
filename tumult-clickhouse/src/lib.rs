@@ -20,7 +20,7 @@
 pub mod config;
 pub mod error;
 pub mod store;
-pub mod telemetry;
+pub(crate) mod telemetry;
 
 pub use config::ClickHouseConfig;
 pub use error::ClickHouseError;
