@@ -68,26 +68,6 @@ jobs:
       - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6  # v2.7.8
       - run: cargo doc --no-deps --all-features
 
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: dtolnay/rust-toolchain@a54c7afa936fefeb4456b2dd8068152669aa8203  # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6  # v2.7.8
-      - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin
-      - name: Run tarpaulin
-        run: cargo tarpaulin --workspace --out xml --timeout 300
-      - name: Upload coverage report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        with:
-          name: coverage-report
-          path: cobertura.xml
-
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
