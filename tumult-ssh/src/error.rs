@@ -24,6 +24,9 @@ pub enum SshError {
     #[error("key file not found: {path}")]
     KeyNotFound { path: String },
 
+    #[error("key file permissions too open on {path}: mode {mode:#o}, expected 0600 or stricter")]
+    KeyPermissionsTooOpen { path: String, mode: u32 },
+
     #[error("key parse error: {0}")]
     KeyParseError(String),
 

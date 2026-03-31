@@ -32,7 +32,7 @@ async fn main() -> SdkResult<()> {
     };
 
     let transport = StdioTransport::new(TransportOptions::default())?;
-    let handler = tumult_mcp::handler::TumultHandler.to_mcp_server_handler();
+    let handler = tumult_mcp::handler::TumultHandler::default().to_mcp_server_handler();
     let server = server_runtime::create_server(McpServerOptions {
         transport,
         handler,

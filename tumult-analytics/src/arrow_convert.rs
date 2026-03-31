@@ -175,6 +175,7 @@ mod tests {
                 span_id: "s1".into(),
             }],
             rollback_results: vec![],
+            rollback_failures: 0,
             estimate: None,
             baseline_result: None,
             during_result: None,
