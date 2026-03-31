@@ -240,14 +240,25 @@ pub fn cmd_run(
 }
 
 fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
-    use tumult_analytics::AnalyticsStore;
+    use tumult_analytics::AnalyticsBackend;
 
-    let db_path = AnalyticsStore::default_path();
-    let store = AnalyticsStore::open(&db_path)
+    // Dual-mode: ClickHouse if configured, DuckDB otherwise
+    if tumult_clickhouse::ClickHouseConfig::is_configured() {
+        let config = tumult_clickhouse::ClickHouseConfig::from_env();
+        let rt = tokio::runtime::Handle::current();
+        let store = rt
+            .block_on(tumult_clickhouse::ClickHouseStore::connect(&config))
+            .context("failed to connect to ClickHouse analytics backend")?;
+        let ingested = store.ingest_journal(journal)?;
+        return Ok(ingested);
+    }
+
+    // Default: DuckDB embedded
+    let db_path = tumult_analytics::AnalyticsStore::default_path();
+    let store = tumult_analytics::AnalyticsStore::open(&db_path)
         .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
     let ingested = store.ingest_journal(journal)?;
 
-    // Emit store disk usage as OTel gauge for monitoring
     emit_store_metrics(&db_path, &store);
 
     Ok(ingested)
