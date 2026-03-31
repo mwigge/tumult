@@ -1,89 +1,96 @@
-# Tumult Docker Test Infrastructure
+# Tumult Docker Infrastructure
 
-Docker Compose environment providing all services needed for end-to-end testing of chaos experiments, with full observability built in.
+Two composable stacks: **chaos targets** (what experiments run against) and **observability platform** (SigNoz — traces, metrics, logs in one UI).
 
-## Services
+## Architecture
 
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
-| **PostgreSQL 16** | `postgres:16-alpine` | `localhost:15432` | Database chaos target — kill connections, lock tables, pool exhaustion |
-| **Redis 7** | `redis:7-alpine` | `localhost:16379` | Cache chaos target — FLUSHALL, CLIENT PAUSE, DEBUG SLEEP |
-| **Kafka 3.8** | `apache/kafka:3.8.0` | `localhost:19092` | Broker chaos — kill broker, partition, consumer lag probes |
-| **SSH Server** | `tumult-sshd` (custom) | `localhost:12222` | Remote execution — stress tests, process chaos via SSH |
-| **OTel Collector** | `otel/opentelemetry-collector-contrib` | `localhost:14317` | OTLP receiver + infrastructure metrics scraping |
-| **Jaeger** | `jaegertracing/all-in-one` | `localhost:16686` | Trace UI — verify experiment spans |
-| **Prometheus** | `prom/prometheus` | `localhost:19090` | Metrics storage — infrastructure + Tumult gauges |
-| **Grafana** | `grafana/grafana` | `localhost:13000` | Dashboards — pre-built infrastructure overview |
-
-All ports use the `1xxxx` range to avoid conflicts with locally running services.
+```
+docker-compose.yml                 docker-compose.observability.yml
+(chaos targets)                    (shippable observability platform)
+┌────────────┐                     ┌──────────────────────────────────┐
+│ PostgreSQL │                     │ SigNoz (UI + backend)    :13301 │
+│ Redis      │──── experiments ──>│ SigNoz OTel Collector            │
+│ Kafka      │     & probes       │ ClickHouse (storage)             │
+│ SSH Server │                     │ ZooKeeper                        │
+└────────────┘                     │                                  │
+                                   │ Tumult OTel Collector     :14317│
+                                   │  ├─ postgresql receiver         │
+                                   │  ├─ redis receiver              │
+                                   │  ├─ kafkametrics receiver       │
+                                   │  ├─ docker_stats receiver       │
+                                   │  └─ hostmetrics receiver        │
+                                   └──────────────────────────────────┘
+```
 
 ## Quick Start
 
 ```bash
-# Start everything
-make infra-up
+# Full platform (chaos targets + SigNoz observability)
+make up
 
-# Check health
-make infra-status
+# Open SigNoz — traces, metrics, logs in one UI
+open http://localhost:13301
 
-# Extract SSH test key (for SSH remote execution tests)
-make ssh-key
-
-# Run e2e tests
-make e2e
-
-# View observability UIs
-open http://localhost:16686     # Jaeger (traces)
-open http://localhost:13000     # Grafana (dashboards, login: admin/tumult)
-open http://localhost:19090     # Prometheus (metrics query)
+# Run an experiment with OTel export
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run experiment.toon
 
 # Stop everything
-make infra-down
+make down
 ```
 
-## Observability Stack
+## Compose Modes
 
-The OTel Collector scrapes all infrastructure services and exports metrics to Prometheus. Grafana ships with a pre-built dashboard.
+| Command | What starts | Use case |
+|---------|-------------|----------|
+| `make up` | Targets + SigNoz + OTel Collector | Full platform experience |
+| `make up-targets` | PostgreSQL, Redis, Kafka, SSH only | Minimal chaos testing |
+| `make up-observe` | SigNoz + OTel Collector only | Attach to existing infra |
+| `make up-classic` | Targets + Jaeger + Prometheus + Grafana | Legacy/lightweight stack |
 
-### What's Collected
+## Services
 
-| Source | Metrics | How |
-|--------|---------|-----|
-| **PostgreSQL** | connections, rows, locks, WAL size | `postgresql` receiver |
-| **Redis** | connected_clients, used_memory, ops/sec, keyspace | `redis` receiver |
-| **Kafka** | broker count, topic partitions, consumer lag | `kafkametrics` receiver |
-| **Docker** | CPU, memory, network I/O per container | `docker_stats` receiver |
-| **Host** | CPU, memory, disk, filesystem, network | `hostmetrics` receiver |
-| **Tumult** | experiment traces, analytics gauges, script counters | OTLP receiver |
+### Chaos Targets (`docker-compose.yml`)
 
-### Grafana Dashboard
+| Service | Port | Purpose |
+|---------|------|---------|
+| PostgreSQL 16 | `localhost:15432` | Database chaos — kill connections, lock tables |
+| Redis 7 | `localhost:16379` | Cache chaos — FLUSHALL, CLIENT PAUSE |
+| Kafka 3.8 (KRaft) | `localhost:19092` | Broker chaos — kill broker, partition |
+| SSH Server | `localhost:12222` | Remote execution — stress, process chaos |
 
-Pre-provisioned at **Tumult Infrastructure Overview** (`tumult-infra`):
-- PostgreSQL active connections
-- Redis clients + memory
-- Kafka broker count + topic partitions
-- Container CPU/memory/network per service
-- Tumult store experiments + size
-- Script execution counters
+### Observability Platform (`docker-compose.observability.yml`)
 
-Datasources are auto-configured (Prometheus + Jaeger). No manual setup needed.
+| Service | Port | Purpose |
+|---------|------|---------|
+| **SigNoz** | `localhost:13301` | Unified UI — traces, metrics, logs, dashboards |
+| SigNoz OTel Collector | (internal) | OTLP → ClickHouse (custom exporters) |
+| ClickHouse | (internal) | Telemetry storage (traces, metrics, logs) |
+| ZooKeeper | (internal) | ClickHouse coordination |
+| **Tumult OTel Collector** | `localhost:14317` | OTLP gateway + infra metric scraping |
 
-### Prometheus Metrics Endpoint
+### Classic Profile (optional)
 
-Raw metrics available at `http://localhost:18889/metrics` (OTel Collector) or query via Prometheus at `http://localhost:19090`.
+| Service | Port | Purpose |
+|---------|------|---------|
+| Jaeger | `localhost:16686` | Trace UI |
+| Prometheus | `localhost:19090` | Metrics query |
+| Grafana | `localhost:13000` | Dashboards (admin/tumult) |
 
-## Manual Usage
+## Infrastructure Metrics
 
-```bash
-cd docker/
-docker compose up -d
-docker compose ps
-docker compose down -v
-```
+The Tumult OTel Collector automatically scrapes all chaos targets:
 
-## Environment Variables for Tests
+| Source | Receiver | Key Metrics |
+|--------|----------|-------------|
+| PostgreSQL | `postgresql` | connections, rows, locks, WAL size |
+| Redis | `redis` | connected_clients, used_memory, ops/sec |
+| Kafka | `kafkametrics` | broker count, topic partitions, consumer lag |
+| Docker | `docker_stats` | CPU, memory, network I/O per container |
+| Host | `hostmetrics` | CPU, memory, disk, filesystem, network |
 
-Set these when running experiments against the Docker infrastructure:
+All metrics flow to SigNoz where you can build dashboards, set alerts, and correlate with experiment traces.
+
+## Environment Variables
 
 ```bash
 # PostgreSQL
@@ -100,56 +107,39 @@ export TUMULT_REDIS_PORT=16379
 # Kafka
 export TUMULT_KAFKA_BOOTSTRAP=localhost:19092
 
-# OTel (traces go to Jaeger via Collector)
+# OTel
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317
 ```
 
 ## SSH Server
 
-The SSH container includes:
-- **User:** `tumult` (key-based auth only, no password)
-- **Installed tools:** `stress-ng`, `procps`, `coreutils`
-- **Test key:** extracted via `make ssh-key` → `/tmp/tumult-test-key`
+- **User:** `tumult` (key-based auth only)
+- **Tools:** `stress-ng`, `procps`, `coreutils`
+- **Key:** `make ssh-key` → `/tmp/tumult-test-key`
 
-```bash
-# Test SSH connection
-ssh -p 12222 -i /tmp/tumult-test-key -o StrictHostKeyChecking=no tumult@localhost uname -a
-```
+## Shipping as a Platform
 
-## PostgreSQL Test Data
+The observability stack (`docker-compose.observability.yml`) is designed to be **shippable independently**. Teams can:
 
-The `init-postgres.sql` creates:
-- `app_sessions` table with 5 sample rows
-- `connection_stats` view for monitoring
-- All permissions granted to the `tumult` user
+1. Run `make up-observe` to start SigNoz + OTel Collector
+2. Point Tumult at `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317`
+3. Get persistent traces, metrics, and logs from all experiments
+4. Build custom dashboards in SigNoz for resilience scoring and compliance
 
-## Kafka
+No chaos targets needed — the observability platform works with any Tumult installation.
 
-KRaft mode (no ZooKeeper). Single broker for testing.
+## License
 
-```bash
-# Create a test topic
-docker exec docker-kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server localhost:9092 --create --topic tumult-test --partitions 3
-```
-
-## Cleanup
-
-```bash
-# Stop and remove everything (including volumes)
-make infra-down
-
-# Or manually
-cd docker/ && docker compose down -v
-```
+- **SigNoz core:** MIT License (https://github.com/SigNoz/signoz)
+- **SigNoz enterprise (`ee/` directory):** SigNoz Enterprise License (dev/testing permitted)
+- **All other images:** Apache 2.0, MIT, or BSD (standard OSS infrastructure)
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| Port conflict | Change ports in `docker-compose.yml` (e.g., `25432:5432`) |
-| Kafka slow to start | It needs ~30s for KRaft init. Check `docker compose logs kafka` |
-| SSH key permission denied | Run `chmod 600 /tmp/tumult-test-key` |
-| OTel traces not appearing | Check collector logs: `docker compose logs otel-collector` |
-| Grafana empty dashboard | Wait 30s for first scrape cycle, check Prometheus targets |
-| Docker metrics missing | Ensure `/var/run/docker.sock` is mounted (check compose file) |
+| Port conflict | Change ports in compose files |
+| Kafka slow to start | ~30s for KRaft init: `docker compose logs kafka` |
+| SigNoz empty | Wait 30s for first scrape cycle |
+| ClickHouse OOM | Increase Docker memory limit to 4GB+ |
+| Docker metrics missing | Ensure `/var/run/docker.sock` is mounted |
