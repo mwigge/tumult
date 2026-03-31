@@ -3,8 +3,11 @@
 use rust_mcp_sdk::{
     error::SdkResult,
     mcp_server::{server_runtime, McpServerOptions},
-    schema::*,
-    *,
+    schema::{
+        Implementation, InitializeResult, ProtocolVersion, ServerCapabilities,
+        ServerCapabilitiesTools,
+    },
+    McpServer, StdioTransport, ToMcpServerHandler, TransportOptions,
 };
 
 #[tokio::main]

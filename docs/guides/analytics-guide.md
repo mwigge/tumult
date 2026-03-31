@@ -102,6 +102,24 @@ tumult store purge --older-than-days 90
 tumult run experiment.toon --no-ingest
 ```
 
+## Encryption
+
+DuckDB stores data unencrypted at `~/.tumult/analytics.duckdb`. For sensitive environments, store on an encrypted filesystem (LUKS, FileVault, BitLocker). You can change the store location with the `TUMULT_STORE_PATH` environment variable to point to an encrypted volume.
+
+## Journal Format for LLM Consumption
+
+Tumult journals use the TOON format, which is concise, structured, and uses deterministic key ordering via `IndexMap`. This makes journals predictable and easy for LLMs to parse.
+
+Key properties of the journal format:
+- **Compact**: TOON uses 40-50% fewer tokens than equivalent JSON
+- **Deterministic key order**: Keys always appear in insertion order (`IndexMap`), so LLMs see a consistent structure across runs
+- **Structured phases**: Each journal section (hypothesis_before, method, rollbacks, hypothesis_after) is clearly delimited
+
+Best practices for LLM consumption:
+- Use `tumult export --format json` to convert journals to JSON for LLM input when broader tool compatibility is needed
+- Query journals directly via the MCP tool `tumult_read_journal` for interactive LLM workflows
+- For batch analysis, load journals into DuckDB and export query results as CSV
+
 ## CLI Usage
 
 ```bash

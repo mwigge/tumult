@@ -2,14 +2,14 @@
 //!
 //! Uses [`kube`](https://docs.rs/kube) (kube-rs) for async Kubernetes API
 //! access. All actions and probes operate through the standard Kubernetes API
-//! server, so no privileged DaemonSet is required.
+//! server, so no privileged `DaemonSet` is required.
 //!
 //! # Supported chaos actions
 //!
 //! - **Pod deletion** — immediate or graceful (`delete_pod`)
 //! - **Node drain** — cordon + evict pods (`drain_node`)
 //! - **Deployment scaling** — scale replicas up or down (`scale_deployment`)
-//! - **Network policy** — apply restrictive NetworkPolicy to simulate partition
+//! - **Network policy** — apply restrictive `NetworkPolicy` to simulate partition
 //!
 //! # Probes
 //!

@@ -1,0 +1,11 @@
+# cargo audit configuration
+# See: https://github.com/rustsec/rustsec/tree/main/cargo-audit#configuration
+
+[advisories]
+# RUSTSEC-2023-0071: Marvin Attack timing side-channel in rsa crate.
+# Pulled in transitively via internal-russh-forked-ssh-key (a vendored fork inside
+# russh 0.59.0). No fixed upstream version exists. Mitigated by disabling the `rsa`
+# feature on our direct russh dependency (tumult-ssh never uses RSA keys — only
+# Ed25519/ECDSA via aws-lc-rs). The vulnerable RSA code path is therefore unreachable
+# at runtime. Re-evaluate when russh ships a version with a patched or removed rsa dep.
+ignore = ["RUSTSEC-2023-0071"]

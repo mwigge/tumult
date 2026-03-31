@@ -54,6 +54,7 @@ impl MockPlugin {
         self
     }
 
+    #[allow(dead_code)] // Used in integration tests for debugging; kept for test utility
     fn log(&self) -> Vec<String> {
         self.execution_log.lock().unwrap().clone()
     }
@@ -111,6 +112,9 @@ impl EventLog {
 }
 
 impl ControlHandler for EventLog {
+    // Trait returns &str; literal impl appears static but trait sig stays &str
+    // since other impls return non-static field refs.
+    #[allow(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str {
         "event-log"
     }
@@ -222,10 +226,13 @@ fn full_experiment_run_produces_complete_journal() {
         }],
     });
 
-    let plugin = MockPlugin::new().default_output("200");
+    let mock_plugin = MockPlugin::new().default_output("200");
+    let execution_log = mock_plugin.execution_log.clone();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(mock_plugin);
     let mut controls = ControlRegistry::new();
     let (logger, events) = EventLog::new();
     controls.register(Box::new(logger));
+    let controls = Arc::new(controls);
 
     let config = RunConfig {
         rollback_strategy: RollbackStrategy::Always,
@@ -281,7 +288,7 @@ fn full_experiment_run_produces_complete_journal() {
     assert_eq!(*events.last().unwrap(), LifecycleEvent::AfterExperiment);
 
     // Execution log shows all activities ran
-    let log = plugin.log();
+    let log = execution_log.lock().unwrap();
     assert!(log.contains(&"health-check".to_string())); // hypothesis before
     assert!(log.contains(&"inject-fault".to_string()));
     assert!(log.contains(&"wait-for-propagation".to_string()));
@@ -291,8 +298,8 @@ fn full_experiment_run_produces_complete_journal() {
 #[test]
 fn journal_serializes_to_toon_and_back() {
     let exp = experiment_builder();
-    let plugin = MockPlugin::new();
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(MockPlugin::new());
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -337,10 +344,12 @@ fn baselined_hypothesis_with_range_tolerance() {
     ));
 
     // Probe returns 45.0 (within range)
-    let plugin = MockPlugin::new()
-        .on("latency-probe", true, Some("45.0"))
-        .default_output("200");
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(
+        MockPlugin::new()
+            .on("latency-probe", true, Some("45.0"))
+            .default_output("200"),
+    );
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -375,8 +384,9 @@ fn baselined_hypothesis_fails_when_outside_range() {
     ));
 
     // Probe returns 150.0 (outside range) — hypothesis fails before method
-    let plugin = MockPlugin::new().on("latency-probe", true, Some("150.0"));
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> =
+        Arc::new(MockPlugin::new().on("latency-probe", true, Some("150.0")));
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -402,14 +412,17 @@ fn hypothesis_failure_aborts_and_runs_rollbacks() {
     exp.rollbacks = vec![action("emergency-cleanup"), action("notify-ops")];
 
     // Health check returns 503 → hypothesis fails → abort
-    let plugin = MockPlugin::new()
-        .on("health-check", true, Some("503"))
-        .on("emergency-cleanup", true, Some("ok"))
-        .on("notify-ops", true, Some("ok"));
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(
+        MockPlugin::new()
+            .on("health-check", true, Some("503"))
+            .on("emergency-cleanup", true, Some("ok"))
+            .on("notify-ops", true, Some("ok")),
+    );
 
     let mut controls = ControlRegistry::new();
     let (logger, events) = EventLog::new();
     controls.register(Box::new(logger));
+    let controls = Arc::new(controls);
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -438,6 +451,47 @@ fn hypothesis_failure_aborts_and_runs_rollbacks() {
     assert!(!events.contains(&LifecycleEvent::BeforeMethod));
 }
 
+// ── Executors used in phase-aware tests ───────────────────────
+
+struct PhaseAwareExecutor {
+    call_count: AtomicUsize,
+}
+impl ActivityExecutor for PhaseAwareExecutor {
+    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+        let count = self.call_count.fetch_add(1, Ordering::Relaxed);
+        match count {
+            0 => ActivityOutcome {
+                // Hypothesis before: pass
+                success: true,
+                output: Some("200".into()),
+                error: None,
+                duration_ms: 10,
+            },
+            1 => ActivityOutcome {
+                // Method: succeed
+                success: true,
+                output: Some("fault injected".into()),
+                error: None,
+                duration_ms: 100,
+            },
+            2 => ActivityOutcome {
+                // Hypothesis after: FAIL (system degraded)
+                success: true,
+                output: Some("503".into()),
+                error: None,
+                duration_ms: 10,
+            },
+            _ => ActivityOutcome {
+                // Rollback: succeed
+                success: true,
+                output: Some("rolled back".into()),
+                error: None,
+                duration_ms: 10,
+            },
+        }
+    }
+}
+
 #[test]
 fn hypothesis_after_failure_causes_deviation_with_rollback() {
     let mut exp = experiment_builder();
@@ -450,50 +504,10 @@ fn hypothesis_after_failure_causes_deviation_with_rollback() {
     ));
     exp.rollbacks = vec![action("rollback-action")];
 
-    // Use call-count based executor to return different results
-    struct PhaseAwareExecutor {
-        call_count: AtomicUsize,
-    }
-    impl ActivityExecutor for PhaseAwareExecutor {
-        fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-            let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-            match count {
-                0 => ActivityOutcome {
-                    // Hypothesis before: pass
-                    success: true,
-                    output: Some("200".into()),
-                    error: None,
-                    duration_ms: 10,
-                },
-                1 => ActivityOutcome {
-                    // Method: succeed
-                    success: true,
-                    output: Some("fault injected".into()),
-                    error: None,
-                    duration_ms: 100,
-                },
-                2 => ActivityOutcome {
-                    // Hypothesis after: FAIL (system degraded)
-                    success: true,
-                    output: Some("503".into()),
-                    error: None,
-                    duration_ms: 10,
-                },
-                _ => ActivityOutcome {
-                    // Rollback: succeed
-                    success: true,
-                    output: Some("rolled back".into()),
-                    error: None,
-                    duration_ms: 10,
-                },
-            }
-        }
-    }
-
-    let executor = PhaseAwareExecutor {
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(PhaseAwareExecutor {
         call_count: AtomicUsize::new(0),
-    };
-    let controls = ControlRegistry::new();
+    });
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
@@ -522,8 +536,10 @@ fn background_and_sequential_activities_all_execute() {
         background_action("background-2"),
     ];
 
-    let plugin = MockPlugin::new();
-    let controls = ControlRegistry::new();
+    let mock_plugin = MockPlugin::new();
+    let execution_log = mock_plugin.execution_log.clone();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(mock_plugin);
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -531,7 +547,7 @@ fn background_and_sequential_activities_all_execute() {
     assert_eq!(journal.method_results.len(), 4);
 
     // All activities should have executed
-    let log = plugin.log();
+    let log = execution_log.lock().unwrap();
     assert_eq!(log.len(), 4);
     assert!(log.contains(&"sequential-1".to_string()));
     assert!(log.contains(&"background-1".to_string()));
@@ -556,8 +572,8 @@ fn estimate_accuracy_correct_when_prediction_matches() {
         prior_runs: Some(5),
     });
 
-    let plugin = MockPlugin::new();
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(MockPlugin::new());
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -583,8 +599,8 @@ fn estimate_accuracy_zero_when_prediction_wrong() {
     });
 
     // Make the experiment fail
-    let plugin = MockPlugin::new().default_fail();
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(MockPlugin::new().default_fail());
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -594,6 +610,22 @@ fn estimate_accuracy_zero_when_prediction_wrong() {
     let analysis = journal.analysis.unwrap();
     assert_eq!(analysis.estimate_accuracy, Some(0.0));
     assert_eq!(analysis.resilience_score, Some(0.0));
+}
+
+struct DeviationExecutor {
+    call_count: AtomicUsize,
+}
+impl ActivityExecutor for DeviationExecutor {
+    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+        let count = self.call_count.fetch_add(1, Ordering::Relaxed);
+        let output = if count == 2 { "500" } else { "200" };
+        ActivityOutcome {
+            success: true,
+            output: Some(output.into()),
+            error: None,
+            duration_ms: 10,
+        }
+    }
 }
 
 #[test]
@@ -617,26 +649,10 @@ fn estimate_accuracy_when_deviated_matches_estimate() {
     ));
 
     // Hypothesis before passes, method succeeds, hypothesis after fails → deviated
-    struct DeviationExecutor {
-        call_count: AtomicUsize,
-    }
-    impl ActivityExecutor for DeviationExecutor {
-        fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-            let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-            let output = if count == 2 { "500" } else { "200" };
-            ActivityOutcome {
-                success: true,
-                output: Some(output.into()),
-                error: None,
-                duration_ms: 10,
-            }
-        }
-    }
-
-    let executor = DeviationExecutor {
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(DeviationExecutor {
         call_count: AtomicUsize::new(0),
-    };
-    let controls = ControlRegistry::new();
+    });
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
@@ -651,8 +667,8 @@ fn estimate_accuracy_when_deviated_matches_estimate() {
 #[test]
 fn no_analysis_without_estimate() {
     let exp = experiment_builder();
-    let plugin = MockPlugin::new();
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(MockPlugin::new());
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -687,10 +703,12 @@ fn regex_tolerance_in_hypothesis() {
         }],
     ));
 
-    let plugin = MockPlugin::new()
-        .on("status-probe", true, Some("\"OK: all systems go\""))
-        .default_output("200");
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(
+        MockPlugin::new()
+            .on("status-probe", true, Some("\"OK: all systems go\""))
+            .default_output("200"),
+    );
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
@@ -715,8 +733,8 @@ fn multiple_hypothesis_probes_all_must_pass() {
     ));
 
     // All probes pass
-    let plugin = MockPlugin::new().default_output("200");
-    let controls = ControlRegistry::new();
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(MockPlugin::new().default_output("200"));
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
     assert_eq!(journal.status, ExperimentStatus::Completed);
@@ -734,11 +752,12 @@ fn one_failing_hypothesis_probe_causes_abort() {
     ));
 
     // db-health returns 503 → one probe fails → hypothesis fails
-    let plugin =
+    let plugin: Arc<dyn ActivityExecutor> = Arc::new(
         MockPlugin::new()
             .on("api-health", true, Some("200"))
-            .on("db-health", true, Some("503"));
-    let controls = ControlRegistry::new();
+            .on("db-health", true, Some("503")),
+    );
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
     assert_eq!(journal.status, ExperimentStatus::Aborted);
