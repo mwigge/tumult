@@ -1,0 +1,33 @@
+# Minimal SSH server for Tumult e2e testing.
+# Accepts key-based auth only. No password auth.
+#
+# Build: docker build -f Dockerfile.sshd -t tumult-sshd .
+# Test:  ssh -p 12222 -i ./test_key tumult@localhost uname -a
+
+FROM alpine:3.20
+
+RUN apk add --no-cache openssh-server stress-ng procps coreutils \
+    && ssh-keygen -A \
+    && adduser -D -s /bin/sh tumult \
+    && mkdir -p /home/tumult/.ssh \
+    && chmod 700 /home/tumult/.ssh \
+    && passwd -u tumult
+
+# Generate a test keypair at build time
+RUN ssh-keygen -t ed25519 -f /home/tumult/.ssh/id_ed25519 -N "" \
+    && cp /home/tumult/.ssh/id_ed25519.pub /home/tumult/.ssh/authorized_keys \
+    && chmod 600 /home/tumult/.ssh/authorized_keys \
+    && chown -R tumult:tumult /home/tumult/.ssh
+
+# Copy the private key out for test clients
+RUN cp /home/tumult/.ssh/id_ed25519 /test_key && chmod 644 /test_key
+
+# Harden sshd config
+RUN echo "PasswordAuthentication no" >> /etc/ssh/sshd_config \
+    && echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config \
+    && echo "PermitRootLogin no" >> /etc/ssh/sshd_config \
+    && echo "AllowUsers tumult" >> /etc/ssh/sshd_config
+
+EXPOSE 22
+
+CMD ["/usr/sbin/sshd", "-D", "-e"]
