@@ -29,6 +29,6 @@ pub mod error;
 pub mod export;
 
 pub use arrow_convert::journal_to_record_batch;
-pub use duckdb_store::AnalyticsStore;
+pub use duckdb_store::{AnalyticsStore, StoreStats};
 pub use error::AnalyticsError;
-pub use export::{export_arrow_ipc, export_csv, export_parquet};
+pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
