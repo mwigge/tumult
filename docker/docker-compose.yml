@@ -1,11 +1,14 @@
-# Tumult E2E Test Infrastructure
+# Tumult E2E Chaos Targets
+#
+# Infrastructure services that experiments run against.
+# Start alone for minimal testing, or combine with the
+# observability stack for the full platform experience.
 #
 # Usage:
 #   cd docker/
-#   docker compose up -d          # start all services
-#   docker compose ps             # check health
-#   docker compose logs -f kafka  # tail logs
-#   docker compose down -v        # stop + remove volumes
+#   docker compose up -d                         # chaos targets only
+#   docker compose -f docker-compose.yml \
+#     -f docker-compose.observability.yml up -d   # full platform
 #
 # Ports use 1xxxx range to avoid conflicts with local services.
 
@@ -82,73 +85,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    networks:
-      - tumult-e2e
-
-  # ── OTel Collector ───────────────────────────────────────────
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.115.0
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./otel-collector-e2e.yaml:/etc/otel-collector-config.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "14317:4317"   # OTLP gRPC
-      - "14318:4318"   # OTLP HTTP
-      - "18889:8889"   # Prometheus metrics endpoint
-    depends_on:
-      jaeger:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    networks:
-      - tumult-e2e
-
-  # ── Jaeger (trace UI for OTel verification) ──────────────────
-  jaeger:
-    image: jaegertracing/all-in-one:1.56
-    ports:
-      - "16686:16686"
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:16686/ >/dev/null 2>&1"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - tumult-e2e
-
-  # ── Prometheus (metrics storage + query) ──────────────────────
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    ports:
-      - "19090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      - otel-collector
-    networks:
-      - tumult-e2e
-
-  # ── Grafana (dashboards) ─────────────────────────────────────
-  grafana:
-    image: grafana/grafana:10.4.0
-    ports:
-      - "13000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=tumult
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-    depends_on:
-      - prometheus
-      - jaeger
     networks:
       - tumult-e2e
 

@@ -1,0 +1,47 @@
+# SigNoz OTel Collector config.
+#
+# This is a minimal config for the SigNoz custom collector.
+# It receives OTLP from the Tumult OTel Collector (gateway)
+# and writes to ClickHouse via SigNoz-specific exporters.
+#
+# NOTE: The signoz/signoz-otel-collector image ships with a
+# built-in default config. This override ensures we receive
+# from our gateway collector on the tumult-e2e network.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+exporters:
+  # SigNoz-specific ClickHouse exporters are built into the image.
+  # Use clickhousetraces, clickhouselogsexporter, signozclickhousemetrics.
+  clickhousetraces:
+    datasource: tcp://signoz-clickhouse:9000/?database=signoz_traces
+  clickhouselogsexporter:
+    datasource: tcp://signoz-clickhouse:9000/?database=signoz_logs
+  signozclickhousemetrics:
+    datasource: tcp://signoz-clickhouse:9000/?database=signoz_metrics
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhousetraces]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [signozclickhousemetrics]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouselogsexporter]

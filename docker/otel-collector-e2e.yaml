@@ -1,10 +1,8 @@
-# OTel Collector for e2e testing and infrastructure observability.
+# Tumult OTel Collector — infrastructure scraper + OTLP gateway.
 #
-# Receives OTLP from Tumult + scrapes infrastructure metrics from
-# PostgreSQL, Redis, Kafka, and Docker containers.
-#
-# All metrics and traces are exported to Jaeger (traces) and
-# Prometheus (metrics via /metrics endpoint on port 8889).
+# Receives OTLP from Tumult app + scrapes infrastructure metrics.
+# Exports everything to SigNoz OTel Collector (default) or
+# Jaeger + Prometheus (classic profile).
 
 receivers:
   # ── Application telemetry from Tumult ──────────────────────
@@ -74,7 +72,6 @@ processors:
     timeout: 2s
     send_batch_size: 512
 
-  # Add resource attributes to distinguish infra vs app telemetry
   resource:
     attributes:
       - key: deployment.environment
@@ -82,19 +79,24 @@ processors:
         action: upsert
 
 exporters:
-  # Jaeger for traces
+  # Forward all signals to SigNoz OTel Collector (default)
+  otlp/signoz:
+    endpoint: signoz-otel-collector:4317
+    tls:
+      insecure: true
+
+  # Jaeger (only used when classic profile is active)
   otlp/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
 
-  # Prometheus endpoint for metrics (scraped by Prometheus/Grafana)
+  # Prometheus endpoint (only used with classic profile)
   prometheus:
     endpoint: 0.0.0.0:8889
     resource_to_telemetry_conversion:
       enabled: true
 
-  # Debug output for troubleshooting
   debug:
     verbosity: basic
 
@@ -103,8 +105,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp/jaeger, debug]
+      exporters: [otlp/signoz, debug]
     metrics:
       receivers: [otlp, postgresql, redis, kafkametrics, docker_stats, hostmetrics]
       processors: [batch, resource]
-      exporters: [prometheus, debug]
+      exporters: [otlp/signoz, debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/signoz, debug]
