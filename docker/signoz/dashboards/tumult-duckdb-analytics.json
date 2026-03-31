@@ -1,0 +1,840 @@
+{
+  "description": "DuckDB analytics pipeline — ingest rate, query latency, export/import operations, store size gauge, and purge events from the tumult-analytics crate.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-duck-stats",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-duck-ingest-rate",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-duck-query-p99",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-duck-store-size",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-duck-export-rate",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 9,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-duck-ingest",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-duck-ingest-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-duck-ingest-latency",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 1,
+      "i": "row-duck-query",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "graph-duck-query-latency",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "graph-duck-export-import",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 13
+    }
+  ],
+  "panelMap": {
+    "row-duck-stats": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-duck-ingest-rate", "moved": false, "static": false, "w": 3, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-duck-query-p99", "moved": false, "static": false, "w": 3, "x": 3, "y": 1 },
+        { "h": 4, "i": "stat-duck-store-size", "moved": false, "static": false, "w": 3, "x": 6, "y": 1 },
+        { "h": 4, "i": "stat-duck-export-rate", "moved": false, "static": false, "w": 3, "x": 9, "y": 1 }
+      ]
+    },
+    "row-duck-ingest": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-duck-ingest-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-duck-ingest-latency", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 }
+      ]
+    },
+    "row-duck-query": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-duck-query-latency", "moved": false, "static": false, "w": 6, "x": 0, "y": 13 },
+        { "h": 6, "i": "graph-duck-export-import", "moved": false, "static": false, "w": 6, "x": 6, "y": 13 }
+      ]
+    }
+  },
+  "tags": ["tumult", "duckdb", "analytics", "pipeline"],
+  "title": "Tumult — DuckDB Analytics",
+  "uploadedGrafana": false,
+  "uuid": "tumult-duckdb-analytics-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-duck-stats",
+      "panelTypes": "row",
+      "title": "Analytics Pipeline Health"
+    },
+    {
+      "description": "Rate of resilience.analytics.ingest spans",
+      "id": "stat-duck-ingest-rate",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.ingest"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "ingest/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-duck-ingest-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Ingest Rate",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "P99 latency of resilience.analytics.query spans",
+      "id": "stat-duck-query-p99",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.query"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "query p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-duck-query-p99",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Query P99 Latency",
+      "yAxisUnit": "ns"
+    },
+    {
+      "description": "Current DuckDB store size in bytes (resilience.store.size_bytes gauge)",
+      "id": "stat-duck-store-size",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "resilience.store.size_bytes--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "resilience.store.size_bytes",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "store size",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "avg",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-duck-store-size",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Store Size",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "description": "Rate of resilience.analytics.export spans",
+      "id": "stat-duck-export-rate",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.export"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "exports",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-duck-export-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Export Rate",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-duck-ingest",
+      "panelTypes": "row",
+      "title": "Ingest Pipeline"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "resilience.analytics.ingest span rate over time",
+      "fillSpans": false,
+      "id": "graph-duck-ingest-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.ingest"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "ingest/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-duck-ingest-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Ingest Rate",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "resilience.analytics.ingest span latency p50/p99",
+      "fillSpans": false,
+      "id": "graph-duck-ingest-latency",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p50",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.ingest"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p50",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": "p50"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.ingest"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-duck-ingest-latency",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Ingest Latency (p50/p99)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "description": "",
+      "id": "row-duck-query",
+      "panelTypes": "row",
+      "title": "Query & Export"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "resilience.analytics.query span latency p50/p99",
+      "fillSpans": false,
+      "id": "graph-duck-query-latency",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p50",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.query"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p50",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": "p50"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.query"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-duck-query-latency",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Query Latency (p50/p99)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Export and import operation rates (Parquet export pipeline)",
+      "fillSpans": false,
+      "id": "graph-duck-export-import",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.export"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "exports/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "resilience.analytics.import"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "imports/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-duck-export-import",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Export / Import Rate",
+      "yAxisUnit": "reqps"
+    }
+  ]
+}
