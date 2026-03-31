@@ -1,13 +1,10 @@
-//! OTel instrumentation for Kubernetes operations.
+//! `OTel` instrumentation for Kubernetes operations.
 
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
+use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-kubernetes";
-
-pub(crate) struct SpanGuard {
-    _guard: opentelemetry::ContextGuard,
-}
 
 fn k8s_span(name: &str, attrs: Vec<KeyValue>) -> SpanGuard {
     let tracer = global::tracer(TRACER);
@@ -17,9 +14,7 @@ fn k8s_span(name: &str, attrs: Vec<KeyValue>) -> SpanGuard {
         .with_attributes(attrs)
         .start(&tracer);
     let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard {
-        _guard: cx.attach(),
-    }
+    SpanGuard::new(cx.attach())
 }
 
 // ── Actions ─────────────────────────────────────────────────
@@ -48,6 +43,13 @@ pub(crate) fn begin_scale_deployment(namespace: &str, name: &str, replicas: i32)
 pub(crate) fn begin_cordon_node(name: &str) -> SpanGuard {
     k8s_span(
         "k8s.node.cordon",
+        vec![KeyValue::new("k8s.node.name", name.to_string())],
+    )
+}
+
+pub(crate) fn begin_uncordon_node(name: &str) -> SpanGuard {
+    k8s_span(
+        "k8s.node.uncordon",
         vec![KeyValue::new("k8s.node.name", name.to_string())],
     )
 }
@@ -127,11 +129,17 @@ pub(crate) fn begin_node_status(name: &str) -> SpanGuard {
 pub(crate) fn event_drain_completed(evicted: usize, failed: usize, skipped_daemonsets: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
-        "k8s.drain.completed",
+        "drain.completed",
         vec![
-            KeyValue::new("k8s.pods.evicted", evicted as i64),
-            KeyValue::new("k8s.pods.failed", failed as i64),
-            KeyValue::new("k8s.daemonsets.skipped", skipped_daemonsets as i64),
+            KeyValue::new(
+                "k8s.pods.evicted",
+                i64::try_from(evicted).unwrap_or(i64::MAX),
+            ),
+            KeyValue::new("k8s.pods.failed", i64::try_from(failed).unwrap_or(i64::MAX)),
+            KeyValue::new(
+                "k8s.daemonsets.skipped",
+                i64::try_from(skipped_daemonsets).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
@@ -150,7 +158,10 @@ pub(crate) fn event_pods_counted(count: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "k8s.pods.counted",
-        vec![KeyValue::new("k8s.pods.count", count as i64)],
+        vec![KeyValue::new(
+            "k8s.pods.count",
+            i64::try_from(count).unwrap_or(i64::MAX),
+        )],
     );
 }
 
@@ -163,6 +174,7 @@ mod tests {
         let _g = begin_delete_pod("default", "my-pod");
         let _g = begin_scale_deployment("default", "my-deploy", 3);
         let _g = begin_cordon_node("node-1");
+        let _g = begin_uncordon_node("node-1");
         let _g = begin_drain_node("node-1", Some(30));
         event_drain_completed(5, 1, 2);
         event_pod_evicted("pod-a");

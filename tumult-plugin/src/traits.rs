@@ -19,6 +19,7 @@ pub struct ProbeDescriptor {
 }
 
 /// Output from executing a plugin action or probe.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginOutput {
     pub status: i32,
@@ -42,9 +43,9 @@ pub(crate) mod private {
 /// Native plugins must be contributed to the main repository or use
 /// the script plugin mechanism instead.
 pub trait TumultPlugin: Send + Sync + private::Sealed {
-    fn name(&self) -> &str;
-    fn version(&self) -> &str;
-    fn description(&self) -> &str;
-    fn actions(&self) -> Vec<ActionDescriptor>;
-    fn probes(&self) -> Vec<ProbeDescriptor>;
+    fn name(&self) -> &'static str;
+    fn version(&self) -> &'static str;
+    fn description(&self) -> &'static str;
+    fn actions(&self) -> &[ActionDescriptor];
+    fn probes(&self) -> &[ProbeDescriptor];
 }

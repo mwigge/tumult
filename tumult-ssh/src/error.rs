@@ -39,6 +39,9 @@ pub enum SshError {
     #[error("upload failed: {0}")]
     UploadFailed(String),
 
+    #[error("host key verification failed: server key not recognized")]
+    HostKeyVerificationFailed,
+
     #[error("session closed")]
     SessionClosed,
 
