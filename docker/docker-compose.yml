@@ -91,12 +91,19 @@ services:
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-e2e.yaml:/etc/otel-collector-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "14317:4317"   # OTLP gRPC
       - "14318:4318"   # OTLP HTTP
-      # Note: Do NOT expose Jaeger's 4317 on the host — it would conflict with this port.
+      - "18889:8889"   # Prometheus metrics endpoint
     depends_on:
       jaeger:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - tumult-e2e
@@ -113,6 +120,35 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - tumult-e2e
+
+  # ── Prometheus (metrics storage + query) ──────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "19090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - otel-collector
+    networks:
+      - tumult-e2e
+
+  # ── Grafana (dashboards) ─────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "13000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=tumult
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - jaeger
     networks:
       - tumult-e2e
 
