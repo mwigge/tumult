@@ -85,6 +85,8 @@ If an anomaly is detected, the experiment can either:
 - Abort with a warning (default)
 - Continue with a flag in the journal
 
+The anomaly check emits a `anomaly.detected` span event on the `baseline.acquire` span, visible in your OTel backend. The span status is set to `ERROR` when an anomaly is found.
+
 ### Recovery Detection
 
 After fault removal, the engine scans post-fault samples to find the recovery point — the first index where all subsequent samples are within tolerance. This gives the MTTR (Mean Time to Recovery).
@@ -92,6 +94,34 @@ After fault removal, the engine scans post-fault samples to find the recovery po
 ### Compliance Ratio
 
 The proportion of post-fault samples within tolerance bounds. A ratio of 1.0 means full recovery; 0.5 means half the post-fault samples breached the baseline.
+
+## Streaming Acquisition (`AcquisitionStream`)
+
+For advanced use cases (custom probes, incremental data feeds), `tumult-baseline` exposes `AcquisitionStream` — a streaming interface that accepts samples one at a time rather than collecting a full dataset upfront:
+
+```rust
+use tumult_baseline::{AcquisitionStream, BaselineConfig};
+
+let config = BaselineConfig {
+    method: BaselineMethod::MeanStddev,
+    sigma: 2.0,
+    ..Default::default()
+};
+
+let mut stream = AcquisitionStream::new("api-latency", config);
+
+// Feed samples incrementally (e.g., from a live probe loop)
+stream.push(45.2);
+stream.push(47.8);
+stream.push(43.1);
+
+// Derive tolerance bounds at any point
+if let Some(result) = stream.derive() {
+    println!("lower={}, upper={}", result.lower, result.upper);
+}
+```
+
+This is used internally by the runner for live baseline capture and is also available to custom integrations.
 
 ## Choosing a Method
 
@@ -103,3 +133,11 @@ The proportion of post-fault samples within tolerance bounds. A ratio of 1.0 mea
 | Connection count | Mean ± Nσ | Counts are approximately normal |
 | Binary health check | Static (0 or 1) | No distribution to measure |
 | Noisy metrics | IQR | Robust to outliers |
+
+## Property-Based Testing
+
+The statistical functions in `tumult-baseline` are covered by property-based tests using `proptest`. These tests generate arbitrary datasets and verify mathematical invariants (e.g., mean is always between min and max, stddev is non-negative) rather than relying on fixed examples. Run them with:
+
+```bash
+cargo test -p tumult-baseline
+```

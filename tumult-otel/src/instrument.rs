@@ -90,9 +90,18 @@ pub fn record_probe(
     }
 }
 
-/// Record a hypothesis deviation.
-pub fn record_deviation(metrics: &TumultMetrics) {
-    metrics.hypothesis_deviations_total.add(1, &[]);
+/// Record a hypothesis deviation, tagged by experiment name.
+///
+/// The `experiment_name` attribute allows downstream dashboards and
+/// alerts to break down deviation counts per experiment.
+pub fn record_deviation(metrics: &TumultMetrics, experiment_name: &str) {
+    metrics.hypothesis_deviations_total.add(
+        1,
+        &[KeyValue::new(
+            "resilience.experiment.title",
+            experiment_name.to_string(),
+        )],
+    );
 }
 
 /// Record experiment completion.
@@ -136,7 +145,15 @@ mod tests {
     fn record_deviation_does_not_panic() {
         let meter = opentelemetry::global::meter("test");
         let metrics = TumultMetrics::new(&meter);
-        record_deviation(&metrics);
+        record_deviation(&metrics, "db-connection-pool-exhaustion");
+    }
+
+    #[test]
+    fn record_deviation_accepts_different_experiment_names() {
+        let meter = opentelemetry::global::meter("test");
+        let metrics = TumultMetrics::new(&meter);
+        record_deviation(&metrics, "experiment-a");
+        record_deviation(&metrics, "experiment-b");
     }
 
     #[test]

@@ -49,6 +49,7 @@ async fn e2e_run_analyze_export() {
                 pause_before_s: None,
                 pause_after_s: None,
                 background: false,
+                label_selector: None,
             }],
         }),
         method: vec![Activity {
@@ -64,6 +65,7 @@ async fn e2e_run_analyze_export() {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
         rollbacks: vec![],
         estimate: Some(Estimate {

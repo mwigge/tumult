@@ -3,6 +3,34 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// Policy for verifying the SSH server's host key against `known_hosts`.
+///
+/// Controls how `tumult-ssh` handles host key verification during connection
+/// establishment. The default policy is [`HostKeyPolicy::Verify`].
+#[non_exhaustive]
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum HostKeyPolicy {
+    /// Verify the server key against the `known_hosts` file. Rejects connections
+    /// for unknown or mismatched keys.
+    ///
+    /// This is the default and most secure policy.
+    #[default]
+    Verify,
+    /// Trust On First Use: accept and record unknown keys, then verify on
+    /// subsequent connections.
+    ///
+    /// Useful when connecting to freshly provisioned hosts whose keys are
+    /// not yet in `known_hosts`.
+    TrustOnFirstUse,
+    /// Accept any server key without verification.
+    ///
+    /// **Security**: This policy is insecure and makes connections vulnerable
+    /// to MITM attacks. Only use for ephemeral test infrastructure where
+    /// host keys change on every provision and network security is ensured
+    /// by other means.
+    AcceptAny,
+}
+
 /// Authentication method for SSH connections.
 ///
 /// `Debug` is manually implemented to redact the passphrase field.
@@ -50,13 +78,16 @@ pub struct SshConfig {
     pub auth: AuthMethod,
     pub connect_timeout: Duration,
     pub command_timeout: Option<Duration>,
-    /// Allow connecting to hosts with unrecognized server keys.
+    /// Policy governing host key verification.
     ///
-    /// **Security**: Defaults to `false`. Setting this to `true` disables host
-    /// key verification, making connections vulnerable to MITM attacks. Only
-    /// enable for trusted internal networks, ephemeral cloud instances, or
-    /// development/testing environments.
-    pub allow_unknown_hosts: bool,
+    /// Defaults to [`HostKeyPolicy::Verify`], which checks the server key
+    /// against `known_hosts_path`. Set to [`HostKeyPolicy::AcceptAny`] only
+    /// for ephemeral or trusted environments where MITM risk is acceptable.
+    pub host_key_policy: HostKeyPolicy,
+    /// Path to the `known_hosts` file used for host key verification.
+    ///
+    /// Defaults to `~/.ssh/known_hosts` when `None`.
+    pub known_hosts_path: Option<PathBuf>,
 }
 
 impl SshConfig {
@@ -73,7 +104,8 @@ impl SshConfig {
             },
             connect_timeout: Duration::from_secs(10),
             command_timeout: None,
-            allow_unknown_hosts: false,
+            host_key_policy: HostKeyPolicy::Verify,
+            known_hosts_path: None,
         }
     }
 
@@ -87,7 +119,8 @@ impl SshConfig {
             auth: AuthMethod::Agent,
             connect_timeout: Duration::from_secs(10),
             command_timeout: None,
-            allow_unknown_hosts: false,
+            host_key_policy: HostKeyPolicy::Verify,
+            known_hosts_path: None,
         }
     }
 
@@ -112,13 +145,36 @@ impl SshConfig {
         self
     }
 
+    /// Set the host key verification policy.
+    #[must_use]
+    pub fn host_key_policy(mut self, policy: HostKeyPolicy) -> Self {
+        self.host_key_policy = policy;
+        self
+    }
+
+    /// Override the path to the `known_hosts` file.
+    ///
+    /// When not set, defaults to `~/.ssh/known_hosts` at connection time.
+    #[must_use]
+    pub fn known_hosts_path(mut self, path: PathBuf) -> Self {
+        self.known_hosts_path = Some(path);
+        self
+    }
+
     /// Allow connecting to hosts with unrecognized server keys.
     ///
     /// **Security**: Defaults to `false`. Only enable for trusted networks or
     /// ephemeral instances where host keys change on every provision.
+    ///
+    /// This is a convenience wrapper: `true` maps to [`HostKeyPolicy::AcceptAny`],
+    /// `false` maps to [`HostKeyPolicy::Verify`].
     #[must_use]
     pub fn allow_unknown_hosts(mut self, allow: bool) -> Self {
-        self.allow_unknown_hosts = allow;
+        self.host_key_policy = if allow {
+            HostKeyPolicy::AcceptAny
+        } else {
+            HostKeyPolicy::Verify
+        };
         self
     }
 }
@@ -178,24 +234,69 @@ mod tests {
     }
 
     #[test]
-    fn allow_unknown_hosts_defaults_to_false() {
+    fn host_key_policy_defaults_to_verify() {
         let config = SshConfig::with_agent("host", "user");
-        assert!(
-            !config.allow_unknown_hosts,
-            "allow_unknown_hosts should default to false for security"
+        assert_eq!(
+            config.host_key_policy,
+            HostKeyPolicy::Verify,
+            "host_key_policy should default to Verify for security"
         );
 
         let config = SshConfig::with_key("host", "user", PathBuf::from("/tmp/key"));
-        assert!(
-            !config.allow_unknown_hosts,
-            "allow_unknown_hosts should default to false for security"
+        assert_eq!(
+            config.host_key_policy,
+            HostKeyPolicy::Verify,
+            "host_key_policy should default to Verify for security"
+        );
+    }
+
+    // Kept for backwards compatibility — allow_unknown_hosts(true) maps to AcceptAny
+    #[test]
+    fn allow_unknown_hosts_defaults_to_false() {
+        let config = SshConfig::with_agent("host", "user");
+        assert_ne!(
+            config.host_key_policy,
+            HostKeyPolicy::AcceptAny,
+            "host_key_policy should not default to AcceptAny"
+        );
+
+        let config = SshConfig::with_key("host", "user", PathBuf::from("/tmp/key"));
+        assert_ne!(
+            config.host_key_policy,
+            HostKeyPolicy::AcceptAny,
+            "host_key_policy should not default to AcceptAny"
         );
     }
 
     #[test]
-    fn allow_unknown_hosts_builder() {
+    fn allow_unknown_hosts_still_works() {
+        // Backwards-compat: .allow_unknown_hosts(true) maps to AcceptAny
         let config = SshConfig::with_agent("host", "user").allow_unknown_hosts(true);
-        assert!(config.allow_unknown_hosts);
+        assert_eq!(config.host_key_policy, HostKeyPolicy::AcceptAny);
+
+        // .allow_unknown_hosts(false) maps to Verify
+        let config = SshConfig::with_agent("host", "user").allow_unknown_hosts(false);
+        assert_eq!(config.host_key_policy, HostKeyPolicy::Verify);
+    }
+
+    #[test]
+    fn host_key_policy_builder() {
+        let config =
+            SshConfig::with_agent("host", "user").host_key_policy(HostKeyPolicy::TrustOnFirstUse);
+        assert_eq!(config.host_key_policy, HostKeyPolicy::TrustOnFirstUse);
+    }
+
+    #[test]
+    fn known_hosts_path_builder() {
+        let path = PathBuf::from("/custom/known_hosts");
+        let config = SshConfig::with_agent("host", "user").known_hosts_path(path.clone());
+        assert_eq!(config.known_hosts_path, Some(path));
+    }
+
+    #[test]
+    fn known_hosts_path_defaults_to_none() {
+        let config = SshConfig::with_agent("host", "user");
+        assert!(config.known_hosts_path.is_none());
     }
 
     #[test]

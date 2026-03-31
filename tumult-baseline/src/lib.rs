@@ -40,8 +40,8 @@ pub(crate) mod telemetry;
 pub mod tolerance;
 
 pub use acquisition::{
-    derive_baseline, AcquisitionConfig, AcquisitionError, AcquisitionResult, ProbeSamples,
-    ProbeStats,
+    derive_baseline, AcquisitionConfig, AcquisitionError, AcquisitionResult, AcquisitionStream,
+    ProbeSamples, ProbeStats,
 };
 pub use anomaly::{check_baseline_anomaly, AnomalyCheck};
 pub use stats::{
