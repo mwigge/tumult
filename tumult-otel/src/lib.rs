@@ -1,4 +1,4 @@
-//! Tumult OTel — OpenTelemetry instrumentation for the Tumult platform.
+//! Tumult `OTel` — OpenTelemetry instrumentation for the Tumult platform.
 //!
 //! Provides always-on tracing, metrics, and logging via the
 //! `tracing` + `tracing-opentelemetry` bridge with OTLP export.
@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod telemetry;
 
 pub use config::TelemetryConfig;
+pub use instrument::SpanGuard;
 pub use metrics::TumultMetrics;
 pub use telemetry::TumultTelemetry;
 
@@ -27,14 +28,17 @@ mod tests {
         assert!(!config.console_export);
     }
 
+    // Env-var tests use a shared mutex to avoid race conditions when
+    // multiple tests manipulate the same environment variable.
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn config_from_env_respects_disabled() {
-        // Save and restore env vars
+        let _guard = ENV_MUTEX.lock().unwrap();
         let prev = std::env::var("TUMULT_OTEL_ENABLED").ok();
         std::env::set_var("TUMULT_OTEL_ENABLED", "false");
         let config = TelemetryConfig::from_env();
         assert!(!config.enabled);
-        // Restore
         match prev {
             Some(v) => std::env::set_var("TUMULT_OTEL_ENABLED", v),
             None => std::env::remove_var("TUMULT_OTEL_ENABLED"),
@@ -43,6 +47,7 @@ mod tests {
 
     #[test]
     fn config_from_env_defaults_to_enabled() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         let prev = std::env::var("TUMULT_OTEL_ENABLED").ok();
         std::env::remove_var("TUMULT_OTEL_ENABLED");
         let config = TelemetryConfig::from_env();
@@ -181,7 +186,7 @@ mod tests {
     fn telemetry_debug_trait_works() {
         let config = TelemetryConfig::default();
         let telemetry = TumultTelemetry::new(config);
-        let debug = format!("{:?}", telemetry);
+        let debug = format!("{telemetry:?}");
         assert!(debug.contains("TumultTelemetry"));
     }
 }

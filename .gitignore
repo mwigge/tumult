@@ -17,3 +17,9 @@ journal.toon
 *.swp
 *.swo
 
+# Local documentation (not tracked)
+docs_local/
+
+# Local AI rules (not tracked)
+CLAUDE.md
+

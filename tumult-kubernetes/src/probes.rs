@@ -1,7 +1,7 @@
 //! Kubernetes status probes.
 //!
 //! Probes that observe cluster state without modifying it.
-//! Follows the patterns established by Chaos Toolkit, LitmusChaos,
+//! Follows the patterns established by Chaos Toolkit, `LitmusChaos`,
 //! and Chaos Mesh for verifying steady state.
 
 use k8s_openapi::api::apps::v1::Deployment;
@@ -49,6 +49,10 @@ pub struct NodeCondition {
 }
 
 /// Check if a specific pod is running and ready.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn pod_is_ready(client: Client, namespace: &str, name: &str) -> Result<bool, KubeError> {
     let _span = crate::telemetry::begin_pod_probe(namespace, name);
     let pods: Api<Pod> = Api::namespaced(client, namespace);
@@ -57,7 +61,11 @@ pub async fn pod_is_ready(client: Client, namespace: &str, name: &str) -> Result
 }
 
 /// List pods matching a label selector and return their statuses.
-/// This follows the Chaos Mesh / LitmusChaos pattern of targeting by labels.
+/// This follows the Chaos Mesh / `LitmusChaos` pattern of targeting by labels.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn pods_by_label(
     client: Client,
     namespace: &str,
@@ -73,6 +81,10 @@ pub async fn pods_by_label(
 
 /// Check if all pods matching a label selector are ready.
 /// Returns (total, ready) count.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn all_pods_ready(
     client: Client,
     namespace: &str,
@@ -85,6 +97,10 @@ pub async fn all_pods_ready(
 }
 
 /// Check if a deployment has all replicas available.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn deployment_is_ready(
     client: Client,
     namespace: &str,
@@ -116,6 +132,10 @@ pub async fn deployment_is_ready(
 }
 
 /// Get node conditions and schedulability status.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn node_status(client: Client, name: &str) -> Result<NodeStatus, KubeError> {
     let _span = crate::telemetry::begin_node_status(name);
     let nodes: Api<Node> = Api::all(client);
@@ -155,6 +175,10 @@ pub async fn node_status(client: Client, name: &str) -> Result<NodeStatus, KubeE
 }
 
 /// Check if a service has endpoints.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn service_has_endpoints(
     client: Client,
     namespace: &str,
@@ -163,20 +187,20 @@ pub async fn service_has_endpoints(
     let endpoints: Api<k8s_openapi::api::core::v1::Endpoints> = Api::namespaced(client, namespace);
     let ep = endpoints.get(name).await?;
 
-    let has_addresses = ep
-        .subsets
-        .as_ref()
-        .map(|subsets| {
-            subsets
-                .iter()
-                .any(|s| s.addresses.as_ref().is_some_and(|a| !a.is_empty()))
-        })
-        .unwrap_or(false);
+    let has_addresses = ep.subsets.as_ref().is_some_and(|subsets| {
+        subsets
+            .iter()
+            .any(|s| s.addresses.as_ref().is_some_and(|a| !a.is_empty()))
+    });
 
     Ok(has_addresses)
 }
 
 /// Count pods matching a label selector that are in a given phase.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 pub async fn count_pods_in_phase(
     client: Client,
     namespace: &str,
@@ -193,12 +217,11 @@ fn is_pod_ready(pod: &Pod) -> bool {
     pod.status
         .as_ref()
         .and_then(|s| s.conditions.as_ref())
-        .map(|conds| {
+        .is_some_and(|conds| {
             conds
                 .iter()
                 .any(|c| c.type_ == "Ready" && c.status == "True")
         })
-        .unwrap_or(false)
 }
 
 fn pod_to_status(pod: Pod) -> PodStatus {
@@ -216,8 +239,7 @@ fn pod_to_status(pod: Pod) -> PodStatus {
         .status
         .as_ref()
         .and_then(|s| s.container_statuses.as_ref())
-        .map(|cs| cs.iter().map(|c| c.restart_count).sum())
-        .unwrap_or(0);
+        .map_or(0, |cs| cs.iter().map(|c| c.restart_count).sum());
 
     let node = pod
         .spec

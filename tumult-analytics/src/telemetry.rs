@@ -6,14 +6,14 @@
 //! ```
 //!
 //! ## Spans
-//! - `resilience.analytics.ingest` — journal → Arrow → DuckDB
+//! - `resilience.analytics.ingest` — journal → Arrow → `DuckDB`
 //! - `resilience.analytics.query` — SQL execution
 //! - `resilience.analytics.export` — Parquet/CSV/IPC write
-//! - `resilience.analytics.import` — Parquet → DuckDB restore
+//! - `resilience.analytics.import` — Parquet → `DuckDB` restore
 //! - `resilience.analytics.purge` — retention policy execution
 //!
-//! ## Events (structured logs per OTel event semantic conventions)
-//! - `resilience.analytics.journal.ingested`
+//! ## Events (structured logs per `OTel` event semantic conventions)
+//! - `journal.ingested`
 //! - `resilience.analytics.journal.duplicate`
 //! - `resilience.analytics.query.executed`
 //! - `resilience.analytics.export.completed`
@@ -21,9 +21,9 @@
 //! - `resilience.analytics.purge.completed`
 //!
 //! ## Gauges
-//! - `resilience.store.experiments` — experiment count
-//! - `resilience.store.activities` — activity count
-//! - `resilience.store.size_bytes` — database file size
+//! - `tumult.store.experiments` — experiment count
+//! - `tumult.store.activities` — activity count
+//! - `tumult.store.size_bytes` — database file size
 
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
@@ -31,6 +31,7 @@ use opentelemetry::{global, KeyValue};
 const TRACER_NAME: &str = "tumult-analytics";
 
 /// Start a span for journal ingestion. Returns a context guard — span ends on drop.
+#[must_use]
 pub fn begin_ingest(experiment_id: &str, experiment_title: &str) -> IngestGuard {
     let tracer = global::tracer(TRACER_NAME);
     let span = tracer
@@ -55,10 +56,14 @@ pub struct IngestGuard {
 pub fn event_journal_ingested(experiment_id: &str, activity_count: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
-        "resilience.analytics.journal.ingested",
+        "journal.ingested",
         vec![
             KeyValue::new("resilience.experiment.id", experiment_id.to_string()),
-            KeyValue::new("resilience.activity.count", activity_count as i64),
+            // usize → i64: activity counts are always << i64::MAX.
+            KeyValue::new(
+                "resilience.activity.count",
+                i64::try_from(activity_count).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
@@ -76,6 +81,7 @@ pub fn event_journal_duplicate(experiment_id: &str) {
 }
 
 /// Start a span for SQL query execution. Returns a context guard.
+#[must_use]
 pub fn begin_query(sql: &str) -> QueryGuard {
     let tracer = global::tracer(TRACER_NAME);
     let sql_preview = if sql.len() > 256 {
@@ -104,13 +110,20 @@ pub fn event_query_executed(row_count: usize, column_count: usize) {
     cx.span().add_event(
         "resilience.analytics.query.executed",
         vec![
-            KeyValue::new("resilience.query.row_count", row_count as i64),
-            KeyValue::new("resilience.query.column_count", column_count as i64),
+            KeyValue::new(
+                "resilience.query.row_count",
+                i64::try_from(row_count).unwrap_or(i64::MAX),
+            ),
+            KeyValue::new(
+                "resilience.query.column_count",
+                i64::try_from(column_count).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
 
 /// Start a span for data export. Returns a context guard.
+#[must_use]
 pub fn begin_export(format: &str, path: &str) -> ExportGuard {
     let tracer = global::tracer(TRACER_NAME);
     let span = tracer
@@ -138,13 +151,20 @@ pub fn event_export_completed(format: &str, row_count: usize, bytes: u64) {
         "resilience.analytics.export.completed",
         vec![
             KeyValue::new("resilience.export.format", format.to_string()),
-            KeyValue::new("resilience.export.row_count", row_count as i64),
-            KeyValue::new("resilience.export.bytes", bytes as i64),
+            KeyValue::new(
+                "resilience.export.row_count",
+                i64::try_from(row_count).unwrap_or(i64::MAX),
+            ),
+            KeyValue::new(
+                "resilience.export.bytes",
+                i64::try_from(bytes).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
 
 /// Start a span for data import. Returns a context guard.
+#[must_use]
 pub fn begin_import(path: &str) -> ImportGuard {
     let tracer = global::tracer(TRACER_NAME);
     let span = tracer
@@ -173,14 +193,18 @@ pub fn event_import_completed(experiment_count: usize, activity_count: usize) {
         vec![
             KeyValue::new(
                 "resilience.import.experiment_count",
-                experiment_count as i64,
+                i64::try_from(experiment_count).unwrap_or(i64::MAX),
             ),
-            KeyValue::new("resilience.import.activity_count", activity_count as i64),
+            KeyValue::new(
+                "resilience.import.activity_count",
+                i64::try_from(activity_count).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
 
 /// Start a span for retention purge. Returns a context guard.
+#[must_use]
 pub fn begin_purge(older_than_days: u32) -> PurgeGuard {
     let tracer = global::tracer(TRACER_NAME);
     let span = tracer
@@ -207,8 +231,14 @@ pub fn event_purge_completed(purged_count: usize, remaining_count: usize) {
     cx.span().add_event(
         "resilience.analytics.purge.completed",
         vec![
-            KeyValue::new("resilience.purge.removed", purged_count as i64),
-            KeyValue::new("resilience.purge.remaining", remaining_count as i64),
+            KeyValue::new(
+                "resilience.purge.removed",
+                i64::try_from(purged_count).unwrap_or(i64::MAX),
+            ),
+            KeyValue::new(
+                "resilience.purge.remaining",
+                i64::try_from(remaining_count).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
@@ -223,14 +253,14 @@ pub fn record_store_gauges(
 ) {
     let meter = global::meter(TRACER_NAME);
 
-    let g = meter.u64_gauge("resilience.store.experiments").build();
+    let g = meter.u64_gauge("tumult.store.experiments").build();
     g.record(experiment_count as u64, &[]);
 
-    let g = meter.u64_gauge("resilience.store.activities").build();
+    let g = meter.u64_gauge("tumult.store.activities").build();
     g.record(activity_count as u64, &[]);
 
     if let Some(bytes) = size_bytes {
-        let g = meter.u64_gauge("resilience.store.size_bytes").build();
+        let g = meter.u64_gauge("tumult.store.size_bytes").build();
         g.record(bytes, &[]);
     }
 }

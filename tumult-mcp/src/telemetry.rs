@@ -1,13 +1,10 @@
-//! OTel instrumentation for MCP tool dispatch.
+//! `OTel` instrumentation for MCP tool dispatch.
 
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
+use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-mcp";
-
-pub(crate) struct SpanGuard {
-    _guard: opentelemetry::ContextGuard,
-}
 
 /// Start a span for MCP tool invocation.
 pub(crate) fn begin_tool_call(tool_name: &str) -> SpanGuard {
@@ -22,9 +19,7 @@ pub(crate) fn begin_tool_call(tool_name: &str) -> SpanGuard {
         ])
         .start(&tracer);
     let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard {
-        _guard: cx.attach(),
-    }
+    SpanGuard::new(cx.attach())
 }
 
 pub(crate) fn event_tool_completed(tool_name: &str, success: bool) {
