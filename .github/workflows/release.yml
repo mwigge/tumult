@@ -56,6 +56,10 @@ jobs:
         if: matrix.cross
         run: cargo install cross --locked
 
+      - name: Run tests before release
+        if: ${{ !matrix.cross }}
+        run: cargo test --workspace
+
       - name: Build (native)
         if: ${{ !matrix.cross }}
         run: cargo build --release --target ${{ matrix.target }} -p tumult-cli
