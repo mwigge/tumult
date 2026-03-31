@@ -227,6 +227,7 @@ fn full_experiment_run_produces_complete_journal() {
 
     let config = RunConfig {
         rollback_strategy: RollbackStrategy::Always,
+        cancellation_token: None,
     };
 
     let journal = run_experiment(&exp, &plugin, &controls, &config).unwrap();

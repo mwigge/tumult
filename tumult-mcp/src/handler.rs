@@ -164,8 +164,21 @@ impl tumult_core::runner::ActivityExecutor for ProcessExecutor {
 
 // ── MCP Handler ───────────────────────────────────────────────
 
-#[derive(Default)]
-pub struct TumultHandler;
+/// Maximum concurrent tool calls allowed.
+const MAX_CONCURRENT_TOOL_CALLS: usize = 10;
+
+pub struct TumultHandler {
+    /// Semaphore limiting concurrent tool execution.
+    pub semaphore: tokio::sync::Semaphore,
+}
+
+impl Default for TumultHandler {
+    fn default() -> Self {
+        Self {
+            semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
+        }
+    }
+}
 
 #[async_trait]
 impl ServerHandler for TumultHandler {
@@ -197,6 +210,13 @@ impl ServerHandler for TumultHandler {
         params: CallToolRequestParams,
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, CallToolError> {
+        // Acquire rate-limiting permit before any non-Send work
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| CallToolError::unknown_tool("semaphore closed".to_string()))?;
+
         tracing::info!(tool = %params.name, "MCP tool call");
         let _span = crate::telemetry::begin_tool_call(&params.name);
 
@@ -284,6 +304,15 @@ mod tests {
             AnalyzeStoreTool::tool(),
         ];
         assert_eq!(tools.len(), 10);
+    }
+
+    #[test]
+    fn handler_has_semaphore_with_correct_limit() {
+        let handler = TumultHandler::default();
+        assert_eq!(
+            handler.semaphore.available_permits(),
+            MAX_CONCURRENT_TOOL_CALLS
+        );
     }
 
     #[test]

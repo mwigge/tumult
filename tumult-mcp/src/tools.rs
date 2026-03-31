@@ -45,6 +45,7 @@ pub fn run_experiment(experiment_path: &str, rollback_strategy: &str) -> Result<
     let controls = ControlRegistry::new();
     let config = RunConfig {
         rollback_strategy: strategy,
+        cancellation_token: None,
     };
 
     let journal =
