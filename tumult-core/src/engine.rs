@@ -28,6 +28,14 @@ pub enum EngineError {
     ParseError(String),
     #[error("invalid regex pattern in activity '{activity}': {pattern}")]
     InvalidRegex { activity: String, pattern: String },
+    #[error(
+        "invalid tolerance range in activity '{activity}': lower ({from}) must be <= upper ({to})"
+    )]
+    InvalidToleranceBounds {
+        activity: String,
+        from: f64,
+        to: f64,
+    },
 }
 
 /// Resolve configuration values by reading environment variables.
@@ -132,13 +140,25 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
                 .flatten(),
         );
     for activity in all_activities {
-        if let Some(Tolerance::Regex { pattern }) = &activity.tolerance {
-            if regex_lite::Regex::new(pattern).is_err() {
-                return Err(EngineError::InvalidRegex {
-                    activity: activity.name.clone(),
-                    pattern: pattern.clone(),
-                });
+        match &activity.tolerance {
+            Some(Tolerance::Regex { pattern }) => {
+                if regex_lite::Regex::new(pattern).is_err() {
+                    return Err(EngineError::InvalidRegex {
+                        activity: activity.name.clone(),
+                        pattern: pattern.clone(),
+                    });
+                }
             }
+            Some(Tolerance::Range { from, to }) => {
+                if from > to {
+                    return Err(EngineError::InvalidToleranceBounds {
+                        activity: activity.name.clone(),
+                        from: *from,
+                        to: *to,
+                    });
+                }
+            }
+            _ => {}
         }
     }
 

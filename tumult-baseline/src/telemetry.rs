@@ -5,11 +5,11 @@ use opentelemetry::{global, KeyValue};
 
 const TRACER: &str = "tumult-baseline";
 
-pub struct SpanGuard {
+pub(crate) struct SpanGuard {
     _guard: opentelemetry::ContextGuard,
 }
 
-pub fn begin_acquire(probe_count: usize, method: &str) -> SpanGuard {
+pub(crate) fn begin_acquire(probe_count: usize, method: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
     let span = tracer
         .span_builder("baseline.acquire")
@@ -25,7 +25,7 @@ pub fn begin_acquire(probe_count: usize, method: &str) -> SpanGuard {
     }
 }
 
-pub fn event_tolerance_derived(lower: f64, upper: f64, total_samples: usize) {
+pub(crate) fn event_tolerance_derived(lower: f64, upper: f64, total_samples: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "baseline.tolerance.derived",
@@ -37,7 +37,7 @@ pub fn event_tolerance_derived(lower: f64, upper: f64, total_samples: usize) {
     );
 }
 
-pub fn event_anomaly_detected(reason: &str, cv: f64) {
+pub(crate) fn event_anomaly_detected(reason: &str, cv: f64) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "baseline.anomaly.detected",
@@ -48,7 +48,7 @@ pub fn event_anomaly_detected(reason: &str, cv: f64) {
     );
 }
 
-pub fn record_baseline_gauges(
+pub(crate) fn record_baseline_gauges(
     probe_count: usize,
     samples_total: usize,
     tolerance_lower: f64,
@@ -56,11 +56,18 @@ pub fn record_baseline_gauges(
 ) {
     let meter = global::meter(TRACER);
 
-    let g = meter.u64_gauge("baseline.probes_total").build();
-    g.record(probe_count as u64, &[]);
+    // probes_total and samples_total are monotonically increasing counters
+    let c = meter
+        .u64_counter("baseline.probes_total")
+        .with_description("Total baseline probes executed")
+        .build();
+    c.add(probe_count as u64, &[]);
 
-    let g = meter.u64_gauge("baseline.samples_total").build();
-    g.record(samples_total as u64, &[]);
+    let c = meter
+        .u64_counter("baseline.samples_total")
+        .with_description("Total baseline samples collected")
+        .build();
+    c.add(samples_total as u64, &[]);
 
     let g = meter.f64_gauge("baseline.tolerance.lower").build();
     g.record(tolerance_lower, &[]);

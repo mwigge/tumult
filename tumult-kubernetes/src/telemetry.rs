@@ -5,7 +5,7 @@ use opentelemetry::{global, KeyValue};
 
 const TRACER: &str = "tumult-kubernetes";
 
-pub struct SpanGuard {
+pub(crate) struct SpanGuard {
     _guard: opentelemetry::ContextGuard,
 }
 
@@ -24,7 +24,7 @@ fn k8s_span(name: &str, attrs: Vec<KeyValue>) -> SpanGuard {
 
 // ── Actions ─────────────────────────────────────────────────
 
-pub fn begin_delete_pod(namespace: &str, name: &str) -> SpanGuard {
+pub(crate) fn begin_delete_pod(namespace: &str, name: &str) -> SpanGuard {
     k8s_span(
         "k8s.pod.delete",
         vec![
@@ -34,7 +34,7 @@ pub fn begin_delete_pod(namespace: &str, name: &str) -> SpanGuard {
     )
 }
 
-pub fn begin_scale_deployment(namespace: &str, name: &str, replicas: i32) -> SpanGuard {
+pub(crate) fn begin_scale_deployment(namespace: &str, name: &str, replicas: i32) -> SpanGuard {
     k8s_span(
         "k8s.deployment.scale",
         vec![
@@ -45,14 +45,14 @@ pub fn begin_scale_deployment(namespace: &str, name: &str, replicas: i32) -> Spa
     )
 }
 
-pub fn begin_cordon_node(name: &str) -> SpanGuard {
+pub(crate) fn begin_cordon_node(name: &str) -> SpanGuard {
     k8s_span(
         "k8s.node.cordon",
         vec![KeyValue::new("k8s.node.name", name.to_string())],
     )
 }
 
-pub fn begin_drain_node(name: &str, grace_period: Option<u32>) -> SpanGuard {
+pub(crate) fn begin_drain_node(name: &str, grace_period: Option<u32>) -> SpanGuard {
     let mut attrs = vec![KeyValue::new("k8s.node.name", name.to_string())];
     if let Some(gp) = grace_period {
         attrs.push(KeyValue::new(
@@ -63,7 +63,7 @@ pub fn begin_drain_node(name: &str, grace_period: Option<u32>) -> SpanGuard {
     k8s_span("k8s.node.drain", attrs)
 }
 
-pub fn begin_apply_network_policy(namespace: &str, policy_name: &str) -> SpanGuard {
+pub(crate) fn begin_apply_network_policy(namespace: &str, policy_name: &str) -> SpanGuard {
     k8s_span(
         "k8s.networkpolicy.apply",
         vec![
@@ -73,7 +73,7 @@ pub fn begin_apply_network_policy(namespace: &str, policy_name: &str) -> SpanGua
     )
 }
 
-pub fn begin_delete_network_policy(namespace: &str, name: &str) -> SpanGuard {
+pub(crate) fn begin_delete_network_policy(namespace: &str, name: &str) -> SpanGuard {
     k8s_span(
         "k8s.networkpolicy.delete",
         vec![
@@ -85,7 +85,7 @@ pub fn begin_delete_network_policy(namespace: &str, name: &str) -> SpanGuard {
 
 // ── Probes ──────────────────────────────────────────────────
 
-pub fn begin_pod_probe(namespace: &str, name: &str) -> SpanGuard {
+pub(crate) fn begin_pod_probe(namespace: &str, name: &str) -> SpanGuard {
     k8s_span(
         "k8s.pod.is_ready",
         vec![
@@ -95,7 +95,7 @@ pub fn begin_pod_probe(namespace: &str, name: &str) -> SpanGuard {
     )
 }
 
-pub fn begin_pods_by_label(namespace: &str, selector: &str) -> SpanGuard {
+pub(crate) fn begin_pods_by_label(namespace: &str, selector: &str) -> SpanGuard {
     k8s_span(
         "k8s.pods.list_by_label",
         vec![
@@ -105,7 +105,7 @@ pub fn begin_pods_by_label(namespace: &str, selector: &str) -> SpanGuard {
     )
 }
 
-pub fn begin_deployment_probe(namespace: &str, name: &str) -> SpanGuard {
+pub(crate) fn begin_deployment_probe(namespace: &str, name: &str) -> SpanGuard {
     k8s_span(
         "k8s.deployment.is_ready",
         vec![
@@ -115,7 +115,7 @@ pub fn begin_deployment_probe(namespace: &str, name: &str) -> SpanGuard {
     )
 }
 
-pub fn begin_node_status(name: &str) -> SpanGuard {
+pub(crate) fn begin_node_status(name: &str) -> SpanGuard {
     k8s_span(
         "k8s.node.status",
         vec![KeyValue::new("k8s.node.name", name.to_string())],
@@ -124,7 +124,7 @@ pub fn begin_node_status(name: &str) -> SpanGuard {
 
 // ── Events ──────────────────────────────────────────────────
 
-pub fn event_drain_completed(evicted: usize, failed: usize, skipped_daemonsets: usize) {
+pub(crate) fn event_drain_completed(evicted: usize, failed: usize, skipped_daemonsets: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "k8s.drain.completed",
@@ -136,7 +136,8 @@ pub fn event_drain_completed(evicted: usize, failed: usize, skipped_daemonsets: 
     );
 }
 
-pub fn event_pod_evicted(pod_name: &str) {
+#[allow(dead_code)]
+pub(crate) fn event_pod_evicted(pod_name: &str) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "k8s.pod.evicted",
@@ -144,7 +145,8 @@ pub fn event_pod_evicted(pod_name: &str) {
     );
 }
 
-pub fn event_pods_counted(count: usize) {
+#[allow(dead_code)]
+pub(crate) fn event_pods_counted(count: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "k8s.pods.counted",

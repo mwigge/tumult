@@ -15,6 +15,8 @@ pub enum ExecutorError {
     ExecutionFailed(#[from] std::io::Error),
     #[error("script timed out after {0}s")]
     Timeout(f64),
+    #[error("null byte in script argument key or value: {0}")]
+    NullByteInArgument(String),
 }
 
 /// Result of executing a script plugin action or probe.
@@ -29,6 +31,19 @@ impl ScriptResult {
     pub fn succeeded(&self) -> bool {
         self.exit_code == 0
     }
+}
+
+/// Validate that no argument keys or values contain null bytes.
+///
+/// Null bytes in environment variable names or values can cause truncation
+/// or injection issues in child processes.
+pub fn validate_arguments(arguments: &HashMap<String, String>) -> Result<(), ExecutorError> {
+    for (k, v) in arguments {
+        if k.contains('\0') || v.contains('\0') {
+            return Err(ExecutorError::NullByteInArgument(k.clone()));
+        }
+    }
+    Ok(())
 }
 
 /// Build the TUMULT_* environment variables from a key-value argument map.
@@ -55,6 +70,7 @@ pub async fn execute_script(
         ));
     }
 
+    validate_arguments(arguments)?;
     let env_vars = build_env_vars(arguments);
 
     let mut cmd = tokio::process::Command::new("/bin/sh");

@@ -1,6 +1,6 @@
 //! Standard metrics for Tumult experiments.
 
-use opentelemetry::metrics::{Counter, Histogram, Meter};
+use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter};
 
 /// Standard metrics emitted by the Tumult engine.
 pub struct TumultMetrics {
@@ -11,6 +11,7 @@ pub struct TumultMetrics {
     pub probe_duration_seconds: Histogram<f64>,
     pub hypothesis_deviations_total: Counter<u64>,
     pub plugin_errors_total: Counter<u64>,
+    pub recovery_time_seconds: Gauge<f64>,
 }
 
 impl TumultMetrics {
@@ -49,6 +50,11 @@ impl TumultMetrics {
             plugin_errors_total: meter
                 .u64_counter("tumult_plugin_errors_total")
                 .with_description("Total plugin execution errors")
+                .build(),
+            recovery_time_seconds: meter
+                .f64_gauge("resilience.outcome.recovery_time_s")
+                .with_description("Time in seconds for the system to recover after fault injection")
+                .with_unit("s")
                 .build(),
         }
     }
