@@ -53,6 +53,12 @@ up-classic:
 	@echo "Grafana:    http://localhost:13000  (admin/tumult)"
 	@echo "Prometheus: http://localhost:19090"
 
+dashboards:
+	@echo "Importing SigNoz dashboards..."
+	@bash docker/signoz/dashboards/import-dashboards.sh http://localhost:13301
+	@echo ""
+	@echo "Open SigNoz: http://localhost:13301 → Dashboards"
+
 down:
 	$(COMPOSE_FULL) --profile classic down -v 2>/dev/null || true
 
