@@ -85,18 +85,6 @@ exporters:
     tls:
       insecure: true
 
-  # Jaeger (only used when classic profile is active)
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-
-  # Prometheus endpoint (only used with classic profile)
-  prometheus:
-    endpoint: 0.0.0.0:8889
-    resource_to_telemetry_conversion:
-      enabled: true
-
   debug:
     verbosity: basic
 
