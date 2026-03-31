@@ -7,5 +7,6 @@ license.workspace = true
 description = "Baseline acquisition and statistical methods for Tumult experiments"
 
 [dependencies]
+tumult-otel = { path = "../tumult-otel" }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }

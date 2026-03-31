@@ -7,17 +7,21 @@ use arrow::csv::WriterBuilder as CsvWriterBuilder;
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
+use parquet::basic::ZstdLevel;
 use parquet::file::properties::WriterProperties;
 
 use crate::error::AnalyticsError;
 use crate::telemetry;
 
+/// # Errors
+///
+/// Returns an error if the Parquet file cannot be created or written.
 pub fn export_parquet(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
     let _span = telemetry::begin_export("parquet", &path.display().to_string());
 
     let file = File::create(path)?;
     let props = WriterProperties::builder()
-        .set_compression(parquet::basic::Compression::ZSTD(Default::default()))
+        .set_compression(parquet::basic::Compression::ZSTD(ZstdLevel::default()))
         .build();
     let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))?;
     writer.write(batch)?;
@@ -28,7 +32,11 @@ pub fn export_parquet(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsE
     Ok(())
 }
 
-/// Export a RecordBatch to Arrow IPC (Feather) format.
+/// Export a `RecordBatch` to Arrow IPC (Feather) format.
+///
+/// # Errors
+///
+/// Returns an error if the Arrow IPC file cannot be created or written.
 pub fn export_arrow_ipc(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
     let _span = telemetry::begin_export("arrow_ipc", &path.display().to_string());
 
@@ -42,6 +50,9 @@ pub fn export_arrow_ipc(batch: &RecordBatch, path: &Path) -> Result<(), Analytic
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns an error if the CSV file cannot be created or written.
 pub fn export_csv(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
     let _span = telemetry::begin_export("csv", &path.display().to_string());
 
@@ -54,7 +65,11 @@ pub fn export_csv(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError
     Ok(())
 }
 
-/// Import RecordBatches from a Parquet file.
+/// Import `RecordBatches` from a Parquet file.
+///
+/// # Errors
+///
+/// Returns an error if the Parquet file cannot be opened or read.
 pub fn import_parquet(path: &Path) -> Result<Vec<RecordBatch>, AnalyticsError> {
     let file = File::open(path)?;
     let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;

@@ -1,8 +1,8 @@
-//! ClickHouse analytics store — implements AnalyticsBackend.
+//! `ClickHouse` analytics store — implements `AnalyticsBackend`.
 //!
 //! Uses typed Row structs and parameterized queries to prevent SQL injection.
-//! Writes experiment data to ClickHouse MergeTree tables in the `tumult`
-//! database, alongside SigNoz's OTel data for cross-correlation.
+//! Writes experiment data to `ClickHouse` `MergeTree` tables in the `tumult`
+//! database, alongside `SigNoz`'s `OTel` data for cross-correlation.
 
 use clickhouse::Client;
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ use crate::config::ClickHouseConfig;
 
 const SCHEMA_VERSION: i64 = 1;
 
-/// Retry configuration for ClickHouse connection attempts.
+/// Retry configuration for `ClickHouse` connection attempts.
 pub struct RetryConfig {
     /// Maximum number of connection attempts.
     pub max_attempts: u32,
@@ -88,10 +88,14 @@ pub struct ClickHouseStore {
 }
 
 impl ClickHouseStore {
-    /// Connect to ClickHouse with retry and exponential backoff.
+    /// Connect to `ClickHouse` with retry and exponential backoff.
     ///
     /// Attempts up to `retry_config.max_attempts` times, sleeping between
     /// failures with the configured backoff durations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if all connection attempts fail.
     pub async fn connect_with_retry(
         config: &ClickHouseConfig,
         retry_config: &RetryConfig,
@@ -123,7 +127,11 @@ impl ClickHouseStore {
         }))
     }
 
-    /// Connect to ClickHouse and initialize the schema.
+    /// Connect to `ClickHouse` and initialize the schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `ClickHouse` connection or schema initialisation fails.
     pub async fn connect(config: &ClickHouseConfig) -> Result<Self, AnalyticsError> {
         let _span = crate::telemetry::begin_connect(&config.url, &config.database);
 
@@ -210,15 +218,14 @@ impl ClickHouseStore {
 
         // Insert schema version (ReplacingMergeTree handles dedup)
         self.execute_ddl(&format!(
-            "INSERT INTO schema_meta (key, value) VALUES ('version', '{}')",
-            SCHEMA_VERSION
+            "INSERT INTO schema_meta (key, value) VALUES ('version', '{SCHEMA_VERSION}')"
         ))
         .await?;
 
         Ok(())
     }
 
-    fn ch_err(e: clickhouse::error::Error) -> AnalyticsError {
+    fn ch_err(e: &clickhouse::error::Error) -> AnalyticsError {
         AnalyticsError::ClickHouse(e.to_string())
     }
 
@@ -239,11 +246,21 @@ impl ClickHouseStore {
 
     async fn execute_ddl(&self, sql: &str) -> Result<(), AnalyticsError> {
         crate::telemetry::event_ddl_executed(sql);
-        self.with_timeout(async { self.client.query(sql).execute().await.map_err(Self::ch_err) })
-            .await
+        self.with_timeout(async {
+            self.client
+                .query(sql)
+                .execute()
+                .await
+                .map_err(|e| Self::ch_err(&e))
+        })
+        .await
     }
 
     /// Async ingest using typed Row inserts (no SQL interpolation).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `ClickHouse` insert or duplicate check fails.
     pub async fn ingest_journal_async(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
         let _span = telemetry::begin_ingest(&journal.experiment_id, &journal.experiment_title);
 
@@ -255,7 +272,7 @@ impl ClickHouseStore {
                     .bind(&journal.experiment_id)
                     .fetch_one::<CountRow>()
                     .await
-                    .map_err(Self::ch_err)
+                    .map_err(|e| Self::ch_err(&e))
             })
             .await?;
 
@@ -268,11 +285,15 @@ impl ClickHouseStore {
         let exp_row = ExperimentRow {
             experiment_id: journal.experiment_id.clone(),
             title: journal.experiment_title.clone(),
-            status: format!("{:?}", journal.status),
+            status: journal.status.to_string(),
             started_at_ns: journal.started_at_ns,
             ended_at_ns: journal.ended_at_ns,
             duration_ms: journal.duration_ms,
+            // usize → i64: result counts in chaos experiments are always << i64::MAX.
+            #[allow(clippy::cast_possible_wrap)]
             method_step_count: journal.method_results.len() as i64,
+            // usize → i64: result counts in chaos experiments are always << i64::MAX.
+            #[allow(clippy::cast_possible_wrap)]
             rollback_count: journal.rollback_results.len() as i64,
             hypothesis_before_met: journal
                 .steady_state_before
@@ -287,9 +308,9 @@ impl ClickHouseStore {
             .client
             .insert::<ExperimentRow>("experiments")
             .await
-            .map_err(Self::ch_err)?;
-        insert.write(&exp_row).await.map_err(Self::ch_err)?;
-        insert.end().await.map_err(Self::ch_err)?;
+            .map_err(|e| Self::ch_err(&e))?;
+        insert.write(&exp_row).await.map_err(|e| Self::ch_err(&e))?;
+        insert.end().await.map_err(|e| Self::ch_err(&e))?;
 
         // Type-safe insert for activity results
         let mut activity_count = 0usize;
@@ -299,8 +320,7 @@ impl ClickHouseStore {
                 journal
                     .steady_state_before
                     .as_ref()
-                    .map(|h| h.probe_results.as_slice())
-                    .unwrap_or(&[]),
+                    .map_or(&[], |h| h.probe_results.as_slice()),
             ),
             ("method", &journal.method_results),
             (
@@ -308,8 +328,7 @@ impl ClickHouseStore {
                 journal
                     .steady_state_after
                     .as_ref()
-                    .map(|h| h.probe_results.as_slice())
-                    .unwrap_or(&[]),
+                    .map_or(&[], |h| h.probe_results.as_slice()),
             ),
             ("rollback", &journal.rollback_results),
         ];
@@ -318,27 +337,27 @@ impl ClickHouseStore {
             .client
             .insert::<ActivityRow>("activity_results")
             .await
-            .map_err(Self::ch_err)?;
+            .map_err(|e| Self::ch_err(&e))?;
 
         for (phase, results) in phases {
             for r in results {
                 let row = ActivityRow {
                     experiment_id: journal.experiment_id.clone(),
                     name: r.name.clone(),
-                    activity_type: format!("{:?}", r.activity_type),
-                    status: format!("{:?}", r.status),
+                    activity_type: r.activity_type.to_string(),
+                    status: r.status.to_string(),
                     started_at_ns: r.started_at_ns,
                     duration_ms: r.duration_ms,
                     output: r.output.clone(),
                     error: r.error.clone(),
                     phase: phase.to_string(),
                 };
-                act_insert.write(&row).await.map_err(Self::ch_err)?;
+                act_insert.write(&row).await.map_err(|e| Self::ch_err(&e))?;
                 activity_count += 1;
             }
         }
 
-        act_insert.end().await.map_err(Self::ch_err)?;
+        act_insert.end().await.map_err(|e| Self::ch_err(&e))?;
 
         telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
         crate::telemetry::record_store_gauges(0, 0); // will be updated on next stats call
@@ -346,19 +365,22 @@ impl ClickHouseStore {
     }
 
     /// Async query execution — returns rows as TSV-parsed string vectors.
-    pub async fn query_async(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
+    pub(crate) async fn query_async(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
         let mut cursor = self
             .client
             .query(sql)
             .fetch_bytes("TabSeparated")
-            .map_err(Self::ch_err)?;
+            .map_err(|e| Self::ch_err(&e))?;
 
         let mut result = Vec::new();
-        while let Some(bytes) = cursor.next().await.map_err(Self::ch_err)? {
+        while let Some(bytes) = cursor.next().await.map_err(|e| Self::ch_err(&e))? {
             let line = String::from_utf8_lossy(&bytes);
-            let fields: Vec<String> = line.split('\t').map(|s| s.to_string()).collect();
+            let fields: Vec<String> = line
+                .split('\t')
+                .map(std::string::ToString::to_string)
+                .collect();
             result.push(fields);
         }
 
@@ -366,21 +388,32 @@ impl ClickHouseStore {
         Ok(result)
     }
 
-    pub async fn query_columns_async(&self, sql: &str) -> Result<Vec<String>, AnalyticsError> {
+    pub(crate) async fn query_columns_async(
+        &self,
+        sql: &str,
+    ) -> Result<Vec<String>, AnalyticsError> {
         let mut cursor = self
             .client
             .query(sql)
             .fetch_bytes("TabSeparatedWithNames")
-            .map_err(Self::ch_err)?;
+            .map_err(|e| Self::ch_err(&e))?;
 
         // First row is header with column names
-        if let Some(bytes) = cursor.next().await.map_err(Self::ch_err)? {
+        if let Some(bytes) = cursor.next().await.map_err(|e| Self::ch_err(&e))? {
             let line = String::from_utf8_lossy(&bytes);
-            return Ok(line.split('\t').map(|s| s.to_string()).collect());
+            return Ok(line
+                .split('\t')
+                .map(std::string::ToString::to_string)
+                .collect());
         }
         Ok(vec![])
     }
 
+    /// Returns the total number of experiments stored in `ClickHouse`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `ClickHouse` query fails or times out.
     pub async fn experiment_count_async(&self) -> Result<usize, AnalyticsError> {
         let row = self
             .with_timeout(async {
@@ -388,12 +421,21 @@ impl ClickHouseStore {
                     .query("SELECT count() as count FROM experiments")
                     .fetch_one::<CountRow>()
                     .await
-                    .map_err(Self::ch_err)
+                    .map_err(|e| Self::ch_err(&e))
             })
             .await?;
+        // u64 → usize: row counts from ClickHouse are always within usize range on
+        // any supported 64-bit target; truncation on hypothetical 32-bit targets is
+        // acceptable for a count that drives display logic only.
+        #[allow(clippy::cast_possible_truncation)]
         Ok(row.count as usize)
     }
 
+    /// Returns aggregate store statistics (experiment and activity counts).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either `ClickHouse` query fails or times out.
     pub async fn stats_async(&self) -> Result<StoreStats, AnalyticsError> {
         let exp = self.experiment_count_async().await?;
         let act_row = self
@@ -402,21 +444,32 @@ impl ClickHouseStore {
                     .query("SELECT count() as count FROM activity_results")
                     .fetch_one::<CountRow>()
                     .await
-                    .map_err(Self::ch_err)
+                    .map_err(|e| Self::ch_err(&e))
             })
             .await?;
+        // u64 → usize: same rationale as experiment_count_async above.
+        #[allow(clippy::cast_possible_truncation)]
+        let activity_count = act_row.count as usize;
         Ok(StoreStats {
             experiment_count: exp,
-            activity_count: act_row.count as usize,
+            activity_count,
         })
     }
 
+    /// Deletes experiments (and their activity results) older than `days` days.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the retention period in nanoseconds overflows `i64` (requires
+    /// `days > 106_751` — approximately 292 years).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any `ClickHouse` query or delete operation fails.
     pub async fn purge_older_than_days_async(&self, days: u32) -> Result<usize, AnalyticsError> {
         let _span = telemetry::begin_purge(days);
 
-        let now_ns = chrono::Utc::now()
-            .timestamp_nanos_opt()
-            .expect("system time before year 2262");
+        let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX);
         let retention_ns = i64::from(days)
             .checked_mul(86_400_000_000_000)
             .expect("retention period overflow");
@@ -433,14 +486,14 @@ impl ClickHouseStore {
             .bind(cutoff_ns)
             .execute()
             .await
-            .map_err(Self::ch_err)?;
+            .map_err(|e| Self::ch_err(&e))?;
 
         self.client
             .query("ALTER TABLE experiments DELETE WHERE started_at_ns < ?")
             .bind(cutoff_ns)
             .execute()
             .await
-            .map_err(Self::ch_err)?;
+            .map_err(|e| Self::ch_err(&e))?;
 
         let after = self.experiment_count_async().await?;
         let purged = before.saturating_sub(after);
@@ -448,6 +501,12 @@ impl ClickHouseStore {
         Ok(purged)
     }
 
+    /// Returns the schema version stored in the `schema_meta` table.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `ClickHouse` query fails or the stored value is not
+    /// a valid `i64`.
     pub async fn schema_version_async(&self) -> Result<i64, AnalyticsError> {
         let row = self
             .with_timeout(async {
@@ -455,7 +514,7 @@ impl ClickHouseStore {
                     .query("SELECT value FROM schema_meta WHERE key = 'version' LIMIT 1")
                     .fetch_one::<ValueRow>()
                     .await
-                    .map_err(Self::ch_err)
+                    .map_err(|e| Self::ch_err(&e))
             })
             .await?;
         row.value.parse::<i64>().map_err(|_| {
@@ -466,6 +525,8 @@ impl ClickHouseStore {
         })
     }
 }
+
+impl tumult_analytics::backend::private::Sealed for ClickHouseStore {}
 
 // Synchronous wrapper for AnalyticsBackend trait.
 impl AnalyticsBackend for ClickHouseStore {

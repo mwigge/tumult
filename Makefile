@@ -9,7 +9,8 @@
 #   make status          Show container health
 #   make test            Run all Rust tests
 #   make e2e             Run e2e tests (requires up)
-#   make lint            Run fmt + clippy
+#   make lint            Run fmt + clippy + pedantic warnings
+#   make precommit       Run all quality gates (lint + test + audit)
 #   make build           Build release binary
 
 COMPOSE_TARGETS = docker compose -f docker/docker-compose.yml
@@ -18,7 +19,7 @@ COMPOSE_FULL    = $(COMPOSE_TARGETS) -f docker/docker-compose.observability.yml
 COMPOSE_CLASSIC = $(COMPOSE_FULL) --profile classic
 
 .PHONY: up up-targets up-observe up-classic down status reset logs \
-        ssh-key test e2e lint build clean
+        ssh-key test e2e lint precommit build clean
 
 # ── Docker Infrastructure ──────────────────────────────────────
 
@@ -102,7 +103,11 @@ e2e: build up
 
 lint:
 	cargo fmt --all -- --check
-	RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --all-features
+	cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+
+precommit: lint
+	cargo test --workspace
+	cargo audit
 
 build:
 	cargo build --release -p tumult-cli

@@ -5,9 +5,12 @@
 
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use tempfile::TempDir;
+use tumult_core::controls::ControlRegistry;
+use tumult_core::runner::{run_experiment, ActivityExecutor, RunConfig};
 use tumult_core::types::*;
 
 /// Create a script plugin in a temp directory that:
@@ -113,8 +116,8 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
     }
 }
 
-#[test]
-fn e2e_script_plugin_produces_complete_journal() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_script_plugin_produces_complete_journal() {
     let dir = TempDir::new().unwrap();
     setup_script_plugin(dir.path());
 
@@ -141,12 +144,9 @@ fn e2e_script_plugin_produces_complete_journal() {
     // Run through the engine directly (not CLI binary, but same code path)
     let journal_path = dir.path().join("journal.toon");
 
-    use tumult_core::controls::ControlRegistry;
-    use tumult_core::runner::{run_experiment, RunConfig};
-
     // Use the CLI's ProviderExecutor
-    let executor = tumult_cli::commands::ProviderExecutor;
-    let controls = ControlRegistry::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(tumult_cli::commands::ProviderExecutor);
+    let controls = Arc::new(ControlRegistry::new());
     let config = RunConfig::default();
 
     let journal = run_experiment(&experiment, &executor, &controls, &config).unwrap();
@@ -211,8 +211,8 @@ fn e2e_script_plugin_produces_complete_journal() {
     assert_eq!(loaded.method_results.len(), journal.method_results.len());
 }
 
-#[test]
-fn e2e_failing_script_marks_failed() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_failing_script_marks_failed() {
     let dir = TempDir::new().unwrap();
 
     // Create a script that fails
@@ -229,11 +229,8 @@ fn e2e_failing_script_marks_failed() {
         probe_script.to_str().unwrap(),
     );
 
-    use tumult_core::controls::ControlRegistry;
-    use tumult_core::runner::{run_experiment, RunConfig};
-
-    let executor = tumult_cli::commands::ProviderExecutor;
-    let controls = ControlRegistry::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(tumult_cli::commands::ProviderExecutor);
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&experiment, &executor, &controls, &RunConfig::default()).unwrap();
 
