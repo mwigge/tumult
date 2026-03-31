@@ -124,6 +124,14 @@ pub fn derive_baseline(
     probe_samples: &[ProbeSamples],
     config: &AcquisitionConfig,
 ) -> Result<AcquisitionResult, AcquisitionError> {
+    let method_name = match &config.method {
+        crate::tolerance::Method::MeanStddev { .. } => "mean_stddev",
+        crate::tolerance::Method::Iqr => "iqr",
+        crate::tolerance::Method::Percentile { .. } => "percentile",
+        crate::tolerance::Method::Static { .. } => "static",
+    };
+    let _span = crate::telemetry::begin_acquire(probe_samples.len(), method_name);
+
     if probe_samples.is_empty() {
         return Err(AcquisitionError::NoProbes);
     }
@@ -180,6 +188,21 @@ pub fn derive_baseline(
 
     // Derive tolerance bounds from all combined samples
     let bounds = derive_tolerance(&all_values, &config.method);
+
+    if any_anomaly {
+        if let Some(ref reason) = anomaly_reason {
+            let cv = stddev(&all_values) / mean(&all_values);
+            crate::telemetry::event_anomaly_detected(reason, cv);
+        }
+    }
+
+    crate::telemetry::event_tolerance_derived(bounds.lower, bounds.upper, total_samples as usize);
+    crate::telemetry::record_baseline_gauges(
+        probes.len(),
+        total_samples as usize,
+        bounds.lower,
+        bounds.upper,
+    );
 
     Ok(AcquisitionResult {
         probes,
