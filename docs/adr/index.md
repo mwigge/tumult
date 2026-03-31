@@ -10,13 +10,8 @@ Tumult's architectural decisions are captured as ADRs (Architecture Decision Rec
 
 | ADR | Decision |
 |---|---|
-| [ADR-001](ADR-001-rust-platform.md) | Why Rust: single binary, no GC, async I/O, cross-compilation |
-| [ADR-002](ADR-002-data-formats.md) | TOON over JSON/YAML: token efficiency, serde-compatible |
-| [ADR-003](ADR-003-observability.md) | OpenTelemetry-first: always-on spans, OTLP-only, `resilience.*` namespace |
-| [ADR-004](ADR-004-plugin-system.md) | Script plugin model: community-first, any language, discovery order |
-| [ADR-005](ADR-005-five-phase-model.md) | Five-phase model: Estimate → Baseline → During → Post → Analysis |
-| [ADR-006](ADR-006-ssh-transport.md) | SSH via `russh`: pure Rust, no OpenSSL dependency |
-| [ADR-007](ADR-007-kubernetes-native.md) | Kubernetes as a native Rust plugin (`kube-rs`) rather than script |
-| [ADR-008](ADR-008-arrow-duckdb-analytics.md) | Embedded DuckDB + Apache Arrow for zero-dependency analytics |
-| [ADR-009](ADR-009-load-testing.md) | Load tool integration as background activities (k6, JMeter) |
-| [ADR-010](ADR-010-persistent-analytics.md) | Persistent DuckDB store with auto-ingest, dedup, backup/restore |
+| [ADR-001](ADR-001-platform-runtime.md) | Rust platform with pure-Rust dependencies (russh, kube-rs, DuckDB bundled) |
+| [ADR-002](ADR-002-data-observability.md) | TOON data format, `resilience.*` namespace, OpenTelemetry always-on spans |
+| [ADR-003](ADR-003-experiment-model.md) | Five-phase experiment lifecycle with statistical baselines and load integration |
+| [ADR-004](ADR-004-extensibility.md) | Two-tier plugin model: script-based community + native Rust (K8s, SSH, MCP) |
+| [ADR-005](ADR-005-analytics.md) | Embedded DuckDB + Arrow analytics with persistent store and Parquet export |
