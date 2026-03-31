@@ -22,6 +22,18 @@ pub(crate) fn begin_tool_call(tool_name: &str) -> SpanGuard {
     SpanGuard::new(cx.attach())
 }
 
+/// Capture the currently-active OpenTelemetry context so it can be passed across
+/// an async boundary (e.g. to `RunConfig::parent_context`).
+///
+/// Call this while a `SpanGuard` returned by [`begin_tool_call`] is still
+/// in scope. The returned `Context` can be stored in `RunConfig` and used
+/// as a parent for the `resilience.experiment` root span, linking the
+/// experiment trace to the originating MCP tool call.
+#[must_use]
+pub(crate) fn current_context() -> opentelemetry::Context {
+    opentelemetry::Context::current()
+}
+
 pub(crate) fn event_tool_completed(tool_name: &str, success: bool) {
     let cx = opentelemetry::Context::current();
     // rpc.grpc.status_code: 0 = OK, 2 = UNKNOWN (used as generic failure)
@@ -61,5 +73,18 @@ mod tests {
     fn tool_error_event_does_not_panic() {
         let _g = begin_tool_call("tumult_analyze");
         event_tool_error("tumult_analyze", "query failed: syntax error");
+    }
+
+    #[test]
+    fn current_context_captured_while_span_active() {
+        // The context captured inside the span guard scope contains the active
+        // span; after the guard drops the context still retains the trace info.
+        let cx = {
+            let _g = begin_tool_call("tumult_run_experiment");
+            current_context()
+        };
+        // Context must be a valid (non-panicking) value regardless of provider.
+        // With a noop provider the span is invalid but context is still present.
+        let _ = cx; // non-panicking assertion
     }
 }

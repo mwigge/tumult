@@ -346,11 +346,17 @@ pub enum ExecutionTarget {
     Container {
         runtime: ContainerRuntime,
         container_id: String,
+        /// Optional label selector for filtering containers by Docker/Podman labels.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_selector: Option<HashMap<String, String>>,
     },
     KubeExec {
         namespace: String,
         pod: String,
         container: Option<String>,
+        /// Optional label selector for targeting pods by Kubernetes labels.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_selector: Option<HashMap<String, String>>,
     },
 }
 
@@ -424,6 +430,9 @@ pub struct Activity {
     pub pause_after_s: Option<f64>,
     #[serde(default)]
     pub background: bool,
+    /// Optional label selector for targeting specific pods or containers by labels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_selector: Option<HashMap<String, String>>,
 }
 
 impl Default for Activity {
@@ -441,6 +450,7 @@ impl Default for Activity {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }
     }
 }
@@ -622,6 +632,7 @@ pub struct BaselineResult {
     pub samples: u32,
     pub interval_s: f64,
     pub method: BaselineMethod,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sigma: Option<f64>,
     pub source: BaselineSource,
     pub anomaly_detected: bool,
@@ -640,6 +651,7 @@ pub struct ProbeDuring {
     pub max: f64,
     pub min: f64,
     pub error_rate: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breached_at_ns: Option<i64>,
     pub breach_count: u32,
 }
@@ -651,9 +663,13 @@ pub struct DuringResult {
     pub fault_active_s: f64,
     pub sample_interval_s: f64,
     pub probes: Vec<ProbeDuring>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degradation_onset_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degradation_peak_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degradation_magnitude: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graceful_degradation: Option<bool>,
 }
 
@@ -678,9 +694,20 @@ pub struct PostResult {
     pub probes: Vec<ProbePost>,
     pub recovery_time_s: f64,
     pub full_recovery: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub residual_degradation: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_integrity_verified: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_loss_detected: Option<bool>,
+    /// Mean time to recovery in seconds.
+    ///
+    /// Measured as elapsed time from `started_at_ns` (method end) until the
+    /// first probe sample that falls within baseline tolerance. `None` if
+    /// recovery was never observed in the post-phase window or no samples
+    /// were taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mttr_s: Option<f64>,
 }
 
 // ── Load Result ────────────────────────────────────────────────
@@ -705,9 +732,13 @@ pub struct LoadResult {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_accuracy: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_recovery_delta_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trend: Option<Trend>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resilience_score: Option<f64>,
 }
 
@@ -720,7 +751,9 @@ pub struct ActivityResult {
     pub status: ActivityStatus,
     pub started_at_ns: i64,
     pub duration_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub trace_id: TraceId,
     pub span_id: SpanId,
@@ -797,6 +830,7 @@ mod tests {
                     pause_before_s: None,
                     pause_after_s: None,
                     background: false,
+                    label_selector: None,
                 }],
             }),
             method: vec![Activity {
@@ -814,6 +848,7 @@ mod tests {
                 pause_before_s: None,
                 pause_after_s: Some(5.0),
                 background: false,
+                label_selector: None,
             }],
             rollbacks: vec![Activity {
                 name: "restore-connections".into(),
@@ -827,6 +862,7 @@ mod tests {
                 pause_before_s: None,
                 pause_after_s: None,
                 background: false,
+                label_selector: None,
             }],
             estimate: Some(Estimate {
                 expected_outcome: ExpectedOutcome::Recovered,
@@ -998,6 +1034,7 @@ mod tests {
         let target = ExecutionTarget::Container {
             runtime: ContainerRuntime::Docker,
             container_id: "abc123def456".into(),
+            label_selector: None,
         };
         let decoded: ExecutionTarget = toon_round_trip(&target);
         assert_eq!(decoded, target);
@@ -1009,6 +1046,7 @@ mod tests {
             namespace: "production".into(),
             pod: "api-server-7b8c9d-xk2p1".into(),
             container: Some("app".into()),
+            label_selector: None,
         };
         let decoded: ExecutionTarget = toon_round_trip(&target);
         assert_eq!(decoded, target);
@@ -1085,6 +1123,86 @@ mod tests {
         assert_eq!(decoded, t);
     }
 
+    // ── label_selector additions ───────────────────────────────
+
+    #[test]
+    fn activity_with_label_selector_round_trips() {
+        let mut selector = HashMap::new();
+        selector.insert("app".to_string(), "api".to_string());
+        selector.insert("env".to_string(), "prod".to_string());
+
+        let activity = Activity {
+            name: "kill-labeled-pod".into(),
+            activity_type: ActivityType::Action,
+            provider: Provider::Native {
+                plugin: "tumult-kubernetes".into(),
+                function: "delete_pod".into(),
+                arguments: HashMap::new(),
+            },
+            tolerance: None,
+            pause_before_s: None,
+            pause_after_s: None,
+            background: false,
+            label_selector: Some(selector),
+        };
+        let decoded: Activity = toon_round_trip(&activity);
+        assert_eq!(decoded, activity);
+        assert_eq!(
+            decoded.label_selector.as_ref().unwrap().get("app").unwrap(),
+            "api"
+        );
+    }
+
+    #[test]
+    fn execution_target_kube_exec_with_label_selector_round_trips() {
+        let mut selector = HashMap::new();
+        selector.insert("app".to_string(), "worker".to_string());
+
+        let target = ExecutionTarget::KubeExec {
+            namespace: "production".into(),
+            pod: String::new(),
+            container: None,
+            label_selector: Some(selector),
+        };
+        let decoded: ExecutionTarget = toon_round_trip(&target);
+        assert_eq!(decoded, target);
+        let ExecutionTarget::KubeExec { label_selector, .. } = &decoded else {
+            panic!("expected KubeExec");
+        };
+        assert_eq!(
+            label_selector.as_ref().unwrap().get("app").unwrap(),
+            "worker"
+        );
+    }
+
+    #[test]
+    fn execution_target_container_with_label_selector_round_trips() {
+        let mut selector = HashMap::new();
+        selector.insert(
+            "com.docker.compose.service".to_string(),
+            "redis".to_string(),
+        );
+
+        let target = ExecutionTarget::Container {
+            runtime: ContainerRuntime::Docker,
+            container_id: String::new(),
+            label_selector: Some(selector),
+        };
+        let decoded: ExecutionTarget = toon_round_trip(&target);
+        assert_eq!(decoded, target);
+        let ExecutionTarget::Container { label_selector, .. } = &decoded else {
+            panic!("expected Container");
+        };
+        assert_eq!(
+            label_selector
+                .as_ref()
+                .unwrap()
+                .get("com.docker.compose.service")
+                .unwrap(),
+            "redis"
+        );
+    }
+
     // ── Activity ───────────────────────────────────────────────
 
     #[test]
@@ -1101,6 +1219,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
         let decoded: Activity = toon_round_trip(&activity);
         assert_eq!(decoded, activity);
@@ -1124,6 +1243,7 @@ mod tests {
             pause_before_s: Some(2.0),
             pause_after_s: Some(5.0),
             background: true,
+            label_selector: None,
         };
         let decoded: Activity = toon_round_trip(&activity);
         assert_eq!(decoded, activity);
@@ -1151,6 +1271,7 @@ mod tests {
                 pause_before_s: None,
                 pause_after_s: None,
                 background: false,
+                label_selector: None,
             }],
         };
         let decoded: Hypothesis = toon_round_trip(&hypothesis);
@@ -1405,6 +1526,7 @@ mod tests {
             residual_degradation: Some(0.1),
             data_integrity_verified: Some(true),
             data_loss_detected: Some(false),
+            mttr_s: None,
         };
         let decoded: PostResult = toon_round_trip(&result);
         assert_eq!(decoded, result);

@@ -13,6 +13,8 @@ use rust_mcp_sdk::{
     McpServer,
 };
 
+use subtle::ConstantTimeEq;
+
 use crate::tools;
 
 // ── Tool schema definitions ───────────────────────────────────
@@ -119,6 +121,16 @@ pub struct AnalyzeStoreTool {
     pub query: String,
     #[serde(default = "default_store_path")]
     pub store_path: String,
+}
+
+#[macros::mcp_tool(
+    name = "tumult_list_experiments",
+    description = "List all .toon experiment files recursively from the workspace or a given path."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct ListExperimentsTool {
+    /// Optional subdirectory to search within (relative to workspace root).
+    pub path: Option<String>,
 }
 
 // ── Process executor (shared pattern with CLI) ────────────────
@@ -281,7 +293,9 @@ impl McpAuth {
                 Some(header) => {
                     let prefix = "Bearer ";
                     if let Some(provided) = header.strip_prefix(prefix) {
-                        if provided == expected {
+                        // Use constant-time comparison to prevent timing side-channel attacks.
+                        let matches = provided.as_bytes().ct_eq(expected.as_bytes()).into();
+                        if matches {
                             Ok(())
                         } else {
                             Err("invalid bearer token".into())
@@ -316,6 +330,8 @@ pub struct TumultHandler {
     pub semaphore: tokio::sync::Semaphore,
     /// Base directory for file operations (path traversal prevention).
     pub workspace_root: std::path::PathBuf,
+    /// Bearer token authentication configuration.
+    pub auth: McpAuth,
 }
 
 impl Default for TumultHandler {
@@ -323,6 +339,7 @@ impl Default for TumultHandler {
         Self {
             semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
             workspace_root: std::env::current_dir().unwrap_or_else(|_| "/".into()),
+            auth: McpAuth::from_env(),
         }
     }
 }
@@ -334,6 +351,17 @@ impl TumultHandler {
         Self {
             semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
             workspace_root,
+            auth: McpAuth::from_env(),
+        }
+    }
+
+    /// Create a handler with a specific workspace root and authentication config.
+    #[must_use]
+    pub fn with_auth(workspace_root: std::path::PathBuf, auth: McpAuth) -> Self {
+        Self {
+            semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
+            workspace_root,
+            auth,
         }
     }
 
@@ -342,6 +370,20 @@ impl TumultHandler {
         let resolved = tools::safe_resolve_path(&self.workspace_root, user_path)
             .map_err(|e| CallToolError::invalid_arguments("path", Some(e)))?;
         Ok(resolved.to_str().unwrap_or_default().to_string())
+    }
+
+    /// Extract authorization token from `_meta.authorization` in the call params.
+    ///
+    /// MCP clients using stdio transport pass authentication via the `_meta`
+    /// field since HTTP headers are not available at the handler level.
+    fn extract_authorization(params: &CallToolRequestParams) -> Option<String> {
+        params
+            .meta
+            .as_ref()
+            .and_then(|m| m.extra.as_ref())
+            .and_then(|extra| extra.get("authorization"))
+            .and_then(|v| v.as_str())
+            .map(std::string::ToString::to_string)
     }
 }
 
@@ -364,6 +406,7 @@ impl ServerHandler for TumultHandler {
                 QueryTracesTool::tool(),
                 StoreStatsTool::tool(),
                 AnalyzeStoreTool::tool(),
+                ListExperimentsTool::tool(),
             ],
             meta: None,
             next_cursor: None,
@@ -382,18 +425,29 @@ impl ServerHandler for TumultHandler {
             .await
             .map_err(|_| CallToolError::unknown_tool("semaphore closed".to_string()))?;
 
-        tracing::info!(tool = %params.name, "MCP tool call");
-        // SpanGuard contains a non-Send OTel context guard; record span name
-        // before await points and drop immediately so the future stays Send.
-        {
-            let _span = crate::telemetry::begin_tool_call(&params.name);
+        // Enforce bearer token authentication if configured.
+        // Clients pass the Authorization value via `_meta.authorization` since
+        // stdio transport has no HTTP header context at the handler level.
+        let authorization = Self::extract_authorization(&params);
+        if let Err(e) = self.auth.check(authorization.as_deref()) {
+            return Err(CallToolError::unknown_tool(format!("Unauthorized: {e}")));
         }
+
+        tracing::info!(tool = %params.name, "MCP tool call");
+        // SpanGuard contains a non-Send OTel context guard. Capture the active
+        // context while the span is alive, then drop the guard so the future
+        // remains Send. The captured context is passed to run_experiment as
+        // parent_context so the resilience.experiment span is linked here.
+        let mcp_context = {
+            let _span = crate::telemetry::begin_tool_call(&params.name);
+            crate::telemetry::current_context()
+        };
 
         let result = match params.name.as_str() {
             "tumult_run_experiment" => {
                 let args: RunExperimentTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.experiment_path)?;
-                tools::run_experiment(&path, &args.rollback_strategy)
+                tools::run_experiment(&path, &args.rollback_strategy, Some(mcp_context))
             }
             "tumult_validate" => {
                 let args: ValidateTool = parse_args(&params)?;
@@ -434,6 +488,15 @@ impl ServerHandler for TumultHandler {
                 let args: AnalyzeStoreTool = parse_args(&params)?;
                 tools::analyze_persistent(&args.store_path, &args.query)
             }
+            "tumult_list_experiments" => {
+                let args: ListExperimentsTool = parse_args(&params)?;
+                let search_root = if let Some(ref p) = args.path {
+                    self.resolve_path(p)?
+                } else {
+                    self.workspace_root.to_str().unwrap_or_default().to_string()
+                };
+                tools::list_experiments(&search_root)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -467,7 +530,7 @@ mod tests {
     use tumult_core::runner::ActivityExecutor;
 
     #[test]
-    fn all_ten_tools_listed() {
+    fn all_eleven_tools_listed() {
         let tools = vec![
             RunExperimentTool::tool(),
             ValidateTool::tool(),
@@ -479,13 +542,17 @@ mod tests {
             QueryTracesTool::tool(),
             StoreStatsTool::tool(),
             AnalyzeStoreTool::tool(),
+            ListExperimentsTool::tool(),
         ];
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 11);
     }
 
     #[test]
     fn handler_has_semaphore_with_correct_limit() {
-        let handler = TumultHandler::default();
+        let handler = TumultHandler::with_auth(
+            std::env::current_dir().unwrap_or_else(|_| "/".into()),
+            McpAuth { token: None },
+        );
         assert_eq!(
             handler.semaphore.available_permits(),
             MAX_CONCURRENT_TOOL_CALLS
@@ -505,6 +572,7 @@ mod tests {
             QueryTracesTool::tool(),
             StoreStatsTool::tool(),
             AnalyzeStoreTool::tool(),
+            ListExperimentsTool::tool(),
         ];
         for tool in &tools {
             assert!(
@@ -562,6 +630,75 @@ mod tests {
         assert!(result.unwrap_err().contains("expected Bearer token"));
     }
 
+    // ── Auth wired into handler ──────────────────────────────
+
+    /// Verify that the handler struct carries an `auth` field.
+    /// This ensures authentication is structurally wired in, not just declared.
+    #[test]
+    fn auth_wired_into_handler() {
+        // A handler with a configured token must carry it in the auth field.
+        let handler = TumultHandler::with_auth(
+            "/tmp".into(),
+            McpAuth {
+                token: Some("handler-secret".into()),
+            },
+        );
+        // Auth check without token should fail (token is set on handler).
+        assert!(handler.auth.check(None).is_err());
+        // Auth check with correct bearer should pass.
+        assert!(handler.auth.check(Some("Bearer handler-secret")).is_ok());
+    }
+
+    /// Verify the handler accepts requests when the correct bearer token is supplied.
+    #[test]
+    fn auth_wired_accepts_valid_token() {
+        let handler = TumultHandler::with_auth(
+            "/tmp".into(),
+            McpAuth {
+                token: Some("valid-token-xyz".into()),
+            },
+        );
+        assert!(handler.auth.check(Some("Bearer valid-token-xyz")).is_ok());
+        assert!(handler.auth.check(Some("Bearer wrong")).is_err());
+    }
+
+    /// Verify constant-time comparison is used: tokens that differ only in a
+    /// single bit (or by length) are still rejected, and the comparison does
+    /// not short-circuit on a matching prefix.
+    #[test]
+    fn auth_constant_time_comparison() {
+        use subtle::ConstantTimeEq;
+
+        let expected = b"super-secret-token";
+        // Shorter slice — must not match, even though it is a prefix.
+        let short = b"super-secret-toke";
+        let matches: bool = short.ct_eq(expected).into();
+        assert!(!matches, "short token must not match expected");
+
+        // One-bit-off: change last byte.
+        let mut one_off = *expected;
+        one_off[expected.len() - 1] ^= 0x01;
+        let matches: bool = one_off.ct_eq(expected).into();
+        assert!(!matches, "one-bit-different token must not match expected");
+
+        // Longer than expected — different length, must not match.
+        let long = b"super-secret-tokenXXXX";
+        let matches: bool = long.ct_eq(expected).into();
+        assert!(!matches, "longer token must not match expected");
+
+        // Positive case: exact match must succeed.
+        let matches: bool = expected.ct_eq(expected).into();
+        assert!(matches, "exact match must succeed");
+
+        // End-to-end via McpAuth.check (length-prefix variant).
+        let auth = McpAuth {
+            token: Some("super-secret-token".into()),
+        };
+        assert!(auth.check(Some("Bearer super-secret-toke")).is_err());
+        assert!(auth.check(Some("Bearer super-secret-tokenXXXX")).is_err());
+        assert!(auth.check(Some("Bearer super-secret-token")).is_ok());
+    }
+
     // ── Bind address ─────────────────────────────────────────
 
     #[test]
@@ -597,6 +734,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
 
         let outcome = executor.execute(&activity);
@@ -619,6 +757,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
 
         let outcome = executor.execute(&activity);

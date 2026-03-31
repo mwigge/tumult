@@ -1,0 +1,25 @@
+[package]
+name = "tumult-core-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# This crate is intentionally excluded from the workspace; it is only used with
+# `cargo fuzz` (nightly toolchain) and must not be compiled as part of the
+# regular workspace build.
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tumult-core = { path = ".." }
+toon-format = "0.4"
+
+[[bin]]
+name = "fuzz_experiment_deserialize"
+path = "fuzz_targets/fuzz_experiment_deserialize.rs"
+test = false
+doc = false

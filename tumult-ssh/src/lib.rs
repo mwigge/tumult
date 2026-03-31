@@ -31,6 +31,6 @@ pub mod error;
 pub mod session;
 pub(crate) mod telemetry;
 
-pub use config::{AuthMethod, SshConfig};
+pub use config::{AuthMethod, HostKeyPolicy, SshConfig};
 pub use error::SshError;
 pub use session::{CommandResult, SshSession};
