@@ -42,6 +42,24 @@ pub enum SshError {
     #[error("host key verification failed: server key not recognized")]
     HostKeyVerificationFailed,
 
+    /// The server's public key was not found in the `known_hosts` file.
+    #[error("host key for {host} not found in known_hosts (fingerprint: {fingerprint})")]
+    HostKeyNotFound { host: String, fingerprint: String },
+
+    /// The server's public key does not match the entry in `known_hosts`.
+    #[error(
+        "host key mismatch for {host}: expected {expected_fingerprint}, got {actual_fingerprint}"
+    )]
+    HostKeyMismatch {
+        host: String,
+        expected_fingerprint: String,
+        actual_fingerprint: String,
+    },
+
+    /// Failed to read or write the `known_hosts` file.
+    #[error("known_hosts file error for {path}: {reason}")]
+    KnownHostsIo { path: String, reason: String },
+
     #[error("session closed")]
     SessionClosed,
 
