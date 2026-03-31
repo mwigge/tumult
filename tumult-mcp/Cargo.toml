@@ -26,6 +26,7 @@ toon-format = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+opentelemetry = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

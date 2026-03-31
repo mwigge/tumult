@@ -8,3 +8,4 @@ description = "Baseline acquisition and statistical methods for Tumult experimen
 
 [dependencies]
 thiserror = { workspace = true }
+opentelemetry = { workspace = true }

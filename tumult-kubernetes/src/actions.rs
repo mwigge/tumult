@@ -18,6 +18,7 @@ pub async fn delete_pod(
     name: &str,
     grace_period_seconds: Option<u32>,
 ) -> Result<String, KubeError> {
+    let _span = crate::telemetry::begin_delete_pod(namespace, name);
     let pods: Api<Pod> = Api::namespaced(client, namespace);
     let mut dp = DeleteParams::default();
     if let Some(grace) = grace_period_seconds {
@@ -34,6 +35,7 @@ pub async fn scale_deployment(
     name: &str,
     replicas: i32,
 ) -> Result<String, KubeError> {
+    let _span = crate::telemetry::begin_scale_deployment(namespace, name, replicas);
     let deployments: Api<Deployment> = Api::namespaced(client, namespace);
 
     let patch = serde_json::json!({
@@ -54,6 +56,7 @@ pub async fn scale_deployment(
 
 /// Cordon a node (mark as unschedulable).
 pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError> {
+    let _span = crate::telemetry::begin_cordon_node(name);
     let nodes: Api<Node> = Api::all(client);
 
     let patch = serde_json::json!({
@@ -71,6 +74,7 @@ pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError
 
 /// Uncordon a node (mark as schedulable).
 pub async fn uncordon_node(client: Client, name: &str) -> Result<String, KubeError> {
+    let _span = crate::telemetry::begin_cordon_node(name); // reuse cordon span name
     let nodes: Api<Node> = Api::all(client);
 
     let patch = serde_json::json!({
@@ -114,6 +118,7 @@ pub async fn drain_node(
     name: &str,
     grace_period_seconds: Option<u32>,
 ) -> Result<DrainResult, KubeError> {
+    let _span = crate::telemetry::begin_drain_node(name, grace_period_seconds);
     cordon_node(client.clone(), name).await?;
 
     let pods: Api<Pod> = Api::all(client.clone());
@@ -147,6 +152,7 @@ pub async fn drain_node(
         }
     }
 
+    crate::telemetry::event_drain_completed(evicted.len(), failed.len(), skipped_daemonsets);
     Ok(DrainResult {
         node: name.to_string(),
         evicted,
@@ -167,6 +173,7 @@ pub async fn apply_network_policy(
         .name
         .clone()
         .unwrap_or_else(|| "tumult-policy".into());
+    let _span = crate::telemetry::begin_apply_network_policy(namespace, &name);
     policies
         .patch(&name, &PatchParams::apply("tumult"), &Patch::Apply(&policy))
         .await?;
@@ -179,6 +186,7 @@ pub async fn delete_network_policy(
     namespace: &str,
     name: &str,
 ) -> Result<String, KubeError> {
+    let _span = crate::telemetry::begin_delete_network_policy(namespace, name);
     let policies: Api<NetworkPolicy> = Api::namespaced(client, namespace);
     policies.delete(name, &DeleteParams::default()).await?;
     Ok(format!("network policy {}/{} deleted", namespace, name))

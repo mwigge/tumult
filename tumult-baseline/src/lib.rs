@@ -36,6 +36,7 @@
 pub mod acquisition;
 pub mod anomaly;
 pub mod stats;
+pub mod telemetry;
 pub mod tolerance;
 
 pub use acquisition::{
