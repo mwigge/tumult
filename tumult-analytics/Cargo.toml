@@ -17,6 +17,8 @@ toon-format = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 dirs-next = "2"
+opentelemetry = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
