@@ -26,6 +26,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s
+    networks:
+      - tumult-e2e
 
   # ── Redis 7 ──────────────────────────────────────────────────
   redis:
@@ -37,6 +40,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 5s
+    networks:
+      - tumult-e2e
 
   # ── Kafka 3.8 (KRaft — no ZooKeeper) ────────────────────────
   kafka:
@@ -61,6 +67,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    networks:
+      - tumult-e2e
 
   # ── SSH Server (for remote execution testing) ────────────────
   sshd:
@@ -74,18 +82,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - tumult-e2e
 
   # ── OTel Collector ───────────────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.98.0
+    image: otel/opentelemetry-collector-contrib:0.115.0
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-e2e.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "14317:4317"
-      - "14318:4318"
+      - "14317:4317"   # OTLP gRPC
+      - "14318:4318"   # OTLP HTTP
+      # Note: Do NOT expose Jaeger's 4317 on the host — it would conflict with this port.
     depends_on:
-      - jaeger
+      jaeger:
+        condition: service_healthy
+    networks:
+      - tumult-e2e
 
   # ── Jaeger (trace UI for OTel verification) ──────────────────
   jaeger:
@@ -94,3 +108,14 @@ services:
       - "16686:16686"
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686/ >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - tumult-e2e
+
+networks:
+  tumult-e2e:
+    name: tumult-e2e
