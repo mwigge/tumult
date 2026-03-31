@@ -1,9 +1,9 @@
 //! Telemetry initialization and lifecycle management.
 //!
-//! Initializes the OTLP exporter and TracerProvider, then installs
+//! Initializes the OTLP exporter and `TracerProvider`, then installs
 //! a tracing subscriber with an OpenTelemetry bridge layer.
 //!
-//! **Init order** (per OTel spec): TracerProvider is registered as
+//! **Init order** (per `OTel` spec): `TracerProvider` is registered as
 //! global BEFORE the tracing subscriber is installed. This ensures
 //! the bridge layer can resolve a valid provider immediately.
 //!
@@ -25,12 +25,13 @@ const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Central telemetry manager for the Tumult platform.
 #[derive(Debug)]
 pub struct TumultTelemetry {
-    config: TelemetryConfig,
+    enabled: bool,
+    service_name: String,
     tracer_provider: Option<SdkTracerProvider>,
 }
 
 impl TumultTelemetry {
-    /// Initialize OTel providers based on configuration.
+    /// Initialize `OTel` providers based on configuration.
     ///
     /// When enabled with an OTLP endpoint, sets up the gRPC exporter
     /// and installs a global tracer provider. The tracing subscriber
@@ -44,7 +45,8 @@ impl TumultTelemetry {
                 .with(tracing_subscriber::fmt::layer())
                 .try_init();
             return Self {
-                config,
+                enabled: config.enabled,
+                service_name: config.service_name,
                 tracer_provider: None,
             };
         }
@@ -107,16 +109,20 @@ impl TumultTelemetry {
         };
 
         Self {
-            config,
+            enabled: config.enabled,
+            service_name: config.service_name,
             tracer_provider: provider,
         }
     }
 
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
-        self.config.enabled
+        self.enabled
     }
+
+    #[must_use]
     pub fn service_name(&self) -> &str {
-        &self.config.service_name
+        &self.service_name
     }
 
     /// Flush pending telemetry and shut down providers.

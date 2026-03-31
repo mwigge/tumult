@@ -1,4 +1,4 @@
-//! ClickHouse backend errors.
+//! `ClickHouse` backend errors.
 
 use thiserror::Error;
 

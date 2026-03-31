@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn mock_plugin_implements_trait() {
-        let plugin = MockPlugin;
+        let plugin = MockPlugin::new();
         assert_eq!(plugin.name(), "mock-plugin");
         assert_eq!(plugin.version(), "0.1.0");
         assert!(!plugin.actions().is_empty());
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn registry_registers_native_plugin() {
         let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin));
+        registry.register_native(Box::new(MockPlugin::new()));
         let plugins = registry.list_plugins();
         assert_eq!(plugins.len(), 1);
         assert_eq!(plugins[0], "mock-plugin");
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn registry_finds_action_in_native_plugin() {
         let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin));
+        registry.register_native(Box::new(MockPlugin::new()));
         assert!(registry.has_action("mock-plugin", "kill"));
         assert!(!registry.has_action("mock-plugin", "nonexistent"));
         assert!(!registry.has_action("wrong-plugin", "kill"));
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn registry_finds_probe_in_native_plugin() {
         let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin));
+        registry.register_native(Box::new(MockPlugin::new()));
         assert!(registry.has_probe("mock-plugin", "health-check"));
         assert!(!registry.has_probe("mock-plugin", "nonexistent"));
     }
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn registry_lists_all_actions() {
         let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin));
+        registry.register_native(Box::new(MockPlugin::new()));
         registry.register_script(ScriptPluginManifest {
             name: "tumult-kafka".into(),
             version: "0.1.0".into(),
@@ -223,32 +223,44 @@ mod tests {
 
     // ── Mock plugin for testing ────────────────────────────────
 
-    struct MockPlugin;
+    struct MockPlugin {
+        actions: Vec<ActionDescriptor>,
+        probes: Vec<ProbeDescriptor>,
+    }
+
+    impl MockPlugin {
+        fn new() -> Self {
+            Self {
+                actions: vec![ActionDescriptor {
+                    name: "kill".into(),
+                    description: "Kill something".into(),
+                    arguments: vec!["target".into()],
+                }],
+                probes: vec![ProbeDescriptor {
+                    name: "health-check".into(),
+                    description: "Check health".into(),
+                    arguments: vec![],
+                }],
+            }
+        }
+    }
 
     impl crate::traits::private::Sealed for MockPlugin {}
     impl TumultPlugin for MockPlugin {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "mock-plugin"
         }
-        fn version(&self) -> &str {
+        fn version(&self) -> &'static str {
             "0.1.0"
         }
-        fn description(&self) -> &str {
+        fn description(&self) -> &'static str {
             "A mock plugin for testing"
         }
-        fn actions(&self) -> Vec<ActionDescriptor> {
-            vec![ActionDescriptor {
-                name: "kill".into(),
-                description: "Kill something".into(),
-                arguments: vec!["target".into()],
-            }]
+        fn actions(&self) -> &[ActionDescriptor] {
+            &self.actions
         }
-        fn probes(&self) -> Vec<ProbeDescriptor> {
-            vec![ProbeDescriptor {
-                name: "health-check".into(),
-                description: "Check health".into(),
-                arguments: vec![],
-            }]
+        fn probes(&self) -> &[ProbeDescriptor] {
+            &self.probes
         }
     }
 }

@@ -1,5 +1,7 @@
 //! Telemetry configuration.
 
+const DEFAULT_SERVICE_NAME: &str = "tumult";
+
 /// Configuration for Tumult's OpenTelemetry setup.
 #[derive(Debug, Clone)]
 pub struct TelemetryConfig {
@@ -13,7 +15,7 @@ impl Default for TelemetryConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            service_name: "tumult".to_string(),
+            service_name: DEFAULT_SERVICE_NAME.to_string(),
             console_export: false,
             otlp_endpoint: None,
         }
@@ -28,13 +30,14 @@ impl TelemetryConfig {
     /// - `TUMULT_OTEL_CONSOLE` (default: false)
     /// - `OTEL_SERVICE_NAME` (default: "tumult")
     /// - `OTEL_EXPORTER_OTLP_ENDPOINT` (default: None)
+    #[must_use]
     pub fn from_env() -> Self {
         Self {
             enabled: std::env::var("TUMULT_OTEL_ENABLED")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),
             service_name: std::env::var("OTEL_SERVICE_NAME")
-                .unwrap_or_else(|_| "tumult".to_string()),
+                .unwrap_or_else(|_| DEFAULT_SERVICE_NAME.to_string()),
             console_export: std::env::var("TUMULT_OTEL_CONSOLE")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),

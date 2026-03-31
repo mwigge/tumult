@@ -1,9 +1,19 @@
-//! TDD tests for OTel span creation in the experiment runner.
+//! TDD tests for `OTel` span creation in the experiment runner.
 //!
 //! These tests verify that the runner creates proper span hierarchies
-//! with resilience.* attributes when a tracer is available.
+//! with resilience.* names and attributes when a tracer is available.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use opentelemetry::global;
+use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+
+// Global mutex to serialize tests that modify the global tracer provider.
+// The OTel global tracer provider is process-wide state; concurrent modification
+// causes test flakiness. This mutex ensures only one such test runs at a time.
+static TRACER_LOCK: Mutex<()> = Mutex::new(());
 
 use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
@@ -57,12 +67,31 @@ fn simple_experiment() -> Experiment {
     }
 }
 
+/// Set up an in-memory tracer provider and return the exporter for span inspection.
+/// Returns the lock guard — hold it for the duration of the test to prevent
+/// concurrent modification of the global tracer provider.
+fn setup_in_memory_provider() -> (
+    SdkTracerProvider,
+    InMemorySpanExporter,
+    std::sync::MutexGuard<'static, ()>,
+) {
+    let guard = TRACER_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let exporter = InMemorySpanExporter::default();
+    let provider = SdkTracerProvider::builder()
+        .with_simple_exporter(exporter.clone())
+        .build();
+    global::set_tracer_provider(provider.clone());
+    (provider, exporter, guard)
+}
+
 #[test]
 fn runner_populates_trace_id_on_activity_results() {
-    // When a global tracer is set, activity results should have non-empty trace IDs
+    // Without any tracer configured, activity results should not panic.
     let exp = simple_experiment();
-    let executor = MockExecutor;
-    let controls = ControlRegistry::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
@@ -80,27 +109,20 @@ fn runner_populates_trace_id_on_activity_results() {
 
 #[test]
 fn runner_creates_experiment_span_with_attributes() {
-    // Initialize a simple in-process tracer to capture spans
-    use opentelemetry::global;
-    use opentelemetry::trace::Tracer;
-    use opentelemetry_sdk::trace::SdkTracerProvider;
-
-    let provider = SdkTracerProvider::builder().build();
-    global::set_tracer_provider(provider.clone());
+    let (provider, exporter, _lock) = setup_in_memory_provider();
 
     let tracer = global::tracer("tumult-test");
 
     // Create a parent span to establish context
     let _guard = {
-        use opentelemetry::trace::TraceContextExt;
         let span = tracer.start("test-parent");
         let cx = opentelemetry::Context::current_with_span(span);
         cx.attach()
     };
 
     let exp = simple_experiment();
-    let executor = MockExecutor;
-    let controls = ControlRegistry::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
@@ -118,14 +140,14 @@ fn runner_creates_experiment_span_with_attributes() {
 
     // The runner should create its OWN spans (different span_id from parent)
     let parent_span_ctx = {
-        use opentelemetry::trace::TraceContextExt;
         let ctx = opentelemetry::Context::current();
         ctx.span().span_context().clone()
     };
     let parent_span_id = parent_span_ctx.span_id().to_string();
 
     assert_ne!(
-        method_span, &parent_span_id,
+        method_span.as_str(),
+        parent_span_id.as_str(),
         "runner should create child spans, not reuse parent span"
     );
 
@@ -137,13 +159,15 @@ fn runner_creates_experiment_span_with_attributes() {
                 "hypothesis probe should have trace_id"
             );
             assert_ne!(
-                &probe.span_id, &parent_span_id,
+                probe.span_id.as_str(),
+                parent_span_id.as_str(),
                 "hypothesis probe should have its own span"
             );
         }
     }
 
     let _ = provider.shutdown();
+    drop(exporter);
 }
 
 #[test]
@@ -165,13 +189,9 @@ fn runner_without_tracer_returns_empty_trace_ids() {
         ..Default::default()
     };
 
-    let journal = run_experiment(
-        &exp,
-        &MockExecutor,
-        &ControlRegistry::new(),
-        &RunConfig::default(),
-    )
-    .unwrap();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
     // Without a tracer, trace_id is empty (no valid span context)
     // This is acceptable — the runner doesn't require OTel to function
@@ -180,16 +200,10 @@ fn runner_without_tracer_returns_empty_trace_ids() {
 
 #[test]
 fn runner_all_activities_share_same_trace_id() {
-    use opentelemetry::global;
-    use opentelemetry::trace::Tracer;
-    use opentelemetry_sdk::trace::SdkTracerProvider;
-
-    let provider = SdkTracerProvider::builder().build();
-    global::set_tracer_provider(provider.clone());
+    let (provider, exporter, _lock) = setup_in_memory_provider();
 
     let tracer = global::tracer("tumult-test");
     let _guard = {
-        use opentelemetry::trace::TraceContextExt;
         let span = tracer.start("test-root");
         let cx = opentelemetry::Context::current_with_span(span);
         cx.attach()
@@ -223,13 +237,9 @@ fn runner_all_activities_share_same_trace_id() {
         ..Default::default()
     };
 
-    let journal = run_experiment(
-        &exp,
-        &MockExecutor,
-        &ControlRegistry::new(),
-        &RunConfig::default(),
-    )
-    .unwrap();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
     // All activities should share the same trace_id (they're in the same trace)
     let trace_ids: Vec<&str> = journal
@@ -261,15 +271,173 @@ fn runner_all_activities_share_same_trace_id() {
     if let Some(ref hyp) = journal.steady_state_before {
         let hyp_trace = &hyp.probe_results[0].trace_id;
         assert_eq!(
-            hyp_trace, trace_ids[0],
+            hyp_trace.as_str(),
+            trace_ids[0],
             "hypothesis should share trace_id with method"
         );
         let hyp_span = &hyp.probe_results[0].span_id;
         assert_ne!(
-            hyp_span, &span_ids[0],
+            hyp_span.as_str(),
+            span_ids[0],
             "hypothesis should have different span_id from method"
         );
     }
+
+    let _ = provider.shutdown();
+    drop(exporter);
+}
+
+// ── TDD Red Phase: Span name assertions ──────────────────────────────────────
+//
+// These tests verify that the runner emits the correct span names as
+// specified in README.md:
+//   resilience.experiment  (root)
+//   resilience.hypothesis.before
+//   resilience.hypothesis.after
+//   resilience.action
+//   resilience.probe
+//   resilience.rollback
+
+/// Helper: collect all span names from the in-memory exporter.
+fn span_names(exporter: &InMemorySpanExporter) -> Vec<String> {
+    exporter
+        .get_finished_spans()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| s.name.to_string())
+        .collect()
+}
+
+#[test]
+fn runner_emits_resilience_action_span_name() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let exp = Experiment {
+        title: "action span name test".into(),
+        method: vec![Activity {
+            name: "inject-fault".into(),
+            activity_type: ActivityType::Action,
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let names = span_names(&exporter);
+    assert!(
+        names.iter().any(|n| n == "resilience.action"),
+        "expected 'resilience.action' span, got: {names:?}"
+    );
+
+    let _ = provider.shutdown();
+}
+
+#[test]
+fn runner_emits_resilience_probe_span_name() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let exp = Experiment {
+        title: "probe span name test".into(),
+        method: vec![Activity {
+            name: "dummy-action".into(),
+            activity_type: ActivityType::Action,
+            ..Default::default()
+        }],
+        steady_state_hypothesis: Some(Hypothesis {
+            title: "healthy".into(),
+            probes: vec![Activity {
+                name: "health-check".into(),
+                activity_type: ActivityType::Probe,
+                tolerance: Some(Tolerance::Exact {
+                    value: serde_json::Value::Number(200.into()),
+                }),
+                ..Default::default()
+            }],
+        }),
+        ..Default::default()
+    };
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let names = span_names(&exporter);
+    assert!(
+        names.iter().any(|n| n == "resilience.probe"),
+        "expected 'resilience.probe' span, got: {names:?}"
+    );
+
+    let _ = provider.shutdown();
+}
+
+#[test]
+fn runner_emits_resilience_experiment_root_span() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let exp = simple_experiment();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let names = span_names(&exporter);
+    assert!(
+        names.iter().any(|n| n == "resilience.experiment"),
+        "expected 'resilience.experiment' root span, got: {names:?}"
+    );
+
+    let _ = provider.shutdown();
+}
+
+#[test]
+fn runner_emits_resilience_hypothesis_spans() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let exp = simple_experiment();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let names = span_names(&exporter);
+    assert!(
+        names.iter().any(|n| n == "resilience.hypothesis.before"),
+        "expected 'resilience.hypothesis.before' span, got: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n == "resilience.hypothesis.after"),
+        "expected 'resilience.hypothesis.after' span, got: {names:?}"
+    );
+
+    let _ = provider.shutdown();
+}
+
+#[test]
+fn runner_emits_resilience_rollback_span() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let mut exp = simple_experiment();
+    // Add rollback that will execute (always strategy)
+    exp.rollbacks = vec![Activity {
+        name: "undo-fault".into(),
+        activity_type: ActivityType::Action,
+        ..Default::default()
+    }];
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    let config = RunConfig {
+        rollback_strategy: tumult_core::execution::RollbackStrategy::Always,
+        cancellation_token: None,
+    };
+    run_experiment(&exp, &executor, &controls, &config).unwrap();
+
+    let names = span_names(&exporter);
+    assert!(
+        names.iter().any(|n| n == "resilience.rollback"),
+        "expected 'resilience.rollback' span, got: {names:?}"
+    );
 
     let _ = provider.shutdown();
 }

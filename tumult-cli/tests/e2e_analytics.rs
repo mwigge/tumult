@@ -1,5 +1,5 @@
 //! E2E test: run experiment → analyze journal → export parquet
-//! Validates the full data pipeline: TOON → Arrow → DuckDB → Parquet
+//! Validates the full data pipeline: TOON → Arrow → `DuckDB` → Parquet
 
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
@@ -8,8 +8,11 @@ use indexmap::IndexMap;
 use tempfile::TempDir;
 use tumult_core::types::*;
 
-#[test]
-fn e2e_run_analyze_export() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// This test covers the full analytics pipeline in a single function by design;
+// splitting it would obscure the end-to-end narrative.
+#[allow(clippy::too_many_lines)]
+async fn e2e_run_analyze_export() {
     let dir = TempDir::new().unwrap();
 
     // Create a simple experiment with process provider
@@ -78,8 +81,9 @@ fn e2e_run_analyze_export() {
     };
 
     // Run experiment
-    let executor = tumult_cli::commands::ProviderExecutor;
-    let controls = tumult_core::controls::ControlRegistry::new();
+    let executor: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
+        std::sync::Arc::new(tumult_cli::commands::ProviderExecutor);
+    let controls = std::sync::Arc::new(tumult_core::controls::ControlRegistry::new());
     let config = tumult_core::runner::RunConfig::default();
     let journal =
         tumult_core::runner::run_experiment(&experiment, &executor, &controls, &config).unwrap();
@@ -100,7 +104,7 @@ fn e2e_run_analyze_export() {
         .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][1], "Analytics E2E test");
-    assert_eq!(rows[0][2], "Completed");
+    assert_eq!(rows[0][2], "completed");
 
     // Verify activity_results table
     let act_rows = store

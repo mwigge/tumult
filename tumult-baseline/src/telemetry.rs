@@ -1,13 +1,10 @@
-//! OTel instrumentation for baseline acquisition.
+//! `OTel` instrumentation for baseline acquisition.
 
 use opentelemetry::trace::{SpanKind, Status, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
+use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-baseline";
-
-pub(crate) struct SpanGuard {
-    _guard: opentelemetry::ContextGuard,
-}
 
 pub(crate) fn begin_acquire(probe_count: usize, method: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
@@ -15,24 +12,28 @@ pub(crate) fn begin_acquire(probe_count: usize, method: &str) -> SpanGuard {
         .span_builder("baseline.acquire")
         .with_kind(SpanKind::Internal)
         .with_attributes(vec![
-            KeyValue::new("baseline.probe_count", probe_count as i64),
+            KeyValue::new(
+                "baseline.probe_count",
+                i64::try_from(probe_count).unwrap_or(i64::MAX),
+            ),
             KeyValue::new("baseline.tolerance_method", method.to_string()),
         ])
         .start(&tracer);
     let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard {
-        _guard: cx.attach(),
-    }
+    SpanGuard::new(cx.attach())
 }
 
 pub(crate) fn event_tolerance_derived(lower: f64, upper: f64, total_samples: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
-        "baseline.tolerance.derived",
+        "tolerance.derived",
         vec![
             KeyValue::new("baseline.tolerance.lower", lower),
             KeyValue::new("baseline.tolerance.upper", upper),
-            KeyValue::new("baseline.samples_total", total_samples as i64),
+            KeyValue::new(
+                "baseline.samples_total",
+                i64::try_from(total_samples).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
@@ -41,7 +42,7 @@ pub(crate) fn event_anomaly_detected(reason: &str, cv: f64) {
     let cx = opentelemetry::Context::current();
     let span = cx.span();
     span.add_event(
-        "baseline.anomaly.detected",
+        "anomaly.detected",
         vec![
             KeyValue::new("baseline.anomaly.reason", reason.to_string()),
             KeyValue::new("baseline.anomaly.cv", cv),

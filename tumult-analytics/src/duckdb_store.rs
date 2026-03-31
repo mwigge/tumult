@@ -1,16 +1,16 @@
-//! DuckDB embedded analytics store.
+//! `DuckDB` embedded analytics store.
 //!
 //! Provides both in-memory and persistent (file-backed) analytics stores.
 //! Persistent stores use WAL mode for crash safety, deduplicate journals
-//! by experiment_id, and support schema versioning for future migrations.
+//! by `experiment_id`, and support schema versioning for future migrations.
 //!
-//! **Thread safety:** `AnalyticsStore` wraps a single DuckDB `Connection` and
+//! **Thread safety:** `AnalyticsStore` wraps a single `DuckDB` `Connection` and
 //! is NOT thread-safe. For shared access, wrap in `Arc<Mutex<AnalyticsStore>>`.
 //!
-//! **Encryption limitation:** DuckDB does not support transparent
+//! **Encryption limitation:** `DuckDB` does not support transparent
 //! encryption-at-rest. The database file is stored in plaintext on disk.
 //! Protect sensitive experiment data by relying on filesystem-level encryption
-//! (e.g. LUKS, FileVault, BitLocker) and by restricting the store directory
+//! (e.g. LUKS, `FileVault`, `BitLocker`) and by restricting the store directory
 //! permissions to `0o700` (which [`AnalyticsStore::open`] applies automatically).
 
 use std::path::{Path, PathBuf};
@@ -31,9 +31,9 @@ pub struct StoreStats {
     pub activity_count: usize,
 }
 
-/// Embedded DuckDB analytics store for experiment journals.
+/// Embedded `DuckDB` analytics store for experiment journals.
 ///
-/// **Not thread-safe.** Each instance holds a single DuckDB connection.
+/// **Not thread-safe.** Each instance holds a single `DuckDB` connection.
 /// For concurrent access, wrap in `Arc<Mutex<AnalyticsStore>>`.
 pub struct AnalyticsStore {
     conn: Connection,
@@ -42,12 +42,18 @@ pub struct AnalyticsStore {
 impl AnalyticsStore {
     /// Returns the default persistent store path: `~/.tumult/analytics.duckdb`
     ///
-    /// Returns an error if the home directory cannot be determined.
+    /// # Panics
+    ///
+    /// Panics if the home directory cannot be determined.
+    #[must_use]
     pub fn default_path() -> PathBuf {
         let home = dirs_next::home_dir().expect("cannot determine home directory");
         home.join(".tumult").join("analytics.duckdb")
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the in-memory `DuckDB` connection or schema initialisation fails.
     pub fn in_memory() -> Result<Self, AnalyticsError> {
         let conn = Connection::open_in_memory()?;
         let store = Self { conn };
@@ -55,6 +61,9 @@ impl AnalyticsStore {
         Ok(store)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the `DuckDB` file cannot be opened or schema initialisation fails.
     pub fn open(path: &Path) -> Result<Self, AnalyticsError> {
         // Ensure parent directory exists with restricted permissions
         if let Some(parent) = path.parent() {
@@ -120,6 +129,9 @@ impl AnalyticsStore {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the schema version cannot be read or parsed.
     pub fn schema_version(&self) -> Result<i64, AnalyticsError> {
         let mut stmt = self
             .conn
@@ -128,12 +140,12 @@ impl AnalyticsStore {
         version.parse::<i64>().map_err(|_| {
             AnalyticsError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("invalid schema version: {}", version),
+                format!("invalid schema version: {version}"),
             ))
         })
     }
 
-    /// Check if an experiment_id already exists in the store.
+    /// Check if an `experiment_id` already exists in the store.
     fn experiment_exists(&self, experiment_id: &str) -> Result<bool, AnalyticsError> {
         let mut stmt = self
             .conn
@@ -143,9 +155,13 @@ impl AnalyticsStore {
     }
 
     /// Ingest a single experiment journal into the analytics store.
-    /// Skips ingestion if the experiment_id already exists (incremental/dedup).
+    /// Skips ingestion if the `experiment_id` already exists (incremental/dedup).
     ///
     /// Returns true if the journal was ingested, false if it was a duplicate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `DuckDB` insert or Arrow conversion fails.
     ///
     /// # Examples
     ///
@@ -199,6 +215,10 @@ impl AnalyticsStore {
 
     /// Ingest multiple journals, skipping duplicates.
     /// Returns the count of newly ingested journals.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any individual journal ingestion fails.
     pub fn ingest_journals(&self, journals: &[Journal]) -> Result<usize, AnalyticsError> {
         let mut count = 0;
         for journal in journals {
@@ -213,20 +233,24 @@ impl AnalyticsStore {
         Ok(count)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the SQL query fails to execute.
     pub fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
         let mut stmt = self.conn.prepare(sql)?;
         let mut rows_iter = stmt.query(params![])?;
-        let column_count = rows_iter.as_ref().map(|r| r.column_count()).unwrap_or(0);
+        let column_count = rows_iter
+            .as_ref()
+            .map_or(0, duckdb::Statement::column_count);
         let mut result = Vec::new();
         while let Some(row) = rows_iter.next()? {
             let mut values = Vec::with_capacity(column_count);
             for i in 0..column_count {
                 let val: String = row
                     .get::<_, duckdb::types::Value>(i)
-                    .map(|v| format_value(&v))
-                    .unwrap_or_else(|_| "NULL".to_string());
+                    .map_or_else(|_| "NULL".to_string(), |v| format_value(&v));
                 values.push(val);
             }
             result.push(values);
@@ -235,43 +259,59 @@ impl AnalyticsStore {
         Ok(result)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the SQL query fails to execute.
     pub fn query_columns(&self, sql: &str) -> Result<Vec<String>, AnalyticsError> {
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query(params![])?;
         let names = rows
             .as_ref()
-            .map(|r| r.column_names())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
+            .map(duckdb::Statement::column_names)
+            .unwrap_or_default();
         Ok(names)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the count query fails.
     pub fn experiment_count(&self) -> Result<usize, AnalyticsError> {
         let mut stmt = self.conn.prepare("SELECT count(*) FROM experiments")?;
         let count: i64 = stmt.query_row(params![], |row| row.get(0))?;
+        // DuckDB count(*) is never negative; i64 → usize is safe on 64-bit targets.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         Ok(count as usize)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if either count query fails.
     pub fn stats(&self) -> Result<StoreStats, AnalyticsError> {
         let exp_count = self.experiment_count()?;
         let mut stmt = self.conn.prepare("SELECT count(*) FROM activity_results")?;
         let act_count: i64 = stmt.query_row(params![], |row| row.get(0))?;
         Ok(StoreStats {
             experiment_count: exp_count,
+            // DuckDB count(*) is never negative; i64 → usize is safe on 64-bit targets.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             activity_count: act_count as usize,
         })
     }
 
     /// Purge experiments (and their activities) older than `days` from now.
     /// Returns the number of experiments removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any `DuckDB` operation fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `days * 86_400_000_000_000` overflows an `i64`.
     pub fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
         let _span = telemetry::begin_purge(days);
 
-        let now_ns = chrono::Utc::now()
-            .timestamp_nanos_opt()
-            .expect("system time before year 2262");
+        let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX);
         let retention_ns = i64::from(days)
             .checked_mul(86_400_000_000_000)
             .expect("retention period overflow");
@@ -299,6 +339,10 @@ impl AnalyticsStore {
     }
 
     /// Export both tables to Parquet files for backup.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any `DuckDB` query or Parquet write fails.
     pub fn export_tables(
         &self,
         experiments_path: &Path,
@@ -338,6 +382,10 @@ impl AnalyticsStore {
     }
 
     /// Import from Parquet backup files. Wrapped in a transaction for atomicity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Parquet read or `DuckDB` insert fails.
     pub fn import_tables(
         &self,
         experiments_path: &Path,
@@ -394,7 +442,7 @@ impl AnalyticsStore {
             let schema = crate::arrow_convert::experiments_schema();
             Ok(RecordBatch::new_empty(std::sync::Arc::new(schema)))
         } else if batches.len() == 1 {
-            Ok(batches.into_iter().next().unwrap())
+            Ok(batches.into_iter().next().expect("len==1 asserted above"))
         } else {
             let schema = batches[0].schema();
             Ok(arrow::compute::concat_batches(&schema, &batches)?)
@@ -418,10 +466,10 @@ fn format_value(v: &duckdb::types::Value) -> String {
         duckdb::types::Value::Int(n) => n.to_string(),
         duckdb::types::Value::BigInt(n) => n.to_string(),
         duckdb::types::Value::UBigInt(n) => n.to_string(),
-        duckdb::types::Value::Float(f) => format!("{:.2}", f),
-        duckdb::types::Value::Double(f) => format!("{:.4}", f),
+        duckdb::types::Value::Float(f) => format!("{f:.2}"),
+        duckdb::types::Value::Double(f) => format!("{f:.4}"),
         duckdb::types::Value::Text(s) => s.clone(),
-        _ => format!("{:?}", v),
+        _ => format!("{v:?}"),
     }
 }
 
@@ -432,19 +480,19 @@ mod tests {
 
     fn sample_journal(id: &str, status: ExperimentStatus) -> Journal {
         Journal {
-            experiment_title: format!("Test {}", id),
+            experiment_title: format!("Test {id}"),
             experiment_id: id.into(),
             status,
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980300000000000,
-            duration_ms: 300000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
+            duration_ms: 300_000,
             steady_state_before: None,
             steady_state_after: None,
             method_results: vec![ActivityResult {
                 name: "action-1".into(),
                 activity_type: ActivityType::Action,
                 status: ActivityStatus::Succeeded,
-                started_at_ns: 1774980135000000000,
+                started_at_ns: 1_774_980_135_000_000_000,
                 duration_ms: 500,
                 output: Some("done".into()),
                 error: None,
@@ -504,7 +552,7 @@ mod tests {
         s.ingest_journal(&sample_journal("e3", ExperimentStatus::Completed))
             .unwrap();
         let rows = s
-            .query("SELECT experiment_id FROM experiments WHERE status = 'Completed'")
+            .query("SELECT experiment_id FROM experiments WHERE status = 'completed'")
             .unwrap();
         assert_eq!(rows.len(), 2);
     }
