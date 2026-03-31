@@ -33,6 +33,12 @@ enum ExportFormat {
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+enum ReportFormat {
+    Html,
+    Pdf,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum BaselineMode {
     /// Run full baseline then inject fault (default)
     Full,
@@ -114,13 +120,16 @@ enum Commands {
         #[arg(long, value_enum)]
         framework: ComplianceFramework,
     },
-    /// Generate HTML report from journal
+    /// Generate report from journal (HTML or PDF)
     Report {
         /// Journal file
         journal: PathBuf,
         /// Output path
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Report format
+        #[arg(long, default_value_t = ReportFormat::Html, value_enum)]
+        format: ReportFormat,
     },
     /// Cross-run trend analysis
     Trend {
@@ -132,6 +141,9 @@ enum Commands {
         /// Time window (e.g., 30d, 90d)
         #[arg(long)]
         last: Option<String>,
+        /// Filter by target technology (matches experiment title)
+        #[arg(long)]
+        target: Option<String>,
     },
     /// Interactive experiment creation
     Init {
@@ -169,6 +181,8 @@ enum StoreAction {
     },
     /// Show store file path
     Path,
+    /// Migrate data from DuckDB to ClickHouse
+    Migrate,
 }
 
 #[tokio::main]
@@ -236,11 +250,20 @@ async fn main() -> anyhow::Result<()> {
             journals,
             metric,
             last,
+            target,
         } => {
-            commands::cmd_trend(&journals, &metric, last.as_deref())?;
+            commands::cmd_trend(&journals, &metric, last.as_deref(), target.as_deref())?;
         }
-        Commands::Report { .. } => {
-            anyhow::bail!("report command requires tumult-report (Phase 3)");
+        Commands::Report {
+            journal,
+            output,
+            format,
+        } => {
+            let fmt = match format {
+                ReportFormat::Html => "html",
+                ReportFormat::Pdf => "pdf",
+            };
+            commands::cmd_report(&journal, output.as_deref(), fmt)?;
         }
         Commands::Import { parquet_dir } => {
             commands::cmd_import(&parquet_dir)?;
@@ -250,6 +273,7 @@ async fn main() -> anyhow::Result<()> {
             StoreAction::Backup { output } => commands::cmd_store_backup(&output)?,
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
+            StoreAction::Migrate => commands::cmd_store_migrate()?,
         },
     }
 
@@ -626,7 +650,10 @@ mod tests {
     #[test]
     fn parse_report_minimal() {
         let cli = Cli::try_parse_from(["tumult", "report", "journal.toon"]).unwrap();
-        let Commands::Report { journal, output } = cli.command else {
+        let Commands::Report {
+            journal, output, ..
+        } = cli.command
+        else {
             panic!("expected Report command");
         };
         assert_eq!(journal, PathBuf::from("journal.toon"));
