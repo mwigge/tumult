@@ -212,7 +212,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
 | **3 — Automation** | MCP server (8 tools), AI-assisted chaos engineering | Done |
-| **4 — Persistent Analytics** | Incremental ingestion, cross-run trends, backup/export | Planned |
+| **4 — Persistent Analytics** | Persistent DuckDB, incremental ingestion, backup/restore, retention | Done |
 | **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Planned |
 | **6 — Advanced Capabilities** | Async background activities, competitive review, label selectors | Planned |
 | **7 — Infrastructure** | Docker Compose e2e test stack, CI integration | Done |
