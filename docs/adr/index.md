@@ -19,3 +19,4 @@ Tumult's architectural decisions are captured as ADRs (Architecture Decision Rec
 | [ADR-007](ADR-007-kubernetes-native.md) | Kubernetes as a native Rust plugin (`kube-rs`) rather than script |
 | [ADR-008](ADR-008-arrow-duckdb-analytics.md) | Embedded DuckDB + Apache Arrow for zero-dependency analytics |
 | [ADR-009](ADR-009-load-testing.md) | Load tool integration as background activities (k6, JMeter) |
+| [ADR-010](ADR-010-persistent-analytics.md) | Persistent DuckDB store with auto-ingest, dedup, backup/restore |
