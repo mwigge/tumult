@@ -10,5 +10,5 @@
 //! - tumult_create_experiment — scaffold from template
 
 pub mod handler;
-pub mod telemetry;
+pub(crate) mod telemetry;
 pub mod tools;

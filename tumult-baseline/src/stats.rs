@@ -9,12 +9,14 @@ pub struct BaselineBounds {
 
 impl BaselineBounds {
     /// Check if a value falls within the bounds (inclusive).
+    #[inline]
     pub fn contains(&self, value: f64) -> bool {
         (self.lower..=self.upper).contains(&value)
     }
 }
 
 /// Calculate the arithmetic mean of a dataset.
+#[inline]
 pub fn mean(data: &[f64]) -> f64 {
     if data.is_empty() {
         return 0.0;
@@ -23,6 +25,7 @@ pub fn mean(data: &[f64]) -> f64 {
 }
 
 /// Calculate the population standard deviation.
+#[inline]
 pub fn stddev(data: &[f64]) -> f64 {
     if data.is_empty() {
         return 0.0;
@@ -33,6 +36,7 @@ pub fn stddev(data: &[f64]) -> f64 {
 }
 
 /// Calculate a percentile value (0-100) using linear interpolation.
+#[inline]
 pub fn percentile(data: &[f64], p: f64) -> f64 {
     if data.is_empty() {
         return 0.0;

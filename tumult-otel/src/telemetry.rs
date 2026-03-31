@@ -4,11 +4,14 @@
 //! Call `shutdown()` before process exit to flush pending telemetry.
 
 use opentelemetry::global;
+use opentelemetry::KeyValue;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
 
 use crate::config::TelemetryConfig;
 use opentelemetry_otlp::WithExportConfig;
+
+const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Central telemetry manager for the Tumult platform.
 #[derive(Debug)]
@@ -33,6 +36,7 @@ impl TumultTelemetry {
 
         let resource = Resource::builder()
             .with_service_name(config.service_name.clone())
+            .with_attribute(KeyValue::new("service.version", SERVICE_VERSION))
             .build();
 
         let provider = if let Some(ref endpoint) = config.otlp_endpoint {
