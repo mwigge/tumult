@@ -50,6 +50,7 @@ pub struct NodeCondition {
 
 /// Check if a specific pod is running and ready.
 pub async fn pod_is_ready(client: Client, namespace: &str, name: &str) -> Result<bool, KubeError> {
+    let _span = crate::telemetry::begin_pod_probe(namespace, name);
     let pods: Api<Pod> = Api::namespaced(client, namespace);
     let pod = pods.get(name).await?;
     Ok(is_pod_ready(&pod))
@@ -62,6 +63,7 @@ pub async fn pods_by_label(
     namespace: &str,
     label_selector: &str,
 ) -> Result<Vec<PodStatus>, KubeError> {
+    let _span = crate::telemetry::begin_pods_by_label(namespace, label_selector);
     let pods: Api<Pod> = Api::namespaced(client, namespace);
     let lp = ListParams::default().labels(label_selector);
     let pod_list = pods.list(&lp).await?;
@@ -88,6 +90,7 @@ pub async fn deployment_is_ready(
     namespace: &str,
     name: &str,
 ) -> Result<DeploymentStatus, KubeError> {
+    let _span = crate::telemetry::begin_deployment_probe(namespace, name);
     let deployments: Api<Deployment> = Api::namespaced(client, namespace);
     let deployment = deployments.get(name).await?;
 
@@ -114,6 +117,7 @@ pub async fn deployment_is_ready(
 
 /// Get node conditions and schedulability status.
 pub async fn node_status(client: Client, name: &str) -> Result<NodeStatus, KubeError> {
+    let _span = crate::telemetry::begin_node_status(name);
     let nodes: Api<Node> = Api::all(client);
     let node = nodes.get(name).await?;
 
