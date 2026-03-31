@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn schema_version_constant_is_valid() {
-        assert!(SCHEMA_VERSION >= 1);
+        const _: () = assert!(SCHEMA_VERSION >= 1);
     }
 
     #[test]

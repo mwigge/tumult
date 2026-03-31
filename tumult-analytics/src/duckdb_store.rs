@@ -6,6 +6,12 @@
 //!
 //! **Thread safety:** `AnalyticsStore` wraps a single DuckDB `Connection` and
 //! is NOT thread-safe. For shared access, wrap in `Arc<Mutex<AnalyticsStore>>`.
+//!
+//! **Encryption limitation:** DuckDB does not support transparent
+//! encryption-at-rest. The database file is stored in plaintext on disk.
+//! Protect sensitive experiment data by relying on filesystem-level encryption
+//! (e.g. LUKS, FileVault, BitLocker) and by restricting the store directory
+//! permissions to `0o700` (which [`AnalyticsStore::open`] applies automatically).
 
 use std::path::{Path, PathBuf};
 

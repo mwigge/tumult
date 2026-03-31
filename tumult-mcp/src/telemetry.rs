@@ -5,12 +5,12 @@ use opentelemetry::{global, KeyValue};
 
 const TRACER: &str = "tumult-mcp";
 
-pub struct SpanGuard {
+pub(crate) struct SpanGuard {
     _guard: opentelemetry::ContextGuard,
 }
 
 /// Start a span for MCP tool invocation.
-pub fn begin_tool_call(tool_name: &str) -> SpanGuard {
+pub(crate) fn begin_tool_call(tool_name: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
     let span = tracer
         .span_builder("mcp.tool.call")
@@ -27,18 +27,21 @@ pub fn begin_tool_call(tool_name: &str) -> SpanGuard {
     }
 }
 
-pub fn event_tool_completed(tool_name: &str, success: bool) {
+pub(crate) fn event_tool_completed(tool_name: &str, success: bool) {
     let cx = opentelemetry::Context::current();
+    // rpc.grpc.status_code: 0 = OK, 2 = UNKNOWN (used as generic failure)
+    let grpc_status: i64 = if success { 0 } else { 2 };
     cx.span().add_event(
         "mcp.tool.completed",
         vec![
             KeyValue::new("mcp.tool.name", tool_name.to_string()),
             KeyValue::new("mcp.tool.success", success),
+            KeyValue::new("rpc.grpc.status_code", grpc_status),
         ],
     );
 }
 
-pub fn event_tool_error(tool_name: &str, error: &str) {
+pub(crate) fn event_tool_error(tool_name: &str, error: &str) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "mcp.tool.error",

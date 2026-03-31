@@ -27,6 +27,6 @@
 pub mod actions;
 pub mod error;
 pub mod probes;
-pub mod telemetry;
+pub(crate) mod telemetry;
 
 pub use error::KubeError;
