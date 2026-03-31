@@ -1,0 +1,762 @@
+{
+  "description": "Execution rates, duration distributions, and failure analysis for Tumult chaos actions and probes, broken down by plugin and operation name.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-actions",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "graph-action-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 6,
+      "i": "graph-probe-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-durations",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 7
+    },
+    {
+      "h": 6,
+      "i": "graph-action-duration",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 8
+    },
+    {
+      "h": 6,
+      "i": "graph-probe-duration",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 8
+    },
+    {
+      "h": 1,
+      "i": "row-failures",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 14
+    },
+    {
+      "h": 6,
+      "i": "graph-action-failures",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 15
+    },
+    {
+      "h": 6,
+      "i": "table-action-summary",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 15
+    }
+  ],
+  "panelMap": {
+    "row-actions": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-action-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 1 },
+        { "h": 6, "i": "graph-probe-rate", "moved": false, "static": false, "w": 6, "x": 6, "y": 1 }
+      ]
+    },
+    "row-durations": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-action-duration", "moved": false, "static": false, "w": 6, "x": 0, "y": 8 },
+        { "h": 6, "i": "graph-probe-duration", "moved": false, "static": false, "w": 6, "x": 6, "y": 8 }
+      ]
+    },
+    "row-failures": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-action-failures", "moved": false, "static": false, "w": 6, "x": 0, "y": 15 },
+        { "h": 6, "i": "table-action-summary", "moved": false, "static": false, "w": 6, "x": 6, "y": 15 }
+      ]
+    }
+  },
+  "tags": ["tumult", "chaos", "actions", "probes", "plugins"],
+  "title": "Tumult — Actions & Probes",
+  "uploadedGrafana": false,
+  "uuid": "tumult-actions-probes-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-actions",
+      "panelTypes": "row",
+      "title": "Execution Rate"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Action execution rate grouped by plugin name",
+      "fillSpans": false,
+      "id": "graph-action-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-action-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Action Rate by Plugin",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Probe execution rate grouped by plugin name",
+      "fillSpans": false,
+      "id": "graph-probe-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probes.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probes.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-probe-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Probe Rate by Plugin",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-durations",
+      "panelTypes": "row",
+      "title": "Duration Percentiles"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Action execution duration percentiles (p50/p90/p99) in seconds",
+      "fillSpans": false,
+      "id": "graph-action-duration",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.action.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.action.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.action.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.action.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p90",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p90",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.action.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.action.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "C",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p50",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "C",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-action-duration",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Action Duration (p50 / p90 / p99)",
+      "yAxisUnit": "s"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Probe execution duration percentiles (p50/p90/p99) in seconds",
+      "fillSpans": false,
+      "id": "graph-probe-duration",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probe.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probe.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probe.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probe.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p90",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p90",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probe.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probe.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "C",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p50",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "C",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-probe-duration",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Probe Duration (p50 / p90 / p99)",
+      "yAxisUnit": "s"
+    },
+    {
+      "description": "",
+      "id": "row-failures",
+      "panelTypes": "row",
+      "title": "Failure Analysis"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Action failure rate by action name",
+      "fillSpans": false,
+      "id": "graph-action-failures",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-failure",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.outcome.status--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.outcome.status",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "failure"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.action.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.action.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.action.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-action-failures",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Action Failure Rate by Action Name",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {
+        "A": "s",
+        "B": "s",
+        "C": "s",
+        "D": "reqps"
+      },
+      "columnWidths": {
+        "A": 120,
+        "B": 120,
+        "C": 120,
+        "D": 120,
+        "resilience.action.name": 200,
+        "resilience.plugin.name": 160
+      },
+      "description": "Summary table of actions by plugin, including p99/p90/p50 durations and rate",
+      "fillSpans": false,
+      "id": "table-action-summary",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.action.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.action.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.action.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.action.name",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "p99",
+              "limit": 20,
+              "orderBy": [{ "columnName": "A", "order": "desc" }],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.action.duration--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.action.duration",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.action.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.action.name",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "p50",
+              "limit": 20,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "C",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.action.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.action.name",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "req/s",
+              "limit": 20,
+              "orderBy": [],
+              "queryName": "C",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-table-action-summary",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Top Actions — Duration & Rate",
+      "yAxisUnit": "none"
+    }
+  ]
+}

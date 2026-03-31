@@ -1,0 +1,891 @@
+{
+  "description": "ClickHouse (SigNoz backend) — container resource usage plus Tumult clickhouse.connect span latency and error rate from the tumult-clickhouse crate.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-ch-container",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "graph-ch-cpu",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 6,
+      "i": "graph-ch-mem",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 6,
+      "i": "graph-ch-net-rx",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 7
+    },
+    {
+      "h": 6,
+      "i": "graph-ch-net-tx",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 7
+    },
+    {
+      "h": 1,
+      "i": "row-ch-spans",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 4,
+      "i": "stat-ch-connect-rate",
+      "moved": false,
+      "static": false,
+      "w": 4,
+      "x": 0,
+      "y": 14
+    },
+    {
+      "h": 4,
+      "i": "stat-ch-connect-error-rate",
+      "moved": false,
+      "static": false,
+      "w": 4,
+      "x": 4,
+      "y": 14
+    },
+    {
+      "h": 4,
+      "i": "stat-ch-connect-p99",
+      "moved": false,
+      "static": false,
+      "w": 4,
+      "x": 8,
+      "y": 14
+    },
+    {
+      "h": 6,
+      "i": "graph-ch-connect-latency",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 18
+    },
+    {
+      "h": 6,
+      "i": "graph-ch-connect-errors",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 18
+    }
+  ],
+  "panelMap": {
+    "row-ch-container": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-ch-cpu", "moved": false, "static": false, "w": 6, "x": 0, "y": 1 },
+        { "h": 6, "i": "graph-ch-mem", "moved": false, "static": false, "w": 6, "x": 6, "y": 1 },
+        { "h": 6, "i": "graph-ch-net-rx", "moved": false, "static": false, "w": 6, "x": 0, "y": 7 },
+        { "h": 6, "i": "graph-ch-net-tx", "moved": false, "static": false, "w": 6, "x": 6, "y": 7 }
+      ]
+    },
+    "row-ch-spans": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-ch-connect-rate", "moved": false, "static": false, "w": 4, "x": 0, "y": 14 },
+        { "h": 4, "i": "stat-ch-connect-error-rate", "moved": false, "static": false, "w": 4, "x": 4, "y": 14 },
+        { "h": 4, "i": "stat-ch-connect-p99", "moved": false, "static": false, "w": 4, "x": 8, "y": 14 },
+        { "h": 6, "i": "graph-ch-connect-latency", "moved": false, "static": false, "w": 6, "x": 0, "y": 18 },
+        { "h": 6, "i": "graph-ch-connect-errors", "moved": false, "static": false, "w": 6, "x": 6, "y": 18 }
+      ]
+    }
+  },
+  "tags": ["tumult", "clickhouse", "observability", "infrastructure"],
+  "title": "Tumult — ClickHouse",
+  "uploadedGrafana": false,
+  "uuid": "tumult-clickhouse-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-ch-container",
+      "panelTypes": "row",
+      "title": "ClickHouse Container Resources"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "CPU nanoseconds consumed by the signoz-clickhouse container per second",
+      "fillSpans": false,
+      "id": "graph-ch-cpu",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.cpu.usage.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.cpu.usage.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "container.name--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "container.name",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "clickhouse"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-ch-cpu",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "ClickHouse CPU Usage",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Memory used by the signoz-clickhouse container",
+      "fillSpans": false,
+      "id": "graph-ch-mem",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.memory.usage.total--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.memory.usage.total",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "container.name--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "container.name",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "clickhouse"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "container.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "container.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{container.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "avg",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-ch-mem",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "ClickHouse Memory Usage",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Network bytes received by ClickHouse container",
+      "fillSpans": false,
+      "id": "graph-ch-net-rx",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.network.io.usage.rx_bytes--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.network.io.usage.rx_bytes",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "container.name--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "container.name",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "clickhouse"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "RX bytes/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-ch-net-rx",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "ClickHouse Network RX",
+      "yAxisUnit": "Bps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Network bytes transmitted by ClickHouse container",
+      "fillSpans": false,
+      "id": "graph-ch-net-tx",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "container.network.io.usage.tx_bytes--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "container.network.io.usage.tx_bytes",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "container.name--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "container.name",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "clickhouse"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "TX bytes/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-ch-net-tx",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "ClickHouse Network TX",
+      "yAxisUnit": "Bps"
+    },
+    {
+      "description": "",
+      "id": "row-ch-spans",
+      "panelTypes": "row",
+      "title": "Tumult ClickHouse Client Spans"
+    },
+    {
+      "description": "Rate of clickhouse.connect spans from tumult-clickhouse crate",
+      "id": "stat-ch-connect-rate",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "clickhouse.connect"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "connects",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-ch-connect-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Connect Rate",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "Rate of failed clickhouse.connect spans",
+      "id": "stat-ch-connect-error-rate",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "clickhouse.connect"
+                  },
+                  {
+                    "id": "f2",
+                    "key": {
+                      "dataType": "string",
+                      "id": "statusCode--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "statusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "errors",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-ch-connect-error-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Connect Errors/sec",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "P99 latency of clickhouse.connect spans",
+      "id": "stat-ch-connect-p99",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "clickhouse.connect"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99 latency",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-ch-connect-p99",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Connect P99 Latency",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "clickhouse.connect span latency percentiles over time",
+      "fillSpans": false,
+      "id": "graph-ch-connect-latency",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p50",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "clickhouse.connect"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p50",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": "p50"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "clickhouse.connect"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-ch-connect-latency",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Connect Latency (p50/p99)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "clickhouse.connect error rate over time",
+      "fillSpans": false,
+      "id": "graph-ch-connect-errors",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "clickhouse.connect"
+                  },
+                  {
+                    "id": "f2",
+                    "key": {
+                      "dataType": "string",
+                      "id": "statusCode--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "statusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "errors/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-ch-connect-errors",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Connect Errors/sec",
+      "yAxisUnit": "reqps"
+    }
+  ]
+}

@@ -1,0 +1,617 @@
+{
+  "description": "High-level overview of Tumult chaos experiment execution — total runs, success rates, hypothesis deviations, and plugin errors over time.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-stats",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-experiments-total",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-experiments-success",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-deviations-total",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-plugin-errors",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 9,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-timeseries",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-experiments-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-deviations-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-plugin-errors-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "graph-experiments-by-status",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 12
+    }
+  ],
+  "panelMap": {
+    "row-stats": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-experiments-total", "moved": false, "static": false, "w": 3, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-experiments-success", "moved": false, "static": false, "w": 3, "x": 3, "y": 1 },
+        { "h": 4, "i": "stat-deviations-total", "moved": false, "static": false, "w": 3, "x": 6, "y": 1 },
+        { "h": 4, "i": "stat-plugin-errors", "moved": false, "static": false, "w": 3, "x": 9, "y": 1 }
+      ]
+    },
+    "row-timeseries": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-experiments-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-deviations-rate", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 },
+        { "h": 6, "i": "graph-plugin-errors-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 12 },
+        { "h": 6, "i": "graph-experiments-by-status", "moved": false, "static": false, "w": 6, "x": 6, "y": 12 }
+      ]
+    }
+  },
+  "tags": ["tumult", "chaos", "experiments", "overview"],
+  "title": "Tumult — Experiment Overview",
+  "uploadedGrafana": false,
+  "uuid": "tumult-experiments-overview-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-stats",
+      "panelTypes": "row",
+      "title": "Experiment Stats"
+    },
+    {
+      "description": "Total experiments run in the selected time window",
+      "id": "stat-experiments-total",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Total Experiments",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-experiments-total",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Total Experiments",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Total successful experiments (resilience.outcome.status = success)",
+      "id": "stat-experiments-success",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.outcome.status--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.outcome.status",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "success"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Successful",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-experiments-success",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Successful Experiments",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Total hypothesis deviations detected across all experiments",
+      "id": "stat-deviations-total",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.hypothesis.deviations.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.hypothesis.deviations.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Deviations",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-deviations-total",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Hypothesis Deviations",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Total plugin errors recorded across all actions and probes",
+      "id": "stat-plugin-errors",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.plugin.errors.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.plugin.errors.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Plugin Errors",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-plugin-errors",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Plugin Errors",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "",
+      "id": "row-timeseries",
+      "panelTypes": "row",
+      "title": "Trends Over Time"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Rate of experiment completions per minute, grouped by outcome status",
+      "fillSpans": false,
+      "id": "graph-experiments-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.outcome.status--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.outcome.status",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.outcome.status}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-experiments-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Experiment Rate by Outcome",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Rate of hypothesis deviations detected per minute",
+      "fillSpans": false,
+      "id": "graph-deviations-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.hypothesis.deviations.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.hypothesis.deviations.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "deviations/min",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-deviations-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Hypothesis Deviation Rate",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Plugin error rate grouped by plugin name",
+      "fillSpans": false,
+      "id": "graph-plugin-errors-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.plugin.errors.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.plugin.errors.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-plugin-errors-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Plugin Error Rate by Plugin",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Cumulative experiment count grouped by outcome status",
+      "fillSpans": false,
+      "id": "graph-experiments-by-status",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.outcome.status--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.outcome.status",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.outcome.status}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-experiments-by-status",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Experiments by Outcome (stacked)",
+      "yAxisUnit": "short"
+    }
+  ]
+}
