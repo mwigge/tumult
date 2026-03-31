@@ -102,7 +102,12 @@ impl AnalyticsStore {
             .conn
             .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
         let version: String = stmt.query_row(params![], |row| row.get(0))?;
-        Ok(version.parse::<i64>().unwrap_or(0))
+        version.parse::<i64>().map_err(|_| {
+            AnalyticsError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid schema version: {}", version),
+            ))
+        })
     }
 
     /// Check if an experiment_id already exists in the store.
@@ -226,8 +231,13 @@ impl AnalyticsStore {
     /// Purge experiments (and their activities) older than `days` from now.
     /// Returns the number of experiments removed.
     pub fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
-        let cutoff_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
-            - (i64::from(days) * 86_400 * 1_000_000_000);
+        let now_ns = chrono::Utc::now()
+            .timestamp_nanos_opt()
+            .expect("system time before year 2262");
+        let retention_ns = i64::from(days)
+            .checked_mul(86_400_000_000_000)
+            .expect("retention period overflow");
+        let cutoff_ns = now_ns.saturating_sub(retention_ns);
 
         // Delete activity results for old experiments first
         self.conn.execute(
