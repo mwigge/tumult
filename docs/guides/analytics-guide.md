@@ -63,10 +63,52 @@ SELECT count(*) FILTER (WHERE status != 'Completed')::float / count(*) * 100 as 
 FROM experiments;
 ```
 
+## Persistent Store
+
+Every `tumult run` automatically ingests the journal into a persistent DuckDB store at `~/.tumult/analytics.duckdb`. This enables cross-run analytics without manually specifying journal paths.
+
+```bash
+# Query the persistent store (no path needed)
+tumult analyze --query "SELECT status, count(*) FROM experiments GROUP BY status"
+
+# View store statistics
+tumult store stats
+
+# Show store path
+tumult store path
+```
+
+### Backup and Restore
+
+```bash
+# Export the entire store to Parquet files
+tumult store backup --output my-backup/
+
+# Restore from backup into the persistent store
+tumult import my-backup/
+```
+
+### Retention
+
+```bash
+# Purge experiments older than 90 days
+tumult store purge --older-than-days 90
+```
+
+### Disabling Auto-Ingest
+
+```bash
+# Run without ingesting into persistent store
+tumult run experiment.toon --no-ingest
+```
+
 ## CLI Usage
 
 ```bash
-# Default summary
+# Default summary (from persistent store)
+tumult analyze
+
+# Load from journal files
 tumult analyze journals/
 
 # Custom SQL
@@ -80,4 +122,7 @@ tumult export journal.toon --format parquet
 
 # Export to CSV
 tumult export journal.toon --format csv
+
+# Trend analysis
+tumult trend journals/ --metric resilience_score --last 30d
 ```
