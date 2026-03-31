@@ -10,16 +10,27 @@ use thiserror::Error;
 pub enum JournalError {
     #[error("failed to encode journal to TOON: {0}")]
     EncodeError(String),
+    #[error("failed to decode journal from TOON: {0}")]
+    DecodeError(String),
     #[error("failed to write journal file: {0}")]
     WriteError(#[from] std::io::Error),
 }
 
 /// Encode a journal to a TOON string.
+///
+/// # Errors
+///
+/// Returns [`JournalError::EncodeError`] if the journal cannot be serialized.
 pub fn encode_journal(journal: &Journal) -> Result<String, JournalError> {
     toon_format::encode_default(journal).map_err(|e| JournalError::EncodeError(e.to_string()))
 }
 
 /// Write a journal to a file in TOON format.
+///
+/// # Errors
+///
+/// Returns [`JournalError::EncodeError`] if the journal cannot be serialized.
+/// Returns [`JournalError::WriteError`] if the file cannot be written.
 pub fn write_journal(journal: &Journal, path: &Path) -> Result<(), JournalError> {
     let toon = encode_journal(journal)?;
     std::fs::write(path, toon)?;
@@ -27,9 +38,14 @@ pub fn write_journal(journal: &Journal, path: &Path) -> Result<(), JournalError>
 }
 
 /// Read a journal from a TOON file.
+///
+/// # Errors
+///
+/// Returns [`JournalError::WriteError`] if the file cannot be read.
+/// Returns [`JournalError::DecodeError`] if the TOON content is malformed.
 pub fn read_journal(path: &Path) -> Result<Journal, JournalError> {
     let content = std::fs::read_to_string(path)?;
-    toon_format::decode_default(&content).map_err(|e| JournalError::EncodeError(e.to_string()))
+    toon_format::decode_default(&content).map_err(|e| JournalError::DecodeError(e.to_string()))
 }
 
 #[cfg(test)]
@@ -43,9 +59,9 @@ mod tests {
             experiment_title: "test experiment".into(),
             experiment_id: "test-id-001".into(),
             status: ExperimentStatus::Completed,
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980300000000000,
-            duration_ms: 300000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
+            duration_ms: 300_000,
             steady_state_before: None,
             steady_state_after: None,
             method_results: vec![],
@@ -67,7 +83,7 @@ mod tests {
             name: "kill-pod".into(),
             activity_type: ActivityType::Action,
             status: ActivityStatus::Succeeded,
-            started_at_ns: 1774980135000000000,
+            started_at_ns: 1_774_980_135_000_000_000,
             duration_ms: 342,
             output: Some("pod deleted".into()),
             error: None,
@@ -137,6 +153,16 @@ mod tests {
     #[test]
     fn read_nonexistent_file_returns_error() {
         let result = read_journal(Path::new("/nonexistent/journal.toon"));
-        assert!(result.is_err());
+        assert!(matches!(result, Err(JournalError::WriteError(_))));
+    }
+
+    #[test]
+    fn read_corrupted_file_returns_decode_error() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("corrupted.toon");
+        std::fs::write(&path, "this is not valid TOON content {{{").unwrap();
+
+        let result = read_journal(&path);
+        assert!(matches!(result, Err(JournalError::DecodeError(_))));
     }
 }

@@ -45,7 +45,7 @@ toon-format = "0.4"
 
 # Async runtime — library crates should override with minimal features
 tokio = { version = "1", features = ["full"] }
-tokio-minimal = { package = "tokio", version = "1", features = ["rt", "macros"] }
+tokio-minimal = { package = "tokio", version = "1", features = ["rt", "macros", "time"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -84,7 +84,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 indexmap = { version = "2", features = ["serde"] }
 
 # SSH
-russh = "0.58"
+# rsa feature disabled: RUSTSEC-2023-0071 (Marvin Attack) has no fix; RSA keys not used in tumult-ssh
+russh = { version = "0.59", default-features = false, features = ["flate2", "aws-lc-rs"] }
 async-trait = "0.1"
 
 # Kubernetes
@@ -96,4 +97,11 @@ rust-mcp-sdk = "0.9"
 
 # Cancellation
 tokio-util = "0.7"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
 

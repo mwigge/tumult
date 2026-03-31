@@ -19,6 +19,7 @@ pub struct AnomalyCheck {
 /// 1. Coefficient of variation exceeds the threshold (default 0.5 = 50%)
 /// 2. The range (max-min) exceeds 10x the median
 /// 3. Too few samples were collected
+#[must_use]
 pub fn check_baseline_anomaly(data: &[f64], min_samples: usize) -> AnomalyCheck {
     if data.len() < min_samples {
         return AnomalyCheck {
@@ -101,7 +102,7 @@ mod tests {
         let data = vec![50.0; 10];
         let result = check_baseline_anomaly(&data, 5);
         assert!(!result.anomaly_detected);
-        assert_eq!(result.coefficient_of_variation, 0.0);
+        assert!(result.coefficient_of_variation.abs() < f64::EPSILON);
     }
 
     #[test]

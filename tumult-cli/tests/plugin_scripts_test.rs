@@ -26,9 +26,9 @@ fn plugin_path(relative: &str) -> String {
 
 /// Parse a plugin.toon manifest and verify it has expected fields.
 fn assert_manifest_valid(plugin_dir: &str) {
-    let path = plugin_path(&format!("{}/plugin.toon", plugin_dir));
+    let path = plugin_path(&format!("{plugin_dir}/plugin.toon"));
     let content =
-        std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("manifest not found: {}", path));
+        std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("manifest not found: {path}"));
     assert!(content.contains("name:"), "manifest missing name field");
     assert!(
         content.contains("version:"),
@@ -42,14 +42,11 @@ fn assert_manifest_valid(plugin_dir: &str) {
 
 fn assert_script_executable(relative: &str) {
     let path = plugin_path(relative);
-    let metadata =
-        std::fs::metadata(&path).unwrap_or_else(|_| panic!("script not found: {}", path));
+    let metadata = std::fs::metadata(&path).unwrap_or_else(|_| panic!("script not found: {path}"));
     let mode = metadata.permissions().mode();
     assert!(
         mode & 0o111 != 0,
-        "script not executable: {} (mode: {:o})",
-        path,
-        mode
+        "script not executable: {path} (mode: {mode:o})"
     );
 }
 
@@ -62,7 +59,7 @@ fn run_script(relative: &str, env: &[(&str, &str)]) -> (i32, String, String) {
     }
     let output = cmd
         .output()
-        .unwrap_or_else(|e| panic!("failed to run {}: {}", path, e));
+        .unwrap_or_else(|e| panic!("failed to run {path}: {e}"));
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).to_string(),
@@ -104,8 +101,7 @@ fn cpu_utilization_probe_produces_number() {
         .unwrap_or_else(|_| panic!("cpu-utilization output not a number: '{}'", stdout.trim()));
     assert!(
         (0.0..=100.0).contains(&value),
-        "cpu value out of range: {}",
-        value
+        "cpu value out of range: {value}"
     );
 }
 
@@ -121,8 +117,7 @@ fn memory_utilization_probe_produces_number() {
     });
     assert!(
         (0.0..=100.0).contains(&value),
-        "memory value out of range: {}",
-        value
+        "memory value out of range: {value}"
     );
 }
 
@@ -135,8 +130,7 @@ fn stress_action_fails_without_stressng() {
     if code != 0 {
         assert!(
             stderr.contains("stress-ng not found"),
-            "expected stress-ng not found error, got: {}",
-            stderr
+            "expected stress-ng not found error, got: {stderr}"
         );
     }
 }
@@ -172,8 +166,7 @@ fn container_action_requires_container_id() {
     assert_ne!(code, 0, "should fail without TUMULT_CONTAINER_ID");
     assert!(
         stderr.contains("TUMULT_CONTAINER_ID"),
-        "error should mention missing var, got: {}",
-        stderr
+        "error should mention missing var, got: {stderr}"
     );
 }
 
@@ -241,7 +234,6 @@ fn process_action_requires_target() {
     assert_ne!(code, 0);
     assert!(
         stderr.contains("TUMULT_PID") || stderr.contains("required"),
-        "error should mention missing target, got: {}",
-        stderr
+        "error should mention missing target, got: {stderr}"
     );
 }

@@ -1,11 +1,11 @@
-//! ClickHouse connection configuration.
+//! `ClickHouse` connection configuration.
 
 use std::time::Duration;
 
-/// Configuration for the ClickHouse analytics backend.
+/// Configuration for the `ClickHouse` analytics backend.
 #[derive(Debug, Clone)]
 pub struct ClickHouseConfig {
-    /// ClickHouse HTTP URL (e.g., `http://localhost:8123`)
+    /// `ClickHouse` HTTP URL (e.g., `http://localhost:8123`)
     pub url: String,
     /// Database name (default: `tumult`)
     pub database: String,
@@ -31,18 +31,27 @@ impl ClickHouseConfig {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(30);
+        let url = std::env::var("TUMULT_CLICKHOUSE_URL")
+            .unwrap_or_else(|_| "http://localhost:8123".into());
+        let password = std::env::var("TUMULT_CLICKHOUSE_PASSWORD").unwrap_or_default();
+        if !password.is_empty() && url.starts_with("http://") {
+            tracing::warn!(
+                "ClickHouse password is set with an HTTP (non-TLS) URL; \
+                 credentials will be sent in cleartext"
+            );
+        }
         Self {
-            url: std::env::var("TUMULT_CLICKHOUSE_URL")
-                .unwrap_or_else(|_| "http://localhost:8123".into()),
+            url,
             database: std::env::var("TUMULT_CLICKHOUSE_DATABASE")
                 .unwrap_or_else(|_| "tumult".into()),
             user: std::env::var("TUMULT_CLICKHOUSE_USER").unwrap_or_else(|_| "default".into()),
-            password: std::env::var("TUMULT_CLICKHOUSE_PASSWORD").unwrap_or_default(),
+            password,
             query_timeout: Duration::from_secs(query_timeout_secs),
         }
     }
 
-    /// Check if ClickHouse backend is configured via environment.
+    /// Check if `ClickHouse` backend is configured via environment.
+    #[must_use]
     pub fn is_configured() -> bool {
         std::env::var("TUMULT_CLICKHOUSE_URL").is_ok()
     }
