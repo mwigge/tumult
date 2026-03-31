@@ -248,7 +248,7 @@ fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
         let rt = tokio::runtime::Handle::current();
         let store = rt
             .block_on(tumult_clickhouse::ClickHouseStore::connect(&config))
-            .with_context(|| format!("failed to connect to ClickHouse: {}", config.url))?;
+            .context("failed to connect to ClickHouse analytics backend")?;
         let ingested = store.ingest_journal(journal)?;
         return Ok(ingested);
     }
