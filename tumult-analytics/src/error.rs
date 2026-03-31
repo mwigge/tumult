@@ -15,4 +15,7 @@ pub enum AnalyticsError {
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("clickhouse error: {0}")]
+    ClickHouse(String),
 }

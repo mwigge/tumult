@@ -23,6 +23,7 @@ impl ActivityExecutor for MockExecutor {
 
 fn simple_experiment() -> Experiment {
     Experiment {
+        version: "v1".into(),
         title: "OTel span test".into(),
         method: vec![Activity {
             name: "test-action".into(),
