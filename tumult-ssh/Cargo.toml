@@ -12,6 +12,7 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+opentelemetry = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
