@@ -1,4 +1,4 @@
-//! Journal → Arrow RecordBatch conversion.
+//! Journal → Arrow `RecordBatch` conversion.
 
 use std::sync::Arc;
 
@@ -10,6 +10,7 @@ use tumult_core::types::{ActivityResult, Journal};
 
 use crate::error::AnalyticsError;
 
+#[must_use]
 pub fn experiments_schema() -> Schema {
     Schema::new(vec![
         Field::new("experiment_id", DataType::Utf8, false),
@@ -27,6 +28,7 @@ pub fn experiments_schema() -> Schema {
     ])
 }
 
+#[must_use]
 pub fn activity_results_schema() -> Schema {
     Schema::new(vec![
         Field::new("experiment_id", DataType::Utf8, false),
@@ -41,6 +43,9 @@ pub fn activity_results_schema() -> Schema {
     ])
 }
 
+/// # Errors
+///
+/// Returns an error if the Arrow `RecordBatch` construction fails.
 pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, AnalyticsError> {
     let schema = Arc::new(experiments_schema());
     let hyp_before = journal.steady_state_before.as_ref().map(|h| h.met);
@@ -53,11 +58,15 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
         vec![
             Arc::new(StringArray::from(vec![journal.experiment_id.as_str()])) as ArrayRef,
             Arc::new(StringArray::from(vec![journal.experiment_title.as_str()])),
-            Arc::new(StringArray::from(vec![format!("{:?}", journal.status)])),
+            Arc::new(StringArray::from(vec![journal.status.to_string()])),
             Arc::new(Int64Array::from(vec![journal.started_at_ns])),
             Arc::new(Int64Array::from(vec![journal.ended_at_ns])),
             Arc::new(UInt64Array::from(vec![journal.duration_ms])),
+            // usize → i64: result counts in chaos experiments are always << i64::MAX.
+            #[allow(clippy::cast_possible_wrap)]
             Arc::new(Int64Array::from(vec![journal.method_results.len() as i64])),
+            // usize → i64: result counts in chaos experiments are always << i64::MAX.
+            #[allow(clippy::cast_possible_wrap)]
             Arc::new(Int64Array::from(
                 vec![journal.rollback_results.len() as i64],
             )),
@@ -69,6 +78,9 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
     )?)
 }
 
+/// # Errors
+///
+/// Returns an error if the Arrow `RecordBatch` construction fails.
 pub fn journal_to_activity_batch(journal: &Journal) -> Result<RecordBatch, AnalyticsError> {
     let schema = Arc::new(activity_results_schema());
     let mut exp_ids: Vec<String> = Vec::new();
@@ -85,8 +97,8 @@ pub fn journal_to_activity_batch(journal: &Journal) -> Result<RecordBatch, Analy
         for r in results {
             exp_ids.push(journal.experiment_id.clone());
             names.push(r.name.clone());
-            types.push(format!("{:?}", r.activity_type));
-            statuses.push(format!("{:?}", r.status));
+            types.push(r.activity_type.to_string());
+            statuses.push(r.status.to_string());
             started_ns.push(r.started_at_ns);
             durations.push(r.duration_ms);
             outputs.push(r.output.clone());
@@ -120,6 +132,9 @@ pub fn journal_to_activity_batch(journal: &Journal) -> Result<RecordBatch, Analy
     )?)
 }
 
+/// # Errors
+///
+/// Returns an error if any batch construction or concatenation fails.
 pub fn journal_to_record_batch(
     journals: &[Journal],
 ) -> Result<(RecordBatch, RecordBatch), AnalyticsError> {
@@ -158,16 +173,16 @@ mod tests {
             experiment_title: "DB failover test".into(),
             experiment_id: "test-001".into(),
             status: ExperimentStatus::Completed,
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980300000000000,
-            duration_ms: 300000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
+            duration_ms: 300_000,
             steady_state_before: None,
             steady_state_after: None,
             method_results: vec![ActivityResult {
                 name: "kill-connections".into(),
                 activity_type: ActivityType::Action,
                 status: ActivityStatus::Succeeded,
-                started_at_ns: 1774980135000000000,
+                started_at_ns: 1_774_980_135_000_000_000,
                 duration_ms: 342,
                 output: Some("done".into()),
                 error: None,

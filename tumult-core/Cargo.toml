@@ -12,7 +12,7 @@ tumult-baseline = { path = "../tumult-baseline" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
-tokio-minimal = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
 thiserror = { workspace = true }
@@ -24,4 +24,4 @@ tokio-util = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
-opentelemetry_sdk = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }

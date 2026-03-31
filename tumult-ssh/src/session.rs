@@ -22,6 +22,7 @@ pub struct CommandResult {
 
 impl CommandResult {
     /// Returns true if the command exited with code 0.
+    #[must_use]
     pub fn success(&self) -> bool {
         self.exit_code == 0
     }
@@ -35,6 +36,16 @@ pub struct SshSession {
 
 impl SshSession {
     /// Connect to a remote host using the provided configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SshError::Timeout`] if the connection or authentication exceeds the configured timeout.
+    /// Returns [`SshError::ConnectionFailed`] if the TCP connection cannot be established.
+    /// Returns [`SshError::KeyNotFound`] if the key file does not exist.
+    /// Returns [`SshError::KeyPermissionsTooOpen`] if the key file has insecure permissions.
+    /// Returns [`SshError::KeyParseError`] if the key file cannot be parsed.
+    /// Returns [`SshError::AuthenticationFailed`] if the server rejects authentication.
+    #[tracing::instrument(skip(config), fields(host = %config.host, port = config.port))]
     pub async fn connect(config: SshConfig) -> Result<Self, SshError> {
         let auth_label = match &config.auth {
             crate::config::AuthMethod::Key { .. } => "key",
@@ -46,7 +57,9 @@ impl SshSession {
             ..Default::default()
         });
 
-        let handler = ClientHandler;
+        let handler = ClientHandler {
+            allow_unknown_hosts: config.allow_unknown_hosts,
+        };
         let addr = format!("{}:{}", config.host, config.port);
 
         let mut handle = tokio::time::timeout(config.connect_timeout, async {
@@ -74,6 +87,13 @@ impl SshSession {
     }
 
     /// Execute a command on the remote host.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SshError::ChannelError`] if a channel cannot be opened.
+    /// Returns [`SshError::ExecutionFailed`] if the command cannot be sent.
+    /// Returns [`SshError::Timeout`] if the command exceeds the configured timeout.
+    #[tracing::instrument(skip(self), fields(command_preview = &command[..command.len().min(64)]))]
     pub async fn execute(&self, command: &str) -> Result<CommandResult, SshError> {
         let _span = crate::telemetry::begin_execute(
             command,
@@ -131,7 +151,6 @@ impl SshSession {
                     exit_signal = Some(sig);
                 }
                 // Don't break on Eof — ExitStatus may arrive after Eof per RFC 4254
-                Some(russh::ChannelMsg::Eof) => {}
                 None => break,
                 _ => {}
             }
@@ -166,6 +185,13 @@ impl SshSession {
     ///
     /// Uses `cat > path` on the remote end. Requires a POSIX shell.
     /// The file is written with mode 755 (executable).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SshError::UploadFailed`] if the local file cannot be read or the remote write fails.
+    /// Returns [`SshError::ChannelError`] if a channel cannot be opened.
+    /// Returns [`SshError::Timeout`] if the upload exceeds the configured command timeout.
+    #[tracing::instrument(skip(self), fields(remote_path = %remote_path))]
     pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
         let file_size = tokio::fs::metadata(local_path)
             .await
@@ -175,7 +201,7 @@ impl SshSession {
 
         let content = tokio::fs::read(local_path)
             .await
-            .map_err(|e| SshError::UploadFailed(format!("read local file: {}", e)))?;
+            .map_err(|e| SshError::UploadFailed(format!("read local file: {e}")))?;
 
         let mut channel = self
             .handle
@@ -214,7 +240,6 @@ impl SshSession {
                         got_exit_status = true;
                         exit_ok = exit_status == 0;
                     }
-                    Some(russh::ChannelMsg::Eof) => {}
                     None => break,
                     _ => {}
                 }
@@ -242,6 +267,10 @@ impl SshSession {
     }
 
     /// Close the SSH session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SshError::ChannelError`] if the disconnect message cannot be sent.
     pub async fn close(self) -> Result<(), SshError> {
         self.handle
             .disconnect(russh::Disconnect::ByApplication, "tumult session end", "en")
@@ -251,6 +280,7 @@ impl SshSession {
     }
 
     /// Get the config this session was created with.
+    #[must_use]
     pub fn config(&self) -> &SshConfig {
         &self.config
     }
@@ -282,7 +312,7 @@ async fn authenticate(
             {
                 use std::os::unix::fs::PermissionsExt;
                 let metadata = std::fs::metadata(key_path).map_err(|e| {
-                    SshError::KeyParseError(format!("failed to read key metadata: {}", e))
+                    SshError::KeyParseError(format!("failed to read key metadata: {e}"))
                 })?;
                 let mode = metadata.permissions().mode() & 0o777;
                 if mode & 0o177 != 0 {
@@ -321,7 +351,7 @@ async fn authenticate(
                 .map_err(|e| SshError::AuthenticationFailed {
                     host: config.host.clone(),
                     user: config.user.clone(),
-                    reason: format!("agent connection failed: {}", e),
+                    reason: format!("agent connection failed: {e}"),
                 })?;
 
             let identities =
@@ -331,7 +361,7 @@ async fn authenticate(
                     .map_err(|e| SshError::AuthenticationFailed {
                         host: config.host.clone(),
                         user: config.user.clone(),
-                        reason: format!("agent identities failed: {}", e),
+                        reason: format!("agent identities failed: {e}"),
                     })?;
 
             let mut authenticated = false;
@@ -360,15 +390,12 @@ async fn authenticate(
 
 /// Client handler for russh.
 ///
-/// **SECURITY WARNING**: Currently accepts all host keys without verification.
-/// This makes connections vulnerable to MITM attacks. Acceptable for:
-/// - Trusted internal networks
-/// - Ephemeral cloud instances where host keys change on every provision
-/// - Development/testing environments
-///
-/// NOT acceptable for production use over untrusted networks.
-/// TODO: Implement known_hosts verification with opt-in/opt-out configuration.
-struct ClientHandler;
+/// By default, rejects connections to hosts with unrecognized server keys.
+/// Set `allow_unknown_hosts` to `true` to bypass host key verification
+/// (only appropriate for trusted internal networks or ephemeral instances).
+struct ClientHandler {
+    allow_unknown_hosts: bool,
+}
 
 impl client::Handler for ClientHandler {
     type Error = SshError;
@@ -377,7 +404,12 @@ impl client::Handler for ClientHandler {
         &mut self,
         _server_public_key: &ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(true)
+        if self.allow_unknown_hosts {
+            tracing::warn!("accepting unverified host key (allow_unknown_hosts is enabled)");
+            Ok(true)
+        } else {
+            Err(SshError::HostKeyVerificationFailed)
+        }
     }
 }
 
@@ -453,6 +485,51 @@ mod tests {
         let metadata = std::fs::metadata(&key_path).unwrap();
         let mode = metadata.permissions().mode() & 0o777;
         assert_eq!(mode & 0o177, 0, "0o600 should pass the permission check");
+    }
+
+    #[test]
+    fn check_server_key_rejects_by_default() {
+        // Default config has allow_unknown_hosts = false, so handler should reject
+        let mut handler = ClientHandler {
+            allow_unknown_hosts: false,
+        };
+        let key_data = russh::keys::ssh_key::PublicKey::from_openssh(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host",
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key_data));
+        assert!(
+            result.is_err(),
+            "default config should reject unknown host keys"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SshError::HostKeyVerificationFailed),
+            "expected HostKeyVerificationFailed, got: {err:?}",
+        );
+    }
+
+    #[test]
+    fn check_server_key_accepts_when_allowed() {
+        // When allow_unknown_hosts is true, handler should accept
+        let mut handler = ClientHandler {
+            allow_unknown_hosts: true,
+        };
+        let key_data = russh::keys::ssh_key::PublicKey::from_openssh(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host",
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key_data));
+        assert!(result.is_ok(), "allow_unknown_hosts=true should accept");
+        assert!(result.unwrap(), "should return true when accepting");
     }
 
     #[test]

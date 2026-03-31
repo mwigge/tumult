@@ -7,6 +7,7 @@ license.workspace = true
 description = "SSH remote execution for the Tumult chaos engineering platform"
 
 [dependencies]
+tumult-otel = { path = "../tumult-otel" }
 russh = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
