@@ -29,7 +29,7 @@
 pub mod config;
 pub mod error;
 pub mod session;
-pub mod telemetry;
+pub(crate) mod telemetry;
 
 pub use config::{AuthMethod, SshConfig};
 pub use error::SshError;
