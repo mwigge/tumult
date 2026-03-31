@@ -94,5 +94,3 @@ k8s-openapi = { version = "0.27", features = ["v1_32"] }
 # MCP (Model Context Protocol)
 rust-mcp-sdk = "0.9"
 
-# ClickHouse (optional persistent backend, shared with SigNoz)
-clickhouse-client = { package = "clickhouse", version = "0.14", features = ["time", "uuid"] }
