@@ -25,6 +25,11 @@ pub enum DiscoveryError {
 /// Discover script plugins from a single directory.
 ///
 /// Each subdirectory containing a `plugin.toon` file is treated as a plugin.
+///
+/// # Errors
+///
+/// Returns [`DiscoveryError::ReadDir`] if the directory cannot be read.
+/// Returns [`DiscoveryError::ManifestParse`] if a `plugin.toon` file is malformed.
 pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
     let mut plugins = Vec::new();
 
@@ -43,9 +48,8 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
         }
 
         // Ensure resolved path stays within plugin directory
-        let canonical_path = match std::fs::canonicalize(&path) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(canonical_path) = std::fs::canonicalize(&path) else {
+            continue;
         };
         if !canonical_path.starts_with(&canonical_dir) {
             continue; // symlink escape attempt
@@ -82,6 +86,7 @@ pub struct PluginDiscoveryConfig {
 }
 
 /// Build the list of plugin search paths in discovery order.
+#[must_use]
 pub fn plugin_search_paths() -> Vec<PathBuf> {
     plugin_search_paths_with_config(&PluginDiscoveryConfig::default())
 }
@@ -93,6 +98,7 @@ pub fn plugin_search_paths() -> Vec<PathBuf> {
 /// 2. `./plugins/` (local to experiment)
 /// 3. `~/.tumult/plugins/` (user-global)
 /// 4. `TUMULT_PLUGIN_PATH` env var (colon-separated)
+#[must_use]
 pub fn plugin_search_paths_with_config(config: &PluginDiscoveryConfig) -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
@@ -120,11 +126,21 @@ pub fn plugin_search_paths_with_config(config: &PluginDiscoveryConfig) -> Vec<Pa
 }
 
 /// Discover all script plugins from all search paths.
+///
+/// # Errors
+///
+/// Returns [`DiscoveryError`] if any search path cannot be read or contains a
+/// malformed manifest.
 pub fn discover_all_plugins() -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
     discover_all_plugins_with_config(&PluginDiscoveryConfig::default())
 }
 
 /// Discover all script plugins using explicit config.
+///
+/// # Errors
+///
+/// Returns [`DiscoveryError`] if any search path cannot be read or contains a
+/// malformed manifest.
 pub fn discover_all_plugins_with_config(
     config: &PluginDiscoveryConfig,
 ) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {

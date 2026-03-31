@@ -77,9 +77,19 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
         return sorted[0];
     }
     let p = p.clamp(0.0, 100.0);
+    // Percentile rank computation: lengths are at most a few thousand elements,
+    // so precision loss from usize->f64 and sign/truncation from f64->usize are acceptable.
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     let rank = (p / 100.0) * (sorted.len() - 1) as f64;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let lower = rank.floor() as usize;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let upper = rank.ceil() as usize;
+    #[allow(clippy::cast_precision_loss)]
     let fraction = rank - lower as f64;
     sorted[lower] + fraction * (sorted[upper] - sorted[lower])
 }
@@ -93,6 +103,12 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
 ///
 /// This function computes statistics, checks for anomalies, and derives
 /// tolerance bounds from the samples.
+///
+/// # Errors
+///
+/// Returns [`AcquisitionError::NoProbes`] if `probe_samples` is empty.
+/// Returns [`AcquisitionError::NoSamplesAfterWarmup`] if any probe has no
+/// collected values.
 ///
 /// # Examples
 ///
@@ -150,7 +166,7 @@ pub fn derive_baseline(
         }
 
         let error_rate = if ps.total_attempts > 0 {
-            ps.errors as f64 / ps.total_attempts as f64
+            f64::from(ps.errors) / f64::from(ps.total_attempts)
         } else {
             0.0
         };
@@ -331,7 +347,7 @@ mod tests {
         };
         let result = derive_baseline(&samples, &config).unwrap();
         assert!(!result.anomaly_detected);
-        assert_eq!(result.tolerance_lower, 0.0);
+        assert!(result.tolerance_lower.abs() < f64::EPSILON);
         assert!(result.tolerance_upper > 100.0);
     }
 
@@ -346,13 +362,13 @@ mod tests {
             min_samples: 5,
         };
         let result = derive_baseline(&samples, &config).unwrap();
-        assert_eq!(result.tolerance_lower, 50.0);
-        assert_eq!(result.tolerance_upper, 150.0);
+        assert!((result.tolerance_lower - 50.0).abs() < f64::EPSILON);
+        assert!((result.tolerance_upper - 150.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn percentile_sorted_matches_expected() {
-        let sorted: Vec<f64> = (1..=100).map(|x| x as f64).collect();
+        let sorted: Vec<f64> = (1..=100).map(f64::from).collect();
         assert!((percentile_sorted(&sorted, 0.0) - 1.0).abs() < f64::EPSILON);
         assert!((percentile_sorted(&sorted, 100.0) - 100.0).abs() < f64::EPSILON);
         assert!((percentile_sorted(&sorted, 50.0) - 50.5).abs() < 1.0);
@@ -385,7 +401,7 @@ mod tests {
     fn probe_stats_has_correct_percentiles() {
         let samples = vec![ProbeSamples {
             name: "ordered".into(),
-            values: (1..=100).map(|x| x as f64).collect(),
+            values: (1..=100).map(f64::from).collect(),
             errors: 0,
             total_attempts: 100,
         }];

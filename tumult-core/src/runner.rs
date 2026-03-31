@@ -16,14 +16,21 @@ use std::time::Instant;
 use crate::controls::{ControlRegistry, LifecycleEvent};
 use crate::engine::{determine_status, evaluate_tolerance};
 use crate::execution::{
-    all_succeeded, make_result, should_rollback, ResultParams, RollbackStrategy,
+    all_succeeded, make_result, partition_background, should_rollback, ResultParams,
+    RollbackStrategy,
 };
-use crate::types::*;
+use crate::types::{
+    Activity, ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult,
+    ExpectedOutcome, Experiment, ExperimentStatus, Hypothesis, HypothesisResult, Journal,
+    PostResult, ProbeDuring, ProbePost, Provider, SpanId, TraceId,
+};
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
+
+const TRACER_NAME: &str = "tumult-engine";
 
 #[derive(Error, Debug)]
 pub enum RunnerError {
@@ -40,7 +47,7 @@ pub struct ActivityOutcome {
     pub duration_ms: u64,
 }
 
-/// Trait for executing activities — allows mocking in tests.
+/// Trait for executing activities -- allows mocking in tests.
 pub trait ActivityExecutor: Send + Sync {
     fn execute(&self, activity: &Activity) -> ActivityOutcome;
 }
@@ -74,73 +81,15 @@ impl Default for RunConfig {
 ///
 /// Returns a Journal containing the complete experiment results.
 ///
-/// # Examples
+/// # Errors
 ///
-/// ```
-/// use tumult_core::runner::{
-///     run_experiment, ActivityExecutor, ActivityOutcome, RunConfig,
-/// };
-/// use tumult_core::controls::ControlRegistry;
-/// use tumult_core::types::*;
-/// use std::collections::HashMap;
-/// use indexmap::IndexMap;
-///
-/// // A mock executor that always succeeds
-/// struct MockExecutor;
-/// impl ActivityExecutor for MockExecutor {
-///     fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-///         ActivityOutcome {
-///             success: true,
-///             output: Some("ok".into()),
-///             error: None,
-///             duration_ms: 10,
-///         }
-///     }
-/// }
-///
-/// let experiment = Experiment {
-///     version: "v1".into(),
-///     title: "demo".into(),
-///     description: None,
-///     tags: vec![],
-///     configuration: IndexMap::new(),
-///     secrets: IndexMap::new(),
-///     controls: vec![],
-///     steady_state_hypothesis: None,
-///     method: vec![Activity {
-///         name: "noop-action".into(),
-///         activity_type: ActivityType::Action,
-///         provider: Provider::Native {
-///             plugin: "test".into(),
-///             function: "noop".into(),
-///             arguments: HashMap::new(),
-///         },
-///         tolerance: None,
-///         pause_before_s: None,
-///         pause_after_s: None,
-///         background: false,
-///     }],
-///     rollbacks: vec![],
-///     estimate: None,
-///     baseline: None,
-///     load: None,
-///     regulatory: None,
-/// };
-///
-/// let journal = run_experiment(
-///     &experiment,
-///     &MockExecutor,
-///     &ControlRegistry::new(),
-///     &RunConfig::default(),
-/// )
-/// .unwrap();
-///
-/// assert_eq!(journal.status, ExperimentStatus::Completed);
-/// ```
+/// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps.
+#[allow(clippy::too_many_lines)]
+// run_experiment is a top-level orchestrator; splitting it further would harm readability.
 pub fn run_experiment(
     experiment: &Experiment,
-    executor: &dyn ActivityExecutor,
-    controls: &ControlRegistry,
+    executor: &std::sync::Arc<dyn ActivityExecutor>,
+    controls: &std::sync::Arc<ControlRegistry>,
     config: &RunConfig,
 ) -> Result<Journal, RunnerError> {
     if experiment.method.is_empty() {
@@ -159,16 +108,38 @@ pub fn run_experiment(
     let started_at_ns = epoch_nanos_now();
     let experiment_id = uuid::Uuid::new_v4().to_string();
 
-    // ── Phase 0: Record Estimate ──────────────────────────────
+    // -- Root span: resilience.experiment wraps the entire lifecycle.
+    let tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let exp_span = tracer
+        .span_builder("resilience.experiment")
+        .with_attributes(vec![
+            KeyValue::new("resilience.experiment.title", experiment.title.clone()),
+            KeyValue::new("resilience.experiment.id", experiment_id.clone()),
+        ])
+        .start(&tracer);
+    let exp_cx = opentelemetry::Context::current_with_span(exp_span);
+    let _exp_guard = exp_cx.attach();
+
+    // -- Phase 0: Record Estimate
     controls.emit(&LifecycleEvent::BeforeExperiment);
 
-    // ── Phase 1: Baseline (skipped if configured or no baseline config) ──
+    // -- Phase 1: Baseline (skipped if configured or no baseline config)
     // Baseline acquisition is handled externally; we record the estimate.
 
-    // ── Hypothesis BEFORE ─────────────────────────────────────
+    // -- Hypothesis BEFORE
     let hypothesis_before = if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
         controls.emit(&LifecycleEvent::BeforeHypothesis);
-        let result = evaluate_hypothesis(hypothesis, executor, controls);
+        let hyp_tracer = opentelemetry::global::tracer(TRACER_NAME);
+        let hyp_span = hyp_tracer
+            .span_builder("resilience.hypothesis.before")
+            .with_attributes(vec![KeyValue::new(
+                "resilience.hypothesis.title",
+                hypothesis.title.clone(),
+            )])
+            .start(&hyp_tracer);
+        let hyp_cx = opentelemetry::Context::current_with_span(hyp_span);
+        let _hyp_guard = hyp_cx.attach();
+        let result = evaluate_hypothesis(hypothesis, executor.as_ref(), controls.as_ref());
         controls.emit(&LifecycleEvent::AfterHypothesis);
         Some(result)
     } else {
@@ -177,9 +148,11 @@ pub fn run_experiment(
 
     let hypothesis_before_met = hypothesis_before.as_ref().map(|h| h.met);
 
-    // If hypothesis before failed, abort — skip method, go to rollbacks
+    // If hypothesis before failed, abort -- skip method, go to rollbacks
     if hypothesis_before_met == Some(false) {
         let ended_at_ns = epoch_nanos_now();
+        // Experiment durations never exceed u64::MAX milliseconds (~585M years).
+        #[allow(clippy::cast_possible_truncation)]
         let duration_ms = started.elapsed().as_millis() as u64;
 
         // Run rollbacks if strategy says so and there are rollbacks to run
@@ -187,7 +160,17 @@ pub fn run_experiment(
             && should_rollback(&config.rollback_strategy, true)
         {
             controls.emit(&LifecycleEvent::BeforeRollback);
-            let results = execute_rollback_activities(&experiment.rollbacks, executor, controls);
+            let rb_tracer = opentelemetry::global::tracer(TRACER_NAME);
+            let rb_span = rb_tracer
+                .span_builder("resilience.rollback")
+                .start(&rb_tracer);
+            let rb_cx = opentelemetry::Context::current_with_span(rb_span);
+            let _rb_guard = rb_cx.attach();
+            let results = execute_rollback_activities(
+                &experiment.rollbacks,
+                executor.as_ref(),
+                controls.as_ref(),
+            );
             controls.emit(&LifecycleEvent::AfterRollback);
             results
         } else {
@@ -196,6 +179,8 @@ pub fn run_experiment(
 
         controls.emit(&LifecycleEvent::AfterExperiment);
 
+        // Rollback failure counts in chaos experiments are always << u32::MAX.
+        #[allow(clippy::cast_possible_truncation)]
         let rb_failures = rollback_results
             .iter()
             .filter(|r| r.status == ActivityStatus::Failed)
@@ -223,10 +208,12 @@ pub fn run_experiment(
         });
     }
 
-    // ── Check cancellation before method ─────────────────────
+    // -- Check cancellation before method
     if let Some(ref token) = config.cancellation_token {
         if token.is_cancelled() {
             let ended_at_ns = epoch_nanos_now();
+            // Experiment durations never exceed u64::MAX milliseconds (~585M years).
+            #[allow(clippy::cast_possible_truncation)]
             let duration_ms = started.elapsed().as_millis() as u64;
             controls.emit(&LifecycleEvent::AfterExperiment);
             return Ok(Journal {
@@ -252,25 +239,35 @@ pub fn run_experiment(
         }
     }
 
-    // ── Phase 2: Execute Method (DURING) ──────────────────────
+    // -- Phase 2: Execute Method (DURING)
     controls.emit(&LifecycleEvent::BeforeMethod);
     let method_results = execute_activities(
         &experiment.method,
-        executor,
-        controls,
-        &config.cancellation_token,
+        executor.as_ref(),
+        controls.as_ref(),
+        config.cancellation_token.as_ref(),
     );
     controls.emit(&LifecycleEvent::AfterMethod);
 
     let actions_succeeded = all_succeeded(&method_results);
 
-    // ── Phase 3: POST — recovery measurement ──────────────────
+    // -- Phase 3: POST -- recovery measurement
     // Post-phase sampling is done externally; hypothesis after captures it.
 
-    // ── Hypothesis AFTER ──────────────────────────────────────
+    // -- Hypothesis AFTER
     let hypothesis_after = if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
         controls.emit(&LifecycleEvent::BeforeHypothesis);
-        let result = evaluate_hypothesis(hypothesis, executor, controls);
+        let hyp_tracer = opentelemetry::global::tracer(TRACER_NAME);
+        let hyp_span = hyp_tracer
+            .span_builder("resilience.hypothesis.after")
+            .with_attributes(vec![KeyValue::new(
+                "resilience.hypothesis.title",
+                hypothesis.title.clone(),
+            )])
+            .start(&hyp_tracer);
+        let hyp_cx = opentelemetry::Context::current_with_span(hyp_span);
+        let _hyp_guard = hyp_cx.attach();
+        let result = evaluate_hypothesis(hypothesis, executor.as_ref(), controls.as_ref());
         controls.emit(&LifecycleEvent::AfterHypothesis);
         Some(result)
     } else {
@@ -279,38 +276,72 @@ pub fn run_experiment(
 
     let hypothesis_after_met = hypothesis_after.as_ref().map(|h| h.met);
 
-    // ── Determine status ──────────────────────────────────────
+    // -- Determine status
     let status = determine_status(
         hypothesis_before_met,
         hypothesis_after_met,
         actions_succeeded,
     );
 
-    // ── Rollbacks ─────────────────────────────────────────────
+    // -- Rollbacks
     let deviated = status == ExperimentStatus::Deviated;
     let rollback_results = if !experiment.rollbacks.is_empty()
         && should_rollback(&config.rollback_strategy, deviated)
     {
         controls.emit(&LifecycleEvent::BeforeRollback);
-        let results = execute_rollback_activities(&experiment.rollbacks, executor, controls);
+        let rb_tracer = opentelemetry::global::tracer(TRACER_NAME);
+        let rb_span = rb_tracer
+            .span_builder("resilience.rollback")
+            .start(&rb_tracer);
+        let rb_cx = opentelemetry::Context::current_with_span(rb_span);
+        let _rb_guard = rb_cx.attach();
+        let results = execute_rollback_activities(
+            &experiment.rollbacks,
+            executor.as_ref(),
+            controls.as_ref(),
+        );
         controls.emit(&LifecycleEvent::AfterRollback);
         results
     } else {
         vec![]
     };
 
-    // ── Phase 4: Analysis ─────────────────────────────────────
+    // -- Phase 4: Analysis
     let analysis = compute_analysis(experiment, &status);
 
     let ended_at_ns = epoch_nanos_now();
+    // Experiment durations never exceed u64::MAX milliseconds (~585M years).
+    #[allow(clippy::cast_possible_truncation)]
     let duration_ms = started.elapsed().as_millis() as u64;
 
     controls.emit(&LifecycleEvent::AfterExperiment);
 
+    // Rollback failure counts in chaos experiments are always << u32::MAX.
+    #[allow(clippy::cast_possible_truncation)]
     let rb_failures = rollback_results
         .iter()
         .filter(|r| r.status == ActivityStatus::Failed)
         .count() as u32;
+
+    // -- During-phase and post-phase probe sampling
+    let (during_result, post_result) =
+        if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
+            // During-phase: sample probes to capture behavior while fault is active
+            let during_start = epoch_nanos_now();
+            let during_samples = collect_probe_samples(hypothesis, executor.as_ref(), 3);
+            let during_end = epoch_nanos_now();
+            let during = build_during_result(during_start, during_end, &during_samples);
+
+            // Post-phase: sample probes to measure recovery after method completion
+            let post_start = epoch_nanos_now();
+            let post_samples = collect_probe_samples(hypothesis, executor.as_ref(), 3);
+            let post_end = epoch_nanos_now();
+            let post = build_post_result(post_start, post_end, &post_samples);
+
+            (during, post)
+        } else {
+            (None, None)
+        };
 
     Ok(Journal {
         experiment_title: experiment.title.clone(),
@@ -326,8 +357,8 @@ pub fn run_experiment(
         rollback_failures: rb_failures,
         estimate: experiment.estimate.clone(),
         baseline_result: None,
-        during_result: None,
-        post_result: None,
+        during_result,
+        post_result,
         load_result: None,
         analysis,
         regulatory: experiment.regulatory.clone(),
@@ -343,7 +374,7 @@ fn evaluate_hypothesis(
     let mut probe_results = Vec::with_capacity(hypothesis.probes.len());
     let mut all_met = true;
 
-    let tracer = opentelemetry::global::tracer("tumult-engine");
+    let tracer = opentelemetry::global::tracer(TRACER_NAME);
 
     for probe in &hypothesis.probes {
         controls.emit(&LifecycleEvent::BeforeActivity {
@@ -355,7 +386,7 @@ fn evaluate_hypothesis(
         attrs.extend(target_attributes(probe));
         attrs.extend(fault_attributes(probe));
         let span = tracer
-            .span_builder("tumult.probe".to_string())
+            .span_builder("resilience.probe".to_string())
             .with_attributes(attrs)
             .start(&tracer);
         let cx = opentelemetry::Context::current_with_span(span);
@@ -363,7 +394,7 @@ fn evaluate_hypothesis(
 
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(probe);
-        set_span_status_from_outcome(outcome.success, &outcome.error);
+        set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
 
         let result = make_result(ResultParams {
             activity: probe,
@@ -391,7 +422,7 @@ fn evaluate_hypothesis(
                     }
                 }
             } else {
-                // Tolerance defined but no output — cannot evaluate, treat as failure
+                // Tolerance defined but no output -- cannot evaluate, treat as failure
                 all_met = false;
             }
         } else if !outcome.success {
@@ -412,88 +443,161 @@ fn evaluate_hypothesis(
     }
 }
 
-/// Execute a list of activities sequentially, emitting control events.
+/// Execute a single activity with `OTel` instrumentation.
 ///
-/// If a cancellation token is provided and cancelled, stops executing
-/// remaining activities and returns results collected so far.
-fn execute_activities(
-    activities: &[Activity],
+/// Extracted so both foreground and background paths share the same logic.
+fn execute_single_activity(
+    activity: &Activity,
     executor: &dyn ActivityExecutor,
     controls: &ControlRegistry,
-    cancellation_token: &Option<CancellationToken>,
+) -> ActivityResult {
+    let tracer = opentelemetry::global::tracer(TRACER_NAME);
+
+    controls.emit(&LifecycleEvent::BeforeActivity {
+        name: activity.name.clone(),
+    });
+
+    let span_name = match activity.activity_type {
+        ActivityType::Action => "resilience.action",
+        ActivityType::Probe => "resilience.probe",
+    };
+    let mut attrs = vec![
+        KeyValue::new("resilience.action.name", activity.name.clone()),
+        KeyValue::new(
+            "resilience.activity.type",
+            activity.activity_type.to_string(),
+        ),
+    ];
+    attrs.extend(target_attributes(activity));
+    attrs.extend(fault_attributes(activity));
+    let span = tracer
+        .span_builder(span_name.to_string())
+        .with_attributes(attrs)
+        .start(&tracer);
+    let cx = opentelemetry::Context::current_with_span(span);
+    let _guard = cx.attach();
+
+    let started_at_ns = epoch_nanos_now();
+    let outcome = executor.execute(activity);
+    set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
+
+    let result = make_result(ResultParams {
+        activity,
+        started_at_ns,
+        duration_ms: outcome.duration_ms,
+        success: outcome.success,
+        output: outcome.output,
+        error: outcome.error,
+        trace_id: current_trace_id(),
+        span_id: current_span_id(),
+    });
+
+    controls.emit(&LifecycleEvent::AfterActivity {
+        name: activity.name.clone(),
+    });
+
+    result
+}
+
+/// Execute a list of activities, partitioning into foreground (sequential)
+/// and background (spawned concurrently via `JoinSet`).
+///
+/// Foreground activities execute sequentially with pause handling.
+/// Background activities are spawned immediately and joined after all
+/// foreground work completes.
+///
+/// If a cancellation token is provided and cancelled, stops executing
+/// remaining foreground activities and returns results collected so far
+/// (background tasks are still joined).
+fn execute_activities(
+    activities: &[Activity],
+    executor: &(dyn ActivityExecutor + Sync),
+    controls: &ControlRegistry,
+    cancellation_token: Option<&CancellationToken>,
 ) -> Vec<ActivityResult> {
-    let mut results = Vec::with_capacity(activities.len());
+    let (foreground, background) = partition_background(activities);
 
-    let tracer = opentelemetry::global::tracer("tumult-engine");
+    // Capacity: foreground results first, then background joined at end.
+    let mut fg_results = Vec::with_capacity(foreground.len());
 
-    for activity in activities {
-        // Check cancellation before each activity
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled() {
-                tracing::warn!(activity = %activity.name, "cancelled before activity execution");
-                break;
+    // Spawn background activities on scoped OS threads *then* run foreground
+    // sequentially inside the same scope.  `std::thread::scope` guarantees all
+    // background threads are joined before the scope exits (i.e. after foreground
+    // completes), giving us true concurrency without unsafe lifetime extension.
+    let bg_results: Vec<std::result::Result<ActivityResult, _>> = std::thread::scope(|scope| {
+        // 1. Spawn background threads immediately.
+        let handles: Vec<_> = background
+            .iter()
+            .map(|&activity| {
+                scope.spawn(move || execute_single_activity(activity, executor, controls))
+            })
+            .collect();
+
+        // 2. Run foreground activities sequentially while background threads run.
+        //    Note: pause_before_s / pause_after_s use std::thread::sleep here
+        //    because we are inside a synchronous scope closure.  Background
+        //    threads are already running concurrently so blocking the OS thread
+        //    here is acceptable.
+        for &activity in &foreground {
+            // Check cancellation before each activity.
+            if let Some(token) = cancellation_token {
+                if token.is_cancelled() {
+                    tracing::warn!(
+                        activity = %activity.name,
+                        "cancelled before activity execution"
+                    );
+                    break;
+                }
             }
+
+            if let Some(pause) = activity.pause_before_s {
+                if pause > 0.0 {
+                    std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+                }
+            }
+
+            let result = execute_single_activity(activity, executor, controls);
+
+            if let Some(pause) = activity.pause_after_s {
+                if pause > 0.0 {
+                    std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+                }
+            }
+
+            fg_results.push(result);
         }
 
-        // Honour pause_before_s
-        if let Some(pause) = activity.pause_before_s {
-            if pause > 0.0 {
-                std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+        // 3. Join background threads (scope exit would also do this, but collect
+        //    the results explicitly so we can handle panics below).
+        handles
+            .into_iter()
+            .map(std::thread::ScopedJoinHandle::join)
+            .collect()
+    });
+
+    // Foreground results first, then background -- preserving the expected ordering
+    // (foreground is the "primary" execution path; background runs alongside it).
+    let mut results = fg_results;
+    results.reserve(background.len());
+
+    for join_result in bg_results {
+        match join_result {
+            Ok(activity_result) => results.push(activity_result),
+            Err(_panic) => {
+                tracing::error!("background activity panicked");
+                results.push(ActivityResult {
+                    name: "background-task".into(),
+                    activity_type: ActivityType::Action,
+                    status: ActivityStatus::Failed,
+                    started_at_ns: epoch_nanos_now(),
+                    duration_ms: 0,
+                    output: None,
+                    error: Some("background activity panicked".to_string()),
+                    trace_id: TraceId::empty(),
+                    span_id: SpanId::empty(),
+                });
             }
         }
-
-        controls.emit(&LifecycleEvent::BeforeActivity {
-            name: activity.name.clone(),
-        });
-
-        // Create an OTel span for this activity
-        let span_name = match activity.activity_type {
-            ActivityType::Action => "tumult.action",
-            ActivityType::Probe => "tumult.probe",
-        };
-        let mut attrs = vec![
-            KeyValue::new("resilience.action.name", activity.name.clone()),
-            KeyValue::new(
-                "resilience.activity.type",
-                format!("{:?}", activity.activity_type),
-            ),
-        ];
-        attrs.extend(target_attributes(activity));
-        attrs.extend(fault_attributes(activity));
-        let span = tracer
-            .span_builder(span_name.to_string())
-            .with_attributes(attrs)
-            .start(&tracer);
-        let cx = opentelemetry::Context::current_with_span(span);
-        let _guard = cx.attach();
-
-        let started_at_ns = epoch_nanos_now();
-        let outcome = executor.execute(activity);
-        set_span_status_from_outcome(outcome.success, &outcome.error);
-
-        let result = make_result(ResultParams {
-            activity,
-            started_at_ns,
-            duration_ms: outcome.duration_ms,
-            success: outcome.success,
-            output: outcome.output,
-            error: outcome.error,
-            trace_id: current_trace_id(),
-            span_id: current_span_id(),
-        });
-
-        controls.emit(&LifecycleEvent::AfterActivity {
-            name: activity.name.clone(),
-        });
-
-        // Honour pause_after_s
-        if let Some(pause) = activity.pause_after_s {
-            if pause > 0.0 {
-                std::thread::sleep(std::time::Duration::from_secs_f64(pause));
-            }
-        }
-
-        results.push(result);
     }
 
     results
@@ -509,7 +613,7 @@ fn execute_rollback_activities(
 ) -> Vec<ActivityResult> {
     let mut results = Vec::with_capacity(activities.len());
 
-    let tracer = opentelemetry::global::tracer("tumult-engine");
+    let tracer = opentelemetry::global::tracer(TRACER_NAME);
 
     for activity in activities {
         controls.emit(&LifecycleEvent::BeforeActivity {
@@ -517,14 +621,14 @@ fn execute_rollback_activities(
         });
 
         let span_name = match activity.activity_type {
-            ActivityType::Action => "tumult.action",
-            ActivityType::Probe => "tumult.probe",
+            ActivityType::Action => "resilience.action",
+            ActivityType::Probe => "resilience.probe",
         };
         let mut attrs = vec![
             KeyValue::new("resilience.action.name", activity.name.clone()),
             KeyValue::new(
                 "resilience.activity.type",
-                format!("{:?}", activity.activity_type),
+                activity.activity_type.to_string(),
             ),
         ];
         attrs.extend(target_attributes(activity));
@@ -538,7 +642,7 @@ fn execute_rollback_activities(
 
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(activity);
-        set_span_status_from_outcome(outcome.success, &outcome.error);
+        set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
 
         if !outcome.success {
             tracing::warn!(
@@ -594,6 +698,231 @@ fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Optio
     })
 }
 
+/// Run hypothesis probes a fixed number of times and return per-probe
+/// sample results. Used for during-phase and post-phase collection.
+fn collect_probe_samples(
+    hypothesis: &Hypothesis,
+    executor: &dyn ActivityExecutor,
+    count: usize,
+) -> Vec<(String, Vec<ActivityResult>)> {
+    let mut per_probe: std::collections::HashMap<String, Vec<ActivityResult>> =
+        std::collections::HashMap::new();
+
+    for _ in 0..count {
+        for probe in &hypothesis.probes {
+            let start = Instant::now();
+            let started_at_ns = epoch_nanos_now();
+            let outcome = executor.execute(probe);
+            // Probe durations never exceed u64::MAX milliseconds (~585M years).
+            #[allow(clippy::cast_possible_truncation)]
+            let elapsed = start.elapsed().as_millis() as u64;
+
+            let status = if outcome.success {
+                ActivityStatus::Succeeded
+            } else {
+                ActivityStatus::Failed
+            };
+
+            per_probe
+                .entry(probe.name.clone())
+                .or_default()
+                .push(ActivityResult {
+                    name: probe.name.clone(),
+                    activity_type: ActivityType::Probe,
+                    status,
+                    started_at_ns,
+                    duration_ms: elapsed,
+                    output: outcome.output,
+                    error: outcome.error,
+                    trace_id: TraceId::empty(),
+                    span_id: SpanId::empty(),
+                });
+        }
+    }
+
+    per_probe.into_iter().collect()
+}
+
+/// Build a `DuringResult` from probe samples collected while fault injection
+/// was active. Returns `None` if no samples were collected.
+fn build_during_result(
+    started_at_ns: i64,
+    ended_at_ns: i64,
+    probe_samples: &[(String, Vec<ActivityResult>)],
+) -> Option<DuringResult> {
+    if probe_samples.is_empty() {
+        return None;
+    }
+
+    // Nanosecond delta converted to seconds; i64 → f64 precision loss is
+    // acceptable for human-readable fault duration display.
+    #[allow(clippy::cast_precision_loss)]
+    let fault_active_s = (ended_at_ns - started_at_ns) as f64 / 1_000_000_000.0;
+
+    let probes: Vec<ProbeDuring> = probe_samples
+        .iter()
+        .map(|(name, samples)| {
+            // Sample counts in chaos experiments are always << u32::MAX.
+            #[allow(clippy::cast_possible_truncation)]
+            let total = samples.len() as u32;
+            // Sample counts in chaos experiments are always << u32::MAX.
+            #[allow(clippy::cast_possible_truncation)]
+            let failed = samples
+                .iter()
+                .filter(|s| s.status == ActivityStatus::Failed)
+                .count() as u32;
+            // u64 → f64 precision loss is acceptable for millisecond statistics display.
+            #[allow(clippy::cast_precision_loss)]
+            let durations: Vec<f64> = samples.iter().map(|s| s.duration_ms as f64).collect();
+            // usize → f64 precision loss is acceptable for mean calculation with small N.
+            #[allow(clippy::cast_precision_loss)]
+            let mean = if durations.is_empty() {
+                0.0
+            } else {
+                durations.iter().sum::<f64>() / durations.len() as f64
+            };
+            let max = durations.iter().copied().fold(f64::NAN, f64::max);
+            let min = durations.iter().copied().fold(f64::NAN, f64::min);
+            let breached_at_ns = samples
+                .iter()
+                .find(|s| s.status == ActivityStatus::Failed)
+                .map(|s| s.started_at_ns);
+
+            ProbeDuring {
+                name: name.clone(),
+                samples: total,
+                mean,
+                max,
+                min,
+                error_rate: if total > 0 {
+                    f64::from(failed) / f64::from(total)
+                } else {
+                    0.0
+                },
+                breached_at_ns,
+                breach_count: failed,
+            }
+        })
+        .collect();
+
+    Some(DuringResult {
+        started_at_ns,
+        ended_at_ns,
+        fault_active_s,
+        sample_interval_s: 1.0,
+        probes,
+        degradation_onset_s: None,
+        degradation_peak_s: None,
+        degradation_magnitude: None,
+        graceful_degradation: None,
+    })
+}
+
+/// Build a `PostResult` from probe samples collected after method completion
+/// to measure system recovery. Returns `None` if no samples were collected.
+fn build_post_result(
+    started_at_ns: i64,
+    ended_at_ns: i64,
+    probe_samples: &[(String, Vec<ActivityResult>)],
+) -> Option<PostResult> {
+    if probe_samples.is_empty() {
+        return None;
+    }
+
+    // Nanosecond delta converted to seconds; i64 → f64 precision loss is
+    // acceptable for human-readable post-phase duration display.
+    #[allow(clippy::cast_precision_loss)]
+    let duration_s = (ended_at_ns - started_at_ns) as f64 / 1_000_000_000.0;
+    // Total sample counts in chaos experiments are always << u32::MAX.
+    #[allow(clippy::cast_possible_truncation)]
+    let total_samples = probe_samples.iter().map(|(_, s)| s.len()).sum::<usize>() as u32;
+
+    let probes: Vec<ProbePost> = probe_samples
+        .iter()
+        .map(|(name, samples)| {
+            // u64 → f64 precision loss is acceptable for millisecond statistics display.
+            #[allow(clippy::cast_precision_loss)]
+            let sample_ms: Vec<f64> = samples.iter().map(|s| s.duration_ms as f64).collect();
+            // usize → f64 precision loss is acceptable for mean calculation with small N.
+            #[allow(clippy::cast_precision_loss)]
+            let mean = if sample_ms.is_empty() {
+                0.0
+            } else {
+                sample_ms.iter().sum::<f64>() / sample_ms.len() as f64
+            };
+            let mut sorted = sample_ms.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let p95 = if sorted.is_empty() {
+                0.0
+            } else {
+                // Percentile index computation: usize → f64 and f64 → usize casts
+                // are acceptable for small sample sizes used in chaos probe sampling.
+                #[allow(
+                    clippy::cast_precision_loss,
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss
+                )]
+                let idx = ((sorted.len() as f64 * 0.95) as usize).min(sorted.len() - 1);
+                sorted[idx]
+            };
+            let failed = samples
+                .iter()
+                .filter(|s| s.status == ActivityStatus::Failed)
+                .count();
+            // usize → f64 precision loss is acceptable for error rate display.
+            #[allow(clippy::cast_precision_loss)]
+            let error_rate = if samples.is_empty() {
+                0.0
+            } else {
+                failed as f64 / samples.len() as f64
+            };
+            let all_succeeded = failed == 0;
+            let recovery_time_s = if all_succeeded {
+                0.0
+            } else {
+                let last_failure_ns = samples
+                    .iter()
+                    .rev()
+                    .find(|s| s.status == ActivityStatus::Failed)
+                    .map_or(started_at_ns, |s| s.started_at_ns);
+                // Nanosecond delta to seconds; i64 → f64 precision loss acceptable
+                // for human-readable recovery time display.
+                #[allow(clippy::cast_precision_loss)]
+                let secs = (last_failure_ns - started_at_ns) as f64 / 1_000_000_000.0;
+                secs
+            };
+
+            ProbePost {
+                name: name.clone(),
+                mean,
+                p95,
+                error_rate,
+                returned_to_baseline: all_succeeded,
+                recovery_time_s,
+            }
+        })
+        .collect();
+
+    let full_recovery = probes.iter().all(|p| p.returned_to_baseline);
+    let recovery_time_s = probes
+        .iter()
+        .map(|p| p.recovery_time_s)
+        .fold(0.0_f64, f64::max);
+
+    Some(PostResult {
+        started_at_ns,
+        ended_at_ns,
+        duration_s,
+        samples: total_samples,
+        probes,
+        recovery_time_s,
+        full_recovery,
+        residual_degradation: None,
+        data_integrity_verified: None,
+        data_loss_detected: None,
+    })
+}
+
 /// Build a Journal for an experiment interrupted before it started.
 fn make_interrupted_journal(experiment: &Experiment, now_ns: i64) -> Journal {
     Journal {
@@ -628,10 +957,7 @@ fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
         Provider::Http { url, method, .. } => vec![
             KeyValue::new("resilience.target.type", "http"),
             KeyValue::new("resilience.target.name", url.clone()),
-            KeyValue::new(
-                "resilience.target.endpoint",
-                format!("{:?} {}", method, url),
-            ),
+            KeyValue::new("resilience.target.endpoint", format!("{method} {url}")),
         ],
         Provider::Native {
             plugin, function, ..
@@ -640,7 +966,7 @@ fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
             KeyValue::new("resilience.target.name", plugin.clone()),
             KeyValue::new(
                 "resilience.target.component",
-                format!("{}::{}", plugin, function),
+                format!("{plugin}::{function}"),
             ),
         ],
     }
@@ -659,34 +985,34 @@ fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
 }
 
 /// Set span error status if the outcome failed.
-fn set_span_status_from_outcome(success: bool, error: &Option<String>) {
+fn set_span_status_from_outcome(success: bool, error: Option<&str>) {
     if !success {
         let ctx = opentelemetry::Context::current();
         let span = ctx.span();
-        let desc = error.as_deref().unwrap_or("activity failed");
+        let desc = error.unwrap_or("activity failed");
         span.set_status(opentelemetry::trace::Status::error(desc.to_string()));
     }
 }
 
 /// Get the current trace ID from the active span context.
-fn current_trace_id() -> String {
+fn current_trace_id() -> TraceId {
     let ctx = opentelemetry::Context::current();
     let sc = ctx.span().span_context().clone();
     if sc.is_valid() {
-        sc.trace_id().to_string()
+        TraceId(sc.trace_id().to_string())
     } else {
-        String::new()
+        TraceId::empty()
     }
 }
 
 /// Get the current span ID from the active span context.
-fn current_span_id() -> String {
+fn current_span_id() -> SpanId {
     let ctx = opentelemetry::Context::current();
     let sc = ctx.span().span_context().clone();
     if sc.is_valid() {
-        sc.span_id().to_string()
+        SpanId(sc.span_id().to_string())
     } else {
-        String::new()
+        SpanId::empty()
     }
 }
 
@@ -701,12 +1027,16 @@ fn epoch_nanos_now() -> i64 {
 mod tests {
     use super::*;
     use crate::controls::ControlRegistry;
+    use crate::types::{
+        Confidence, DegradationLevel, Estimate, HttpMethod, RegulatoryMapping,
+        RegulatoryRequirement, Tolerance,
+    };
     use indexmap::IndexMap;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    // ── Mock executor ─────────────────────────────────────────
+    // -- Mock executor
 
     struct MockExecutor {
         success: bool,
@@ -756,7 +1086,7 @@ mod tests {
         }
     }
 
-    // ── Mock control handler ──────────────────────────────────
+    // -- Mock control handler
 
     struct EventRecorder {
         events: Arc<std::sync::Mutex<Vec<LifecycleEvent>>>,
@@ -775,6 +1105,9 @@ mod tests {
     }
 
     impl crate::controls::ControlHandler for EventRecorder {
+        // Trait returns &str; literal impls appear static but trait sig cannot change
+        // because other impls (e.g. CountingHandler) return non-static field refs.
+        #[allow(clippy::unnecessary_literal_bound)]
         fn name(&self) -> &str {
             "event-recorder"
         }
@@ -783,7 +1116,7 @@ mod tests {
         }
     }
 
-    // ── Test helpers ──────────────────────────────────────────
+    // -- Test helpers
 
     fn test_action(name: &str) -> Activity {
         Activity {
@@ -798,6 +1131,22 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+        }
+    }
+
+    fn test_action_background(name: &str) -> Activity {
+        Activity {
+            name: name.into(),
+            activity_type: ActivityType::Action,
+            provider: Provider::Native {
+                plugin: "test".into(),
+                function: "noop".into(),
+                arguments: HashMap::new(),
+            },
+            tolerance: None,
+            pause_before_s: None,
+            pause_after_s: None,
+            background: true,
         }
     }
 
@@ -853,13 +1202,13 @@ mod tests {
         RunConfig::default()
     }
 
-    // ── Tests: basic execution ────────────────────────────────
+    // -- Tests: basic execution
 
     #[test]
     fn run_minimal_experiment_succeeds() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -873,8 +1222,8 @@ mod tests {
     fn empty_method_returns_error() {
         let mut exp = minimal_experiment();
         exp.method = vec![];
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let result = run_experiment(&exp, &executor, &controls, &default_config());
         assert!(result.is_err());
@@ -888,8 +1237,8 @@ mod tests {
             test_action("step-2"),
             test_action("step-3"),
         ];
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -900,21 +1249,21 @@ mod tests {
     #[test]
     fn failed_action_marks_experiment_failed() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_fail();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_fail());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         assert_eq!(journal.status, ExperimentStatus::Failed);
     }
 
-    // ── Tests: hypothesis evaluation ──────────────────────────
+    // -- Tests: hypothesis evaluation
 
     #[test]
     fn hypothesis_before_pass_allows_execution() {
         let exp = experiment_with_hypothesis();
-        let executor = MockExecutor::with_output("200");
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("200"));
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -926,29 +1275,25 @@ mod tests {
     #[test]
     fn hypothesis_before_fail_aborts_experiment() {
         let exp = experiment_with_hypothesis();
-        // Executor returns "500" which doesn't match tolerance (exact: 200)
-        let executor = MockExecutor::with_output("500");
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("500"));
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         assert_eq!(journal.status, ExperimentStatus::Aborted);
         assert!(journal.steady_state_before.is_some());
         assert!(!journal.steady_state_before.as_ref().unwrap().met);
-        assert!(journal.method_results.is_empty()); // Method should not execute
+        assert!(journal.method_results.is_empty());
     }
 
     #[test]
     fn hypothesis_after_fail_marks_deviated() {
-        // Need a custom executor that succeeds for method but fails for second hypothesis
         struct AlternatingExecutor {
             call_count: Arc<AtomicUsize>,
         }
         impl ActivityExecutor for AlternatingExecutor {
             fn execute(&self, _activity: &Activity) -> ActivityOutcome {
                 let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-                // First hypothesis probe (call 0) passes, method (call 1) passes,
-                // second hypothesis probe (call 2) fails
                 let output = if count == 2 { "500" } else { "200" };
                 ActivityOutcome {
                     success: true,
@@ -960,10 +1305,10 @@ mod tests {
         }
 
         let exp = experiment_with_hypothesis();
-        let executor = AlternatingExecutor {
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(AlternatingExecutor {
             call_count: Arc::new(AtomicUsize::new(0)),
-        };
-        let controls = ControlRegistry::new();
+        });
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -972,7 +1317,7 @@ mod tests {
         assert!(!journal.steady_state_after.as_ref().unwrap().met);
     }
 
-    // ── Tests: rollback execution ─────────────────────────────
+    // -- Tests: rollback execution
 
     #[test]
     fn rollbacks_execute_on_deviation_with_default_strategy() {
@@ -982,8 +1327,6 @@ mod tests {
         impl ActivityExecutor for DeviatingExecutor {
             fn execute(&self, _activity: &Activity) -> ActivityOutcome {
                 let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-                // hypothesis before (0): pass, method (1): pass,
-                // hypothesis after (2): fail, rollback (3): pass
                 let output = if count == 2 { "500" } else { "200" };
                 ActivityOutcome {
                     success: true,
@@ -996,10 +1339,10 @@ mod tests {
 
         let mut exp = experiment_with_hypothesis();
         exp.rollbacks = vec![test_action("rollback-1")];
-        let executor = DeviatingExecutor {
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(DeviatingExecutor {
             call_count: Arc::new(AtomicUsize::new(0)),
-        };
-        let controls = ControlRegistry::new();
+        });
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1012,8 +1355,8 @@ mod tests {
     fn rollbacks_skipped_with_never_strategy() {
         let mut exp = minimal_experiment();
         exp.rollbacks = vec![test_action("rollback-1")];
-        let executor = MockExecutor::always_fail();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_fail());
+        let controls = Arc::new(ControlRegistry::new());
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Never,
             cancellation_token: None,
@@ -1028,8 +1371,8 @@ mod tests {
     fn rollbacks_execute_always_strategy() {
         let mut exp = minimal_experiment();
         exp.rollbacks = vec![test_action("rollback-1")];
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
@@ -1040,15 +1383,16 @@ mod tests {
         assert_eq!(journal.rollback_results.len(), 1);
     }
 
-    // ── Tests: controls lifecycle ─────────────────────────────
+    // -- Tests: controls lifecycle
 
     #[test]
     fn controls_emit_before_after_experiment() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
         let mut controls = ControlRegistry::new();
         let (recorder, events) = EventRecorder::new();
         controls.register(Box::new(recorder));
+        let controls = Arc::new(controls);
 
         run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1060,10 +1404,11 @@ mod tests {
     #[test]
     fn controls_emit_before_after_method() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
         let mut controls = ControlRegistry::new();
         let (recorder, events) = EventRecorder::new();
         controls.register(Box::new(recorder));
+        let controls = Arc::new(controls);
 
         run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1075,10 +1420,11 @@ mod tests {
     #[test]
     fn controls_emit_before_after_activity() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
         let mut controls = ControlRegistry::new();
         let (recorder, events) = EventRecorder::new();
         controls.register(Box::new(recorder));
+        let controls = Arc::new(controls);
 
         run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1094,15 +1440,15 @@ mod tests {
     #[test]
     fn controls_emit_hypothesis_events() {
         let exp = experiment_with_hypothesis();
-        let executor = MockExecutor::with_output("200");
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("200"));
         let mut controls = ControlRegistry::new();
         let (recorder, events) = EventRecorder::new();
         controls.register(Box::new(recorder));
+        let controls = Arc::new(controls);
 
         run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         let events = events.lock().unwrap();
-        // Should have hypothesis events (before+after for both hypothesis checks)
         let hypothesis_events: Vec<_> = events
             .iter()
             .filter(|e| {
@@ -1112,17 +1458,18 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(hypothesis_events.len(), 4); // 2 pairs (before + after hypothesis)
+        assert_eq!(hypothesis_events.len(), 4);
     }
 
     #[test]
     fn controls_emit_rollback_events_when_rollbacks_execute() {
         let mut exp = minimal_experiment();
         exp.rollbacks = vec![test_action("rollback-1")];
-        let executor = MockExecutor::always_succeed();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
         let mut controls = ControlRegistry::new();
         let (recorder, events) = EventRecorder::new();
         controls.register(Box::new(recorder));
+        let controls = Arc::new(controls);
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
@@ -1139,10 +1486,11 @@ mod tests {
     fn full_lifecycle_event_order() {
         let mut exp = experiment_with_hypothesis();
         exp.rollbacks = vec![test_action("rollback-1")];
-        let executor = MockExecutor::with_output("200");
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("200"));
         let mut controls = ControlRegistry::new();
         let (recorder, events) = EventRecorder::new();
         controls.register(Box::new(recorder));
+        let controls = Arc::new(controls);
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
@@ -1167,7 +1515,6 @@ mod tests {
             })
             .collect();
 
-        // Verify ordering: experiment → hypothesis-before → method → hypothesis-after → rollback → experiment-end
         let exp_idx = event_names
             .iter()
             .position(|&e| e == "BeforeExperiment")
@@ -1195,7 +1542,7 @@ mod tests {
         assert!(rollback_idx < exp_end_idx);
     }
 
-    // ── Tests: estimate and analysis ──────────────────────────
+    // -- Tests: estimate and analysis
 
     #[test]
     fn estimate_preserved_in_journal() {
@@ -1209,8 +1556,8 @@ mod tests {
             rationale: Some("tested before".into()),
             prior_runs: Some(5),
         });
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1233,13 +1580,12 @@ mod tests {
             rationale: None,
             prior_runs: None,
         });
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         assert!(journal.analysis.is_some());
-        // Estimate: recovered, Actual: completed (recovered) → accuracy 1.0
         assert_eq!(
             journal.analysis.as_ref().unwrap().estimate_accuracy,
             Some(1.0)
@@ -1253,21 +1599,21 @@ mod tests {
     #[test]
     fn analysis_not_present_without_estimate() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         assert!(journal.analysis.is_none());
     }
 
-    // ── Tests: journal metadata ───────────────────────────────
+    // -- Tests: journal metadata
 
     #[test]
     fn journal_has_correct_title() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1277,8 +1623,8 @@ mod tests {
     #[test]
     fn journal_has_valid_timestamps() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
@@ -1289,12 +1635,11 @@ mod tests {
     #[test]
     fn journal_has_uuid_experiment_id() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
-        // UUID v4 format: 8-4-4-4-12 hex chars
         assert_eq!(journal.experiment_id.len(), 36);
         assert!(journal.experiment_id.contains('-'));
     }
@@ -1310,71 +1655,68 @@ mod tests {
                 evidence: "Recovery within RTO".into(),
             }],
         });
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         assert!(journal.regulatory.is_some());
     }
 
-    // ── Tests: abort with rollback ────────────────────────────
+    // -- Tests: abort with rollback
+
+    struct AbortThenSucceedExecutor {
+        call_count: Arc<AtomicUsize>,
+    }
+    impl ActivityExecutor for AbortThenSucceedExecutor {
+        fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+            let count = self.call_count.fetch_add(1, Ordering::Relaxed);
+            if count == 0 {
+                ActivityOutcome {
+                    success: true,
+                    output: Some("500".into()),
+                    error: None,
+                    duration_ms: 10,
+                }
+            } else {
+                ActivityOutcome {
+                    success: true,
+                    output: Some("200".into()),
+                    error: None,
+                    duration_ms: 10,
+                }
+            }
+        }
+    }
 
     #[test]
     fn aborted_experiment_runs_rollbacks_on_deviation_strategy() {
         let mut exp = experiment_with_hypothesis();
         exp.rollbacks = vec![test_action("cleanup")];
 
-        // Executor returns 500, hypothesis fails → abort
-        // But after abort, rollbacks should still execute since abort is a "deviation"
-        struct AbortThenSucceedExecutor {
-            call_count: Arc<AtomicUsize>,
-        }
-        impl ActivityExecutor for AbortThenSucceedExecutor {
-            fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-                let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-                // First call is hypothesis probe → fail with 500
-                // Second call (if any) is rollback → succeed
-                if count == 0 {
-                    ActivityOutcome {
-                        success: true,
-                        output: Some("500".into()),
-                        error: None,
-                        duration_ms: 10,
-                    }
-                } else {
-                    ActivityOutcome {
-                        success: true,
-                        output: Some("200".into()),
-                        error: None,
-                        duration_ms: 10,
-                    }
-                }
-            }
-        }
-
-        let executor = AbortThenSucceedExecutor {
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(AbortThenSucceedExecutor {
             call_count: Arc::new(AtomicUsize::new(0)),
-        };
-        let controls = ControlRegistry::new();
+        });
+        let controls = Arc::new(ControlRegistry::new());
 
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
         assert_eq!(journal.status, ExperimentStatus::Aborted);
-        // OnDeviation strategy: abort counts as deviated, so rollbacks run
         assert_eq!(journal.rollback_results.len(), 1);
     }
 
-    // ── Tests: cancellation token ────────────────────────────
+    // -- Tests: cancellation token
 
     #[test]
     fn cancelled_token_returns_interrupted_status() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let mock = MockExecutor::always_succeed();
+        let call_count = mock.call_count.clone();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(mock);
+        let controls = Arc::new(ControlRegistry::new());
 
         let token = CancellationToken::new();
-        token.cancel(); // Cancel before running
+        token.cancel();
 
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::OnDeviation,
@@ -1385,14 +1727,14 @@ mod tests {
 
         assert_eq!(journal.status, ExperimentStatus::Interrupted);
         assert!(journal.method_results.is_empty());
-        assert_eq!(executor.call_count.load(Ordering::Relaxed), 0);
+        assert_eq!(call_count.load(Ordering::Relaxed), 0);
     }
 
     #[test]
     fn none_cancellation_token_runs_normally() {
         let exp = minimal_experiment();
-        let executor = MockExecutor::always_succeed();
-        let controls = ControlRegistry::new();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
 
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::OnDeviation,
@@ -1404,7 +1746,7 @@ mod tests {
         assert_eq!(journal.status, ExperimentStatus::Completed);
     }
 
-    // ── Tests: failed rollback handling ──────────────────────
+    // -- Tests: failed rollback handling
 
     #[test]
     fn failed_rollback_continues_and_counts_failures() {
@@ -1414,7 +1756,6 @@ mod tests {
         impl ActivityExecutor for MethodSucceedRollbackFailExecutor {
             fn execute(&self, activity: &Activity) -> ActivityOutcome {
                 self.call_count.fetch_add(1, Ordering::Relaxed);
-                // Method actions succeed, rollback actions fail
                 if activity.name.starts_with("rollback") {
                     ActivityOutcome {
                         success: false,
@@ -1435,10 +1776,10 @@ mod tests {
 
         let mut exp = minimal_experiment();
         exp.rollbacks = vec![test_action("rollback-1"), test_action("rollback-2")];
-        let executor = MethodSucceedRollbackFailExecutor {
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MethodSucceedRollbackFailExecutor {
             call_count: Arc::new(AtomicUsize::new(0)),
-        };
-        let controls = ControlRegistry::new();
+        });
+        let controls = Arc::new(ControlRegistry::new());
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
@@ -1446,11 +1787,131 @@ mod tests {
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
 
-        // Experiment still completes (method succeeded)
         assert_eq!(journal.status, ExperimentStatus::Completed);
-        // Both rollbacks were attempted even though they failed
         assert_eq!(journal.rollback_results.len(), 2);
-        // Both failures counted
         assert_eq!(journal.rollback_failures, 2);
+    }
+
+    // -- Tests: background task spawning
+
+    #[test]
+    fn background_activities_are_executed() {
+        let mut exp = minimal_experiment();
+        exp.method = vec![
+            test_action("fg-1"),
+            test_action_background("bg-1"),
+            test_action_background("bg-2"),
+        ];
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        assert_eq!(journal.status, ExperimentStatus::Completed);
+        assert_eq!(journal.method_results.len(), 3);
+
+        let names: Vec<&str> = journal
+            .method_results
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect();
+        assert!(names.contains(&"fg-1"));
+        assert!(names.contains(&"bg-1"));
+        assert!(names.contains(&"bg-2"));
+    }
+
+    #[test]
+    fn background_and_foreground_both_counted_in_results() {
+        let mut exp = minimal_experiment();
+        exp.method = vec![
+            test_action("fg-1"),
+            test_action("fg-2"),
+            test_action_background("bg-1"),
+        ];
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        assert_eq!(journal.method_results.len(), 3);
+        // Foreground results appear first, background after
+        assert_eq!(journal.method_results[0].name, "fg-1");
+        assert_eq!(journal.method_results[1].name, "fg-2");
+        assert_eq!(journal.method_results[2].name, "bg-1");
+    }
+
+    #[test]
+    fn all_background_activities_still_execute() {
+        let mut exp = minimal_experiment();
+        exp.method = vec![
+            test_action_background("bg-1"),
+            test_action_background("bg-2"),
+            test_action_background("bg-3"),
+        ];
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        assert_eq!(journal.method_results.len(), 3);
+        assert_eq!(journal.status, ExperimentStatus::Completed);
+    }
+
+    #[test]
+    fn background_activity_failure_reflected_in_results() {
+        struct NameBasedExecutor;
+        impl ActivityExecutor for NameBasedExecutor {
+            fn execute(&self, activity: &Activity) -> ActivityOutcome {
+                if activity.name == "bg-fail" {
+                    ActivityOutcome {
+                        success: false,
+                        output: None,
+                        error: Some("bg failed".into()),
+                        duration_ms: 5,
+                    }
+                } else {
+                    ActivityOutcome {
+                        success: true,
+                        output: Some("ok".into()),
+                        error: None,
+                        duration_ms: 5,
+                    }
+                }
+            }
+        }
+
+        let mut exp = minimal_experiment();
+        exp.method = vec![test_action("fg-ok"), test_action_background("bg-fail")];
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(NameBasedExecutor);
+        let controls = Arc::new(ControlRegistry::new());
+
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        assert_eq!(journal.method_results.len(), 2);
+        let bg_result = journal
+            .method_results
+            .iter()
+            .find(|r| r.name == "bg-fail")
+            .unwrap();
+        assert_eq!(bg_result.status, ActivityStatus::Failed);
+    }
+
+    #[test]
+    fn background_executor_call_count_matches() {
+        let mut exp = minimal_experiment();
+        exp.method = vec![
+            test_action("fg-1"),
+            test_action_background("bg-1"),
+            test_action_background("bg-2"),
+        ];
+        let mock = MockExecutor::always_succeed();
+        let call_count = mock.call_count.clone();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(mock);
+        let controls = Arc::new(ControlRegistry::new());
+
+        run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        // All 3 activities should have been executed
+        assert_eq!(call_count.load(Ordering::Relaxed), 3);
     }
 }

@@ -3,6 +3,7 @@
 //! Each command handler takes parsed CLI arguments and orchestrates the
 //! appropriate tumult-core operations.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use tumult_core::controls::ControlRegistry;
@@ -10,7 +11,10 @@ use tumult_core::engine::{parse_experiment, resolve_config, resolve_secrets, val
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::journal::write_journal;
 use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
-use tumult_core::types::*;
+use tumult_core::types::{
+    Activity, ActivityResult, ActivityStatus, Experiment, ExperimentStatus, HttpMethod, Journal,
+    Provider,
+};
 use tumult_plugin::discovery::discover_all_plugins;
 use tumult_plugin::registry::PluginRegistry;
 
@@ -41,7 +45,11 @@ impl ActivityExecutor for ProviderExecutor {
                 timeout_s: _,
             } => {
                 // HTTP execution is deferred to Phase 1 (requires reqwest)
-                // For now, return a placeholder
+                tracing::error!(
+                    method = format_http_method(method),
+                    url = %url,
+                    "HTTP provider not yet implemented"
+                );
                 ActivityOutcome {
                     success: false,
                     output: None,
@@ -59,8 +67,7 @@ impl ActivityExecutor for ProviderExecutor {
                 success: false,
                 output: None,
                 error: Some(format!(
-                    "Native plugin '{}::{}' not yet available — install with cargo feature flag",
-                    plugin, function
+                    "Native plugin '{plugin}::{function}' not yet available — install with cargo feature flag"
                 )),
                 duration_ms: 0,
             },
@@ -86,97 +93,116 @@ fn execute_process(
 ) -> ActivityOutcome {
     let start = std::time::Instant::now();
 
-    let mut cmd = std::process::Command::new(path);
-    cmd.args(arguments);
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-    for (k, v) in env {
-        cmd.env(k, v);
-    }
+    // Use tokio::process::Command with async .wait_with_output() and
+    // tokio::time::timeout instead of busy-polling with std::thread::sleep.
+    // block_in_place allows calling async code from a sync context within
+    // a multi-threaded tokio runtime.
+    let path = path.to_string();
+    let arguments = arguments.to_vec();
+    let env = env.clone();
+    let timeout_dur = timeout_s.map(|s| std::time::Duration::from_secs_f64(*s));
 
-    let mut child = match cmd.spawn() {
-        Ok(child) => child,
-        Err(e) => {
-            return ActivityOutcome {
-                success: false,
-                output: None,
-                error: Some(format!("failed to execute '{}': {}", path, e)),
-                duration_ms: start.elapsed().as_millis() as u64,
-            };
-        }
-    };
+    tokio::task::block_in_place(move || {
+        tokio::runtime::Handle::current().block_on(async {
+            let mut cmd = tokio::process::Command::new(&path);
+            cmd.args(&arguments);
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+            for (k, v) in &env {
+                cmd.env(k, v);
+            }
 
-    // Apply timeout if configured
-    let timeout = timeout_s.map(|s| std::time::Duration::from_secs_f64(*s));
-    let status = if let Some(dur) = timeout {
-        // Poll until done or timeout
-        let deadline = std::time::Instant::now() + dur;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break Ok(status),
-                Ok(None) => {
-                    if std::time::Instant::now() >= deadline {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        break Err("timed out".to_string());
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+            let mut child = match cmd.spawn() {
+                Ok(child) => child,
+                Err(e) => {
+                    return ActivityOutcome {
+                        success: false,
+                        output: None,
+                        error: Some(format!("failed to execute '{path}': {e}")),
+                        // u128 → u64: elapsed ms; truncation only possible after ~584M years.
+                        #[allow(clippy::cast_possible_truncation)]
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    };
                 }
-                Err(e) => break Err(e.to_string()),
-            }
-        }
-    } else {
-        child.wait().map_err(|e| e.to_string())
-    };
+            };
 
-    let duration_ms = start.elapsed().as_millis() as u64;
+            let result = if let Some(dur) = timeout_dur {
+                match tokio::time::timeout(dur, child.wait()).await {
+                    Ok(Ok(status)) => {
+                        let stdout = {
+                            let mut buf = Vec::new();
+                            if let Some(mut out) = child.stdout.take() {
+                                use tokio::io::AsyncReadExt;
+                                let _ = out.read_to_end(&mut buf).await;
+                            }
+                            buf
+                        };
+                        let stderr = {
+                            let mut buf = Vec::new();
+                            if let Some(mut err) = child.stderr.take() {
+                                use tokio::io::AsyncReadExt;
+                                let _ = err.read_to_end(&mut buf).await;
+                            }
+                            buf
+                        };
+                        Ok(std::process::Output {
+                            status,
+                            stdout,
+                            stderr,
+                        })
+                    }
+                    Ok(Err(e)) => Err(e.to_string()),
+                    Err(_elapsed) => {
+                        let _ = child.kill().await;
+                        Err("timed out".to_string())
+                    }
+                }
+            } else {
+                child.wait_with_output().await.map_err(|e| e.to_string())
+            };
 
-    match status {
-        Ok(exit_status) => {
-            let stdout = child
-                .stdout
-                .map(|mut s| {
-                    let mut buf = String::new();
-                    std::io::Read::read_to_string(&mut s, &mut buf).ok();
-                    buf.trim().to_string()
-                })
-                .unwrap_or_default();
-            let stderr = child
-                .stderr
-                .map(|mut s| {
-                    let mut buf = String::new();
-                    std::io::Read::read_to_string(&mut s, &mut buf).ok();
-                    buf.trim().to_string()
-                })
-                .unwrap_or_default();
+            // u128 → u64: elapsed ms; truncation only possible after ~584M years.
+            #[allow(clippy::cast_possible_truncation)]
+            let duration_ms = start.elapsed().as_millis() as u64;
 
-            ActivityOutcome {
-                success: exit_status.success(),
-                output: if stdout.is_empty() {
-                    None
-                } else {
-                    Some(stdout)
+            match result {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+                    ActivityOutcome {
+                        success: output.status.success(),
+                        output: if stdout.is_empty() {
+                            None
+                        } else {
+                            Some(stdout)
+                        },
+                        error: if stderr.is_empty() {
+                            None
+                        } else {
+                            Some(stderr)
+                        },
+                        duration_ms,
+                    }
+                }
+                Err(reason) => ActivityOutcome {
+                    success: false,
+                    output: None,
+                    error: Some(format!("process '{path}' {reason}")),
+                    duration_ms,
                 },
-                error: if stderr.is_empty() {
-                    None
-                } else {
-                    Some(stderr)
-                },
-                duration_ms,
             }
-        }
-        Err(reason) => ActivityOutcome {
-            success: false,
-            output: None,
-            error: Some(format!("process '{}' {}", path, reason)),
-            duration_ms,
-        },
-    }
+        })
+    })
 }
 
 // ── Run command ───────────────────────────────────────────────
 
-pub fn cmd_run(
+/// # Errors
+///
+/// Returns an error if the experiment cannot be read, parsed, validated,
+/// executed, or the journal cannot be written.
+pub async fn cmd_run(
     experiment_path: &Path,
     journal_path: &Path,
     dry_run: bool,
@@ -225,7 +251,10 @@ pub fn cmd_run(
 
     println!("Running experiment: {}", experiment.title);
 
-    let journal = run_experiment(&experiment, &executor, &controls, &run_config)?;
+    let executor_arc: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
+        std::sync::Arc::new(executor);
+    let controls_arc = std::sync::Arc::new(controls);
+    let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
     write_journal(&journal, journal_path)?;
 
@@ -239,10 +268,10 @@ pub fn cmd_run(
 
     // Auto-ingest into persistent analytics store
     if auto_ingest {
-        match auto_ingest_journal(&journal) {
+        match auto_ingest_journal(&journal).await {
             Ok(true) => println!("Ingested into persistent analytics store"),
             Ok(false) => println!("Already in analytics store (duplicate)"),
-            Err(e) => eprintln!("warning: auto-ingest failed: {}", e),
+            Err(e) => eprintln!("warning: auto-ingest failed: {e}"),
         }
     }
 
@@ -254,15 +283,14 @@ pub fn cmd_run(
     Ok(())
 }
 
-fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
+async fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
     use tumult_analytics::AnalyticsBackend;
 
     // Dual-mode: ClickHouse if configured, DuckDB otherwise
     if tumult_clickhouse::ClickHouseConfig::is_configured() {
         let config = tumult_clickhouse::ClickHouseConfig::from_env();
-        let rt = tokio::runtime::Handle::current();
-        let store = rt
-            .block_on(tumult_clickhouse::ClickHouseStore::connect(&config))
+        let store = tumult_clickhouse::ClickHouseStore::connect(&config)
+            .await
             .context("failed to connect to ClickHouse analytics backend")?;
         let ingested = store.ingest_journal(journal)?;
         return Ok(ingested);
@@ -321,6 +349,9 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) 
 
 // ── Validate command ──────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or fails validation.
 pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     let content = std::fs::read_to_string(experiment_path).with_context(|| {
         format!(
@@ -373,7 +404,7 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 
     println!("Experiment: {}", experiment.title);
     if let Some(ref desc) = experiment.description {
-        println!("Description: {}", desc);
+        println!("Description: {desc}");
     }
     println!("Tags: {}", experiment.tags.join(", "));
     println!("Method steps: {}", experiment.method.len());
@@ -400,11 +431,11 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     // Report config/secret resolution
     match config_result {
         Ok(_) => println!("Configuration: all values resolved"),
-        Err(e) => println!("Configuration: WARNING — {}", e),
+        Err(e) => println!("Configuration: WARNING — {e}"),
     }
     match secrets_result {
         Ok(_) => println!("Secrets: all values resolved"),
-        Err(e) => println!("Secrets: WARNING — {}", e),
+        Err(e) => println!("Secrets: WARNING — {e}"),
     }
 
     println!("\nValidation passed.");
@@ -413,6 +444,10 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 
 // ── Discover command ──────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the requested plugin filter does not match any
+/// discovered plugin.
 pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     let mut registry = PluginRegistry::new();
 
@@ -434,7 +469,7 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
             );
         }
         // Show details for specific plugin
-        println!("Plugin: {}", filter);
+        println!("Plugin: {filter}");
         let all_actions = registry.list_all_actions();
         let actions: Vec<_> = all_actions.iter().filter(|(p, _)| p == filter).collect();
         if !actions.is_empty() {
@@ -447,7 +482,7 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
         // List all plugins
         println!("Discovered {} plugin(s):\n", plugin_names.len());
         for name in &plugin_names {
-            println!("  {}", name);
+            println!("  {name}");
         }
         println!();
 
@@ -465,6 +500,10 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
 
 // ── Analyze command ───────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if any journal cannot be read, the in-memory store cannot
+/// be created, or the query fails.
 pub fn cmd_analyze(journals_path: Option<&Path>, query: Option<&str>) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
@@ -509,7 +548,7 @@ pub fn cmd_analyze(journals_path: Option<&Path>, query: Option<&str>) -> Result<
         (store, count)
     };
 
-    println!("Loaded {} journal(s) into analytics store\n", count);
+    println!("Loaded {count} journal(s) into analytics store\n");
 
     if let Some(sql) = query {
         let columns = store.query_columns(sql)?;
@@ -545,6 +584,9 @@ pub fn cmd_analyze(journals_path: Option<&Path>, query: Option<&str>) -> Result<
 
 // ── Export command ─────────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the journal cannot be read or the export operation fails.
 pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
     use tumult_analytics::arrow_convert::journal_to_record_batch;
     use tumult_analytics::export::{export_csv, export_parquet};
@@ -557,14 +599,14 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
         "parquet" => "parquet",
         "csv" => "csv",
         "json" => "json",
-        _ => bail!("unsupported format: {}", format),
+        _ => bail!("unsupported format: {format}"),
     };
     let stem = journal_path
         .file_stem()
         .unwrap_or_default()
         .to_str()
         .unwrap_or("journal");
-    let out_path = std::path::PathBuf::from(format!("{}.{}", stem, ext));
+    let out_path = std::path::PathBuf::from(format!("{stem}.{ext}"));
 
     match format {
         "parquet" | "csv" => {
@@ -587,6 +629,10 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
 
 // ── Trend command ─────────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if journals cannot be read or the analytics query fails.
+#[allow(clippy::too_many_lines)]
 pub fn cmd_trend(
     journals_path: &Path,
     metric: &str,
@@ -620,7 +666,7 @@ pub fn cmd_trend(
         bail!("path does not exist: {}", journals_path.display());
     }
 
-    println!("Loaded {} journal(s)\n", count);
+    println!("Loaded {count} journal(s)\n");
 
     let valid_metrics = [
         "resilience_score",
@@ -639,14 +685,11 @@ pub fn cmd_trend(
     // Parse --last flag into nanosecond cutoff
     let time_filter = if let Some(window) = last {
         let days: i64 = window.trim_end_matches('d').parse().with_context(|| {
-            format!(
-                "--last must be a number of days (e.g., 30d), got: {}",
-                window
-            )
+            format!("--last must be a number of days (e.g., 30d), got: {window}")
         })?;
         let cutoff_ns =
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) - (days * 86400 * 1_000_000_000);
-        format!(" AND started_at_ns >= {}", cutoff_ns)
+        format!(" AND started_at_ns >= {cutoff_ns}")
     } else {
         String::new()
     };
@@ -668,36 +711,32 @@ pub fn cmd_trend(
     } else {
         String::new()
     };
-    let sql = format!(
-        "{}{}{} ORDER BY started_at_ns",
-        base_sql, time_filter, target_filter
-    );
+    let sql = format!("{base_sql}{time_filter}{target_filter} ORDER BY started_at_ns");
 
     let columns = store.query_columns(&sql)?;
     let rows = store.query(&sql)?;
 
     if rows.is_empty() {
-        println!("No data points for metric: {}", metric);
+        println!("No data points for metric: {metric}");
         return Ok(());
     }
 
     println!("Trend: {} ({} data points)\n", metric, rows.len());
     println!(
         "{}",
-        columns
-            .iter()
-            .map(|c| format!("{:<20}", c))
-            .collect::<Vec<_>>()
-            .join("")
+        columns.iter().fold(String::new(), |mut s, c| {
+            let _ = write!(s, "{c:<20}");
+            s
+        })
     );
     println!("{}", "-".repeat(columns.len() * 20));
     for row in &rows {
         println!(
             "{}",
-            row.iter()
-                .map(|v| format!("{:<20}", v))
-                .collect::<Vec<_>>()
-                .join("")
+            row.iter().fold(String::new(), |mut s, v| {
+                let _ = write!(s, "{v:<20}");
+                s
+            })
         );
     }
 
@@ -722,6 +761,9 @@ pub fn cmd_trend(
 
 // ── Compliance command ────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if journals cannot be read or the analytics query fails.
 pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
@@ -757,9 +799,9 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
         bail!("path does not exist: {}", journals_path.display());
     }
 
-    println!("=== {} Compliance Report ===\n", framework);
-    println!("Journals analyzed: {}", count);
-    println!("With regulatory tagging: {}\n", journals_with_regulatory);
+    println!("=== {framework} Compliance Report ===\n");
+    println!("Journals analyzed: {count}");
+    println!("With regulatory tagging: {journals_with_regulatory}\n");
 
     // Overall status
     let rows = store.query(
@@ -772,7 +814,7 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
 
     // Compliance derivation
     let total = store.query("SELECT count(*) FROM experiments")?;
-    let completed = store.query("SELECT count(*) FROM experiments WHERE status = 'Completed'")?;
+    let completed = store.query("SELECT count(*) FROM experiments WHERE status = 'completed'")?;
     let total_n: f64 = total[0][0].parse().unwrap_or(0.0);
     let completed_n: f64 = completed[0][0].parse().unwrap_or(0.0);
     let success_rate = if total_n > 0.0 {
@@ -782,7 +824,7 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
     };
 
     println!("\nCompliance Status:");
-    println!("  Success rate: {:.1}%", success_rate);
+    println!("  Success rate: {success_rate:.1}%");
     println!(
         "  Overall: {}",
         if success_rate >= 95.0 {
@@ -795,37 +837,25 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
     );
 
     // Framework-specific guidance
-    println!("\n{} Requirements:", framework);
+    println!("\n{framework} Requirements:");
     match framework {
         "DORA" => {
             println!("  Art. 24: ICT resilience testing programme");
             println!("  Art. 25: Testing of ICT tools and systems");
-            println!(
-                "  Evidence: {} experiment runs, {:.1}% success rate",
-                count, success_rate
-            );
+            println!("  Evidence: {count} experiment runs, {success_rate:.1}% success rate");
         }
         "NIS2" => {
             println!("  Art. 21: Cybersecurity risk-management measures");
             println!("  Art. 23: Incident handling and reporting");
-            println!(
-                "  Evidence: {} experiment runs, {:.1}% success rate",
-                count, success_rate
-            );
+            println!("  Evidence: {count} experiment runs, {success_rate:.1}% success rate");
         }
         "PCI-DSS" => {
             println!("  Req. 11.4: External and internal penetration testing");
             println!("  Req. 12.10: Incident response plan testing");
-            println!(
-                "  Evidence: {} experiment runs, {:.1}% success rate",
-                count, success_rate
-            );
+            println!("  Evidence: {count} experiment runs, {success_rate:.1}% success rate");
         }
         _ => {
-            println!(
-                "  Evidence: {} experiment runs, {:.1}% success rate",
-                count, success_rate
-            );
+            println!("  Evidence: {count} experiment runs, {success_rate:.1}% success rate");
         }
     }
 
@@ -835,6 +865,9 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
 
 // ── Init command ──────────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the file already exists or cannot be written.
 pub fn cmd_init(plugin: Option<&str>) -> Result<()> {
     init_at(Path::new("experiment.toon"), plugin)
 }
@@ -852,7 +885,7 @@ fn init_at(path: &Path, plugin: Option<&str>) -> Result<()> {
 
     println!("Created {}", path.display());
     if let Some(p) = plugin {
-        println!("Template includes {} plugin actions", p);
+        println!("Template includes {p} plugin actions");
     }
     println!("Edit the file to configure your experiment, then run:");
     println!("  tumult run {}", path.display());
@@ -916,7 +949,7 @@ fn print_dry_run(experiment: &Experiment) {
     println!("=== DRY RUN ===\n");
     println!("Experiment: {}", experiment.title);
     if let Some(ref desc) = experiment.description {
-        println!("Description: {}", desc);
+        println!("Description: {desc}");
     }
     println!();
 
@@ -924,7 +957,7 @@ fn print_dry_run(experiment: &Experiment) {
         println!("Phase 0 — Estimate:");
         println!("  Expected outcome: {:?}", estimate.expected_outcome);
         if let Some(recovery) = estimate.expected_recovery_s {
-            println!("  Expected recovery: {}s", recovery);
+            println!("  Expected recovery: {recovery}s");
         }
         println!();
     }
@@ -988,6 +1021,10 @@ fn validate_path_no_symlink(path: &Path) -> Result<()> {
 
 // ── Import command ──────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the directory is invalid, the parquet files are missing,
+/// or the import operation fails.
 pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1022,6 +1059,9 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
 
 // ── Store management commands ───────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the store cannot be opened or the stats query fails.
 pub fn cmd_store_stats() -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1037,18 +1077,24 @@ pub fn cmd_store_stats() -> Result<()> {
     let version = store.schema_version()?;
 
     println!("Store: {}", db_path.display());
-    println!("Schema version: {}", version);
+    println!("Schema version: {version}");
     println!("Experiments: {}", stats.experiment_count);
     println!("Activities: {}", stats.activity_count);
 
     if let Ok(size) = std::fs::metadata(&db_path) {
+        // u64 → f64: file size in MB for display; precision loss is acceptable.
+        #[allow(clippy::cast_precision_loss)]
         let mb = size.len() as f64 / (1024.0 * 1024.0);
-        println!("File size: {:.2} MB", mb);
+        println!("File size: {mb:.2} MB");
     }
 
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns an error if the store cannot be opened, the backup directory cannot
+/// be created, or the export operation fails.
 pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1076,6 +1122,9 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns an error if the store cannot be opened or the purge operation fails.
 pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1089,12 +1138,9 @@ pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
 
     let stats = store.stats()?;
     if purged == 0 {
-        println!("No experiments older than {} days found", older_than_days);
+        println!("No experiments older than {older_than_days} days found");
     } else {
-        println!(
-            "Purged {} experiment(s) older than {} days",
-            purged, older_than_days
-        );
+        println!("Purged {purged} experiment(s) older than {older_than_days} days");
     }
     println!(
         "Remaining: {} experiments, {} activities",
@@ -1103,6 +1149,10 @@ pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns an error if the store path cannot be determined or the metadata
+/// cannot be read.
 pub fn cmd_store_path() -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1110,8 +1160,10 @@ pub fn cmd_store_path() -> Result<()> {
     println!("{}", db_path.display());
     if db_path.exists() {
         if let Ok(size) = std::fs::metadata(&db_path) {
+            // u64 → f64: file size in MB for display; precision loss is acceptable.
+            #[allow(clippy::cast_precision_loss)]
             let mb = size.len() as f64 / (1024.0 * 1024.0);
-            println!("Size: {:.2} MB", mb);
+            println!("Size: {mb:.2} MB");
         }
     } else {
         println!("(not yet created)");
@@ -1121,7 +1173,11 @@ pub fn cmd_store_path() -> Result<()> {
 
 // ── Migrate command ─────────────────────────────────────────
 
-pub fn cmd_store_migrate() -> Result<()> {
+/// # Errors
+///
+/// Returns an error if `ClickHouse` is not configured, the `DuckDB` store
+/// cannot be opened, or the migration fails.
+pub async fn cmd_store_migrate() -> Result<()> {
     use tumult_analytics::{AnalyticsBackend, AnalyticsStore};
 
     if !tumult_clickhouse::ClickHouseConfig::is_configured() {
@@ -1143,15 +1199,11 @@ pub fn cmd_store_migrate() -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "Migrating {} experiments from DuckDB to ClickHouse...",
-        duckdb_count
-    );
+    println!("Migrating {duckdb_count} experiments from DuckDB to ClickHouse...");
 
     let config = tumult_clickhouse::ClickHouseConfig::from_env();
-    let rt = tokio::runtime::Handle::current();
-    let ch_store = rt
-        .block_on(tumult_clickhouse::ClickHouseStore::connect(&config))
+    let ch_store = tumult_clickhouse::ClickHouseStore::connect(&config)
+        .await
         .context("failed to connect to ClickHouse")?;
 
     // Read all experiments from DuckDB and re-ingest into ClickHouse
@@ -1176,8 +1228,7 @@ pub fn cmd_store_migrate() -> Result<()> {
         let already_exists = ch_exists
             .first()
             .and_then(|r| r.first())
-            .map(|v| v != "0")
-            .unwrap_or(false);
+            .is_some_and(|v| v != "0");
 
         if already_exists {
             skipped += 1;
@@ -1200,10 +1251,7 @@ pub fn cmd_store_migrate() -> Result<()> {
         ))
         .ok(); // Best-effort — ClickHouse may not support file() in all configs
 
-    println!(
-        "Migration complete: {} to migrate, {} already in ClickHouse",
-        migrated, skipped
-    );
+    println!("Migration complete: {migrated} to migrate, {skipped} already in ClickHouse");
     println!("DuckDB store retained at: {}", db_path.display());
 
     let ch_stats = ch_store.stats()?;
@@ -1217,6 +1265,10 @@ pub fn cmd_store_migrate() -> Result<()> {
 
 // ── Report command ──────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns an error if the journal cannot be read or the report cannot be
+/// written to disk.
 pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> Result<()> {
     use tumult_core::journal::read_journal;
 
@@ -1229,9 +1281,10 @@ pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> R
         .to_str()
         .unwrap_or("report");
     let ext = if format == "pdf" { "pdf" } else { "html" };
-    let out_path = output
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| std::path::PathBuf::from(format!("{}.{}", stem, ext)));
+    let out_path = output.map_or_else(
+        || std::path::PathBuf::from(format!("{stem}.{ext}")),
+        std::path::Path::to_path_buf,
+    );
 
     let html = generate_html_report(&journal);
 
@@ -1256,6 +1309,7 @@ pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> R
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn generate_html_report(journal: &Journal) -> String {
     let status_class = match journal.status {
         ExperimentStatus::Completed => "success",
@@ -1267,7 +1321,8 @@ fn generate_html_report(journal: &Journal) -> String {
 
     // Hypothesis before
     if let Some(ref hyp) = journal.steady_state_before {
-        activities_html += &format!(
+        let _ = write!(
+            activities_html,
             r#"<tr class="phase-header"><td colspan="6">Hypothesis Before: {} ({})</td></tr>"#,
             hyp.title,
             if hyp.met { "MET" } else { "NOT MET" }
@@ -1287,7 +1342,8 @@ fn generate_html_report(journal: &Journal) -> String {
 
     // Hypothesis after
     if let Some(ref hyp) = journal.steady_state_after {
-        activities_html += &format!(
+        let _ = write!(
+            activities_html,
             r#"<tr class="phase-header"><td colspan="6">Hypothesis After: {} ({})</td></tr>"#,
             hyp.title,
             if hyp.met { "MET" } else { "NOT MET" }
@@ -1319,10 +1375,10 @@ fn generate_html_report(journal: &Journal) -> String {
             a.estimate_accuracy
                 .map_or("N/A".into(), |v| format!("{:.1}%", v * 100.0)),
             a.resilience_score
-                .map_or("N/A".into(), |v| format!("{:.2}", v)),
+                .map_or("N/A".into(), |v| format!("{v:.2}")),
             a.trend
                 .as_ref()
-                .map_or("N/A".into(), |t| format!("{:?}", t)),
+                .map_or("N/A".into(), std::string::ToString::to_string),
         )
     } else {
         String::new()
@@ -1423,9 +1479,10 @@ fn format_activity_row(r: &ActivityResult, phase: &str) -> String {
     let trace = if r.trace_id.is_empty() {
         String::new()
     } else {
+        let tid = r.trace_id.as_str();
         format!(
             r#"<span class="trace-link">{}</span>"#,
-            &r.trace_id[..r.trace_id.len().min(16)]
+            &tid[..tid.len().min(16)]
         )
     };
     format!(
@@ -1451,6 +1508,7 @@ fn html_escape(s: &str) -> String {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+    use tumult_core::types::ActivityType;
 
     // ── Helper: write a valid experiment file ─────────────────
 
@@ -1521,8 +1579,8 @@ mod tests {
 
     // ── cmd_run tests ─────────────────────────────────────────
 
-    #[test]
-    fn run_valid_experiment_produces_journal() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_valid_experiment_produces_journal() {
         let dir = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(dir.path());
         let journal_path = dir.path().join("journal.toon");
@@ -1533,14 +1591,15 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
-        );
+        )
+        .await;
 
         assert!(result.is_ok());
         assert!(journal_path.exists());
     }
 
-    #[test]
-    fn run_dry_run_does_not_create_journal() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_dry_run_does_not_create_journal() {
         let dir = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(dir.path());
         let journal_path = dir.path().join("journal.toon");
@@ -1551,26 +1610,28 @@ mod tests {
             true,
             RollbackStrategy::OnDeviation,
             false,
-        );
+        )
+        .await;
 
         assert!(result.is_ok());
         assert!(!journal_path.exists());
     }
 
-    #[test]
-    fn run_nonexistent_file_returns_error() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_nonexistent_file_returns_error() {
         let result = cmd_run(
             Path::new("/nonexistent/experiment.toon"),
             Path::new("journal.toon"),
             false,
             RollbackStrategy::OnDeviation,
             false,
-        );
+        )
+        .await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn run_invalid_toon_returns_error() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_invalid_toon_returns_error() {
         let dir = TempDir::new().unwrap();
         let exp_path = write_invalid_experiment(dir.path());
 
@@ -1580,12 +1641,13 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
-        );
+        )
+        .await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn run_empty_method_returns_error() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_empty_method_returns_error() {
         let dir = TempDir::new().unwrap();
         let exp_path = write_empty_method_experiment(dir.path());
 
@@ -1595,7 +1657,8 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
-        );
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -1703,8 +1766,8 @@ mod tests {
 
     // ── ProviderExecutor tests ────────────────────────────────
 
-    #[test]
-    fn process_executor_runs_echo() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn process_executor_runs_echo() {
         let activity = Activity {
             name: "echo-test".into(),
             activity_type: ActivityType::Action,
@@ -1727,8 +1790,8 @@ mod tests {
         assert_eq!(outcome.output.as_deref(), Some("hello world"));
     }
 
-    #[test]
-    fn process_executor_captures_failure() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn process_executor_captures_failure() {
         let activity = Activity {
             name: "false-test".into(),
             activity_type: ActivityType::Action,
@@ -1750,8 +1813,8 @@ mod tests {
         assert!(!outcome.success);
     }
 
-    #[test]
-    fn process_executor_nonexistent_returns_error() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn process_executor_nonexistent_returns_error() {
         let activity = Activity {
             name: "bad-cmd".into(),
             activity_type: ActivityType::Action,
@@ -1822,8 +1885,8 @@ mod tests {
 
     // ── Phase 4: Run with auto-ingest ─────────────────────────
 
-    #[test]
-    fn cmd_run_with_auto_ingest() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cmd_run_with_auto_ingest() {
         let d = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(d.path());
         let journal_path = d.path().join("out.toon");
@@ -1835,13 +1898,14 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
-        );
+        )
+        .await;
         assert!(result.is_ok());
         assert!(journal_path.exists());
     }
 
-    #[test]
-    fn cmd_run_dry_run_does_not_ingest() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cmd_run_dry_run_does_not_ingest() {
         let d = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(d.path());
         let journal_path = d.path().join("out.toon");
@@ -1852,7 +1916,8 @@ mod tests {
             true,
             RollbackStrategy::OnDeviation,
             true,
-        );
+        )
+        .await;
         assert!(result.is_ok());
         // Journal should NOT be written in dry-run mode
         assert!(!journal_path.exists());
@@ -1998,8 +2063,8 @@ mod tests {
                     duration_ms: 500,
                     output: None,
                     error: None,
-                    trace_id: String::new(),
-                    span_id: String::new(),
+                    trace_id: TraceId::empty(),
+                    span_id: SpanId::empty(),
                 }],
                 steady_state_before: None,
                 steady_state_after: None,
@@ -2022,8 +2087,8 @@ mod tests {
 
     // ── Phase 3: Report command ──────────────────────────────
 
-    #[test]
-    fn report_generates_html_file() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn report_generates_html_file() {
         let d = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(d.path());
         let journal_path = d.path().join("journal.toon");
@@ -2035,6 +2100,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
         )
+        .await
         .unwrap();
 
         let report_path = d.path().join("report.html");
@@ -2048,8 +2114,8 @@ mod tests {
         assert!(content.contains("Activity Timeline"));
     }
 
-    #[test]
-    fn report_default_output_uses_journal_stem() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn report_default_output_uses_journal_stem() {
         let d = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(d.path());
         let journal_path = d.path().join("my-experiment.toon");
@@ -2061,19 +2127,20 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
         )
+        .await
         .unwrap();
 
         // Change to temp dir so default output lands there
-        let _prev = std::env::current_dir().unwrap();
+        let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(d.path()).unwrap();
         cmd_report(&journal_path, None, "html").unwrap();
-        std::env::set_current_dir(_prev).unwrap();
+        std::env::set_current_dir(prev).unwrap();
 
         assert!(d.path().join("my-experiment.html").exists());
     }
 
-    #[test]
-    fn report_html_contains_trace_ids() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn report_html_contains_trace_ids() {
         let d = TempDir::new().unwrap();
         let exp_path = write_valid_experiment(d.path());
         let journal_path = d.path().join("journal.toon");
@@ -2085,6 +2152,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
         )
+        .await
         .unwrap();
 
         let report_path = d.path().join("report.html");

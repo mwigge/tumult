@@ -12,6 +12,10 @@ use kube::Client;
 use crate::error::KubeError;
 
 /// Delete a pod by name. Optionally set a grace period.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
 pub async fn delete_pod(
     client: Client,
@@ -26,10 +30,14 @@ pub async fn delete_pod(
         dp = dp.grace_period(grace);
     }
     pods.delete(name, &dp).await?;
-    Ok(format!("pod {}/{} deleted", namespace, name))
+    Ok(format!("pod {namespace}/{name} deleted"))
 }
 
 /// Scale a deployment to a target number of replicas.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
 pub async fn scale_deployment(
     client: Client,
@@ -51,12 +59,15 @@ pub async fn scale_deployment(
         .await?;
 
     Ok(format!(
-        "deployment {}/{} scaled to {} replicas",
-        namespace, name, replicas
+        "deployment {namespace}/{name} scaled to {replicas} replicas"
     ))
 }
 
 /// Cordon a node (mark as unschedulable).
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
 pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError> {
     let _span = crate::telemetry::begin_cordon_node(name);
@@ -72,13 +83,17 @@ pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError
         .patch(name, &PatchParams::apply("tumult"), &Patch::Merge(&patch))
         .await?;
 
-    Ok(format!("node {} cordoned", name))
+    Ok(format!("node {name} cordoned"))
 }
 
 /// Uncordon a node (mark as schedulable).
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
 pub async fn uncordon_node(client: Client, name: &str) -> Result<String, KubeError> {
-    let _span = crate::telemetry::begin_cordon_node(name); // reuse cordon span name
+    let _span = crate::telemetry::begin_uncordon_node(name);
     let nodes: Api<Node> = Api::all(client);
 
     let patch = serde_json::json!({
@@ -91,7 +106,7 @@ pub async fn uncordon_node(client: Client, name: &str) -> Result<String, KubeErr
         .patch(name, &PatchParams::apply("tumult"), &Patch::Merge(&patch))
         .await?;
 
-    Ok(format!("node {} uncordoned", name))
+    Ok(format!("node {name} uncordoned"))
 }
 
 /// Result of a node drain operation.
@@ -117,6 +132,10 @@ impl std::fmt::Display for DrainResult {
 }
 
 /// Drain a node: cordon it, then delete all non-DaemonSet pods on it.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails (cordon or pod list).
 #[tracing::instrument(skip(client))]
 pub async fn drain_node(
     client: Client,
@@ -128,7 +147,7 @@ pub async fn drain_node(
 
     let pods: Api<Pod> = Api::all(client.clone());
     let pod_list = pods
-        .list(&kube::api::ListParams::default().fields(&format!("spec.nodeName={}", name)))
+        .list(&kube::api::ListParams::default().fields(&format!("spec.nodeName={name}")))
         .await?;
 
     let mut evicted = Vec::new();
@@ -152,8 +171,8 @@ pub async fn drain_node(
 
         let ns_pods: Api<Pod> = Api::namespaced(client.clone(), &pod_ns);
         match ns_pods.delete(&pod_name, &dp).await {
-            Ok(_) => evicted.push(format!("{}/{}", pod_ns, pod_name)),
-            Err(e) => failed.push((format!("{}/{}", pod_ns, pod_name), e.to_string())),
+            Ok(_) => evicted.push(format!("{pod_ns}/{pod_name}")),
+            Err(e) => failed.push((format!("{pod_ns}/{pod_name}"), e.to_string())),
         }
     }
 
@@ -167,6 +186,10 @@ pub async fn drain_node(
 }
 
 /// Apply a network policy to a namespace.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client, policy))]
 pub async fn apply_network_policy(
     client: Client,
@@ -183,10 +206,14 @@ pub async fn apply_network_policy(
     policies
         .patch(&name, &PatchParams::apply("tumult"), &Patch::Apply(&policy))
         .await?;
-    Ok(format!("network policy {}/{} applied", namespace, name))
+    Ok(format!("network policy {namespace}/{name} applied"))
 }
 
 /// Delete a network policy from a namespace.
+///
+/// # Errors
+///
+/// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
 pub async fn delete_network_policy(
     client: Client,
@@ -196,7 +223,7 @@ pub async fn delete_network_policy(
     let _span = crate::telemetry::begin_delete_network_policy(namespace, name);
     let policies: Api<NetworkPolicy> = Api::namespaced(client, namespace);
     policies.delete(name, &DeleteParams::default()).await?;
-    Ok(format!("network policy {}/{} deleted", namespace, name))
+    Ok(format!("network policy {namespace}/{name} deleted"))
 }
 
 #[cfg(test)]

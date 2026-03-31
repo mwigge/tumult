@@ -8,6 +8,14 @@ use crate::types::{ConfigValue, Experiment, ExperimentStatus, SecretValue, Toler
 
 use thiserror::Error;
 
+/// Thread-safe cache of compiled regex patterns for tolerance checks.
+static REGEX_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, regex_lite::Regex>>> =
+    std::sync::OnceLock::new();
+
+fn regex_cache() -> &'static std::sync::Mutex<HashMap<String, regex_lite::Regex>> {
+    REGEX_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
 #[derive(Error, Debug)]
 pub enum EngineError {
     #[error("experiment has no method steps")]
@@ -45,6 +53,10 @@ pub enum EngineError {
 }
 
 /// Resolve configuration values by reading environment variables.
+///
+/// # Errors
+///
+/// Returns [`EngineError::ConfigResolutionFailed`] if a required environment variable is not set.
 pub fn resolve_config(
     config: &IndexMap<String, ConfigValue>,
 ) -> Result<HashMap<String, String>, EngineError> {
@@ -70,6 +82,14 @@ pub fn resolve_config(
 /// Validate an experiment definition before execution.
 ///
 /// Checks: method is non-empty, regex patterns compile, hypothesis probes exist.
+///
+/// # Errors
+///
+/// Returns [`EngineError::UnsupportedVersion`] if the experiment version is not `"v1"`.
+/// Returns [`EngineError::EmptyMethod`] if the method contains no steps.
+/// Returns [`EngineError::EmptyHypothesisProbes`] if the hypothesis has no probes.
+/// Returns [`EngineError::InvalidRegex`] if a regex tolerance pattern fails to compile.
+/// Returns [`EngineError::InvalidToleranceBounds`] if a range tolerance has lower > upper.
 ///
 /// # Examples
 ///
@@ -191,11 +211,20 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
 }
 
 /// Parse an experiment from a TOON string.
+///
+/// # Errors
+///
+/// Returns [`EngineError::ParseError`] if the TOON string is malformed or cannot be decoded.
 pub fn parse_experiment(toon: &str) -> Result<Experiment, EngineError> {
     toon_format::decode_default(toon).map_err(|e| EngineError::ParseError(e.to_string()))
 }
 
 /// Resolve secret values by reading environment variables or files.
+///
+/// # Errors
+///
+/// Returns [`EngineError::SecretResolutionFailed`] if a required environment variable is not set.
+/// Returns [`EngineError::SecretFileNotFound`] if a secret file does not exist or cannot be read.
 pub fn resolve_secrets(
     secrets: &IndexMap<String, IndexMap<String, SecretValue>>,
 ) -> Result<HashMap<String, HashMap<String, String>>, EngineError> {
@@ -234,6 +263,7 @@ pub fn resolve_secrets(
 }
 
 /// Evaluate a tolerance check: does the actual value match the expected?
+#[must_use]
 pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> bool {
     match tolerance {
         Tolerance::Exact { value } => actual == value,
@@ -246,9 +276,24 @@ pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> 
         }
         Tolerance::Regex { pattern } => {
             if let Some(s) = actual.as_str() {
-                regex_lite::Regex::new(pattern)
-                    .map(|re| re.is_match(s))
-                    .unwrap_or(false)
+                let cache = regex_cache()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(re) = cache.get(pattern.as_str()) {
+                    return re.is_match(s);
+                }
+                drop(cache);
+                match regex_lite::Regex::new(pattern) {
+                    Ok(re) => {
+                        let matched = re.is_match(s);
+                        let mut cache = regex_cache()
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        cache.insert(pattern.clone(), re);
+                        matched
+                    }
+                    Err(_) => false,
+                }
             } else {
                 false
             }
@@ -257,6 +302,7 @@ pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> 
 }
 
 /// Determine the experiment status from method results.
+#[must_use]
 pub fn determine_status(
     hypothesis_before_met: Option<bool>,
     hypothesis_after_met: Option<bool>,

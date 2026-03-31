@@ -6,6 +6,7 @@ use std::time::Duration;
 /// Authentication method for SSH connections.
 ///
 /// `Debug` is manually implemented to redact the passphrase field.
+#[non_exhaustive]
 #[derive(Clone)]
 pub enum AuthMethod {
     /// Authenticate with a private key file.
@@ -49,10 +50,18 @@ pub struct SshConfig {
     pub auth: AuthMethod,
     pub connect_timeout: Duration,
     pub command_timeout: Option<Duration>,
+    /// Allow connecting to hosts with unrecognized server keys.
+    ///
+    /// **Security**: Defaults to `false`. Setting this to `true` disables host
+    /// key verification, making connections vulnerable to MITM attacks. Only
+    /// enable for trusted internal networks, ephemeral cloud instances, or
+    /// development/testing environments.
+    pub allow_unknown_hosts: bool,
 }
 
 impl SshConfig {
     /// Create a new SSH config with key-based authentication.
+    #[must_use]
     pub fn with_key(host: &str, user: &str, key_path: PathBuf) -> Self {
         Self {
             host: host.to_string(),
@@ -64,10 +73,12 @@ impl SshConfig {
             },
             connect_timeout: Duration::from_secs(10),
             command_timeout: None,
+            allow_unknown_hosts: false,
         }
     }
 
     /// Create a new SSH config with SSH agent authentication.
+    #[must_use]
     pub fn with_agent(host: &str, user: &str) -> Self {
         Self {
             host: host.to_string(),
@@ -76,24 +87,38 @@ impl SshConfig {
             auth: AuthMethod::Agent,
             connect_timeout: Duration::from_secs(10),
             command_timeout: None,
+            allow_unknown_hosts: false,
         }
     }
 
     /// Set the SSH port (default: 22).
+    #[must_use]
     pub fn port(mut self, port: u16) -> Self {
         self.port = port;
         self
     }
 
     /// Set the connection timeout.
+    #[must_use]
     pub fn connect_timeout(mut self, timeout: Duration) -> Self {
         self.connect_timeout = timeout;
         self
     }
 
     /// Set the command execution timeout.
+    #[must_use]
     pub fn command_timeout(mut self, timeout: Duration) -> Self {
         self.command_timeout = Some(timeout);
+        self
+    }
+
+    /// Allow connecting to hosts with unrecognized server keys.
+    ///
+    /// **Security**: Defaults to `false`. Only enable for trusted networks or
+    /// ephemeral instances where host keys change on every provision.
+    #[must_use]
+    pub fn allow_unknown_hosts(mut self, allow: bool) -> Self {
+        self.allow_unknown_hosts = allow;
         self
     }
 }
@@ -153,12 +178,33 @@ mod tests {
     }
 
     #[test]
+    fn allow_unknown_hosts_defaults_to_false() {
+        let config = SshConfig::with_agent("host", "user");
+        assert!(
+            !config.allow_unknown_hosts,
+            "allow_unknown_hosts should default to false for security"
+        );
+
+        let config = SshConfig::with_key("host", "user", PathBuf::from("/tmp/key"));
+        assert!(
+            !config.allow_unknown_hosts,
+            "allow_unknown_hosts should default to false for security"
+        );
+    }
+
+    #[test]
+    fn allow_unknown_hosts_builder() {
+        let config = SshConfig::with_agent("host", "user").allow_unknown_hosts(true);
+        assert!(config.allow_unknown_hosts);
+    }
+
+    #[test]
     fn debug_redacts_passphrase() {
         let auth = AuthMethod::Key {
             key_path: PathBuf::from("/tmp/key"),
             passphrase: Some("s3cret".into()),
         };
-        let debug = format!("{:?}", auth);
+        let debug = format!("{auth:?}");
         assert!(debug.contains("REDACTED"));
         assert!(!debug.contains("s3cret"));
     }
@@ -169,7 +215,7 @@ mod tests {
             key_path: PathBuf::from("/tmp/key"),
             passphrase: None,
         };
-        let debug = format!("{:?}", auth);
+        let debug = format!("{auth:?}");
         assert!(debug.contains("None"));
         assert!(!debug.contains("REDACTED"));
     }
