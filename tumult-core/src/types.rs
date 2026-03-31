@@ -476,6 +476,9 @@ pub struct Journal {
     pub steady_state_after: Option<HypothesisResult>,
     pub method_results: Vec<ActivityResult>,
     pub rollback_results: Vec<ActivityResult>,
+    /// Number of rollback activities that failed during execution.
+    #[serde(default)]
+    pub rollback_failures: u32,
     pub estimate: Option<Estimate>,
     pub baseline_result: Option<BaselineResult>,
     pub during_result: Option<DuringResult>,
@@ -1207,6 +1210,7 @@ mod tests {
             steady_state_after: None,
             method_results: vec![],
             rollback_results: vec![],
+            rollback_failures: 0,
             estimate: Some(Estimate {
                 expected_outcome: ExpectedOutcome::Recovered,
                 expected_recovery_s: Some(15.0),
@@ -1242,6 +1246,7 @@ mod tests {
             steady_state_after: None,
             method_results: vec![],
             rollback_results: vec![],
+            rollback_failures: 0,
             estimate: None,
             baseline_result: None,
             during_result: None,

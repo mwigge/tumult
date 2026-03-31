@@ -54,6 +54,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4G
     depends_on:
       signoz-zookeeper:
         condition: service_healthy
@@ -70,6 +75,17 @@ services:
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-signoz.yaml:/etc/otel-collector-config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     depends_on:
       signoz-clickhouse:
         condition: service_healthy
@@ -83,7 +99,12 @@ services:
       signoz-clickhouse:
         condition: service_healthy
       signoz-otel-collector:
-        condition: service_started
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
     ports:
       - "13301:8080"
     environment:
@@ -102,12 +123,18 @@ services:
     volumes:
       - ./otel-collector-e2e.yaml:/etc/otel-collector-config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     ports:
       - "14317:4317"   # OTLP gRPC (Tumult sends here)
       - "14318:4318"   # OTLP HTTP
     depends_on:
       signoz-otel-collector:
-        condition: service_started
+        condition: service_healthy
     networks:
       - tumult-e2e
 
