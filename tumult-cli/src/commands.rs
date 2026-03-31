@@ -246,7 +246,65 @@ fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
     let store = AnalyticsStore::open(&db_path)
         .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
     let ingested = store.ingest_journal(journal)?;
+
+    // Emit store disk usage as OTel gauge for monitoring
+    emit_store_metrics(&db_path, &store);
+
     Ok(ingested)
+}
+
+fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) {
+    use opentelemetry::{global, KeyValue};
+
+    let meter = global::meter("tumult-analytics");
+    if let Ok(stats) = store.stats() {
+        let gauge = meter.u64_gauge("resilience.store.experiments").build();
+        gauge.record(stats.experiment_count as u64, &[]);
+
+        let gauge = meter.u64_gauge("resilience.store.activities").build();
+        gauge.record(stats.activity_count as u64, &[]);
+    }
+
+    if let Ok(meta) = std::fs::metadata(db_path) {
+        let gauge = meter.u64_gauge("resilience.store.size_bytes").build();
+        gauge.record(meta.len(), &[]);
+
+        // Disk usage percentage via available space
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let dev = meta.dev();
+            // Use statvfs to get disk usage
+            if let Some(parent) = db_path.parent() {
+                if let Ok(output) = std::process::Command::new("df")
+                    .arg("-k")
+                    .arg(parent)
+                    .output()
+                {
+                    if let Ok(stdout) = String::from_utf8(output.stdout) {
+                        // Parse df output: second line, 5th column is use%
+                        if let Some(line) = stdout.lines().nth(1) {
+                            let fields: Vec<&str> = line.split_whitespace().collect();
+                            if fields.len() >= 5 {
+                                if let Ok(pct) = fields[4].trim_end_matches('%').parse::<u64>() {
+                                    let gauge =
+                                        meter.u64_gauge("resilience.store.disk_usage_pct").build();
+                                    gauge.record(
+                                        pct,
+                                        &[KeyValue::new(
+                                            "resilience.store.path",
+                                            db_path.display().to_string(),
+                                        )],
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let _ = dev; // suppress unused warning
+        }
+    }
 }
 
 // ── Validate command ──────────────────────────────────────────
@@ -890,10 +948,21 @@ fn print_dry_run(experiment: &Experiment) {
     println!("=== END DRY RUN ===");
 }
 
+// ── Path validation ─────────────────────────────────────────
+
+fn validate_path_no_symlink(path: &Path) -> Result<()> {
+    if path.is_symlink() {
+        bail!("symlink not allowed for security: {}", path.display());
+    }
+    Ok(())
+}
+
 // ── Import command ──────────────────────────────────────────
 
 pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
+
+    validate_path_no_symlink(parquet_dir)?;
 
     if !parquet_dir.is_dir() {
         bail!("not a directory: {}", parquet_dir.display());
@@ -959,6 +1028,10 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
         bail!("no persistent store found at: {}", db_path.display());
     }
 
+    // Validate output dir is not a symlink before creating
+    if output_dir.exists() {
+        validate_path_no_symlink(output_dir)?;
+    }
     std::fs::create_dir_all(output_dir)?;
 
     let store = AnalyticsStore::open(&db_path)?;
