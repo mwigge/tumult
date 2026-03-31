@@ -1,6 +1,6 @@
 //! Instrumentation wrappers for chaos actions and probes.
 //!
-//! Every action and probe execution is wrapped in an OTel span
+//! Every action and probe execution is wrapped in an `OTel` span
 //! with `resilience.*` attributes. This is the always-on observability layer.
 
 use std::time::Instant;
@@ -9,6 +9,25 @@ use opentelemetry::KeyValue;
 
 use crate::attributes;
 use crate::metrics::TumultMetrics;
+
+/// RAII guard that holds an OpenTelemetry context attachment.
+///
+/// Keeps the span active for the lifetime of the guard. Drop the guard
+/// to detach the context and end the span's "active" window.
+pub struct SpanGuard {
+    /// Dropping this detaches the associated `Context` from the current thread.
+    // Held solely for its `Drop` side-effect; never read directly.
+    #[allow(dead_code)]
+    guard: opentelemetry::ContextGuard,
+}
+
+impl SpanGuard {
+    /// Creates a new guard from an `OTel` context guard.
+    #[must_use]
+    pub fn new(guard: opentelemetry::ContextGuard) -> Self {
+        Self { guard }
+    }
+}
 
 /// Result of an instrumented operation.
 #[derive(Debug, Clone)]
@@ -19,7 +38,7 @@ pub struct InstrumentedResult {
     pub error: Option<String>,
 }
 
-/// Record the execution of an action in OTel spans and metrics.
+/// Record the execution of an action in `OTel` spans and metrics.
 pub fn record_action(
     metrics: &TumultMetrics,
     plugin_name: &str,
@@ -45,7 +64,7 @@ pub fn record_action(
     }
 }
 
-/// Record the execution of a probe in OTel spans and metrics.
+/// Record the execution of a probe in `OTel` spans and metrics.
 pub fn record_probe(
     metrics: &TumultMetrics,
     plugin_name: &str,

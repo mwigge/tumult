@@ -1,7 +1,7 @@
 //! Integration tests for tumult-db-postgres plugin scripts.
 //!
-//! Requires a local PostgreSQL instance accessible without password.
-//! Skips gracefully if psql is not available or PostgreSQL is not running.
+//! Requires a local `PostgreSQL` instance accessible without password.
+//! Skips gracefully if psql is not available or `PostgreSQL` is not running.
 
 use std::process::Command;
 
@@ -46,7 +46,7 @@ fn run_script(relative: &str, extra_env: &[(&str, &str)]) -> (i32, String, Strin
     }
     let output = cmd
         .output()
-        .unwrap_or_else(|e| panic!("failed to run {}: {}", path, e));
+        .unwrap_or_else(|e| panic!("failed to run {path}: {e}"));
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).to_string(),
@@ -64,12 +64,12 @@ fn connection_count_returns_integer() {
     }
 
     let (code, stdout, stderr) = run_script("probes/connection-count.sh", &[]);
-    assert_eq!(code, 0, "probe failed: {}", stderr);
+    assert_eq!(code, 0, "probe failed: {stderr}");
     let count: i64 = stdout
         .trim()
         .parse()
         .unwrap_or_else(|_| panic!("not an integer: '{}'", stdout.trim()));
-    assert!(count >= 1, "expected at least 1 connection, got {}", count);
+    assert!(count >= 1, "expected at least 1 connection, got {count}");
 }
 
 #[test]
@@ -80,13 +80,13 @@ fn replication_lag_returns_number() {
     }
 
     let (code, stdout, stderr) = run_script("probes/replication-lag.sh", &[]);
-    assert_eq!(code, 0, "probe failed: {}", stderr);
+    assert_eq!(code, 0, "probe failed: {stderr}");
     let lag: f64 = stdout
         .trim()
         .parse()
         .unwrap_or_else(|_| panic!("not a number: '{}'", stdout.trim()));
     // On a non-replica, lag should be 0
-    assert!(lag >= 0.0, "lag should be >= 0, got {}", lag);
+    assert!(lag >= 0.0, "lag should be >= 0, got {lag}");
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn pool_utilization_returns_json() {
     }
 
     let (code, stdout, stderr) = run_script("probes/pool-utilization.sh", &[]);
-    assert_eq!(code, 0, "probe failed: {}", stderr);
+    assert_eq!(code, 0, "probe failed: {stderr}");
     let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
         .unwrap_or_else(|_| panic!("not valid JSON: '{}'", stdout.trim()));
     assert!(parsed.get("current_connections").is_some());
@@ -116,8 +116,7 @@ fn kill_connections_requires_database() {
     assert_ne!(code, 0);
     assert!(
         stderr.contains("TUMULT_PG_DATABASE"),
-        "should require TUMULT_PG_DATABASE: {}",
-        stderr
+        "should require TUMULT_PG_DATABASE: {stderr}"
     );
 }
 
@@ -127,8 +126,7 @@ fn lock_table_requires_database_and_table() {
     assert_ne!(code, 0);
     assert!(
         stderr.contains("TUMULT_PG_DATABASE") || stderr.contains("TUMULT_PG_TABLE"),
-        "should require vars: {}",
-        stderr
+        "should require vars: {stderr}"
     );
 }
 
@@ -138,8 +136,7 @@ fn exhaust_connections_requires_database() {
     assert_ne!(code, 0);
     assert!(
         stderr.contains("TUMULT_PG_DATABASE"),
-        "should require TUMULT_PG_DATABASE: {}",
-        stderr
+        "should require TUMULT_PG_DATABASE: {stderr}"
     );
 }
 

@@ -6,7 +6,114 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+
+// ── Newtype identifiers ────────────────────────────────────────
+
+/// A newtype wrapper for OpenTelemetry trace IDs.
+///
+/// Stored as a hex string (e.g. `"4bf92f3577b34da6a3ce929d0e0e4736"`).
+/// Empty string signals no active trace (noop tracer or uninstrumented path).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TraceId(pub String);
+
+impl TraceId {
+    /// Creates an empty (no-trace) identifier.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self(String::new())
+    }
+
+    /// Returns `true` if the trace ID is empty (noop tracer or uninstrumented).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the inner string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for TraceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for TraceId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for TraceId {
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
+}
+
+impl AsRef<str> for TraceId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A newtype wrapper for OpenTelemetry span IDs.
+///
+/// Stored as a hex string (e.g. `"00f067aa0ba902b7"`).
+/// Empty string signals no active span (noop tracer or uninstrumented path).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SpanId(pub String);
+
+impl SpanId {
+    /// Creates an empty (no-span) identifier.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self(String::new())
+    }
+
+    /// Returns `true` if the span ID is empty (noop tracer or uninstrumented).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the inner string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SpanId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for SpanId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for SpanId {
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
+}
+
+impl AsRef<str> for SpanId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
 
 // ── Enums ──────────────────────────────────────────────────────
 
@@ -94,6 +201,134 @@ pub enum BaselineMethod {
 pub enum LoadTool {
     K6,
     Jmeter,
+}
+
+// ── Display impls ─────────────────────────────────────────────
+
+impl std::fmt::Display for ActivityType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Action => write!(f, "action"),
+            Self::Probe => write!(f, "probe"),
+        }
+    }
+}
+
+impl std::fmt::Display for ExperimentStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Completed => write!(f, "completed"),
+            Self::Deviated => write!(f, "deviated"),
+            Self::Aborted => write!(f, "aborted"),
+            Self::Failed => write!(f, "failed"),
+            Self::Interrupted => write!(f, "interrupted"),
+        }
+    }
+}
+
+impl std::fmt::Display for ActivityStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Succeeded => write!(f, "succeeded"),
+            Self::Failed => write!(f, "failed"),
+            Self::Timeout => write!(f, "timeout"),
+            Self::Skipped => write!(f, "skipped"),
+        }
+    }
+}
+
+impl std::fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Get => write!(f, "GET"),
+            Self::Post => write!(f, "POST"),
+            Self::Put => write!(f, "PUT"),
+            Self::Delete => write!(f, "DELETE"),
+            Self::Patch => write!(f, "PATCH"),
+        }
+    }
+}
+
+impl std::fmt::Display for ContainerRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Docker => write!(f, "docker"),
+            Self::Podman => write!(f, "podman"),
+            Self::Containerd => write!(f, "containerd"),
+        }
+    }
+}
+
+impl std::fmt::Display for ExpectedOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Deviated => write!(f, "deviated"),
+            Self::Recovered => write!(f, "recovered"),
+            Self::Unaffected => write!(f, "unaffected"),
+        }
+    }
+}
+
+impl std::fmt::Display for DegradationLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Minor => write!(f, "minor"),
+            Self::Moderate => write!(f, "moderate"),
+            Self::Severe => write!(f, "severe"),
+        }
+    }
+}
+
+impl std::fmt::Display for Confidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Low => write!(f, "low"),
+            Self::Medium => write!(f, "medium"),
+            Self::High => write!(f, "high"),
+        }
+    }
+}
+
+impl std::fmt::Display for BaselineMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Static => write!(f, "static"),
+            Self::Percentile => write!(f, "percentile"),
+            Self::MeanStddev => write!(f, "mean_stddev"),
+            Self::Iqr => write!(f, "iqr"),
+            Self::Learned => write!(f, "learned"),
+        }
+    }
+}
+
+impl std::fmt::Display for LoadTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::K6 => write!(f, "k6"),
+            Self::Jmeter => write!(f, "jmeter"),
+        }
+    }
+}
+
+impl std::fmt::Display for BaselineSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Live => write!(f, "live"),
+            Self::Historical => write!(f, "historical"),
+            Self::Aqe => write!(f, "aqe"),
+        }
+    }
+}
+
+impl std::fmt::Display for Trend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Improving => write!(f, "improving"),
+            Self::Stable => write!(f, "stable"),
+            Self::Degrading => write!(f, "degrading"),
+        }
+    }
 }
 
 // ── Execution Target ───────────────────────────────────────────
@@ -213,6 +448,7 @@ impl Default for Activity {
 // ── Hypothesis ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Hypothesis {
     pub title: String,
     pub probes: Vec<Activity>,
@@ -221,6 +457,7 @@ pub struct Hypothesis {
 // ── Control ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Control {
     pub name: String,
     pub provider: Provider,
@@ -229,6 +466,7 @@ pub struct Control {
 // ── Estimate (Phase 0) ────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Estimate {
     pub expected_outcome: ExpectedOutcome,
     pub expected_recovery_s: Option<f64>,
@@ -242,6 +480,7 @@ pub struct Estimate {
 // ── Baseline Config (Phase 1) ──────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BaselineConfig {
     pub duration_s: f64,
     pub warmup_s: Option<f64>,
@@ -254,6 +493,7 @@ pub struct BaselineConfig {
 // ── Load Config ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LoadConfig {
     pub tool: LoadTool,
     pub script: PathBuf,
@@ -265,6 +505,7 @@ pub struct LoadConfig {
 // ── Regulatory Mapping ─────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegulatoryRequirement {
     pub id: String,
     pub description: String,
@@ -272,6 +513,7 @@ pub struct RegulatoryRequirement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegulatoryMapping {
     pub frameworks: Vec<String>,
     pub requirements: Vec<RegulatoryRequirement>,
@@ -279,9 +521,11 @@ pub struct RegulatoryMapping {
 
 // ── Experiment (the top-level definition) ──────────────────────
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Experiment {
+    #[serde(default = "default_version")]
+    pub version: String,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -289,9 +533,9 @@ pub struct Experiment {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub configuration: HashMap<String, ConfigValue>,
+    pub configuration: IndexMap<String, ConfigValue>,
     #[serde(default)]
-    pub secrets: HashMap<String, HashMap<String, SecretValue>>,
+    pub secrets: IndexMap<String, IndexMap<String, SecretValue>>,
     #[serde(default)]
     pub controls: Vec<Control>,
     #[serde(default)]
@@ -308,6 +552,31 @@ pub struct Experiment {
     pub load: Option<LoadConfig>,
     #[serde(default)]
     pub regulatory: Option<RegulatoryMapping>,
+}
+
+impl Default for Experiment {
+    fn default() -> Self {
+        Self {
+            version: default_version(),
+            title: String::new(),
+            description: None,
+            tags: vec![],
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
+            controls: vec![],
+            steady_state_hypothesis: None,
+            method: vec![],
+            rollbacks: vec![],
+            estimate: None,
+            baseline: None,
+            load: None,
+            regulatory: None,
+        }
+    }
+}
+
+fn default_version() -> String {
+    "v1".to_string()
 }
 
 // ── Enums for result phases ─────────────────────────────────────
@@ -453,8 +722,8 @@ pub struct ActivityResult {
     pub duration_ms: u64,
     pub output: Option<String>,
     pub error: Option<String>,
-    pub trace_id: String,
-    pub span_id: String,
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -498,16 +767,17 @@ mod tests {
 
     fn build_sample_experiment() -> Experiment {
         Experiment {
+            version: "v1".into(),
             title: "Database failover validates automatic reconnection".into(),
             description: Some("Kill PostgreSQL primary and verify app reconnects".into()),
             tags: vec!["database".into(), "resilience".into()],
-            configuration: HashMap::from([(
+            configuration: IndexMap::from([(
                 "db_host".into(),
                 ConfigValue::Env {
                     key: "DATABASE_HOST".into(),
                 },
             )]),
-            secrets: HashMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: Some(Hypothesis {
                 title: "Application responds healthy".into(),
@@ -959,11 +1229,12 @@ mod tests {
     #[test]
     fn experiment_minimal_round_trips() {
         let exp = Experiment {
+            version: "v1".into(),
             title: "Database failover test".into(),
             description: None,
             tags: vec!["database".into(), "resilience".into()],
-            configuration: HashMap::new(),
-            secrets: HashMap::new(),
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![],
@@ -985,7 +1256,7 @@ mod tests {
             name: "kill-pod".into(),
             activity_type: ActivityType::Action,
             status: ActivityStatus::Succeeded,
-            started_at_ns: 1774980135342000000,
+            started_at_ns: 1_774_980_135_342_000_000,
             duration_ms: 342,
             output: Some("pod deleted".into()),
             error: None,
@@ -1021,8 +1292,8 @@ mod tests {
     #[test]
     fn baseline_result_round_trips() {
         let result = BaselineResult {
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980120000000000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_120_000_000_000,
             duration_s: 120.0,
             warmup_s: 15.0,
             samples: 60,
@@ -1061,7 +1332,7 @@ mod tests {
             max: 1204.3,
             min: 45.0,
             error_rate: 0.12,
-            breached_at_ns: Some(1774980136000000000),
+            breached_at_ns: Some(1_774_980_136_000_000_000),
             breach_count: 18,
         };
         let decoded: ProbeDuring = toon_round_trip(&pd);
@@ -1073,8 +1344,8 @@ mod tests {
     #[test]
     fn during_result_round_trips() {
         let result = DuringResult {
-            started_at_ns: 1774980135000000000,
-            ended_at_ns: 1774980165000000000,
+            started_at_ns: 1_774_980_135_000_000_000,
+            ended_at_ns: 1_774_980_165_000_000_000,
             fault_active_s: 30.0,
             sample_interval_s: 1.0,
             probes: vec![ProbeDuring {
@@ -1084,7 +1355,7 @@ mod tests {
                 max: 1204.3,
                 min: 45.0,
                 error_rate: 0.12,
-                breached_at_ns: Some(1774980136000000000),
+                breached_at_ns: Some(1_774_980_136_000_000_000),
                 breach_count: 18,
             }],
             degradation_onset_s: Some(1.0),
@@ -1117,8 +1388,8 @@ mod tests {
     #[test]
     fn post_result_round_trips() {
         let result = PostResult {
-            started_at_ns: 1774980165000000000,
-            ended_at_ns: 1774980285000000000,
+            started_at_ns: 1_774_980_165_000_000_000,
+            ended_at_ns: 1_774_980_285_000_000_000,
             duration_s: 120.0,
             samples: 60,
             probes: vec![ProbePost {
@@ -1145,8 +1416,8 @@ mod tests {
     fn load_result_round_trips() {
         let result = LoadResult {
             tool: LoadTool::K6,
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980300000000000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
             duration_s: 300.0,
             vus: 50,
             throughput_rps: 494.1,
@@ -1154,7 +1425,7 @@ mod tests {
             latency_p95_ms: 187.4,
             latency_p99_ms: 342.1,
             error_rate: 0.008,
-            total_requests: 148230,
+            total_requests: 148_230,
             thresholds_met: true,
         };
         let decoded: LoadResult = toon_round_trip(&result);
@@ -1203,9 +1474,9 @@ mod tests {
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980300000000000,
-            duration_ms: 300000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
+            duration_ms: 300_000,
             steady_state_before: None,
             steady_state_after: None,
             method_results: vec![],
@@ -1239,9 +1510,9 @@ mod tests {
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
-            started_at_ns: 1774980000000000000,
-            ended_at_ns: 1774980300000000000,
-            duration_ms: 300000,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
+            duration_ms: 300_000,
             steady_state_before: None,
             steady_state_after: None,
             method_results: vec![],

@@ -60,9 +60,9 @@ fn e2e_postgres_connection_count() {
             ("TUMULT_PG_PASSWORD", "tumult_test"),
         ],
     );
-    assert_eq!(code, 0, "probe failed: {}", stderr);
+    assert_eq!(code, 0, "probe failed: {stderr}");
     let count: i64 = stdout.trim().parse().expect("not a number");
-    assert!(count >= 1, "expected at least 1 connection, got {}", count);
+    assert!(count >= 1, "expected at least 1 connection, got {count}");
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn e2e_postgres_pool_utilization() {
             ("TUMULT_PG_PASSWORD", "tumult_test"),
         ],
     );
-    assert_eq!(code, 0, "probe failed: {}", stderr);
+    assert_eq!(code, 0, "probe failed: {stderr}");
     let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).expect("not valid JSON");
     assert!(parsed.get("max_connections").is_some());
 }
@@ -103,7 +103,7 @@ fn e2e_postgres_kill_connections() {
             ("TUMULT_PG_DATABASE", "tumult_test"),
         ],
     );
-    assert_eq!(code, 0, "kill-connections failed: {}", stderr);
+    assert_eq!(code, 0, "kill-connections failed: {stderr}");
 }
 
 // ═══════════════════════════════════════════════════════════════

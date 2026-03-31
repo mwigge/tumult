@@ -28,6 +28,7 @@ pub struct ScriptResult {
 }
 
 impl ScriptResult {
+    #[must_use]
     pub fn succeeded(&self) -> bool {
         self.exit_code == 0
     }
@@ -37,7 +38,14 @@ impl ScriptResult {
 ///
 /// Null bytes in environment variable names or values can cause truncation
 /// or injection issues in child processes.
-pub fn validate_arguments(arguments: &HashMap<String, String>) -> Result<(), ExecutorError> {
+///
+/// # Errors
+///
+/// Returns [`ExecutorError::NullByteInArgument`] if any key or value contains a
+/// null byte (`\0`).
+pub fn validate_arguments<S: std::hash::BuildHasher>(
+    arguments: &HashMap<String, String, S>,
+) -> Result<(), ExecutorError> {
     for (k, v) in arguments {
         if k.contains('\0') || v.contains('\0') {
             return Err(ExecutorError::NullByteInArgument(k.clone()));
@@ -47,7 +55,10 @@ pub fn validate_arguments(arguments: &HashMap<String, String>) -> Result<(), Exe
 }
 
 /// Build the TUMULT_* environment variables from a key-value argument map.
-pub fn build_env_vars(arguments: &HashMap<String, String>) -> HashMap<String, String> {
+#[must_use]
+pub fn build_env_vars<S: std::hash::BuildHasher>(
+    arguments: &HashMap<String, String, S>,
+) -> HashMap<String, String> {
     arguments
         .iter()
         .map(|(k, v)| (format!("TUMULT_{}", k.to_uppercase()), v.clone()))
@@ -55,9 +66,16 @@ pub fn build_env_vars(arguments: &HashMap<String, String>) -> HashMap<String, St
 }
 
 /// Execute a script at the given path with TUMULT_* env vars.
-pub async fn execute_script(
+///
+/// # Errors
+///
+/// Returns [`ExecutorError::ScriptNotFound`] if the script path does not exist.
+/// Returns [`ExecutorError::NullByteInArgument`] if any argument contains a null byte.
+/// Returns [`ExecutorError::ExecutionFailed`] if the process cannot be spawned.
+/// Returns [`ExecutorError::Timeout`] if the script does not finish within the given duration.
+pub async fn execute_script<S: std::hash::BuildHasher>(
     script_path: &Path,
-    arguments: &HashMap<String, String>,
+    arguments: &HashMap<String, String, S>,
     timeout: Option<Duration>,
 ) -> Result<ScriptResult, ExecutorError> {
     let timeout_f64 = timeout.map(|d| d.as_secs_f64());
@@ -82,16 +100,15 @@ pub async fn execute_script(
     cmd.kill_on_drop(true); // Kill child process if future is dropped (timeout)
 
     let output: Output = if let Some(duration) = timeout {
-        match tokio::time::timeout(duration, cmd.output()).await {
-            Ok(result) => result?,
-            Err(_) => {
-                crate::telemetry::event_script_timed_out(
-                    &script_path.display().to_string(),
-                    duration.as_secs_f64(),
-                );
-                crate::telemetry::record_execution(false);
-                return Err(ExecutorError::Timeout(duration.as_secs_f64()));
-            }
+        if let Ok(result) = tokio::time::timeout(duration, cmd.output()).await {
+            result?
+        } else {
+            crate::telemetry::event_script_timed_out(
+                &script_path.display().to_string(),
+                duration.as_secs_f64(),
+            );
+            crate::telemetry::record_execution(false);
+            return Err(ExecutorError::Timeout(duration.as_secs_f64()));
         }
     } else {
         cmd.output().await?
@@ -99,8 +116,8 @@ pub async fn execute_script(
 
     let result = ScriptResult {
         exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     };
     crate::telemetry::event_script_completed(
         result.exit_code,

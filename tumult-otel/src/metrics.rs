@@ -15,6 +15,8 @@ pub struct TumultMetrics {
 }
 
 impl TumultMetrics {
+    /// Creates a new set of standard Tumult metrics from the given `Meter`.
+    #[must_use]
     pub fn new(meter: &Meter) -> Self {
         Self {
             experiments_total: meter

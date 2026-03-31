@@ -18,6 +18,7 @@ path = "src/main.rs"
 tumult-core = { path = "../tumult-core" }
 tumult-analytics = { path = "../tumult-analytics" }
 tumult-plugin = { path = "../tumult-plugin" }
+tumult-otel = { path = "../tumult-otel" }
 rust-mcp-sdk = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

@@ -31,6 +31,7 @@ pub struct ControlRegistry {
 }
 
 impl ControlRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             handlers: Vec::new(),
@@ -48,10 +49,12 @@ impl ControlRegistry {
         }
     }
 
+    #[must_use]
     pub fn handler_count(&self) -> usize {
         self.handlers.len()
     }
 
+    #[must_use]
     pub fn handler_names(&self) -> Vec<&str> {
         self.handlers.iter().map(|h| h.name()).collect()
     }

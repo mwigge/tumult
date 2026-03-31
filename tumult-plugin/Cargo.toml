@@ -7,6 +7,7 @@ license.workspace = true
 description = "Plugin system for Tumult chaos engineering platform"
 
 [dependencies]
+tumult-otel = { path = "../tumult-otel" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }

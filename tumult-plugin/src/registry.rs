@@ -15,6 +15,7 @@ pub struct PluginRegistry {
 }
 
 impl PluginRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             native: HashMap::new(),
@@ -32,6 +33,7 @@ impl PluginRegistry {
         self.scripts.insert(name, manifest);
     }
 
+    #[must_use]
     pub fn list_plugins(&self) -> Vec<String> {
         let mut names: Vec<String> = self.native.keys().cloned().collect();
         names.extend(self.scripts.keys().cloned());
@@ -39,6 +41,7 @@ impl PluginRegistry {
         names
     }
 
+    #[must_use]
     pub fn has_action(&self, plugin: &str, action: &str) -> bool {
         if let Some(p) = self.native.get(plugin) {
             return p.actions().iter().any(|a| a.name == action);
@@ -49,6 +52,7 @@ impl PluginRegistry {
         false
     }
 
+    #[must_use]
     pub fn has_probe(&self, plugin: &str, probe: &str) -> bool {
         if let Some(p) = self.native.get(plugin) {
             return p.probes().iter().any(|pr| pr.name == probe);
@@ -59,11 +63,12 @@ impl PluginRegistry {
         false
     }
 
+    #[must_use]
     pub fn list_all_actions(&self) -> Vec<(String, ActionDescriptor)> {
         let mut result = Vec::new();
         for (name, plugin) in &self.native {
             for action in plugin.actions() {
-                result.push((name.clone(), action));
+                result.push((name.clone(), action.clone()));
             }
         }
         for (name, manifest) in &self.scripts {

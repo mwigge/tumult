@@ -1,13 +1,10 @@
-//! OTel instrumentation for script plugin execution.
+//! `OTel` instrumentation for script plugin execution.
 
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
+use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-plugin";
-
-pub(crate) struct SpanGuard {
-    _guard: opentelemetry::ContextGuard,
-}
 
 pub(crate) fn begin_execute(script_path: &str, timeout_s: Option<f64>) -> SpanGuard {
     let tracer = global::tracer(TRACER);
@@ -21,9 +18,7 @@ pub(crate) fn begin_execute(script_path: &str, timeout_s: Option<f64>) -> SpanGu
         .with_attributes(attrs)
         .start(&tracer);
     let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard {
-        _guard: cx.attach(),
-    }
+    SpanGuard::new(cx.attach())
 }
 
 pub(crate) fn event_script_started(script_path: &str) {
@@ -40,8 +35,14 @@ pub(crate) fn event_script_completed(exit_code: i32, stdout_bytes: usize, stderr
         "script.completed",
         vec![
             KeyValue::new("script.exit_code", i64::from(exit_code)),
-            KeyValue::new("script.stdout_bytes", stdout_bytes as i64),
-            KeyValue::new("script.stderr_bytes", stderr_bytes as i64),
+            KeyValue::new(
+                "script.stdout_bytes",
+                i64::try_from(stdout_bytes).unwrap_or(i64::MAX),
+            ),
+            KeyValue::new(
+                "script.stderr_bytes",
+                i64::try_from(stderr_bytes).unwrap_or(i64::MAX),
+            ),
         ],
     );
 }
