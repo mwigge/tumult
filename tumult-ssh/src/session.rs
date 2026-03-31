@@ -276,6 +276,23 @@ async fn authenticate(
                     path: key_path.display().to_string(),
                 });
             }
+
+            // On Unix, reject key files with permissions more open than 0o600
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let metadata = std::fs::metadata(key_path).map_err(|e| {
+                    SshError::KeyParseError(format!("failed to read key metadata: {}", e))
+                })?;
+                let mode = metadata.permissions().mode() & 0o777;
+                if mode & 0o177 != 0 {
+                    return Err(SshError::KeyPermissionsTooOpen {
+                        path: key_path.display().to_string(),
+                        mode,
+                    });
+                }
+            }
+
             let key_pair = russh::keys::load_secret_key(key_path, passphrase.as_deref())
                 .map_err(|e| SshError::KeyParseError(e.to_string()))?;
 
@@ -407,6 +424,35 @@ mod tests {
     #[test]
     fn shell_escape_path_with_single_quote() {
         assert_eq!(shell_escape("/tmp/it's"), "'/tmp/it'\\''s'");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_permissions_too_open_error() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let key_path = dir.path().join("id_test");
+        std::fs::write(&key_path, "fake-key-content").unwrap();
+        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let err = SshError::KeyPermissionsTooOpen {
+            path: key_path.display().to_string(),
+            mode: 0o644,
+        };
+        assert!(err.to_string().contains("permissions too open"));
+        assert!(err.to_string().contains("0o644"));
+
+        // Verify the check logic directly: mode & 0o177 != 0 means too open
+        let metadata = std::fs::metadata(&key_path).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_ne!(mode & 0o177, 0, "0o644 should be considered too open");
+
+        // Verify 0o600 passes the check
+        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let metadata = std::fs::metadata(&key_path).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_eq!(mode & 0o177, 0, "0o600 should pass the permission check");
     }
 
     #[test]
