@@ -1,0 +1,648 @@
+{
+  "description": "MCP (Model Context Protocol) tool invocation telemetry — call rates, success/error breakdown, latency by tool name, for AI agent operators.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-mcp-stats",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-mcp-total",
+      "moved": false,
+      "static": false,
+      "w": 4,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-mcp-errors",
+      "moved": false,
+      "static": false,
+      "w": 4,
+      "x": 4,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-mcp-p99",
+      "moved": false,
+      "static": false,
+      "w": 4,
+      "x": 8,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-mcp-trends",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-mcp-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-mcp-duration",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "table-mcp-by-tool",
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 12
+    }
+  ],
+  "panelMap": {
+    "row-mcp-stats": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-mcp-total", "moved": false, "static": false, "w": 4, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-mcp-errors", "moved": false, "static": false, "w": 4, "x": 4, "y": 1 },
+        { "h": 4, "i": "stat-mcp-p99", "moved": false, "static": false, "w": 4, "x": 8, "y": 1 }
+      ]
+    },
+    "row-mcp-trends": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-mcp-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-mcp-duration", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 },
+        { "h": 6, "i": "table-mcp-by-tool", "moved": false, "static": false, "w": 12, "x": 0, "y": 12 }
+      ]
+    }
+  },
+  "tags": ["tumult", "chaos", "mcp", "ai", "tools"],
+  "title": "Tumult — MCP Tool Usage",
+  "uploadedGrafana": false,
+  "uuid": "tumult-mcp-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-mcp-stats",
+      "panelTypes": "row",
+      "title": "MCP Tool Call Summary"
+    },
+    {
+      "description": "Total MCP tool calls in the selected time window",
+      "id": "stat-mcp-total",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-mcp-call",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Total Tool Calls",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-mcp-total",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MCP Tool Calls",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "MCP tool calls that resulted in an error",
+      "id": "stat-mcp-errors",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-mcp-err-name",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  },
+                  {
+                    "id": "f-mcp-err-status",
+                    "key": {
+                      "dataType": "string",
+                      "id": "responseStatusCode--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "responseStatusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Errors",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-mcp-errors",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MCP Tool Errors",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "p99 latency of MCP tool calls",
+      "id": "stat-mcp-p99",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-mcp-p99",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99 latency",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-mcp-p99",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MCP p99 Latency",
+      "yAxisUnit": "ns"
+    },
+    {
+      "description": "",
+      "id": "row-mcp-trends",
+      "panelTypes": "row",
+      "title": "MCP Trends"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "MCP tool call rate grouped by tool name",
+      "fillSpans": false,
+      "id": "graph-mcp-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-mcp-rate",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "mcp.tool.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "mcp.tool.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{mcp.tool.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-mcp-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MCP Tool Call Rate by Tool",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "MCP tool call duration percentiles (p99/p50)",
+      "fillSpans": false,
+      "id": "graph-mcp-duration",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-mcp-dur",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "mcp.tool.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "mcp.tool.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{mcp.tool.name}} p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-mcp-duration",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MCP Tool Duration by Tool (p99)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {
+        "A": "short",
+        "B": "short",
+        "C": "ns"
+      },
+      "columnWidths": {
+        "A": 120,
+        "B": 120,
+        "C": 120,
+        "mcp.tool.name": 200
+      },
+      "description": "Tool call summary — total calls, errors, and p99 latency per tool",
+      "fillSpans": false,
+      "id": "table-mcp-by-tool",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-tbl-mcp",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "mcp.tool.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "mcp.tool.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "calls",
+              "limit": 20,
+              "orderBy": [{ "columnName": "A", "order": "desc" }],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-tbl-mcp-p99",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "mcp.tool.call"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "mcp.tool.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "mcp.tool.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "p99 latency",
+              "limit": 20,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "last",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-table-mcp-by-tool",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MCP Tool Calls — Summary Table",
+      "yAxisUnit": "none"
+    }
+  ]
+}

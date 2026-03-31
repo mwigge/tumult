@@ -1,0 +1,834 @@
+{
+  "description": "Regulatory compliance evidence — DORA Art.24, NIS2, and PCI-DSS DSS10. Shows experiment pass rate as Change Failure Rate proxy, MTTR proxy from experiment duration, chaos coverage by infra target, and deviation frequency as incident evidence.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-dora",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-dora-cfr",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-dora-mttr",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-dora-coverage",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-dora-experiments",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 9,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-dora-trends",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-dora-cfr",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-dora-deviation-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 1,
+      "i": "row-nis2",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "graph-nis2-coverage",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "graph-nis2-infra-targets",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 13
+    },
+    {
+      "h": 1,
+      "i": "row-pci",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 19
+    },
+    {
+      "h": 6,
+      "i": "graph-pci-plugin-coverage",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 20
+    },
+    {
+      "h": 6,
+      "i": "graph-pci-rollback-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 20
+    }
+  ],
+  "panelMap": {
+    "row-dora": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-dora-cfr", "moved": false, "static": false, "w": 3, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-dora-mttr", "moved": false, "static": false, "w": 3, "x": 3, "y": 1 },
+        { "h": 4, "i": "stat-dora-coverage", "moved": false, "static": false, "w": 3, "x": 6, "y": 1 },
+        { "h": 4, "i": "stat-dora-experiments", "moved": false, "static": false, "w": 3, "x": 9, "y": 1 }
+      ]
+    },
+    "row-dora-trends": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-dora-cfr", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-dora-deviation-rate", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 }
+      ]
+    },
+    "row-nis2": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-nis2-coverage", "moved": false, "static": false, "w": 6, "x": 0, "y": 13 },
+        { "h": 6, "i": "graph-nis2-infra-targets", "moved": false, "static": false, "w": 6, "x": 6, "y": 13 }
+      ]
+    },
+    "row-pci": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-pci-plugin-coverage", "moved": false, "static": false, "w": 6, "x": 0, "y": 20 },
+        { "h": 6, "i": "graph-pci-rollback-rate", "moved": false, "static": false, "w": 6, "x": 6, "y": 20 }
+      ]
+    }
+  },
+  "tags": ["tumult", "compliance", "dora", "nis2", "pci-dss", "regulatory"],
+  "title": "Tumult — Compliance (DORA / NIS2 / PCI-DSS)",
+  "uploadedGrafana": false,
+  "uuid": "tumult-compliance-dora-nis2-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-dora",
+      "panelTypes": "row",
+      "title": "DORA Art.24 — Digital Operational Resilience"
+    },
+    {
+      "description": "Change Failure Rate proxy — ratio of experiments with hypothesis NOT met (system failed under chaos) to total experiments",
+      "id": "stat-dora-cfr",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.outcome.status--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.outcome.status",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "deviated"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "failures",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-dora-cfr",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "CFR Proxy (Deviations)",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "MTTR proxy — p99 duration of tumult.experiment spans where outcome was deviated (time to detect + stabilise)",
+      "id": "stat-dora-mttr",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "name--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "name",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "tumult.experiment"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "MTTR proxy p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-dora-mttr",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "MTTR Proxy (Exp P99)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "description": "Total distinct plugins exercised — breadth of ICT component resilience testing (NIS2 Art.25)",
+      "id": "stat-dora-coverage",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.plugin.errors.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.plugin.errors.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "count_distinct",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "count",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-dora-coverage",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Plugin Coverage (distinct)",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Total chaos experiments executed as evidence of TLPT (Threat-Led Penetration Testing) activity",
+      "id": "stat-dora-experiments",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "experiments",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-dora-experiments",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Total TLPT Evidence",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "",
+      "id": "row-dora-trends",
+      "panelTypes": "row",
+      "title": "DORA Trends"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Experiment outcome rate — success vs deviated (Change Failure Rate evidence over time)",
+      "fillSpans": false,
+      "id": "graph-dora-cfr",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.outcome.status--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.outcome.status",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.outcome.status}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-dora-cfr",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Experiment Outcome Rate (CFR Evidence)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Hypothesis deviation rate — evidence of detected weaknesses for NIS2 Art.21 incident reporting",
+      "fillSpans": false,
+      "id": "graph-dora-deviation-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.hypothesis.deviations.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.hypothesis.deviations.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "deviations/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-dora-deviation-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Deviation Rate (NIS2 Art.21 Evidence)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-nis2",
+      "panelTypes": "row",
+      "title": "NIS2 — Network & Information Security"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Experiments per plugin — shows breadth of ICT resilience testing coverage (NIS2 Art.21 §2e)",
+      "fillSpans": false,
+      "id": "graph-nis2-coverage",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.experiments.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.experiments.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-nis2-coverage",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Resilience Coverage by Plugin (NIS2 Art.21)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Actions/probes against each infra target (Postgres, Redis, Kafka, K8s, SSH) — NIS2 supply chain testing evidence",
+      "fillSpans": false,
+      "id": "graph-nis2-infra-targets",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-nis2-infra-targets",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Actions by Plugin/Target (NIS2 Supply Chain)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-pci",
+      "panelTypes": "row",
+      "title": "PCI-DSS Req.12 — Business Continuity Testing"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Plugin error rate breakdown — evidences that fault injection is controlled and bounded (PCI-DSS Req.12.3.3)",
+      "fillSpans": false,
+      "id": "graph-pci-plugin-coverage",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.plugin.errors.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.plugin.errors.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-pci-plugin-coverage",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Plugin Error Rate (PCI-DSS Req.12.3.3 Evidence)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Rollback rate — evidences automatic recovery mechanisms required under PCI-DSS Req.12.10",
+      "fillSpans": false,
+      "id": "graph-pci-rollback-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.rollbacks.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.rollbacks.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "rollbacks/sec",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-pci-rollback-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Rollback Rate (PCI-DSS Req.12.10 Evidence)",
+      "yAxisUnit": "reqps"
+    }
+  ]
+}

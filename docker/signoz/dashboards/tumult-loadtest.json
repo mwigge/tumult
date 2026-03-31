@@ -1,0 +1,1078 @@
+{
+  "description": "Load test correlation dashboard — k6 OTLP spans overlaid with Tumult chaos experiment activity. Identify latency/error impact on load-tested services during and after fault injection.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-lt-stats",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-lt-total-reqs",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-lt-error-rate",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-lt-p99",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-chaos-actions",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 9,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-lt-latency",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-lt-duration-percentiles",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-lt-request-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 1,
+      "i": "row-chaos-correlation",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "graph-chaos-action-rate",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "graph-lt-errors-vs-chaos",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 13
+    },
+    {
+      "h": 1,
+      "i": "row-lt-breakdown",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 19
+    },
+    {
+      "h": 6,
+      "i": "graph-lt-by-scenario",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 20
+    },
+    {
+      "h": 6,
+      "i": "graph-lt-error-breakdown",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 20
+    }
+  ],
+  "panelMap": {
+    "row-lt-stats": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-lt-total-reqs", "moved": false, "static": false, "w": 3, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-lt-error-rate", "moved": false, "static": false, "w": 3, "x": 3, "y": 1 },
+        { "h": 4, "i": "stat-lt-p99", "moved": false, "static": false, "w": 3, "x": 6, "y": 1 },
+        { "h": 4, "i": "stat-chaos-actions", "moved": false, "static": false, "w": 3, "x": 9, "y": 1 }
+      ]
+    },
+    "row-lt-latency": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-lt-duration-percentiles", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-lt-request-rate", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 }
+      ]
+    },
+    "row-chaos-correlation": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-chaos-action-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 13 },
+        { "h": 6, "i": "graph-lt-errors-vs-chaos", "moved": false, "static": false, "w": 6, "x": 6, "y": 13 }
+      ]
+    },
+    "row-lt-breakdown": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-lt-by-scenario", "moved": false, "static": false, "w": 6, "x": 0, "y": 20 },
+        { "h": 6, "i": "graph-lt-error-breakdown", "moved": false, "static": false, "w": 6, "x": 6, "y": 20 }
+      ]
+    }
+  },
+  "tags": ["tumult", "chaos", "loadtest", "k6", "correlation"],
+  "title": "Tumult — Load Test Correlation",
+  "uploadedGrafana": false,
+  "uuid": "tumult-loadtest-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-lt-stats",
+      "panelTypes": "row",
+      "title": "Load Test Summary"
+    },
+    {
+      "description": "Total k6 HTTP requests emitted in the selected time window",
+      "id": "stat-lt-total-reqs",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-http",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Total Requests",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-lt-total-reqs",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Total Requests",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Proportion of k6 spans with error status",
+      "id": "stat-lt-error-rate",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  },
+                  {
+                    "id": "f-lt-err",
+                    "key": {
+                      "dataType": "string",
+                      "id": "responseStatusCode--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "responseStatusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Error Spans",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-lt-error-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Error Spans",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "p99 latency of k6 HTTP request spans",
+      "id": "stat-lt-p99",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-p99-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99 latency",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-lt-p99",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 p99 Latency",
+      "yAxisUnit": "ns"
+    },
+    {
+      "description": "Total chaos actions fired in the selected time window",
+      "id": "stat-chaos-actions",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Chaos Actions",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-chaos-actions",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Chaos Actions Fired",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "",
+      "id": "row-lt-latency",
+      "panelTypes": "row",
+      "title": "k6 Latency & Throughput"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "k6 HTTP request duration percentiles (p99/p90/p50) over time — watch for spikes during chaos phases",
+      "fillSpans": false,
+      "id": "graph-lt-duration-percentiles",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-dur-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p90",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-dur-svc-b",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p90",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p90",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "p50",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "C",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-dur-svc-c",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "p50",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "C",
+              "reduceTo": "avg",
+              "spaceAggregation": "p50",
+              "stepInterval": 60,
+              "timeAggregation": ""
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-lt-duration-percentiles",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Request Latency Percentiles (ns)",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "k6 HTTP request throughput (requests/min) grouped by HTTP method and scenario",
+      "fillSpans": false,
+      "id": "graph-lt-request-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-rate-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "name--string--tag--true",
+                  "isColumn": true,
+                  "isJSON": false,
+                  "key": "name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-lt-request-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Request Rate by Operation (req/min)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-chaos-correlation",
+      "panelTypes": "row",
+      "title": "Chaos Correlation"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Chaos action execution rate per minute grouped by plugin — align with k6 latency spikes",
+      "fillSpans": false,
+      "id": "graph-chaos-action-rate",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.plugin.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.plugin.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.plugin.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-chaos-action-rate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Chaos Action Rate by Plugin",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "k6 error span rate vs chaos deviation rate on the same time axis — direct fault-impact correlation",
+      "fillSpans": false,
+      "id": "graph-lt-errors-vs-chaos",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-corr-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  },
+                  {
+                    "id": "f-lt-corr-err",
+                    "key": {
+                      "dataType": "string",
+                      "id": "responseStatusCode--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "responseStatusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "k6 errors/min",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.hypothesis.deviations.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.hypothesis.deviations.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "chaos deviations/min",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-lt-errors-vs-chaos",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Errors vs Chaos Deviations",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-lt-breakdown",
+      "panelTypes": "row",
+      "title": "Load Test Breakdown"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "k6 request rate grouped by scenario / span name — identify which scenario is affected most during chaos",
+      "fillSpans": false,
+      "id": "graph-lt-by-scenario",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-scen-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "name--string--tag--true",
+                  "isColumn": true,
+                  "isJSON": false,
+                  "key": "name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{name}}",
+              "limit": 10,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-lt-by-scenario",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Requests by Scenario (stacked)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "k6 error spans grouped by HTTP status code / span name — surface which endpoints fail under chaos",
+      "fillSpans": false,
+      "id": "graph-lt-error-breakdown",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--tag--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "tag"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f-lt-errbd-svc",
+                    "key": {
+                      "dataType": "string",
+                      "id": "serviceName--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "serviceName",
+                      "type": "tag"
+                    },
+                    "op": "contains",
+                    "value": "k6"
+                  },
+                  {
+                    "id": "f-lt-errbd-status",
+                    "key": {
+                      "dataType": "string",
+                      "id": "responseStatusCode--string--tag--true",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "responseStatusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "name--string--tag--true",
+                  "isColumn": true,
+                  "isJSON": false,
+                  "key": "name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{name}}",
+              "limit": 10,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-lt-error-breakdown",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "k6 Error Breakdown by Operation",
+      "yAxisUnit": "reqps"
+    }
+  ]
+}

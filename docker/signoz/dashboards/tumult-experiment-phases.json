@@ -1,0 +1,946 @@
+{
+  "description": "Five-phase experiment lifecycle timing — estimate, baseline, during (chaos), post, analysis. Shows time spent in each phase per experiment and phase-level error rates.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-phase-stats",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-phase-baseline",
+      "moved": false,
+      "static": false,
+      "w": 2,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-phase-estimate",
+      "moved": false,
+      "static": false,
+      "w": 2,
+      "x": 2,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-phase-during",
+      "moved": false,
+      "static": false,
+      "w": 2,
+      "x": 4,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-phase-post",
+      "moved": false,
+      "static": false,
+      "w": 2,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-phase-analysis",
+      "moved": false,
+      "static": false,
+      "w": 2,
+      "x": 8,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-phase-rollback",
+      "moved": false,
+      "static": false,
+      "w": 2,
+      "x": 10,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-phase-latency",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-phase-latency-all",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-phase-rate-all",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 1,
+      "i": "row-phase-errors",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "graph-phase-errors",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "graph-phase-during-vs-post",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 13
+    }
+  ],
+  "panelMap": {
+    "row-phase-stats": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-phase-baseline", "moved": false, "static": false, "w": 2, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-phase-estimate", "moved": false, "static": false, "w": 2, "x": 2, "y": 1 },
+        { "h": 4, "i": "stat-phase-during", "moved": false, "static": false, "w": 2, "x": 4, "y": 1 },
+        { "h": 4, "i": "stat-phase-post", "moved": false, "static": false, "w": 2, "x": 6, "y": 1 },
+        { "h": 4, "i": "stat-phase-analysis", "moved": false, "static": false, "w": 2, "x": 8, "y": 1 },
+        { "h": 4, "i": "stat-phase-rollback", "moved": false, "static": false, "w": 2, "x": 10, "y": 1 }
+      ]
+    },
+    "row-phase-latency": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-phase-latency-all", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-phase-rate-all", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 }
+      ]
+    },
+    "row-phase-errors": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-phase-errors", "moved": false, "static": false, "w": 6, "x": 0, "y": 13 },
+        { "h": 6, "i": "graph-phase-during-vs-post", "moved": false, "static": false, "w": 6, "x": 6, "y": 13 }
+      ]
+    }
+  },
+  "tags": ["tumult", "experiments", "lifecycle", "phases"],
+  "title": "Tumult — Experiment Phase Lifecycle",
+  "uploadedGrafana": false,
+  "uuid": "tumult-experiment-phases-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-phase-stats",
+      "panelTypes": "row",
+      "title": "Activity Count per Phase"
+    },
+    {
+      "description": "Activities in the baseline phase (probes that establish steady state)",
+      "id": "stat-phase-baseline",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probes.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probes.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "baseline"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "baseline",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-phase-baseline",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Baseline Activities",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Activities in the estimate phase",
+      "id": "stat-phase-estimate",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probes.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probes.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "estimate"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "estimate",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-phase-estimate",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimate Activities",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Actions in the during (chaos injection) phase",
+      "id": "stat-phase-during",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.actions.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.actions.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "during"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "during",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-phase-during",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "During (Chaos) Actions",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Probes in the post phase (recovery validation)",
+      "id": "stat-phase-post",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.probes.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.probes.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "post"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "post",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-phase-post",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Post Activities",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Activities in the analysis phase (DuckDB ingest + reporting)",
+      "id": "stat-phase-analysis",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "analysis"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "analysis",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-phase-analysis",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Analysis Activities",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Total rollback activities executed",
+      "id": "stat-phase-rollback",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "tumult.rollbacks.total--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "tumult.rollbacks.total",
+                "type": "Sum"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "rollbacks",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "increase"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-phase-rollback",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 0 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Rollback Activities",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "",
+      "id": "row-phase-latency",
+      "panelTypes": "row",
+      "title": "Phase Latency & Throughput"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "P99 span latency per activity phase — shows which phases are slowest",
+      "fillSpans": false,
+      "id": "graph-phase-latency-all",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "in",
+                    "value": ["estimate", "baseline", "during", "post", "analysis", "rollback"]
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.activity.phase--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.activity.phase",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.activity.phase}} p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-phase-latency-all",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Phase P99 Latency",
+      "yAxisUnit": "ns"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Activity rate per phase — proportional view shows lifecycle shape",
+      "fillSpans": false,
+      "id": "graph-phase-rate-all",
+      "isStacked": true,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "in",
+                    "value": ["estimate", "baseline", "during", "post", "analysis", "rollback"]
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.activity.phase--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.activity.phase",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.activity.phase}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-phase-rate-all",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": true,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Activity Rate by Phase (stacked)",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-phase-errors",
+      "panelTypes": "row",
+      "title": "Phase Errors & Recovery"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Error rate by phase — baseline errors indicate pre-existing issues; during errors are expected chaos effects",
+      "fillSpans": false,
+      "id": "graph-phase-errors",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "count",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "in",
+                    "value": ["estimate", "baseline", "during", "post", "analysis", "rollback"]
+                  },
+                  {
+                    "id": "f2",
+                    "key": {
+                      "dataType": "string",
+                      "id": "statusCode--string--tag--false",
+                      "isColumn": true,
+                      "isJSON": false,
+                      "key": "statusCode",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "Error"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "resilience.activity.phase--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "resilience.activity.phase",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{resilience.activity.phase}} errors",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-phase-errors",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Error Rate by Phase",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "During vs post-chaos activity rate — post recovering to during level indicates successful system restoration",
+      "fillSpans": false,
+      "id": "graph-phase-during-vs-post",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "A",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "during"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "during p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            },
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "durationNano--float64--Histogram--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "durationNano",
+                "type": "Histogram"
+              },
+              "aggregateOperator": "p99",
+              "dataSource": "traces",
+              "disabled": false,
+              "expression": "B",
+              "filters": {
+                "items": [
+                  {
+                    "id": "f1",
+                    "key": {
+                      "dataType": "string",
+                      "id": "resilience.activity.phase--string--tag--false",
+                      "isColumn": false,
+                      "isJSON": false,
+                      "key": "resilience.activity.phase",
+                      "type": "tag"
+                    },
+                    "op": "=",
+                    "value": "post"
+                  }
+                ],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "post p99",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "B",
+              "reduceTo": "avg",
+              "spaceAggregation": "p99",
+              "stepInterval": 60,
+              "timeAggregation": "p99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-phase-during-vs-post",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "During vs Post Phase Latency (Recovery View)",
+      "yAxisUnit": "ns"
+    }
+  ]
+}
