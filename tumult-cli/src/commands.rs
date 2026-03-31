@@ -218,7 +218,10 @@ pub fn cmd_run(
 
     let executor = ProviderExecutor;
     let controls = ControlRegistry::new();
-    let run_config = RunConfig { rollback_strategy };
+    let run_config = RunConfig {
+        rollback_strategy,
+        cancellation_token: None,
+    };
 
     println!("Running experiment: {}", experiment.title);
 
@@ -1878,6 +1881,7 @@ mod tests {
                 steady_state_before: None,
                 steady_state_after: None,
                 rollback_results: vec![],
+                rollback_failures: 0,
                 estimate: None,
                 baseline_result: None,
                 during_result: None,
@@ -1925,6 +1929,7 @@ mod tests {
                 steady_state_before: None,
                 steady_state_after: None,
                 rollback_results: vec![],
+                rollback_failures: 0,
                 estimate: None,
                 baseline_result: None,
                 during_result: None,
@@ -1948,6 +1953,7 @@ mod tests {
                 steady_state_before: None,
                 steady_state_after: None,
                 rollback_results: vec![],
+                rollback_failures: 0,
                 estimate: None,
                 baseline_result: None,
                 during_result: None,
@@ -1996,6 +2002,7 @@ mod tests {
                 steady_state_before: None,
                 steady_state_after: None,
                 rollback_results: vec![],
+                rollback_failures: 0,
                 estimate: None,
                 baseline_result: None,
                 during_result: None,

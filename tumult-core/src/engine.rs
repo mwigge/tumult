@@ -36,6 +36,8 @@ pub enum EngineError {
         from: f64,
         to: f64,
     },
+    #[error("hypothesis '{title}' has no probes defined")]
+    EmptyHypothesisProbes { title: String },
 }
 
 /// Resolve configuration values by reading environment variables.
@@ -124,6 +126,15 @@ pub fn resolve_config(
 pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
     if experiment.method.is_empty() {
         return Err(EngineError::EmptyMethod);
+    }
+
+    // Validate hypothesis has probes if defined
+    if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
+        if hypothesis.probes.is_empty() {
+            return Err(EngineError::EmptyHypothesisProbes {
+                title: hypothesis.title.clone(),
+            });
+        }
     }
 
     // Validate all regex tolerance patterns compile
@@ -324,6 +335,42 @@ mod tests {
             regulatory: None,
         };
         assert!(validate_experiment(&exp).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_empty_hypothesis_probes() {
+        let exp = Experiment {
+            title: "empty-probes".into(),
+            description: None,
+            tags: vec![],
+            configuration: HashMap::new(),
+            secrets: HashMap::new(),
+            controls: vec![],
+            steady_state_hypothesis: Some(Hypothesis {
+                title: "System is healthy".into(),
+                probes: vec![], // Empty probes
+            }),
+            method: vec![Activity {
+                name: "test-action".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Native {
+                    plugin: "test".into(),
+                    function: "noop".into(),
+                    arguments: HashMap::new(),
+                },
+                tolerance: None,
+                pause_before_s: None,
+                pause_after_s: None,
+                background: false,
+            }],
+            rollbacks: vec![],
+            estimate: None,
+            baseline: None,
+            load: None,
+            regulatory: None,
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("no probes"));
     }
 
     #[test]

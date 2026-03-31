@@ -116,6 +116,7 @@ mod tests {
             steady_state_after: None,
             method_results: vec![],
             rollback_results: vec![],
+            rollback_failures: 0,
             estimate: None,
             baseline_result: None,
             during_result: None,

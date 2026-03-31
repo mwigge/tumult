@@ -23,6 +23,7 @@ use crate::types::*;
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Error, Debug)]
 pub enum RunnerError {
@@ -51,12 +52,16 @@ pub trait ActivityExecutor: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct RunConfig {
     pub rollback_strategy: RollbackStrategy,
+    /// Optional cancellation token. When cancelled, the runner returns
+    /// `ExperimentStatus::Interrupted` before executing the next activity.
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 impl Default for RunConfig {
     fn default() -> Self {
         Self {
             rollback_strategy: RollbackStrategy::OnDeviation,
+            cancellation_token: None,
         }
     }
 }
@@ -140,6 +145,14 @@ pub fn run_experiment(
         return Err(RunnerError::EmptyMethod);
     }
 
+    // Check cancellation before starting
+    if let Some(ref token) = config.cancellation_token {
+        if token.is_cancelled() {
+            let now = epoch_nanos_now();
+            return Ok(make_interrupted_journal(experiment, now));
+        }
+    }
+
     let started = Instant::now();
     let started_at_ns = epoch_nanos_now();
     let experiment_id = uuid::Uuid::new_v4().to_string();
@@ -172,7 +185,7 @@ pub fn run_experiment(
             && should_rollback(&config.rollback_strategy, true)
         {
             controls.emit(&LifecycleEvent::BeforeRollback);
-            let results = execute_activities(&experiment.rollbacks, executor, controls);
+            let results = execute_rollback_activities(&experiment.rollbacks, executor, controls);
             controls.emit(&LifecycleEvent::AfterRollback);
             results
         } else {
@@ -180,6 +193,11 @@ pub fn run_experiment(
         };
 
         controls.emit(&LifecycleEvent::AfterExperiment);
+
+        let rb_failures = rollback_results
+            .iter()
+            .filter(|r| r.status == ActivityStatus::Failed)
+            .count() as u32;
 
         return Ok(Journal {
             experiment_title: experiment.title.clone(),
@@ -192,6 +210,7 @@ pub fn run_experiment(
             steady_state_after: None,
             method_results: vec![],
             rollback_results,
+            rollback_failures: rb_failures,
             estimate: experiment.estimate.clone(),
             baseline_result: None,
             during_result: None,
@@ -202,9 +221,43 @@ pub fn run_experiment(
         });
     }
 
+    // ── Check cancellation before method ─────────────────────
+    if let Some(ref token) = config.cancellation_token {
+        if token.is_cancelled() {
+            let ended_at_ns = epoch_nanos_now();
+            let duration_ms = started.elapsed().as_millis() as u64;
+            controls.emit(&LifecycleEvent::AfterExperiment);
+            return Ok(Journal {
+                experiment_title: experiment.title.clone(),
+                experiment_id,
+                status: ExperimentStatus::Interrupted,
+                started_at_ns,
+                ended_at_ns,
+                duration_ms,
+                steady_state_before: hypothesis_before,
+                steady_state_after: None,
+                method_results: vec![],
+                rollback_results: vec![],
+                rollback_failures: 0,
+                estimate: experiment.estimate.clone(),
+                baseline_result: None,
+                during_result: None,
+                post_result: None,
+                load_result: None,
+                analysis: None,
+                regulatory: experiment.regulatory.clone(),
+            });
+        }
+    }
+
     // ── Phase 2: Execute Method (DURING) ──────────────────────
     controls.emit(&LifecycleEvent::BeforeMethod);
-    let method_results = execute_activities(&experiment.method, executor, controls);
+    let method_results = execute_activities(
+        &experiment.method,
+        executor,
+        controls,
+        &config.cancellation_token,
+    );
     controls.emit(&LifecycleEvent::AfterMethod);
 
     let actions_succeeded = all_succeeded(&method_results);
@@ -237,7 +290,7 @@ pub fn run_experiment(
         && should_rollback(&config.rollback_strategy, deviated)
     {
         controls.emit(&LifecycleEvent::BeforeRollback);
-        let results = execute_activities(&experiment.rollbacks, executor, controls);
+        let results = execute_rollback_activities(&experiment.rollbacks, executor, controls);
         controls.emit(&LifecycleEvent::AfterRollback);
         results
     } else {
@@ -252,6 +305,11 @@ pub fn run_experiment(
 
     controls.emit(&LifecycleEvent::AfterExperiment);
 
+    let rb_failures = rollback_results
+        .iter()
+        .filter(|r| r.status == ActivityStatus::Failed)
+        .count() as u32;
+
     Ok(Journal {
         experiment_title: experiment.title.clone(),
         experiment_id,
@@ -263,6 +321,7 @@ pub fn run_experiment(
         steady_state_after: hypothesis_after,
         method_results,
         rollback_results,
+        rollback_failures: rb_failures,
         estimate: experiment.estimate.clone(),
         baseline_result: None,
         during_result: None,
@@ -352,16 +411,28 @@ fn evaluate_hypothesis(
 }
 
 /// Execute a list of activities sequentially, emitting control events.
+///
+/// If a cancellation token is provided and cancelled, stops executing
+/// remaining activities and returns results collected so far.
 fn execute_activities(
     activities: &[Activity],
     executor: &dyn ActivityExecutor,
     controls: &ControlRegistry,
+    cancellation_token: &Option<CancellationToken>,
 ) -> Vec<ActivityResult> {
     let mut results = Vec::with_capacity(activities.len());
 
     let tracer = opentelemetry::global::tracer("tumult-engine");
 
     for activity in activities {
+        // Check cancellation before each activity
+        if let Some(ref token) = cancellation_token {
+            if token.is_cancelled() {
+                tracing::warn!(activity = %activity.name, "cancelled before activity execution");
+                break;
+            }
+        }
+
         // Honour pause_before_s
         if let Some(pause) = activity.pause_before_s {
             if pause > 0.0 {
@@ -426,6 +497,76 @@ fn execute_activities(
     results
 }
 
+/// Execute rollback activities. Unlike `execute_activities`, this function
+/// continues executing remaining rollbacks even if one fails, logging a
+/// warning for each failure.
+fn execute_rollback_activities(
+    activities: &[Activity],
+    executor: &dyn ActivityExecutor,
+    controls: &ControlRegistry,
+) -> Vec<ActivityResult> {
+    let mut results = Vec::with_capacity(activities.len());
+
+    let tracer = opentelemetry::global::tracer("tumult-engine");
+
+    for activity in activities {
+        controls.emit(&LifecycleEvent::BeforeActivity {
+            name: activity.name.clone(),
+        });
+
+        let span_name = match activity.activity_type {
+            ActivityType::Action => "tumult.action",
+            ActivityType::Probe => "tumult.probe",
+        };
+        let mut attrs = vec![
+            KeyValue::new("resilience.action.name", activity.name.clone()),
+            KeyValue::new(
+                "resilience.activity.type",
+                format!("{:?}", activity.activity_type),
+            ),
+        ];
+        attrs.extend(target_attributes(activity));
+        attrs.extend(fault_attributes(activity));
+        let span = tracer
+            .span_builder(span_name.to_string())
+            .with_attributes(attrs)
+            .start(&tracer);
+        let cx = opentelemetry::Context::current_with_span(span);
+        let _guard = cx.attach();
+
+        let started_at_ns = epoch_nanos_now();
+        let outcome = executor.execute(activity);
+        set_span_status_from_outcome(outcome.success, &outcome.error);
+
+        if !outcome.success {
+            tracing::warn!(
+                activity = %activity.name,
+                error = ?outcome.error,
+                "rollback activity failed, continuing with remaining rollbacks"
+            );
+        }
+
+        let result = make_result(ResultParams {
+            activity,
+            started_at_ns,
+            duration_ms: outcome.duration_ms,
+            success: outcome.success,
+            output: outcome.output,
+            error: outcome.error,
+            trace_id: current_trace_id(),
+            span_id: current_span_id(),
+        });
+
+        controls.emit(&LifecycleEvent::AfterActivity {
+            name: activity.name.clone(),
+        });
+
+        results.push(result);
+    }
+
+    results
+}
+
 /// Compute Phase 4 analysis from estimate and actual results.
 fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Option<AnalysisResult> {
     let estimate = experiment.estimate.as_ref()?;
@@ -449,6 +590,30 @@ fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Optio
             Some(0.0)
         },
     })
+}
+
+/// Build a Journal for an experiment interrupted before it started.
+fn make_interrupted_journal(experiment: &Experiment, now_ns: i64) -> Journal {
+    Journal {
+        experiment_title: experiment.title.clone(),
+        experiment_id: uuid::Uuid::new_v4().to_string(),
+        status: ExperimentStatus::Interrupted,
+        started_at_ns: now_ns,
+        ended_at_ns: now_ns,
+        duration_ms: 0,
+        steady_state_before: None,
+        steady_state_after: None,
+        method_results: vec![],
+        rollback_results: vec![],
+        rollback_failures: 0,
+        estimate: experiment.estimate.clone(),
+        baseline_result: None,
+        during_result: None,
+        post_result: None,
+        load_result: None,
+        analysis: None,
+        regulatory: experiment.regulatory.clone(),
+    }
 }
 
 /// Extract target attributes from an activity's provider.
@@ -847,6 +1012,7 @@ mod tests {
         let controls = ControlRegistry::new();
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Never,
+            cancellation_token: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -862,6 +1028,7 @@ mod tests {
         let controls = ControlRegistry::new();
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
+            cancellation_token: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -954,6 +1121,7 @@ mod tests {
         controls.register(Box::new(recorder));
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
+            cancellation_token: None,
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -973,6 +1141,7 @@ mod tests {
         controls.register(Box::new(recorder));
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
+            cancellation_token: None,
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1190,5 +1359,94 @@ mod tests {
         assert_eq!(journal.status, ExperimentStatus::Aborted);
         // OnDeviation strategy: abort counts as deviated, so rollbacks run
         assert_eq!(journal.rollback_results.len(), 1);
+    }
+
+    // ── Tests: cancellation token ────────────────────────────
+
+    #[test]
+    fn cancelled_token_returns_interrupted_status() {
+        let exp = minimal_experiment();
+        let executor = MockExecutor::always_succeed();
+        let controls = ControlRegistry::new();
+
+        let token = CancellationToken::new();
+        token.cancel(); // Cancel before running
+
+        let config = RunConfig {
+            rollback_strategy: RollbackStrategy::OnDeviation,
+            cancellation_token: Some(token),
+        };
+
+        let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
+
+        assert_eq!(journal.status, ExperimentStatus::Interrupted);
+        assert!(journal.method_results.is_empty());
+        assert_eq!(executor.call_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn none_cancellation_token_runs_normally() {
+        let exp = minimal_experiment();
+        let executor = MockExecutor::always_succeed();
+        let controls = ControlRegistry::new();
+
+        let config = RunConfig {
+            rollback_strategy: RollbackStrategy::OnDeviation,
+            cancellation_token: None,
+        };
+
+        let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
+
+        assert_eq!(journal.status, ExperimentStatus::Completed);
+    }
+
+    // ── Tests: failed rollback handling ──────────────────────
+
+    #[test]
+    fn failed_rollback_continues_and_counts_failures() {
+        struct MethodSucceedRollbackFailExecutor {
+            call_count: Arc<AtomicUsize>,
+        }
+        impl ActivityExecutor for MethodSucceedRollbackFailExecutor {
+            fn execute(&self, activity: &Activity) -> ActivityOutcome {
+                self.call_count.fetch_add(1, Ordering::Relaxed);
+                // Method actions succeed, rollback actions fail
+                if activity.name.starts_with("rollback") {
+                    ActivityOutcome {
+                        success: false,
+                        output: None,
+                        error: Some("rollback failed".into()),
+                        duration_ms: 10,
+                    }
+                } else {
+                    ActivityOutcome {
+                        success: true,
+                        output: Some("200".into()),
+                        error: None,
+                        duration_ms: 10,
+                    }
+                }
+            }
+        }
+
+        let mut exp = minimal_experiment();
+        exp.rollbacks = vec![test_action("rollback-1"), test_action("rollback-2")];
+        let executor = MethodSucceedRollbackFailExecutor {
+            call_count: Arc::new(AtomicUsize::new(0)),
+        };
+        let controls = ControlRegistry::new();
+        let config = RunConfig {
+            rollback_strategy: RollbackStrategy::Always,
+            cancellation_token: None,
+        };
+
+        let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
+
+        // Experiment still completes (method succeeded)
+        assert_eq!(journal.status, ExperimentStatus::Completed);
+        // Both rollbacks were attempted even though they failed
+        assert_eq!(journal.rollback_results.len(), 2);
+        // Both failures counted
+        assert_eq!(journal.rollback_failures, 2);
     }
 }
