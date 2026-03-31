@@ -3,7 +3,7 @@
 ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Phase](https://img.shields.io/badge/phase-3%20Automation-blue)
-![Crates](https://img.shields.io/badge/crates-9-green)
+![Crates](https://img.shields.io/badge/crates-10-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -95,7 +95,8 @@ cargo install tumult --features kubernetes,aws
 | **tumult-baseline** | Native (Rust) | Statistical baseline derivation, percentiles, deviation detection |
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
-| **tumult-mcp** | Native (Rust) | MCP server with 8 tools for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 10 tools for AI-assisted chaos engineering |
+| **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
 | **tumult-process** | Script | Process kill/suspend/resume by PID/name/pattern, resource probes |
@@ -160,31 +161,79 @@ See [Analytics Guide](docs/guides/analytics-guide.md) for table schemas, SQL exa
 
 ## OpenTelemetry Observability
 
-Tumult creates **real OpenTelemetry spans** for every activity in an experiment — not just a single span per run. Each action, probe, and hypothesis evaluation gets its own span with structured attributes:
+Tumult creates **real OpenTelemetry spans** across every module — not just the experiment runner, but SSH, Kubernetes, plugin execution, baseline acquisition, analytics pipeline, MCP dispatch, and ClickHouse storage.
 
 ```
-resilience.experiment       (root span)
+resilience.experiment           (root span — tumult-core)
 ├── resilience.hypothesis.before
-│   └── resilience.probe    (per probe, with resilience.probe.name)
-├── resilience.action       (per action, with resilience.action.name)
+│   └── resilience.probe        (per probe)
+├── resilience.action           (per action)
+│   ├── ssh.connect / ssh.execute   (tumult-ssh)
+│   ├── k8s.pod.delete / k8s.node.drain  (tumult-kubernetes)
+│   └── script.execute          (tumult-plugin)
 ├── resilience.hypothesis.after
 │   └── resilience.probe
-└── resilience.rollback     (if triggered)
+├── resilience.rollback
+├── baseline.acquire            (tumult-baseline)
+├── resilience.analytics.ingest (tumult-analytics → DuckDB or ClickHouse)
+│   ├── resilience.analytics.query
+│   └── resilience.analytics.export
+└── mcp.tool.call               (tumult-mcp)
 ```
 
-Every span carries `resilience.*` attributes for correlation with your existing observability stack. Trace and span IDs are recorded in the journal for post-hoc analysis.
+Every span carries structured events per [OTel semantic conventions](https://opentelemetry.io/docs/specs/semconv/general/events/): `journal.ingested`, `script.completed`, `drain.completed`, `tolerance.derived`, `anomaly.detected`.
+
+### Dual-Mode Analytics (DuckDB + ClickHouse)
 
 ```bash
-# Export spans to any OTLP-compatible backend
-TUMULT_OTEL_ENDPOINT=http://localhost:4317 tumult run experiment.toon
+# Default: DuckDB embedded (works offline, zero dependencies)
+tumult run experiment.toon
 
-# Query trace data from a journal
-tumult mcp  # then call tumult_query_traces
+# With SigNoz: ClickHouse shared storage for cross-correlation
+TUMULT_CLICKHOUSE_URL=http://localhost:8123 tumult run experiment.toon
 ```
+
+When ClickHouse mode is active, experiment data lives in the same database as SigNoz traces/metrics/logs, enabling queries like:
+
+```sql
+SELECT e.title, e.status, t.serviceName
+FROM tumult.experiments e
+JOIN signoz_traces.signoz_index_v2 t ON e.experiment_id = t.traceID
+```
+
+## Observability Platform
+
+Tumult ships a composable Docker observability stack powered by [SigNoz](https://signoz.io) (MIT licensed) — traces, metrics, and logs in a single UI.
+
+```bash
+# Full platform: chaos targets + SigNoz observability
+make up
+open http://localhost:13301    # SigNoz UI
+
+# Chaos targets only (PostgreSQL, Redis, Kafka, SSH)
+make up-targets
+
+# Observability only (deploy alongside existing infra)
+make up-observe
+
+# Classic stack (Jaeger + Prometheus + Grafana)
+make up-classic
+```
+
+The OTel Collector automatically scrapes all services:
+
+| Source | Receiver | Key Metrics |
+|--------|----------|-------------|
+| PostgreSQL | `postgresql` | connections, rows, locks, WAL |
+| Redis | `redis` | clients, memory, ops/sec |
+| Kafka | `kafkametrics` | brokers, topics, consumer lag |
+| Docker | `docker_stats` | CPU, memory, network per container |
+| Host | `hostmetrics` | CPU, memory, disk, network |
+| Tumult | OTLP | experiment spans, analytics gauges, script counters |
 
 ## Docker Test Infrastructure
 
-Tumult provides a Docker Compose stack for end-to-end testing against real services. All ports use the `1xxxx` range to avoid conflicts with local services.
+Tumult provides composable Docker Compose stacks for testing. All ports use the `1xxxx` range.
 
 ```bash
 cd docker/
@@ -193,14 +242,17 @@ docker compose ps          # Check health
 docker compose down -v     # Stop + remove volumes
 ```
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| PostgreSQL 16 | 15432 | Database chaos testing |
-| Redis 7 | 16379 | Cache chaos testing |
-| Kafka 3.8 (KRaft) | 19092 | Message broker chaos testing |
-| SSH Server | 12222 | Remote execution testing |
-| OTel Collector | 14317 (gRPC), 14318 (HTTP) | Span collection |
-| Jaeger | 16686 | Trace visualization |
+| Stack | Service | Port | Purpose |
+|-------|---------|------|---------|
+| Targets | PostgreSQL 16 | 15432 | Database chaos testing |
+| Targets | Redis 7 | 16379 | Cache chaos testing |
+| Targets | Kafka 3.8 (KRaft) | 19092 | Message broker chaos testing |
+| Targets | SSH Server | 12222 | Remote execution testing |
+| Observability | **SigNoz** | 13301 | Unified traces + metrics + logs |
+| Observability | OTel Collector | 14317 | OTLP gateway + infra scraping |
+| Classic | Jaeger | 16686 | Trace visualization |
+| Classic | Prometheus | 19090 | Metrics query |
+| Classic | Grafana | 13000 | Dashboards |
 
 See [docker/README.md](docker/README.md) for detailed setup instructions.
 
@@ -211,11 +263,11 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (8 tools), AI-assisted chaos engineering | Done |
-| **4 — Persistent Analytics** | Persistent DuckDB, incremental ingestion, backup/restore, retention | Done |
-| **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Planned |
+| **3 — Automation** | MCP server (10 tools), AI-assisted chaos engineering | Done |
+| **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
+| **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Advanced Capabilities** | Async background activities, competitive review, label selectors | Planned |
-| **7 — Infrastructure** | Docker Compose e2e test stack, CI integration | Done |
+| **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
 | **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
 
 ## Example Experiment
