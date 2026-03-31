@@ -1,0 +1,677 @@
+{
+  "description": "Health metrics for the Tumult chaos targets — PostgreSQL connections and rows, Redis clients and memory, Kafka brokers and consumer lag.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-postgres",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "graph-pg-backends",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 6,
+      "i": "graph-pg-rows",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-redis",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 7
+    },
+    {
+      "h": 6,
+      "i": "graph-redis-clients",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 8
+    },
+    {
+      "h": 6,
+      "i": "graph-redis-memory",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 8
+    },
+    {
+      "h": 1,
+      "i": "row-kafka",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 14
+    },
+    {
+      "h": 4,
+      "i": "stat-kafka-brokers",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 0,
+      "y": 15
+    },
+    {
+      "h": 4,
+      "i": "stat-kafka-partitions",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 3,
+      "y": 15
+    },
+    {
+      "h": 6,
+      "i": "graph-kafka-consumer-lag",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 15
+    },
+    {
+      "h": 6,
+      "i": "graph-kafka-partitions-trend",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 19
+    }
+  ],
+  "panelMap": {
+    "row-postgres": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-pg-backends", "moved": false, "static": false, "w": 6, "x": 0, "y": 1 },
+        { "h": 6, "i": "graph-pg-rows", "moved": false, "static": false, "w": 6, "x": 6, "y": 1 }
+      ]
+    },
+    "row-redis": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-redis-clients", "moved": false, "static": false, "w": 6, "x": 0, "y": 8 },
+        { "h": 6, "i": "graph-redis-memory", "moved": false, "static": false, "w": 6, "x": 6, "y": 8 }
+      ]
+    },
+    "row-kafka": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-kafka-brokers", "moved": false, "static": false, "w": 3, "x": 0, "y": 15 },
+        { "h": 4, "i": "stat-kafka-partitions", "moved": false, "static": false, "w": 3, "x": 3, "y": 15 },
+        { "h": 6, "i": "graph-kafka-consumer-lag", "moved": false, "static": false, "w": 6, "x": 6, "y": 15 },
+        { "h": 6, "i": "graph-kafka-partitions-trend", "moved": false, "static": false, "w": 6, "x": 0, "y": 19 }
+      ]
+    }
+  },
+  "tags": ["tumult", "chaos", "infrastructure", "postgres", "redis", "kafka"],
+  "title": "Tumult — Infra Targets (Postgres · Redis · Kafka)",
+  "uploadedGrafana": false,
+  "uuid": "tumult-infra-targets-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-postgres",
+      "panelTypes": "row",
+      "title": "PostgreSQL"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Number of active backend connections to each PostgreSQL database",
+      "fillSpans": false,
+      "id": "graph-pg-backends",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "postgresql.backends--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "postgresql.backends",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "postgresql.database.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "postgresql.database.name",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{postgresql.database.name}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-pg-backends",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "PostgreSQL Active Connections",
+      "yAxisUnit": "short"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Rows inserted, updated, deleted, and returned per database",
+      "fillSpans": false,
+      "id": "graph-pg-rows",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "postgresql.rows--float64--Sum--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "postgresql.rows",
+                "type": "Sum"
+              },
+              "aggregateOperator": "rate",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "postgresql.table.name--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "postgresql.table.name",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "state--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "state",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{postgresql.table.name}} {{state}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "rate"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-pg-rows",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "PostgreSQL Row Operations Rate",
+      "yAxisUnit": "reqps"
+    },
+    {
+      "description": "",
+      "id": "row-redis",
+      "panelTypes": "row",
+      "title": "Redis"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Number of clients connected to Redis over time",
+      "fillSpans": false,
+      "id": "graph-redis-clients",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "redis.clients.connected--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "redis.clients.connected",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "connected clients",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-redis-clients",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Redis Connected Clients",
+      "yAxisUnit": "short"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Redis memory usage (used, rss, peak) over time in bytes",
+      "fillSpans": false,
+      "id": "graph-redis-memory",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "redis.memory.used--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "redis.memory.used",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "state--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "state",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{state}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-redis-memory",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Redis Memory Usage",
+      "yAxisUnit": "bytes"
+    },
+    {
+      "description": "",
+      "id": "row-kafka",
+      "panelTypes": "row",
+      "title": "Kafka"
+    },
+    {
+      "description": "Current number of active Kafka brokers",
+      "id": "stat-kafka-brokers",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.brokers--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.brokers",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Brokers",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-kafka-brokers",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "below", "value": 1 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Kafka Brokers",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Total number of Kafka topic partitions",
+      "id": "stat-kafka-partitions",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.topic.partitions--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.topic.partitions",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Partitions",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-kafka-partitions",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Kafka Topic Partitions",
+      "yAxisUnit": "short"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Kafka consumer group lag per partition — measures how far behind consumers are",
+      "fillSpans": false,
+      "id": "graph-kafka-consumer-lag",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.consumer_group.lag--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.consumer_group.lag",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "kafka.consumer_group--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.consumer_group",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "kafka.topic--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.topic",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{kafka.consumer_group}} / {{kafka.topic}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-kafka-consumer-lag",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Kafka Consumer Group Lag",
+      "yAxisUnit": "short"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Number of partitions per Kafka topic over time",
+      "fillSpans": false,
+      "id": "graph-kafka-partitions-trend",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.topic.partitions--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.topic.partitions",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "latest",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "kafka.topic--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.topic",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{kafka.topic}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "last",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-kafka-partitions-trend",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Kafka Partitions by Topic",
+      "yAxisUnit": "short"
+    }
+  ]
+}
