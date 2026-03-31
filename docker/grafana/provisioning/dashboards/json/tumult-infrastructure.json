@@ -1,0 +1,155 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "PostgreSQL Active Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "postgresql_backends",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Redis Connected Clients",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "redis_connected_clients",
+          "legendFormat": "clients"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Redis Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "redis_used_memory",
+          "legendFormat": "used_memory"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Kafka Broker Count",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "kafka_brokers",
+          "legendFormat": "brokers"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Kafka Topic Partitions",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "targets": [
+        {
+          "expr": "kafka_topic_partitions",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Container CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_total[1m])",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Container Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "container_memory_usage_total",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Container Network I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(container_network_io_usage_rx_bytes[1m])",
+          "legendFormat": "{{name}} rx"
+        },
+        {
+          "expr": "rate(container_network_io_usage_tx_bytes[1m])",
+          "legendFormat": "{{name}} tx"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Tumult Store Experiments",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "resilience_store_experiments",
+          "legendFormat": "experiments"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Tumult Store Size (bytes)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 24 },
+      "targets": [
+        {
+          "expr": "resilience_store_size_bytes",
+          "legendFormat": "size"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "title": "Script Executions Total",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "targets": [
+        {
+          "expr": "script_executions_total",
+          "legendFormat": "success={{script_success}}"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["tumult", "infrastructure", "chaos-engineering"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tumult Infrastructure Overview",
+  "uid": "tumult-infra",
+  "version": 1
+}

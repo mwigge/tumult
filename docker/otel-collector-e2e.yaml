@@ -1,7 +1,13 @@
-# OTel Collector for e2e testing.
-# Receives OTLP from Tumult, exports to Jaeger + stdout.
+# OTel Collector for e2e testing and infrastructure observability.
+#
+# Receives OTLP from Tumult + scrapes infrastructure metrics from
+# PostgreSQL, Redis, Kafka, and Docker containers.
+#
+# All metrics and traces are exported to Jaeger (traces) and
+# Prometheus (metrics via /metrics endpoint on port 8889).
 
 receivers:
+  # ── Application telemetry from Tumult ──────────────────────
   otlp:
     protocols:
       grpc:
@@ -9,17 +15,86 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # ── PostgreSQL metrics ─────────────────────────────────────
+  postgresql:
+    endpoint: postgres:5432
+    username: tumult
+    password: tumult_test
+    databases:
+      - tumult_test
+    collection_interval: 10s
+    tls:
+      insecure: true
+
+  # ── Redis metrics ──────────────────────────────────────────
+  redis:
+    endpoint: redis:6379
+    collection_interval: 10s
+
+  # ── Kafka metrics ──────────────────────────────────────────
+  kafkametrics:
+    brokers:
+      - kafka:9092
+    protocol_version: 3.8.0
+    scrapers:
+      - brokers
+      - topics
+      - consumers
+    collection_interval: 10s
+
+  # ── Docker container metrics ───────────────────────────────
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 10s
+    timeout: 5s
+    metrics:
+      container.cpu.usage.total:
+        enabled: true
+      container.memory.usage.total:
+        enabled: true
+      container.network.io.usage.rx_bytes:
+        enabled: true
+      container.network.io.usage.tx_bytes:
+        enabled: true
+      container.blockio.io_service_bytes_recursive:
+        enabled: true
+
+  # ── Host metrics ───────────────────────────────────────────
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+      network:
+
 processors:
   batch:
     timeout: 2s
     send_batch_size: 512
 
+  # Add resource attributes to distinguish infra vs app telemetry
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: tumult-e2e
+        action: upsert
+
 exporters:
+  # Jaeger for traces
   otlp/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
 
+  # Prometheus endpoint for metrics (scraped by Prometheus/Grafana)
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug output for troubleshooting
   debug:
     verbosity: basic
 
@@ -27,9 +102,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [batch, resource]
       exporters: [otlp/jaeger, debug]
     metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+      receivers: [otlp, postgresql, redis, kafkametrics, docker_stats, hostmetrics]
+      processors: [batch, resource]
+      exporters: [prometheus, debug]
