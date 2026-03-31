@@ -102,9 +102,32 @@ tumult store purge --older-than-days 90
 tumult run experiment.toon --no-ingest
 ```
 
-## Encryption
+## Security
 
-DuckDB stores data unencrypted at `~/.tumult/analytics.duckdb`. For sensitive environments, store on an encrypted filesystem (LUKS, FileVault, BitLocker). You can change the store location with the `TUMULT_STORE_PATH` environment variable to point to an encrypted volume.
+DuckDB does not encrypt data at rest by default. The persistent store at `~/.tumult/analytics.duckdb` is written as plaintext on disk. For environments where experiment data is sensitive, take the following steps:
+
+### Filesystem-level encryption
+
+Place the store on an encrypted volume appropriate for your OS:
+
+| OS | Recommended approach |
+|----|----------------------|
+| Linux | LUKS full-disk encryption, or directory-level encryption with `fscrypt` / `ecryptfs` |
+| macOS | FileVault 2 (whole-disk), or an encrypted APFS volume |
+| Windows | BitLocker, or an encrypted home directory |
+
+### Redirect the store path
+
+Use the `TUMULT_STORE_PATH` environment variable to point the persistent store at a location on an encrypted volume:
+
+```bash
+export TUMULT_STORE_PATH=/mnt/encrypted/tumult/analytics.duckdb
+tumult run experiment.toon
+```
+
+### Directory permissions
+
+`AnalyticsStore::open` automatically creates the store directory with mode `0700` (owner read/write/execute only). This limits file-system access to the process owner, but is not a substitute for encryption — a privileged user or physical attacker with direct disk access can read the file without filesystem permission checks.
 
 ## Journal Format for LLM Consumption
 

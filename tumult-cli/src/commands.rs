@@ -7,7 +7,9 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use tumult_core::controls::ControlRegistry;
-use tumult_core::engine::{parse_experiment, resolve_config, resolve_secrets, validate_experiment};
+use tumult_core::engine::{
+    apply_vars, parse_experiment, resolve_config, resolve_secrets, validate_experiment,
+};
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::journal::write_journal;
 use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
@@ -202,12 +204,13 @@ fn execute_process(
 ///
 /// Returns an error if the experiment cannot be read, parsed, validated,
 /// executed, or the journal cannot be written.
-pub async fn cmd_run(
+pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     experiment_path: &Path,
     journal_path: &Path,
     dry_run: bool,
     rollback_strategy: RollbackStrategy,
     auto_ingest: bool,
+    vars: std::collections::HashMap<String, String, S>,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = std::fs::metadata(experiment_path)
@@ -231,6 +234,14 @@ pub async fn cmd_run(
     let experiment = parse_experiment(&content)
         .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
 
+    // Apply template variable substitution if any --var flags were provided.
+    let experiment = if vars.is_empty() {
+        experiment
+    } else {
+        apply_vars(&experiment, &vars)
+            .with_context(|| "failed to apply template variables to experiment")?
+    };
+
     validate_experiment(&experiment)?;
 
     // Resolve configuration and secrets
@@ -244,9 +255,21 @@ pub async fn cmd_run(
 
     let executor = ProviderExecutor;
     let controls = ControlRegistry::new();
+
+    // Spawn a task that cancels the experiment if SIGINT (Ctrl-C) is received.
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let cancel_token_for_signal = cancel_token.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::warn!("SIGINT received — cancelling experiment");
+            cancel_token_for_signal.cancel();
+        }
+    });
+
     let run_config = RunConfig {
         rollback_strategy,
-        cancellation_token: None,
+        cancellation_token: Some(cancel_token),
+        parent_context: None,
     };
 
     println!("Running experiment: {}", experiment.title);
@@ -1536,6 +1559,7 @@ mod tests {
                 pause_before_s: None,
                 pause_after_s: None,
                 background: false,
+                label_selector: None,
             }],
             rollbacks: vec![],
             estimate: None,
@@ -1591,6 +1615,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await;
 
@@ -1610,6 +1635,7 @@ mod tests {
             true,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await;
 
@@ -1625,6 +1651,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await;
         assert!(result.is_err());
@@ -1641,6 +1668,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await;
         assert!(result.is_err());
@@ -1657,6 +1685,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await;
         assert!(result.is_err());
@@ -1781,6 +1810,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
 
         let executor = ProviderExecutor;
@@ -1805,6 +1835,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
 
         let executor = ProviderExecutor;
@@ -1828,6 +1859,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
 
         let executor = ProviderExecutor;
@@ -1851,6 +1883,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         };
 
         let executor = ProviderExecutor;
@@ -1898,6 +1931,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await;
         assert!(result.is_ok());
@@ -1916,6 +1950,7 @@ mod tests {
             true,
             RollbackStrategy::OnDeviation,
             true,
+            std::collections::HashMap::new(),
         )
         .await;
         assert!(result.is_ok());
@@ -2099,6 +2134,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await
         .unwrap();
@@ -2126,6 +2162,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await
         .unwrap();
@@ -2151,6 +2188,7 @@ mod tests {
             false,
             RollbackStrategy::OnDeviation,
             false,
+            std::collections::HashMap::new(),
         )
         .await
         .unwrap();

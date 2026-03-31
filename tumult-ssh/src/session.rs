@@ -3,13 +3,15 @@
 //! Provides `SshSession` for connecting to remote hosts and executing
 //! commands with stdout/stderr capture. Uses `russh` 0.58 internally.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use russh::client;
 use russh::keys::ssh_key;
+use russh::keys::ssh_key::known_hosts::KnownHosts;
+use russh::keys::ssh_key::HashAlg;
 
-use crate::config::{AuthMethod, SshConfig};
+use crate::config::{AuthMethod, HostKeyPolicy, SshConfig};
 use crate::error::SshError;
 
 /// Result of executing a remote command.
@@ -45,6 +47,8 @@ impl SshSession {
     /// Returns [`SshError::KeyPermissionsTooOpen`] if the key file has insecure permissions.
     /// Returns [`SshError::KeyParseError`] if the key file cannot be parsed.
     /// Returns [`SshError::AuthenticationFailed`] if the server rejects authentication.
+    /// Returns [`SshError::HostKeyNotFound`] if the server key is not in `known_hosts` (Verify policy).
+    /// Returns [`SshError::HostKeyMismatch`] if the server key differs from the `known_hosts` entry.
     #[tracing::instrument(skip(config), fields(host = %config.host, port = config.port))]
     pub async fn connect(config: SshConfig) -> Result<Self, SshError> {
         let auth_label = match &config.auth {
@@ -57,8 +61,12 @@ impl SshSession {
             ..Default::default()
         });
 
+        let known_hosts_path = resolve_known_hosts_path(config.known_hosts_path.as_deref());
         let handler = ClientHandler {
-            allow_unknown_hosts: config.allow_unknown_hosts,
+            host: config.host.clone(),
+            port: config.port,
+            known_hosts_path,
+            policy: config.host_key_policy.clone(),
         };
         let addr = format!("{}:{}", config.host, config.port);
 
@@ -291,6 +299,90 @@ fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// Resolve the `known_hosts` file path: use provided path or fall back to `~/.ssh/known_hosts`.
+fn resolve_known_hosts_path(override_path: Option<&Path>) -> PathBuf {
+    if let Some(p) = override_path {
+        return p.to_path_buf();
+    }
+    dirs_next::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/root"))
+        .join(".ssh")
+        .join("known_hosts")
+}
+
+/// Compute the SHA-256 fingerprint of a public key as a display string.
+///
+/// Returns a string in the form `SHA256:<base64>`.
+fn key_fingerprint(key: &ssh_key::PublicKey) -> String {
+    key.fingerprint(HashAlg::Sha256).to_string()
+}
+
+/// Build the host pattern string used in `known_hosts` for a given host and port.
+///
+/// For port 22, the pattern is just the hostname. For non-standard ports, the
+/// pattern uses the bracket notation `[host]:port`.
+fn known_hosts_host_pattern(host: &str, port: u16) -> String {
+    if port == 22 {
+        host.to_string()
+    } else {
+        format!("[{host}]:{port}")
+    }
+}
+
+/// Check whether `entry_patterns` matches the given host and port.
+///
+/// Supports plain hostname, `[host]:port` bracket notation, and simple `*`/`?` globs.
+/// Does not match hashed entries (`|1|…`) — those are silently skipped.
+fn entry_matches_host(
+    patterns: &ssh_key::known_hosts::HostPatterns,
+    host: &str,
+    port: u16,
+) -> bool {
+    let ssh_key::known_hosts::HostPatterns::Patterns(pats) = patterns else {
+        // Hashed entries cannot be matched by plain hostname lookup
+        return false;
+    };
+    let target_bracketed = format!("[{host}]:{port}");
+    for pat in pats {
+        // Negated patterns (starting with '!') count as non-matching for our use case
+        if pat.starts_with('!') {
+            continue;
+        }
+        if pat == host && port == 22 {
+            return true;
+        }
+        if pat == &target_bracketed {
+            return true;
+        }
+        // Simple glob matching: '*' matches any hostname segment
+        if glob_matches(pat, host) && port == 22 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Minimal glob matching supporting `*` (any sequence) and `?` (single char).
+fn glob_matches(pattern: &str, haystack: &str) -> bool {
+    let pat: Vec<char> = pattern.chars().collect();
+    let hay: Vec<char> = haystack.chars().collect();
+    glob_match_inner(&pat, &hay)
+}
+
+fn glob_match_inner(pat: &[char], hay: &[char]) -> bool {
+    match (pat.first(), hay.first()) {
+        (None, None) => true,
+        (Some('*'), _) => {
+            // '*' matches zero or more characters
+            glob_match_inner(&pat[1..], hay)
+                || (!hay.is_empty() && glob_match_inner(pat, &hay[1..]))
+        }
+        (Some('?'), Some(_)) => glob_match_inner(&pat[1..], &hay[1..]),
+        (Some(p), Some(h)) => p == h && glob_match_inner(&pat[1..], &hay[1..]),
+        (None, Some(_)) | (Some(_), None) => false,
+    }
+}
+
 /// Authenticate using the configured method.
 async fn authenticate(
     handle: &mut client::Handle<ClientHandler>,
@@ -388,13 +480,17 @@ async fn authenticate(
     Ok(())
 }
 
-/// Client handler for russh.
+/// Client handler for russh, implementing host key verification.
 ///
-/// By default, rejects connections to hosts with unrecognized server keys.
-/// Set `allow_unknown_hosts` to `true` to bypass host key verification
-/// (only appropriate for trusted internal networks or ephemeral instances).
+/// Supports three policies:
+/// - [`HostKeyPolicy::Verify`]: checks against `known_hosts`, rejects unknown/mismatched keys
+/// - [`HostKeyPolicy::TrustOnFirstUse`]: accepts and records first-seen keys; verifies thereafter
+/// - [`HostKeyPolicy::AcceptAny`]: bypasses verification (insecure — only for ephemeral infra)
 struct ClientHandler {
-    allow_unknown_hosts: bool,
+    host: String,
+    port: u16,
+    known_hosts_path: PathBuf,
+    policy: HostKeyPolicy,
 }
 
 impl client::Handler for ClientHandler {
@@ -402,20 +498,198 @@ impl client::Handler for ClientHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &ssh_key::PublicKey,
+        server_public_key: &ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        if self.allow_unknown_hosts {
-            tracing::warn!("accepting unverified host key (allow_unknown_hosts is enabled)");
-            Ok(true)
-        } else {
-            Err(SshError::HostKeyVerificationFailed)
+        match self.policy {
+            HostKeyPolicy::AcceptAny => {
+                tracing::warn!(
+                    host = %self.host,
+                    port = self.port,
+                    "accepting unverified host key (host_key_policy is AcceptAny)"
+                );
+                Ok(true)
+            }
+            HostKeyPolicy::Verify => verify_host_key(
+                &self.host,
+                self.port,
+                &self.known_hosts_path,
+                server_public_key,
+            ),
+            HostKeyPolicy::TrustOnFirstUse => trust_on_first_use(
+                &self.host,
+                self.port,
+                &self.known_hosts_path,
+                server_public_key,
+            ),
         }
     }
+}
+
+/// Verify a server key against the `known_hosts` file (strict verification).
+///
+/// Returns `Ok(true)` if a matching entry is found and the key matches.
+/// Returns `Err(SshError::HostKeyNotFound)` if no entry exists for the host.
+/// Returns `Err(SshError::HostKeyMismatch)` if an entry exists but the key differs.
+fn verify_host_key(
+    host: &str,
+    port: u16,
+    known_hosts_path: &Path,
+    server_key: &ssh_key::PublicKey,
+) -> Result<bool, SshError> {
+    let actual_fp = key_fingerprint(server_key);
+
+    let file_content = match std::fs::read_to_string(known_hosts_path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // No known_hosts file → treat as not found
+            return Err(SshError::HostKeyNotFound {
+                host: host.to_string(),
+                fingerprint: actual_fp,
+            });
+        }
+        Err(e) => {
+            return Err(SshError::KnownHostsIo {
+                path: known_hosts_path.display().to_string(),
+                reason: e.to_string(),
+            });
+        }
+    };
+
+    find_and_verify_entry(host, port, &file_content, &actual_fp)
+}
+
+/// Verify host key or record it on first use (TOFU policy).
+///
+/// Returns `Ok(true)` if verified or newly recorded.
+/// Returns `Err(SshError::HostKeyMismatch)` if a stored key differs from the server's key.
+fn trust_on_first_use(
+    host: &str,
+    port: u16,
+    known_hosts_path: &Path,
+    server_key: &ssh_key::PublicKey,
+) -> Result<bool, SshError> {
+    let actual_fp = key_fingerprint(server_key);
+
+    let file_content = match std::fs::read_to_string(known_hosts_path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            return Err(SshError::KnownHostsIo {
+                path: known_hosts_path.display().to_string(),
+                reason: e.to_string(),
+            });
+        }
+    };
+
+    if !file_content.is_empty() {
+        // Check if there is an existing entry for this host
+        let found = KnownHosts::new(&file_content)
+            .filter_map(Result::ok)
+            .any(|e| entry_matches_host(e.host_patterns(), host, port));
+
+        if found {
+            // Entry exists — verify strictly
+            return find_and_verify_entry(host, port, &file_content, &actual_fp);
+        }
+    }
+
+    // No entry found — add to known_hosts (TOFU)
+    tracing::info!(
+        host = %host,
+        port = port,
+        fingerprint = %actual_fp,
+        "TOFU: adding new host key to known_hosts"
+    );
+    append_known_hosts_entry(host, port, known_hosts_path, server_key)?;
+    Ok(true)
+}
+
+/// Search for a matching entry in `file_content` and verify the key.
+fn find_and_verify_entry(
+    host: &str,
+    port: u16,
+    file_content: &str,
+    actual_fp: &str,
+) -> Result<bool, SshError> {
+    for entry_result in KnownHosts::new(file_content) {
+        let Ok(entry) = entry_result else { continue };
+        if !entry_matches_host(entry.host_patterns(), host, port) {
+            continue;
+        }
+        // Found a matching entry — compare keys
+        let stored_fp = key_fingerprint(entry.public_key());
+        if stored_fp == actual_fp {
+            return Ok(true);
+        }
+        return Err(SshError::HostKeyMismatch {
+            host: host.to_string(),
+            expected_fingerprint: stored_fp,
+            actual_fingerprint: actual_fp.to_string(),
+        });
+    }
+
+    Err(SshError::HostKeyNotFound {
+        host: host.to_string(),
+        fingerprint: actual_fp.to_string(),
+    })
+}
+
+/// Append a new `known_hosts` entry for the given host and key.
+///
+/// Creates parent directories if they don't exist.
+fn append_known_hosts_entry(
+    host: &str,
+    port: u16,
+    known_hosts_path: &Path,
+    key: &ssh_key::PublicKey,
+) -> Result<(), SshError> {
+    use std::io::Write;
+
+    // Create parent directory if needed
+    if let Some(parent) = known_hosts_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| SshError::KnownHostsIo {
+                path: parent.display().to_string(),
+                reason: e.to_string(),
+            })?;
+        }
+    }
+
+    let host_pattern = known_hosts_host_pattern(host, port);
+    // PublicKey::to_string() gives "algorithm base64" without comment
+    let key_str = key.to_string();
+    let line = format!("{host_pattern} {key_str}\n");
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(known_hosts_path)
+        .map_err(|e| SshError::KnownHostsIo {
+            path: known_hosts_path.display().to_string(),
+            reason: e.to_string(),
+        })?;
+
+    file.write_all(line.as_bytes())
+        .map_err(|e| SshError::KnownHostsIo {
+            path: known_hosts_path.display().to_string(),
+            reason: e.to_string(),
+        })?;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A known ed25519 test key pair (public only needed here)
+    const TEST_KEY_1: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host";
+    // A different key for mismatch testing
+    const TEST_KEY_2: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti user@example.com";
+
+    fn parse_key(s: &str) -> ssh_key::PublicKey {
+        ssh_key::PublicKey::from_openssh(s).expect("valid test key")
+    }
 
     #[test]
     fn command_result_success_on_zero_exit() {
@@ -487,49 +761,272 @@ mod tests {
         assert_eq!(mode & 0o177, 0, "0o600 should pass the permission check");
     }
 
+    // ── Host key verification tests ───────────────────────────
+
+    /// `AcceptAny` policy: accept without consulting `known_hosts`
     #[test]
-    fn check_server_key_rejects_by_default() {
-        // Default config has allow_unknown_hosts = false, so handler should reject
+    fn check_server_key_accepts_when_accept_any() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+
         let mut handler = ClientHandler {
-            allow_unknown_hosts: false,
+            host: "testhost".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::AcceptAny,
         };
-        let key_data = russh::keys::ssh_key::PublicKey::from_openssh(
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host",
-        )
-        .unwrap();
+        let key = parse_key(TEST_KEY_1);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key_data));
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(result.is_ok(), "AcceptAny should accept");
+        assert!(result.unwrap(), "should return true");
+    }
+
+    /// Verify policy: matching key → accepted
+    #[test]
+    fn check_server_key_verifies_matching_key() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        let key = parse_key(TEST_KEY_1);
+        let fp = key_fingerprint(&key);
+
+        // Write known_hosts with matching entry
+        let entry_line = format!("testhost {}\n", key.to_string());
+        std::fs::write(&known_hosts, &entry_line).unwrap();
+
+        let mut handler = ClientHandler {
+            host: "testhost".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::Verify,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
         assert!(
-            result.is_err(),
-            "default config should reject unknown host keys"
+            result.is_ok(),
+            "Verify: matching key should be accepted (fp: {fp})"
         );
-        let err = result.unwrap_err();
+        assert!(result.unwrap());
+    }
+
+    /// Verify policy: unknown host → `HostKeyNotFound` error
+    #[test]
+    fn check_server_key_rejects_unknown_key_in_verify_mode() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        // Empty known_hosts
+        std::fs::write(&known_hosts, "").unwrap();
+
+        let mut handler = ClientHandler {
+            host: "unknown-host".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::Verify,
+        };
+        let key = parse_key(TEST_KEY_1);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(result.is_err(), "Verify: unknown host should be rejected");
         assert!(
-            matches!(err, SshError::HostKeyVerificationFailed),
-            "expected HostKeyVerificationFailed, got: {err:?}",
+            matches!(result.unwrap_err(), SshError::HostKeyNotFound { .. }),
+            "expected HostKeyNotFound"
         );
     }
 
+    /// Verify policy: key mismatch → `HostKeyMismatch` error
     #[test]
-    fn check_server_key_accepts_when_allowed() {
-        // When allow_unknown_hosts is true, handler should accept
-        let mut handler = ClientHandler {
-            allow_unknown_hosts: true,
-        };
-        let key_data = russh::keys::ssh_key::PublicKey::from_openssh(
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host",
+    fn check_server_key_rejects_mismatched_key() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+
+        // Store key 1 in known_hosts
+        let stored_key = parse_key(TEST_KEY_1);
+        std::fs::write(
+            &known_hosts,
+            format!("testhost {}\n", stored_key.to_string()),
         )
         .unwrap();
+
+        // Present key 2 as the server key
+        let server_key = parse_key(TEST_KEY_2);
+
+        let mut handler = ClientHandler {
+            host: "testhost".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::Verify,
+        };
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key_data));
-        assert!(result.is_ok(), "allow_unknown_hosts=true should accept");
-        assert!(result.unwrap(), "should return true when accepting");
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &server_key));
+        assert!(result.is_err(), "Verify: mismatched key should be rejected");
+        assert!(
+            matches!(result.unwrap_err(), SshError::HostKeyMismatch { .. }),
+            "expected HostKeyMismatch"
+        );
+    }
+
+    /// TOFU: first connection adds key to `known_hosts`
+    #[test]
+    fn trust_on_first_use_adds_new_host() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        // known_hosts does not exist yet
+
+        let key = parse_key(TEST_KEY_1);
+        let mut handler = ClientHandler {
+            host: "new-server".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts.clone(),
+            policy: HostKeyPolicy::TrustOnFirstUse,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(result.is_ok(), "TOFU: new host should be accepted");
+        assert!(result.unwrap());
+
+        // known_hosts should now exist and contain the key
+        let contents = std::fs::read_to_string(&known_hosts).unwrap();
+        assert!(
+            contents.contains("new-server"),
+            "known_hosts should contain host"
+        );
+        assert!(
+            contents.contains("ssh-ed25519"),
+            "known_hosts should contain key type"
+        );
+    }
+
+    /// TOFU: second connection verifies stored key
+    #[test]
+    fn trust_on_first_use_verifies_known_host() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+
+        let key = parse_key(TEST_KEY_1);
+
+        // Simulate first connection: write key to known_hosts
+        std::fs::write(&known_hosts, format!("known-server {}\n", key.to_string())).unwrap();
+
+        // Second connection: verify
+        let mut handler = ClientHandler {
+            host: "known-server".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::TrustOnFirstUse,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(
+            result.is_ok(),
+            "TOFU: known host with matching key should be accepted"
+        );
+        assert!(result.unwrap());
+    }
+
+    /// TOFU: mismatch on known host → `HostKeyMismatch`
+    #[test]
+    fn trust_on_first_use_rejects_mismatched_known_host() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+
+        let stored_key = parse_key(TEST_KEY_1);
+        std::fs::write(
+            &known_hosts,
+            format!("known-server {}\n", stored_key.to_string()),
+        )
+        .unwrap();
+
+        let server_key = parse_key(TEST_KEY_2);
+        let mut handler = ClientHandler {
+            host: "known-server".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::TrustOnFirstUse,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &server_key));
+        assert!(result.is_err(), "TOFU: key mismatch should be rejected");
+        assert!(
+            matches!(result.unwrap_err(), SshError::HostKeyMismatch { .. }),
+            "expected HostKeyMismatch"
+        );
+    }
+
+    /// Non-standard port uses bracket notation in `known_hosts`
+    #[test]
+    fn check_server_key_handles_non_standard_port() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        let key = parse_key(TEST_KEY_1);
+
+        // Write with bracket notation for port 2222
+        std::fs::write(
+            &known_hosts,
+            format!("[myserver]:2222 {}\n", key.to_string()),
+        )
+        .unwrap();
+
+        let mut handler = ClientHandler {
+            host: "myserver".to_string(),
+            port: 2222,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::Verify,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(
+            result.is_ok(),
+            "should accept key stored with bracket notation for non-standard port"
+        );
+    }
+
+    /// No `known_hosts` file in Verify mode → `HostKeyNotFound`
+    #[test]
+    fn check_server_key_missing_known_hosts_in_verify_mode() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("nonexistent_known_hosts");
+
+        let mut handler = ClientHandler {
+            host: "host".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::Verify,
+        };
+        let key = parse_key(TEST_KEY_1);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SshError::HostKeyNotFound { .. }
+        ));
     }
 
     #[test]
@@ -547,5 +1044,79 @@ mod tests {
             reason: "key rejected".into(),
         };
         assert!(err.to_string().contains("deploy@web-01"));
+    }
+
+    #[test]
+    fn host_key_not_found_error_includes_fingerprint() {
+        let key = parse_key(TEST_KEY_1);
+        let fp = key_fingerprint(&key);
+        let err = SshError::HostKeyNotFound {
+            host: "myhost".into(),
+            fingerprint: fp.clone(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("myhost"), "error should contain host");
+        assert!(msg.contains(&fp), "error should contain fingerprint");
+    }
+
+    #[test]
+    fn host_key_mismatch_error_includes_both_fingerprints() {
+        let err = SshError::HostKeyMismatch {
+            host: "myhost".into(),
+            expected_fingerprint: "SHA256:expected".into(),
+            actual_fingerprint: "SHA256:actual".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("myhost"));
+        assert!(msg.contains("SHA256:expected"));
+        assert!(msg.contains("SHA256:actual"));
+    }
+
+    /// Verify the old `allow_unknown_hosts=true` behaviour still works via `AcceptAny`.
+    #[test]
+    fn check_server_key_accepts_when_allowed_via_accept_any() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+
+        let mut handler = ClientHandler {
+            host: "testhost".to_string(),
+            port: 22,
+            known_hosts_path: known_hosts,
+            policy: HostKeyPolicy::AcceptAny,
+        };
+        let key = parse_key(TEST_KEY_1);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        assert!(result.is_ok(), "AcceptAny should accept");
+        assert!(result.unwrap(), "should return true when accepting");
+    }
+
+    #[test]
+    fn known_hosts_host_pattern_port_22() {
+        assert_eq!(known_hosts_host_pattern("myserver", 22), "myserver");
+    }
+
+    #[test]
+    fn known_hosts_host_pattern_nonstandard_port() {
+        assert_eq!(
+            known_hosts_host_pattern("myserver", 2222),
+            "[myserver]:2222"
+        );
+    }
+
+    #[test]
+    fn glob_matches_star() {
+        assert!(glob_matches("*.example.com", "host.example.com"));
+        assert!(!glob_matches("*.example.com", "example.com"));
+    }
+
+    #[test]
+    fn glob_matches_question_mark() {
+        assert!(glob_matches("host?", "host1"));
+        assert!(glob_matches("host?", "hosta"));
+        assert!(!glob_matches("host?", "host12"));
     }
 }

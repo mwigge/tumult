@@ -134,7 +134,7 @@ mod tests {
         instrument::record_action(&metrics, "tumult-db", "kill-connections", start, true);
         instrument::record_probe(&metrics, "tumult-http", "health-check", start, true);
         instrument::record_probe(&metrics, "tumult-http", "health-check", start, false);
-        instrument::record_deviation(&metrics);
+        instrument::record_deviation(&metrics, "integration-test-experiment");
         instrument::record_action(&metrics, "tumult-db", "restore-pool", start, true);
         instrument::record_experiment(&metrics, false);
     }
