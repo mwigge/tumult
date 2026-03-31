@@ -32,3 +32,4 @@ opentelemetry = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+indexmap = { workspace = true }

@@ -1,23 +1,40 @@
-//! Analytics backend trait — abstraction over DuckDB and ClickHouse.
+//! Analytics backend trait — abstraction over `DuckDB` and `ClickHouse`.
 //!
 //! Both backends implement [`AnalyticsBackend`], allowing the CLI and MCP
-//! to swap between embedded DuckDB and external ClickHouse transparently.
+//! to swap between embedded `DuckDB` and external `ClickHouse` transparently.
 
 use tumult_core::types::Journal;
 
 use crate::duckdb_store::StoreStats;
 use crate::error::AnalyticsError;
 
+#[doc(hidden)]
+pub mod private {
+    /// Sealed supertrait to prevent external implementations of `AnalyticsBackend`.
+    pub trait Sealed {}
+}
+
 /// Unified interface for analytics storage backends.
 ///
+/// This trait is sealed -- it cannot be implemented outside this crate.
+/// Use the provided `AnalyticsStore` (`DuckDB`) or `ClickHouseStore` backends.
+///
 /// Implemented by:
-/// - [`crate::duckdb_store::AnalyticsStore`] — embedded, zero-dependency (default)
-/// - `tumult_clickhouse::ClickHouseStore` — external, shared with SigNoz
-pub trait AnalyticsBackend {
+/// - [`crate::duckdb_store::AnalyticsStore`] -- embedded, zero-dependency (default)
+/// - `tumult_clickhouse::ClickHouseStore` -- external, shared with `SigNoz`
+pub trait AnalyticsBackend: private::Sealed {
     /// Ingest a journal. Returns true if new, false if duplicate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying store operation fails.
     fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError>;
 
     /// Ingest multiple journals, skipping duplicates. Returns count of new.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any individual journal ingestion fails.
     fn ingest_journals(&self, journals: &[Journal]) -> Result<usize, AnalyticsError> {
         let mut count = 0;
         for journal in journals {
@@ -29,23 +46,49 @@ pub trait AnalyticsBackend {
     }
 
     /// Execute a SQL query. Returns rows as stringified values.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the SQL query fails to execute.
     fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError>;
 
     /// Get column names for a SQL query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the SQL query fails to execute.
     fn query_columns(&self, sql: &str) -> Result<Vec<String>, AnalyticsError>;
 
     /// Count experiments in the store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying count query fails.
     fn experiment_count(&self) -> Result<usize, AnalyticsError>;
 
     /// Get store statistics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying statistics query fails.
     fn stats(&self) -> Result<StoreStats, AnalyticsError>;
 
     /// Purge experiments older than N days. Returns count removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the purge operation fails.
     fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError>;
 
     /// Schema version for migration tracking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the schema version cannot be read.
     fn schema_version(&self) -> Result<i64, AnalyticsError>;
 }
+
+impl private::Sealed for crate::duckdb_store::AnalyticsStore {}
 
 // Implement AnalyticsBackend for the existing DuckDB store.
 impl AnalyticsBackend for crate::duckdb_store::AnalyticsStore {

@@ -9,6 +9,7 @@ use crate::stats::{
 };
 
 /// Supported baseline methods.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum Method {
     /// Fixed threshold — no derivation needed.
@@ -22,6 +23,7 @@ pub enum Method {
 }
 
 /// Derive tolerance bounds from baseline samples using the specified method.
+#[must_use]
 pub fn derive_tolerance(samples: &[f64], method: &Method) -> BaselineBounds {
     match method {
         Method::Static { lower, upper } => BaselineBounds {
@@ -44,22 +46,29 @@ pub fn derive_tolerance(samples: &[f64], method: &Method) -> BaselineBounds {
 }
 
 /// Check if a single probe value is within tolerance.
+#[must_use]
 pub fn is_within_tolerance(value: f64, bounds: &BaselineBounds) -> bool {
     bounds.contains(value)
 }
 
 /// Check a set of post-fault samples against baseline bounds.
 /// Returns the proportion of samples within tolerance (0.0-1.0).
+#[must_use]
 pub fn compliance_ratio(samples: &[f64], bounds: &BaselineBounds) -> f64 {
     if samples.is_empty() {
         return 0.0;
     }
     let within = samples.iter().filter(|v| bounds.contains(**v)).count();
-    within as f64 / samples.len() as f64
+    // Both `within` and `samples.len()` are slice lengths; precision loss when
+    // converting usize->f64 is acceptable for this ratio computation.
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = within as f64 / samples.len() as f64;
+    ratio
 }
 
 /// Detect the recovery point — the first index where all subsequent
 /// samples are within tolerance.
+#[must_use]
 pub fn recovery_index(samples: &[f64], bounds: &BaselineBounds) -> Option<usize> {
     if samples.is_empty() {
         return None;
@@ -91,8 +100,8 @@ mod tests {
                 upper: 90.0,
             },
         );
-        assert_eq!(bounds.lower, 10.0);
-        assert_eq!(bounds.upper, 90.0);
+        assert!((bounds.lower - 10.0).abs() < f64::EPSILON);
+        assert!((bounds.upper - 90.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -105,7 +114,7 @@ mod tests {
 
     #[test]
     fn mean_stddev_widens_with_variance() {
-        let samples: Vec<f64> = (1..=100).map(|x| x as f64).collect();
+        let samples: Vec<f64> = (1..=100).map(f64::from).collect();
         let bounds = derive_tolerance(&samples, &Method::MeanStddev { sigma: 2.0 });
         assert!(bounds.lower < 50.0);
         assert!(bounds.upper > 50.0);
@@ -114,7 +123,7 @@ mod tests {
 
     #[test]
     fn percentile_derives_upper_bound() {
-        let samples: Vec<f64> = (1..=100).map(|x| x as f64).collect();
+        let samples: Vec<f64> = (1..=100).map(f64::from).collect();
         let bounds = derive_tolerance(
             &samples,
             &Method::Percentile {
@@ -122,13 +131,13 @@ mod tests {
                 multiplier: 1.2,
             },
         );
-        assert_eq!(bounds.lower, 0.0);
+        assert!(bounds.lower.abs() < f64::EPSILON);
         assert!(bounds.upper > 95.0);
     }
 
     #[test]
     fn iqr_derives_bounds() {
-        let samples: Vec<f64> = (1..=100).map(|x| x as f64).collect();
+        let samples: Vec<f64> = (1..=100).map(f64::from).collect();
         let bounds = derive_tolerance(&samples, &Method::Iqr);
         assert!(bounds.lower < 25.0);
         assert!(bounds.upper > 75.0);

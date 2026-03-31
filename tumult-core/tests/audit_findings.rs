@@ -35,8 +35,7 @@ fn validate_rejects_invalid_regex_pattern() {
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("invalid regex"),
-        "expected regex error, got: {}",
-        err
+        "expected regex error, got: {err}",
     );
 }
 

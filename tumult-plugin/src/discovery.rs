@@ -25,6 +25,11 @@ pub enum DiscoveryError {
 /// Discover script plugins from a single directory.
 ///
 /// Each subdirectory containing a `plugin.toon` file is treated as a plugin.
+///
+/// # Errors
+///
+/// Returns [`DiscoveryError::ReadDir`] if the directory cannot be read.
+/// Returns [`DiscoveryError::ManifestParse`] if a `plugin.toon` file is malformed.
 pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
     let mut plugins = Vec::new();
 
@@ -43,9 +48,8 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
         }
 
         // Ensure resolved path stays within plugin directory
-        let canonical_path = match std::fs::canonicalize(&path) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(canonical_path) = std::fs::canonicalize(&path) else {
+            continue;
         };
         if !canonical_path.starts_with(&canonical_dir) {
             continue; // symlink escape attempt
@@ -74,9 +78,32 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
     Ok(plugins)
 }
 
+/// Configuration for plugin discovery paths.
+#[derive(Debug, Clone, Default)]
+pub struct PluginDiscoveryConfig {
+    /// Additional plugin search paths (prepended to defaults).
+    pub plugin_paths: Vec<PathBuf>,
+}
+
 /// Build the list of plugin search paths in discovery order.
+#[must_use]
 pub fn plugin_search_paths() -> Vec<PathBuf> {
+    plugin_search_paths_with_config(&PluginDiscoveryConfig::default())
+}
+
+/// Build the list of plugin search paths with explicit config.
+///
+/// Discovery order:
+/// 1. Paths from `config.plugin_paths`
+/// 2. `./plugins/` (local to experiment)
+/// 3. `~/.tumult/plugins/` (user-global)
+/// 4. `TUMULT_PLUGIN_PATH` env var (colon-separated)
+#[must_use]
+pub fn plugin_search_paths_with_config(config: &PluginDiscoveryConfig) -> Vec<PathBuf> {
     let mut paths = Vec::new();
+
+    // 0. Explicit config paths
+    paths.extend(config.plugin_paths.iter().cloned());
 
     // 1. Local ./plugins/
     paths.push(PathBuf::from("./plugins"));
@@ -99,9 +126,26 @@ pub fn plugin_search_paths() -> Vec<PathBuf> {
 }
 
 /// Discover all script plugins from all search paths.
+///
+/// # Errors
+///
+/// Returns [`DiscoveryError`] if any search path cannot be read or contains a
+/// malformed manifest.
 pub fn discover_all_plugins() -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
+    discover_all_plugins_with_config(&PluginDiscoveryConfig::default())
+}
+
+/// Discover all script plugins using explicit config.
+///
+/// # Errors
+///
+/// Returns [`DiscoveryError`] if any search path cannot be read or contains a
+/// malformed manifest.
+pub fn discover_all_plugins_with_config(
+    config: &PluginDiscoveryConfig,
+) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
     let mut all = Vec::new();
-    for path in plugin_search_paths() {
+    for path in plugin_search_paths_with_config(config) {
         let found = discover_plugins_in_dir(&path)?;
         all.extend(found);
     }
@@ -230,5 +274,39 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         all.retain(|p| seen.insert(p.name.clone()));
         assert_eq!(all.len(), 1);
+    }
+
+    // ── PluginDiscoveryConfig ─────────────────────────────────
+
+    #[test]
+    fn config_paths_are_searched_first() {
+        let dir = TempDir::new().unwrap();
+        write_manifest(
+            dir.path(),
+            "tumult-custom",
+            &sample_manifest("tumult-custom"),
+        );
+
+        let config = PluginDiscoveryConfig {
+            plugin_paths: vec![dir.path().to_path_buf()],
+        };
+        let paths = plugin_search_paths_with_config(&config);
+        assert_eq!(paths[0], dir.path().to_path_buf());
+    }
+
+    #[test]
+    fn discover_with_config_finds_plugins() {
+        let dir = TempDir::new().unwrap();
+        write_manifest(
+            dir.path(),
+            "tumult-custom",
+            &sample_manifest("tumult-custom"),
+        );
+
+        let config = PluginDiscoveryConfig {
+            plugin_paths: vec![dir.path().to_path_buf()],
+        };
+        let plugins = discover_all_plugins_with_config(&config).unwrap();
+        assert!(plugins.iter().any(|p| p.name == "tumult-custom"));
     }
 }

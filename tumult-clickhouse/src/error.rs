@@ -1,4 +1,4 @@
-//! ClickHouse backend errors.
+//! `ClickHouse` backend errors.
 
 use thiserror::Error;
 
@@ -16,6 +16,6 @@ pub enum ClickHouseError {
 
 impl From<ClickHouseError> for tumult_analytics::AnalyticsError {
     fn from(e: ClickHouseError) -> Self {
-        tumult_analytics::AnalyticsError::Io(std::io::Error::other(e.to_string()))
+        tumult_analytics::AnalyticsError::ClickHouse(e.to_string())
     }
 }

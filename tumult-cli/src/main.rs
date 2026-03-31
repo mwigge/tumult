@@ -16,13 +16,19 @@ struct Cli {
     command: Commands,
 }
 
-/// Maps to tumult_core::execution::RollbackStrategy
+/// Maps to `tumult_core::execution::RollbackStrategy`
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum RollbackStrategy {
     Always,
     #[value(alias = "deviated")]
     OnDeviation,
     Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+enum OutputFormat {
+    /// Print journal as JSON to stdout
+    Json,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
@@ -84,6 +90,9 @@ enum Commands {
         /// Skip auto-ingestion into persistent analytics store
         #[arg(long)]
         no_ingest: bool,
+        /// Output format for journal (human-readable summary or JSON to stdout)
+        #[arg(long, value_enum)]
+        output_format: Option<OutputFormat>,
     },
     /// Validate experiment syntax and plugin references
     Validate {
@@ -181,11 +190,12 @@ enum StoreAction {
     },
     /// Show store file path
     Path,
-    /// Migrate data from DuckDB to ClickHouse
+    /// Migrate data from `DuckDB` to `ClickHouse`
     Migrate,
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
     // Initialize OpenTelemetry from environment
     let otel_config = tumult_otel::config::TelemetryConfig::from_env();
@@ -201,6 +211,7 @@ async fn main() -> anyhow::Result<()> {
             rollback_strategy,
             baseline_mode: _,
             no_ingest,
+            output_format,
         } => {
             let strategy = match rollback_strategy {
                 RollbackStrategy::Always => tumult_core::execution::RollbackStrategy::Always,
@@ -209,7 +220,21 @@ async fn main() -> anyhow::Result<()> {
                 }
                 RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
             };
-            commands::cmd_run(&experiment, &journal_path, dry_run, strategy, !no_ingest)?;
+            commands::cmd_run(&experiment, &journal_path, dry_run, strategy, !no_ingest).await?;
+            // If --output-format json was specified, print the journal as JSON to stdout
+            if matches!(output_format, Some(OutputFormat::Json)) {
+                if let Ok(content) = std::fs::read_to_string(&journal_path) {
+                    if let Ok(journal) =
+                        toon_format::decode_default::<tumult_core::types::Journal>(&content)
+                    {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&journal)
+                                .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}")),
+                        );
+                    }
+                }
+            }
         }
         Commands::Validate { experiment } => {
             commands::cmd_validate(&experiment)?;
@@ -273,7 +298,7 @@ async fn main() -> anyhow::Result<()> {
             StoreAction::Backup { output } => commands::cmd_store_backup(&output)?,
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
-            StoreAction::Migrate => commands::cmd_store_migrate()?,
+            StoreAction::Migrate => commands::cmd_store_migrate().await?,
         },
     }
 
@@ -329,6 +354,7 @@ mod tests {
             dry_run,
             rollback_strategy,
             baseline_mode,
+            output_format,
             ..
         } = cli.command
         else {
@@ -339,6 +365,7 @@ mod tests {
         assert!(!dry_run);
         assert_eq!(rollback_strategy, RollbackStrategy::OnDeviation);
         assert_eq!(baseline_mode, BaselineMode::Full);
+        assert!(output_format.is_none());
     }
 
     #[test]
@@ -720,6 +747,22 @@ mod tests {
             panic!("expected Run command");
         };
         assert!(!no_ingest);
+    }
+
+    #[test]
+    fn parse_run_output_format_json() {
+        let cli =
+            Cli::try_parse_from(["tumult", "run", "exp.toon", "--output-format", "json"]).unwrap();
+        let Commands::Run { output_format, .. } = cli.command else {
+            panic!("expected Run command");
+        };
+        assert_eq!(output_format, Some(OutputFormat::Json));
+    }
+
+    #[test]
+    fn parse_run_invalid_output_format_is_error() {
+        let result = Cli::try_parse_from(["tumult", "run", "exp.toon", "--output-format", "xml"]);
+        assert!(result.is_err());
     }
 
     // ── Import ────────────────────────────────────────────────

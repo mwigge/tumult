@@ -1,6 +1,6 @@
 //! Method and rollback execution logic.
 
-use crate::types::{Activity, ActivityResult, ActivityStatus, ActivityType};
+use crate::types::{Activity, ActivityResult, ActivityStatus, ActivityType, SpanId, TraceId};
 
 use thiserror::Error;
 
@@ -24,6 +24,7 @@ pub enum RollbackStrategy {
 }
 
 /// Determine if rollbacks should execute given the strategy and experiment outcome.
+#[must_use]
 pub fn should_rollback(strategy: &RollbackStrategy, deviated: bool) -> bool {
     match strategy {
         RollbackStrategy::Always => true,
@@ -32,7 +33,7 @@ pub fn should_rollback(strategy: &RollbackStrategy, deviated: bool) -> bool {
     }
 }
 
-/// Parameters for creating an ActivityResult.
+/// Parameters for creating an `ActivityResult`.
 pub struct ResultParams<'a> {
     pub activity: &'a Activity,
     pub started_at_ns: i64,
@@ -40,11 +41,12 @@ pub struct ResultParams<'a> {
     pub success: bool,
     pub output: Option<String>,
     pub error: Option<String>,
-    pub trace_id: String,
-    pub span_id: String,
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
 }
 
-/// Create an ActivityResult from execution outcome.
+/// Create an `ActivityResult` from execution outcome.
+#[must_use]
 pub fn make_result(params: ResultParams<'_>) -> ActivityResult {
     ActivityResult {
         name: params.activity.name.clone(),
@@ -64,6 +66,7 @@ pub fn make_result(params: ResultParams<'_>) -> ActivityResult {
 }
 
 /// Check if all activity results succeeded.
+#[must_use]
 pub fn all_succeeded(results: &[ActivityResult]) -> bool {
     !results.is_empty()
         && results
@@ -72,6 +75,7 @@ pub fn all_succeeded(results: &[ActivityResult]) -> bool {
 }
 
 /// Count activities by type in a method.
+#[must_use]
 pub fn count_by_type(activities: &[Activity], activity_type: &ActivityType) -> usize {
     activities
         .iter()
@@ -80,6 +84,7 @@ pub fn count_by_type(activities: &[Activity], activity_type: &ActivityType) -> u
 }
 
 /// Separate method steps into sequential and background activities.
+#[must_use]
 pub fn partition_background(activities: &[Activity]) -> (Vec<&Activity>, Vec<&Activity>) {
     let mut sequential = Vec::new();
     let mut background = Vec::new();
@@ -160,7 +165,7 @@ mod tests {
         let activity = test_action("kill-pod", false);
         let result = make_result(ResultParams {
             activity: &activity,
-            started_at_ns: 1774980135000000000,
+            started_at_ns: 1_774_980_135_000_000_000,
             duration_ms: 342,
             success: true,
             output: Some("done".into()),
@@ -178,7 +183,7 @@ mod tests {
         let activity = test_action("kill-pod", false);
         let result = make_result(ResultParams {
             activity: &activity,
-            started_at_ns: 1774980135000000000,
+            started_at_ns: 1_774_980_135_000_000_000,
             duration_ms: 500,
             success: false,
             output: None,
