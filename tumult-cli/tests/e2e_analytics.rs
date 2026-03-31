@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
+
+use indexmap::IndexMap;
 use tempfile::TempDir;
 use tumult_core::types::*;
 
@@ -20,11 +22,12 @@ fn e2e_run_analyze_export() {
     std::fs::set_permissions(&action_script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
     let experiment = Experiment {
+        version: "v1".into(),
         title: "Analytics E2E test".into(),
         description: Some("Validates DuckDB analytics pipeline".into()),
         tags: vec!["e2e".into(), "analytics".into()],
-        configuration: HashMap::new(),
-        secrets: HashMap::new(),
+        configuration: IndexMap::new(),
+        secrets: IndexMap::new(),
         controls: vec![],
         steady_state_hypothesis: Some(Hypothesis {
             title: "Probe returns 200".into(),

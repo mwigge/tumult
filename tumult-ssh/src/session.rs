@@ -35,6 +35,7 @@ pub struct SshSession {
 
 impl SshSession {
     /// Connect to a remote host using the provided configuration.
+    #[tracing::instrument(skip(config), fields(host = %config.host, port = config.port))]
     pub async fn connect(config: SshConfig) -> Result<Self, SshError> {
         let auth_label = match &config.auth {
             crate::config::AuthMethod::Key { .. } => "key",
@@ -74,6 +75,7 @@ impl SshSession {
     }
 
     /// Execute a command on the remote host.
+    #[tracing::instrument(skip(self), fields(command_preview = &command[..command.len().min(64)]))]
     pub async fn execute(&self, command: &str) -> Result<CommandResult, SshError> {
         let _span = crate::telemetry::begin_execute(
             command,
@@ -166,6 +168,7 @@ impl SshSession {
     ///
     /// Uses `cat > path` on the remote end. Requires a POSIX shell.
     /// The file is written with mode 755 (executable).
+    #[tracing::instrument(skip(self), fields(remote_path = %remote_path))]
     pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
         let file_size = tokio::fs::metadata(local_path)
             .await

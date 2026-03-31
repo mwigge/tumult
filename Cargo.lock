@@ -5855,6 +5855,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "indexmap",
  "opentelemetry",
  "serde_json",
  "tempfile",

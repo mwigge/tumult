@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 
+use indexmap::IndexMap;
 use tempfile::TempDir;
 use tumult_core::types::*;
 
@@ -43,11 +44,12 @@ fn setup_script_plugin(dir: &std::path::Path) {
 /// Create an experiment that uses process providers (shell scripts).
 fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
     Experiment {
+        version: "v1".into(),
         title: "E2E script plugin test".into(),
         description: Some("Validates full lifecycle with script-based activities".into()),
         tags: vec!["e2e".into(), "script".into()],
-        configuration: HashMap::new(),
-        secrets: HashMap::new(),
+        configuration: IndexMap::new(),
+        secrets: IndexMap::new(),
         controls: vec![],
         steady_state_hypothesis: Some(Hypothesis {
             title: "Probe returns 200".into(),

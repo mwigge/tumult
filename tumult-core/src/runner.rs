@@ -83,6 +83,7 @@ impl Default for RunConfig {
 /// use tumult_core::controls::ControlRegistry;
 /// use tumult_core::types::*;
 /// use std::collections::HashMap;
+/// use indexmap::IndexMap;
 ///
 /// // A mock executor that always succeeds
 /// struct MockExecutor;
@@ -98,11 +99,12 @@ impl Default for RunConfig {
 /// }
 ///
 /// let experiment = Experiment {
+///     version: "v1".into(),
 ///     title: "demo".into(),
 ///     description: None,
 ///     tags: vec![],
-///     configuration: HashMap::new(),
-///     secrets: HashMap::new(),
+///     configuration: IndexMap::new(),
+///     secrets: IndexMap::new(),
 ///     controls: vec![],
 ///     steady_state_hypothesis: None,
 ///     method: vec![Activity {
@@ -699,6 +701,7 @@ fn epoch_nanos_now() -> i64 {
 mod tests {
     use super::*;
     use crate::controls::ControlRegistry;
+    use indexmap::IndexMap;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
@@ -820,11 +823,12 @@ mod tests {
 
     fn minimal_experiment() -> Experiment {
         Experiment {
+            version: "v1".into(),
             title: "Test experiment".into(),
             description: None,
             tags: vec![],
-            configuration: HashMap::new(),
-            secrets: HashMap::new(),
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![test_action("action-1")],

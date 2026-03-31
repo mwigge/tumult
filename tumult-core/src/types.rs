@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 // ── Enums ──────────────────────────────────────────────────────
@@ -213,6 +214,7 @@ impl Default for Activity {
 // ── Hypothesis ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Hypothesis {
     pub title: String,
     pub probes: Vec<Activity>,
@@ -221,6 +223,7 @@ pub struct Hypothesis {
 // ── Control ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Control {
     pub name: String,
     pub provider: Provider,
@@ -229,6 +232,7 @@ pub struct Control {
 // ── Estimate (Phase 0) ────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Estimate {
     pub expected_outcome: ExpectedOutcome,
     pub expected_recovery_s: Option<f64>,
@@ -242,6 +246,7 @@ pub struct Estimate {
 // ── Baseline Config (Phase 1) ──────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BaselineConfig {
     pub duration_s: f64,
     pub warmup_s: Option<f64>,
@@ -254,6 +259,7 @@ pub struct BaselineConfig {
 // ── Load Config ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LoadConfig {
     pub tool: LoadTool,
     pub script: PathBuf,
@@ -265,6 +271,7 @@ pub struct LoadConfig {
 // ── Regulatory Mapping ─────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegulatoryRequirement {
     pub id: String,
     pub description: String,
@@ -272,6 +279,7 @@ pub struct RegulatoryRequirement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegulatoryMapping {
     pub frameworks: Vec<String>,
     pub requirements: Vec<RegulatoryRequirement>,
@@ -279,9 +287,11 @@ pub struct RegulatoryMapping {
 
 // ── Experiment (the top-level definition) ──────────────────────
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Experiment {
+    #[serde(default = "default_version")]
+    pub version: String,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -289,9 +299,9 @@ pub struct Experiment {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub configuration: HashMap<String, ConfigValue>,
+    pub configuration: IndexMap<String, ConfigValue>,
     #[serde(default)]
-    pub secrets: HashMap<String, HashMap<String, SecretValue>>,
+    pub secrets: IndexMap<String, IndexMap<String, SecretValue>>,
     #[serde(default)]
     pub controls: Vec<Control>,
     #[serde(default)]
@@ -308,6 +318,31 @@ pub struct Experiment {
     pub load: Option<LoadConfig>,
     #[serde(default)]
     pub regulatory: Option<RegulatoryMapping>,
+}
+
+impl Default for Experiment {
+    fn default() -> Self {
+        Self {
+            version: default_version(),
+            title: String::new(),
+            description: None,
+            tags: vec![],
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
+            controls: vec![],
+            steady_state_hypothesis: None,
+            method: vec![],
+            rollbacks: vec![],
+            estimate: None,
+            baseline: None,
+            load: None,
+            regulatory: None,
+        }
+    }
+}
+
+fn default_version() -> String {
+    "v1".to_string()
 }
 
 // ── Enums for result phases ─────────────────────────────────────
@@ -498,16 +533,17 @@ mod tests {
 
     fn build_sample_experiment() -> Experiment {
         Experiment {
+            version: "v1".into(),
             title: "Database failover validates automatic reconnection".into(),
             description: Some("Kill PostgreSQL primary and verify app reconnects".into()),
             tags: vec!["database".into(), "resilience".into()],
-            configuration: HashMap::from([(
+            configuration: IndexMap::from([(
                 "db_host".into(),
                 ConfigValue::Env {
                     key: "DATABASE_HOST".into(),
                 },
             )]),
-            secrets: HashMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: Some(Hypothesis {
                 title: "Application responds healthy".into(),
@@ -959,11 +995,12 @@ mod tests {
     #[test]
     fn experiment_minimal_round_trips() {
         let exp = Experiment {
+            version: "v1".into(),
             title: "Database failover test".into(),
             description: None,
             tags: vec!["database".into(), "resilience".into()],
-            configuration: HashMap::new(),
-            secrets: HashMap::new(),
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![],
