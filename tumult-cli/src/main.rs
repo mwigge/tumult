@@ -93,6 +93,9 @@ enum Commands {
         /// Output format for journal (human-readable summary or JSON to stdout)
         #[arg(long, value_enum)]
         output_format: Option<OutputFormat>,
+        /// Template variable substitution: KEY=VALUE (may be repeated)
+        #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
+        vars: Vec<String>,
     },
     /// Validate experiment syntax and plugin references
     Validate {
@@ -194,6 +197,22 @@ enum StoreAction {
     Migrate,
 }
 
+/// Parse `--var KEY=VALUE` arguments into a `HashMap`.
+///
+/// # Errors
+///
+/// Returns an error if any argument does not contain `=`.
+fn parse_var_args(vars: &[String]) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    let mut map = std::collections::HashMap::new();
+    for entry in vars {
+        let (key, value) = entry.split_once('=').ok_or_else(|| {
+            anyhow::anyhow!("--var argument must be in KEY=VALUE format, got: {entry:?}")
+        })?;
+        map.insert(key.to_string(), value.to_string());
+    }
+    Ok(map)
+}
+
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
@@ -212,6 +231,7 @@ async fn main() -> anyhow::Result<()> {
             baseline_mode: _,
             no_ingest,
             output_format,
+            vars,
         } => {
             let strategy = match rollback_strategy {
                 RollbackStrategy::Always => tumult_core::execution::RollbackStrategy::Always,
@@ -220,7 +240,16 @@ async fn main() -> anyhow::Result<()> {
                 }
                 RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
             };
-            commands::cmd_run(&experiment, &journal_path, dry_run, strategy, !no_ingest).await?;
+            let var_map = parse_var_args(&vars)?;
+            commands::cmd_run(
+                &experiment,
+                &journal_path,
+                dry_run,
+                strategy,
+                !no_ingest,
+                var_map,
+            )
+            .await?;
             // If --output-format json was specified, print the journal as JSON to stdout
             if matches!(output_format, Some(OutputFormat::Json)) {
                 if let Ok(content) = std::fs::read_to_string(&journal_path) {

@@ -35,6 +35,27 @@ pub struct StoreStats {
 ///
 /// **Not thread-safe.** Each instance holds a single `DuckDB` connection.
 /// For concurrent access, wrap in `Arc<Mutex<AnalyticsStore>>`.
+///
+/// # Security
+///
+/// `DuckDB` does not encrypt data at rest by default. The database file at
+/// `~/.tumult/analytics.duckdb` is stored in plaintext on disk. For
+/// environments where experiment data is sensitive, place the store on an
+/// encrypted volume:
+///
+/// - **Linux**: LUKS full-disk or directory encryption (`fscrypt`, `ecryptfs`)
+/// - **macOS**: `FileVault 2` (whole-disk) or an encrypted APFS volume
+/// - **Windows**: `BitLocker` or an encrypted home directory
+///
+/// The store directory is automatically created with mode `0o700` (owner
+/// read/write/execute only) by [`AnalyticsStore::open`], limiting access to
+/// the process owner. However, directory permissions are not a substitute
+/// for encryption — a privileged user or physical attacker can still access
+/// the file without encryption.
+///
+/// Use the `TUMULT_STORE_PATH` environment variable to redirect the persistent
+/// store to a path on an encrypted volume when the default location is not
+/// suitable.
 pub struct AnalyticsStore {
     conn: Connection,
 }

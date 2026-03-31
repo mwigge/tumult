@@ -78,11 +78,18 @@ pub fn validate_experiment(experiment_path: &str) -> Result<String, String> {
 
 /// Run an experiment and return the journal as TOON.
 ///
+/// `parent_context` is an optional `OTel` context to link the root
+/// `resilience.experiment` span to an upstream caller (e.g. an MCP tool span).
+///
 /// # Errors
 ///
 /// Returns an error string if the file cannot be read, parsed, validated,
 /// executed, or encoded.
-pub fn run_experiment(experiment_path: &str, rollback_strategy: &str) -> Result<String, String> {
+pub fn run_experiment(
+    experiment_path: &str,
+    rollback_strategy: &str,
+    parent_context: Option<opentelemetry::Context>,
+) -> Result<String, String> {
     use std::sync::Arc;
     use tumult_core::controls::ControlRegistry;
     use tumult_core::engine::{parse_experiment, validate_experiment};
@@ -106,6 +113,7 @@ pub fn run_experiment(experiment_path: &str, rollback_strategy: &str) -> Result<
     let config = RunConfig {
         rollback_strategy: strategy,
         cancellation_token: None,
+        parent_context,
     };
 
     let journal =
@@ -420,6 +428,105 @@ pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, Strin
     Ok(output)
 }
 
+/// List all `.toon` experiment files found recursively under `search_root`.
+///
+/// Each result line contains the file name, relative path, and the `title`
+/// field parsed from the experiment. Files that cannot be parsed are skipped.
+///
+/// # Errors
+///
+/// Returns an error string if the `search_root` directory cannot be read.
+pub fn list_experiments(search_root: &str) -> Result<String, String> {
+    let root = Path::new(search_root);
+    let mut results: Vec<String> = Vec::new();
+
+    collect_toon_files(root, root, &mut results)?;
+
+    if results.is_empty() {
+        return Ok("No experiment files found.".to_string());
+    }
+
+    let count = results.len();
+    let mut output = format!("Experiments: {count}\n");
+    for line in &results {
+        output += line;
+        output += "\n";
+    }
+    Ok(output)
+}
+
+/// Recursively collect `.toon` experiment entries under `dir`.
+fn collect_toon_files(base: &Path, dir: &Path, results: &mut Vec<String>) -> Result<(), String> {
+    let read_dir =
+        std::fs::read_dir(dir).map_err(|e| format!("dir error reading {}: {e}", dir.display()))?;
+
+    for entry in read_dir {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            // Recurse, but ignore errors from subdirectories (permissions etc.)
+            let _ = collect_toon_files(base, &path, results);
+            continue;
+        }
+
+        if path.extension().and_then(|e| e.to_str()) != Some("toon") {
+            continue;
+        }
+
+        // Try to extract the title field; skip files that aren't experiments.
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+
+        // Quick parse: look for `title:` line (TOON format) or JSON/YAML title key.
+        let title = extract_title(&content);
+        let Some(title) = title else { continue };
+
+        let rel = path
+            .strip_prefix(base)
+            .map_or_else(|_| path.display().to_string(), |p| p.display().to_string());
+
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+
+        results.push(format!("  name={name}  path={rel}  title={title}"));
+    }
+
+    Ok(())
+}
+
+/// Extract the `title` field from a TOON file's raw text content.
+///
+/// Supports both `title: value` (TOON/YAML) and `"title": "value"` (JSON) formats.
+/// Returns `None` if no title field is found or the value is empty.
+fn extract_title(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // TOON / YAML style: `title: My experiment`
+        if let Some(rest) = trimmed.strip_prefix("title:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+        // JSON style: `"title": "My experiment"`
+        if let Some(rest) = trimmed.strip_prefix("\"title\":") {
+            let value = rest
+                .trim()
+                .trim_matches('"')
+                .trim_matches(',')
+                .trim_matches('"');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,6 +548,7 @@ mod tests {
                 pause_before_s: None,
                 pause_after_s: None,
                 background: false,
+                label_selector: None,
             }],
             ..Default::default()
         };
@@ -482,7 +590,7 @@ mod tests {
     async fn run_valid_experiment_returns_journal() {
         let dir = TempDir::new().unwrap();
         let path = write_valid_experiment(dir.path());
-        let result = run_experiment(&path, "on-deviation");
+        let result = run_experiment(&path, "on-deviation", None);
         assert!(result.is_ok());
         let journal = result.unwrap();
         assert!(journal.contains("MCP test experiment"));
@@ -490,7 +598,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn run_nonexistent_returns_error() {
-        let result = run_experiment("/nonexistent.toon", "always");
+        let result = run_experiment("/nonexistent.toon", "always", None);
         assert!(result.is_err());
     }
 
@@ -502,7 +610,7 @@ mod tests {
         let path = write_valid_experiment(dir.path());
 
         // First run the experiment to get a journal
-        let journal_toon = run_experiment(&path, "always").unwrap();
+        let journal_toon = run_experiment(&path, "always", None).unwrap();
         let journal_path = dir.path().join("journal.toon");
         std::fs::write(&journal_path, journal_toon).unwrap();
 
@@ -603,7 +711,7 @@ mod tests {
         let exp_path = write_valid_experiment(dir.path());
 
         // Run experiment to generate a journal
-        let journal_toon = run_experiment(&exp_path, "always").unwrap();
+        let journal_toon = run_experiment(&exp_path, "always", None).unwrap();
         let journal_path = dir.path().join("journal.toon");
         std::fs::write(&journal_path, journal_toon).unwrap();
 
@@ -768,7 +876,7 @@ mod tests {
         {
             let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
             let exp_path = write_valid_experiment(dir.path());
-            let journal_toon = run_experiment(&exp_path, "always").unwrap();
+            let journal_toon = run_experiment(&exp_path, "always", None).unwrap();
             // Write journal to file, then read back via tumult_core
             let journal_file = dir.path().join("journal.toon");
             std::fs::write(&journal_file, &journal_toon).unwrap();
@@ -783,5 +891,73 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert!(output.contains("1 row(s)"));
+    }
+
+    // ── list_experiments ─────────────────────────────────────
+
+    #[test]
+    fn list_experiments_finds_toon_files() {
+        let dir = TempDir::new().unwrap();
+
+        // Write two experiment files with title fields.
+        let exp1 = "title: First Experiment\nmethod[0]:\n";
+        let exp2 = "title: Second Experiment\nmethod[0]:\n";
+        // A journal file — no title field so it should NOT appear.
+        let not_exp = "status: completed\n";
+        // A non-.toon file — must be ignored.
+        let not_toon = "title: ignored\n";
+
+        std::fs::write(dir.path().join("first.toon"), exp1).unwrap();
+        std::fs::write(dir.path().join("second.toon"), exp2).unwrap();
+        std::fs::write(dir.path().join("journal.toon"), not_exp).unwrap();
+        std::fs::write(dir.path().join("readme.md"), not_toon).unwrap();
+
+        let result = list_experiments(dir.path().to_str().unwrap());
+        assert!(result.is_ok(), "list_experiments should succeed");
+        let output = result.unwrap();
+
+        assert!(output.contains("First Experiment"), "must include first");
+        assert!(output.contains("Second Experiment"), "must include second");
+        assert!(
+            !output.contains("readme.md"),
+            "non-.toon file must be excluded"
+        );
+        // Count: exactly 2 experiments found.
+        assert!(output.contains("Experiments: 2"), "count must be 2");
+    }
+
+    #[test]
+    fn list_experiments_empty_dir() {
+        let dir = TempDir::new().unwrap();
+        let result = list_experiments(dir.path().to_str().unwrap());
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("No experiment files found."));
+    }
+
+    #[test]
+    fn list_experiments_skips_toon_without_title() {
+        let dir = TempDir::new().unwrap();
+        // File with no title field is skipped.
+        std::fs::write(dir.path().join("no_title.toon"), "status: done\n").unwrap();
+        let result = list_experiments(dir.path().to_str().unwrap());
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("No experiment files found."));
+    }
+
+    #[test]
+    fn list_experiments_recurses_subdirectories() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("deep.toon"), "title: Deep Experiment\n").unwrap();
+
+        let result = list_experiments(dir.path().to_str().unwrap());
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(
+            output.contains("Deep Experiment"),
+            "must recurse into subdirectory"
+        );
     }
 }

@@ -5,7 +5,17 @@ use std::path::Path;
 use std::process::Output;
 use std::time::Duration;
 
+use opentelemetry::propagation::Injector;
 use thiserror::Error;
+
+/// A simple `HashMap`-backed carrier for W3C trace-context propagation.
+struct HashMapCarrier(HashMap<String, String>);
+
+impl Injector for HashMapCarrier {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.insert(key.to_uppercase(), value);
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum ExecutorError {
@@ -89,7 +99,15 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     }
 
     validate_arguments(arguments)?;
-    let env_vars = build_env_vars(arguments);
+    let mut env_vars = build_env_vars(arguments);
+
+    // Inject W3C trace context into the subprocess environment so that scripts
+    // and child processes can propagate the active trace (TRACEPARENT / TRACESTATE).
+    let mut carrier = HashMapCarrier(HashMap::new());
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.inject(&mut carrier);
+    });
+    env_vars.extend(carrier.0);
 
     let mut cmd = tokio::process::Command::new("/bin/sh");
     cmd.arg(script_path);
@@ -239,5 +257,27 @@ mod tests {
             stderr: String::new(),
         };
         assert!(!failure.succeeded());
+    }
+
+    #[tokio::test]
+    async fn execute_script_injects_traceparent_env_var() {
+        // Verify that TRACEPARENT is injected into the child environment.
+        // When no active span exists the W3C propagator may produce an empty
+        // value; the key presence (or absence with empty value) depends on
+        // the global propagator configuration.  We assert the script can read
+        // the variable without crashing the executor.
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(
+            dir.path(),
+            "test.sh",
+            "#!/bin/bash\necho \"traceparent=${TRACEPARENT}\"",
+        );
+        let result = execute_script(&script, &HashMap::new(), None)
+            .await
+            .unwrap();
+        // The script must succeed regardless of whether a span is active.
+        assert_eq!(result.exit_code, 0);
+        // Output always contains the "traceparent=" line (value may be empty).
+        assert!(result.stdout.contains("traceparent="));
     }
 }

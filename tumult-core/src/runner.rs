@@ -62,6 +62,10 @@ pub struct RunConfig {
     /// Optional cancellation token. When cancelled, the runner returns
     /// `ExperimentStatus::Interrupted` before executing the next activity.
     pub cancellation_token: Option<CancellationToken>,
+    /// Optional parent OpenTelemetry context. When provided, the root
+    /// `resilience.experiment` span is created as a child of this context,
+    /// enabling cross-service trace linking (e.g. from an MCP tool span).
+    pub parent_context: Option<opentelemetry::Context>,
 }
 
 impl Default for RunConfig {
@@ -69,6 +73,7 @@ impl Default for RunConfig {
         Self {
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: None,
+            parent_context: None,
         }
     }
 }
@@ -108,15 +113,36 @@ pub fn run_experiment(
     let started_at_ns = epoch_nanos_now();
     let experiment_id = uuid::Uuid::new_v4().to_string();
 
+    // Structured audit log: experiment start.  Fields are consumed by SIEM
+    // pipelines and audit tooling for compliance / change traceability.
+    let audit_user = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    tracing::info!(
+        experiment_id = %experiment_id,
+        experiment_title = %experiment.title,
+        user = %audit_user,
+        started_at_ns = started_at_ns,
+        "experiment.started"
+    );
+
     // -- Root span: resilience.experiment wraps the entire lifecycle.
     let tracer = opentelemetry::global::tracer(TRACER_NAME);
-    let exp_span = tracer
-        .span_builder("resilience.experiment")
-        .with_attributes(vec![
-            KeyValue::new("resilience.experiment.title", experiment.title.clone()),
-            KeyValue::new("resilience.experiment.id", experiment_id.clone()),
-        ])
-        .start(&tracer);
+    let exp_span = {
+        let builder = tracer
+            .span_builder("resilience.experiment")
+            .with_attributes(vec![
+                KeyValue::new("resilience.experiment.title", experiment.title.clone()),
+                KeyValue::new("resilience.experiment.id", experiment_id.clone()),
+            ]);
+        // If a parent context was provided (e.g. from an MCP tool span), use it
+        // so the experiment span is linked into the caller's trace.
+        if let Some(ref parent_cx) = config.parent_context {
+            builder.start_with_context(&tracer, parent_cx)
+        } else {
+            builder.start(&tracer)
+        }
+    };
     let exp_cx = opentelemetry::Context::current_with_span(exp_span);
     let _exp_guard = exp_cx.attach();
 
@@ -322,6 +348,17 @@ pub fn run_experiment(
         .iter()
         .filter(|r| r.status == ActivityStatus::Failed)
         .count() as u32;
+
+    // Structured audit log: experiment completion.
+    let deviations = u32::from(status == ExperimentStatus::Deviated);
+    tracing::info!(
+        experiment_id = %experiment_id,
+        experiment_title = %experiment.title,
+        status = ?status,
+        duration_ms = duration_ms,
+        deviations = deviations,
+        "experiment.completed"
+    );
 
     // -- During-phase and post-phase probe sampling
     let (during_result, post_result) =
@@ -552,7 +589,18 @@ fn execute_activities(
 
             if let Some(pause) = activity.pause_before_s {
                 if pause > 0.0 {
+                    opentelemetry::Context::current().span().add_event(
+                        "experiment.pause.before",
+                        vec![
+                            KeyValue::new("activity.name", activity.name.clone()),
+                            KeyValue::new("pause_seconds", pause),
+                        ],
+                    );
                     std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+                    opentelemetry::Context::current().span().add_event(
+                        "experiment.resume.before",
+                        vec![KeyValue::new("activity.name", activity.name.clone())],
+                    );
                 }
             }
 
@@ -560,7 +608,18 @@ fn execute_activities(
 
             if let Some(pause) = activity.pause_after_s {
                 if pause > 0.0 {
+                    opentelemetry::Context::current().span().add_event(
+                        "experiment.pause.after",
+                        vec![
+                            KeyValue::new("activity.name", activity.name.clone()),
+                            KeyValue::new("pause_seconds", pause),
+                        ],
+                    );
                     std::thread::sleep(std::time::Duration::from_secs_f64(pause));
+                    opentelemetry::Context::current().span().add_event(
+                        "experiment.resume.after",
+                        vec![KeyValue::new("activity.name", activity.name.clone())],
+                    );
                 }
             }
 
@@ -909,6 +968,14 @@ fn build_post_result(
         .map(|p| p.recovery_time_s)
         .fold(0.0_f64, f64::max);
 
+    // MTTR: when full recovery is observed, set to the maximum recovery time
+    // across all probes; when recovery was never achieved, leave as None.
+    let mttr_s = if full_recovery {
+        Some(recovery_time_s)
+    } else {
+        None
+    };
+
     Some(PostResult {
         started_at_ns,
         ended_at_ns,
@@ -920,6 +987,7 @@ fn build_post_result(
         residual_degradation: None,
         data_integrity_verified: None,
         data_loss_detected: None,
+        mttr_s,
     })
 }
 
@@ -1131,6 +1199,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }
     }
 
@@ -1147,6 +1216,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: true,
+            label_selector: None,
         }
     }
 
@@ -1167,6 +1237,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }
     }
 
@@ -1360,6 +1431,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Never,
             cancellation_token: None,
+            parent_context: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1376,6 +1448,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
+            parent_context: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1473,6 +1546,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
+            parent_context: None,
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1494,6 +1568,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
+            parent_context: None,
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1721,6 +1796,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: Some(token),
+            parent_context: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1739,6 +1815,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: None,
+            parent_context: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1783,6 +1860,7 @@ mod tests {
         let config = RunConfig {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
+            parent_context: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1913,5 +1991,89 @@ mod tests {
 
         // All 3 activities should have been executed
         assert_eq!(call_count.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn pause_before_and_after_emits_span_events_without_panic() {
+        // Verify that pause_before_s / pause_after_s paths do not panic and
+        // that the OTel span event calls complete without error.
+        // We use a very small duration (near-zero) so the test is fast.
+        let mut exp = minimal_experiment();
+        let mut activity = test_action("paused-step");
+        // Non-positive pause is skipped, so use a tiny positive value.
+        activity.pause_before_s = Some(0.001);
+        activity.pause_after_s = Some(0.001);
+        exp.method = vec![activity];
+
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+        assert_eq!(journal.method_results.len(), 1);
+        assert_eq!(journal.method_results[0].status, ActivityStatus::Succeeded);
+    }
+
+    // -- Tests: during-phase sampling and MTTR (F4)
+
+    #[test]
+    fn during_phase_samples_are_collected() {
+        // Arrange: experiment with hypothesis — runner should populate during_result
+        let exp = experiment_with_hypothesis();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("200"));
+        let controls = Arc::new(ControlRegistry::new());
+
+        // Act
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        // Assert: during_result is present with at least one probe
+        assert!(
+            journal.during_result.is_some(),
+            "during_result should be populated when hypothesis is present"
+        );
+        let during = journal.during_result.as_ref().unwrap();
+        assert!(
+            !during.probes.is_empty(),
+            "during_result should have at least one probe entry"
+        );
+        assert!(
+            during.probes[0].samples > 0,
+            "during probe should have at least one sample"
+        );
+    }
+
+    #[test]
+    fn mttr_calculated_on_recovery() {
+        // Arrange: executor that always succeeds — all post-phase samples succeed
+        // so system is immediately "recovered", and mttr_s should be Some(...)
+        let exp = experiment_with_hypothesis();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("200"));
+        let controls = Arc::new(ControlRegistry::new());
+
+        // Act
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        // Assert: post_result.mttr_s is populated
+        assert!(
+            journal.post_result.is_some(),
+            "post_result should be populated when hypothesis is present"
+        );
+        let post = journal.post_result.as_ref().unwrap();
+        assert!(
+            post.mttr_s.is_some(),
+            "mttr_s should be Some when post-phase probes are collected"
+        );
+        assert!(post.mttr_s.unwrap() >= 0.0, "mttr_s must be non-negative");
+    }
+
+    #[test]
+    fn run_experiment_emits_audit_log_without_panic() {
+        // Verifies the audit tracing::info! calls don't panic and the
+        // experiment completes normally (structured fields are correct types).
+        let exp = minimal_experiment();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+        assert_eq!(journal.status, ExperimentStatus::Completed);
+        assert!(!journal.experiment_id.is_empty());
     }
 }

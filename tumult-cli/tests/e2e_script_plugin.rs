@@ -71,6 +71,7 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
                 pause_before_s: None,
                 pause_after_s: None,
                 background: false,
+                label_selector: None,
             }],
         }),
         method: vec![Activity {
@@ -86,6 +87,7 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
         rollbacks: vec![Activity {
             name: "cleanup".into(),
@@ -100,6 +102,7 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
         estimate: Some(Estimate {
             expected_outcome: ExpectedOutcome::Recovered,

@@ -2,8 +2,9 @@
 
 ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Phase](https://img.shields.io/badge/phase-3%20Automation-blue)
-![Crates](https://img.shields.io/badge/crates-10-green)
+![Phase](https://img.shields.io/badge/phase-6%20Hardening-blue)
+![Crates](https://img.shields.io/badge/crates-11-green)
+![Tests](https://img.shields.io/badge/tests-566-brightgreen)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -31,6 +32,7 @@ Tumult solves these issues by being built in Rust:
 - [MCP Server (AI Integration)](#mcp-server-ai-integration)
 - [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
 - [OpenTelemetry Observability](#opentelemetry-observability)
+- [Phase 6 Hardening](#phase-6-hardening)
 - [Docker Test Infrastructure](#docker-test-infrastructure)
 - [Phasing & Roadmap](#phasing--roadmap)
 - [Example Experiment](#example-experiment)
@@ -95,7 +97,7 @@ cargo install tumult --features kubernetes,aws
 | **tumult-baseline** | Native (Rust) | Statistical baseline derivation, percentiles, deviation detection |
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
-| **tumult-mcp** | Native (Rust) | MCP server with 10 tools for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 11 tools for AI-assisted chaos engineering |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
@@ -115,6 +117,9 @@ Tumult ships a built-in [Model Context Protocol](https://modelcontextprotocol.io
 ```bash
 # Start the MCP server (stdio transport)
 tumult mcp
+
+# With authentication (recommended in production)
+TUMULT_MCP_TOKEN=my-secret tumult mcp
 ```
 
 | MCP Tool | Description |
@@ -127,6 +132,13 @@ tumult mcp
 | `tumult_discover` | List all plugins, actions, and probes |
 | `tumult_create_experiment` | Create a new experiment from a template |
 | `tumult_query_traces` | Query trace data (trace/span IDs) for observability correlation |
+| `tumult_store_stats` | Return persistent store statistics |
+| `tumult_analyze_store` | SQL query directly against the persistent DuckDB store |
+| `tumult_list_experiments` | List experiment .toon files in a directory |
+
+### Authentication
+
+Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool calls (constant-time comparison, no timing attack surface). If unset, the server runs without auth and emits a log warning.
 
 ## Data-Driven Chaos Engineering
 
@@ -263,12 +275,66 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (10 tools), AI-assisted chaos engineering | Done |
+| **3 — Automation** | MCP server (11 tools), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
 | **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Done |
-| **6 — Advanced Capabilities** | Async background activities, competitive review, label selectors | Planned |
+| **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
 | **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
 | **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
+
+## Phase 6 Hardening
+
+Phase 6 focused on production-readiness, test coverage, and security hardening.
+
+### SSH Session Pool
+
+`tumult-ssh` now maintains a connection pool (`SshPool`) that reuses SSH sessions across multiple actions in an experiment. This eliminates repeated TCP + SSH handshake overhead for experiments with many remote steps:
+
+```rust
+let pool = SshPool::new();
+let session = pool.get_or_connect(&config).await?;
+session.exec("systemctl stop myservice").await?;
+// Next call to the same host reuses the connection:
+session.exec("systemctl start myservice").await?;
+```
+
+### Experiment Templates
+
+Experiments support `${VARIABLE}` substitution in titles and activity names, allowing a single template to be reused across environments:
+
+```bash
+tumult run template.toon --var env=staging --var cluster=eu-west-1
+```
+
+Undefined variables cause a hard error at startup (not silent).
+
+### Streaming Baseline Acquisition
+
+`tumult-baseline` exposes `AcquisitionStream` for incremental sample collection. This is used by the runner to start computing statistics as soon as warmup ends, without buffering the full sample set.
+
+### MCP Authentication
+
+The MCP server supports opt-in bearer token authentication via `TUMULT_MCP_TOKEN`. Token comparison uses constant-time equality (`subtle` crate) to prevent timing attacks. A Semaphore(10) rate-limits concurrent tool calls.
+
+### Audit Log
+
+Every experiment run emits structured audit events (`experiment.started`, `experiment.completed`) as `tracing::info!` with `experiment_id`, `title`, `status`, and `duration_ms` fields. These flow into log aggregators (Loki, Elasticsearch) correlated with the OTel trace.
+
+### Signal Handlers
+
+`tumult run` wires `SIGINT`/`SIGTERM` to a `CancellationToken`. In-flight activities complete their current step, rollbacks execute, and the journal is written before exit. The experiment status is recorded as `Interrupted`.
+
+### Trace Context Propagation
+
+Script plugins receive `TRACEPARENT` and `TRACESTATE` environment variables, allowing subprocess-emitted OTel spans to attach as children of the `script.execute` span without any changes to existing scripts.
+
+### Test Infrastructure
+
+- **566 tests** across the workspace (up from 391)
+- **Property-based tests** (`proptest`) for all statistical functions in `tumult-baseline`
+- **Fuzz target** for experiment TOON deserialization (`tumult-core/fuzz/`)
+- **`tumult-test-utils` crate** — shared `MockPlugin`, `EventLog`, and experiment builders for integration tests
+- **Criterion benchmarks** for baseline statistics (`tumult-baseline/benches/`)
 
 ## Example Experiment
 
@@ -385,6 +451,9 @@ tumult run experiment.toon --dry-run
 # Run the experiment
 tumult run experiment.toon
 
+# Run with template variable substitution
+tumult run template.toon --var env=staging --var cluster=eu-west-1
+
 # Run with custom rollback strategy
 tumult run experiment.toon --rollback-strategy always
 
@@ -395,6 +464,11 @@ tumult discover
 tumult analyze journal.toon
 tumult analyze journals/ --query "SELECT status, count(*) FROM experiments GROUP BY status"
 
+# Persistent store management
+tumult store stats
+tumult store backup --output ~/tumult-backup
+tumult store purge --older-than-days 90
+
 # Cross-run trend analysis
 tumult trend journals/ --metric resilience_score
 
@@ -403,6 +477,9 @@ tumult compliance journals/ --framework dora
 
 # Export to Parquet for external tools
 tumult export journal.toon --format parquet
+
+# Start MCP server (with optional auth)
+TUMULT_MCP_TOKEN=my-secret tumult mcp
 ```
 
 See [CLI Reference](docs/guides/cli-reference.md) for full command documentation.
@@ -436,7 +513,7 @@ make clean           # cargo clean + docker compose down
 | JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
 | opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
 | Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
-| No AI integration | `tumult-mcp` (8 MCP tools) | AI assistants run experiments natively |
+| No AI integration | `tumult-mcp` (11 MCP tools) | AI assistants run experiments natively |
 | Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---
