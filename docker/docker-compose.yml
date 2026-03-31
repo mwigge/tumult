@@ -1,21 +1,16 @@
 # Tumult E2E Test Infrastructure
 #
-# Provides all services needed for integration and e2e testing:
-# - PostgreSQL (chaos target + probe testing)
-# - Redis (chaos target + probe testing)
-# - Kafka (KRaft mode, no ZooKeeper) (broker chaos + consumer lag probes)
-# - SSH server (remote execution testing)
-# - Jaeger (OTel trace verification)
-# - OTel Collector (OTLP receiver → Jaeger)
-#
 # Usage:
-#   cd infra/
-#   docker compose up -d
-#   # Run e2e tests...
-#   docker compose down -v
+#   cd docker/
+#   docker compose up -d          # start all services
+#   docker compose ps             # check health
+#   docker compose logs -f kafka  # tail logs
+#   docker compose down -v        # stop + remove volumes
+#
+# Ports use 1xxxx range to avoid conflicts with local services.
 
 services:
-  # ── PostgreSQL ───────────────────────────────────────────────
+  # ── PostgreSQL 16 ────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     ports:
@@ -32,7 +27,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── Redis ────────────────────────────────────────────────────
+  # ── Redis 7 ──────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -43,7 +38,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── Kafka (KRaft mode — no ZooKeeper) ───────────────────────
+  # ── Kafka 3.8 (KRaft — no ZooKeeper) ────────────────────────
   kafka:
     image: apache/kafka:3.8.0
     ports:
@@ -67,7 +62,7 @@ services:
       retries: 10
       start_period: 30s
 
-  # ── SSH Server ───────────────────────────────────────────────
+  # ── SSH Server (for remote execution testing) ────────────────
   sshd:
     build:
       context: .
@@ -85,17 +80,17 @@ services:
     image: otel/opentelemetry-collector-contrib:0.98.0
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ../collector/otel-collector-dev.yaml:/etc/otel-collector-config.yaml:ro
+      - ./otel-collector-e2e.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "14317:4317"   # OTLP gRPC
-      - "14318:4318"   # OTLP HTTP
+      - "14317:4317"
+      - "14318:4318"
     depends_on:
       - jaeger
 
-  # ── Jaeger (trace UI) ───────────────────────────────────────
+  # ── Jaeger (trace UI for OTel verification) ──────────────────
   jaeger:
     image: jaegertracing/all-in-one:1.56
     ports:
-      - "16686:16686"  # Jaeger UI
+      - "16686:16686"
     environment:
       - COLLECTOR_OTLP_ENABLED=true
