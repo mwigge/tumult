@@ -21,9 +21,9 @@
 //! - `resilience.analytics.purge.completed`
 //!
 //! ## Gauges
-//! - `resilience.store.experiments` — experiment count
-//! - `resilience.store.activities` — activity count
-//! - `resilience.store.size_bytes` — database file size
+//! - `tumult.store.experiments` — experiment count
+//! - `tumult.store.activities` — activity count
+//! - `tumult.store.size_bytes` — database file size
 
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
@@ -223,14 +223,14 @@ pub fn record_store_gauges(
 ) {
     let meter = global::meter(TRACER_NAME);
 
-    let g = meter.u64_gauge("resilience.store.experiments").build();
+    let g = meter.u64_gauge("tumult.store.experiments").build();
     g.record(experiment_count as u64, &[]);
 
-    let g = meter.u64_gauge("resilience.store.activities").build();
+    let g = meter.u64_gauge("tumult.store.activities").build();
     g.record(activity_count as u64, &[]);
 
     if let Some(bytes) = size_bytes {
-        let g = meter.u64_gauge("resilience.store.size_bytes").build();
+        let g = meter.u64_gauge("tumult.store.size_bytes").build();
         g.record(bytes, &[]);
     }
 }

@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
+
 use crate::types::{ConfigValue, Experiment, ExperimentStatus, SecretValue, Tolerance};
 
 use thiserror::Error;
@@ -38,11 +40,13 @@ pub enum EngineError {
     },
     #[error("hypothesis '{title}' has no probes defined")]
     EmptyHypothesisProbes { title: String },
+    #[error("unsupported experiment version '{version}' (supported: v1)")]
+    UnsupportedVersion { version: String },
 }
 
 /// Resolve configuration values by reading environment variables.
 pub fn resolve_config(
-    config: &HashMap<String, ConfigValue>,
+    config: &IndexMap<String, ConfigValue>,
 ) -> Result<HashMap<String, String>, EngineError> {
     let mut resolved = HashMap::new();
     for (key, value) in config {
@@ -73,13 +77,15 @@ pub fn resolve_config(
 /// use tumult_core::engine::validate_experiment;
 /// use tumult_core::types::*;
 /// use std::collections::HashMap;
+/// use indexmap::IndexMap;
 ///
 /// let experiment = Experiment {
+///     version: "v1".into(),
 ///     title: "validate-demo".into(),
 ///     description: None,
 ///     tags: vec![],
-///     configuration: HashMap::new(),
-///     secrets: HashMap::new(),
+///     configuration: IndexMap::new(),
+///     secrets: IndexMap::new(),
 ///     controls: vec![],
 ///     steady_state_hypothesis: None,
 ///     method: vec![Activity {
@@ -106,11 +112,12 @@ pub fn resolve_config(
 ///
 /// // An experiment with no method steps fails validation
 /// let empty = Experiment {
+///     version: "v1".into(),
 ///     title: "empty".into(),
 ///     description: None,
 ///     tags: vec![],
-///     configuration: HashMap::new(),
-///     secrets: HashMap::new(),
+///     configuration: IndexMap::new(),
+///     secrets: IndexMap::new(),
 ///     controls: vec![],
 ///     steady_state_hypothesis: None,
 ///     method: vec![],
@@ -124,6 +131,13 @@ pub fn resolve_config(
 /// assert!(validate_experiment(&empty).is_err());
 /// ```
 pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
+    // Version check — only "v1" is supported
+    if experiment.version != "v1" {
+        return Err(EngineError::UnsupportedVersion {
+            version: experiment.version.clone(),
+        });
+    }
+
     if experiment.method.is_empty() {
         return Err(EngineError::EmptyMethod);
     }
@@ -183,7 +197,7 @@ pub fn parse_experiment(toon: &str) -> Result<Experiment, EngineError> {
 
 /// Resolve secret values by reading environment variables or files.
 pub fn resolve_secrets(
-    secrets: &HashMap<String, HashMap<String, SecretValue>>,
+    secrets: &IndexMap<String, IndexMap<String, SecretValue>>,
 ) -> Result<HashMap<String, HashMap<String, String>>, EngineError> {
     let mut resolved = HashMap::new();
     for (group, group_secrets) in secrets {
@@ -264,13 +278,14 @@ pub fn determine_status(
 mod tests {
     use super::*;
     use crate::types::*;
+    use indexmap::IndexMap;
     use std::collections::HashMap;
 
     // ── resolve_config ─────────────────────────────────────────
 
     #[test]
     fn resolve_inline_config() {
-        let config = HashMap::from([(
+        let config = IndexMap::from([(
             "db_host".into(),
             ConfigValue::Inline {
                 value: "localhost".into(),
@@ -283,7 +298,7 @@ mod tests {
     #[test]
     fn resolve_env_config() {
         std::env::set_var("TEST_TUMULT_DB_HOST", "prod-db.example.com");
-        let config = HashMap::from([(
+        let config = IndexMap::from([(
             "db_host".into(),
             ConfigValue::Env {
                 key: "TEST_TUMULT_DB_HOST".into(),
@@ -297,7 +312,7 @@ mod tests {
     #[test]
     fn resolve_missing_env_returns_error() {
         std::env::remove_var("NONEXISTENT_VAR_TUMULT_TEST");
-        let config = HashMap::from([(
+        let config = IndexMap::from([(
             "db_host".into(),
             ConfigValue::Env {
                 key: "NONEXISTENT_VAR_TUMULT_TEST".into(),
@@ -311,20 +326,50 @@ mod tests {
 
     #[test]
     fn resolve_empty_config_succeeds() {
-        let resolved = resolve_config(&HashMap::new()).unwrap();
+        let resolved = resolve_config(&IndexMap::new()).unwrap();
         assert!(resolved.is_empty());
     }
 
     // ── validate_experiment ────────────────────────────────────
 
     #[test]
+    fn validate_rejects_unsupported_version() {
+        let exp = Experiment {
+            version: "v2".into(),
+            title: "version-test".into(),
+            method: vec![Activity {
+                name: "action".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("unsupported experiment version"));
+    }
+
+    #[test]
+    fn validate_accepts_v1_version() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "version-test".into(),
+            method: vec![Activity {
+                name: "action".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(validate_experiment(&exp).is_ok());
+    }
+
+    #[test]
     fn validate_rejects_empty_method() {
         let exp = Experiment {
+            version: "v1".into(),
             title: "empty".into(),
             description: None,
             tags: vec![],
-            configuration: HashMap::new(),
-            secrets: HashMap::new(),
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![],
@@ -340,11 +385,12 @@ mod tests {
     #[test]
     fn validate_rejects_empty_hypothesis_probes() {
         let exp = Experiment {
+            version: "v1".into(),
             title: "empty-probes".into(),
             description: None,
             tags: vec![],
-            configuration: HashMap::new(),
-            secrets: HashMap::new(),
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: Some(Hypothesis {
                 title: "System is healthy".into(),
@@ -376,11 +422,12 @@ mod tests {
     #[test]
     fn validate_accepts_experiment_with_method() {
         let exp = Experiment {
+            version: "v1".into(),
             title: "valid".into(),
             description: None,
             tags: vec![],
-            configuration: HashMap::new(),
-            secrets: HashMap::new(),
+            configuration: IndexMap::new(),
+            secrets: IndexMap::new(),
             controls: vec![],
             steady_state_hypothesis: None,
             method: vec![Activity {
@@ -452,9 +499,9 @@ mod tests {
     #[test]
     fn resolve_env_secret() {
         std::env::set_var("TEST_SECRET_TUMULT_PW", "s3cret");
-        let secrets = HashMap::from([(
+        let secrets = IndexMap::from([(
             "db".into(),
-            HashMap::from([(
+            IndexMap::from([(
                 "password".into(),
                 SecretValue::Env {
                     key: "TEST_SECRET_TUMULT_PW".into(),
@@ -472,9 +519,9 @@ mod tests {
         let path = dir.path().join("token.txt");
         std::fs::write(&path, "my-token-123").unwrap();
 
-        let secrets = HashMap::from([(
+        let secrets = IndexMap::from([(
             "api".into(),
-            HashMap::from([("token".into(), SecretValue::File { path: path.clone() })]),
+            IndexMap::from([("token".into(), SecretValue::File { path: path.clone() })]),
         )]);
         let resolved = resolve_secrets(&secrets).unwrap();
         assert_eq!(resolved["api"]["token"], "my-token-123");
@@ -483,9 +530,9 @@ mod tests {
     #[test]
     fn resolve_missing_env_secret_returns_error() {
         std::env::remove_var("NONEXISTENT_SECRET_TUMULT");
-        let secrets = HashMap::from([(
+        let secrets = IndexMap::from([(
             "db".into(),
-            HashMap::from([(
+            IndexMap::from([(
                 "password".into(),
                 SecretValue::Env {
                     key: "NONEXISTENT_SECRET_TUMULT".into(),
@@ -502,9 +549,9 @@ mod tests {
 
     #[test]
     fn resolve_missing_file_secret_returns_error() {
-        let secrets = HashMap::from([(
+        let secrets = IndexMap::from([(
             "db".into(),
-            HashMap::from([(
+            IndexMap::from([(
                 "password".into(),
                 SecretValue::File {
                     path: "/nonexistent/secret.txt".into(),
@@ -517,7 +564,7 @@ mod tests {
 
     #[test]
     fn resolve_empty_secrets_succeeds() {
-        let resolved = resolve_secrets(&HashMap::new()).unwrap();
+        let resolved = resolve_secrets(&IndexMap::new()).unwrap();
         assert!(resolved.is_empty());
     }
 

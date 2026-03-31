@@ -1,5 +1,7 @@
 //! ClickHouse connection configuration.
 
+use std::time::Duration;
+
 /// Configuration for the ClickHouse analytics backend.
 #[derive(Debug, Clone)]
 pub struct ClickHouseConfig {
@@ -11,6 +13,8 @@ pub struct ClickHouseConfig {
     pub user: String,
     /// Password (default: empty)
     pub password: String,
+    /// Timeout for individual query execution (default: 30s)
+    pub query_timeout: Duration,
 }
 
 impl ClickHouseConfig {
@@ -23,6 +27,10 @@ impl ClickHouseConfig {
     /// | `TUMULT_CLICKHOUSE_USER` | `default` |
     /// | `TUMULT_CLICKHOUSE_PASSWORD` | (empty) |
     pub fn from_env() -> Self {
+        let query_timeout_secs = std::env::var("TUMULT_CLICKHOUSE_QUERY_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(30);
         Self {
             url: std::env::var("TUMULT_CLICKHOUSE_URL")
                 .unwrap_or_else(|_| "http://localhost:8123".into()),
@@ -30,6 +38,7 @@ impl ClickHouseConfig {
                 .unwrap_or_else(|_| "tumult".into()),
             user: std::env::var("TUMULT_CLICKHOUSE_USER").unwrap_or_else(|_| "default".into()),
             password: std::env::var("TUMULT_CLICKHOUSE_PASSWORD").unwrap_or_default(),
+            query_timeout: Duration::from_secs(query_timeout_secs),
         }
     }
 
@@ -46,6 +55,7 @@ impl Default for ClickHouseConfig {
             database: "tumult".into(),
             user: "default".into(),
             password: String::new(),
+            query_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -61,6 +71,7 @@ mod tests {
         assert_eq!(config.database, "tumult");
         assert_eq!(config.user, "default");
         assert!(config.password.is_empty());
+        assert_eq!(config.query_timeout, Duration::from_secs(30));
     }
 
     #[test]

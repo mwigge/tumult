@@ -1,6 +1,6 @@
 //! OTel instrumentation for baseline acquisition.
 
-use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
+use opentelemetry::trace::{SpanKind, Status, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
 
 const TRACER: &str = "tumult-baseline";
@@ -39,13 +39,15 @@ pub(crate) fn event_tolerance_derived(lower: f64, upper: f64, total_samples: usi
 
 pub(crate) fn event_anomaly_detected(reason: &str, cv: f64) {
     let cx = opentelemetry::Context::current();
-    cx.span().add_event(
+    let span = cx.span();
+    span.add_event(
         "baseline.anomaly.detected",
         vec![
             KeyValue::new("baseline.anomaly.reason", reason.to_string()),
             KeyValue::new("baseline.anomaly.cv", cv),
         ],
     );
+    span.set_status(Status::error(reason.to_string()));
 }
 
 pub(crate) fn record_baseline_gauges(
