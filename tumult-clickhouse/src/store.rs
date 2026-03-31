@@ -16,6 +16,27 @@ use crate::config::ClickHouseConfig;
 
 const SCHEMA_VERSION: i64 = 1;
 
+/// Retry configuration for ClickHouse connection attempts.
+pub struct RetryConfig {
+    /// Maximum number of connection attempts.
+    pub max_attempts: u32,
+    /// Backoff durations between retries (one per retry).
+    pub backoff_durations: Vec<std::time::Duration>,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            backoff_durations: vec![
+                std::time::Duration::from_secs(2),
+                std::time::Duration::from_secs(4),
+                std::time::Duration::from_secs(8),
+            ],
+        }
+    }
+}
+
 // ── Typed rows for safe insert/select ───────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, clickhouse::Row)]
@@ -66,6 +87,41 @@ pub struct ClickHouseStore {
 }
 
 impl ClickHouseStore {
+    /// Connect to ClickHouse with retry and exponential backoff.
+    ///
+    /// Attempts up to `retry_config.max_attempts` times, sleeping between
+    /// failures with the configured backoff durations.
+    pub async fn connect_with_retry(
+        config: &ClickHouseConfig,
+        retry_config: &RetryConfig,
+    ) -> Result<Self, AnalyticsError> {
+        let mut last_err = None;
+        for attempt in 0..retry_config.max_attempts {
+            match Self::connect(config).await {
+                Ok(store) => return Ok(store),
+                Err(e) => {
+                    let backoff = retry_config
+                        .backoff_durations
+                        .get(attempt as usize)
+                        .copied()
+                        .unwrap_or(std::time::Duration::from_secs(8));
+                    tracing::warn!(
+                        attempt = attempt + 1,
+                        max_attempts = retry_config.max_attempts,
+                        backoff_s = backoff.as_secs(),
+                        error = %e,
+                        "ClickHouse connection failed, retrying"
+                    );
+                    last_err = Some(e);
+                    tokio::time::sleep(backoff).await;
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| {
+            AnalyticsError::Io(std::io::Error::other("connection failed after all retries"))
+        }))
+    }
+
     /// Connect to ClickHouse and initialize the schema.
     pub async fn connect(config: &ClickHouseConfig) -> Result<Self, AnalyticsError> {
         let _span = crate::telemetry::begin_connect(&config.url, &config.database);
@@ -417,6 +473,25 @@ impl AnalyticsBackend for ClickHouseStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_config_has_correct_defaults() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_attempts, 3);
+        assert_eq!(config.backoff_durations.len(), 3);
+        assert_eq!(
+            config.backoff_durations[0],
+            std::time::Duration::from_secs(2)
+        );
+        assert_eq!(
+            config.backoff_durations[1],
+            std::time::Duration::from_secs(4)
+        );
+        assert_eq!(
+            config.backoff_durations[2],
+            std::time::Duration::from_secs(8)
+        );
+    }
 
     #[test]
     fn config_creates_valid_client() {
