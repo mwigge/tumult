@@ -1,0 +1,21 @@
+[package]
+name = "tumult-clickhouse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "ClickHouse analytics backend for Tumult — shared storage with SigNoz"
+
+[dependencies]
+tumult-core = { path = "../tumult-core" }
+tumult-analytics = { path = "../tumult-analytics" }
+clickhouse = { version = "0.14", features = ["time", "uuid"] }
+serde = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+opentelemetry = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
