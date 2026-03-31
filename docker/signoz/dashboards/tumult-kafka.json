@@ -1,0 +1,632 @@
+{
+  "description": "Kafka chaos target — broker count, consumer group lag, partition offsets, under-replicated partitions, and topic health.",
+  "layout": [
+    {
+      "h": 1,
+      "i": "row-kafka-stats",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 4,
+      "i": "stat-kafka-brokers",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 0,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-kafka-topics",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 3,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-kafka-lag-sum",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 6,
+      "y": 1
+    },
+    {
+      "h": 4,
+      "i": "stat-kafka-partitions",
+      "moved": false,
+      "static": false,
+      "w": 3,
+      "x": 9,
+      "y": 1
+    },
+    {
+      "h": 1,
+      "i": "row-kafka-lag",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 5
+    },
+    {
+      "h": 6,
+      "i": "graph-kafka-lag-by-group",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "graph-kafka-lag-sum",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 1,
+      "i": "row-kafka-offsets",
+      "maxH": 1,
+      "minH": 1,
+      "minW": 12,
+      "moved": false,
+      "static": false,
+      "w": 12,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "graph-kafka-current-offset",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 0,
+      "y": 13
+    },
+    {
+      "h": 6,
+      "i": "graph-kafka-oldest-offset",
+      "moved": false,
+      "static": false,
+      "w": 6,
+      "x": 6,
+      "y": 13
+    }
+  ],
+  "panelMap": {
+    "row-kafka-stats": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 4, "i": "stat-kafka-brokers", "moved": false, "static": false, "w": 3, "x": 0, "y": 1 },
+        { "h": 4, "i": "stat-kafka-topics", "moved": false, "static": false, "w": 3, "x": 3, "y": 1 },
+        { "h": 4, "i": "stat-kafka-lag-sum", "moved": false, "static": false, "w": 3, "x": 6, "y": 1 },
+        { "h": 4, "i": "stat-kafka-partitions", "moved": false, "static": false, "w": 3, "x": 9, "y": 1 }
+      ]
+    },
+    "row-kafka-lag": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-kafka-lag-by-group", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
+        { "h": 6, "i": "graph-kafka-lag-sum", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 }
+      ]
+    },
+    "row-kafka-offsets": {
+      "collapsed": false,
+      "widgets": [
+        { "h": 6, "i": "graph-kafka-current-offset", "moved": false, "static": false, "w": 6, "x": 0, "y": 13 },
+        { "h": 6, "i": "graph-kafka-oldest-offset", "moved": false, "static": false, "w": 6, "x": 6, "y": 13 }
+      ]
+    }
+  },
+  "tags": ["tumult", "kafka", "messaging", "infrastructure"],
+  "title": "Tumult — Kafka",
+  "uploadedGrafana": false,
+  "uuid": "tumult-kafka-v1",
+  "variables": {},
+  "version": "v4",
+  "widgets": [
+    {
+      "description": "",
+      "id": "row-kafka-stats",
+      "panelTypes": "row",
+      "title": "Kafka Cluster Health"
+    },
+    {
+      "description": "Number of active Kafka brokers",
+      "id": "stat-kafka-brokers",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.brokers--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.brokers",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Brokers",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "avg",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-kafka-brokers",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "below", "value": 1 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Active Brokers",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Number of topics with active partitions",
+      "id": "stat-kafka-topics",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.topic.partitions--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.topic.partitions",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Partitions",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-kafka-topics",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Total Partitions",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Sum of all consumer group lag across all partitions",
+      "id": "stat-kafka-lag-sum",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.consumer_group.lag_sum--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.consumer_group.lag_sum",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "sum",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Total Lag",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-kafka-lag-sum",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [
+        { "color": "#e15241", "index": 0, "moveThreshold": false, "type": "above", "value": 1000 }
+      ],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Consumer Lag Sum",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "Number of partitions per topic",
+      "id": "stat-kafka-partitions",
+      "panelTypes": "value",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.topic.partitions--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.topic.partitions",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [],
+              "having": [],
+              "legend": "Partition Count",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "avg",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-stat-kafka-partitions",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Avg Partitions/Topic",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "",
+      "id": "row-kafka-lag",
+      "panelTypes": "row",
+      "title": "Consumer Group Lag"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Per-partition consumer lag grouped by consumer group — lagging groups during chaos indicate slow recovery",
+      "fillSpans": false,
+      "id": "graph-kafka-lag-by-group",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.consumer_group.lag--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.consumer_group.lag",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "kafka.consumer_group--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.consumer_group",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{kafka.consumer_group}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-kafka-lag-by-group",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Consumer Lag by Group",
+      "yAxisUnit": "short"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Summed consumer lag across all partitions per consumer group",
+      "fillSpans": false,
+      "id": "graph-kafka-lag-sum",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.consumer_group.lag_sum--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.consumer_group.lag_sum",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "kafka.consumer_group--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.consumer_group",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{kafka.consumer_group}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-kafka-lag-sum",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Lag Sum by Consumer Group",
+      "yAxisUnit": "short"
+    },
+    {
+      "description": "",
+      "id": "row-kafka-offsets",
+      "panelTypes": "row",
+      "title": "Partition Offsets"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Current (head) partition offset — rate of increase shows produce throughput",
+      "fillSpans": false,
+      "id": "graph-kafka-current-offset",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.partition.current_offset--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.partition.current_offset",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "kafka.topic--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.topic",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{kafka.topic}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-kafka-current-offset",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Current Offset by Topic",
+      "yAxisUnit": "short"
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Oldest retained offset — gap between current and oldest offset = log retention window",
+      "fillSpans": false,
+      "id": "graph-kafka-oldest-offset",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregateAttribute": {
+                "dataType": "float64",
+                "id": "kafka.partition.oldest_offset--float64--Gauge--true",
+                "isColumn": true,
+                "isJSON": false,
+                "key": "kafka.partition.oldest_offset",
+                "type": "Gauge"
+              },
+              "aggregateOperator": "avg",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filters": { "items": [], "op": "AND" },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "kafka.topic--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "kafka.topic",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{kafka.topic}}",
+              "limit": null,
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "avg",
+              "spaceAggregation": "sum",
+              "stepInterval": 60,
+              "timeAggregation": "latest"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "id": "q-graph-kafka-oldest-offset",
+        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Oldest Offset by Topic",
+      "yAxisUnit": "short"
+    }
+  ]
+}
