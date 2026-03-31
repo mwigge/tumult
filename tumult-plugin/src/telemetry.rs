@@ -5,11 +5,11 @@ use opentelemetry::{global, KeyValue};
 
 const TRACER: &str = "tumult-plugin";
 
-pub struct SpanGuard {
+pub(crate) struct SpanGuard {
     _guard: opentelemetry::ContextGuard,
 }
 
-pub fn begin_execute(script_path: &str, timeout_s: Option<f64>) -> SpanGuard {
+pub(crate) fn begin_execute(script_path: &str, timeout_s: Option<f64>) -> SpanGuard {
     let tracer = global::tracer(TRACER);
     let mut attrs = vec![KeyValue::new("script.path", script_path.to_string())];
     if let Some(t) = timeout_s {
@@ -26,7 +26,7 @@ pub fn begin_execute(script_path: &str, timeout_s: Option<f64>) -> SpanGuard {
     }
 }
 
-pub fn event_script_started(script_path: &str) {
+pub(crate) fn event_script_started(script_path: &str) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "script.started",
@@ -34,7 +34,7 @@ pub fn event_script_started(script_path: &str) {
     );
 }
 
-pub fn event_script_completed(exit_code: i32, stdout_bytes: usize, stderr_bytes: usize) {
+pub(crate) fn event_script_completed(exit_code: i32, stdout_bytes: usize, stderr_bytes: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "script.completed",
@@ -46,7 +46,7 @@ pub fn event_script_completed(exit_code: i32, stdout_bytes: usize, stderr_bytes:
     );
 }
 
-pub fn event_script_timed_out(script_path: &str, timeout_s: f64) {
+pub(crate) fn event_script_timed_out(script_path: &str, timeout_s: f64) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
         "script.timed_out",
@@ -58,7 +58,7 @@ pub fn event_script_timed_out(script_path: &str, timeout_s: f64) {
 }
 
 /// Record script execution counter.
-pub fn record_execution(success: bool) {
+pub(crate) fn record_execution(success: bool) {
     let meter = global::meter(TRACER);
     let counter = meter.u64_counter("script.executions_total").build();
     counter.add(1, &[KeyValue::new("script.success", success)]);
