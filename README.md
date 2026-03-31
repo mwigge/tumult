@@ -1,8 +1,9 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
 ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)
-![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
-![Phase](https://img.shields.io/badge/phase-0%20Foundation-green)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Phase](https://img.shields.io/badge/phase-3%20Automation-blue)
+![Crates](https://img.shields.io/badge/crates-9-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -19,8 +20,24 @@ Legacy chaos engineering tools are powerful but face significant hurdles in mode
 Tumult solves these issues by being built in Rust:
 
 1. **Speed & Single Binary:** Compiles to a single binary per platform. It executes faster and "just runs" without runtime dependencies.
-2. **Observability-First:** Every action, probe, and lifecycle event is emitted as an OpenTelemetry (OTel) span with structured attributes by default. OTLP export is built-in.
-3. **Data-Driven Analysis:** Tumult uses TOON (Token-Oriented Object Notation) for experiments and journals. TOON is structured, human-readable, and highly token-efficient, massively reducing the overhead of processing experiment data for automated insights.
+2. **Observability-First:** Every action, probe, and lifecycle event is emitted as a real OpenTelemetry span with `resilience.*` attributes. Each activity gets its own span with unique trace/span IDs. OTLP gRPC export is built-in.
+3. **Data-Driven Analysis:** Tumult uses TOON (Token-Oriented Object Notation) for experiments and journals. Journals flow through Apache Arrow into embedded DuckDB for SQL analytics, and export to Parquet for any data tool. TOON is 40-50% more token-efficient than JSON.
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Experiment Format & Plugin Model](#experiment-format--plugin-model)
+- [Available Plugins](#available-plugins)
+- [MCP Server (AI Integration)](#mcp-server-ai-integration)
+- [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
+- [OpenTelemetry Observability](#opentelemetry-observability)
+- [Docker Test Infrastructure](#docker-test-infrastructure)
+- [Phasing & Roadmap](#phasing--roadmap)
+- [Example Experiment](#example-experiment)
+- [Quick Start](#quick-start)
+- [Direct Comparison to Chaos Toolkit](#direct-comparison-to-chaos-toolkit)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 ## Architecture
 
@@ -72,12 +89,16 @@ cargo install tumult --features kubernetes,aws
 
 | Plugin | Type | Capabilities |
 |--------|------|-------------|
+| **tumult-core** | Native (Rust) | Experiment runner, five-phase lifecycle, controls, rollbacks |
+| **tumult-otel** | Native (Rust) | OTLP gRPC export, per-activity spans, resilience.* attributes |
+| **tumult-analytics** | Native (Rust) | DuckDB embedded SQL, Arrow columnar, Parquet/CSV/IPC export |
+| **tumult-baseline** | Native (Rust) | Statistical baseline derivation, percentiles, deviation detection |
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
+| **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
+| **tumult-mcp** | Native (Rust) | MCP server with 8 tools for AI-assisted chaos engineering |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
 | **tumult-process** | Script | Process kill/suspend/resume by PID/name/pattern, resource probes |
-
-| **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
 | **tumult-db-postgres** | Script | Kill connections, lock tables, inject latency, exhaust connection pool |
 | **tumult-db-mysql** | Script | Kill connections, lock tables |
 | **tumult-db-redis** | Script | FLUSHALL, CLIENT PAUSE, DEBUG SLEEP, connection/memory probes |
@@ -85,6 +106,26 @@ cargo install tumult --features kubernetes,aws
 | **tumult-network** | Script | tc netem latency/loss/corruption, DNS block, host partition |
 
 See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
+
+## MCP Server (AI Integration)
+
+Tumult ships a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server, enabling AI assistants to run, analyze, and create chaos experiments natively.
+
+```bash
+# Start the MCP server (stdio transport)
+tumult mcp
+```
+
+| MCP Tool | Description |
+|----------|-------------|
+| `tumult_run_experiment` | Execute an experiment and return the journal |
+| `tumult_validate` | Validate experiment syntax and provider support |
+| `tumult_analyze` | SQL query over journals via embedded DuckDB |
+| `tumult_read_journal` | Read a TOON journal and return contents |
+| `tumult_list_journals` | List .toon journal files in a directory |
+| `tumult_discover` | List all plugins, actions, and probes |
+| `tumult_create_experiment` | Create a new experiment from a template |
+| `tumult_query_traces` | Query trace data (trace/span IDs) for observability correlation |
 
 ## Data-Driven Chaos Engineering
 
@@ -117,16 +158,65 @@ tumult export journal.toon --format parquet
 
 See [Analytics Guide](docs/guides/analytics-guide.md) for table schemas, SQL examples, and export options.
 
+## OpenTelemetry Observability
+
+Tumult creates **real OpenTelemetry spans** for every activity in an experiment — not just a single span per run. Each action, probe, and hypothesis evaluation gets its own span with structured attributes:
+
+```
+resilience.experiment       (root span)
+├── resilience.hypothesis.before
+│   └── resilience.probe    (per probe, with resilience.probe.name)
+├── resilience.action       (per action, with resilience.action.name)
+├── resilience.hypothesis.after
+│   └── resilience.probe
+└── resilience.rollback     (if triggered)
+```
+
+Every span carries `resilience.*` attributes for correlation with your existing observability stack. Trace and span IDs are recorded in the journal for post-hoc analysis.
+
+```bash
+# Export spans to any OTLP-compatible backend
+TUMULT_OTEL_ENDPOINT=http://localhost:4317 tumult run experiment.toon
+
+# Query trace data from a journal
+tumult mcp  # then call tumult_query_traces
+```
+
+## Docker Test Infrastructure
+
+Tumult provides a Docker Compose stack for end-to-end testing against real services. All ports use the `1xxxx` range to avoid conflicts with local services.
+
+```bash
+cd docker/
+docker compose up -d       # Start all services
+docker compose ps          # Check health
+docker compose down -v     # Stop + remove volumes
+```
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| PostgreSQL 16 | 15432 | Database chaos testing |
+| Redis 7 | 16379 | Cache chaos testing |
+| Kafka 3.8 (KRaft) | 19092 | Message broker chaos testing |
+| SSH Server | 12222 | Remote execution testing |
+| OTel Collector | 14317 (gRPC), 14318 (HTTP) | Span collection |
+| Jaeger | 16686 | Trace visualization |
+
+See [docker/README.md](docker/README.md) for detailed setup instructions.
+
 ## Phasing & Roadmap
 
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
-| **1 — Essential Plugins** | SSH, stress, containers, process | Done |
-| **2 — Platform Plugins** | K8s, databases, Kafka, network, analytics | In Progress |
-| **3 — Automation + Cloud** | tumult-mcp, Cloud SDKs, HTML reporting | Planned |
-| **4 — Persistent Analytics** | DuckDB persistence, cross-run trends, backup/export | Planned |
+| **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
+| **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
+| **3 — Automation** | MCP server (8 tools), AI-assisted chaos engineering | Done |
+| **4 — Persistent Analytics** | Incremental ingestion, cross-run trends, backup/export | Planned |
 | **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Planned |
+| **6 — Advanced Capabilities** | Async background activities, competitive review, label selectors | Planned |
+| **7 — Infrastructure** | Docker Compose e2e test stack, CI integration | Done |
+| **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
 
 ## Example Experiment
 
@@ -208,19 +298,23 @@ regulatory:
 ### Prerequisites
 
 - **Rust 1.75+** — install via [rustup.rs](https://rustup.rs/)
-- **Platforms**: macOS (Intel/Apple Silicon), Linux (x86_64, aarch64), Windows (x86_64)
+- **Platforms**: macOS (Intel/Apple Silicon), Linux (x86_64/aarch64, glibc/musl)
 - **Git** (for cloning the repo)
 
 ### Install
 
+**From GitHub Releases** (pre-built binaries for 6 targets):
+
+Download the latest release from [Releases](https://github.com/mwigge/tumult/releases) and place the binary on your PATH.
+
+**From source:**
+
 ```bash
-# Clone and build
 git clone https://github.com/mwigge/tumult.git
 cd tumult
 cargo build --release
 
-# Binary is at target/release/tumult (~1.8MB stripped)
-# Optionally copy to your PATH:
+# Binary is at target/release/tumult
 cp target/release/tumult /usr/local/bin/
 ```
 
@@ -265,11 +359,14 @@ See [CLI Reference](docs/guides/cli-reference.md) for full command documentation
 
 | Chaos Toolkit Component | Tumult Equivalent | Key Advantage |
 |-------------------------|-------------------|---------------|
-| `chaostoolkit` (CLI) | `tumult-cli` | Lighter, single binary. |
-| `chaostoolkit-lib` (engine) | `tumult-core` | Rust speed, async execution. |
-| Python extensions | Script plugins + Native plugins | No runtime dependencies; community simple scripts. |
-| JSON experiments | TOON experiments | Highly Token-Efficient for automated analysis. |
-| opentracing control | Built-in OTel (Always On) | Native Observability, not opt-in. |
+| `chaostoolkit` (CLI) | `tumult-cli` | Single binary, no runtime dependencies |
+| `chaostoolkit-lib` (engine) | `tumult-core` | Rust speed, five-phase lifecycle with baseline |
+| Python extensions | Script plugins + Native Rust plugins | Community plugins without Rust; native for performance |
+| JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
+| opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
+| Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
+| No AI integration | `tumult-mcp` (8 MCP tools) | AI assistants run experiments natively |
+| Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---
 
