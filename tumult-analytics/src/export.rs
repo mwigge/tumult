@@ -10,8 +10,11 @@ use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 
 use crate::error::AnalyticsError;
+use crate::telemetry;
 
 pub fn export_parquet(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
+    let _span = telemetry::begin_export("parquet", &path.display().to_string());
+
     let file = File::create(path)?;
     let props = WriterProperties::builder()
         .set_compression(parquet::basic::Compression::ZSTD(Default::default()))
@@ -19,22 +22,35 @@ pub fn export_parquet(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsE
     let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))?;
     writer.write(batch)?;
     writer.close()?;
+
+    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    telemetry::event_export_completed("parquet", batch.num_rows(), bytes);
     Ok(())
 }
 
 /// Export a RecordBatch to Arrow IPC (Feather) format.
 pub fn export_arrow_ipc(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
+    let _span = telemetry::begin_export("arrow_ipc", &path.display().to_string());
+
     let file = File::create(path)?;
     let mut writer = arrow::ipc::writer::FileWriter::try_new(file, &batch.schema())?;
     writer.write(batch)?;
     writer.finish()?;
+
+    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    telemetry::event_export_completed("arrow_ipc", batch.num_rows(), bytes);
     Ok(())
 }
 
 pub fn export_csv(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError> {
+    let _span = telemetry::begin_export("csv", &path.display().to_string());
+
     let file = File::create(path)?;
     let mut writer = CsvWriterBuilder::new().with_header(true).build(file);
     writer.write(batch)?;
+
+    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    telemetry::event_export_completed("csv", batch.num_rows(), bytes);
     Ok(())
 }
 

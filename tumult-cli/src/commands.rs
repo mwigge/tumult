@@ -254,55 +254,41 @@ fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
 }
 
 fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) {
-    use opentelemetry::{global, KeyValue};
-
-    let meter = global::meter("tumult-analytics");
+    let size_bytes = std::fs::metadata(db_path).map(|m| m.len()).ok();
     if let Ok(stats) = store.stats() {
-        let gauge = meter.u64_gauge("resilience.store.experiments").build();
-        gauge.record(stats.experiment_count as u64, &[]);
-
-        let gauge = meter.u64_gauge("resilience.store.activities").build();
-        gauge.record(stats.activity_count as u64, &[]);
+        tumult_analytics::telemetry::record_store_gauges(
+            stats.experiment_count,
+            stats.activity_count,
+            size_bytes,
+        );
     }
 
-    if let Ok(meta) = std::fs::metadata(db_path) {
-        let gauge = meter.u64_gauge("resilience.store.size_bytes").build();
-        gauge.record(meta.len(), &[]);
-
-        // Disk usage percentage via available space
-        #[cfg(unix)]
+    // Disk usage percentage via df (Unix only)
+    #[cfg(unix)]
+    if let Some(parent) = db_path.parent() {
+        if let Ok(output) = std::process::Command::new("df")
+            .arg("-k")
+            .arg(parent)
+            .output()
         {
-            use std::os::unix::fs::MetadataExt;
-            let dev = meta.dev();
-            // Use statvfs to get disk usage
-            if let Some(parent) = db_path.parent() {
-                if let Ok(output) = std::process::Command::new("df")
-                    .arg("-k")
-                    .arg(parent)
-                    .output()
-                {
-                    if let Ok(stdout) = String::from_utf8(output.stdout) {
-                        // Parse df output: second line, 5th column is use%
-                        if let Some(line) = stdout.lines().nth(1) {
-                            let fields: Vec<&str> = line.split_whitespace().collect();
-                            if fields.len() >= 5 {
-                                if let Ok(pct) = fields[4].trim_end_matches('%').parse::<u64>() {
-                                    let gauge =
-                                        meter.u64_gauge("resilience.store.disk_usage_pct").build();
-                                    gauge.record(
-                                        pct,
-                                        &[KeyValue::new(
-                                            "resilience.store.path",
-                                            db_path.display().to_string(),
-                                        )],
-                                    );
-                                }
-                            }
+            if let Ok(stdout) = String::from_utf8(output.stdout) {
+                if let Some(line) = stdout.lines().nth(1) {
+                    let fields: Vec<&str> = line.split_whitespace().collect();
+                    if fields.len() >= 5 {
+                        if let Ok(pct) = fields[4].trim_end_matches('%').parse::<u64>() {
+                            let meter = opentelemetry::global::meter("tumult-analytics");
+                            let gauge = meter.u64_gauge("resilience.store.disk_usage_pct").build();
+                            gauge.record(
+                                pct,
+                                &[opentelemetry::KeyValue::new(
+                                    "resilience.store.path",
+                                    db_path.display().to_string(),
+                                )],
+                            );
                         }
                     }
                 }
             }
-            let _ = dev; // suppress unused warning
         }
     }
 }

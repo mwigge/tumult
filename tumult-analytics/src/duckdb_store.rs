@@ -16,6 +16,7 @@ use tumult_core::types::Journal;
 use crate::arrow_convert::{journal_to_activity_batch, journal_to_experiment_batch};
 use crate::error::AnalyticsError;
 use crate::export::{export_parquet, import_parquet};
+use crate::telemetry;
 
 const CURRENT_SCHEMA_VERSION: i64 = 1;
 
@@ -172,15 +173,20 @@ impl AnalyticsStore {
     /// assert_eq!(store.experiment_count().unwrap(), 1);
     /// ```
     pub fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
+        let _span = telemetry::begin_ingest(&journal.experiment_id, &journal.experiment_title);
+
         if self.experiment_exists(&journal.experiment_id)? {
+            telemetry::event_journal_duplicate(&journal.experiment_id);
             return Ok(false);
         }
         let exp_batch = journal_to_experiment_batch(journal)?;
         let act_batch = journal_to_activity_batch(journal)?;
+        let activity_count = act_batch.num_rows();
         self.insert_batch("experiments", &exp_batch)?;
-        if act_batch.num_rows() > 0 {
+        if activity_count > 0 {
             self.insert_batch("activity_results", &act_batch)?;
         }
+        telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
         Ok(true)
     }
 
@@ -193,10 +199,16 @@ impl AnalyticsStore {
                 count += 1;
             }
         }
+        // Record store gauges after batch ingestion
+        if let Ok(stats) = self.stats() {
+            telemetry::record_store_gauges(stats.experiment_count, stats.activity_count, None);
+        }
         Ok(count)
     }
 
     pub fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
+        let _span = telemetry::begin_query(sql);
+
         let mut stmt = self.conn.prepare(sql)?;
         let mut rows_iter = stmt.query(params![])?;
         let column_count = rows_iter.as_ref().map(|r| r.column_count()).unwrap_or(0);
@@ -212,6 +224,7 @@ impl AnalyticsStore {
             }
             result.push(values);
         }
+        telemetry::event_query_executed(result.len(), column_count);
         Ok(result)
     }
 
@@ -247,6 +260,8 @@ impl AnalyticsStore {
     /// Purge experiments (and their activities) older than `days` from now.
     /// Returns the number of experiments removed.
     pub fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
+        let _span = telemetry::begin_purge(days);
+
         let now_ns = chrono::Utc::now()
             .timestamp_nanos_opt()
             .expect("system time before year 2262");
@@ -271,6 +286,8 @@ impl AnalyticsStore {
         while rows.next()?.is_some() {
             count += 1;
         }
+        let remaining = self.experiment_count().unwrap_or(0);
+        telemetry::event_purge_completed(count, remaining);
         Ok(count)
     }
 
@@ -280,6 +297,15 @@ impl AnalyticsStore {
         experiments_path: &Path,
         activities_path: &Path,
     ) -> Result<(), AnalyticsError> {
+        let _span = telemetry::begin_export(
+            "parquet",
+            &experiments_path
+                .parent()
+                .unwrap_or(experiments_path)
+                .display()
+                .to_string(),
+        );
+
         let exp_batch = self.query_to_batch(
             "SELECT experiment_id, title, status, started_at_ns, ended_at_ns, \
              duration_ms, method_step_count, rollback_count, hypothesis_before_met, \
@@ -291,6 +317,16 @@ impl AnalyticsStore {
         )?;
         export_parquet(&exp_batch, experiments_path)?;
         export_parquet(&act_batch, activities_path)?;
+
+        let total_rows = exp_batch.num_rows() + act_batch.num_rows();
+        let total_bytes = std::fs::metadata(experiments_path)
+            .map(|m| m.len())
+            .unwrap_or(0)
+            + std::fs::metadata(activities_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+        telemetry::event_export_completed("parquet", total_rows, total_bytes);
+
         Ok(())
     }
 
@@ -300,10 +336,23 @@ impl AnalyticsStore {
         experiments_path: &Path,
         activities_path: &Path,
     ) -> Result<(), AnalyticsError> {
+        let _span = telemetry::begin_import(
+            &experiments_path
+                .parent()
+                .unwrap_or(experiments_path)
+                .display()
+                .to_string(),
+        );
+
         self.conn.execute_batch("BEGIN TRANSACTION")?;
         match self.import_tables_inner(experiments_path, activities_path) {
             Ok(()) => {
                 self.conn.execute_batch("COMMIT")?;
+                let stats = self.stats().unwrap_or(StoreStats {
+                    experiment_count: 0,
+                    activity_count: 0,
+                });
+                telemetry::event_import_completed(stats.experiment_count, stats.activity_count);
                 Ok(())
             }
             Err(e) => {
