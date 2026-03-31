@@ -183,6 +183,18 @@ pub fn cmd_run(
     rollback_strategy: RollbackStrategy,
     auto_ingest: bool,
 ) -> Result<()> {
+    // S-C3: File size limit before deserialization (10MB max)
+    let file_size = std::fs::metadata(experiment_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if file_size > 10 * 1024 * 1024 {
+        bail!(
+            "experiment file too large ({} bytes, max 10MB): {}",
+            file_size,
+            experiment_path.display()
+        );
+    }
+
     let content = std::fs::read_to_string(experiment_path).with_context(|| {
         format!(
             "failed to read experiment file: {}",

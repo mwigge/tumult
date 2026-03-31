@@ -32,14 +32,26 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
         return Ok(plugins);
     }
 
-    for entry in std::fs::read_dir(dir)? {
+    // Canonicalize base dir to prevent symlink escapes
+    let canonical_dir = std::fs::canonicalize(dir)?;
+
+    for entry in std::fs::read_dir(&canonical_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if !path.is_dir() {
+        if !path.is_dir() || path.is_symlink() {
             continue;
         }
 
-        let manifest_path = path.join("plugin.toon");
+        // Ensure resolved path stays within plugin directory
+        let canonical_path = match std::fs::canonicalize(&path) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if !canonical_path.starts_with(&canonical_dir) {
+            continue; // symlink escape attempt
+        }
+
+        let manifest_path = canonical_path.join("plugin.toon");
         if manifest_path.exists() {
             let content = std::fs::read_to_string(&manifest_path).map_err(|e| {
                 DiscoveryError::ManifestParse {
