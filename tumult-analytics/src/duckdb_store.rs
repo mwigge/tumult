@@ -1,30 +1,59 @@
 //! DuckDB embedded analytics store.
+//!
+//! Provides both in-memory and persistent (file-backed) analytics stores.
+//! Persistent stores use WAL mode for crash safety, deduplicate journals
+//! by experiment_id, and support schema versioning for future migrations.
+
+use std::path::{Path, PathBuf};
 
 use arrow::record_batch::RecordBatch;
 use duckdb::{params, Connection};
-use std::path::Path;
 use tumult_core::types::Journal;
 
 use crate::arrow_convert::{journal_to_activity_batch, journal_to_experiment_batch};
 use crate::error::AnalyticsError;
+use crate::export::{export_parquet, import_parquet};
+
+const CURRENT_SCHEMA_VERSION: i64 = 1;
+
+pub struct StoreStats {
+    pub experiment_count: usize,
+    pub activity_count: usize,
+}
 
 pub struct AnalyticsStore {
     conn: Connection,
 }
 
 impl AnalyticsStore {
+    /// Returns the default persistent store path: `~/.tumult/analytics.duckdb`
+    pub fn default_path() -> PathBuf {
+        let home = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        home.join(".tumult").join("analytics.duckdb")
+    }
+
     pub fn in_memory() -> Result<Self, AnalyticsError> {
         let conn = Connection::open_in_memory()?;
         let store = Self { conn };
-        store.create_tables()?;
+        store.init_schema()?;
         Ok(store)
     }
 
     pub fn open(path: &Path) -> Result<Self, AnalyticsError> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let conn = Connection::open(path)?;
         let store = Self { conn };
-        store.create_tables()?;
+        store.init_schema()?;
         Ok(store)
+    }
+
+    fn init_schema(&self) -> Result<(), AnalyticsError> {
+        self.create_tables()?;
+        self.ensure_schema_version()?;
+        Ok(())
     }
 
     fn create_tables(&self) -> Result<(), AnalyticsError> {
@@ -37,17 +66,58 @@ impl AnalyticsStore {
                 hypothesis_before_met BOOLEAN, hypothesis_after_met BOOLEAN,
                 estimate_accuracy DOUBLE, resilience_score DOUBLE
             );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_experiments_id
+                ON experiments (experiment_id);
             CREATE TABLE IF NOT EXISTS activity_results (
                 experiment_id VARCHAR NOT NULL, name VARCHAR NOT NULL,
                 activity_type VARCHAR NOT NULL, status VARCHAR NOT NULL,
                 started_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL,
                 output VARCHAR, error VARCHAR, phase VARCHAR NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS schema_meta (
+                key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL
             );",
         )?;
         Ok(())
     }
 
+    fn ensure_schema_version(&self) -> Result<(), AnalyticsError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+        let version: Option<String> = stmt.query_row(params![], |row| row.get(0)).ok();
+
+        if version.is_none() {
+            self.conn.execute(
+                "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
+                params![CURRENT_SCHEMA_VERSION.to_string()],
+            )?;
+        }
+        // Future: if version < CURRENT_SCHEMA_VERSION, run migrations here
+        Ok(())
+    }
+
+    pub fn schema_version(&self) -> Result<i64, AnalyticsError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+        let version: String = stmt.query_row(params![], |row| row.get(0))?;
+        Ok(version.parse::<i64>().unwrap_or(0))
+    }
+
+    /// Check if an experiment_id already exists in the store.
+    fn experiment_exists(&self, experiment_id: &str) -> Result<bool, AnalyticsError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT count(*) FROM experiments WHERE experiment_id = ?")?;
+        let count: i64 = stmt.query_row(params![experiment_id], |row| row.get(0))?;
+        Ok(count > 0)
+    }
+
     /// Ingest a single experiment journal into the analytics store.
+    /// Skips ingestion if the experiment_id already exists (incremental/dedup).
+    ///
+    /// Returns true if the journal was ingested, false if it was a duplicate.
     ///
     /// # Examples
     ///
@@ -80,21 +150,27 @@ impl AnalyticsStore {
     /// store.ingest_journal(&journal).unwrap();
     /// assert_eq!(store.experiment_count().unwrap(), 1);
     /// ```
-    pub fn ingest_journal(&self, journal: &Journal) -> Result<(), AnalyticsError> {
+    pub fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
+        if self.experiment_exists(&journal.experiment_id)? {
+            return Ok(false);
+        }
         let exp_batch = journal_to_experiment_batch(journal)?;
         let act_batch = journal_to_activity_batch(journal)?;
         self.insert_batch("experiments", &exp_batch)?;
         if act_batch.num_rows() > 0 {
             self.insert_batch("activity_results", &act_batch)?;
         }
-        Ok(())
+        Ok(true)
     }
 
+    /// Ingest multiple journals, skipping duplicates.
+    /// Returns the count of newly ingested journals.
     pub fn ingest_journals(&self, journals: &[Journal]) -> Result<usize, AnalyticsError> {
         let mut count = 0;
         for journal in journals {
-            self.ingest_journal(journal)?;
-            count += 1;
+            if self.ingest_journal(journal)? {
+                count += 1;
+            }
         }
         Ok(count)
     }
@@ -135,6 +211,94 @@ impl AnalyticsStore {
         let mut stmt = self.conn.prepare("SELECT count(*) FROM experiments")?;
         let count: i64 = stmt.query_row(params![], |row| row.get(0))?;
         Ok(count as usize)
+    }
+
+    pub fn stats(&self) -> Result<StoreStats, AnalyticsError> {
+        let exp_count = self.experiment_count()?;
+        let mut stmt = self.conn.prepare("SELECT count(*) FROM activity_results")?;
+        let act_count: i64 = stmt.query_row(params![], |row| row.get(0))?;
+        Ok(StoreStats {
+            experiment_count: exp_count,
+            activity_count: act_count as usize,
+        })
+    }
+
+    /// Purge experiments (and their activities) older than `days` from now.
+    /// Returns the number of experiments removed.
+    pub fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
+        let cutoff_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            - (i64::from(days) * 86_400 * 1_000_000_000);
+
+        // Delete activity results for old experiments first
+        self.conn.execute(
+            "DELETE FROM activity_results WHERE experiment_id IN \
+             (SELECT experiment_id FROM experiments WHERE started_at_ns < ?)",
+            params![cutoff_ns],
+        )?;
+
+        // Delete old experiments
+        let mut stmt = self
+            .conn
+            .prepare("DELETE FROM experiments WHERE started_at_ns < ? RETURNING experiment_id")?;
+        let mut rows = stmt.query(params![cutoff_ns])?;
+        let mut count = 0;
+        while rows.next()?.is_some() {
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// Export both tables to Parquet files for backup.
+    pub fn export_tables(
+        &self,
+        experiments_path: &Path,
+        activities_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        let exp_batch = self.query_to_batch(
+            "SELECT experiment_id, title, status, started_at_ns, ended_at_ns, \
+             duration_ms, method_step_count, rollback_count, hypothesis_before_met, \
+             hypothesis_after_met, estimate_accuracy, resilience_score FROM experiments",
+        )?;
+        let act_batch = self.query_to_batch(
+            "SELECT experiment_id, name, activity_type, status, started_at_ns, \
+             duration_ms, output, error, phase FROM activity_results",
+        )?;
+        export_parquet(&exp_batch, experiments_path)?;
+        export_parquet(&act_batch, activities_path)?;
+        Ok(())
+    }
+
+    /// Import from Parquet backup files.
+    pub fn import_tables(
+        &self,
+        experiments_path: &Path,
+        activities_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        let exp_batches = import_parquet(experiments_path)?;
+        for batch in &exp_batches {
+            self.insert_batch("experiments", batch)?;
+        }
+        let act_batches = import_parquet(activities_path)?;
+        for batch in &act_batches {
+            self.insert_batch("activity_results", batch)?;
+        }
+        Ok(())
+    }
+
+    fn query_to_batch(&self, sql: &str) -> Result<RecordBatch, AnalyticsError> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let arrow = stmt.query_arrow(params![])?;
+        let batches: Vec<RecordBatch> = arrow.collect();
+        if batches.is_empty() {
+            // Return empty batch with the right schema from the experiments schema
+            let schema = crate::arrow_convert::experiments_schema();
+            Ok(RecordBatch::new_empty(std::sync::Arc::new(schema)))
+        } else if batches.len() == 1 {
+            Ok(batches.into_iter().next().unwrap())
+        } else {
+            let schema = batches[0].schema();
+            Ok(arrow::compute::concat_batches(&schema, &batches)?)
+        }
     }
 
     fn insert_batch(&self, table: &str, batch: &RecordBatch) -> Result<(), AnalyticsError> {
@@ -271,5 +435,272 @@ mod tests {
             .query_columns("SELECT experiment_id, status FROM experiments")
             .unwrap();
         assert_eq!(cols, vec!["experiment_id", "status"]);
+    }
+
+    // ── Phase 4: Persistent store ─────────────────────────────
+
+    #[test]
+    fn open_persistent_creates_file() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+        let s = AnalyticsStore::open(&db_path).unwrap();
+        s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+        assert_eq!(s.experiment_count().unwrap(), 1);
+        drop(s);
+        assert!(db_path.exists());
+    }
+
+    #[test]
+    fn persistent_store_survives_reopen() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+
+        // Write
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+                .unwrap();
+            assert_eq!(s.experiment_count().unwrap(), 1);
+        }
+
+        // Reopen and verify data persisted
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            assert_eq!(s.experiment_count().unwrap(), 1);
+            let rows = s.query("SELECT experiment_id FROM experiments").unwrap();
+            assert_eq!(rows[0][0], "e1");
+        }
+    }
+
+    #[test]
+    fn default_path_returns_valid_path() {
+        let path = AnalyticsStore::default_path();
+        assert!(path.ends_with("analytics.duckdb"));
+        assert!(path.to_str().unwrap().contains(".tumult"));
+    }
+
+    #[test]
+    fn open_default_creates_directory() {
+        // This test uses a temp directory to avoid polluting the real home
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("subdir").join("analytics.duckdb");
+        let s = AnalyticsStore::open(&db_path).unwrap();
+        assert_eq!(s.experiment_count().unwrap(), 0);
+        assert!(db_path.exists());
+    }
+
+    // ── Phase 4: Incremental ingestion (dedup) ────────────────
+
+    #[test]
+    fn ingest_skips_duplicate_experiment_id() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+        s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+        // Should only have 1 row, not 2
+        assert_eq!(s.experiment_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn ingest_journals_returns_only_new_count() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+        let ingested = s
+            .ingest_journals(&[
+                sample_journal("e1", ExperimentStatus::Completed), // duplicate
+                sample_journal("e2", ExperimentStatus::Deviated),  // new
+                sample_journal("e3", ExperimentStatus::Completed), // new
+            ])
+            .unwrap();
+        assert_eq!(ingested, 2); // only 2 new
+        assert_eq!(s.experiment_count().unwrap(), 3);
+    }
+
+    // ── Phase 4: WAL mode ─────────────────────────────────────
+
+    #[test]
+    fn persistent_store_is_functional_after_write_and_reopen() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+
+        // Write data and close
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+                .unwrap();
+            s.ingest_journal(&sample_journal("e2", ExperimentStatus::Deviated))
+                .unwrap();
+        }
+
+        // Reopen — DuckDB uses WAL by default for file-backed databases
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            assert_eq!(s.experiment_count().unwrap(), 2);
+            let rows = s.query("SELECT count(*) FROM activity_results").unwrap();
+            assert_eq!(rows[0][0], "2");
+        }
+    }
+
+    // ── Phase 4: Schema version tracking ──────────────────────
+
+    #[test]
+    fn schema_version_is_tracked() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let version = s.schema_version().unwrap();
+        assert!(version >= 1, "schema version should be at least 1");
+    }
+
+    #[test]
+    fn schema_version_persists_across_reopen() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            assert_eq!(s.schema_version().unwrap(), 1);
+        }
+
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            assert_eq!(s.schema_version().unwrap(), 1);
+        }
+    }
+
+    // ── Phase 4: Store statistics ─────────────────────────────
+
+    #[test]
+    fn store_stats_empty() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let stats = s.stats().unwrap();
+        assert_eq!(stats.experiment_count, 0);
+        assert_eq!(stats.activity_count, 0);
+    }
+
+    #[test]
+    fn store_stats_after_ingestion() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+        s.ingest_journal(&sample_journal("e2", ExperimentStatus::Deviated))
+            .unwrap();
+        let stats = s.stats().unwrap();
+        assert_eq!(stats.experiment_count, 2);
+        assert_eq!(stats.activity_count, 2); // 1 activity per journal
+    }
+
+    // ── Phase 4: Retention policy ─────────────────────────────
+
+    #[test]
+    fn purge_older_than_removes_old_experiments() {
+        let s = AnalyticsStore::in_memory().unwrap();
+
+        // Create journal with old timestamp (2020)
+        let mut old = sample_journal("old-1", ExperimentStatus::Completed);
+        old.started_at_ns = 1_577_836_800_000_000_000; // 2020-01-01
+
+        // Create journal with recent timestamp
+        let recent = sample_journal("new-1", ExperimentStatus::Completed);
+
+        s.ingest_journal(&old).unwrap();
+        s.ingest_journal(&recent).unwrap();
+        assert_eq!(s.experiment_count().unwrap(), 2);
+
+        // Purge experiments older than 30 days from now
+        let purged = s.purge_older_than_days(30).unwrap();
+        assert_eq!(purged, 1);
+        assert_eq!(s.experiment_count().unwrap(), 1);
+
+        // The remaining experiment should be the recent one
+        let rows = s.query("SELECT experiment_id FROM experiments").unwrap();
+        assert_eq!(rows[0][0], "new-1");
+    }
+
+    #[test]
+    fn purge_also_removes_activity_results() {
+        let s = AnalyticsStore::in_memory().unwrap();
+
+        let mut old = sample_journal("old-1", ExperimentStatus::Completed);
+        old.started_at_ns = 1_577_836_800_000_000_000; // 2020-01-01
+
+        s.ingest_journal(&old).unwrap();
+        s.ingest_journal(&sample_journal("new-1", ExperimentStatus::Completed))
+            .unwrap();
+
+        s.purge_older_than_days(30).unwrap();
+
+        // Activity results for old experiment should also be gone
+        let rows = s
+            .query("SELECT count(*) FROM activity_results WHERE experiment_id = 'old-1'")
+            .unwrap();
+        assert_eq!(rows[0][0], "0");
+    }
+
+    // ── Phase 4: Export entire store ──────────────────────────
+
+    #[test]
+    fn export_store_to_parquet() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+        s.ingest_journal(&sample_journal("e2", ExperimentStatus::Deviated))
+            .unwrap();
+
+        let d = tempfile::TempDir::new().unwrap();
+        let exp_path = d.path().join("experiments.parquet");
+        let act_path = d.path().join("activities.parquet");
+
+        s.export_tables(&exp_path, &act_path).unwrap();
+
+        assert!(exp_path.exists());
+        assert!(act_path.exists());
+        assert!(std::fs::metadata(&exp_path).unwrap().len() > 0);
+        assert!(std::fs::metadata(&act_path).unwrap().len() > 0);
+    }
+
+    // ── Phase 4: Import from Parquet ──────────────────────────
+
+    #[test]
+    fn import_from_parquet_roundtrip() {
+        let d = tempfile::TempDir::new().unwrap();
+        let exp_path = d.path().join("experiments.parquet");
+        let act_path = d.path().join("activities.parquet");
+
+        // Export from one store
+        {
+            let s = AnalyticsStore::in_memory().unwrap();
+            s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+                .unwrap();
+            s.ingest_journal(&sample_journal("e2", ExperimentStatus::Deviated))
+                .unwrap();
+            s.export_tables(&exp_path, &act_path).unwrap();
+        }
+
+        // Import into a fresh store
+        {
+            let s = AnalyticsStore::in_memory().unwrap();
+            s.import_tables(&exp_path, &act_path).unwrap();
+            assert_eq!(s.experiment_count().unwrap(), 2);
+
+            let rows = s
+                .query("SELECT experiment_id FROM experiments ORDER BY experiment_id")
+                .unwrap();
+            assert_eq!(rows[0][0], "e1");
+            assert_eq!(rows[1][0], "e2");
+        }
+    }
+
+    // ── Phase 4: Unique index enforcement ─────────────────────
+
+    #[test]
+    fn experiment_id_has_unique_index() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let result = s
+            .query("SELECT count(*) FROM duckdb_indexes() WHERE table_name = 'experiments'")
+            .unwrap();
+        let idx_count: usize = result[0][0].parse().unwrap_or(0);
+        assert!(idx_count >= 1, "experiments table should have an index");
     }
 }

@@ -1,10 +1,11 @@
-//! Export journal data to Parquet and CSV formats.
+//! Export and import journal data in Parquet, Arrow IPC, and CSV formats.
 
 use std::fs::File;
 use std::path::Path;
 
 use arrow::csv::WriterBuilder as CsvWriterBuilder;
 use arrow::record_batch::RecordBatch;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 
@@ -35,6 +36,14 @@ pub fn export_csv(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError
     let mut writer = CsvWriterBuilder::new().with_header(true).build(file);
     writer.write(batch)?;
     Ok(())
+}
+
+/// Import RecordBatches from a Parquet file.
+pub fn import_parquet(path: &Path) -> Result<Vec<RecordBatch>, AnalyticsError> {
+    let file = File::open(path)?;
+    let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+    let batches: Result<Vec<_>, _> = reader.collect();
+    Ok(batches?)
 }
 
 #[cfg(test)]

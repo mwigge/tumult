@@ -75,6 +75,9 @@ enum Commands {
         /// Baseline mode
         #[arg(long, default_value_t = BaselineMode::Full, value_enum)]
         baseline_mode: BaselineMode,
+        /// Skip auto-ingestion into persistent analytics store
+        #[arg(long)]
+        no_ingest: bool,
     },
     /// Validate experiment syntax and plugin references
     Validate {
@@ -89,8 +92,8 @@ enum Commands {
     },
     /// SQL analytics over journal files
     Analyze {
-        /// Directory containing journal files
-        journals: PathBuf,
+        /// Directory containing journal files (omit to use persistent store)
+        journals: Option<PathBuf>,
         /// SQL query to execute
         #[arg(long)]
         query: Option<String>,
@@ -136,6 +139,36 @@ enum Commands {
         #[arg(long)]
         plugin: Option<String>,
     },
+    /// Import journals from Parquet backup
+    Import {
+        /// Directory containing Parquet backup files
+        parquet_dir: PathBuf,
+    },
+    /// Persistent analytics store management
+    Store {
+        #[command(subcommand)]
+        action: StoreAction,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum StoreAction {
+    /// Show store statistics
+    Stats,
+    /// Export entire store to Parquet backup
+    Backup {
+        /// Output directory for backup files
+        #[arg(long, default_value = "tumult-backup")]
+        output: PathBuf,
+    },
+    /// Purge experiments older than N days
+    Purge {
+        /// Number of days to retain
+        #[arg(long)]
+        older_than_days: u32,
+    },
+    /// Show store file path
+    Path,
 }
 
 #[tokio::main]
@@ -153,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             rollback_strategy,
             baseline_mode: _,
+            no_ingest,
         } => {
             let strategy = match rollback_strategy {
                 RollbackStrategy::Always => tumult_core::execution::RollbackStrategy::Always,
@@ -161,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
             };
-            commands::cmd_run(&experiment, &journal_path, dry_run, strategy)?;
+            commands::cmd_run(&experiment, &journal_path, dry_run, strategy, !no_ingest)?;
         }
         Commands::Validate { experiment } => {
             commands::cmd_validate(&experiment)?;
@@ -173,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
             commands::cmd_init(plugin.as_deref())?;
         }
         Commands::Analyze { journals, query } => {
-            commands::cmd_analyze(&journals, query.as_deref())?;
+            commands::cmd_analyze(journals.as_deref(), query.as_deref())?;
         }
         Commands::Export { journal, format } => {
             let fmt = match format {
@@ -208,6 +242,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::Report { .. } => {
             anyhow::bail!("report command requires tumult-report (Phase 3)");
         }
+        Commands::Import { parquet_dir } => {
+            commands::cmd_import(&parquet_dir)?;
+        }
+        Commands::Store { action } => match action {
+            StoreAction::Stats => commands::cmd_store_stats()?,
+            StoreAction::Backup { output } => commands::cmd_store_backup(&output)?,
+            StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
+            StoreAction::Path => commands::cmd_store_path()?,
+        },
     }
 
     // Flush OTel spans before exit
@@ -262,6 +305,7 @@ mod tests {
             dry_run,
             rollback_strategy,
             baseline_mode,
+            ..
         } = cli.command
         else {
             panic!("expected Run command");
@@ -294,6 +338,7 @@ mod tests {
             dry_run,
             rollback_strategy,
             baseline_mode,
+            ..
         } = cli.command
         else {
             panic!("expected Run command");
@@ -430,12 +475,12 @@ mod tests {
     // ── Analyze ────────────────────────────────────────────────
 
     #[test]
-    fn parse_analyze_minimal() {
+    fn parse_analyze_with_path() {
         let cli = Cli::try_parse_from(["tumult", "analyze", "journals/"]).unwrap();
         let Commands::Analyze { journals, query } = cli.command else {
             panic!("expected Analyze command");
         };
-        assert_eq!(journals, PathBuf::from("journals/"));
+        assert_eq!(journals, Some(PathBuf::from("journals/")));
         assert!(query.is_none());
     }
 
@@ -456,9 +501,28 @@ mod tests {
     }
 
     #[test]
-    fn parse_analyze_requires_journals_path() {
-        let err = Cli::try_parse_from(["tumult", "analyze"]).unwrap_err();
-        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    fn parse_analyze_no_path_uses_persistent_store() {
+        let cli = Cli::try_parse_from(["tumult", "analyze"]).unwrap();
+        let Commands::Analyze { journals, .. } = cli.command else {
+            panic!("expected Analyze command");
+        };
+        assert!(journals.is_none());
+    }
+
+    #[test]
+    fn parse_analyze_query_only() {
+        let cli = Cli::try_parse_from([
+            "tumult",
+            "analyze",
+            "--query",
+            "SELECT count(*) FROM experiments",
+        ])
+        .unwrap();
+        let Commands::Analyze { journals, query } = cli.command else {
+            panic!("expected Analyze command");
+        };
+        assert!(journals.is_none());
+        assert!(query.is_some());
     }
 
     // ── Export ──────────────────────────────────────────────────
@@ -609,5 +673,115 @@ mod tests {
             panic!("expected Init command");
         };
         assert_eq!(plugin.unwrap(), "tumult-db");
+    }
+
+    // ── Run with --no-ingest ──────────────────────────────────
+
+    #[test]
+    fn parse_run_no_ingest_flag() {
+        let cli = Cli::try_parse_from(["tumult", "run", "exp.toon", "--no-ingest"]).unwrap();
+        let Commands::Run { no_ingest, .. } = cli.command else {
+            panic!("expected Run command");
+        };
+        assert!(no_ingest);
+    }
+
+    #[test]
+    fn parse_run_default_ingest_enabled() {
+        let cli = Cli::try_parse_from(["tumult", "run", "exp.toon"]).unwrap();
+        let Commands::Run { no_ingest, .. } = cli.command else {
+            panic!("expected Run command");
+        };
+        assert!(!no_ingest);
+    }
+
+    // ── Import ────────────────────────────────────────────────
+
+    #[test]
+    fn parse_import() {
+        let cli = Cli::try_parse_from(["tumult", "import", "backup/"]).unwrap();
+        let Commands::Import { parquet_dir } = cli.command else {
+            panic!("expected Import command");
+        };
+        assert_eq!(parquet_dir, PathBuf::from("backup/"));
+    }
+
+    #[test]
+    fn parse_import_requires_path() {
+        let err = Cli::try_parse_from(["tumult", "import"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    // ── Store ─────────────────────────────────────────────────
+
+    #[test]
+    fn parse_store_stats() {
+        let cli = Cli::try_parse_from(["tumult", "store", "stats"]).unwrap();
+        let Commands::Store { action } = cli.command else {
+            panic!("expected Store command");
+        };
+        assert!(matches!(action, StoreAction::Stats));
+    }
+
+    #[test]
+    fn parse_store_backup_default() {
+        let cli = Cli::try_parse_from(["tumult", "store", "backup"]).unwrap();
+        let Commands::Store { action } = cli.command else {
+            panic!("expected Store command");
+        };
+        let StoreAction::Backup { output } = action else {
+            panic!("expected Backup");
+        };
+        assert_eq!(output, PathBuf::from("tumult-backup"));
+    }
+
+    #[test]
+    fn parse_store_backup_custom_output() {
+        let cli =
+            Cli::try_parse_from(["tumult", "store", "backup", "--output", "my-backup"]).unwrap();
+        let Commands::Store { action } = cli.command else {
+            panic!("expected Store command");
+        };
+        let StoreAction::Backup { output } = action else {
+            panic!("expected Backup");
+        };
+        assert_eq!(output, PathBuf::from("my-backup"));
+    }
+
+    #[test]
+    fn parse_store_purge() {
+        let cli =
+            Cli::try_parse_from(["tumult", "store", "purge", "--older-than-days", "90"]).unwrap();
+        let Commands::Store { action } = cli.command else {
+            panic!("expected Store command");
+        };
+        let StoreAction::Purge { older_than_days } = action else {
+            panic!("expected Purge");
+        };
+        assert_eq!(older_than_days, 90);
+    }
+
+    #[test]
+    fn parse_store_purge_requires_days() {
+        let err = Cli::try_parse_from(["tumult", "store", "purge"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn parse_store_path() {
+        let cli = Cli::try_parse_from(["tumult", "store", "path"]).unwrap();
+        let Commands::Store { action } = cli.command else {
+            panic!("expected Store command");
+        };
+        assert!(matches!(action, StoreAction::Path));
+    }
+
+    #[test]
+    fn parse_store_requires_subcommand() {
+        let err = Cli::try_parse_from(["tumult", "store"]).unwrap_err();
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
     }
 }
