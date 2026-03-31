@@ -430,6 +430,7 @@ fn runner_emits_resilience_rollback_span() {
     let config = RunConfig {
         rollback_strategy: tumult_core::execution::RollbackStrategy::Always,
         cancellation_token: None,
+        parent_context: None,
     };
     run_experiment(&exp, &executor, &controls, &config).unwrap();
 

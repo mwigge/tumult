@@ -1,0 +1,13 @@
+[package]
+name = "tumult-test-utils"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared test helpers for tumult workspace integration tests"
+publish = false
+
+[dependencies]
+tumult-core = { path = "../tumult-core" }
+serde_json = { workspace = true }
+indexmap = { workspace = true }

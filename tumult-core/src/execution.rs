@@ -117,6 +117,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background,
+            label_selector: None,
         }
     }
 
@@ -135,6 +136,7 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }
     }
 

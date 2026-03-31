@@ -26,6 +26,7 @@ fn validate_rejects_invalid_regex_pattern() {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
         ..Default::default()
     };
@@ -58,6 +59,7 @@ fn validate_accepts_valid_regex_pattern() {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
         ..Default::default()
     };

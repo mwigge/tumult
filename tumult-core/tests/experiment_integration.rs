@@ -138,6 +138,7 @@ fn action(name: &str) -> Activity {
         pause_before_s: None,
         pause_after_s: None,
         background: false,
+        label_selector: None,
     }
 }
 
@@ -163,6 +164,7 @@ fn probe_with_tolerance(name: &str, expected: serde_json::Value) -> Activity {
         pause_before_s: None,
         pause_after_s: None,
         background: false,
+        label_selector: None,
     }
 }
 
@@ -237,6 +239,7 @@ fn full_experiment_run_produces_complete_journal() {
     let config = RunConfig {
         rollback_strategy: RollbackStrategy::Always,
         cancellation_token: None,
+        parent_context: None,
     };
 
     let journal = run_experiment(&exp, &plugin, &controls, &config).unwrap();
@@ -340,6 +343,7 @@ fn baselined_hypothesis_with_range_tolerance() {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
     ));
 
@@ -380,6 +384,7 @@ fn baselined_hypothesis_fails_when_outside_range() {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
     ));
 
@@ -700,6 +705,7 @@ fn regex_tolerance_in_hypothesis() {
             pause_before_s: None,
             pause_after_s: None,
             background: false,
+            label_selector: None,
         }],
     ));
 

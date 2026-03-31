@@ -66,9 +66,123 @@ pub struct ProbeSamples {
     pub errors: u32,
     /// Total attempts (successful + failed).
     pub total_attempts: u32,
+    /// Epoch nanosecond timestamps for each sample in `values`.
+    ///
+    /// Used for Arrow conversion and MTTR analysis. May be empty if
+    /// the caller does not track per-sample timestamps.
+    pub sampled_at: Vec<i64>,
 }
 
-/// Compute a percentile from an already-sorted slice (avoids re-sorting).
+/// Streaming baseline acquisition builder.
+///
+/// Accepts probe samples incrementally — one value at a time — and
+/// derives the final baseline when [`finish`] is called.
+///
+/// This is a synchronous, allocation-friendly alternative to building a
+/// complete [`ProbeSamples`] vector before calling [`derive_baseline`].
+/// The async probe loop pushes each result here as it arrives; the runner
+/// calls [`finish`] at the end of the warmup window.
+///
+/// # Examples
+///
+/// ```
+/// use tumult_baseline::acquisition::{AcquisitionStream, AcquisitionConfig};
+/// use tumult_baseline::tolerance::Method;
+///
+/// let mut stream = AcquisitionStream::new(
+///     "api-latency".into(),
+///     AcquisitionConfig {
+///         method: Method::MeanStddev { sigma: 2.0 },
+///         min_samples: 3,
+///     },
+/// );
+///
+/// stream.push_sample(100.0);
+/// stream.push_sample(102.0);
+/// stream.push_sample(98.0);
+///
+/// let result = stream.finish().unwrap();
+/// assert_eq!(result.probes.len(), 1);
+/// assert!(!result.anomaly_detected);
+/// ```
+pub struct AcquisitionStream {
+    probe_name: String,
+    config: AcquisitionConfig,
+    values: Vec<f64>,
+    errors: u32,
+    total_attempts: u32,
+}
+
+impl AcquisitionStream {
+    /// Creates a new streaming acquisition for a single probe.
+    #[must_use]
+    pub fn new(probe_name: String, config: AcquisitionConfig) -> Self {
+        Self {
+            probe_name,
+            config,
+            values: Vec::new(),
+            errors: 0,
+            total_attempts: 0,
+        }
+    }
+
+    /// Records a successful probe sample value.
+    pub fn push_sample(&mut self, value: f64) {
+        self.values.push(value);
+        self.total_attempts += 1;
+    }
+
+    /// Records a probe error (no value collected).
+    pub fn push_error(&mut self) {
+        self.errors += 1;
+        self.total_attempts += 1;
+    }
+
+    /// Returns the number of successful samples pushed so far.
+    #[must_use]
+    pub fn sample_count(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Derives the baseline from all pushed samples.
+    ///
+    /// Equivalent to calling [`derive_baseline`] with the accumulated
+    /// [`ProbeSamples`]. Does not consume the stream — samples can continue
+    /// to be pushed after calling `derive`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AcquisitionError::NoSamplesAfterWarmup`] if no successful
+    /// samples have been pushed.
+    pub fn derive(&self) -> Result<AcquisitionResult, AcquisitionError> {
+        let probe = ProbeSamples {
+            name: self.probe_name.clone(),
+            values: self.values.clone(),
+            errors: self.errors,
+            total_attempts: self.total_attempts,
+            sampled_at: vec![],
+        };
+        derive_baseline(&[probe], &self.config)
+    }
+
+    /// Finalises the stream and derives the baseline, consuming `self`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AcquisitionError::NoSamplesAfterWarmup`] if no successful
+    /// samples were pushed.
+    pub fn finish(self) -> Result<AcquisitionResult, AcquisitionError> {
+        let probe = ProbeSamples {
+            name: self.probe_name,
+            values: self.values,
+            errors: self.errors,
+            total_attempts: self.total_attempts,
+            sampled_at: vec![],
+        };
+        derive_baseline(&[probe], &self.config)
+    }
+}
+
 fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
@@ -123,6 +237,7 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
 ///     values: vec![100.0, 102.0, 98.0, 101.0, 99.0, 100.0, 103.0, 97.0],
 ///     errors: 0,
 ///     total_attempts: 8,
+///     sampled_at: vec![],
 /// }];
 ///
 /// let config = AcquisitionConfig {
@@ -242,6 +357,7 @@ mod tests {
             ],
             errors: 0,
             total_attempts: 10,
+            sampled_at: vec![],
         }
     }
 
@@ -284,6 +400,7 @@ mod tests {
             values: vec![100.0, 101.0, 99.0, 100.0, 102.0],
             errors: 2,
             total_attempts: 7,
+            sampled_at: vec![],
         }];
         let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
         let expected_rate = 2.0 / 7.0;
@@ -303,6 +420,7 @@ mod tests {
             values: vec![],
             errors: 0,
             total_attempts: 0,
+            sampled_at: vec![],
         }];
         let result = derive_baseline(&samples, &config_mean_stddev());
         assert!(result.is_err());
@@ -315,6 +433,7 @@ mod tests {
             values: vec![1.0, 100.0, 2.0, 99.0, 3.0, 98.0, 1.0, 200.0],
             errors: 0,
             total_attempts: 8,
+            sampled_at: vec![],
         }];
         let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
         assert!(result.anomaly_detected);
@@ -391,6 +510,7 @@ mod tests {
             values: vec![50.0, 10.0, 90.0, 30.0, 70.0],
             errors: 0,
             total_attempts: 5,
+            sampled_at: vec![],
         }];
         let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
         assert!((result.probes[0].min - 10.0).abs() < f64::EPSILON);
@@ -404,6 +524,7 @@ mod tests {
             values: (1..=100).map(f64::from).collect(),
             errors: 0,
             total_attempts: 100,
+            sampled_at: vec![],
         }];
         let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
         let stats = &result.probes[0];
@@ -413,5 +534,48 @@ mod tests {
         assert!((stats.p50 - 50.5).abs() < 1.0);
         assert!(stats.p95 > 90.0);
         assert!(stats.p99 > 95.0);
+    }
+
+    // ── AcquisitionStream ─────────────────────────────────────
+
+    #[test]
+    fn acquisition_stream_finish_derives_baseline() {
+        let mut stream = AcquisitionStream::new("latency".into(), config_mean_stddev());
+        for v in [100.0, 102.0, 98.0, 101.0, 99.0] {
+            stream.push_sample(v);
+        }
+        let result = stream.finish().unwrap();
+        assert_eq!(result.probes.len(), 1);
+        assert_eq!(result.probes[0].name, "latency");
+        assert!((result.probes[0].mean - 100.0).abs() < 1.0);
+        assert!(!result.anomaly_detected);
+    }
+
+    #[test]
+    fn acquisition_stream_push_error_tracks_error_rate() {
+        let mut stream = AcquisitionStream::new("check".into(), config_mean_stddev());
+        for v in [100.0, 101.0, 99.0, 100.0, 102.0] {
+            stream.push_sample(v);
+        }
+        stream.push_error();
+        stream.push_error();
+        let result = stream.finish().unwrap();
+        let expected_rate = 2.0 / 7.0;
+        assert!((result.probes[0].error_rate - expected_rate).abs() < 0.001);
+    }
+
+    #[test]
+    fn acquisition_stream_derive_does_not_consume() {
+        let mut stream = AcquisitionStream::new("latency".into(), config_mean_stddev());
+        for v in [100.0, 102.0, 98.0, 101.0, 99.0] {
+            stream.push_sample(v);
+        }
+        // derive() borrows; can push more after
+        let mid_result = stream.derive().unwrap();
+        assert_eq!(mid_result.probes[0].samples, 5);
+        stream.push_sample(103.0);
+        assert_eq!(stream.sample_count(), 6);
+        let final_result = stream.finish().unwrap();
+        assert_eq!(final_result.probes[0].samples, 6);
     }
 }
