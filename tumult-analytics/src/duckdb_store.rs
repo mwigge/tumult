@@ -3,6 +3,9 @@
 //! Provides both in-memory and persistent (file-backed) analytics stores.
 //! Persistent stores use WAL mode for crash safety, deduplicate journals
 //! by experiment_id, and support schema versioning for future migrations.
+//!
+//! **Thread safety:** `AnalyticsStore` wraps a single DuckDB `Connection` and
+//! is NOT thread-safe. For shared access, wrap in `Arc<Mutex<AnalyticsStore>>`.
 
 use std::path::{Path, PathBuf};
 
@@ -21,14 +24,20 @@ pub struct StoreStats {
     pub activity_count: usize,
 }
 
+/// Embedded DuckDB analytics store for experiment journals.
+///
+/// **Not thread-safe.** Each instance holds a single DuckDB connection.
+/// For concurrent access, wrap in `Arc<Mutex<AnalyticsStore>>`.
 pub struct AnalyticsStore {
     conn: Connection,
 }
 
 impl AnalyticsStore {
     /// Returns the default persistent store path: `~/.tumult/analytics.duckdb`
+    ///
+    /// Returns an error if the home directory cannot be determined.
     pub fn default_path() -> PathBuf {
-        let home = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let home = dirs_next::home_dir().expect("cannot determine home directory");
         home.join(".tumult").join("analytics.duckdb")
     }
 
@@ -40,9 +49,14 @@ impl AnalyticsStore {
     }
 
     pub fn open(path: &Path) -> Result<Self, AnalyticsError> {
-        // Ensure parent directory exists
+        // Ensure parent directory exists with restricted permissions
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+            }
         }
         let conn = Connection::open(path)?;
         let store = Self { conn };
@@ -74,6 +88,8 @@ impl AnalyticsStore {
                 started_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL,
                 output VARCHAR, error VARCHAR, phase VARCHAR NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_activities_experiment_id
+                ON activity_results (experiment_id);
             CREATE TABLE IF NOT EXISTS schema_meta (
                 key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL
             );",
@@ -278,8 +294,26 @@ impl AnalyticsStore {
         Ok(())
     }
 
-    /// Import from Parquet backup files.
+    /// Import from Parquet backup files. Wrapped in a transaction for atomicity.
     pub fn import_tables(
+        &self,
+        experiments_path: &Path,
+        activities_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        self.conn.execute_batch("BEGIN TRANSACTION")?;
+        match self.import_tables_inner(experiments_path, activities_path) {
+            Ok(()) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    fn import_tables_inner(
         &self,
         experiments_path: &Path,
         activities_path: &Path,
