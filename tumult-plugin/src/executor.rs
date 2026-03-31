@@ -45,6 +45,10 @@ pub async fn execute_script(
     arguments: &HashMap<String, String>,
     timeout: Option<Duration>,
 ) -> Result<ScriptResult, ExecutorError> {
+    let timeout_f64 = timeout.map(|d| d.as_secs_f64());
+    let _span = crate::telemetry::begin_execute(&script_path.display().to_string(), timeout_f64);
+    crate::telemetry::event_script_started(&script_path.display().to_string());
+
     if !script_path.exists() {
         return Err(ExecutorError::ScriptNotFound(
             script_path.display().to_string(),
@@ -64,17 +68,31 @@ pub async fn execute_script(
     let output: Output = if let Some(duration) = timeout {
         match tokio::time::timeout(duration, cmd.output()).await {
             Ok(result) => result?,
-            Err(_) => return Err(ExecutorError::Timeout(duration.as_secs_f64())),
+            Err(_) => {
+                crate::telemetry::event_script_timed_out(
+                    &script_path.display().to_string(),
+                    duration.as_secs_f64(),
+                );
+                crate::telemetry::record_execution(false);
+                return Err(ExecutorError::Timeout(duration.as_secs_f64()));
+            }
         }
     } else {
         cmd.output().await?
     };
 
-    Ok(ScriptResult {
+    let result = ScriptResult {
         exit_code: output.status.code().unwrap_or(-1),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-    })
+    };
+    crate::telemetry::event_script_completed(
+        result.exit_code,
+        result.stdout.len(),
+        result.stderr.len(),
+    );
+    crate::telemetry::record_execution(result.succeeded());
+    Ok(result)
 }
 
 #[cfg(test)]
