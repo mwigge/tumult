@@ -407,6 +407,25 @@ tumult export journal.toon --format parquet
 
 See [CLI Reference](docs/guides/cli-reference.md) for full command documentation.
 
+### Development (Makefile)
+
+The root `Makefile` provides all development and infrastructure commands:
+
+```bash
+make up              # Full platform: chaos targets + SigNoz observability
+make up-targets      # Chaos targets only (PostgreSQL, Redis, Kafka, SSH)
+make up-observe      # Observability only (SigNoz + OTel Collector)
+make up-classic      # Classic stack (Jaeger + Prometheus + Grafana)
+make down            # Stop everything
+make status          # Container health check
+make ssh-key         # Extract SSH test key to /tmp/tumult-test-key
+make test            # Run all Rust tests
+make e2e             # Run e2e tests against Docker infra
+make lint            # cargo fmt --check + clippy
+make build           # Build release binary
+make clean           # cargo clean + docker compose down
+```
+
 ## Direct Comparison to Chaos Toolkit
 
 | Chaos Toolkit Component | Tumult Equivalent | Key Advantage |
