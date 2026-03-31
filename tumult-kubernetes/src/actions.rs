@@ -12,6 +12,7 @@ use kube::Client;
 use crate::error::KubeError;
 
 /// Delete a pod by name. Optionally set a grace period.
+#[tracing::instrument(skip(client))]
 pub async fn delete_pod(
     client: Client,
     namespace: &str,
@@ -29,6 +30,7 @@ pub async fn delete_pod(
 }
 
 /// Scale a deployment to a target number of replicas.
+#[tracing::instrument(skip(client))]
 pub async fn scale_deployment(
     client: Client,
     namespace: &str,
@@ -55,6 +57,7 @@ pub async fn scale_deployment(
 }
 
 /// Cordon a node (mark as unschedulable).
+#[tracing::instrument(skip(client))]
 pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError> {
     let _span = crate::telemetry::begin_cordon_node(name);
     let nodes: Api<Node> = Api::all(client);
@@ -73,6 +76,7 @@ pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError
 }
 
 /// Uncordon a node (mark as schedulable).
+#[tracing::instrument(skip(client))]
 pub async fn uncordon_node(client: Client, name: &str) -> Result<String, KubeError> {
     let _span = crate::telemetry::begin_cordon_node(name); // reuse cordon span name
     let nodes: Api<Node> = Api::all(client);
@@ -113,6 +117,7 @@ impl std::fmt::Display for DrainResult {
 }
 
 /// Drain a node: cordon it, then delete all non-DaemonSet pods on it.
+#[tracing::instrument(skip(client))]
 pub async fn drain_node(
     client: Client,
     name: &str,
@@ -162,6 +167,7 @@ pub async fn drain_node(
 }
 
 /// Apply a network policy to a namespace.
+#[tracing::instrument(skip(client, policy))]
 pub async fn apply_network_policy(
     client: Client,
     namespace: &str,
@@ -181,6 +187,7 @@ pub async fn apply_network_policy(
 }
 
 /// Delete a network policy from a namespace.
+#[tracing::instrument(skip(client))]
 pub async fn delete_network_policy(
     client: Client,
     namespace: &str,
