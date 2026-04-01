@@ -1,37 +1,44 @@
 # Tumult Observability Platform
 #
-# SigNoz (traces + metrics + logs) + OTel Collector (infra scraping).
-# This is the shippable, persistent observability solution.
+# Architecture:
+#   Tumult CLI -> tumult-collector (OTLP :14317)
+#     -> ClickHouse (otel_traces — standard schema for DuckDB/analytics)
+#     -> File export (JSONL for offline analysis)
+#     -> Prometheus (host + APM span metrics on :18889)
+#     -> SigNoz OTel Collector (OTLP forward -> signoz_index_v3 for SigNoz UI)
 #
-# Can be used standalone or combined with chaos targets:
+# The tumult-collector is the single OTLP gateway. It writes to ClickHouse
+# directly (standard otel_traces schema) AND forwards to SigNoz's collector
+# which maintains the signoz_index_v3 tables for the SigNoz frontend.
 #
+# Usage:
 #   # Full platform (chaos targets + observability)
 #   docker compose -f docker-compose.yml \
 #     -f docker-compose.observability.yml up -d
 #
-#   # Observability only (connect your own targets)
+#   # Observability only
 #   docker compose -f docker-compose.observability.yml up -d
+#
+# UIs:
+#   SigNoz:        http://localhost:13301  (traces, metrics, logs, dashboards)
+#   Prometheus:    http://localhost:18889  (tumult-collector metrics)
+#   ClickHouse:    http://localhost:18123  (direct SQL queries)
+#   Health:        http://localhost:13133  (collector health)
 #
 # Optional classic profile (Jaeger + Prometheus + Grafana):
 #   docker compose -f docker-compose.yml \
 #     -f docker-compose.observability.yml --profile classic up -d
-#
-# UIs:
-#   SigNoz:     http://localhost:13301  (default — traces, metrics, logs, dashboards)
-#   Jaeger:     http://localhost:16686  (classic profile)
-#   Grafana:    http://localhost:13000  (classic profile)
-#   Prometheus: http://localhost:19090  (classic profile)
-#
-# License: SigNoz core is MIT. See https://github.com/SigNoz/signoz
 
 services:
   # ══════════════════════════════════════════════════════════════
-  # DEFAULT: SigNoz — unified traces + metrics + logs
+  # Storage: ClickHouse + ZooKeeper
   # ══════════════════════════════════════════════════════════════
 
-  # ── SigNoz ZooKeeper (required by ClickHouse) ───────────────
   signoz-zookeeper:
     image: signoz/zookeeper:3.7.1
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOO_4LW_COMMANDS_WHITELIST: "mntr,srvr,ruok"
     volumes:
       - signoz-zookeeper-data:/data
     healthcheck:
@@ -43,22 +50,24 @@ services:
     networks:
       - tumult-e2e
 
-  # ── SigNoz ClickHouse (telemetry storage) ───────────────────
   signoz-clickhouse:
     image: clickhouse/clickhouse-server:24.1.2-alpine
     volumes:
       - signoz-clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse-ipv4.xml:/etc/clickhouse-server/config.d/ipv4-only.xml:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping | grep -q Ok"]
       interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: "4"
           memory: 4G
+    ports:
+      - "18123:8123"
     depends_on:
       signoz-zookeeper:
         condition: service_healthy
@@ -69,18 +78,67 @@ services:
     networks:
       - tumult-e2e
 
-  # ── SigNoz OTel Collector (custom, writes to ClickHouse) ────
+  # ══════════════════════════════════════════════════════════════
+  # Tumult OTel Collector — single OTLP gateway
+  # ══════════════════════════════════════════════════════════════
+  #
+  # Purpose-built with ocb. Receives all telemetry, writes to:
+  #   1. ClickHouse (otel_traces — standard schema)
+  #   2. File (JSONL for DuckDB)
+  #   3. Prometheus (host + APM metrics)
+  #   4. SigNoz OTel Collector (OTLP forward for SigNoz UI)
+
+  tumult-collector:
+    image: tumult-otel-collector:latest
+    build:
+      context: ./tumult-collector
+      dockerfile: Dockerfile
+    volumes:
+      - ./tumult-collector/config.yaml:/etc/otel/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - tumult-export:/var/tumult/export
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+    ports:
+      - "14317:4317"   # OTLP gRPC (Tumult sends here)
+      - "14318:4318"   # OTLP HTTP
+      - "14319:4319"   # OTel Arrow gRPC
+      - "18889:8889"   # Prometheus metrics (host + APM)
+      - "18888:8888"   # Collector self-telemetry
+      - "13133:13133"  # Health check
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_ENDPOINT: "tcp://signoz-clickhouse:9000"
+      SIGNOZ_ENDPOINT: "signoz-otel-collector:4317"
+    networks:
+      - tumult-e2e
+
+  # ══════════════════════════════════════════════════════════════
+  # SigNoz — UI + its own OTel Collector for signoz_index_v3
+  # ══════════════════════════════════════════════════════════════
+
   signoz-otel-collector:
     image: signoz/signoz-otel-collector:0.102.12
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-signoz.yaml:/etc/otel-collector-config.yaml:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -92,7 +150,6 @@ services:
     networks:
       - tumult-e2e
 
-  # ── SigNoz Backend + Frontend ───────────────────────────────
   signoz:
     image: signoz/signoz:v0.117.1
     depends_on:
@@ -114,32 +171,7 @@ services:
       - tumult-e2e
 
   # ══════════════════════════════════════════════════════════════
-  # Tumult OTel Collector — OTLP gateway + infrastructure scraper
-  # ══════════════════════════════════════════════════════════════
-
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.115.0
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./otel-collector-e2e.yaml:/etc/otel-collector-config.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    ports:
-      - "14317:4317"   # OTLP gRPC (Tumult sends here)
-      - "14318:4318"   # OTLP HTTP
-    depends_on:
-      signoz-otel-collector:
-        condition: service_healthy
-    networks:
-      - tumult-e2e
-
-  # ══════════════════════════════════════════════════════════════
-  # CLASSIC PROFILE: Jaeger + Prometheus + Grafana
+  # CLASSIC PROFILE: Jaeger + Prometheus + Grafana (optional)
   # Activate with: --profile classic
   # ══════════════════════════════════════════════════════════════
 
@@ -185,6 +217,7 @@ services:
 volumes:
   signoz-zookeeper-data:
   signoz-clickhouse-data:
+  tumult-export:
 
 networks:
   tumult-e2e:

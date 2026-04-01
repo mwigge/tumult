@@ -1,0 +1,47 @@
+name: tumult-pumba
+version: 0.1.0
+description: Container-scoped network chaos via Pumba — cross-platform Docker netem and iptables
+author: tumult
+
+actions[10]:
+  - name: netem-delay
+    script: actions/netem-delay.sh
+    description: Add network latency to container egress traffic
+  - name: netem-loss
+    script: actions/netem-loss.sh
+    description: Add packet loss to container egress traffic
+  - name: netem-duplicate
+    script: actions/netem-duplicate.sh
+    description: Duplicate packets on container egress
+  - name: netem-corrupt
+    script: actions/netem-corrupt.sh
+    description: Corrupt packets on container egress
+  - name: netem-rate
+    script: actions/netem-rate.sh
+    description: Limit bandwidth on container egress
+  - name: iptables-loss
+    script: actions/iptables-loss.sh
+    description: Drop incoming packets to container via iptables
+  - name: kill-container
+    script: actions/kill-container.sh
+    description: Kill container with configurable signal and timing
+  - name: pause-container
+    script: actions/pause-container.sh
+    description: Pause container processes for a duration
+  - name: stop-container
+    script: actions/stop-container.sh
+    description: Stop container with grace period and restart
+  - name: stress-container
+    script: actions/stress-container.sh
+    description: CPU/memory/IO stress injection inside container
+
+probes[3]:
+  - name: container-running
+    script: probes/container-running.sh
+    description: Check if target container is running
+  - name: container-latency
+    script: probes/container-latency.sh
+    description: Measure network latency from inside container
+  - name: container-packet-stats
+    script: probes/container-packet-stats.sh
+    description: Get container network interface packet counters

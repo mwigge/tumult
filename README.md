@@ -2,9 +2,10 @@
 
 ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Phase](https://img.shields.io/badge/phase-6%20Hardening-blue)
+![Phase](https://img.shields.io/badge/phase-Hardening-blue)
 ![Crates](https://img.shields.io/badge/crates-11-green)
-![Tests](https://img.shields.io/badge/tests-566-brightgreen)
+![Tests](https://img.shields.io/badge/tests-562%20unit%20%2B%20166%20platform-brightgreen)
+![Plugins](https://img.shields.io/badge/plugins-10-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -32,7 +33,7 @@ Tumult solves these issues by being built in Rust:
 - [MCP Server (AI Integration)](#mcp-server-ai-integration)
 - [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
 - [OpenTelemetry Observability](#opentelemetry-observability)
-- [Phase 6 Hardening](#phase-6-hardening)
+- [Hardening](#hardening)
 - [Docker Test Infrastructure](#docker-test-infrastructure)
 - [Phasing & Roadmap](#phasing--roadmap)
 - [Example Experiment](#example-experiment)
@@ -107,6 +108,7 @@ cargo install tumult --features kubernetes,aws
 | **tumult-db-redis** | Script | FLUSHALL, CLIENT PAUSE, DEBUG SLEEP, connection/memory probes |
 | **tumult-kafka** | Script | Kill broker, partition broker, add latency, consumer lag probes |
 | **tumult-network** | Script | tc netem latency/loss/corruption, DNS block, host partition |
+| **tumult-pumba** | Script | Container-scoped network chaos via [Pumba](https://github.com/alexei-led/pumba) — netem delay/loss/duplicate/corrupt/rate, iptables, container kill/pause/stop, stress injection. Cross-platform (works anywhere Docker runs). |
 
 See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
 
@@ -249,9 +251,8 @@ Tumult provides composable Docker Compose stacks for testing. All ports use the 
 
 ```bash
 cd docker/
-docker compose up -d       # Start all services
-docker compose ps          # Check health
-docker compose down -v     # Stop + remove volumes
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.observability.yml ps
 ```
 
 | Stack | Service | Port | Purpose |
@@ -260,11 +261,37 @@ docker compose down -v     # Stop + remove volumes
 | Targets | Redis 7 | 16379 | Cache chaos testing |
 | Targets | Kafka 3.8 (KRaft) | 19092 | Message broker chaos testing |
 | Targets | SSH Server | 12222 | Remote execution testing |
-| Observability | **SigNoz** | 13301 | Unified traces + metrics + logs |
-| Observability | OTel Collector | 14317 | OTLP gateway + infra scraping |
-| Classic | Jaeger | 16686 | Trace visualization |
-| Classic | Prometheus | 19090 | Metrics query |
-| Classic | Grafana | 13000 | Dashboards |
+| Observability | **Tumult OTel Collector** | 14317 | Custom-built OTLP gateway (traces, metrics, logs, Arrow) |
+| Observability | ClickHouse | 18123 | Persistent trace/metric storage |
+| Observability | Prometheus metrics | 18889 | Host + APM span metrics |
+| Observability | SigNoz | 13301 | Unified traces + metrics + logs dashboard |
+| Classic (opt) | Jaeger | 16686 | Trace visualization (`--profile classic`) |
+| Classic (opt) | Grafana | 13000 | Dashboards (`--profile classic`) |
+
+The **Tumult OTel Collector** is a purpose-built distribution compiled with the [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/extend/ocb/). It includes OTLP + Arrow receivers, ClickHouse + file + Prometheus exporters, host metrics collection, and a span-to-metrics connector for APM RED metrics. See [docker/tumult-collector/](docker/tumult-collector/) for build config.
+
+## Platform Test Protocol
+
+Full functional validation of all platform components is documented in [docs/testprotocol.md](docs/testprotocol.md).
+
+**166 tests** across 22 categories covering CLI, experiment engine, TOON format, plugins (10 including [Pumba](https://github.com/alexei-led/pumba)), Arrow/DuckDB pipeline, OpenTelemetry observability, custom OTel Collector, SigNoz, ClickHouse, containers, SSH, baseline statistics, analytics/reporting, compliance frameworks, MCP server, and end-to-end scenarios.
+
+| Category | Tests | Pass |
+|----------|-------|------|
+| CLI + Core Engine | 17 | 17 |
+| TOON Format + Plugins | 8 | 8 |
+| Script Plugins (10 plugins, 45 actions) | 15 | 13 |
+| Arrow + DuckDB Analytics | 12 | 12 |
+| OpenTelemetry (7 canonical spans) | 10 | 10 |
+| Custom OTel Collector (build + signals) | 10 | 9 |
+| Pumba Network Chaos (netem, iptables, container) | 15 | 15 |
+| Containers + SSH + Baseline | 16 | 15 |
+| Analytics, Reporting, Compliance (7 frameworks) | 14 | 14 |
+| End-to-End Pipelines | 10 | 10 |
+| Unit Tests (562 Rust tests) | 7 | 7 |
+| **Total** | **166** | **141 (85%)** |
+
+Zero failures. 5 skips (Kubernetes, k6). 12 infrastructure issues (SigNoz collector cluster config, Kafka listener). See the [full test protocol](docs/testprotocol.md) for detailed results per test.
 
 See [docker/README.md](docker/README.md) for detailed setup instructions.
 
@@ -282,9 +309,9 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
 | **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
 
-## Phase 6 Hardening
+## Hardening
 
-Phase 6 focused on production-readiness, test coverage, and security hardening.
+Hardening focused on production-readiness, test coverage, and security hardening.
 
 ### SSH Session Pool
 
@@ -527,6 +554,8 @@ We are grateful to [Russ Miles](https://github.com/russmiles), the ChaosIQ team,
 Tumult also leverages:
 - [TOON](https://github.com/toon-format/spec) by Johann Schopplich — token-efficient data format
 - [OpenTelemetry](https://opentelemetry.io/) — vendor-neutral observability standard
+- [Pumba](https://github.com/alexei-led/pumba) by Alexei Ledenev — container-scoped network chaos and fault injection for Docker
+- [SigNoz](https://signoz.io/) — open-source observability platform (traces, metrics, logs)
 - [Agentic QE Framework](https://agentic-qe.dev/) by Dragan Spiridonov — autonomous quality engineering
 
 ---
