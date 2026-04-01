@@ -553,7 +553,9 @@ We are grateful to [Russ Miles](https://github.com/russmiles), the ChaosIQ team,
 
 Tumult also leverages:
 - [TOON](https://github.com/toon-format/spec) by Johann Schopplich — token-efficient data format
+- [Tokio](https://tokio.rs/) — async runtime powering all concurrent execution
 - [OpenTelemetry](https://opentelemetry.io/) — vendor-neutral observability standard
+- [Apache Arrow](https://arrow.apache.org/) + [DuckDB](https://duckdb.org/) — in-memory columnar analytics
 - [Pumba](https://github.com/alexei-led/pumba) by Alexei Ledenev — container-scoped network chaos and fault injection for Docker
 - [SigNoz](https://signoz.io/) — open-source observability platform (traces, metrics, logs)
 - [Agentic QE Framework](https://agentic-qe.dev/) by Dragan Spiridonov — autonomous quality engineering
