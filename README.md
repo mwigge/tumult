@@ -33,6 +33,7 @@ Tumult solves these issues by being built in Rust:
 - [MCP Server (AI Integration)](#mcp-server-ai-integration)
 - [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
 - [OpenTelemetry Observability](#opentelemetry-observability)
+- [Security](#security)
 - [Hardening](#hardening)
 - [Docker Test Infrastructure](#docker-test-infrastructure)
 - [Phasing & Roadmap](#phasing--roadmap)
@@ -308,6 +309,22 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
 | **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
 | **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
+
+## Security
+
+Tumult is built entirely in safe Rust — **zero `unsafe` blocks** across all 11 crates. The full security posture is documented in [docs/security-assessment.md](docs/security-assessment.md) and vulnerability reporting in [SECURITY.md](SECURITY.md).
+
+| Area | Status |
+|------|--------|
+| Unsafe code (our crates) | **0 blocks** — completely memory-safe |
+| `.unwrap()` in production | **0 calls** — all error paths use `?` or `.context()` |
+| SQL injection | **0 vectors** — no string-formatted queries, Arrow record batch inserts |
+| Command injection | **Mitigated** — null-byte validation, env var passing (not shell interpolation) |
+| Hardcoded credentials | **0** — secrets resolved from environment at runtime |
+| cargo-audit | **0 HIGH/CRITICAL** — 5 low-severity transitive warnings (unmaintained crates) |
+| Dependency tree | **675 crates** scanned against [RustSec Advisory Database](https://rustsec.org/) on every commit |
+
+Script plugins execute shell scripts as subprocesses with timeout enforcement (`kill_on_drop`), argument validation, and captured stdout/stderr. This is a trust boundary by design — same model as kubectl plugins or Git hooks. See the [security assessment](docs/security-assessment.md) for the full analysis including integer cast review, deserialization surface, and supply chain audit.
 
 ## Hardening
 
