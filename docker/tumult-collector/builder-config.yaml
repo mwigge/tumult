@@ -1,0 +1,138 @@
+# Tumult OTel Collector — Custom Distribution
+#
+# Built with the OpenTelemetry Collector Builder (ocb).
+# Includes all components needed for the Tumult chaos engineering platform:
+#
+#   - Full SigNoz signal compatibility (traces, metrics, logs)
+#   - Arrow protocol for high-throughput data transfer
+#   - ClickHouse export for shared analytics with SigNoz
+#   - Infrastructure monitoring (host, Docker, Kubernetes)
+#   - Chaos experiment correlation
+#
+# Build:
+#   go install go.opentelemetry.io/collector/cmd/builder@latest
+#   builder --config builder-config.yaml
+#
+# Or via Docker:
+#   docker build -t tumult-otel-collector .
+
+dist:
+  name: tumult-otel-collector
+  description: Tumult chaos engineering platform — custom OTel Collector
+  output_path: ./build
+  version: 0.1.0
+
+# ══════════════════════════════════════════════════════════════
+# Receivers — ingest telemetry from Tumult and infrastructure
+# ══════════════════════════════════════════════════════════════
+
+receivers:
+  # Core OTLP — primary receiver for Tumult experiment telemetry
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.149.0
+
+  # Arrow — high-throughput columnar protocol (traces + metrics)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/otelarrowreceiver v0.149.0
+
+  # Infrastructure monitoring
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.149.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v0.149.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.149.0
+
+  # Prometheus scraping — pull metrics from targets under chaos
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.149.0
+
+  # Kafka — consume telemetry from Kafka topics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v0.149.0
+
+  # Kubernetes — cluster and node telemetry
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.149.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver v0.149.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.149.0
+
+# ══════════════════════════════════════════════════════════════
+# Exporters — send telemetry to storage backends
+# ══════════════════════════════════════════════════════════════
+
+exporters:
+  # OTLP — forward to other collectors or backends
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.149.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.149.0
+
+  # Arrow — high-throughput columnar export
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/otelarrowexporter v0.149.0
+
+  # ClickHouse — direct write for SigNoz-compatible trace/metric storage
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.149.0
+
+  # File — write to local files (Parquet-ready via Arrow, JSON, protobuf)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.149.0
+
+  # Kafka — produce telemetry to Kafka topics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.149.0
+
+  # Prometheus — expose metrics endpoint for scraping
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.149.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.149.0
+
+  # Debug — console output for development
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.149.0
+
+# ══════════════════════════════════════════════════════════════
+# Processors — transform, filter, and enrich telemetry
+# ══════════════════════════════════════════════════════════════
+
+processors:
+  # Batch — buffer and send in batches for throughput
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.149.0
+
+  # Memory limiter — prevent OOM under load
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.149.0
+
+  # Attributes — add/modify/delete span/metric attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.149.0
+
+  # Filter — drop unwanted telemetry by conditions
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.149.0
+
+  # Resource — add/modify resource attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.149.0
+
+  # Resource detection — auto-detect host/cloud/container metadata
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.149.0
+
+  # Transform — OTTL-based transformation language
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.149.0
+
+  # K8s attributes — enrich with pod/node/namespace metadata
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.149.0
+
+  # Span metrics — derive RED metrics from traces (APM)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/spanprocessor v0.149.0
+
+  # Tail sampling — intelligent trace sampling
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor v0.149.0
+
+# ══════════════════════════════════════════════════════════════
+# Connectors — route between signal pipelines
+# ══════════════════════════════════════════════════════════════
+
+connectors:
+  # Span metrics — generate metrics from trace spans (APM / RED metrics)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v0.149.0
+
+  # Count — count spans/metrics/logs for throughput monitoring
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector v0.149.0
+
+# ══════════════════════════════════════════════════════════════
+# Extensions — health, profiling, auth
+# ══════════════════════════════════════════════════════════════
+
+extensions:
+  # Health check — liveness/readiness for container orchestration
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.149.0
+
+  # zPages — debug endpoint for pipeline inspection
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.149.0
+
+  # PPROFextension — Go pprof profiling endpoint
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.149.0

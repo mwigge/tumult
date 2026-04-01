@@ -1,0 +1,127 @@
+# Test configuration for tumult-otel-collector
+# Standalone mode — no SigNoz dependency, writes to ClickHouse + file + Prometheus
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  otelarrow:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4319
+
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu: {}
+      memory: {}
+      disk: {}
+      load: {}
+      network: {}
+
+processors:
+  batch:
+    send_batch_size: 512
+    timeout: 2s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  resourcedetection:
+    detectors: [env, system]
+    system:
+      hostname_sources: [os]
+
+  attributes/tumult:
+    actions:
+      - key: collector.name
+        value: tumult-otel-collector
+        action: upsert
+
+exporters:
+  # ClickHouse — write directly
+  clickhouse:
+    endpoint: tcp://signoz-clickhouse:9000
+    database: signoz_traces
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+
+  # File — JSONL for DuckDB ingestion
+  file/traces:
+    path: /var/tumult/export/traces.jsonl
+    format: json
+
+  file/metrics:
+    path: /var/tumult/export/metrics.jsonl
+    format: json
+
+  # Prometheus — metrics endpoint
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug — console output
+  debug:
+    verbosity: basic
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [1ms, 5ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s, 10s]
+    dimensions:
+      - name: resilience.experiment.title
+      - name: resilience.action.name
+    exemplars:
+      enabled: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, zpages]
+
+  pipelines:
+    traces:
+      receivers: [otlp, otelarrow]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
+      exporters: [clickhouse, file/traces, debug, spanmetrics]
+
+    metrics:
+      receivers: [otlp, otelarrow, hostmetrics]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
+      exporters: [prometheus, file/metrics]
+
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
+      exporters: [file/traces, debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
