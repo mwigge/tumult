@@ -1476,7 +1476,56 @@ curl -s http://localhost:8889/metrics | grep container_
 
 ---
 
-## 22. TP-UNIT: Workspace Unit Test Suite
+## 22. TP-QUICKSTART: Quickstart Validation Tests
+
+### TP-QUICKSTART-01: install.sh repo detection
+
+**Expected:** Script detects existing repo and skips clone.
+
+### TP-QUICKSTART-02: Redis chaos example
+
+```bash
+tumult run examples/redis-chaos.toon
+```
+
+**Expected:** Status: Completed. 3 method steps (SET, GET, DEL).
+
+### TP-QUICKSTART-03: PostgreSQL failover example
+
+```bash
+tumult run examples/postgres-failover.toon
+```
+
+**Expected:** Status: Completed. PG connection kill and recovery.
+
+### TP-QUICKSTART-04: Pumba latency example
+
+```bash
+tumult run examples/pumba-latency.toon
+```
+
+**Expected:** Status: Completed. 200ms netem delay injected.
+
+### TP-QUICKSTART-05: SSH remote example
+
+```bash
+make ssh-key
+tumult run examples/ssh-remote.toon
+```
+
+**Expected:** Status: Completed. uname + stress-ng via SSH.
+
+### TP-QUICKSTART-06: Analytics after examples
+
+```bash
+tumult analyze --query "SELECT title, status, duration_ms FROM experiments ORDER BY started_at_ns DESC LIMIT 5"
+```
+
+**Expected:** All example experiments appear in DuckDB query results.
+
+---
+
+## 23. TP-UNIT: Workspace Unit Test Suite
 
 ### TP-UNIT-01: Full workspace test run
 
@@ -1659,9 +1708,9 @@ Use this section to record actual test execution results.
 | TP-SCRIPT-09 | Container CPU | PASS | `docker stats --format '{{.CPUPerc}}'` returns percentage. Unit test passes. |
 | TP-SCRIPT-10 | Container memory | PASS | `docker stats --format '{{.MemUsage}}'` returns usage. Unit test passes. |
 | TP-SCRIPT-11 | CPU stress | PASS | Via SSH into sshd container: `stress-ng --cpu 1 --timeout 3s` completed in 3.03s. Output captured in journal. |
-| TP-SCRIPT-12 | Memory stress | SKIP | Requires stress-ng on host. Unit test `stress_scripts_are_executable` passes. |
-| TP-SCRIPT-13 | Kafka topic list | ISSUE | Kafka advertised listener misconfigured for internal access (advertises localhost:19092 inside container). Container is healthy on port 9092. |
-| TP-SCRIPT-14 | Network latency | SKIP | Requires tc (Linux only). Unit test validates manifest and script permissions. |
+| TP-SCRIPT-12 | Memory stress | PASS | Via SSH into sshd container: `stress-ng --vm 1 --vm-bytes 32M --timeout 3s` completed in 3.00s. |
+| TP-SCRIPT-13 | Kafka topic list | PASS | Dual listener fix: topic create/list/delete works. `Created topic tumult-test.` |
+| TP-SCRIPT-14 | Network latency | N/A | Host-level tc netem is Linux only. Replaced by tumult-pumba plugin for container-scoped network chaos (cross-platform). |
 | TP-SCRIPT-15 | k6 load test | SKIP | Requires k6 binary. Manifest parsing and script permissions validated. |
 | TP-ARROW-01 | Journal to Arrow | PASS | Journal ingested, queryable via `tumult analyze --query` |
 | TP-ARROW-02 | Schema validation | PASS | `experiments`: 12 cols (experiment_id, title, status, started_at_ns, ended_at_ns, duration_ms, method_step_count, rollback_count, hypothesis_before_met, hypothesis_after_met, estimate_accuracy, resilience_score). `activity_results`: 9 cols (experiment_id, name, activity_type, status, started_at_ns, duration_ms, output, error, phase) |
@@ -1692,7 +1741,7 @@ Use this section to record actual test execution results.
 | TP-SIGNOZ-05 | ClickHouse retention | PASS | ClickHouse 24.1.2.5 running, databases signoz_traces/signoz_metrics/signoz_logs created |
 | TP-CONTAINER-01 | PostgreSQL health | PASS | PostgreSQL 16.13 (alpine, aarch64), healthy, responds to queries |
 | TP-CONTAINER-02 | Redis health | PASS | Redis 7.4.8, healthy, PONG response |
-| TP-CONTAINER-03 | Kafka health | ISSUE | Container healthy on port 9092 internal. Advertised listener `localhost:19092` breaks internal CLI tools. Needs dual listener config. |
+| TP-CONTAINER-03 | Kafka health | PASS | Dual INSIDE/OUTSIDE listener config. Broker responds on kafka:9092 (internal) and localhost:19092 (host). |
 | TP-CONTAINER-04 | SSH health | PASS | sshd running, ED25519 host key present, port 22 exposed as 12222 |
 | TP-CONTAINER-05 | Inter-container net | PASS | PG can ping Redis: 0.087ms on tumult-e2e network |
 | TP-CONTAINER-06 | OTel Collector | PASS | Dev collector on :4317/:4318 healthy. Jaeger UI on :16686 returns HTTP 200. |
@@ -1747,6 +1796,12 @@ Use this section to record actual test execution results.
 | TP-COMPLIANCE-03 | PCI-DSS | PASS | PCI-DSS compliance report generated |
 | TP-COMPLIANCE-04 | ISO-27001 | PASS | ISO-27001 compliance report generated |
 | TP-COMPLIANCE-05 | SOC2 | PASS | SOC2 compliance report generated |
+| TP-QUICKSTART-01 | install.sh detection | PASS | Detects existing repo, skips clone |
+| TP-QUICKSTART-02 | Redis chaos example | PASS | Completed 255ms, 3 method steps (SET/GET/DEL), hypothesis met |
+| TP-QUICKSTART-03 | PG failover example | PASS | Completed 241ms, 2 method steps, PG connections killed and recovered |
+| TP-QUICKSTART-04 | Pumba latency example | PASS | Completed 12787ms, 200ms netem delay injected, packet stats captured |
+| TP-QUICKSTART-05 | SSH remote example | PASS | Completed 3385ms, uname + stress-ng via SSH to sshd container |
+| TP-QUICKSTART-06 | Analytics after examples | PASS | All experiments ingested, queryable via `tumult analyze`. 47 experiments in store. |
 | TP-PUMBA-01 | Plugin discovery | PASS | 10 actions + 3 probes registered. `tumult discover` lists all. |
 | TP-PUMBA-02 | Manifest parsing | PASS | plugin.toon parses via discover (validates TOON syntax) |
 | TP-PUMBA-03 | Script permissions | PASS | All 13 .sh scripts have execute permission |
@@ -1785,12 +1840,12 @@ Use this section to record actual test execution results.
 | TP-CORE | 7 | 7 | 0 | 0 | 0 | All phases, hypothesis, rollback, timeout verified |
 | TP-TOON | 5 | 5 | 0 | 0 | 0 | Round-trip, structure, fields, array notation |
 | TP-PLUGIN | 3 | 3 | 0 | 0 | 0 | 9 plugins, 35 actions, all scripts executable |
-| TP-SCRIPT | 15 | 11 | 0 | 2 | 2 | CPU stress via SSH PASS. Kafka listener issue. Network/k6 need Linux/binary. |
+| TP-SCRIPT | 15 | 13 | 0 | 1 | 0 | CPU+memory stress via SSH PASS. Kafka fixed. tc netem N/A (Pumba replaces). k6 SKIP. |
 | TP-ARROW | 4 | 4 | 0 | 0 | 0 | Schema, row counts, export all verified |
 | TP-DUCK | 8 | 8 | 0 | 0 | 0 | SQL queries, persistence, import/export |
 | TP-OTEL | 10 | 10 | 0 | 0 | 0 | All 7 canonical spans + attributes verified via Jaeger |
 | TP-SIGNOZ | 5 | 1 | 0 | 0 | 4 | ClickHouse works. SigNoz frontend blocked by collector. |
-| TP-CONTAINER | 7 | 6 | 0 | 0 | 1 | Kafka advertised listener misconfigured |
+| TP-CONTAINER | 7 | 7 | 0 | 0 | 0 | All healthy. Kafka dual listener fixed. |
 | TP-SSH | 3 | 3 | 0 | 0 | 0 | SSH crate compiles, unit tests pass |
 | TP-BASELINE | 6 | 6 | 0 | 0 | 0 | All statistical methods + modes verified |
 | TP-ANALYTICS | 9 | 9 | 0 | 0 | 0 | Parquet/CSV/JSON, HTML report, 7 frameworks, trend |
@@ -1802,13 +1857,14 @@ Use this section to record actual test execution results.
 | TP-COLLECTOR | 10 | 9 | 0 | 0 | 1 | Build, OTLP, Arrow, ClickHouse, file, Prometheus, APM, host metrics all PASS. Docker stats ISSUE (Colima). |
 | TP-UNIT | 7 | 7 | 0 | 0 | 0 | 562 tests, 0 failures, clippy/fmt/audit clean |
 | TP-COMPLIANCE | 5 | 5 | 0 | 0 | 0 | All 7 regulatory frameworks produce reports |
-| **TOTAL** | **166** | **141** | **0** | **5** | **12** | **85% PASS, 0% FAIL, 3% SKIP, 7% ISSUE** |
+| TP-QUICKSTART | 6 | 6 | 0 | 0 | 0 | All examples pass, install.sh validated, analytics verified |
+| **TOTAL** | **172** | **150** | **0** | **5** | **9** | **87% PASS, 0% FAIL, 3% SKIP, 5% ISSUE** |
 
 ### Known Issues Found During Testing
 
 1. **SigNoz OTel Collector (TP-SIGNOZ)**: The `signoz/signoz-otel-collector:0.102.12` image requires a ClickHouse cluster with pre-migrated schemas. The standalone deployment in `docker-compose.observability.yml` needs either (a) the official SigNoz deploy repo setup, or (b) a standalone SigNoz container approach. IPv6 disabled in Colima VM also required `clickhouse-ipv4.xml` override.
 
-2. **Kafka Advertised Listener (TP-CONTAINER-03)**: `KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:19092` breaks internal container CLI tools. Needs dual listener config: `INSIDE://kafka:9092,OUTSIDE://localhost:19092`.
+2. **Kafka Advertised Listener (TP-CONTAINER-03)**: **RESOLVED.** Dual INSIDE/OUTSIDE listener config added. Internal CLI tools and external host access both work.
 
 3. **Probe Tolerance Whitespace (TP-E2E-02)**: PostgreSQL `psql -t` output includes leading whitespace (e.g., `" 6\n"` instead of `"6"`). Regex tolerances like `\\d+` match but the full output comparison may cause issues. Consider trimming probe output before tolerance evaluation.
 
