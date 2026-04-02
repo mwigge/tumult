@@ -1,0 +1,333 @@
+---
+title: Tumult — Rust-Native Chaos Engineering
+layout: default
+nav_exclude: true
+---
+
+<style>
+  /* Override just-the-docs defaults for landing page */
+  .main-content { max-width: 100%; padding: 0; }
+  .side-bar { display: none; }
+  @media (min-width: 66.5rem) { .main-content { margin-left: 0; } }
+
+  :root {
+    --copper: #c87533;
+    --copper-light: #e89a4f;
+    --slate: #1a1a2e;
+    --slate-light: #16213e;
+    --slate-lighter: #0f3460;
+    --text: #e0e0e0;
+    --text-muted: #8892b0;
+    --bg: #0a0a1a;
+    --card-bg: #111126;
+    --border: #1e1e3a;
+  }
+
+  /* ── Hero ──────────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, var(--bg) 0%, var(--slate) 50%, var(--slate-light) 100%);
+    padding: 4rem 2rem 3rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-logo { max-width: 120px; margin-bottom: 1.5rem; }
+  .hero h1 {
+    font-size: 3rem; font-weight: 800; color: #fff;
+    margin: 0 0 0.5rem; letter-spacing: -0.02em;
+  }
+  .hero h1 span { color: var(--copper); }
+  .hero .tagline {
+    font-size: 1.25rem; color: var(--text-muted);
+    max-width: 700px; margin: 0 auto 2rem; line-height: 1.6;
+  }
+
+  /* ── Install box ──────────────────────────────────── */
+  .install-box {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.5rem;
+    max-width: 620px; margin: 0 auto 1.5rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.95rem; color: var(--copper-light);
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: border-color 0.2s;
+  }
+  .install-box:hover { border-color: var(--copper); }
+  .install-box .prompt { color: var(--text-muted); margin-right: 0.5rem; }
+  .install-box .copy-hint {
+    color: var(--text-muted); font-size: 0.75rem;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .hero-buttons { margin-top: 1.5rem; }
+  .hero-buttons a {
+    display: inline-block; padding: 0.75rem 2rem;
+    border-radius: 6px; font-weight: 600; font-size: 1rem;
+    text-decoration: none; margin: 0 0.5rem 0.5rem;
+    transition: all 0.2s;
+  }
+  .btn-primary-custom {
+    background: var(--copper); color: #fff;
+  }
+  .btn-primary-custom:hover { background: var(--copper-light); color: #fff; }
+  .btn-secondary-custom {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary-custom:hover { border-color: var(--copper); color: var(--copper-light); }
+
+  /* ── Banner ───────────────────────────────────────── */
+  .banner {
+    max-width: 900px; margin: 2rem auto 0;
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .banner img { width: 100%; display: block; }
+
+  /* ── Stats bar ────────────────────────────────────── */
+  .stats {
+    display: flex; justify-content: center; gap: 3rem;
+    padding: 2rem; background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .stat { text-align: center; }
+  .stat .num { font-size: 2rem; font-weight: 800; color: var(--copper); }
+  .stat .label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* ── Features grid ────────────────────────────────── */
+  .features {
+    max-width: 1100px; margin: 0 auto;
+    padding: 3rem 2rem;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+  .feature-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.5rem;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .feature-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+  .feature-card h3 {
+    font-size: 1.1rem; color: #fff; margin: 0 0 0.5rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .feature-card .icon { font-size: 1.3rem; }
+  .feature-card p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; margin: 0; }
+
+  /* ── Terminal demo ────────────────────────────────── */
+  .demo-section {
+    max-width: 800px; margin: 0 auto; padding: 2rem 2rem 3rem;
+  }
+  .demo-section h2 { text-align: center; color: #fff; margin-bottom: 1.5rem; }
+  .terminal {
+    background: #0d1117; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .terminal-bar {
+    background: #161b22; padding: 0.5rem 1rem;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .terminal-dot.red { background: #ff5f57; }
+  .terminal-dot.yellow { background: #febc2e; }
+  .terminal-dot.green { background: #28c840; }
+  .terminal-body {
+    padding: 1.25rem; font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem; line-height: 1.7; color: var(--text);
+    overflow-x: auto;
+  }
+  .terminal-body .prompt-sign { color: var(--copper); }
+  .terminal-body .cmd { color: #fff; }
+  .terminal-body .output { color: var(--text-muted); }
+  .terminal-body .success { color: #28c840; }
+  .terminal-body .info { color: #58a6ff; }
+
+  /* ── Architecture ─────────────────────────────────── */
+  .arch-section {
+    max-width: 900px; margin: 0 auto; padding: 2rem;
+    text-align: center;
+  }
+  .arch-section h2 { color: #fff; margin-bottom: 1.5rem; }
+  .arch-section img {
+    max-width: 100%; border-radius: 10px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+
+  /* ── CTA ──────────────────────────────────────────── */
+  .cta {
+    text-align: center; padding: 3rem 2rem;
+    background: linear-gradient(135deg, var(--slate-light), var(--slate));
+    border-top: 1px solid var(--border);
+  }
+  .cta h2 { color: #fff; font-size: 1.8rem; margin-bottom: 1rem; }
+  .cta p { color: var(--text-muted); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+
+  /* ── Footer ───────────────────────────────────────── */
+  .landing-footer {
+    text-align: center; padding: 2rem;
+    color: var(--text-muted); font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+  }
+  .landing-footer a { color: var(--copper-light); text-decoration: none; }
+  .landing-footer a:hover { text-decoration: underline; }
+  .footer-links { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }
+</style>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Hero                                                 -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="hero">
+  <img src="/images/tumult.png" alt="Tumult" class="hero-logo">
+  <h1>Embrace the <span>Tumult</span></h1>
+  <p class="tagline">
+    Rust-native chaos engineering. One binary. Native OpenTelemetry. Embedded analytics.
+    Data-driven and LLM-ready — every result flows into structured pipelines as readable
+    by machines as by engineers.
+  </p>
+
+  <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
+    <div>
+      <span class="prompt">$</span>
+      curl -sSL https://tumult.rs/install.sh | sh
+    </div>
+    <span class="copy-hint">click to copy</span>
+  </div>
+
+  <div class="hero-buttons">
+    <a href="/guides/experiment-format/" class="btn-primary-custom">Get Started</a>
+    <a href="https://github.com/mwigge/tumult" class="btn-secondary-custom">GitHub</a>
+    <a href="/blog/" class="btn-secondary-custom">Blog</a>
+  </div>
+
+  <div class="banner">
+    <img src="/images/tumult-banner.png" alt="Tumult — Embrace the Tumult. Build Resilience.">
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Stats                                                -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="stats">
+  <div class="stat"><div class="num">562</div><div class="label">Unit Tests</div></div>
+  <div class="stat"><div class="num">166</div><div class="label">Platform Tests</div></div>
+  <div class="stat"><div class="num">10</div><div class="label">Plugins</div></div>
+  <div class="stat"><div class="num">45</div><div class="label">Chaos Actions</div></div>
+  <div class="stat"><div class="num">0</div><div class="label">Unsafe Blocks</div></div>
+  <div class="stat"><div class="num">7</div><div class="label">Compliance Frameworks</div></div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Features                                             -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="features">
+  <div class="feature-card">
+    <h3><span class="icon">⚡</span> Single Binary</h3>
+    <p>No runtime, no dependencies. Compiles to a ~1.8MB static binary for macOS, Linux, and Windows. Copy it to your PATH and run experiments.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">📡</span> Native OpenTelemetry</h3>
+    <p>Every experiment emits real OTel spans across SSH, Kubernetes, plugins, baselines, analytics, and MCP dispatch. Traces appear in Jaeger, SigNoz, or any OTLP backend — no configuration.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🔍</span> Embedded Analytics</h3>
+    <p>Journals flow through Apache Arrow into DuckDB. SQL over your chaos history, export to Parquet, trend analysis across hundreds of runs. The data pipeline is built in, not bolted on.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🔌</span> 10 Plugins, 45 Actions</h3>
+    <p>PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH remote execution, CPU/memory/IO stress. Write your own in any language — just scripts + a manifest.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">📋</span> Regulatory Compliance</h3>
+    <p>Map experiments to DORA (EU 2022/2554), NIS2, PCI-DSS 4.0, ISO 22301, ISO 27001, SOC 2, and Basel III. Journals are audit artifacts. Evidence reports generated from data.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🛡️</span> Memory Safe</h3>
+    <p>100% safe Rust across all 11 crates. Zero <code>unsafe</code> blocks. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🌐</span> Custom OTel Collector</h3>
+    <p>Purpose-built collector with OTLP + Arrow receivers, ClickHouse storage, Prometheus metrics, and span-to-metrics APM. Traces, metrics, and logs in one pipeline.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🤖</span> LLM-Ready</h3>
+    <p>TOON format is 40-50% more token-efficient than JSON. MCP server exposes 11 tools for autonomous experiment orchestration. Structured output feeds directly into analysis pipelines.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🐳</span> Docker Test Stack</h3>
+    <p>One command starts PostgreSQL, Redis, Kafka, SSH, ClickHouse, and the OTel Collector. Run real chaos experiments against real infrastructure in minutes.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Terminal Demo                                        -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="demo-section">
+  <h2>See It in Action</h2>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <div class="terminal-dot red"></div>
+      <div class="terminal-dot yellow"></div>
+      <div class="terminal-dot green"></div>
+    </div>
+    <div class="terminal-body">
+<span class="prompt-sign">$</span> <span class="cmd">tumult run examples/redis-chaos.toon</span>
+<span class="output">Running experiment: Redis resilience — verify recovery after disruption</span>
+<span class="info">INFO</span> <span class="output">experiment.started experiment_id=a9c30eda-2f04-4227</span>
+<span class="info">INFO</span> <span class="output">experiment.completed status=Completed duration_ms=297 deviations=0</span>
+<span class="success">Status: Completed</span>
+<span class="output">Duration: 297ms</span>
+<span class="output">Method steps: 3 executed</span>
+<span class="output">Journal written to: journal.toon</span>
+<span class="output">Ingested into persistent analytics store</span>
+
+<span class="prompt-sign">$</span> <span class="cmd">tumult analyze --query "SELECT title, status, duration_ms FROM experiments"</span>
+<span class="output">title                          status     duration_ms</span>
+<span class="output">─────────────────────────────  ─────────  ───────────</span>
+<span class="output">Redis resilience test          completed  297</span>
+<span class="output">PostgreSQL failover            completed  156</span>
+<span class="output">Pumba latency injection        completed  10906</span>
+
+<span class="prompt-sign">$</span> <span class="cmd">tumult compliance --framework dora .</span>
+<span class="output">=== DORA — Digital Operational Resilience Act (EU 2022/2554) ===</span>
+<span class="output">Journals analyzed: 3</span>
+<span class="output">Success rate: 100.0%</span>
+<span class="success">Overall: COMPLIANT</span>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Architecture                                         -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="arch-section">
+  <h2>Architecture</h2>
+  <img src="/images/tumult-tech-architecture.png" alt="Tumult Architecture — tumult-core engine, CLI, MCP server">
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- CTA                                                  -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="cta">
+  <h2>Ready to Build Resilience?</h2>
+  <p>One command to install. One command to run your first chaos experiment.</p>
+  <div class="hero-buttons">
+    <a href="https://github.com/mwigge/tumult" class="btn-primary-custom">View on GitHub</a>
+    <a href="/guides/experiment-format/" class="btn-secondary-custom">Read the Docs</a>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Footer                                               -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="landing-footer">
+  <div class="footer-links">
+    <a href="/guides/experiment-format/">Documentation</a>
+    <a href="/blog/">Blog</a>
+    <a href="https://github.com/mwigge/tumult">GitHub</a>
+    <a href="https://github.com/mwigge/tumult/blob/main/SECURITY.md">Security</a>
+    <a href="https://github.com/mwigge/tumult/blob/main/QUICKSTART.md">Quickstart</a>
+    <a href="https://github.com/mwigge/tumult/blob/main/docs/testprotocol.md">Test Protocol</a>
+  </div>
+  <p>Open source under the Apache-2.0 license. Built with Rust, Tokio, Arrow, DuckDB, and OpenTelemetry.</p>
+</section>
