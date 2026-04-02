@@ -34,6 +34,10 @@ receivers:
       network: {}
       filesystem: {}
 
+  docker_stats:
+    collection_interval: 30s
+    endpoint: unix:///var/run/docker.sock
+
 processors:
   batch:
     send_batch_size: 1024
@@ -129,7 +133,7 @@ service:
 
     # Metrics: OTLP/Arrow + host metrics -> SigNoz + Prometheus + file
     metrics:
-      receivers: [otlp, otelarrow, hostmetrics]
+      receivers: [otlp, otelarrow, hostmetrics, docker_stats]
       processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
       exporters: [otlp/signoz, prometheus, file/metrics]
 
