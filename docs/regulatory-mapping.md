@@ -14,14 +14,14 @@ How Tumult experiment evidence maps to regulatory requirements for operational r
 
 ## Frameworks at a Glance
 
-| Framework | Jurisdiction | Applies from | Penalty |
-|-----------|-------------|-------------|---------|
-| DORA (EU 2022/2554) | EU financial entities | 17 January 2025 | Administrative penalties per member state |
-| NIS2 (EU 2022/2555) | EU essential/important entities | 17 October 2024 | Up to EUR 10M or 2% global revenue |
-| PCI-DSS 4.0 | Global (card payment handling) | 31 March 2025 (v4.0.1 full) | Fines, increased transaction fees, loss of processing rights |
-| Basel III / BCBS 239 | Global banking | Phased since 2013 | Supervisory action |
-| ISO 22301 | Global (voluntary, often contractual) | N/A | Certification loss |
-| ISO 27001 / SOC 2 | Global (voluntary, often contractual) | N/A | Certification/attestation loss |
+| Framework | Jurisdiction | Applies from | Penalty | Source |
+|-----------|-------------|-------------|---------|--------|
+| DORA (EU 2022/2554) | EU financial entities | 17 January 2025 | Administrative penalties per member state | [EUR-Lex](https://eur-lex.europa.eu/eli/reg/2022/2554/oj) |
+| NIS2 (EU 2022/2555) | EU essential/important entities | 17 October 2024 | Up to EUR 10M or 2% global revenue | [EUR-Lex](https://eur-lex.europa.eu/eli/dir/2022/2555/oj) |
+| PCI-DSS 4.0 | Global (card payment handling) | 31 March 2025 (v4.0.1 full) | Fines, increased transaction fees, loss of processing rights | [PCI SSC](https://www.pcisecuritystandards.org/document_library/) |
+| Basel III / BCBS 239 | Global banking | Phased since 2013 | Supervisory action | [BIS](https://www.bis.org/publ/bcbs239.htm) |
+| ISO 22301:2019 | Global (voluntary, often contractual) | N/A | Certification loss | [ISO](https://www.iso.org/standard/75106.html) |
+| ISO 27001:2022 / SOC 2 | Global (voluntary, often contractual) | N/A | Certification/attestation loss | [ISO](https://www.iso.org/standard/27001) / [AICPA](https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2) |
 
 ---
 
