@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 11
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Road Ahead: Autonomous Chaos, MCP, and the Future of Resilience Engineering
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Road Ahead: Autonomous Chaos, MCP, and the Future of Resilience Engineering
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 *Part 11 of the Tumult series. [← Part 10: Chaos Under Load](./10-chaos-under-load.md)*
 

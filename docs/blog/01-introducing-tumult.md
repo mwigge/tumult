@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 1
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Introducing Tumult: Rust-Native Chaos Engineering for the Age of AI
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Introducing Tumult: Rust-Native Chaos Engineering for the Age of AI
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 **Today, we are launching Tumult — a modern, modular chaos engineering platform built entirely in Rust.**
 
