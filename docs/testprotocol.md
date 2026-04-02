@@ -1670,8 +1670,8 @@ Use this section to record actual test execution results.
 |---------|-------------|--------|----------------|
 | TP-ENV-01 | Build platform | PASS | All 13 crates compiled in 3m00s release mode |
 | TP-ENV-02 | Start chaos targets | PASS | 4 containers: postgres (healthy), redis (healthy), kafka (healthy), sshd (running) |
-| TP-ENV-03 | Start observability | ISSUE | ClickHouse healthy. SigNoz OTel Collector fails: needs ClickHouse cluster+migrations setup. Dev Jaeger collector used instead. |
-| TP-ENV-04 | Verify connectivity | PARTIAL | PG, Redis, Kafka, SSH containers reachable. SigNoz UI not available (collector dependency). Jaeger UI at :16686 works. |
+| TP-ENV-03 | Start observability | PASS | SigNoz standalone (all-in-one) + tumult-collector. All services healthy. UI on :3301, OTLP on :4317, collector on :14317. |
+| TP-ENV-04 | Verify connectivity | PASS | All services reachable: PG :15432, Redis :16379, Kafka :19092, SSH :12222, SigNoz UI :3301, OTLP :4317, Collector :14317. |
 | TP-CLI-01 | Version output | PASS | `tumult 0.1.0` |
 | TP-CLI-02 | Help output | PASS | All 12 subcommands listed: run, validate, discover, analyze, export, compliance, report, trend, init, import, store, help |
 | TP-CLI-03 | Validate experiment | PASS | Exit 0, validation passed with experiment details |
@@ -1734,10 +1734,10 @@ Use this section to record actual test execution results.
 | TP-OTEL-08 | Console exporter | PASS | Covered by unit test `config_from_env_respects_disabled` |
 | TP-OTEL-09 | Resource attributes | PASS | `service.version=0.1.0`, `telemetry.sdk.language=rust`, `telemetry.sdk.name=opentelemetry`, `telemetry.sdk.version=0.31.0` |
 | TP-OTEL-10 | SpanGuard RAII | PASS | Covered by unit tests for SpanGuard drop behavior |
-| TP-SIGNOZ-01 | UI accessible | ISSUE | SigNoz frontend depends on signoz-otel-collector which needs ClickHouse cluster/migration setup |
-| TP-SIGNOZ-02 | Service listed | ISSUE | Blocked by TP-SIGNOZ-01. Tumult service verified in Jaeger instead. |
-| TP-SIGNOZ-03 | Traces visible | ISSUE | Blocked by TP-SIGNOZ-01. 4 traces with 9 spans visible in Jaeger UI at :16686. |
-| TP-SIGNOZ-04 | Span tree | ISSUE | Blocked by TP-SIGNOZ-01. Full span tree verified in Jaeger: experiment -> hypothesis -> probe -> action -> rollback |
+| TP-SIGNOZ-01 | UI accessible | PASS | SigNoz standalone on :3301. HTTP 200. |
+| TP-SIGNOZ-02 | Service listed | PASS | `tumult` service visible in SigNoz Services tab. |
+| TP-SIGNOZ-03 | Traces visible | PASS | 9+ traces from Tumult experiments in SigNoz Traces. Full span waterfall visible. |
+| TP-SIGNOZ-04 | Span tree | PASS | experiment → hypothesis.before → action → probe → hypothesis.after with timing and attributes. Screenshot in docs/images/signoz-traces.png. |
 | TP-SIGNOZ-05 | ClickHouse retention | PASS | ClickHouse 24.1.2.5 running, databases signoz_traces/signoz_metrics/signoz_logs created |
 | TP-CONTAINER-01 | PostgreSQL health | PASS | PostgreSQL 16.13 (alpine, aarch64), healthy, responds to queries |
 | TP-CONTAINER-02 | Redis health | PASS | Redis 7.4.8, healthy, PONG response |
@@ -1766,8 +1766,8 @@ Use this section to record actual test execution results.
 | TP-ANALYTICS-09 | Backup & restore | PASS | Export to Parquet verified. Import functionality available. |
 | TP-CLICKHOUSE-01 | CH connection | PASS | ClickHouse 24.1.2.5, responds on 127.0.0.1:8123 |
 | TP-CLICKHOUSE-02 | Schema creation | PASS | Databases created: signoz_traces, signoz_metrics, signoz_logs, tumult |
-| TP-CLICKHOUSE-03 | CH ingestion | ISSUE | Tumult->ClickHouse direct ingestion requires SigNoz OTel collector pipeline (blocked by collector config) |
-| TP-CLICKHOUSE-04 | Cross-correlation | ISSUE | Blocked by TP-CLICKHOUSE-03. Architecture validated — shared ClickHouse for both OTel traces and experiment data. |
+| TP-CLICKHOUSE-03 | CH ingestion | PASS | Traces in signoz_traces.distributed_signoz_index_v3 via SigNoz OTel Collector. Also in otel_traces via tumult-collector. |
+| TP-CLICKHOUSE-04 | Cross-correlation | PASS | Both experiment data (otel_traces) and SigNoz traces (signoz_index_v3) in same ClickHouse instance. Cross-query possible. |
 | TP-MCP-01 | Tool listing | PASS | Binary exists. 11 MCP tools defined: run, validate, discover, analyze, read_journal, list_journals, create_experiment, query_traces, analyze_store, store_stats, list_experiments |
 | TP-MCP-02 | Run via MCP | PASS | Doc tests for `RunExperimentTool::request_params` pass |
 | TP-MCP-03 | Validate via MCP | PASS | Doc tests for `ValidateTool::request_params` pass |
@@ -1835,7 +1835,7 @@ Use this section to record actual test execution results.
 
 | Category | Total | Pass | Fail | Skip | Issue | Notes |
 |----------|-------|------|------|------|-------|-------|
-| TP-ENV | 4 | 2 | 0 | 0 | 2 | SigNoz OTel collector needs full migration setup |
+| TP-ENV | 4 | 4 | 0 | 0 | 0 | All services healthy. SigNoz standalone resolved. |
 | TP-CLI | 10 | 10 | 0 | 0 | 0 | Flag names: `--output-format`, `--rollback-strategy` |
 | TP-CORE | 7 | 7 | 0 | 0 | 0 | All phases, hypothesis, rollback, timeout verified |
 | TP-TOON | 5 | 5 | 0 | 0 | 0 | Round-trip, structure, fields, array notation |
@@ -1844,25 +1844,25 @@ Use this section to record actual test execution results.
 | TP-ARROW | 4 | 4 | 0 | 0 | 0 | Schema, row counts, export all verified |
 | TP-DUCK | 8 | 8 | 0 | 0 | 0 | SQL queries, persistence, import/export |
 | TP-OTEL | 10 | 10 | 0 | 0 | 0 | All 7 canonical spans + attributes verified via Jaeger |
-| TP-SIGNOZ | 5 | 1 | 0 | 0 | 4 | ClickHouse works. SigNoz frontend blocked by collector. |
+| TP-SIGNOZ | 5 | 5 | 0 | 0 | 0 | All pass. SigNoz standalone: UI, traces, span tree, ClickHouse retention. |
 | TP-CONTAINER | 7 | 7 | 0 | 0 | 0 | All healthy. Kafka dual listener fixed. |
 | TP-SSH | 3 | 3 | 0 | 0 | 0 | SSH crate compiles, unit tests pass |
 | TP-BASELINE | 6 | 6 | 0 | 0 | 0 | All statistical methods + modes verified |
 | TP-ANALYTICS | 9 | 9 | 0 | 0 | 0 | Parquet/CSV/JSON, HTML report, 7 frameworks, trend |
-| TP-CLICKHOUSE | 4 | 2 | 0 | 0 | 2 | CH runs, databases created. Ingestion needs collector. |
+| TP-CLICKHOUSE | 4 | 4 | 0 | 0 | 0 | All pass. Ingestion via SigNoz + tumult-collector. Cross-correlation verified. |
 | TP-MCP | 5 | 5 | 0 | 0 | 0 | Binary exists, all doc tests pass |
 | TP-K8S | 4 | 0 | 0 | 4 | 0 | No Kubernetes cluster available |
 | TP-E2E | 10 | 10 | 0 | 0 | 0 | Full pipeline, PG/Redis chaos, Pumba E2E, SSH, custom collector |
 | TP-PUMBA | 15 | 15 | 0 | 0 | 0 | All 15 pass: netem delay/loss/dup/corrupt/rate, iptables, pause, kill, probes, OTel, DuckDB |
-| TP-COLLECTOR | 10 | 9 | 0 | 0 | 1 | Build, OTLP, Arrow, ClickHouse, file, Prometheus, APM, host metrics all PASS. Docker stats ISSUE (Colima). |
+| TP-COLLECTOR | 10 | 9 | 0 | 0 | 1 | 9 pass. Docker stats receiver ISSUE (Colima VM socket path). |
 | TP-UNIT | 7 | 7 | 0 | 0 | 0 | 562 tests, 0 failures, clippy/fmt/audit clean |
 | TP-COMPLIANCE | 5 | 5 | 0 | 0 | 0 | All 7 regulatory frameworks produce reports |
 | TP-QUICKSTART | 6 | 6 | 0 | 0 | 0 | All examples pass, install.sh validated, analytics verified |
-| **TOTAL** | **172** | **150** | **0** | **5** | **9** | **87% PASS, 0% FAIL, 3% SKIP, 5% ISSUE** |
+| **TOTAL** | **172** | **159** | **0** | **5** | **1** | **92% PASS, 0% FAIL, 3% SKIP, 1% ISSUE** |
 
 ### Known Issues Found During Testing
 
-1. **SigNoz OTel Collector (TP-SIGNOZ)**: The `signoz/signoz-otel-collector:0.102.12` image requires a ClickHouse cluster with pre-migrated schemas. The standalone deployment in `docker-compose.observability.yml` needs either (a) the official SigNoz deploy repo setup, or (b) a standalone SigNoz container approach. IPv6 disabled in Colima VM also required `clickhouse-ipv4.xml` override.
+1. **SigNoz OTel Collector (TP-SIGNOZ)**: **RESOLVED.** Replaced multi-container SigNoz with `ghcr.io/aetherall/signoz-standalone` all-in-one container. Schema migrations run automatically. All 5 SigNoz tests now pass.
 
 2. **Kafka Advertised Listener (TP-CONTAINER-03)**: **RESOLVED.** Dual INSIDE/OUTSIDE listener config added. Internal CLI tools and external host access both work.
 
