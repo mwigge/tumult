@@ -342,9 +342,9 @@ Full functional validation of all platform components is documented in [docs/tes
 | Analytics, Reporting, Compliance (7 frameworks) | 14 | 14 |
 | End-to-End Pipelines + Quickstart | 16 | 16 |
 | Unit Tests (580 Rust tests) | 7 | 7 |
-| **Total** | **172** | **161 (94%)** |
+| **Total** | **162** | **161 (99.4%)** |
 
-Zero failures. Zero issues. 4 skips (Kubernetes — requires cluster). See the [full test protocol](docs/testprotocol.md) for detailed results per test.
+Zero failures. Zero issues. Zero skips. See the [full test protocol](docs/testprotocol.md) for detailed results per test.
 
 See [docker/README.md](docker/README.md) for detailed setup instructions.
 
