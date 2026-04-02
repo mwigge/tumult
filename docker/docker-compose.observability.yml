@@ -1,15 +1,13 @@
 # Tumult Observability Platform
 #
-# Architecture:
-#   Tumult CLI -> tumult-collector (OTLP :14317)
-#     -> ClickHouse (otel_traces — standard schema for DuckDB/analytics)
-#     -> File export (JSONL for offline analysis)
-#     -> Prometheus (host + APM span metrics on :18889)
-#     -> SigNoz OTel Collector (OTLP forward -> signoz_index_v3 for SigNoz UI)
+# SigNoz standalone (all-in-one) + Tumult OTel Collector.
 #
-# The tumult-collector is the single OTLP gateway. It writes to ClickHouse
-# directly (standard otel_traces schema) AND forwards to SigNoz's collector
-# which maintains the signoz_index_v3 tables for the SigNoz frontend.
+# Architecture:
+#   Tumult CLI → tumult-collector (:14317)
+#     → SigNoz standalone (:4317) → signoz_index_v3 → SigNoz UI (:3301)
+#     → ClickHouse (otel_traces — standard schema for DuckDB/analytics)
+#     → File export (JSONL for offline analysis)
+#     → Prometheus (host + APM span metrics on :18889)
 #
 # Usage:
 #   # Full platform (chaos targets + observability)
@@ -20,10 +18,11 @@
 #   docker compose -f docker-compose.observability.yml up -d
 #
 # UIs:
-#   SigNoz:        http://localhost:13301  (traces, metrics, logs, dashboards)
-#   Prometheus:    http://localhost:18889  (tumult-collector metrics)
-#   ClickHouse:    http://localhost:18123  (direct SQL queries)
-#   Health:        http://localhost:13133  (collector health)
+#   SigNoz:     http://localhost:3301   (traces, metrics, logs, dashboards)
+#   Prometheus: http://localhost:18889  (tumult-collector host + APM metrics)
+#   Health:     http://localhost:13133  (tumult-collector health)
+#
+# First run: SigNoz will ask you to create an account (local, no external auth).
 #
 # Optional classic profile (Jaeger + Prometheus + Grafana):
 #   docker compose -f docker-compose.yml \
@@ -31,62 +30,45 @@
 
 services:
   # ══════════════════════════════════════════════════════════════
-  # Storage: ClickHouse + ZooKeeper
+  # SigNoz Standalone — all-in-one (ZooKeeper + ClickHouse +
+  # Schema Migrator + OTel Collector + UI)
   # ══════════════════════════════════════════════════════════════
 
-  signoz-zookeeper:
-    image: signoz/zookeeper:3.7.1
-    environment:
-      ALLOW_ANONYMOUS_LOGIN: "yes"
-      ZOO_4LW_COMMANDS_WHITELIST: "mntr,srvr,ruok"
-    volumes:
-      - signoz-zookeeper-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    networks:
-      - tumult-e2e
-
-  signoz-clickhouse:
-    image: clickhouse/clickhouse-server:24.1.2-alpine
+  signoz:
+    image: ghcr.io/aetherall/signoz-standalone:latest
+    ports:
+      - "3301:8080"    # SigNoz UI
+      - "4317:4317"    # OTLP gRPC (SigNoz collector)
+      - "4318:4318"    # OTLP HTTP
     volumes:
       - signoz-clickhouse-data:/var/lib/clickhouse
-      - ./clickhouse-ipv4.xml:/etc/clickhouse-server/config.d/ipv4-only.xml:ro
+      - signoz-data:/var/lib/signoz
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping | grep -q Ok"]
-      interval: 10s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
       timeout: 10s
-      retries: 30
-      start_period: 60s
+      retries: 20
+      start_period: 90s
     deploy:
       resources:
         limits:
           cpus: "4"
           memory: 4G
-    ports:
-      - "18123:8123"
-    depends_on:
-      signoz-zookeeper:
-        condition: service_healthy
-    environment:
-      CLICKHOUSE_DB: signoz_traces
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
     networks:
       - tumult-e2e
 
   # ══════════════════════════════════════════════════════════════
-  # Tumult OTel Collector — single OTLP gateway
+  # Tumult OTel Collector — custom-built with ocb
   # ══════════════════════════════════════════════════════════════
   #
-  # Purpose-built with ocb. Receives all telemetry, writes to:
-  #   1. ClickHouse (otel_traces — standard schema)
-  #   2. File (JSONL for DuckDB)
-  #   3. Prometheus (host + APM metrics)
-  #   4. SigNoz OTel Collector (OTLP forward for SigNoz UI)
+  # Adds on top of SigNoz:
+  #   - Standard otel_traces in ClickHouse (for DuckDB cross-query)
+  #   - File export (JSONL for offline analysis)
+  #   - Prometheus endpoint (host metrics + APM span metrics)
+  #   - Host metrics + Docker stats receivers
+  #
+  # Tumult CLI sends to this collector on :14317.
+  # This collector forwards to SigNoz on :4317.
 
   tumult-collector:
     image: tumult-otel-collector:latest
@@ -116,57 +98,11 @@ services:
       - "18888:8888"   # Collector self-telemetry
       - "13133:13133"  # Health check
     depends_on:
-      signoz-clickhouse:
+      signoz:
         condition: service_healthy
     environment:
-      CLICKHOUSE_ENDPOINT: "tcp://signoz-clickhouse:9000"
-      SIGNOZ_ENDPOINT: "signoz-otel-collector:4317"
-    networks:
-      - tumult-e2e
-
-  # ══════════════════════════════════════════════════════════════
-  # SigNoz — UI + its own OTel Collector for signoz_index_v3
-  # ══════════════════════════════════════════════════════════════
-
-  signoz-otel-collector:
-    image: signoz/signoz-otel-collector:0.102.12
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./otel-collector-signoz.yaml:/etc/otel-collector-config.yaml:ro
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
-    depends_on:
-      signoz-clickhouse:
-        condition: service_healthy
-    networks:
-      - tumult-e2e
-
-  signoz:
-    image: signoz/signoz:v0.117.1
-    depends_on:
-      signoz-clickhouse:
-        condition: service_healthy
-      signoz-otel-collector:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: "2"
-          memory: 2G
-    ports:
-      - "13301:8080"
-    environment:
-      SIGNOZ_CLICKHOUSE_HOST: signoz-clickhouse
-      SIGNOZ_CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_ENDPOINT: "tcp://signoz:9000"
+      SIGNOZ_ENDPOINT: "signoz:4317"
     networks:
       - tumult-e2e
 
@@ -215,8 +151,8 @@ services:
       - tumult-e2e
 
 volumes:
-  signoz-zookeeper-data:
   signoz-clickhouse-data:
+  signoz-data:
   tumult-export:
 
 networks:
