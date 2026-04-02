@@ -305,7 +305,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
 | **3 — Automation** | MCP server (11 tools), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
-| **5 — Regulatory Compliance** | DORA, NIS2, PCI-DSS evidence reporting | Done |
+| **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
 | **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
 | **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
@@ -457,13 +457,24 @@ regulatory:
 
 ## Quick Start
 
-### Prerequisites
+**One-command setup** (requires Rust + Docker):
 
-- **Rust 1.75+** — install via [rustup.rs](https://rustup.rs/)
-- **Platforms**: macOS (Intel/Apple Silicon), Linux (x86_64/aarch64, glibc/musl)
-- **Git** (for cloning the repo)
+```bash
+git clone https://github.com/mwigge/tumult.git && cd tumult && ./install.sh
+```
 
-### Install
+This builds the binary, starts Docker targets, and runs a verification experiment. Then:
+
+```bash
+tumult run examples/redis-chaos.toon       # break Redis, watch it recover
+tumult run examples/postgres-failover.toon  # kill PG connections
+tumult run examples/pumba-latency.toon      # inject 200ms network latency
+tumult analyze --query "SELECT title, status, duration_ms FROM experiments"
+```
+
+See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough including observability setup, SSH experiments, compliance reports, and bring-your-own-target instructions.
+
+### Manual install
 
 **From GitHub Releases** (pre-built binaries for 6 targets):
 
@@ -475,8 +486,6 @@ Download the latest release from [Releases](https://github.com/mwigge/tumult/rel
 git clone https://github.com/mwigge/tumult.git
 cd tumult
 cargo build --release
-
-# Binary is at target/release/tumult
 cp target/release/tumult /usr/local/bin/
 ```
 

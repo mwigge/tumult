@@ -1,0 +1,36 @@
+title: SSH remote execution — stress test via SSH
+description: Execute commands on a remote host via SSH, including stress-ng
+
+tags[2]: ssh, stress
+
+steady_state_hypothesis:
+  title: SSH host is reachable
+  probes[1]:
+    - name: ssh-check
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "ssh -i /tmp/tumult-test-key -p 12222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tumult@localhost 'echo alive'"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "alive"
+
+method[2]:
+  - name: ssh-uname
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "ssh -i /tmp/tumult-test-key -p 12222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tumult@localhost 'uname -a'"
+      timeout_s: 10.0
+  - name: ssh-cpu-stress
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "ssh -i /tmp/tumult-test-key -p 12222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null tumult@localhost 'stress-ng --cpu 1 --timeout 3s --metrics-brief 2>&1 | tail -3'"
+      timeout_s: 10.0
+
+rollbacks[0]:

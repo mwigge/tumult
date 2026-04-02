@@ -822,7 +822,17 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
         bail!("path does not exist: {}", journals_path.display());
     }
 
-    println!("=== {framework} Compliance Report ===\n");
+    let full_name = match framework {
+        "DORA" => "DORA — Digital Operational Resilience Act (EU 2022/2554)",
+        "NIS2" => "NIS2 — Network and Information Security Directive (EU 2022/2555)",
+        "PCI-DSS" => "PCI-DSS 4.0 — Payment Card Industry Data Security Standard",
+        "ISO-22301" => "ISO 22301 — Business Continuity Management Systems",
+        "ISO-27001" => "ISO 27001 — Information Security Management Systems",
+        "SOC2" => "SOC 2 — Service Organization Control Type 2",
+        "Basel-III" => "Basel III — BCBS 239 Risk Data Aggregation",
+        _ => framework,
+    };
+    println!("=== {full_name} ===\n");
     println!("Journals analyzed: {count}");
     println!("With regulatory tagging: {journals_with_regulatory}\n");
 
