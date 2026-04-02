@@ -1,6 +1,5 @@
 ---
-title: Home
-layout: home
+title: Overview
 nav_order: 1
 ---
 
