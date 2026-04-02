@@ -13,7 +13,23 @@
 
 Tumult is a modern, modular chaos engineering platform written in Rust. It serves as a fast, portable, and inherently observable alternative to Python-based tools like Chaos Toolkit.
 
-Tumult is designed for the modern cloud-native landscape. It doesn't just create disruption; it provides the **native observability** required to understand exactly how systems respond, and the structured data format necessary for modern analytics and automated tooling to analyze those responses at scale.
+Tumult is designed for the modern cloud-native landscape. It doesn't just create disruption; it provides the **native observability** required to understand exactly how systems respond, and the structured data format necessary for modern analytics and automated tooling to analyze those responses at scale. Every result flows into a structured data pipeline — token-efficient formats, embedded SQL analytics, and OpenTelemetry traces — making the platform as readable by LLMs and data tools as it is by engineers.
+
+### Try it
+
+```bash
+curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
+```
+
+One command. Builds the binary, starts Docker infrastructure, runs a verification experiment. Requires [Rust](https://rustup.rs/) and [Docker](https://docs.docker.com/get-docker/).
+
+Then run your first chaos experiment:
+
+```bash
+tumult run examples/redis-chaos.toon
+```
+
+See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough.
 
 ## Core Concepts (Why Rust-Native?)
 
