@@ -1,0 +1,43 @@
+title: Pumba network latency injection on Redis
+description: Inject 200ms latency into Redis container, observe packet stats before and after
+
+tags[3]: pumba, redis, network
+
+steady_state_hypothesis:
+  title: Redis responds normally
+  probes[1]:
+    - name: redis-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-redis-1 redis-cli ping"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "PONG"
+
+method[3]:
+  - name: packet-stats-before
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "TUMULT_CONTAINER=docker-redis-1 plugins/tumult-pumba/probes/container-packet-stats.sh"
+      timeout_s: 10.0
+  - name: inject-200ms-latency
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest netem -d 8s -i eth0 delay -t 200 -j 50 -c 20 docker-redis-1"
+      timeout_s: 15.0
+  - name: packet-stats-after
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "TUMULT_CONTAINER=docker-redis-1 plugins/tumult-pumba/probes/container-packet-stats.sh"
+      timeout_s: 10.0
+
+rollbacks[0]:

@@ -8,6 +8,8 @@ nav_order: 3
 
 How Tumult experiment evidence maps to regulatory requirements for operational resilience. This document covers the six major frameworks that financial institutions, critical infrastructure operators, and technology providers must satisfy.
 
+> **Disambiguation:** DORA in this document refers exclusively to the **Digital Operational Resilience Act (EU 2022/2554)** — the EU regulation for financial sector ICT resilience. This is distinct from the DevOps Research and Assessment (DORA) programme and its "Four Keys" metrics, which are covered separately in the [Resilience Metadata Standard](resilience-metadata-standard.md) under `resilience.score.devops.*`.
+
 ---
 
 ## Frameworks at a Glance

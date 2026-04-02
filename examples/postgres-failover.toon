@@ -1,0 +1,36 @@
+title: PostgreSQL failover — kill connections and verify recovery
+description: Verify PG handles connection termination gracefully
+
+tags[2]: postgres, resilience
+
+steady_state_hypothesis:
+  title: PostgreSQL accepts queries
+  probes[1]:
+    - name: pg-query
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT 1' | tr -d ' \n'"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "1"
+
+method[2]:
+  - name: pg-connection-count
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
+      timeout_s: 10.0
+  - name: pg-kill-idle
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='idle' AND pid != pg_backend_pid() LIMIT 2\""
+      timeout_s: 10.0
+
+rollbacks[0]:
