@@ -29,7 +29,40 @@ Then run your first chaos experiment:
 tumult run examples/redis-chaos.toon
 ```
 
-See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough.
+See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough, or watch the **[interactive demo](https://tumult.rs/#demo-player)** on the website.
+
+<details>
+<summary><strong>Demo: validate → run → analyze → compliance (click to expand)</strong></summary>
+
+```
+❯ tumult validate examples/redis-chaos.toon
+Experiment: Redis resilience — verify recovery after disruption
+Method steps: 3 | Hypothesis: Redis responds to ping (1 probes)
+Validation passed.
+
+❯ tumult run examples/redis-chaos.toon
+Running experiment: Redis resilience — verify recovery after disruption
+INFO experiment.completed status=Completed duration_ms=314 deviations=0
+Status: Completed | Duration: 314ms | Method steps: 3 executed
+Journal written to: journal.toon
+
+❯ tumult analyze --query "SELECT title, status, duration_ms FROM experiments"
+title                                      status     duration_ms
+─────────────────────────────────────────  ─────────  ───────────
+Redis resilience — verify recovery         completed  314
+PostgreSQL failover — kill connections     completed  241
+Pumba network latency injection            completed  12787
+SSH remote execution — stress test         completed  3385
+
+❯ tumult compliance --framework dora .
+=== DORA — Digital Operational Resilience Act (EU 2022/2554) ===
+Success rate: 100.0% | Overall: COMPLIANT
+Source: https://eur-lex.europa.eu/eli/reg/2022/2554/oj
+
+❯ tumult store stats
+Experiments: 47 | Activities: 142 | File size: 2.76 MB
+```
+</details>
 
 ## Core Concepts (Why Rust-Native?)
 

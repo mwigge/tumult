@@ -260,42 +260,31 @@ nav_exclude: true
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
-<!-- Terminal Demo                                        -->
+<!-- Terminal Demo (asciinema)                             -->
 <!-- ════════════════════════════════════════════════════ -->
+<link rel="stylesheet" type="text/css" href="/demo/asciinema-player.css" />
+
 <section class="demo-section">
   <h2>See It in Action</h2>
-  <div class="terminal">
-    <div class="terminal-bar">
-      <div class="terminal-dot red"></div>
-      <div class="terminal-dot yellow"></div>
-      <div class="terminal-dot green"></div>
-    </div>
-    <div class="terminal-body">
-<span class="prompt-sign">$</span> <span class="cmd">tumult run examples/redis-chaos.toon</span>
-<span class="output">Running experiment: Redis resilience — verify recovery after disruption</span>
-<span class="info">INFO</span> <span class="output">experiment.started experiment_id=a9c30eda-2f04-4227</span>
-<span class="info">INFO</span> <span class="output">experiment.completed status=Completed duration_ms=297 deviations=0</span>
-<span class="success">Status: Completed</span>
-<span class="output">Duration: 297ms</span>
-<span class="output">Method steps: 3 executed</span>
-<span class="output">Journal written to: journal.toon</span>
-<span class="output">Ingested into persistent analytics store</span>
-
-<span class="prompt-sign">$</span> <span class="cmd">tumult analyze --query "SELECT title, status, duration_ms FROM experiments"</span>
-<span class="output">title                          status     duration_ms</span>
-<span class="output">─────────────────────────────  ─────────  ───────────</span>
-<span class="output">Redis resilience test          completed  297</span>
-<span class="output">PostgreSQL failover            completed  156</span>
-<span class="output">Pumba latency injection        completed  10906</span>
-
-<span class="prompt-sign">$</span> <span class="cmd">tumult compliance --framework dora .</span>
-<span class="output">=== DORA — Digital Operational Resilience Act (EU 2022/2554) ===</span>
-<span class="output">Journals analyzed: 3</span>
-<span class="output">Success rate: 100.0%</span>
-<span class="success">Overall: COMPLIANT</span>
-    </div>
-  </div>
+  <div id="demo-player" style="max-width: 800px; margin: 0 auto; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.3);"></div>
 </section>
+
+<script src="/demo/asciinema-player.min.js"></script>
+<script>
+  AsciinemaPlayer.create('/demo/tumult-demo.cast', document.getElementById('demo-player'), {
+    theme: 'monokai',
+    cols: 100,
+    rows: 35,
+    autoPlay: true,
+    loop: true,
+    speed: 1.2,
+    fit: 'width',
+    idleTimeLimit: 2,
+    pauseOnMarkers: false,
+    terminalFontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+    terminalFontSize: '13px'
+  });
+</script>
 
 <!-- ════════════════════════════════════════════════════ -->
 <!-- Architecture                                         -->
