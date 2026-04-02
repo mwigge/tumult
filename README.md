@@ -247,6 +247,9 @@ resilience.experiment           (root span — tumult-core)
 
 Every span carries structured events per [OTel semantic conventions](https://opentelemetry.io/docs/specs/semconv/general/events/): `journal.ingested`, `script.completed`, `drain.completed`, `tolerance.derived`, `anomaly.detected`.
 
+![SigNoz Traces — Tumult experiment span waterfall](docs/images/signoz-traces.png)
+*SigNoz showing a Tumult experiment trace: `resilience.experiment` → hypothesis → actions → probes → hypothesis after, with timing and span attributes.*
+
 ### Dual-Mode Analytics (DuckDB + ClickHouse)
 
 ```bash
