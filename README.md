@@ -338,13 +338,13 @@ Full functional validation of all platform components is documented in [docs/tes
 | OpenTelemetry (7 canonical spans) | 10 | 10 |
 | Custom OTel Collector (build + signals) | 10 | 9 |
 | Pumba Network Chaos (netem, iptables, container) | 15 | 15 |
-| Containers + SSH + Baseline | 16 | 15 |
+| SigNoz + ClickHouse + Containers + SSH | 23 | 23 |
 | Analytics, Reporting, Compliance (7 frameworks) | 14 | 14 |
-| End-to-End Pipelines | 10 | 10 |
-| Unit Tests (562 Rust tests) | 7 | 7 |
-| **Total** | **166** | **141 (85%)** |
+| End-to-End Pipelines + Quickstart | 16 | 16 |
+| Unit Tests (580 Rust tests) | 7 | 7 |
+| **Total** | **172** | **159 (92%)** |
 
-Zero failures. 5 skips (Kubernetes, k6). 12 infrastructure issues (SigNoz collector cluster config, Kafka listener). See the [full test protocol](docs/testprotocol.md) for detailed results per test.
+Zero failures. 5 skips (Kubernetes, k6). 1 issue (Docker stats in Colima VM). See the [full test protocol](docs/testprotocol.md) for detailed results per test.
 
 See [docker/README.md](docker/README.md) for detailed setup instructions.
 
