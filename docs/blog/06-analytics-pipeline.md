@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 6
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Data-Driven Chaos: SQL Analytics Over Experiment Journals
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Data-Driven Chaos: SQL Analytics Over Experiment Journals
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 *Part 6 of the Tumult series. [← Part 5: Writing Your First Experiment](./05-experiment-format.md)*
 

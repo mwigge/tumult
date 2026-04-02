@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 10
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Chaos Under Load: Network Faults and Load Testing with tumult-network and tumult-loadtest
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Chaos Under Load: Network Faults and Load Testing with tumult-network and tumult-loadtest
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 *Part 10 of the Tumult series. [← Part 9: Compliance as Code](./09-regulatory-compliance.md)*
 
