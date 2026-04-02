@@ -62,7 +62,7 @@ exporters:
   # ClickHouse — standard OTel schema (otel_traces table)
   # Coexists with SigNoz's signoz_index_v3 in the same database
   clickhouse:
-    endpoint: ${env:CLICKHOUSE_ENDPOINT:-tcp://signoz-clickhouse:9000}
+    endpoint: ${env:CLICKHOUSE_ENDPOINT:-tcp://signoz:9000}
     database: signoz_traces
     timeout: 10s
     retry_on_failure:
@@ -90,7 +90,7 @@ exporters:
 
   # OTLP forward — send to SigNoz OTel Collector for signoz_index_v3
   otlp/signoz:
-    endpoint: ${env:SIGNOZ_ENDPOINT:-signoz-otel-collector:4317}
+    endpoint: ${env:SIGNOZ_ENDPOINT:-signoz:4317}
     tls:
       insecure: true
 
