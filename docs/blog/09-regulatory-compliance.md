@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 9
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 *Part 9 of the Tumult series. [← Part 8: Statistical Baselines](./08-statistical-baselines.md)*
 

@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 2
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The AI Advantage: Why TOON Changes Everything for Chaos Engineering
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The AI Advantage: Why TOON Changes Everything for Chaos Engineering
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 *Part 2 of the Tumult series. [Read Part 1: Introducing Tumult →](./01-introducing-tumult.md)*
 

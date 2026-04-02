@@ -4,9 +4,9 @@ parent: Blog
 nav_order: 8
 ---
 
-# <img src="/tumult/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Statistical Baselines: From Magic Numbers to Data-Derived Tolerances
+# <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Statistical Baselines: From Magic Numbers to Data-Derived Tolerances
 
-![Tumult Banner](/tumult/images/tumult-banner.png)
+![Tumult Banner](/images/tumult-banner.png)
 
 *Part 8 of the Tumult series. [← Part 7: Kubernetes Chaos](./07-kubernetes-chaos.md)*
 

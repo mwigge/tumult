@@ -1,13 +1,13 @@
 title: Tumult
 description: Rust-native chaos engineering for modern distributed systems
-url: "https://mwigge.github.io"
-baseurl: "/tumult"
+url: "https://tumult.rs"
+baseurl: ""
 
 remote_theme: just-the-docs/just-the-docs@v0.10.1
 
 # Site settings
-logo: "/assets/images/tumult.png"
-favicon_ico: "/assets/images/favicon.ico"
+logo: "/images/tumult.png"
+favicon_ico: "/images/favicon.ico"
 
 # Navigation
 nav_sort: case_insensitive
