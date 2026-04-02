@@ -1711,7 +1711,7 @@ Use this section to record actual test execution results.
 | TP-SCRIPT-12 | Memory stress | PASS | Via SSH into sshd container: `stress-ng --vm 1 --vm-bytes 32M --timeout 3s` completed in 3.00s. |
 | TP-SCRIPT-13 | Kafka topic list | PASS | Dual listener fix: topic create/list/delete works. `Created topic tumult-test.` |
 | TP-SCRIPT-14 | Network latency | N/A | Host-level tc netem is Linux only. Replaced by tumult-pumba plugin for container-scoped network chaos (cross-platform). |
-| TP-SCRIPT-15 | k6 load test | SKIP | Requires k6 binary. Manifest parsing and script permissions validated. |
+| TP-SCRIPT-15 | k6 load test | PASS | k6 v1.7.1: 100 iterations, 2 VUs, 5s, 100% checks passed. JSON metrics captured. |
 | TP-ARROW-01 | Journal to Arrow | PASS | Journal ingested, queryable via `tumult analyze --query` |
 | TP-ARROW-02 | Schema validation | PASS | `experiments`: 12 cols (experiment_id, title, status, started_at_ns, ended_at_ns, duration_ms, method_step_count, rollback_count, hypothesis_before_met, hypothesis_after_met, estimate_accuracy, resilience_score). `activity_results`: 9 cols (experiment_id, name, activity_type, status, started_at_ns, duration_ms, output, error, phase) |
 | TP-ARROW-03 | Row counts | PASS | 22 experiments, 69 activity results in store |
@@ -1826,7 +1826,7 @@ Use this section to record actual test execution results.
 | TP-COLLECTOR-07 | Prometheus metrics | PASS | :8889 serves system_cpu_*, system_memory_* with `collector_name=tumult-otel-collector` |
 | TP-COLLECTOR-08 | APM span metrics | PASS | `traces_span_metrics_calls_total` and `traces_span_metrics_duration_milliseconds_bucket` derived from traces. Dimensions: `span_name`, `resilience_experiment_title`, `resilience_action_name`. |
 | TP-COLLECTOR-09 | Host metrics | PASS | `system_cpu_load_average_1m=0.16`, `system_cpu_time_seconds_total`, `system_memory_*` collected |
-| TP-COLLECTOR-10 | Docker stats | ISSUE | Docker socket accessible but docker_stats receiver not emitting metrics in Colima VM. Receiver initialized without error. |
+| TP-COLLECTOR-10 | Docker stats | PASS | `container_blockio_io_service_bytes_recursive_total`, `container_cpu_*`, `container_memory_*` with container names and image labels. |
 | TP-E2E-08 | Pumba chaos scenario | PASS | Pumba netem 150ms delay injected to PG for 8s. Packet stats before/after captured. Hypothesis before/after met. Duration: 10906ms. OTel trace captured. |
 | TP-E2E-09 | Custom collector pipeline | PASS | Tumult -> OTLP :4317 -> tumult-otel-collector -> ClickHouse (38 traces) + File (JSONL) + Prometheus (host + APM metrics). Full pipeline verified. |
 | TP-E2E-10 | SSH provider experiment | PASS | `uname -a`: Linux aarch64. `hostname`: container ID. `stress-ng`: available. All via SSH to sshd container on :12222. OTel trace captured. |
@@ -1840,7 +1840,7 @@ Use this section to record actual test execution results.
 | TP-CORE | 7 | 7 | 0 | 0 | 0 | All phases, hypothesis, rollback, timeout verified |
 | TP-TOON | 5 | 5 | 0 | 0 | 0 | Round-trip, structure, fields, array notation |
 | TP-PLUGIN | 3 | 3 | 0 | 0 | 0 | 9 plugins, 35 actions, all scripts executable |
-| TP-SCRIPT | 15 | 13 | 0 | 1 | 0 | CPU+memory stress via SSH PASS. Kafka fixed. tc netem N/A (Pumba replaces). k6 SKIP. |
+| TP-SCRIPT | 15 | 14 | 0 | 0 | 0 | All pass except tc netem (N/A — Pumba replaces). k6 loadtest PASS. |
 | TP-ARROW | 4 | 4 | 0 | 0 | 0 | Schema, row counts, export all verified |
 | TP-DUCK | 8 | 8 | 0 | 0 | 0 | SQL queries, persistence, import/export |
 | TP-OTEL | 10 | 10 | 0 | 0 | 0 | All 7 canonical spans + attributes verified via Jaeger |
@@ -1854,11 +1854,11 @@ Use this section to record actual test execution results.
 | TP-K8S | 4 | 0 | 0 | 4 | 0 | No Kubernetes cluster available |
 | TP-E2E | 10 | 10 | 0 | 0 | 0 | Full pipeline, PG/Redis chaos, Pumba E2E, SSH, custom collector |
 | TP-PUMBA | 15 | 15 | 0 | 0 | 0 | All 15 pass: netem delay/loss/dup/corrupt/rate, iptables, pause, kill, probes, OTel, DuckDB |
-| TP-COLLECTOR | 10 | 9 | 0 | 0 | 1 | 9 pass. Docker stats receiver ISSUE (Colima VM socket path). |
+| TP-COLLECTOR | 10 | 10 | 0 | 0 | 0 | All 10 pass. Docker stats receiver fixed (added to runtime config). |
 | TP-UNIT | 7 | 7 | 0 | 0 | 0 | 562 tests, 0 failures, clippy/fmt/audit clean |
 | TP-COMPLIANCE | 5 | 5 | 0 | 0 | 0 | All 7 regulatory frameworks produce reports |
 | TP-QUICKSTART | 6 | 6 | 0 | 0 | 0 | All examples pass, install.sh validated, analytics verified |
-| **TOTAL** | **172** | **159** | **0** | **5** | **1** | **92% PASS, 0% FAIL, 3% SKIP, 1% ISSUE** |
+| **TOTAL** | **172** | **161** | **0** | **4** | **0** | **94% PASS, 0% FAIL, 2% SKIP, 0% ISSUE** |
 
 ### Known Issues Found During Testing
 
