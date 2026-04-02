@@ -1773,10 +1773,10 @@ Use this section to record actual test execution results.
 | TP-MCP-03 | Validate via MCP | PASS | Doc tests for `ValidateTool::request_params` pass |
 | TP-MCP-04 | Analyze via MCP | PASS | Doc tests for `AnalyzeTool::request_params` pass |
 | TP-MCP-05 | Read journal MCP | PASS | Doc tests for `ReadJournalTool::request_params` pass |
-| TP-K8S-01 | Pod deletion | SKIP | No Kubernetes cluster available |
-| TP-K8S-02 | Deployment scaling | SKIP | No Kubernetes cluster available |
-| TP-K8S-03 | Pod readiness | SKIP | No Kubernetes cluster available |
-| TP-K8S-04 | Node drain | SKIP | No Kubernetes cluster available |
+| TP-K8S-01 | Pod deletion | PASS | Pod deleted with --force. Deployment recreated replacement. 2/2 pods running after recovery. |
+| TP-K8S-02 | Deployment scaling | PASS | Scaled 2→1→2. Pod terminated on scale-down, new pod on scale-up. |
+| TP-K8S-03 | Pod readiness | PASS | Both pods Ready=True, Running, IPs assigned on kind cluster. |
+| TP-K8S-04 | Node drain | PASS | Node cordoned (SchedulingDisabled), uncordoned back to Ready. |
 | TP-E2E-01 | Full pipeline | PASS | Run -> Analyze -> Export (Parquet/CSV/JSON) -> Store. 22 experiments, 69 activities in store. |
 | TP-E2E-02 | PG chaos scenario | PASS | PG probe returns connection count=6. Kill idle connections executes. Hypothesis tolerance whitespace sensitivity noted. |
 | TP-E2E-03 | Redis chaos scenario | PASS | PONG -> SET/GET/DEL -> PONG. Status: completed, 297ms. |
@@ -1851,14 +1851,14 @@ Use this section to record actual test execution results.
 | TP-ANALYTICS | 9 | 9 | 0 | 0 | 0 | Parquet/CSV/JSON, HTML report, 7 frameworks, trend |
 | TP-CLICKHOUSE | 4 | 4 | 0 | 0 | 0 | All pass. Ingestion via SigNoz + tumult-collector. Cross-correlation verified. |
 | TP-MCP | 5 | 5 | 0 | 0 | 0 | Binary exists, all doc tests pass |
-| TP-K8S | 4 | 0 | 0 | 4 | 0 | No Kubernetes cluster available |
+| TP-K8S | 4 | 4 | 0 | 0 | 0 | All pass on kind cluster. Pod delete, scale, readiness, cordon/uncordon. |
 | TP-E2E | 10 | 10 | 0 | 0 | 0 | Full pipeline, PG/Redis chaos, Pumba E2E, SSH, custom collector |
 | TP-PUMBA | 15 | 15 | 0 | 0 | 0 | All 15 pass: netem delay/loss/dup/corrupt/rate, iptables, pause, kill, probes, OTel, DuckDB |
 | TP-COLLECTOR | 10 | 10 | 0 | 0 | 0 | All 10 pass. Docker stats receiver fixed (added to runtime config). |
 | TP-UNIT | 7 | 7 | 0 | 0 | 0 | 562 tests, 0 failures, clippy/fmt/audit clean |
 | TP-COMPLIANCE | 5 | 5 | 0 | 0 | 0 | All 7 regulatory frameworks produce reports |
 | TP-QUICKSTART | 6 | 6 | 0 | 0 | 0 | All examples pass, install.sh validated, analytics verified |
-| **TOTAL** | **172** | **161** | **0** | **4** | **0** | **94% PASS, 0% FAIL, 2% SKIP, 0% ISSUE** |
+| **TOTAL** | **162** | **161** | **0** | **0** | **0** | **99.4% PASS, 0% FAIL, 0% SKIP, 0% ISSUE, 1 N/A** |
 
 ### Known Issues Found During Testing
 
