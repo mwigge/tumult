@@ -900,7 +900,9 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
         }
         "PCI-DSS" => {
             println!("\nSource: https://www.pcisecuritystandards.org/document_library/");
-            println!("Applies to any entity storing, processing, or transmitting cardholder data.\n");
+            println!(
+                "Applies to any entity storing, processing, or transmitting cardholder data.\n"
+            );
             println!("Requirements:");
             println!("  Req. 11.4.1 — Penetration testing methodology defined");
             println!("    Experiment definitions with hypothesis, method, rollbacks");
