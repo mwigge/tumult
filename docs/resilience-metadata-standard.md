@@ -601,19 +601,21 @@ Optional FMEA (Failure Mode and Effects Analysis) attributes per IEC 60812:2018:
 | `resilience.fault.fmea_detectability` | `int` | Detectability rating 1-10 (10 = hardest to detect). |
 | `resilience.fault.fmea_rpn` | `int` | Risk Priority Number = severity x detectability. |
 
-### Layer 2 — DORA Four Keys (`resilience.score.dora.*`)
+### Layer 2 — DevOps Performance Metrics / Accelerate Four Keys (`resilience.score.devops.*`)
 
-Operational performance metrics. Requires external data (CI/CD events, incident management). This layer is an **integration point** — Tumult does not compute these values directly but accepts them from external systems for correlation.
+Operational performance metrics from the Accelerate / Four Keys research programme. Requires external data (CI/CD events, incident management). This layer is an **integration point** — Tumult does not compute these values directly but accepts them from external systems for correlation.
 
-Scientific basis: Forsgren, Humble, Kim (2018), *Accelerate*; Google DORA State of DevOps Reports.
+Scientific basis: Forsgren, Humble, Kim (2018), *Accelerate*; State of DevOps Reports.
+
+> **Note:** These DevOps performance metrics are distinct from **DORA (EU 2022/2554)** — the Digital Operational Resilience Act — which is a regulatory compliance framework covered in [Layer 3](#layer-3--regulatory-confidence-resiliencescoreregulatory) and the [Regulatory Mapping](regulatory-mapping.md) document.
 
 | Attribute | Type | Description |
 |---|---|---|
-| `resilience.score.dora.deployment_frequency_per_day` | `float` | Deployments per calendar day. |
-| `resilience.score.dora.lead_time_hours` | `float` | Mean time from commit to production deploy. |
-| `resilience.score.dora.change_failure_rate` | `float` | Proportion of deployments causing incidents (0.0-1.0). |
-| `resilience.score.dora.mttr_hours` | `float` | Mean time to recovery from incidents. |
-| `resilience.score.dora.chaos_coverage_pct` | `float` | Proportion of services with experiment runs in period (0.0-1.0). |
+| `resilience.score.devops.deployment_frequency_per_day` | `float` | Deployments per calendar day. |
+| `resilience.score.devops.lead_time_hours` | `float` | Mean time from commit to production deploy. |
+| `resilience.score.devops.change_failure_rate` | `float` | Proportion of deployments causing incidents (0.0-1.0). |
+| `resilience.score.devops.mttr_hours` | `float` | Mean time to recovery from incidents. |
+| `resilience.score.devops.chaos_coverage_pct` | `float` | Proportion of services with experiment runs in period (0.0-1.0). |
 
 ### Layer 3 — Regulatory Confidence (`resilience.score.regulatory.*`)
 

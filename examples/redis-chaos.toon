@@ -1,0 +1,43 @@
+title: Redis resilience — verify recovery after disruption
+description: Check Redis is alive, inject a disruption, confirm it recovers
+
+tags[2]: redis, resilience
+
+steady_state_hypothesis:
+  title: Redis responds to ping
+  probes[1]:
+    - name: redis-ping
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-redis-1 redis-cli ping"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "PONG"
+
+method[3]:
+  - name: redis-set-key
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-redis-1 redis-cli SET tumult:test 'chaos-was-here'"
+      timeout_s: 5.0
+  - name: redis-get-key
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-redis-1 redis-cli GET tumult:test"
+      timeout_s: 5.0
+  - name: redis-cleanup
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-redis-1 redis-cli DEL tumult:test"
+      timeout_s: 5.0
+
+rollbacks[0]:
