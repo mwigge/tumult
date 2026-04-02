@@ -5,6 +5,12 @@ Get Tumult running in 5 minutes.
 ## One-command setup
 
 ```bash
+curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
+```
+
+Or clone and run manually:
+
+```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult && ./install.sh
 ```
 
