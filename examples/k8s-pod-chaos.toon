@@ -1,0 +1,62 @@
+title: Kubernetes chaos via native kube-rs plugin
+description: Scale deployment and verify recovery using native tumult-kubernetes
+
+tags[2]: kubernetes, resilience
+
+steady_state_hypothesis:
+  title: System check
+  probes[1]:
+    - name: system-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: echo
+        arguments[1]: "ready"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ready"
+
+method[3]:
+  - name: check-all-pods-ready
+    activity_type: probe
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: all_pods_ready
+      arguments:
+        namespace: default
+        label_selector: app=nginx-test
+  - name: scale-down
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: scale_deployment
+      arguments:
+        namespace: default
+        name: nginx-test
+        replicas: 1
+    pause_after_s: 3.0
+  - name: scale-restore
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: scale_deployment
+      arguments:
+        namespace: default
+        name: nginx-test
+        replicas: 2
+
+rollbacks[1]:
+  - name: ensure-replicas
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: scale_deployment
+      arguments:
+        namespace: default
+        name: nginx-test
+        replicas: 2
