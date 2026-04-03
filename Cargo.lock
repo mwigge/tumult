@@ -6070,6 +6070,7 @@ dependencies = [
  "chrono",
  "clap",
  "indexmap",
+ "kube",
  "opentelemetry",
  "serde_json",
  "tempfile",
@@ -6081,8 +6082,10 @@ dependencies = [
  "tumult-analytics",
  "tumult-clickhouse",
  "tumult-core",
+ "tumult-kubernetes",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-ssh",
 ]
 
 [[package]]
