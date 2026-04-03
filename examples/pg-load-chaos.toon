@@ -1,0 +1,50 @@
+title: PostgreSQL under k6 load — container pause disruption
+description: k6 queries PG with real inserts/selects via --load flag while Pumba pauses the container
+
+tags[4]: postgres, load, pumba, resilience
+
+load:
+  tool: k6
+  script: examples/k6/pg-load.js
+  vus: 5
+  duration_s: 20.0
+
+steady_state_hypothesis:
+  title: PostgreSQL accepts queries
+  probes[1]:
+    - name: pg-responds
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT version()' | head -1"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "PostgreSQL"
+
+method[3]:
+  - name: connection-count-before
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 3 && docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
+      timeout_s: 10.0
+  - name: pause-postgres-5s
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest pause -d 5s docker-postgres-1"
+      timeout_s: 10.0
+    pause_after_s: 2.0
+  - name: connection-count-after
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
+      timeout_s: 10.0
+
+rollbacks[0]:
