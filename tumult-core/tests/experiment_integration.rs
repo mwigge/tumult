@@ -240,6 +240,7 @@ fn full_experiment_run_produces_complete_journal() {
         rollback_strategy: RollbackStrategy::Always,
         cancellation_token: None,
         parent_context: None,
+        load_executor: None,
     };
 
     let journal = run_experiment(&exp, &plugin, &controls, &config).unwrap();
