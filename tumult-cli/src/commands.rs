@@ -566,6 +566,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         rollback_strategy,
         cancellation_token: Some(cancel_token),
         parent_context: None,
+        load_executor: None,
     };
 
     println!("Running experiment: {}", experiment.title);
