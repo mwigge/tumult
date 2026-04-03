@@ -19,7 +19,9 @@ use arrow::record_batch::RecordBatch;
 use duckdb::{params, Connection};
 use tumult_core::types::Journal;
 
-use crate::arrow_convert::{journal_to_activity_batch, journal_to_experiment_batch};
+use crate::arrow_convert::{
+    journal_to_activity_batch, journal_to_experiment_batch, journal_to_load_batch,
+};
 use crate::error::AnalyticsError;
 use crate::export::{export_parquet, import_parquet};
 use crate::telemetry;
@@ -127,6 +129,17 @@ impl AnalyticsStore {
             );
             CREATE INDEX IF NOT EXISTS idx_activities_experiment_id
                 ON activity_results (experiment_id);
+            CREATE TABLE IF NOT EXISTS load_results (
+                experiment_id VARCHAR NOT NULL, tool VARCHAR NOT NULL,
+                started_at_ns BIGINT NOT NULL, ended_at_ns BIGINT NOT NULL,
+                duration_s DOUBLE NOT NULL, vus INTEGER NOT NULL,
+                throughput_rps DOUBLE NOT NULL, latency_p50_ms DOUBLE NOT NULL,
+                latency_p95_ms DOUBLE NOT NULL, latency_p99_ms DOUBLE NOT NULL,
+                error_rate DOUBLE NOT NULL, total_requests UBIGINT NOT NULL,
+                thresholds_met BOOLEAN NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_load_experiment_id
+                ON load_results (experiment_id);
             CREATE TABLE IF NOT EXISTS schema_meta (
                 key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL
             );",
@@ -229,6 +242,10 @@ impl AnalyticsStore {
         self.insert_batch("experiments", &exp_batch)?;
         if activity_count > 0 {
             self.insert_batch("activity_results", &act_batch)?;
+        }
+        if let Some(ref load_result) = journal.load_result {
+            let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
+            self.insert_batch("load_results", &load_batch)?;
         }
         telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
         Ok(true)
@@ -872,5 +889,45 @@ mod tests {
             .unwrap();
         let idx_count: usize = result[0][0].parse().unwrap_or(0);
         assert!(idx_count >= 1, "experiments table should have an index");
+    }
+
+    #[test]
+    fn load_result_ingested_into_duckdb() {
+        use tumult_core::types::{LoadResult, LoadTool};
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("load-test-1", ExperimentStatus::Completed);
+        journal.load_result = Some(LoadResult {
+            tool: LoadTool::K6,
+            started_at_ns: 1_000_000_000,
+            ended_at_ns: 11_000_000_000,
+            duration_s: 10.0,
+            vus: 5,
+            throughput_rps: 100.0,
+            latency_p50_ms: 15.0,
+            latency_p95_ms: 150.0,
+            latency_p99_ms: 500.0,
+            error_rate: 0.02,
+            total_requests: 1000,
+            thresholds_met: true,
+        });
+        s.ingest_journal(&journal).unwrap();
+
+        let rows = s
+            .query("SELECT experiment_id, tool, vus, throughput_rps, latency_p95_ms, error_rate, total_requests FROM load_results")
+            .unwrap();
+        assert_eq!(rows.len(), 1, "should have 1 load result row");
+        assert_eq!(rows[0][0], "load-test-1");
+        assert_eq!(rows[0][1], "k6");
+        assert_eq!(rows[0][2], "5");
+    }
+
+    #[test]
+    fn no_load_result_row_when_none() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("no-load", ExperimentStatus::Completed))
+            .unwrap();
+        let rows = s.query("SELECT count(*) FROM load_results").unwrap();
+        assert_eq!(rows[0][0], "0");
     }
 }
