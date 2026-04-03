@@ -577,19 +577,23 @@ impl LoadExecutor for K6LoadExecutor {
         #[allow(clippy::cast_precision_loss)]
         let elapsed_s = duration_ns as f64 / 1_000_000_000.0;
 
+        // k6 outputs its summary to stderr; combine both streams for parsing
         let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}\n{stderr}");
 
         // Parse k6 summary output for metrics
-        let throughput_rps = parse_k6_metric(&stdout, "iterations", "rate").unwrap_or(0.0);
-        let latency_p50 = parse_k6_metric(&stdout, "iteration_duration", "med").unwrap_or(0.0);
-        let latency_p95 = parse_k6_metric(&stdout, "iteration_duration", "p(95)")
-            .or_else(|| parse_k6_metric(&stdout, "pg_query_duration_ms", "p(95)"))
+        // k6 rate format: "iterations...: 300 29.82/s" — extract the rate after the count
+        let throughput_rps = parse_k6_rate(&combined, "iterations").unwrap_or(0.0);
+        let latency_p50 = parse_k6_metric(&combined, "iteration_duration", "med").unwrap_or(0.0);
+        let latency_p95 = parse_k6_metric(&combined, "iteration_duration", "p(95)")
+            .or_else(|| parse_k6_metric(&combined, "pg_query_duration_ms", "p(95)"))
             .unwrap_or(0.0);
-        let latency_p99 = parse_k6_metric(&stdout, "iteration_duration", "p(99)").unwrap_or(0.0);
+        let latency_p99 = parse_k6_metric(&combined, "iteration_duration", "p(99)").unwrap_or(0.0);
 
         // Parse check failure rate
-        let checks_total = parse_k6_counter(&stdout, "checks_total").unwrap_or(0);
-        let checks_failed = parse_k6_counter(&stdout, "checks_failed").unwrap_or(0);
+        let checks_total = parse_k6_counter(&combined, "checks_total").unwrap_or(0);
+        let checks_failed = parse_k6_counter(&combined, "checks_failed").unwrap_or(0);
         let error_rate = if checks_total > 0 {
             #[allow(clippy::cast_precision_loss)]
             {
@@ -599,7 +603,7 @@ impl LoadExecutor for K6LoadExecutor {
             0.0
         };
 
-        let iterations = parse_k6_counter(&stdout, "iterations").unwrap_or(0);
+        let iterations = parse_k6_counter(&combined, "iterations").unwrap_or(0);
 
         Ok(LoadResult {
             tool: k6.tool,
@@ -655,6 +659,32 @@ fn parse_k6_counter(output: &str, counter_name: &str) -> Option<u64> {
             if let Some(colon_pos) = trimmed.find(':') {
                 let after = trimmed[colon_pos + 1..].trim();
                 let num_str: String = after.chars().take_while(char::is_ascii_digit).collect();
+                return num_str.parse().ok();
+            }
+        }
+    }
+    None
+}
+
+/// Parses a k6 rate value (requests/s) from the counter line.
+///
+/// k6 outputs: `iterations...........: 300 29.82/s`
+fn parse_k6_rate(output: &str, counter_name: &str) -> Option<f64> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(counter_name) {
+            // Find the rate: number followed by /s
+            if let Some(slash_pos) = trimmed.find("/s") {
+                let before = &trimmed[..slash_pos];
+                // Walk backward to find the start of the number
+                let num_str: String = before
+                    .chars()
+                    .rev()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect();
                 return num_str.parse().ok();
             }
         }

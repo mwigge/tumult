@@ -509,6 +509,7 @@ pub struct LoadConfig {
     pub script: PathBuf,
     pub vus: Option<u32>,
     pub duration_s: Option<f64>,
+    #[serde(default)]
     pub thresholds: HashMap<String, f64>,
 }
 
