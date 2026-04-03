@@ -1173,6 +1173,94 @@ fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: us
     Ok(())
 }
 
+/// Prints a store-wide aggregate summary.
+fn print_store_aggregate(store: &tumult_analytics::AnalyticsStore) -> Result<()> {
+    let total = store.experiment_count()?;
+    let act_rows = store.query("SELECT count(*) FROM activity_results")?;
+    let activities = act_rows
+        .first()
+        .and_then(|r| r.first())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    println!("Analytics Store Summary");
+    println!("{}", "═".repeat(60));
+    println!("  Experiments: {total}");
+    println!("  Activities:  {activities}");
+
+    // Status breakdown
+    let statuses = store.query(
+        "SELECT status, count(*) as cnt FROM experiments GROUP BY status ORDER BY cnt DESC",
+    )?;
+    if !statuses.is_empty() {
+        let status_line: Vec<String> = statuses
+            .iter()
+            .map(|r| format!("{}={}", r[0], r[1]))
+            .collect();
+        println!("  By status:   {}", status_line.join("  "));
+    }
+
+    // Duration stats
+    let dur = store.query(
+        "SELECT round(avg(duration_ms::DOUBLE), 1), \
+                round(min(duration_ms::DOUBLE), 0), \
+                round(max(duration_ms::DOUBLE), 0) \
+         FROM experiments",
+    )?;
+    if !dur.is_empty() && !dur[0][0].is_empty() {
+        println!(
+            "  Duration:    avg={}ms  min={}ms  max={}ms",
+            dur[0][0], dur[0][1], dur[0][2]
+        );
+    }
+
+    // Load tests
+    let load = store.query(
+        "SELECT count(*), round(avg(latency_p95_ms), 1), round(avg(error_rate), 4) \
+         FROM load_results",
+    )?;
+    if !load.is_empty() && load[0][0] != "0" {
+        println!(
+            "  Load tests:  {} (avg p95={}ms, avg error_rate={})",
+            load[0][0], load[0][1], load[0][2]
+        );
+    }
+
+    // Top 5 longest experiments
+    let top = store.query(
+        "SELECT duration_ms, title, status \
+         FROM experiments ORDER BY duration_ms DESC LIMIT 5",
+    )?;
+    if !top.is_empty() {
+        println!("\nTop 5 by duration:");
+        for row in &top {
+            let dur_s = row[0].parse::<f64>().unwrap_or(0.0) / 1000.0;
+            println!("  {dur_s:>7.1}s  {} ({})", row[1], row[2]);
+        }
+    }
+
+    // Recent experiments
+    let recent = store.query(
+        "SELECT title, status, duration_ms \
+         FROM experiments ORDER BY started_at_ns DESC LIMIT 5",
+    )?;
+    if !recent.is_empty() {
+        println!("\nLast 5 experiments:");
+        for row in &recent {
+            let status_icon = match row[1].as_str() {
+                "completed" => "PASS",
+                "deviated" => "DEV ",
+                "aborted" => "ABRT",
+                "failed" => "FAIL",
+                _ => &row[1],
+            };
+            println!("  [{status_icon}] {}ms  {}", row[2], row[0]);
+        }
+    }
+
+    Ok(())
+}
+
 /// # Errors
 ///
 /// Returns an error if the analytics store cannot be opened or the query fails.
@@ -1180,6 +1268,7 @@ pub fn cmd_analyze(
     journals_path: Option<&Path>,
     query: Option<&str>,
     last: Option<usize>,
+    all: bool,
 ) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
@@ -1242,6 +1331,8 @@ pub fn cmd_analyze(
             println!("{}", row.join("\t"));
         }
         println!("\n{} row(s)", rows.len());
+    } else if all {
+        print_store_aggregate(&store)?;
     } else {
         print_experiment_summary(&store, last.unwrap_or(1))?;
     }
