@@ -34,10 +34,6 @@ receivers:
       network: {}
       filesystem: {}
 
-  docker_stats:
-    collection_interval: 30s
-    endpoint: unix:///var/run/docker.sock
-
 processors:
   batch:
     send_batch_size: 1024
@@ -76,15 +72,6 @@ exporters:
     sending_queue:
       enabled: true
       queue_size: 100
-
-  # File — JSONL for DuckDB ingestion pipeline
-  file/traces:
-    path: /var/tumult/export/traces.jsonl
-    format: json
-
-  file/metrics:
-    path: /var/tumult/export/metrics.jsonl
-    format: json
 
   # Prometheus — host + APM metrics for scraping
   prometheus:
@@ -125,17 +112,17 @@ service:
   extensions: [health_check, zpages]
 
   pipelines:
-    # Traces: OTLP/Arrow -> ClickHouse + SigNoz + file + APM metrics
+    # Traces: OTLP/Arrow -> ClickHouse + SigNoz + APM metrics
     traces:
       receivers: [otlp, otelarrow]
       processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
-      exporters: [clickhouse, otlp/signoz, file/traces, debug, spanmetrics]
+      exporters: [clickhouse, otlp/signoz, debug, spanmetrics]
 
-    # Metrics: OTLP/Arrow + host metrics -> SigNoz + Prometheus + file
+    # Metrics: OTLP/Arrow + host metrics -> SigNoz + Prometheus
     metrics:
-      receivers: [otlp, otelarrow, hostmetrics, docker_stats]
+      receivers: [otlp, otelarrow, hostmetrics]
       processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
-      exporters: [otlp/signoz, prometheus, file/metrics]
+      exporters: [otlp/signoz, prometheus]
 
     # APM: Span-derived RED metrics -> Prometheus
     metrics/spanmetrics:
@@ -143,19 +130,14 @@ service:
       processors: [batch]
       exporters: [prometheus]
 
-    # Logs: OTLP -> SigNoz + file
+    # Logs: OTLP -> SigNoz
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
-      exporters: [otlp/signoz, file/traces, debug]
+      exporters: [otlp/signoz, debug]
 
   telemetry:
     logs:
       level: info
     metrics:
-      readers:
-        - pull:
-            exporter:
-              prometheus:
-                host: 0.0.0.0
-                port: 8888
+      address: 0.0.0.0:8888

@@ -58,27 +58,23 @@ services:
       - tumult-e2e
 
   # ══════════════════════════════════════════════════════════════
-  # Tumult OTel Collector — custom-built with ocb
+  # Tumult OTel Collector — contrib image with custom config
   # ══════════════════════════════════════════════════════════════
   #
-  # Adds on top of SigNoz:
-  #   - Standard otel_traces in ClickHouse (for DuckDB cross-query)
-  #   - File export (JSONL for offline analysis)
-  #   - Prometheus endpoint (host metrics + APM span metrics)
-  #   - Host metrics + Docker stats receivers
+  # Uses the standard contrib image which includes all needed
+  # components: OTLP, Arrow, ClickHouse, spanmetrics, hostmetrics,
+  # docker_stats, Prometheus, Kafka, and Kubernetes receivers.
   #
   # Tumult CLI sends to this collector on :14317.
   # This collector forwards to SigNoz on :4317.
+  #
+  # For custom builds, see docker/tumult-collector/Dockerfile.
 
   tumult-collector:
-    image: tumult-otel-collector:latest
-    build:
-      context: ./tumult-collector
-      dockerfile: Dockerfile
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./tumult-collector/config.yaml:/etc/otel/config.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - tumult-export:/var/tumult/export
+      - ./tumult-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/ || exit 1"]
       interval: 10s
@@ -153,7 +149,6 @@ services:
 volumes:
   signoz-clickhouse-data:
   signoz-data:
-  tumult-export:
 
 networks:
   tumult-e2e:
