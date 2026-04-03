@@ -12,11 +12,14 @@ use tumult_core::engine::{
 };
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::journal::write_journal;
-use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
+use tumult_core::runner::{
+    run_experiment, ActivityExecutor, ActivityOutcome, LoadExecutor, LoadHandle, RunConfig,
+};
 use tumult_core::types::{
     Activity, ActivityResult, ActivityStatus, Experiment, ExperimentStatus, HttpMethod, Journal,
     Provider,
 };
+use tumult_core::types::{LoadConfig, LoadResult, LoadTool};
 use tumult_plugin::discovery::discover_all_plugins;
 use tumult_plugin::registry::PluginRegistry;
 
@@ -496,10 +499,174 @@ fn execute_process_sync(
 
 // ── Run command ───────────────────────────────────────────────
 
+// ── K6 Load Executor ────────────────────────────────────────
+
+/// K6 load test executor.
+///
+/// Spawns k6 as a background process, waits for it to complete,
+/// and parses the JSON summary to produce a `LoadResult`.
+struct K6LoadExecutor;
+
+/// Handle holding the k6 child process and output path.
+#[allow(dead_code)]
+struct K6Handle {
+    child: std::process::Child,
+    output_path: String,
+    started_at_ns: i64,
+    tool: LoadTool,
+    vus: u32,
+}
+
+impl LoadExecutor for K6LoadExecutor {
+    fn start(&self, config: &LoadConfig) -> Result<LoadHandle, String> {
+        let output_path = format!("/tmp/tumult-k6-{}.json", std::process::id());
+        let vus = config.vus.unwrap_or(10);
+        let duration = config
+            .duration_s
+            .map_or_else(|| "30s".to_string(), |s| format!("{s}s"));
+
+        let k6_binary = std::env::var("TUMULT_K6_BINARY").unwrap_or_else(|_| "k6".to_string());
+
+        let mut cmd = std::process::Command::new(&k6_binary);
+        cmd.arg("run")
+            .arg("--vus")
+            .arg(vus.to_string())
+            .arg("--duration")
+            .arg(&duration)
+            .arg("--out")
+            .arg(format!("json={output_path}"))
+            .arg(config.script.as_os_str())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Propagate OTel endpoint to k6 if available
+        if let Ok(endpoint) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
+            cmd.env("K6_OTEL_EXPORTER_OTLP_ENDPOINT", &endpoint);
+        }
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| format!("failed to start k6: {e}"))?;
+
+        let started_at_ns = tumult_core::runner::epoch_nanos_now();
+
+        Ok(LoadHandle {
+            inner: Box::new(K6Handle {
+                child,
+                output_path,
+                started_at_ns,
+                tool: config.tool.clone(),
+                vus,
+            }),
+        })
+    }
+
+    fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String> {
+        let k6: K6Handle = *handle
+            .inner
+            .downcast::<K6Handle>()
+            .map_err(|_| "invalid load handle")?;
+
+        let output = k6
+            .child
+            .wait_with_output()
+            .map_err(|e| format!("k6 wait failed: {e}"))?;
+
+        let ended_at_ns = tumult_core::runner::epoch_nanos_now();
+        let duration_ns = ended_at_ns - k6.started_at_ns;
+        #[allow(clippy::cast_precision_loss)]
+        let elapsed_s = duration_ns as f64 / 1_000_000_000.0;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Parse k6 summary output for metrics
+        let throughput_rps = parse_k6_metric(&stdout, "iterations", "rate").unwrap_or(0.0);
+        let latency_p50 = parse_k6_metric(&stdout, "iteration_duration", "med").unwrap_or(0.0);
+        let latency_p95 = parse_k6_metric(&stdout, "iteration_duration", "p(95)")
+            .or_else(|| parse_k6_metric(&stdout, "pg_query_duration_ms", "p(95)"))
+            .unwrap_or(0.0);
+        let latency_p99 = parse_k6_metric(&stdout, "iteration_duration", "p(99)").unwrap_or(0.0);
+
+        // Parse check failure rate
+        let checks_total = parse_k6_counter(&stdout, "checks_total").unwrap_or(0);
+        let checks_failed = parse_k6_counter(&stdout, "checks_failed").unwrap_or(0);
+        let error_rate = if checks_total > 0 {
+            #[allow(clippy::cast_precision_loss)]
+            {
+                checks_failed as f64 / checks_total as f64
+            }
+        } else {
+            0.0
+        };
+
+        let iterations = parse_k6_counter(&stdout, "iterations").unwrap_or(0);
+
+        Ok(LoadResult {
+            tool: k6.tool,
+            started_at_ns: k6.started_at_ns,
+            ended_at_ns,
+            duration_s: elapsed_s,
+            vus: k6.vus,
+            throughput_rps,
+            latency_p50_ms: latency_p50,
+            latency_p95_ms: latency_p95,
+            latency_p99_ms: latency_p99,
+            error_rate,
+            total_requests: iterations,
+            thresholds_met: output.status.success(),
+        })
+    }
+}
+
+/// Parses a k6 summary metric value from stdout.
+///
+/// k6 outputs lines like:
+///   `iteration_duration...: avg=97.77ms min=55.75ms med=63.81ms max=201.09ms p(90)=67.34ms p(95)=148.01ms`
+fn parse_k6_metric(output: &str, metric_name: &str, stat: &str) -> Option<f64> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(metric_name) {
+            // Find stat=value pattern
+            let search = format!("{stat}=");
+            if let Some(pos) = trimmed.find(&search) {
+                let after = &trimmed[pos + search.len()..];
+                // Extract number, stripping units like "ms", "s"
+                let num_str: String = after
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                return num_str.parse().ok();
+            }
+        }
+    }
+    None
+}
+
+/// Parses a k6 counter value from stdout.
+///
+/// k6 outputs lines like:
+///   `iterations...........: 1025 51.006998/s`
+///   `checks_total.......: 1025    51.006998/s`
+fn parse_k6_counter(output: &str, counter_name: &str) -> Option<u64> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(counter_name) {
+            // After the dots and colons, find the first number
+            if let Some(colon_pos) = trimmed.find(':') {
+                let after = trimmed[colon_pos + 1..].trim();
+                let num_str: String = after.chars().take_while(char::is_ascii_digit).collect();
+                return num_str.parse().ok();
+            }
+        }
+    }
+    None
+}
+
 /// # Errors
 ///
 /// Returns an error if the experiment cannot be read, parsed, validated,
 /// executed, or the journal cannot be written.
+#[allow(clippy::too_many_arguments)]
 pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     experiment_path: &Path,
     journal_path: &Path,
@@ -507,6 +674,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     rollback_strategy: RollbackStrategy,
     auto_ingest: bool,
     vars: std::collections::HashMap<String, String, S>,
+    load_override: Option<tumult_core::types::LoadConfig>,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = std::fs::metadata(experiment_path)
@@ -531,7 +699,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
 
     // Apply template variable substitution if any --var flags were provided.
-    let experiment = if vars.is_empty() {
+    let mut experiment = if vars.is_empty() {
         experiment
     } else {
         apply_vars(&experiment, &vars)
@@ -562,11 +730,24 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         }
     });
 
+    // Apply load override from CLI flags, or use experiment's load config
+    if let Some(ref override_config) = load_override {
+        experiment.load = Some(override_config.clone());
+    }
+
+    // Create K6 load executor if experiment has a load config
+    let load_executor: Option<std::sync::Arc<dyn tumult_core::runner::LoadExecutor>> =
+        if experiment.load.is_some() {
+            Some(std::sync::Arc::new(K6LoadExecutor))
+        } else {
+            None
+        };
+
     let run_config = RunConfig {
         rollback_strategy,
         cancellation_token: Some(cancel_token),
         parent_context: None,
-        load_executor: None,
+        load_executor,
     };
 
     println!("Running experiment: {}", experiment.title);
@@ -1989,6 +2170,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
 
@@ -2009,6 +2191,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
 
@@ -2025,6 +2208,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
         assert!(result.is_err());
@@ -2042,6 +2226,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
         assert!(result.is_err());
@@ -2059,6 +2244,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
         assert!(result.is_err());
@@ -2305,6 +2491,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
         assert!(result.is_ok());
@@ -2324,6 +2511,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             true,
             std::collections::HashMap::new(),
+            None,
         )
         .await;
         assert!(result.is_ok());
@@ -2508,6 +2696,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await
         .unwrap();
@@ -2536,6 +2725,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await
         .unwrap();
@@ -2562,6 +2752,7 @@ mod tests {
             RollbackStrategy::OnDeviation,
             false,
             std::collections::HashMap::new(),
+            None,
         )
         .await
         .unwrap();
