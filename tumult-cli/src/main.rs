@@ -132,9 +132,12 @@ enum Commands {
     Analyze {
         /// Directory containing journal files (omit to use persistent store)
         journals: Option<PathBuf>,
-        /// SQL query to execute
+        /// SQL query to execute (raw SQL mode)
         #[arg(long)]
         query: Option<String>,
+        /// Show summary of last N experiments (default: 1 if no --query)
+        #[arg(long)]
+        last: Option<usize>,
     },
     /// Convert journal to other formats
     Export {
@@ -349,8 +352,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init { plugin } => {
             commands::cmd_init(plugin.as_deref())?;
         }
-        Commands::Analyze { journals, query } => {
-            commands::cmd_analyze(journals.as_deref(), query.as_deref())?;
+        Commands::Analyze {
+            journals,
+            query,
+            last,
+        } => {
+            commands::cmd_analyze(journals.as_deref(), query.as_deref(), last)?;
         }
         Commands::Export { journal, format } => {
             let fmt = match format {
@@ -632,7 +639,10 @@ mod tests {
     #[test]
     fn parse_analyze_with_path() {
         let cli = Cli::try_parse_from(["tumult", "analyze", "journals/"]).unwrap();
-        let Commands::Analyze { journals, query } = cli.command else {
+        let Commands::Analyze {
+            journals, query, ..
+        } = cli.command
+        else {
             panic!("expected Analyze command");
         };
         assert_eq!(journals, Some(PathBuf::from("journals/")));
@@ -673,7 +683,10 @@ mod tests {
             "SELECT count(*) FROM experiments",
         ])
         .unwrap();
-        let Commands::Analyze { journals, query } = cli.command else {
+        let Commands::Analyze {
+            journals, query, ..
+        } = cli.command
+        else {
             panic!("expected Analyze command");
         };
         assert!(journals.is_none());
