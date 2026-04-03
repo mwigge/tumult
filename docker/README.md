@@ -63,7 +63,7 @@ make down
 | Service | Port | Purpose |
 |---------|------|---------|
 | **SigNoz** (standalone) | `localhost:3301` | All-in-one: UI + ClickHouse + OTel Collector + ZooKeeper |
-| **Tumult OTel Collector** | `localhost:14317` | OTLP gateway → SigNoz + ClickHouse + Prometheus + file export |
+| **Tumult OTel Collector** (contrib) | `localhost:14317` | OTLP gateway → SigNoz + ClickHouse + Prometheus (no build required) |
 | Prometheus metrics | `localhost:18889` | Host metrics + APM span metrics |
 | Health check | `localhost:13133` | Tumult collector health |
 

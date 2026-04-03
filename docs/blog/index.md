@@ -22,3 +22,4 @@ The Tumult blog series covers the platform end-to-end, from first principles to 
 | [Chaos Under Load](10-chaos-under-load.md) | Combining `tumult-network` and `tumult-loadtest` for realistic fault testing |
 | [The Road Ahead](11-road-ahead.md) | MCP integration, Phase 3–5, and the future of autonomous resilience |
 | [The Full Span Waterfall](12-traces-in-production.md) | Real SigNoz traces from a live Tumult experiment — the observability proof |
+| [Load During Chaos](13-load-during-chaos.md) | k6 load testing concurrent with fault injection — proving disruption in numbers |
