@@ -26,8 +26,9 @@ use anyhow::{bail, Context, Result};
 
 /// Executes activities by dispatching to the appropriate provider.
 ///
-/// For Phase 0, this supports Process and HTTP providers.
-/// Native plugin execution will be wired in when native plugins ship.
+/// Supports Process, HTTP, and Native (Rust) providers.
+/// Native plugins dispatch to `tumult-kubernetes` and `tumult-ssh`
+/// functions via async execution on the Tokio runtime.
 pub struct ProviderExecutor;
 
 impl ActivityExecutor for ProviderExecutor {
@@ -46,7 +47,6 @@ impl ActivityExecutor for ProviderExecutor {
                 body: _,
                 timeout_s: _,
             } => {
-                // HTTP execution is deferred to Phase 1 (requires reqwest)
                 tracing::error!(
                     method = format_http_method(method),
                     url = %url,
@@ -64,16 +64,217 @@ impl ActivityExecutor for ProviderExecutor {
                 }
             }
             Provider::Native {
-                plugin, function, ..
-            } => ActivityOutcome {
-                success: false,
-                output: None,
-                error: Some(format!(
-                    "Native plugin '{plugin}::{function}' not yet available — install with cargo feature flag"
-                )),
-                duration_ms: 0,
-            },
+                plugin,
+                function,
+                arguments,
+            } => execute_native(plugin, function, arguments),
         }
+    }
+}
+
+/// Dispatch a native plugin call to the appropriate Rust function.
+///
+/// Routes `plugin::function` to `tumult-kubernetes` or `tumult-ssh`
+/// implementations. Runs async functions on the current Tokio runtime.
+fn execute_native(
+    plugin: &str,
+    function: &str,
+    arguments: &std::collections::HashMap<String, serde_json::Value>,
+) -> ActivityOutcome {
+    let start = std::time::Instant::now();
+
+    let result = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(dispatch_native(plugin, function, arguments))
+    });
+
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+    match result {
+        Ok(output) => ActivityOutcome {
+            success: true,
+            output: Some(output),
+            error: None,
+            duration_ms,
+        },
+        Err(e) => ActivityOutcome {
+            success: false,
+            output: None,
+            error: Some(e),
+            duration_ms,
+        },
+    }
+}
+
+/// Async dispatch table for native plugins.
+async fn dispatch_native(
+    plugin: &str,
+    function: &str,
+    args: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    match plugin {
+        "tumult-kubernetes" => dispatch_kubernetes(function, args).await,
+        "tumult-ssh" => dispatch_ssh(function, args).await,
+        _ => Err(format!("unknown native plugin: {plugin}")),
+    }
+}
+
+/// Helper: extract a string argument or return an error.
+fn arg_str<'a>(
+    args: &'a std::collections::HashMap<String, serde_json::Value>,
+    key: &str,
+) -> Result<&'a str, String> {
+    args.get(key)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("missing or invalid argument: {key}"))
+}
+
+/// Helper: extract an optional integer argument.
+fn arg_u32(args: &std::collections::HashMap<String, serde_json::Value>, key: &str) -> Option<u32> {
+    args.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|v| u32::try_from(v).ok())
+}
+
+/// Helper: extract an optional i32 argument.
+fn arg_i32(args: &std::collections::HashMap<String, serde_json::Value>, key: &str) -> Option<i32> {
+    args.get(key)
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|v| i32::try_from(v).ok())
+}
+
+/// Helper: extract an optional u16 argument.
+fn arg_u16(args: &std::collections::HashMap<String, serde_json::Value>, key: &str) -> Option<u16> {
+    args.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|v| u16::try_from(v).ok())
+}
+
+/// Dispatch to tumult-kubernetes functions.
+async fn dispatch_kubernetes(
+    function: &str,
+    args: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    let client = kube::Client::try_default()
+        .await
+        .map_err(|e| format!("kubernetes client init failed: {e}"))?;
+
+    match function {
+        "delete_pod" => {
+            let ns = arg_str(args, "namespace")?;
+            let name = arg_str(args, "name")?;
+            let grace = arg_u32(args, "grace_period_seconds");
+            tumult_kubernetes::actions::delete_pod(client, ns, name, grace)
+                .await
+                .map_err(|e| format!("{e}"))
+        }
+        "scale_deployment" => {
+            let ns = arg_str(args, "namespace")?;
+            let name = arg_str(args, "name")?;
+            let replicas = arg_i32(args, "replicas").ok_or("missing argument: replicas")?;
+            tumult_kubernetes::actions::scale_deployment(client, ns, name, replicas)
+                .await
+                .map_err(|e| format!("{e}"))
+        }
+        "cordon_node" => {
+            let name = arg_str(args, "name")?;
+            tumult_kubernetes::actions::cordon_node(client, name)
+                .await
+                .map_err(|e| format!("{e}"))
+        }
+        "uncordon_node" => {
+            let name = arg_str(args, "name")?;
+            tumult_kubernetes::actions::uncordon_node(client, name)
+                .await
+                .map_err(|e| format!("{e}"))
+        }
+        "pod_is_ready" => {
+            let ns = arg_str(args, "namespace")?;
+            let name = arg_str(args, "name")?;
+            let ready = tumult_kubernetes::probes::pod_is_ready(client, ns, name)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            Ok(format!("{ready}"))
+        }
+        "deployment_is_ready" => {
+            let ns = arg_str(args, "namespace")?;
+            let name = arg_str(args, "name")?;
+            let status = tumult_kubernetes::probes::deployment_is_ready(client, ns, name)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            serde_json::to_string(&status).map_err(|e| format!("{e}"))
+        }
+        "all_pods_ready" => {
+            let ns = arg_str(args, "namespace")?;
+            let selector = arg_str(args, "label_selector")?;
+            let (total, ready) = tumult_kubernetes::probes::all_pods_ready(client, ns, selector)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            Ok(format!("{{\"total\":{total},\"ready\":{ready}}}"))
+        }
+        "node_status" => {
+            let name = arg_str(args, "name")?;
+            let status = tumult_kubernetes::probes::node_status(client, name)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            serde_json::to_string(&status).map_err(|e| format!("{e}"))
+        }
+        _ => Err(format!("unknown tumult-kubernetes function: {function}")),
+    }
+}
+
+/// Dispatch to tumult-ssh functions.
+async fn dispatch_ssh(
+    _function: &str,
+    args: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    let host = arg_str(args, "host")?;
+    let port = arg_u16(args, "port").unwrap_or(22);
+    let user = arg_str(args, "user")?;
+    let command = arg_str(args, "command")?;
+
+    let key_path = args
+        .get("key_file")
+        .and_then(serde_json::Value::as_str)
+        .map(std::path::PathBuf::from);
+
+    let auth = if let Some(ref path) = key_path {
+        tumult_ssh::AuthMethod::Key {
+            key_path: path.clone(),
+            passphrase: None,
+        }
+    } else {
+        tumult_ssh::AuthMethod::Agent
+    };
+
+    let config = tumult_ssh::SshConfig {
+        host: host.to_string(),
+        port,
+        user: user.to_string(),
+        auth,
+        host_key_policy: tumult_ssh::HostKeyPolicy::AcceptAny,
+        connect_timeout: std::time::Duration::from_secs(30),
+        command_timeout: Some(std::time::Duration::from_secs(60)),
+        known_hosts_path: None,
+    };
+
+    let session = tumult_ssh::SshSession::connect(config)
+        .await
+        .map_err(|e| format!("SSH connect failed: {e}"))?;
+
+    let result = session
+        .execute(command)
+        .await
+        .map_err(|e| format!("SSH execute failed: {e}"))?;
+
+    let _ = session.close().await;
+
+    if result.exit_code == 0 {
+        Ok(result.stdout)
+    } else {
+        Err(format!(
+            "SSH command exited {}: {}",
+            result.exit_code, result.stderr
+        ))
     }
 }
 
@@ -1945,13 +2146,13 @@ mod tests {
         assert!(outcome.error.is_some());
     }
 
-    #[test]
-    fn native_provider_returns_not_implemented() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn native_provider_rejects_unknown_plugin() {
         let activity = Activity {
             name: "native-test".into(),
             activity_type: ActivityType::Action,
             provider: Provider::Native {
-                plugin: "test-plugin".into(),
+                plugin: "unknown-plugin".into(),
                 function: "test-fn".into(),
                 arguments: std::collections::HashMap::new(),
             },
@@ -1970,7 +2171,7 @@ mod tests {
             .error
             .as_ref()
             .unwrap()
-            .contains("not yet available"));
+            .contains("unknown native plugin"));
     }
 
     // ── Phase 4: Import/Export roundtrip ──────────────────────

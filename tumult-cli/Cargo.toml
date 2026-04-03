@@ -20,6 +20,9 @@ tumult-analytics = { path = "../tumult-analytics" }
 tumult-clickhouse = { path = "../tumult-clickhouse" }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-otel = { path = "../tumult-otel" }
+tumult-kubernetes = { path = "../tumult-kubernetes" }
+tumult-ssh = { path = "../tumult-ssh" }
+kube = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
