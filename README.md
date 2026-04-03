@@ -81,6 +81,7 @@ Tumult solves these issues by being built in Rust:
 - [Available Plugins](#available-plugins)
 - [MCP Server (AI Integration)](#mcp-server-ai-integration)
 - [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
+- [Load Testing During Chaos](#load-testing-during-chaos)
 - [OpenTelemetry Observability](#opentelemetry-observability)
 - [Security](#security)
 - [Hardening](#hardening)
@@ -223,6 +224,41 @@ tumult export journal.toon --format parquet
 
 See [Analytics Guide](docs/guides/analytics-guide.md) for table schemas, SQL examples, and export options.
 
+## Load Testing During Chaos
+
+Tumult runs load tests **concurrently** with chaos injection. k6 or JMeter hammer your system while faults are active — measuring the real impact on latency, throughput, and error rates.
+
+```bash
+# Via experiment config (load: section in TOON)
+tumult run examples/pg-load-chaos.toon
+
+# Via CLI flags (override or add load to any experiment)
+tumult run experiment.toon --load k6 --load-script load.js --load-vus 50 --load-duration 30s
+```
+
+The load runs as a background process while the method executes in the foreground. Both share the same OTel parent trace — the `resilience.load` span runs in parallel with `resilience.action` spans in the SigNoz waterfall.
+
+Results flow into the TOON journal as `load_result` and into DuckDB for SQL analytics:
+
+```toon
+load_result:
+  tool: k6
+  duration_s: 10.5
+  vus: 5
+  latency_p50_ms: 101.0
+  latency_p95_ms: 157.0
+  error_rate: 0.003
+  total_requests: 300
+  thresholds_met: true
+```
+
+```sql
+SELECT e.title, l.latency_p95_ms, l.error_rate, l.total_requests
+FROM experiments e
+JOIN load_results l ON e.experiment_id = l.experiment_id
+WHERE l.error_rate > 0.01
+```
+
 ## OpenTelemetry Observability
 
 Tumult creates **real OpenTelemetry spans** across every module — not just the experiment runner, but SSH, Kubernetes, plugin execution, baseline acquisition, analytics pipeline, MCP dispatch, and ClickHouse storage.
@@ -321,7 +357,7 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml ps
 | Classic (opt) | Jaeger | 16686 | Trace visualization (`--profile classic`) |
 | Classic (opt) | Grafana | 13000 | Dashboards (`--profile classic`) |
 
-The **Tumult OTel Collector** is a purpose-built distribution compiled with the [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/extend/ocb/). It includes OTLP + Arrow receivers, ClickHouse + file + Prometheus exporters, host metrics collection, and a span-to-metrics connector for APM RED metrics. See [docker/tumult-collector/](docker/tumult-collector/) for build config.
+The **Tumult OTel Collector** uses the standard [OpenTelemetry Collector Contrib](https://github.com/open-telemetry/opentelemetry-collector-contrib) image with a custom pipeline config. No build required — just `docker pull`. Includes OTLP + Arrow receivers, ClickHouse exporter, Prometheus metrics, host metrics, and span-to-metrics APM connector. See [docker/tumult-collector/config.yaml](docker/tumult-collector/config.yaml) for the pipeline configuration.
 
 ## Platform Test Protocol
 
