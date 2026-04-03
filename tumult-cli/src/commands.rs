@@ -1035,7 +1035,152 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
 ///
 /// Returns an error if any journal cannot be read, the in-memory store cannot
 /// be created, or the query fails.
-pub fn cmd_analyze(journals_path: Option<&Path>, query: Option<&str>) -> Result<()> {
+/// Prints a structured summary of the last N experiments.
+///
+/// Shows experiment title, status, duration, method timeline with activity
+/// names and durations, hypothesis results, and load test metrics if present.
+#[allow(clippy::too_many_lines)] // Timeline rendering requires verbose formatting
+fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: usize) -> Result<()> {
+    let experiments = store.query(&format!(
+        "SELECT experiment_id, title, status, duration_ms \
+         FROM experiments ORDER BY started_at_ns DESC LIMIT {last_n}"
+    ))?;
+
+    if experiments.is_empty() {
+        println!("No experiments found.");
+        return Ok(());
+    }
+
+    for (i, exp) in experiments.iter().enumerate() {
+        let exp_id = &exp[0];
+        let title = &exp[1];
+        let status = &exp[2];
+        let duration_ms = &exp[3];
+
+        if i > 0 {
+            println!("\n{}", "─".repeat(60));
+        }
+
+        let status_marker = match status.as_str() {
+            "completed" => "PASS",
+            "deviated" => "DEVIATED",
+            "aborted" => "ABORTED",
+            "failed" => "FAIL",
+            _ => status.as_str(),
+        };
+
+        println!("Experiment: {title}");
+        println!("Status:     {status_marker} ({duration_ms}ms)");
+
+        // Method timeline
+        let activities = store.query(&format!(
+            "SELECT name, activity_type, status, duration_ms, output, phase \
+             FROM activity_results \
+             WHERE experiment_id = '{exp_id}' \
+             ORDER BY started_at_ns"
+        ))?;
+
+        if !activities.is_empty() {
+            println!("\nTimeline:");
+            let total = activities.len();
+            for (j, act) in activities.iter().enumerate() {
+                let connector = if j == total - 1 { "└─" } else { "├─" };
+                let name = &act[0];
+                let act_type = &act[1];
+                let act_status = &act[2];
+                let act_dur = &act[3];
+                let output = &act[4];
+                let phase = &act[5];
+
+                let phase_label = match phase.as_str() {
+                    "hypothesis_before" => " (hypothesis before)",
+                    "hypothesis_after" => " (hypothesis after)",
+                    "rollback" => " (rollback)",
+                    _ => "",
+                };
+
+                let status_icon = if act_status == "succeeded" {
+                    ""
+                } else {
+                    " FAILED"
+                };
+
+                let type_label = if act_type == "probe" {
+                    "probe"
+                } else {
+                    "action"
+                };
+
+                // Truncate output for display
+                let output_preview = if output.is_empty() || output == "NULL" {
+                    String::new()
+                } else {
+                    let trimmed = output.replace('\n', " ");
+                    if trimmed.len() > 60 {
+                        format!("  → {}…", &trimmed[..57])
+                    } else {
+                        format!("  → {trimmed}")
+                    }
+                };
+
+                println!(
+                    "  {connector} {name} ({type_label}){phase_label}  {act_dur}ms{status_icon}{output_preview}"
+                );
+            }
+        }
+
+        // Load result
+        let load = store.query(&format!(
+            "SELECT tool, vus, throughput_rps, latency_p50_ms, latency_p95_ms, \
+                    latency_p99_ms, error_rate, total_requests, thresholds_met, duration_s \
+             FROM load_results WHERE experiment_id = '{exp_id}'"
+        ))?;
+
+        if !load.is_empty() {
+            let lr = &load[0];
+            println!("\nLoad Test ({}):", lr[0]);
+            println!(
+                "  VUs: {}  Duration: {}s  Requests: {}",
+                lr[1], lr[9], lr[7]
+            );
+            println!(
+                "  Latency: p50={}ms  p95={}ms  p99={}ms",
+                lr[3], lr[4], lr[5]
+            );
+            println!("  Throughput: {} req/s  Error rate: {}", lr[2], lr[6]);
+            let met = if lr[8] == "true" { "PASS" } else { "FAIL" };
+            println!("  Thresholds: {met}");
+        }
+    }
+
+    // Aggregate if showing multiple
+    if last_n > 1 && experiments.len() > 1 {
+        let agg = store.query(
+            "SELECT count(*) as total, \
+             count(CASE WHEN status = 'completed' THEN 1 END) as passed, \
+             avg(duration_ms) as avg_ms \
+             FROM experiments",
+        )?;
+        if !agg.is_empty() {
+            println!("\n{}", "═".repeat(60));
+            println!(
+                "Store: {} experiments, {} completed, avg {}ms",
+                agg[0][0], agg[0][1], agg[0][2]
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns an error if the analytics store cannot be opened or the query fails.
+pub fn cmd_analyze(
+    journals_path: Option<&Path>,
+    query: Option<&str>,
+    last: Option<usize>,
+) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
 
@@ -1098,17 +1243,7 @@ pub fn cmd_analyze(journals_path: Option<&Path>, query: Option<&str>) -> Result<
         }
         println!("\n{} row(s)", rows.len());
     } else {
-        let rows = store.query(
-            "SELECT status, count(*) as count, avg(duration_ms) as avg_duration_ms, \
-             avg(resilience_score) as avg_resilience \
-             FROM experiments GROUP BY status ORDER BY count DESC",
-        )?;
-        println!("Experiment Summary:");
-        println!("Status\t\tCount\tAvg Duration (ms)\tAvg Resilience");
-        println!("------\t\t-----\t-----------------\t--------------");
-        for row in &rows {
-            println!("{}\t\t{}\t{}\t\t\t{}", row[0], row[1], row[2], row[3]);
-        }
+        print_experiment_summary(&store, last.unwrap_or(1))?;
     }
     Ok(())
 }
