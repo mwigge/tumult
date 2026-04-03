@@ -294,12 +294,14 @@ fn execute_process(
     env: &std::collections::HashMap<String, String>,
     timeout_s: Option<&f64>,
 ) -> ActivityOutcome {
+    // Background activities run on std::thread::scope threads without a Tokio
+    // runtime.  Detect this and fall back to std::process::Command.
+    if tokio::runtime::Handle::try_current().is_err() {
+        return execute_process_sync(path, arguments, env, timeout_s);
+    }
+
     let start = std::time::Instant::now();
 
-    // Use tokio::process::Command with async .wait_with_output() and
-    // tokio::time::timeout instead of busy-polling with std::thread::sleep.
-    // block_in_place allows calling async code from a sync context within
-    // a multi-threaded tokio runtime.
     let path = path.to_string();
     let arguments = arguments.to_vec();
     let env = env.clone();
@@ -397,6 +399,99 @@ fn execute_process(
             }
         })
     })
+}
+
+/// Synchronous process execution for background threads (no Tokio runtime).
+fn execute_process_sync(
+    path: &str,
+    arguments: &[String],
+    env: &std::collections::HashMap<String, String>,
+    timeout_s: Option<&f64>,
+) -> ActivityOutcome {
+    let start = std::time::Instant::now();
+
+    let mut cmd = std::process::Command::new(path);
+    cmd.args(arguments);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            return ActivityOutcome {
+                success: false,
+                output: None,
+                error: Some(format!("failed to execute '{path}': {e}")),
+                #[allow(clippy::cast_possible_truncation)]
+                duration_ms: start.elapsed().as_millis() as u64,
+            };
+        }
+    };
+
+    let result = if let Some(&secs) = timeout_s {
+        let dur = std::time::Duration::from_secs_f64(secs);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let child_for_wait = child;
+        let handle = std::thread::spawn(move || {
+            let output = child_for_wait.wait_with_output();
+            let _ = tx.send(output);
+        });
+        match rx.recv_timeout(dur) {
+            Ok(output) => {
+                let _ = handle.join();
+                output.map_err(|e| e.to_string())
+            }
+            Err(_) => {
+                // Timeout — thread is still waiting; we can't easily kill the child
+                // from here, but the experiment runner will proceed.
+                Err(format!("process '{path}' timed out"))
+            }
+        }
+    } else {
+        child.wait_with_output().map_err(|e| e.to_string())
+    };
+
+    #[allow(clippy::cast_possible_truncation)]
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    match result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let success = output.status.success();
+            ActivityOutcome {
+                success,
+                output: if stdout.is_empty() {
+                    None
+                } else {
+                    Some(stdout)
+                },
+                error: if success {
+                    if stderr.is_empty() {
+                        None
+                    } else {
+                        Some(stderr)
+                    }
+                } else {
+                    Some(if stderr.is_empty() {
+                        format!("process '{path}' exited with {}", output.status)
+                    } else {
+                        stderr
+                    })
+                },
+                duration_ms,
+            }
+        }
+        Err(reason) => ActivityOutcome {
+            success: false,
+            output: None,
+            error: Some(reason),
+            duration_ms,
+        },
+    }
 }
 
 // ── Run command ───────────────────────────────────────────────
