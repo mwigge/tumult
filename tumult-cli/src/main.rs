@@ -55,6 +55,14 @@ enum BaselineMode {
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+enum LoadToolArg {
+    K6,
+    Jmeter,
+    /// Disable load even if experiment defines it
+    None,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum ComplianceFramework {
     Dora,
     Nis2,
@@ -96,6 +104,18 @@ enum Commands {
         /// Template variable substitution: KEY=VALUE (may be repeated)
         #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
         vars: Vec<String>,
+        /// Run a load test concurrently with the experiment method
+        #[arg(long, value_enum)]
+        load: Option<LoadToolArg>,
+        /// Path to load test script (k6 `.js` or `JMeter` `.jmx`)
+        #[arg(long)]
+        load_script: Option<PathBuf>,
+        /// Number of virtual users for load test
+        #[arg(long)]
+        load_vus: Option<u32>,
+        /// Load test duration (e.g. "30s", "5m")
+        #[arg(long)]
+        load_duration: Option<String>,
     },
     /// Validate experiment syntax and plugin references
     Validate {
@@ -202,6 +222,55 @@ enum StoreAction {
 /// # Errors
 ///
 /// Returns an error if any argument does not contain `=`.
+/// Builds a `LoadConfig` override from CLI flags.
+///
+/// Returns `None` if `--load none` was specified (explicitly disable load).
+/// Returns `Some(None)` if no load flags were given (use experiment default).
+/// Returns `Some(Some(config))` if load flags were specified (override experiment).
+fn build_load_override(
+    tool: Option<LoadToolArg>,
+    script: Option<PathBuf>,
+    vus: Option<u32>,
+    duration: Option<String>,
+) -> Option<tumult_core::types::LoadConfig> {
+    // --load none explicitly disables
+    if matches!(tool, Some(LoadToolArg::None)) {
+        return None;
+    }
+
+    let tool = tool?; // No --load flag at all → no override
+    let script = script.unwrap_or_else(|| PathBuf::from("load.js"));
+    let duration_s = duration.map(|d| parse_duration_str(&d));
+
+    let load_tool = match tool {
+        LoadToolArg::K6 => tumult_core::types::LoadTool::K6,
+        LoadToolArg::Jmeter => tumult_core::types::LoadTool::Jmeter,
+        LoadToolArg::None => unreachable!(),
+    };
+
+    Some(tumult_core::types::LoadConfig {
+        tool: load_tool,
+        script,
+        vus: Some(vus.unwrap_or(10)),
+        duration_s: duration_s.or(Some(30.0)),
+        thresholds: std::collections::HashMap::new(),
+    })
+}
+
+/// Parses a human duration like "30s", "5m", "1h" to seconds.
+fn parse_duration_str(s: &str) -> f64 {
+    let s = s.trim();
+    if let Some(num) = s.strip_suffix('s') {
+        num.parse().unwrap_or(30.0)
+    } else if let Some(num) = s.strip_suffix('m') {
+        num.parse::<f64>().unwrap_or(1.0) * 60.0
+    } else if let Some(num) = s.strip_suffix('h') {
+        num.parse::<f64>().unwrap_or(1.0) * 3600.0
+    } else {
+        s.parse().unwrap_or(30.0)
+    }
+}
+
 fn parse_var_args(vars: &[String]) -> anyhow::Result<std::collections::HashMap<String, String>> {
     let mut map = std::collections::HashMap::new();
     for entry in vars {
@@ -232,6 +301,10 @@ async fn main() -> anyhow::Result<()> {
             no_ingest,
             output_format,
             vars,
+            load,
+            load_script,
+            load_vus,
+            load_duration,
         } => {
             let strategy = match rollback_strategy {
                 RollbackStrategy::Always => tumult_core::execution::RollbackStrategy::Always,
@@ -241,6 +314,7 @@ async fn main() -> anyhow::Result<()> {
                 RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
             };
             let var_map = parse_var_args(&vars)?;
+            let load_override = build_load_override(load, load_script, load_vus, load_duration);
             commands::cmd_run(
                 &experiment,
                 &journal_path,
@@ -248,6 +322,7 @@ async fn main() -> anyhow::Result<()> {
                 strategy,
                 !no_ingest,
                 var_map,
+                load_override,
             )
             .await?;
             // If --output-format json was specified, print the journal as JSON to stdout
