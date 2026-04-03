@@ -138,6 +138,9 @@ enum Commands {
         /// Show summary of last N experiments (default: 1 if no --query)
         #[arg(long)]
         last: Option<usize>,
+        /// Show store-wide aggregate summary
+        #[arg(long)]
+        all: bool,
     },
     /// Convert journal to other formats
     Export {
@@ -356,8 +359,9 @@ async fn main() -> anyhow::Result<()> {
             journals,
             query,
             last,
+            all,
         } => {
-            commands::cmd_analyze(journals.as_deref(), query.as_deref(), last)?;
+            commands::cmd_analyze(journals.as_deref(), query.as_deref(), last, all)?;
         }
         Commands::Export { journal, format } => {
             let fmt = match format {
