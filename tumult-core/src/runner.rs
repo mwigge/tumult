@@ -299,12 +299,10 @@ pub fn run_experiment(
     }
 
     // -- Start load test (background, if configured)
-    let load_handle = if let (Some(ref load_config), Some(ref load_exec)) =
-        (&experiment.load, &config.load_executor)
-    {
-        let tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let load_tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let load_span_guard = if let Some(ref load_config) = experiment.load {
         let tool_name = format!("{}", load_config.tool);
-        let load_span = tracer
+        let span = load_tracer
             .span_builder("resilience.load")
             .with_attributes(vec![
                 KeyValue::new("resilience.load.tool", tool_name),
@@ -312,10 +310,21 @@ pub fn run_experiment(
                     "resilience.load.vus",
                     i64::from(load_config.vus.unwrap_or(0)),
                 ),
+                KeyValue::new(
+                    "resilience.load.script",
+                    load_config.script.display().to_string(),
+                ),
             ])
-            .start(&tracer);
-        let _load_cx = opentelemetry::Context::current_with_span(load_span);
+            .start(&load_tracer);
+        let cx = opentelemetry::Context::current_with_span(span);
+        Some(cx.attach())
+    } else {
+        None
+    };
 
+    let load_handle = if let (Some(ref load_config), Some(ref load_exec)) =
+        (&experiment.load, &config.load_executor)
+    {
         match load_exec.start(load_config) {
             Ok(handle) => {
                 tracing::info!(
@@ -346,11 +355,47 @@ pub fn run_experiment(
 
     let actions_succeeded = all_succeeded(&method_results);
 
-    // -- Stop load test and collect results
+    // -- Stop load test, collect results, and enrich the span
     let load_result =
         if let (Some(handle), Some(ref load_exec)) = (load_handle, &config.load_executor) {
             match load_exec.stop(handle) {
                 Ok(result) => {
+                    // Enrich the resilience.load span with result metrics
+                    let span_cx = opentelemetry::Context::current();
+                    let span = span_cx.span();
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.throughput_rps",
+                        result.throughput_rps,
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.latency_p50_ms",
+                        result.latency_p50_ms,
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.latency_p95_ms",
+                        result.latency_p95_ms,
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.latency_p99_ms",
+                        result.latency_p99_ms,
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.error_rate",
+                        result.error_rate,
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.total_requests",
+                        i64::try_from(result.total_requests).unwrap_or(i64::MAX),
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.thresholds_met",
+                        result.thresholds_met,
+                    ));
+                    span.set_attribute(KeyValue::new(
+                        "resilience.load.duration_s",
+                        result.duration_s,
+                    ));
+
                     tracing::info!(
                         throughput_rps = result.throughput_rps,
                         latency_p95_ms = result.latency_p95_ms,
@@ -367,6 +412,9 @@ pub fn run_experiment(
         } else {
             None
         };
+
+    // Drop the load span guard so the span is exported
+    drop(load_span_guard);
 
     // -- Phase 3: POST -- recovery measurement
     // Post-phase sampling is done externally; hypothesis after captures it.
