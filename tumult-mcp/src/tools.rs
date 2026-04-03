@@ -114,6 +114,7 @@ pub fn run_experiment(
         rollback_strategy: strategy,
         cancellation_token: None,
         parent_context,
+        load_executor: None,
     };
 
     let journal =

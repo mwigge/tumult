@@ -22,7 +22,7 @@ use crate::execution::{
 use crate::types::{
     Activity, ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult,
     ExpectedOutcome, Experiment, ExperimentStatus, Hypothesis, HypothesisResult, Journal,
-    PostResult, ProbeDuring, ProbePost, Provider, SpanId, TraceId,
+    LoadConfig, LoadResult, PostResult, ProbeDuring, ProbePost, Provider, SpanId, TraceId,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -52,11 +52,39 @@ pub trait ActivityExecutor: Send + Sync {
     fn execute(&self, activity: &Activity) -> ActivityOutcome;
 }
 
+/// Handle to a running load test process.
+///
+/// Returned by [`LoadExecutor::start`]. Call [`LoadExecutor::stop`]
+/// to terminate the process and collect results.
+pub struct LoadHandle {
+    /// Opaque handle — implementations store process state here.
+    pub inner: Box<dyn std::any::Any + Send>,
+}
+
+/// Trait for starting and stopping load test tools (k6, `JMeter`).
+///
+/// Implementations spawn a background process and parse metrics
+/// from its output when stopped.
+pub trait LoadExecutor: Send + Sync {
+    /// Starts the load tool as a background process.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the load tool binary is not found or fails to start.
+    fn start(&self, config: &LoadConfig) -> Result<LoadHandle, String>;
+
+    /// Stops the running load test and collects metrics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the process cannot be stopped or metrics cannot be parsed.
+    fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String>;
+}
+
 /// Configuration for an experiment run.
 ///
 /// Dry-run and baseline-skip are handled at the CLI layer before
 /// calling `run_experiment`, so they are not part of this config.
-#[derive(Debug, Clone)]
 pub struct RunConfig {
     pub rollback_strategy: RollbackStrategy,
     /// Optional cancellation token. When cancelled, the runner returns
@@ -66,6 +94,10 @@ pub struct RunConfig {
     /// `resilience.experiment` span is created as a child of this context,
     /// enabling cross-service trace linking (e.g. from an MCP tool span).
     pub parent_context: Option<opentelemetry::Context>,
+    /// Optional load test executor. When provided and the experiment has
+    /// a `load` config, the runner starts the load tool in the background
+    /// during method execution.
+    pub load_executor: Option<std::sync::Arc<dyn LoadExecutor>>,
 }
 
 impl Default for RunConfig {
@@ -74,6 +106,7 @@ impl Default for RunConfig {
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         }
     }
 }
@@ -265,6 +298,42 @@ pub fn run_experiment(
         }
     }
 
+    // -- Start load test (background, if configured)
+    let load_handle = if let (Some(ref load_config), Some(ref load_exec)) =
+        (&experiment.load, &config.load_executor)
+    {
+        let tracer = opentelemetry::global::tracer(TRACER_NAME);
+        let tool_name = format!("{}", load_config.tool);
+        let load_span = tracer
+            .span_builder("resilience.load")
+            .with_attributes(vec![
+                KeyValue::new("resilience.load.tool", tool_name),
+                KeyValue::new(
+                    "resilience.load.vus",
+                    i64::from(load_config.vus.unwrap_or(0)),
+                ),
+            ])
+            .start(&tracer);
+        let _load_cx = opentelemetry::Context::current_with_span(load_span);
+
+        match load_exec.start(load_config) {
+            Ok(handle) => {
+                tracing::info!(
+                    tool = %load_config.tool,
+                    script = %load_config.script.display(),
+                    "load test started"
+                );
+                Some(handle)
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "failed to start load test");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // -- Phase 2: Execute Method (DURING)
     controls.emit(&LifecycleEvent::BeforeMethod);
     let method_results = execute_activities(
@@ -276,6 +345,28 @@ pub fn run_experiment(
     controls.emit(&LifecycleEvent::AfterMethod);
 
     let actions_succeeded = all_succeeded(&method_results);
+
+    // -- Stop load test and collect results
+    let load_result =
+        if let (Some(handle), Some(ref load_exec)) = (load_handle, &config.load_executor) {
+            match load_exec.stop(handle) {
+                Ok(result) => {
+                    tracing::info!(
+                        throughput_rps = result.throughput_rps,
+                        latency_p95_ms = result.latency_p95_ms,
+                        error_rate = result.error_rate,
+                        "load test completed"
+                    );
+                    Some(result)
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to collect load test results");
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
     // -- Phase 3: POST -- recovery measurement
     // Post-phase sampling is done externally; hypothesis after captures it.
@@ -396,7 +487,7 @@ pub fn run_experiment(
         baseline_result: None,
         during_result,
         post_result,
-        load_result: None,
+        load_result,
         analysis,
         regulatory: experiment.regulatory.clone(),
     })
@@ -1096,7 +1187,7 @@ mod tests {
     use super::*;
     use crate::controls::ControlRegistry;
     use crate::types::{
-        Confidence, DegradationLevel, Estimate, HttpMethod, RegulatoryMapping,
+        Confidence, DegradationLevel, Estimate, HttpMethod, LoadTool, RegulatoryMapping,
         RegulatoryRequirement, Tolerance,
     };
     use indexmap::IndexMap;
@@ -1432,6 +1523,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::Never,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1449,6 +1541,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1547,6 +1640,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1569,6 +1663,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         };
 
         run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1797,6 +1892,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: Some(token),
             parent_context: None,
+            load_executor: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1816,6 +1912,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -1861,6 +1958,7 @@ mod tests {
             rollback_strategy: RollbackStrategy::Always,
             cancellation_token: None,
             parent_context: None,
+            load_executor: None,
         };
 
         let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -2075,5 +2173,144 @@ mod tests {
         let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
         assert_eq!(journal.status, ExperimentStatus::Completed);
         assert!(!journal.experiment_id.is_empty());
+    }
+
+    // -- Load testing phase tests
+
+    struct MockLoadExecutor {
+        started: Arc<std::sync::Mutex<bool>>,
+        stopped: Arc<std::sync::Mutex<bool>>,
+    }
+
+    impl MockLoadExecutor {
+        fn new() -> (
+            Self,
+            Arc<std::sync::Mutex<bool>>,
+            Arc<std::sync::Mutex<bool>>,
+        ) {
+            let started = Arc::new(std::sync::Mutex::new(false));
+            let stopped = Arc::new(std::sync::Mutex::new(false));
+            (
+                Self {
+                    started: started.clone(),
+                    stopped: stopped.clone(),
+                },
+                started,
+                stopped,
+            )
+        }
+    }
+
+    impl LoadExecutor for MockLoadExecutor {
+        fn start(&self, _config: &LoadConfig) -> Result<LoadHandle, String> {
+            *self.started.lock().expect("lock") = true;
+            Ok(LoadHandle {
+                inner: Box::new(()),
+            })
+        }
+
+        fn stop(&self, _handle: LoadHandle) -> Result<LoadResult, String> {
+            *self.stopped.lock().expect("lock") = true;
+            Ok(LoadResult {
+                tool: LoadTool::K6,
+                started_at_ns: 1_000_000_000,
+                ended_at_ns: 2_000_000_000,
+                duration_s: 1.0,
+                vus: 5,
+                throughput_rps: 100.0,
+                latency_p50_ms: 10.0,
+                latency_p95_ms: 50.0,
+                latency_p99_ms: 100.0,
+                error_rate: 0.01,
+                total_requests: 100,
+                thresholds_met: true,
+            })
+        }
+    }
+
+    fn experiment_with_load() -> Experiment {
+        let mut exp = experiment_with_hypothesis();
+        exp.load = Some(LoadConfig {
+            tool: LoadTool::K6,
+            script: std::path::PathBuf::from("test.js"),
+            vus: Some(5),
+            duration_s: Some(10.0),
+            thresholds: HashMap::new(),
+        });
+        exp
+    }
+
+    #[test]
+    fn load_result_none_when_no_load_config() {
+        let exp = minimal_experiment();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+        let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+        assert!(journal.load_result.is_none());
+    }
+
+    #[test]
+    fn load_result_populated_when_load_executor_present() {
+        let exp = experiment_with_load();
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+        let (mock_load, started, stopped) = MockLoadExecutor::new();
+
+        let config = RunConfig {
+            load_executor: Some(Arc::new(mock_load)),
+            ..RunConfig::default()
+        };
+
+        let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
+
+        // Load executor was called
+        assert!(
+            *started.lock().expect("lock"),
+            "load should have been started"
+        );
+        assert!(
+            *stopped.lock().expect("lock"),
+            "load should have been stopped"
+        );
+
+        // Load result populated in journal
+        assert!(
+            journal.load_result.is_some(),
+            "journal should have load_result"
+        );
+        let lr = journal.load_result.as_ref().expect("load_result");
+        assert_eq!(lr.vus, 5);
+        assert_eq!(lr.total_requests, 100);
+        assert!(lr.thresholds_met);
+    }
+
+    #[test]
+    fn load_not_started_when_hypothesis_fails() {
+        let mut exp = experiment_with_load();
+        // Make hypothesis tolerance impossible
+        if let Some(ref mut hyp) = exp.steady_state_hypothesis {
+            hyp.probes[0].tolerance = Some(Tolerance::Regex {
+                pattern: "^IMPOSSIBLE$".into(),
+            });
+        }
+
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+        let (mock_load, started, _stopped) = MockLoadExecutor::new();
+
+        let config = RunConfig {
+            load_executor: Some(Arc::new(mock_load)),
+            ..RunConfig::default()
+        };
+
+        let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
+
+        assert_eq!(journal.status, ExperimentStatus::Aborted);
+        assert!(
+            !*started.lock().expect("lock"),
+            "load should NOT start when hypothesis fails"
+        );
+        assert!(journal.load_result.is_none());
     }
 }
