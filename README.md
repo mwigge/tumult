@@ -509,37 +509,55 @@ regulatory:
 
 ## Quick Start
 
-**One-command setup** (requires Rust + Docker):
+### Prerequisites
+
+You need three things installed. Everything else (Tokio, DuckDB, Arrow, OpenTelemetry, etc.) is handled automatically by `cargo build`.
+
+| Tool | Install | Verify |
+|------|---------|--------|
+| **Rust** | [rustup.rs](https://rustup.rs/) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | `rustc --version` |
+| **Docker** | [Docker Desktop](https://docs.docker.com/get-docker/) or [Colima](https://github.com/abiosoft/colima) (`brew install colima && colima start`) | `docker ps` |
+| **Git** | [git-scm.com](https://git-scm.com/) or `brew install git` / `apt install git` | `git --version` |
+
+### Install and run
+
+```bash
+# 1. Clone
+git clone https://github.com/mwigge/tumult.git
+cd tumult
+
+# 2. Build (downloads all Rust dependencies automatically, takes ~3 min first time)
+cargo build --release
+
+# 3. Start Docker infrastructure (PostgreSQL, Redis, Kafka, SSH)
+make up-targets
+
+# 4. Run your first chaos experiment
+./target/release/tumult run examples/redis-chaos.toon
+```
+
+Or use the one-liner that does all of the above:
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult && ./install.sh
 ```
 
-This builds the binary, starts Docker targets, and runs a verification experiment. Then:
+### After install
 
 ```bash
 tumult run examples/redis-chaos.toon       # break Redis, watch it recover
 tumult run examples/postgres-failover.toon  # kill PG connections
 tumult run examples/pumba-latency.toon      # inject 200ms network latency
 tumult analyze --query "SELECT title, status, duration_ms FROM experiments"
+tumult discover                             # list all 10 plugins and 45 actions
+tumult init                                 # create your own experiment
 ```
 
-See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough including observability setup, SSH experiments, compliance reports, and bring-your-own-target instructions.
+See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough including observability, SSH experiments, compliance reports, and bring-your-own-target instructions.
 
-### Manual install
+### Pre-built binaries
 
-**From GitHub Releases** (pre-built binaries for 6 targets):
-
-Download the latest release from [Releases](https://github.com/mwigge/tumult/releases) and place the binary on your PATH.
-
-**From source:**
-
-```bash
-git clone https://github.com/mwigge/tumult.git
-cd tumult
-cargo build --release
-cp target/release/tumult /usr/local/bin/
-```
+Download from [Releases](https://github.com/mwigge/tumult/releases) — pre-built for macOS (Intel + Apple Silicon), Linux (x86_64 + aarch64), and Windows. No Rust toolchain needed for pre-built binaries.
 
 ### Usage
 
