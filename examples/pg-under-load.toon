@@ -1,7 +1,7 @@
-title: PostgreSQL connection pool exhaustion under load
-description: Run load while exhausting PG connections — validate recovery under pressure
+title: PostgreSQL under real load — container pause disruption
+description: k6 hammers PG with real inserts/selects. Pumba pauses PG container for 5s. Measure the disruption in k6 error rates.
 
-tags[3]: postgres, load, resilience
+tags[4]: postgres, load, pumba, resilience
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries
@@ -18,29 +18,29 @@ steady_state_hypothesis:
         pattern: "PostgreSQL"
 
 method[4]:
-  - name: start-load
+  - name: start-pg-load
     activity_type: action
     background: true
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "k6 run --vus 10 --duration 15s --out json=/tmp/tumult-k6-pg-results.json examples/k6/pg-load.js 2>&1 | tail -15"
-      timeout_s: 20.0
+      arguments[2]: "-c", "k6 run --vus 5 --duration 20s examples/k6/pg-load.js 2>&1 | tail -30"
+      timeout_s: 30.0
   - name: connection-count-before
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
+      arguments[2]: "-c", "sleep 3 && docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
       timeout_s: 10.0
-  - name: kill-idle-connections
+  - name: pause-postgres
     activity_type: action
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='idle' AND pid != pg_backend_pid() LIMIT 5\""
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest pause -d 5s docker-postgres-1"
       timeout_s: 10.0
-    pause_after_s: 3.0
+    pause_after_s: 2.0
   - name: connection-count-after
     activity_type: probe
     provider:
