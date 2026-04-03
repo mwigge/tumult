@@ -1,4 +1,4 @@
-# Quick-start: Tumult OTel Collector + Jaeger for development
+# Quick-start: OTel Collector + Jaeger for development
 #
 # Lightweight local observability — no ClickHouse, no SigNoz.
 # Traces viewable in Jaeger UI at http://localhost:16686
@@ -12,13 +12,10 @@
 
 services:
   otel-collector:
-    image: tumult-otel-collector:latest
-    build:
-      context: ../docker/tumult-collector
-      dockerfile: Dockerfile
-    command: ["--config=/etc/otel/config.yaml"]
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./otel-collector-dev.yaml:/etc/otel/config.yaml:ro
+      - ./otel-collector-dev.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
