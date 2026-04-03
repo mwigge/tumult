@@ -1202,9 +1202,9 @@ fn print_store_aggregate(store: &tumult_analytics::AnalyticsStore) -> Result<()>
 
     // Duration stats
     let dur = store.query(
-        "SELECT round(avg(duration_ms::DOUBLE), 1), \
-                round(min(duration_ms::DOUBLE), 0), \
-                round(max(duration_ms::DOUBLE), 0) \
+        "SELECT cast(round(avg(duration_ms::DOUBLE), 0) as INTEGER), \
+                cast(min(duration_ms) as INTEGER), \
+                cast(max(duration_ms) as INTEGER) \
          FROM experiments",
     )?;
     if !dur.is_empty() && !dur[0][0].is_empty() {
