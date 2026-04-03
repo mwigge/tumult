@@ -21,8 +21,9 @@ use crate::execution::{
 };
 use crate::types::{
     Activity, ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult,
-    ExpectedOutcome, Experiment, ExperimentStatus, Hypothesis, HypothesisResult, Journal,
-    LoadConfig, LoadResult, PostResult, ProbeDuring, ProbePost, Provider, SpanId, TraceId,
+    ExpectedOutcome, Experiment, ExperimentStatus, GameDay, GameDayJournal, Hypothesis,
+    HypothesisResult, Journal, LoadConfig, LoadResult, PostResult, ProbeDuring, ProbePost,
+    Provider, ResilienceScore, SpanId, TraceId,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -539,6 +540,206 @@ pub fn run_experiment(
         analysis,
         regulatory: experiment.regulatory.clone(),
     })
+}
+
+/// Runs a `GameDay` — a coordinated campaign of experiments under shared load.
+///
+/// Iterates the provided experiments in sequence, optionally running a
+/// shared load generator across all of them. Computes an aggregate
+/// `ResilienceScore` and returns a `GameDayJournal`.
+///
+/// # Errors
+///
+/// Returns [`RunnerError`] if any experiment fails to execute (not if it
+/// deviates — deviation is a valid outcome captured in the journal).
+#[must_use = "the GameDayJournal contains the aggregate results"]
+#[allow(clippy::too_many_lines)] // Orchestration function with OTel setup, load management, and scoring
+pub fn run_gameday(
+    gameday: &GameDay,
+    experiments: &[Experiment],
+    executor: &std::sync::Arc<dyn ActivityExecutor>,
+    controls: &std::sync::Arc<ControlRegistry>,
+    config: &RunConfig,
+) -> Result<GameDayJournal, RunnerError> {
+    let gameday_id = uuid::Uuid::new_v4().to_string();
+    let started = std::time::Instant::now();
+    let started_at_ns = epoch_nanos_now();
+
+    // Create root GameDay OTel span
+    let tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let gd_span = tracer
+        .span_builder("resilience.gameday")
+        .with_attributes(vec![
+            KeyValue::new("resilience.gameday.id", gameday_id.clone()),
+            KeyValue::new("resilience.gameday.title", gameday.title.clone()),
+            KeyValue::new(
+                "resilience.gameday.experiment_count",
+                i64::try_from(experiments.len()).unwrap_or(0),
+            ),
+        ])
+        .start(&tracer);
+    let gd_cx = opentelemetry::Context::current_with_span(gd_span);
+    let _gd_guard = gd_cx.attach();
+
+    // Start shared load (if configured)
+    let load_handle = if let (Some(ref load_config), Some(ref load_exec)) =
+        (&gameday.load, &config.load_executor)
+    {
+        match load_exec.start(load_config) {
+            Ok(handle) => {
+                tracing::info!(
+                    tool = %load_config.tool,
+                    "gameday load started"
+                );
+                Some(handle)
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "failed to start gameday load");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Run each experiment with the GameDay span as parent context
+    let mut journals = Vec::with_capacity(experiments.len());
+    for experiment in experiments {
+        let exp_config = RunConfig {
+            rollback_strategy: config.rollback_strategy.clone(),
+            cancellation_token: config.cancellation_token.clone(),
+            parent_context: Some(opentelemetry::Context::current()),
+            load_executor: None, // load is managed at GameDay level
+        };
+        match run_experiment(experiment, executor, controls, &exp_config) {
+            Ok(journal) => journals.push(journal),
+            Err(e) => {
+                tracing::error!(error = %e, title = %experiment.title, "gameday experiment failed");
+                return Err(e);
+            }
+        }
+    }
+
+    // Stop load and collect results
+    let load_result =
+        if let (Some(handle), Some(ref load_exec)) = (load_handle, &config.load_executor) {
+            match load_exec.stop(handle) {
+                Ok(result) => {
+                    tracing::info!(
+                        throughput_rps = result.throughput_rps,
+                        "gameday load completed"
+                    );
+                    Some(result)
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to collect gameday load results");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+    // Compute resilience score
+    let total = journals.len();
+    let passed = journals
+        .iter()
+        .filter(|j| j.status == ExperimentStatus::Completed)
+        .count();
+    #[allow(clippy::cast_precision_loss)]
+    let pass_rate = if total > 0 {
+        passed as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    // Recovery compliance: check MTTR against target
+    let recovery = compute_recovery_compliance(&journals, gameday.scoring.mttr_target_s);
+
+    // Load impact tolerance (1.0 if no load, otherwise based on error rate)
+    let load_impact = load_result
+        .as_ref()
+        .map_or(1.0, |lr| (1.0 - lr.error_rate).max(0.0));
+
+    // Compliance coverage: count mapped articles that have passing experiments
+    let compliance = compute_compliance_coverage(gameday, &journals);
+
+    let score = ResilienceScore::compute(pass_rate, recovery, load_impact, compliance);
+    let compliance_status = score.status().to_string();
+
+    let ended_at_ns = epoch_nanos_now();
+    #[allow(clippy::cast_precision_loss)]
+    let duration_s = started.elapsed().as_secs_f64();
+
+    Ok(GameDayJournal {
+        gameday_id,
+        title: gameday.title.clone(),
+        started_at_ns,
+        ended_at_ns,
+        duration_s,
+        experiment_journals: journals,
+        load_result,
+        resilience_score: score,
+        compliance_status,
+        regulatory: gameday.regulatory.clone(),
+    })
+}
+
+/// Computes recovery compliance score from MTTR data in journals.
+fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 {
+    let mut total_recovery = 0;
+    let mut compliant_recovery = 0;
+
+    for journal in journals {
+        if let Some(ref post) = journal.post_result {
+            total_recovery += 1;
+            if post.recovery_time_s <= mttr_target_s && post.full_recovery {
+                compliant_recovery += 1;
+            }
+        }
+    }
+
+    if total_recovery == 0 {
+        1.0 // No recovery data → assume compliant
+    } else {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            f64::from(compliant_recovery) / f64::from(total_recovery)
+        }
+    }
+}
+
+/// Computes compliance coverage from article mappings.
+fn compute_compliance_coverage(gameday: &GameDay, journals: &[Journal]) -> f64 {
+    // Collect all unique mapped articles
+    let all_articles: std::collections::HashSet<&str> = gameday
+        .experiments
+        .iter()
+        .flat_map(|e| e.compliance_maps.iter().map(String::as_str))
+        .collect();
+
+    if all_articles.is_empty() {
+        return 1.0; // No articles mapped → full coverage by default
+    }
+
+    // An article is "met" if at least one experiment mapped to it completed
+    let mut met = 0;
+    for article in &all_articles {
+        let has_passing = gameday.experiments.iter().enumerate().any(|(i, exp)| {
+            exp.compliance_maps.iter().any(|a| a == article)
+                && journals
+                    .get(i)
+                    .is_some_and(|j| j.status == ExperimentStatus::Completed)
+        });
+        if has_passing {
+            met += 1;
+        }
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    {
+        f64::from(met) / all_articles.len() as f64
+    }
 }
 
 /// Evaluate a steady-state hypothesis by running its probes.
@@ -2366,5 +2567,106 @@ mod tests {
             "load should NOT start when hypothesis fails"
         );
         assert!(journal.load_result.is_none());
+    }
+
+    // -- GameDay runner tests
+
+    #[test]
+    fn gameday_runs_all_experiments() {
+        use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+
+        let gameday = GameDay {
+            title: "Test GameDay".into(),
+            description: None,
+            tags: vec![],
+            regulatory: None,
+            load: None,
+            experiments: vec![
+                GameDayExperiment {
+                    path: "exp1.toon".into(),
+                    compliance_maps: vec![],
+                },
+                GameDayExperiment {
+                    path: "exp2.toon".into(),
+                    compliance_maps: vec![],
+                },
+            ],
+            scoring: ScoringConfig::default(),
+        };
+
+        let exp1 = minimal_experiment();
+        let mut exp2 = minimal_experiment();
+        exp2.title = "Second experiment".into();
+
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+
+        let result = run_gameday(
+            &gameday,
+            &[exp1, exp2],
+            &executor,
+            &controls,
+            &default_config(),
+        )
+        .expect("gameday should succeed");
+
+        assert_eq!(result.experiment_journals.len(), 2);
+        assert_eq!(result.title, "Test GameDay");
+        assert!(result.resilience_score.overall > 0.0);
+        assert_eq!(result.compliance_status, "COMPLIANT");
+    }
+
+    #[test]
+    fn gameday_score_reflects_failures() {
+        use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+
+        let gameday = GameDay {
+            title: "Mixed GameDay".into(),
+            description: None,
+            tags: vec![],
+            regulatory: None,
+            load: None,
+            experiments: vec![
+                GameDayExperiment {
+                    path: "pass.toon".into(),
+                    compliance_maps: vec!["ART-1".into()],
+                },
+                GameDayExperiment {
+                    path: "fail.toon".into(),
+                    compliance_maps: vec!["ART-2".into()],
+                },
+            ],
+            scoring: ScoringConfig::default(),
+        };
+
+        let exp_pass = minimal_experiment();
+        // Failing experiment: empty method triggers RunnerError, so use
+        // a hypothesis that will fail instead
+        let mut exp_fail = experiment_with_hypothesis();
+        if let Some(ref mut hyp) = exp_fail.steady_state_hypothesis {
+            hyp.probes[0].tolerance = Some(Tolerance::Regex {
+                pattern: "^NEVER_MATCH$".into(),
+            });
+        }
+
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+        let controls = Arc::new(ControlRegistry::new());
+
+        let result = run_gameday(
+            &gameday,
+            &[exp_pass, exp_fail],
+            &executor,
+            &controls,
+            &default_config(),
+        )
+        .expect("gameday should succeed even with deviations");
+
+        assert_eq!(result.experiment_journals.len(), 2);
+        // One completed, one aborted → pass_rate = 0.5
+        assert!(result.resilience_score.pass_rate < 1.0);
+        // Compliance: ART-1 met (pass), ART-2 not met (fail) → 0.5
+        assert!(result.resilience_score.compliance_coverage < 1.0);
+        // Overall = 0.5*0.3 + 1.0*0.25 + 1.0*0.25 + 0.5*0.2 = 0.75 → PARTIAL
+        assert_eq!(result.compliance_status, "PARTIAL");
     }
 }
