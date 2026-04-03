@@ -476,4 +476,8 @@ Chaos engineering at the level of individual fault injection is a starting point
 
 ---
 
-*Next in the series: [Part 11 — The Road Ahead: Autonomous Chaos, MCP, and the Future of Resilience Engineering →](./11-road-ahead.md)*
+**Update:** The load testing integration described in this post is now fully implemented. Tumult runs k6 concurrently with chaos injection via the `--load` CLI flag or the `load:` experiment config section. Load results (latency percentiles, throughput, error rates) flow into the TOON journal, DuckDB analytics, and OTel traces. Container-scoped network chaos is also available via the [tumult-pumba plugin](./12-traces-in-production.md), which works cross-platform without Linux kernel access. See [Part 13 — Proving Disruption in Numbers](./13-load-during-chaos.md) for real evidence of measured disruption under load.
+
+---
+
+*Next in the series: [Part 11 — The Road Ahead →](./11-road-ahead.md)*

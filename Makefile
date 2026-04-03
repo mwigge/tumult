@@ -26,10 +26,13 @@ COMPOSE_CLASSIC = $(COMPOSE_FULL) --profile classic
 up:
 	$(COMPOSE_FULL) up -d
 	@echo "Waiting for services to be healthy..."
-	@sleep 5
+	@sleep 10
 	$(COMPOSE_FULL) ps
 	@echo ""
-	@echo "SigNoz UI:      http://localhost:13301"
+	@echo "Importing SigNoz dashboards..."
+	@bash docker/signoz/dashboards/import-dashboards.sh http://localhost:3301 2>/dev/null || echo "  (dashboards will import once SigNoz is fully ready — run 'make dashboards' to retry)"
+	@echo ""
+	@echo "SigNoz UI:      http://localhost:3301"
 	@echo "OTLP endpoint:  http://localhost:14317"
 
 up-targets:
@@ -56,9 +59,9 @@ up-classic:
 
 dashboards:
 	@echo "Importing SigNoz dashboards..."
-	@bash docker/signoz/dashboards/import-dashboards.sh http://localhost:13301
+	@bash docker/signoz/dashboards/import-dashboards.sh http://localhost:3301
 	@echo ""
-	@echo "Open SigNoz: http://localhost:13301 → Dashboards"
+	@echo "Open SigNoz: http://localhost:3301 → Dashboards"
 
 down:
 	$(COMPOSE_FULL) --profile classic down -v 2>/dev/null || true
