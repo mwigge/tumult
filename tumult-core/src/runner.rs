@@ -1175,8 +1175,14 @@ fn current_span_id() -> SpanId {
     }
 }
 
-/// Get current time as epoch nanoseconds.
-fn epoch_nanos_now() -> i64 {
+/// Gets current time as epoch nanoseconds.
+///
+/// # Panics
+///
+/// Panics if the system clock is outside the representable i64 nanosecond range
+/// (before 1677 or after 2262).
+#[must_use]
+pub fn epoch_nanos_now() -> i64 {
     chrono::Utc::now()
         .timestamp_nanos_opt()
         .expect("timestamp overflow: clock outside i64 nanosecond range")
