@@ -1,0 +1,37 @@
+title: PostgreSQL connection kill under load
+description: Terminate active database connections while queries are running
+
+tags[2]: postgres, resilience
+
+steady_state_hypothesis:
+  title: PostgreSQL accepts queries
+  probes[1]:
+    - name: pg-responds
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT version()' | head -1"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "PostgreSQL"
+
+method[2]:
+  - name: kill-connections
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='tumult_test' AND pid != pg_backend_pid()\""
+      timeout_s: 10.0
+    pause_after_s: 2.0
+  - name: verify-recovery
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
+      timeout_s: 10.0
+
+rollbacks[0]:
