@@ -10,7 +10,7 @@
 
 services:
   tumult-mcp:
-    image: tumult-mcp:latest
+    image: ghcr.io/mwigge/tumult-mcp:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile.tumult-mcp

@@ -28,9 +28,8 @@ services:
       TUMULT_PG_PORT: 5432
       TUMULT_REDIS_HOST: redis
       TUMULT_REDIS_PORT: 6379
-    depends_on:
-      tumult-mcp:
-        condition: service_healthy
+    # Requires tumult-mcp from docker-compose.tumult.yml to be running.
+    # Cross-file depends_on is not supported; start.sh handles ordering.
     networks:
       - tumult-e2e
 

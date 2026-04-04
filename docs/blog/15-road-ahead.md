@@ -18,17 +18,19 @@ We have covered a lot of ground in this series: the Rust-native architecture, th
 
 ## Where We Are Today
 
-Tumult has delivered Phases 0 through 7, with Phase 8 in progress:
+Tumult has delivered Phases 0 through 9:
 
 **Phases 0-2 — Foundation + Plugins**: 11 Rust crates, 10 plugins (45 chaos actions), native Kubernetes (kube-rs) and SSH (russh), DuckDB + Arrow analytics pipeline, Parquet/CSV/JSON export. All production-ready.
 
-**Phases 3-5 — Automation + Analytics + Compliance**: MCP server with 11 tools, persistent DuckDB + ClickHouse dual-mode analytics, 7 regulatory compliance frameworks (DORA, NIS2, PCI-DSS, ISO-22301, ISO-27001, SOC2, Basel III) with article-level detail and official source URLs.
+**Phases 3-5 — Automation + Analytics + Compliance**: MCP server with 14 tools, persistent DuckDB + ClickHouse dual-mode analytics, 7 regulatory compliance frameworks (DORA EU 2022/2554, NIS2, PCI-DSS, ISO-22301, ISO-27001, SOC2, Basel III) with article-level detail and official source URLs.
 
 **Phase 6 — Hardening**: SSH session pool, proptest, cargo-audit in CI, security assessment, zero unsafe blocks across all crates.
 
-**Phase 7 — Infrastructure**: SigNoz standalone, OTel Collector (contrib), Docker Compose stacks with 22 pre-built dashboards, tumult.rs website.
+**Phase 7 — Infrastructure**: SigNoz standalone, OTel Collector (contrib), Docker Compose stacks, tumult.rs website.
 
-**Phase 8 — GameDay (In Progress)**: Coordinated experiment campaigns with shared load, resilience scoring, and compliance article mapping. The first GameDay (Q2 PostgreSQL Resilience) ran 4/4 PASS with a resilience score of 1.00.
+**Phase 8 — GameDay**: Coordinated experiment campaigns with shared load, resilience scoring, and compliance article mapping. The first GameDay (Q2 PostgreSQL Resilience) ran 4/4 PASS with a resilience score of 1.00.
+
+**Phase 9 — MCP HTTP Transport**: Tumult MCP server now supports HTTP/SSE transport (`--transport http`) for container-to-container and agent fleet communication. Docker images for both CLI and MCP server. Composable Docker bundles (infra, observe, tumult, aqe) with `start.sh` launcher.
 
 162 platform tests at 99.4% pass rate. 585 unit tests. Zero failures.
 
@@ -36,14 +38,25 @@ Tumult has delivered Phases 0 through 7, with Phase 8 in progress:
 
 ## The MCP Server
 
-The Model Context Protocol server is already shipped (Phase 3). It exposes 11 tools that any MCP-compatible agent can call:
+The Model Context Protocol server exposes 14 tools over stdio or HTTP/SSE transport:
 
 ```
 tumult.discover_plugins()        → list available fault injection capabilities
 tumult.validate_experiment(toon) → validate an experiment definition
 tumult.run_experiment(toon)      → execute an experiment, return journal
-tumult.analyze_journals(path)    → SQL analytics over experiment history
-tumult.list_experiments()        → list available experiments with metadata
+tumult.analyze(query)            → SQL analytics over experiment journals
+tumult.analyze_store(query)      → SQL over persistent DuckDB store
+tumult.list_experiments()        → list available experiments
+tumult.gameday_run(path)         → run a coordinated GameDay campaign
+tumult.gameday_analyze(path)     → analyze GameDay results with scoring
+```
+
+```bash
+# Stdio (IDE integration)
+tumult-mcp
+
+# HTTP/SSE (containers, agent fleets, CI/CD)
+tumult-mcp --transport http --port 3100
 ```
 
 An AI agent — whether a custom agent, an agentic QE system, or any MCP-compatible orchestrator — can call these functions without knowing anything about Rust, binaries, or experiment formats. The agent asks "what chaos capabilities are available for Kubernetes?" and Tumult responds with the plugin manifest. The agent composes an experiment, validates it, runs it, and reads the TOON journal — compact enough to fit in context.
