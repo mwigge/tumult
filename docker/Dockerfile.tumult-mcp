@@ -1,14 +1,20 @@
-# Tumult MCP Server — chaos engineering as an MCP service
+# Tumult MCP Server — HTTP/SSE entrypoint variant
+#
+# This is a thin wrapper around the main tumult image that changes
+# the default entrypoint to start the MCP server in HTTP mode.
+# Both images contain identical binaries and plugins.
 #
 # Build:
+#   docker build -f docker/Dockerfile.tumult -t tumult .
 #   docker build -f docker/Dockerfile.tumult-mcp -t tumult-mcp .
 #
 # Run:
 #   docker run --network tumult-e2e -p 3100:3100 tumult-mcp
 #
-# See also: Dockerfile.tumult for the CLI tool image.
+# Equivalent to:
+#   docker run --network tumult-e2e -p 3100:3100 tumult tumult-mcp --transport http
 
-FROM rust:1.82-slim AS builder
+FROM rust:1.85-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
@@ -50,4 +56,4 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
 
 EXPOSE 3100
 
-ENTRYPOINT ["tumult-mcp"]
+ENTRYPOINT ["tumult-mcp", "--transport", "http"]
