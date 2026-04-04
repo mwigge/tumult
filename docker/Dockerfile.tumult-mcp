@@ -1,11 +1,8 @@
 # Tumult MCP Server — HTTP/SSE entrypoint variant
 #
-# This is a thin wrapper around the main tumult image that changes
-# the default entrypoint to start the MCP server in HTTP mode.
-# Both images contain identical binaries and plugins.
+# Same contents as Dockerfile.tumult but defaults to MCP server mode.
 #
 # Build:
-#   docker build -f docker/Dockerfile.tumult -t tumult .
 #   docker build -f docker/Dockerfile.tumult-mcp -t tumult-mcp .
 #
 # Run:
@@ -14,10 +11,7 @@
 # Equivalent to:
 #   docker run --network tumult-e2e -p 3100:3100 tumult tumult-mcp --transport http
 
-FROM rust:1.89-slim AS builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+FROM rust:1.89-bookworm AS builder
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
@@ -33,15 +27,14 @@ COPY tumult-kubernetes/ tumult-kubernetes/
 COPY tumult-clickhouse/ tumult-clickhouse/
 COPY tumult-test-utils/ tumult-test-utils/
 
-RUN cargo build --release -p tumult-cli -p tumult-mcp
+RUN cargo build --release -p tumult-cli -p tumult-mcp && \
+    strip target/release/tumult target/release/tumult-mcp
 
 # ── Runtime ─────────────────────────────────────────────────
 
-FROM debian:bookworm-slim AS runtime
+FROM rust:1.89-bookworm AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates docker.io openssh-client curl wget && \
-    rm -rf /var/lib/apt/lists/*
+RUN rm -rf /usr/local/cargo /usr/local/rustup
 
 COPY --from=builder /build/target/release/tumult /usr/local/bin/
 COPY --from=builder /build/target/release/tumult-mcp /usr/local/bin/
