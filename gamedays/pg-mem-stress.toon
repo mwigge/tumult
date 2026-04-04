@@ -1,0 +1,30 @@
+title: PostgreSQL memory stress — resource pressure
+description: Inject memory stress on PG container, measure query impact
+
+tags[2]: postgres, stress
+
+steady_state_hypothesis:
+  title: PostgreSQL accepts queries
+  probes[1]:
+    - name: pg-responds
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT version()' | head -1"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "PostgreSQL"
+
+method[1]:
+  - name: mem-stress
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest stress --duration 5s --stress-vm 1 docker-postgres-1"
+      timeout_s: 10.0
+    pause_after_s: 2.0
+
+rollbacks[0]:
