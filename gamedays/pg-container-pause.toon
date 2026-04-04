@@ -1,12 +1,12 @@
 title: PostgreSQL container pause — total unavailability
-description: Freeze PG container for 5 seconds, verify recovery
+description: Freeze PG container for 5 seconds via Pumba, verify full recovery
 
 tags[2]: postgres, pumba
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries
   probes[1]:
-    - name: pg-responds
+    - name: pg-version
       activity_type: probe
       provider:
         type: process
@@ -18,7 +18,7 @@ steady_state_hypothesis:
         pattern: "PostgreSQL"
 
 method[1]:
-  - name: pause-postgres
+  - name: pause-postgres-5s
     activity_type: action
     provider:
       type: process
@@ -27,4 +27,11 @@ method[1]:
       timeout_s: 10.0
     pause_after_s: 2.0
 
-rollbacks[0]:
+rollbacks[1]:
+  - name: ensure-pg-unpaused
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker unpause docker-postgres-1 2>/dev/null || true"
+      timeout_s: 10.0

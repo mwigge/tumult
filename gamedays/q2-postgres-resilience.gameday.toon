@@ -23,13 +23,13 @@ load:
   duration_s: 60.0
 
 experiments[4]:
-  - path: gamedays/pg-connection-kill.toon
+  - path: pg-connection-kill.toon
     compliance_maps[1]: DORA-Art25
-  - path: gamedays/pg-container-pause.toon
+  - path: pg-container-pause.toon
     compliance_maps[2]: DORA-Art25, DORA-Art11
-  - path: gamedays/pg-cpu-stress.toon
+  - path: pg-cpu-stress.toon
     compliance_maps[1]: DORA-Art25
-  - path: gamedays/pg-mem-stress.toon
+  - path: pg-mem-stress.toon
     compliance_maps[1]: DORA-Art25
 
 scoring:
