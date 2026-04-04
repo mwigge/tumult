@@ -20,7 +20,7 @@ The Tumult blog series covers the platform end-to-end, from first principles to 
 | [Statistical Baselines](08-statistical-baselines.md) | IQR, percentile, mean/stddev — replacing magic numbers with evidence |
 | [Compliance as Code](09-regulatory-compliance.md) | DORA, NIS2, PCI-DSS 4.0 — experiments as regulatory evidence |
 | [Chaos Under Load](10-chaos-under-load.md) | Combining `tumult-network` and `tumult-loadtest` for realistic fault testing |
-| [The Road Ahead](11-road-ahead.md) | MCP integration, Phase 3–5, and the future of autonomous resilience |
 | [The Full Span Waterfall](12-traces-in-production.md) | Real SigNoz traces from a live Tumult experiment — the observability proof |
 | [Load During Chaos](13-load-during-chaos.md) | k6 load testing concurrent with fault injection — proving disruption in numbers |
-| [GameDay Is Here](14-gameday-is-here.md) | Coordinated experiment campaigns with resilience scoring and DORA/NIS2 compliance mapping |
+| [GameDay Is Here](14-gameday-is-here.md) | Coordinated campaigns with resilience scoring — 4/4 PASS, Score 1.00, COMPLIANT |
+| [The Road Ahead](15-road-ahead.md) | What's delivered (Phases 0-8), what's next, the full series index |
