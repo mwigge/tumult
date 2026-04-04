@@ -1,0 +1,201 @@
+gameday_id: "a5d8b8b7-ef92-4097-b644-ef240d0ce3a2"
+title: Q2 PostgreSQL Resilience Programme
+started_at_ns: 1775281607288252000
+ended_at_ns: 1775281667591934000
+duration_s: 60.304823583
+experiment_journals[4]:
+  - experiment_title: PostgreSQL connection kill under load
+    experiment_id: "6d2724fc-0c19-4849-bec5-fbae80a3caed"
+    status: completed
+    started_at_ns: 1775281607288786000
+    ended_at_ns: 1775281609513917000
+    duration_ms: 2225
+    steady_state_before:
+      title: PostgreSQL accepts queries and has active connections
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281607288802000,55,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,fa7ec0881520d3fd
+    steady_state_after:
+      title: PostgreSQL accepts queries and has active connections
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281609465456000,48,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,5541674e9f73c2e2
+    method_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+      "kill-connections",action,succeeded,1775281607344640000,41,"pg_terminate_backend \n----------------------\n(0 rows)",57bdc82f0b4667c496569eaad18a5516,a420448dfe4cdb1a
+      "verify-connections-restored",probe,succeeded,1775281609388370000,77,"1",57bdc82f0b4667c496569eaad18a5516,ccc533ce8f9f7ab3
+    rollback_results[0]:
+    rollback_failures: 0
+    estimate: null
+    baseline_result: null
+    during_result:
+      started_at_ns: 1775281609513950000
+      ended_at_ns: 1775281609625168000
+      fault_active_s: 0.111218
+      sample_interval_s: 1
+      probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+        "pg-version",3,36.666666666666664,42,33,0,0
+    post_result:
+      started_at_ns: 1775281609625169000
+      ended_at_ns: 1775281609735212000
+      duration_s: 0.110043
+      samples: 3
+      probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+        "pg-version",36,38,0,true,0
+      recovery_time_s: 0
+      full_recovery: true
+      mttr_s: 0
+    load_result: null
+    analysis: null
+    regulatory: null
+  - experiment_title: PostgreSQL container pause — total unavailability
+    experiment_id: "39812a38-bdef-41fb-980e-862b16f63c8f"
+    status: completed
+    started_at_ns: 1775281609735221000
+    ended_at_ns: 1775281617129848000
+    duration_ms: 7394
+    steady_state_before:
+      title: PostgreSQL accepts queries
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281609735258000,33,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,4e62bced2c7e2ca5
+    steady_state_after:
+      title: PostgreSQL accepts queries
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281617019873000,109,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,51a6634488347b32
+    method_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+      "pause-postgres-5s",action,succeeded,1775281609768608000,5250,57bdc82f0b4667c496569eaad18a5516,7f3dbf06cc3589aa
+    rollback_results[0]:
+    rollback_failures: 0
+    estimate: null
+    baseline_result: null
+    during_result:
+      started_at_ns: 1775281617129889000
+      ended_at_ns: 1775281617272484000
+      fault_active_s: 0.142595
+      sample_interval_s: 1
+      probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+        "pg-version",3,47,54,41,0,0
+    post_result:
+      started_at_ns: 1775281617272485000
+      ended_at_ns: 1775281617377210000
+      duration_s: 0.104725
+      samples: 3
+      probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+        "pg-version",34.333333333333336,36,0,true,0
+      recovery_time_s: 0
+      full_recovery: true
+      mttr_s: 0
+    load_result: null
+    analysis: null
+    regulatory: null
+  - experiment_title: PostgreSQL CPU stress — resource pressure
+    experiment_id: "508441c2-91c3-4f9c-850e-2d69e5c49679"
+    status: completed
+    started_at_ns: 1775281617377216000
+    ended_at_ns: 1775281628003935000
+    duration_ms: 10626
+    steady_state_before:
+      title: PostgreSQL accepts queries
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281617377257000,34,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,64a5636ec1e0f513
+    steady_state_after:
+      title: PostgreSQL accepts queries
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281627920029000,83,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,8e176a430fcfff2d
+    method_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+      "cpu-stress-5s",action,succeeded,1775281617411543000,8503,57bdc82f0b4667c496569eaad18a5516,4a6f41fcb4c5c24d
+    rollback_results[0]:
+    rollback_failures: 0
+    estimate: null
+    baseline_result: null
+    during_result:
+      started_at_ns: 1775281628004022000
+      ended_at_ns: 1775281628118925000
+      fault_active_s: 0.114903
+      sample_interval_s: 1
+      probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+        "pg-version",3,37.666666666666664,46,33,0,0
+    post_result:
+      started_at_ns: 1775281628118926000
+      ended_at_ns: 1775281628236167000
+      duration_s: 0.117241
+      samples: 3
+      probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+        "pg-version",38.333333333333336,47,0,true,0
+      recovery_time_s: 0
+      full_recovery: true
+      mttr_s: 0
+    load_result: null
+    analysis: null
+    regulatory: null
+  - experiment_title: PostgreSQL memory stress — resource pressure
+    experiment_id: "c34b9f5b-9bca-46b4-b313-8e43d0af6f5f"
+    status: completed
+    started_at_ns: 1775281628236173000
+    ended_at_ns: 1775281637178548000
+    duration_ms: 8942
+    steady_state_before:
+      title: PostgreSQL accepts queries
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281628236205000,31,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,a5ac17a0adc64c92
+    steady_state_after:
+      title: PostgreSQL accepts queries
+      met: true
+      probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+        "pg-version",probe,succeeded,1775281637089828000,88,"PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",57bdc82f0b4667c496569eaad18a5516,82a10d852c48808e
+    method_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+      "mem-stress-5s",action,succeeded,1775281628268119000,6820,57bdc82f0b4667c496569eaad18a5516,27f3ab7b4af51677
+    rollback_results[0]:
+    rollback_failures: 0
+    estimate: null
+    baseline_result: null
+    during_result:
+      started_at_ns: 1775281637178586000
+      ended_at_ns: 1775281637332026000
+      fault_active_s: 0.15344
+      sample_interval_s: 1
+      probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+        "pg-version",3,50.666666666666664,73,34,0,0
+    post_result:
+      started_at_ns: 1775281637332028000
+      ended_at_ns: 1775281637430503000
+      duration_s: 0.098475
+      samples: 3
+      probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+        "pg-version",32.333333333333336,34,0,true,0
+      recovery_time_s: 0
+      full_recovery: true
+      mttr_s: 0
+    load_result: null
+    analysis: null
+    regulatory: null
+load_result:
+  tool: k6
+  started_at_ns: 1775281607288766000
+  ended_at_ns: 1775281667591777000
+  duration_s: 60.303011
+  vus: 5
+  throughput_rps: 49.602327
+  latency_p50_ms: 100.96
+  latency_p95_ms: 101.2
+  latency_p99_ms: 0
+  error_rate: 0.0003355704697986577
+  total_requests: 2980
+  thresholds_met: true
+resilience_score:
+  pass_rate: 1
+  recovery_compliance: 1
+  load_impact_tolerance: 0.9996644295302013
+  compliance_coverage: 1
+  overall: 0.9999161073825504
+compliance_status: COMPLIANT
+regulatory:
+  frameworks[2]: DORA,NIS2
+  requirements[3]{id,description,evidence}:
+    "DORA-Art24",ICT resilience testing programme,Quarterly GameDay with 4 fault scenarios under shared load
+    "DORA-Art25","Scenario-based testing of ICT tools and systems","Connection kill, container pause, CPU stress, memory stress"
+    "DORA-Art11",Response and recovery,MTTR measured across all experiments
