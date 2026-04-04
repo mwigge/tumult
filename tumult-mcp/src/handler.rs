@@ -165,6 +165,28 @@ pub struct GameDayListTool {
     pub path: Option<String>,
 }
 
+// ── Intelligence tools (agent reasoning) ─────────────────────
+
+#[macros::mcp_tool(
+    name = "tumult_recommend",
+    description = "Recommend what to test next — analyzes coverage gaps, failure patterns, and stale experiments. Returns actionable suggestions for an agent or engineer."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct RecommendTool {
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}
+
+#[macros::mcp_tool(
+    name = "tumult_coverage",
+    description = "Coverage report — which plugins, actions, and targets have been tested vs available. Shows per-plugin test status (FULL/PARTIAL/NONE) and store statistics."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct CoverageTool {
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}
+
 // ── Process executor (shared pattern with CLI) ────────────────
 
 pub struct ProcessExecutor;
@@ -442,6 +464,8 @@ impl ServerHandler for TumultHandler {
                 GameDayRunTool::tool(),
                 GameDayAnalyzeTool::tool(),
                 GameDayListTool::tool(),
+                RecommendTool::tool(),
+                CoverageTool::tool(),
             ],
             meta: None,
             next_cursor: None,
@@ -552,6 +576,14 @@ impl ServerHandler for TumultHandler {
                 };
                 tools::gameday_list(&search_root)
             }
+            "tumult_recommend" => {
+                let args: RecommendTool = parse_args(&params)?;
+                tools::recommend(&args.store_path)
+            }
+            "tumult_coverage" => {
+                let args: CoverageTool = parse_args(&params)?;
+                tools::coverage(&args.store_path)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -601,8 +633,10 @@ mod tests {
             GameDayRunTool::tool(),
             GameDayAnalyzeTool::tool(),
             GameDayListTool::tool(),
+            RecommendTool::tool(),
+            CoverageTool::tool(),
         ];
-        assert_eq!(tools.len(), 14);
+        assert_eq!(tools.len(), 16);
     }
 
     #[test]
