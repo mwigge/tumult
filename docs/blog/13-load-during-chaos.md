@@ -192,4 +192,8 @@ tumult analyze
 
 The numbers tell the story.
 
+*Try Tumult at [tumult.rs](https://tumult.rs)*
+
+*Next in the series: [Part 14 — GameDay Is Here →](./14-gameday-is-here.md)*
+
 ---

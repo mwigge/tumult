@@ -18,25 +18,25 @@ We have covered a lot of ground in this series: the Rust-native architecture, th
 
 ## Where We Are Today
 
-Tumult has completed its first two phases:
+Tumult has delivered Phases 0 through 7, with Phase 8 in progress:
 
-**Phase 0 — Foundation**: The core engine (`tumult-core`), CLI (`tumult-cli`), OTel integration (`tumult-otel`), and plugin framework (`tumult-plugin`) are production-ready. The five-phase experiment lifecycle, the TOON format, the journal structure, and the `resilience.*` attribute namespace are stable.
+**Phases 0-2 — Foundation + Plugins**: 11 Rust crates, 10 plugins (45 chaos actions), native Kubernetes (kube-rs) and SSH (russh), DuckDB + Arrow analytics pipeline, Parquet/CSV/JSON export. All production-ready.
 
-**Phase 1 — Essential Plugins**: SSH remote execution (`tumult-ssh`), resource stress (`tumult-stress`), container chaos (`tumult-containers`), and process chaos (`tumult-process`) are complete and documented.
+**Phases 3-5 — Automation + Analytics + Compliance**: MCP server with 11 tools, persistent DuckDB + ClickHouse dual-mode analytics, 7 regulatory compliance frameworks (DORA, NIS2, PCI-DSS, ISO-22301, ISO-27001, SOC2, Basel III) with article-level detail and official source URLs.
 
-**Phase 2 — Platform Plugins (In Progress)**: Kubernetes (`tumult-kubernetes`), database chaos (PostgreSQL, MySQL, Redis), Kafka, network chaos, and the analytics pipeline (`tumult-analytics`) are being actively developed.
+**Phase 6 — Hardening**: SSH session pool, proptest, cargo-audit in CI, security assessment, zero unsafe blocks across all crates.
 
-The binary runs. Experiments execute. Journals are produced. OTel spans appear in Jaeger. SQL queries run against DuckDB. This is working software, not a roadmap document.
+**Phase 7 — Infrastructure**: SigNoz standalone, OTel Collector (contrib), Docker Compose stacks with 22 pre-built dashboards, tumult.rs website.
+
+**Phase 8 — GameDay (In Progress)**: Coordinated experiment campaigns with shared load, resilience scoring, and compliance article mapping. The first GameDay (Q2 PostgreSQL Resilience) ran 4/4 PASS with a resilience score of 1.00.
+
+162 platform tests at 99.4% pass rate. 585 unit tests. Zero failures.
 
 ---
 
-## Phase 3: The MCP Server
+## The MCP Server
 
-The most significant upcoming capability is the Model Context Protocol (MCP) server adapter. This is where Tumult's design decisions — the compact TOON format, the structured data model, the clean API separation between engine and adapter — pay off most clearly.
-
-### What MCP enables
-
-MCP is a standard protocol for AI agents to discover and call tools. An MCP server exposes a set of capabilities that any MCP-compatible agent can call. When Tumult becomes an MCP server, it exposes:
+The Model Context Protocol server is already shipped (Phase 3). It exposes 11 tools that any MCP-compatible agent can call:
 
 ```
 tumult.discover_plugins()        → list available fault injection capabilities
