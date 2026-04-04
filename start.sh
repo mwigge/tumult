@@ -13,7 +13,7 @@
 #   infra   — PostgreSQL, Redis, Kafka, SSH (chaos targets)
 #   observe — SigNoz standalone + OTel Collector
 #   tumult  — Tumult MCP server (containerized)
-#   aqe     — Agentic QE Fleet (future)
+#   aqe     — Agentic QE Fleet (requires ../agentic-qe clone)
 
 set -eu
 
@@ -22,6 +22,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 INFRA="docker compose -f ${COMPOSE_DIR}/docker-compose.yml"
 OBSERVE="docker compose -f ${COMPOSE_DIR}/docker-compose.observability.yml"
+AQE="docker compose -f ${COMPOSE_DIR}/docker-compose.aqe.yml"
 TUMULT="docker compose -f ${COMPOSE_DIR}/docker-compose.tumult.yml"
 
 # Ensure network exists
@@ -42,8 +43,13 @@ start_bundle() {
             ${TUMULT} up -d
             ;;
         aqe)
-            echo "Agentic QE bundle not yet available."
-            echo "Follow progress at https://github.com/mwigge/tumult"
+            if [ ! -d "${PROJECT_DIR}/../agentic-qe" ]; then
+                echo "Agentic QE not found. Clone it first:"
+                echo "  git clone https://github.com/proffesor-for-testing/agentic-qe.git ../agentic-qe"
+                return 1 2>/dev/null || exit 1
+            fi
+            echo "Starting Agentic QE Fleet..."
+            ${AQE} up -d
             ;;
         *)
             echo "Unknown bundle: $1"
