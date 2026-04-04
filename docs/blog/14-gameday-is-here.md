@@ -162,33 +162,79 @@ One GameDay, two regulations, documented in a single journal.
 
 ## Real Results
 
-The Q2 PostgreSQL Resilience Programme ran against a live Docker stack with shared k6 load:
+The Q2 PostgreSQL Resilience Programme ran against live Docker infrastructure via the MCP HTTP/SSE transport — the same way an external agent or CI pipeline would run it:
 
 ```
 GameDay: Q2 PostgreSQL Resilience Programme
-Status:  4/4 PASS (COMPLIANT)
-Duration: 60.3s
-
-  #1 [PASS] PostgreSQL connection kill under load (2225ms)
-  #2 [PASS] PostgreSQL container pause — total unavailability (7394ms)
-  #3 [PASS] PostgreSQL CPU stress — resource pressure (10626ms)
-  #4 [PASS] PostgreSQL memory stress — resource pressure (8942ms)
-
+Status: COMPLIANT
+Duration: 29.2s
 Resilience Score: 1.00
-  Pass rate:    1.00  Recovery: 1.00  Load: 1.00  Compliance: 1.00
 
-Load (k6): 2,980 requests, p95=101ms, error_rate=0.03%
+  #1 [PASS] PostgreSQL connection kill under load (2197ms)
+  #2 [PASS] PostgreSQL container pause — total unavailability (7402ms)
+  #3 [PASS] PostgreSQL CPU stress — resource pressure (9331ms)
+  #4 [PASS] PostgreSQL memory stress — resource pressure (9305ms)
+
+Score breakdown:
+  Pass rate:    1.00
+  Recovery:     1.00
+  Load impact:  1.00
+  Compliance:   1.00
 ```
 
-Four fault scenarios. One minute. Full compliance evidence. All under shared load.
+Four fault scenarios. 29 seconds. Full compliance evidence. The analytics store accumulates all results across runs — 67 experiments, 244 activities queryable via SQL.
+
+### Pipeline
+
+The demo exercises the full agent-to-compliance pipeline:
+
+```
+Agent (HTTP client)
+    │ POST http://localhost:3100/mcp
+    ▼
+tumult-mcp (14 MCP tools, session management)
+    │
+    ▼
+tumult-core (5-phase lifecycle, GameDay orchestrator)
+    │
+    ├── tumult-db-postgres plugin → docker exec → PostgreSQL
+    ├── tumult-containers plugin → docker pause/unpause
+    ├── tumult-stress plugin → stress-ng CPU/memory
+    └── tumult-analytics → DuckDB → resilience score → compliance map
+```
 
 ## Try It
 
+One command runs the entire demo — starts infrastructure, connects via MCP, runs the GameDay, analyzes results, shows compliance mapping:
+
 ```bash
+./scripts/gameday-demo.sh
+```
+
+Or step by step:
+
+```bash
+# Install
 curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
-make up-targets
+
+# Start targets
+./start.sh infra
+
+# Run GameDay
 tumult gameday run gamedays/q2-postgres-resilience.gameday.toon
+
+# Analyze
 tumult gameday analyze gamedays/q2-postgres-resilience.gameday.toon
+
+# SQL analytics
+tumult analyze --all --query "SELECT title, status, duration_ms FROM experiments"
+```
+
+Or use the pre-built Docker images (no Rust needed):
+
+```bash
+docker pull ghcr.io/mwigge/tumult:latest
+docker pull ghcr.io/mwigge/tumult-mcp:latest
 ```
 
 The resilience score tells the story. The journal is the evidence. The compliance mapping is the bridge between engineering and regulation.
