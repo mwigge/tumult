@@ -14,7 +14,7 @@
 # Equivalent to:
 #   docker run --network tumult-e2e -p 3100:3100 tumult tumult-mcp --transport http
 
-FROM rust:1.85-slim AS builder
+FROM rust:1.89-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*

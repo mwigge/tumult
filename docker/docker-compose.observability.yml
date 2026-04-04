@@ -67,8 +67,6 @@ services:
   #
   # Tumult CLI sends to this collector on :14317.
   # This collector forwards to SigNoz on :4317.
-  #
-  # For custom builds, see docker/tumult-collector/Dockerfile.
 
   tumult-collector:
     image: otel/opentelemetry-collector-contrib:0.114.0
