@@ -1,0 +1,40 @@
+# Agentic QE Fleet — autonomous quality engineering agents
+#
+# Connects to the Tumult MCP server for chaos engineering capabilities.
+# Requires: infra + tumult bundles running first.
+#
+# Setup:
+#   git clone https://github.com/proffesor-for-testing/agentic-qe.git ../agentic-qe
+#   ./start.sh all
+#
+# The chaos-engineer agent connects to tumult-mcp on :3100 via MCP.
+
+services:
+  agentic-qe:
+    build:
+      context: ../../agentic-qe
+      dockerfile: Dockerfile
+    environment:
+      # Tumult MCP connection
+      TUMULT_MCP_URL: http://tumult-mcp:3100/mcp
+      TUMULT_MCP_TOKEN: ${TUMULT_MCP_TOKEN:-tumult-dev}
+
+      # Observability endpoints (for trace correlation)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      SIGNOZ_URL: http://signoz:8080
+
+      # Chaos target info
+      TUMULT_PG_HOST: postgres
+      TUMULT_PG_PORT: 5432
+      TUMULT_REDIS_HOST: redis
+      TUMULT_REDIS_PORT: 6379
+    depends_on:
+      tumult-mcp:
+        condition: service_healthy
+    networks:
+      - tumult-e2e
+
+networks:
+  tumult-e2e:
+    name: tumult-e2e
+    external: true
