@@ -133,6 +133,38 @@ pub struct ListExperimentsTool {
     pub path: Option<String>,
 }
 
+// ── GameDay tools ─────────────────────────────────────────────
+
+#[macros::mcp_tool(
+    name = "tumult_gameday_run",
+    description = "Run a GameDay — execute all experiments in a .gameday.toon file under shared load. Returns resilience score and compliance status."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct GameDayRunTool {
+    /// Path to the `.gameday.toon` file.
+    pub gameday_path: String,
+}
+
+#[macros::mcp_tool(
+    name = "tumult_gameday_analyze",
+    description = "Analyze a completed GameDay journal — returns resilience score, per-experiment results, and compliance article mapping."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct GameDayAnalyzeTool {
+    /// Path to the `.gameday.toon` file (reads the .journal.toon alongside it).
+    pub gameday_path: String,
+}
+
+#[macros::mcp_tool(
+    name = "tumult_gameday_list",
+    description = "List available GameDay files (.gameday.toon) in the workspace."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct GameDayListTool {
+    /// Optional subdirectory to search within.
+    pub path: Option<String>,
+}
+
 // ── Process executor (shared pattern with CLI) ────────────────
 
 pub struct ProcessExecutor;
@@ -407,12 +439,16 @@ impl ServerHandler for TumultHandler {
                 StoreStatsTool::tool(),
                 AnalyzeStoreTool::tool(),
                 ListExperimentsTool::tool(),
+                GameDayRunTool::tool(),
+                GameDayAnalyzeTool::tool(),
+                GameDayListTool::tool(),
             ],
             meta: None,
             next_cursor: None,
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_call_tool_request(
         &self,
         params: CallToolRequestParams,
@@ -497,6 +533,25 @@ impl ServerHandler for TumultHandler {
                 };
                 tools::list_experiments(&search_root)
             }
+            "tumult_gameday_run" => {
+                let args: GameDayRunTool = parse_args(&params)?;
+                let path = self.resolve_path(&args.gameday_path)?;
+                tools::gameday_run(&path)
+            }
+            "tumult_gameday_analyze" => {
+                let args: GameDayAnalyzeTool = parse_args(&params)?;
+                let path = self.resolve_path(&args.gameday_path)?;
+                tools::gameday_analyze(&path)
+            }
+            "tumult_gameday_list" => {
+                let args: GameDayListTool = parse_args(&params)?;
+                let search_root = if let Some(ref p) = args.path {
+                    self.resolve_path(p)?
+                } else {
+                    self.workspace_root.to_str().unwrap_or_default().to_string()
+                };
+                tools::gameday_list(&search_root)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -530,7 +585,7 @@ mod tests {
     use tumult_core::runner::ActivityExecutor;
 
     #[test]
-    fn all_eleven_tools_listed() {
+    fn all_tools_listed() {
         let tools = vec![
             RunExperimentTool::tool(),
             ValidateTool::tool(),
@@ -543,8 +598,11 @@ mod tests {
             StoreStatsTool::tool(),
             AnalyzeStoreTool::tool(),
             ListExperimentsTool::tool(),
+            GameDayRunTool::tool(),
+            GameDayAnalyzeTool::tool(),
+            GameDayListTool::tool(),
         ];
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 14);
     }
 
     #[test]
