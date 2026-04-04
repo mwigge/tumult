@@ -1,0 +1,38 @@
+title: Q2 PostgreSQL Resilience Programme
+description: Quarterly DORA resilience testing — connection kill, container pause, CPU stress, memory stress under load
+
+tags[3]: gameday, postgres, dora
+
+regulatory:
+  frameworks[2]: DORA, NIS2
+  requirements[3]:
+    - id: DORA-Art24
+      description: ICT resilience testing programme
+      evidence: Quarterly GameDay with 4 fault scenarios under shared load
+    - id: DORA-Art25
+      description: Scenario-based testing of ICT tools and systems
+      evidence: Connection kill, container pause, CPU stress, memory stress
+    - id: DORA-Art11
+      description: Response and recovery
+      evidence: MTTR measured across all experiments
+
+load:
+  tool: k6
+  script: examples/k6/smoke-test.js
+  vus: 5
+  duration_s: 60.0
+
+experiments[4]:
+  - path: gamedays/pg-connection-kill.toon
+    compliance_maps[1]: DORA-Art25
+  - path: gamedays/pg-container-pause.toon
+    compliance_maps[2]: DORA-Art25, DORA-Art11
+  - path: gamedays/pg-cpu-stress.toon
+    compliance_maps[1]: DORA-Art25
+  - path: gamedays/pg-mem-stress.toon
+    compliance_maps[1]: DORA-Art25
+
+scoring:
+  pass_threshold: 0.75
+  mttr_target_s: 30.0
+  recovery_required: true

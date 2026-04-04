@@ -199,6 +199,12 @@ enum Commands {
         #[command(subcommand)]
         action: StoreAction,
     },
+    /// Coordinated experiment campaigns with resilience scoring
+    #[command(name = "gameday")]
+    GameDay {
+        #[command(subcommand)]
+        action: GameDayAction,
+    },
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -221,6 +227,40 @@ enum StoreAction {
     Path,
     /// Migrate data from `DuckDB` to `ClickHouse`
     Migrate,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum GameDayAction {
+    /// Create a `.gameday.toon` file from experiment paths
+    Create {
+        /// Name for the `GameDay`
+        name: String,
+        /// Experiment `.toon` files (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        experiments: Vec<PathBuf>,
+        /// Load tool to run during the `GameDay`
+        #[arg(long, value_enum)]
+        load: Option<LoadToolArg>,
+        /// Path to load test script
+        #[arg(long)]
+        load_script: Option<PathBuf>,
+        /// Number of virtual users
+        #[arg(long)]
+        load_vus: Option<u32>,
+        /// Compliance framework to map
+        #[arg(long)]
+        framework: Option<ComplianceFramework>,
+    },
+    /// Run all experiments in a `GameDay` under shared load
+    Run {
+        /// Path to `.gameday.toon` file
+        gameday: PathBuf,
+    },
+    /// Show aggregate analysis of a completed `GameDay`
+    Analyze {
+        /// Path to `.gameday.toon` file (uses journals from same directory)
+        gameday: PathBuf,
+    },
 }
 
 /// Parse `--var KEY=VALUE` arguments into a `HashMap`.
@@ -414,6 +454,45 @@ async fn main() -> anyhow::Result<()> {
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
             StoreAction::Migrate => commands::cmd_store_migrate().await?,
+        },
+        Commands::GameDay { action } => match action {
+            GameDayAction::Create {
+                name,
+                experiments,
+                load,
+                load_script,
+                load_vus,
+                framework,
+            } => {
+                let load_tool = load.map(|l| match l {
+                    LoadToolArg::K6 => "k6",
+                    LoadToolArg::Jmeter => "jmeter",
+                    LoadToolArg::None => "none",
+                });
+                let fw = framework.map(|f| match f {
+                    ComplianceFramework::Dora => "DORA",
+                    ComplianceFramework::Nis2 => "NIS2",
+                    ComplianceFramework::PciDss => "PCI-DSS",
+                    ComplianceFramework::Iso22301 => "ISO-22301",
+                    ComplianceFramework::Iso27001 => "ISO-27001",
+                    ComplianceFramework::Soc2 => "SOC2",
+                    ComplianceFramework::BaselIii => "Basel-III",
+                });
+                commands::cmd_gameday_create(
+                    &name,
+                    &experiments,
+                    load_tool,
+                    load_script.as_deref(),
+                    load_vus,
+                    fw,
+                )?;
+            }
+            GameDayAction::Run { gameday } => {
+                commands::cmd_gameday_run(&gameday)?;
+            }
+            GameDayAction::Analyze { gameday } => {
+                commands::cmd_gameday_analyze(&gameday)?;
+            }
         },
     }
 
