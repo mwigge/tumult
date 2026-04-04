@@ -1,0 +1,39 @@
+# Tumult MCP Server — chaos engine container
+#
+# Provides the full Tumult platform as an MCP-accessible service.
+# Connects to the chaos targets and observability stack.
+#
+# Usage:
+#   docker compose -f docker-compose.tumult.yml up -d
+#   # or via start.sh:
+#   ./start.sh tumult
+
+services:
+  tumult-mcp:
+    image: tumult-mcp:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.tumult-mcp
+    ports:
+      - "3100:3100"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - tumult-store:/root/.tumult
+      - ../plugins:/opt/tumult/plugins:ro
+      - ../examples:/opt/tumult/examples:ro
+      - ../gamedays:/opt/tumult/gamedays:ro
+    environment:
+      TUMULT_MCP_TOKEN: ${TUMULT_MCP_TOKEN:-tumult-dev}
+      TUMULT_PLUGIN_PATH: /opt/tumult/plugins
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      TUMULT_OTEL_ENABLED: "true"
+    networks:
+      - tumult-e2e
+
+volumes:
+  tumult-store:
+
+networks:
+  tumult-e2e:
+    name: tumult-e2e
+    external: true
