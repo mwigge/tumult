@@ -301,6 +301,10 @@ The cost of maintaining a structured testing programme with Tumult is significan
 
 For platform teams, this is the conversation that turns chaos engineering from "interesting engineering practice" to "critical business requirement."
 
+**Update:** All 7 compliance frameworks now output official source URLs and article-level detail. DORA (EU 2022/2554) is clearly disambiguated from DevOps DORA metrics. GameDay orchestration maps entire testing programmes to compliance articles with aggregate resilience scoring. See [Part 14 — GameDay Is Here](./14-gameday-is-here.md).
+
 ---
 
-*Next in the series: [Part 10 — Chaos Under Load: Network Faults and Load Testing →](./10-chaos-under-load.md)*
+*Try Tumult at [tumult.rs](https://tumult.rs)*
+
+*Next in the series: [Part 10 — Chaos Under Load →](./10-chaos-under-load.md)*
