@@ -1657,7 +1657,7 @@ Use this section to record actual test execution results.
 | Field | Value |
 |-------|-------|
 | **Date** | 2026-04-01 |
-| **Tester** | w199447 |
+| **Tester** | mwigge |
 | **Platform** | macOS Darwin 25.4.0 (arm64, Apple Silicon) |
 | **Rust version** | stable 1.82+ |
 | **Tumult version** | 0.1.0 |
