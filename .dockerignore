@@ -1,0 +1,9 @@
+target/
+rust_out/
+.git/
+docs_local/
+*.md
+!README.md
+.github/
+.claude/
+openspec/
