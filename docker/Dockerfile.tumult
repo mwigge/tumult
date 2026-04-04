@@ -1,12 +1,19 @@
-# Tumult MCP Server — chaos engineering as an MCP service
+# Tumult CLI — portable chaos engineering tool
+#
+# No Rust toolchain needed. Run experiments, analyze results,
+# execute GameDays — all from a container.
 #
 # Build:
-#   docker build -f docker/Dockerfile.tumult-mcp -t tumult-mcp .
+#   docker build -f docker/Dockerfile.tumult -t tumult .
 #
-# Run:
-#   docker run --network tumult-e2e -p 3100:3100 tumult-mcp
+# Usage:
+#   docker run tumult run /opt/tumult/examples/redis-chaos.toon
+#   docker run tumult analyze --all
+#   docker run tumult gameday run /opt/tumult/gamedays/q2-postgres-resilience.gameday.toon
+#   docker run tumult discover
+#   docker run tumult --help
 #
-# See also: Dockerfile.tumult for the CLI tool image.
+# See also: Dockerfile.tumult-mcp for the MCP server image.
 
 FROM rust:1.82-slim AS builder
 
@@ -27,27 +34,22 @@ COPY tumult-kubernetes/ tumult-kubernetes/
 COPY tumult-clickhouse/ tumult-clickhouse/
 COPY tumult-test-utils/ tumult-test-utils/
 
-RUN cargo build --release -p tumult-cli -p tumult-mcp
+RUN cargo build --release -p tumult-cli
 
 # ── Runtime ─────────────────────────────────────────────────
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates docker.io openssh-client curl wget && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/tumult /usr/local/bin/
-COPY --from=builder /build/target/release/tumult-mcp /usr/local/bin/
 COPY plugins/ /opt/tumult/plugins/
 COPY examples/ /opt/tumult/examples/
 COPY gamedays/ /opt/tumult/gamedays/
 
 ENV TUMULT_PLUGIN_PATH=/opt/tumult/plugins
 
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD tumult --version || exit 1
-
-EXPOSE 3100
-
-ENTRYPOINT ["tumult-mcp"]
+ENTRYPOINT ["tumult"]
+CMD ["--help"]
