@@ -1,7 +1,7 @@
 ---
 title: "The Road Ahead: Autonomous Chaos, MCP, and the Future"
 parent: Blog
-nav_order: 11
+nav_order: 15
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Road Ahead: Autonomous Chaos, MCP, and the Future of Resilience Engineering
@@ -157,33 +157,58 @@ An experiment that passes because the tolerance was too loose is not evidence of
 
 ## Summary: The Series
 
-We have covered:
+## What's Been Delivered
+
+Since this post was first written, Tumult has shipped everything from Phases 0 through 7 — and Phase 8 is in progress:
+
+| Phase | What | Status |
+|-------|------|--------|
+| 0-6 | Core engine, 10 plugins, DuckDB analytics, OTel, MCP, compliance, hardening | Done |
+| 7 | SigNoz observability, Docker Compose stacks, custom collector | Done |
+| 8 | **GameDay orchestration** — coordinated campaigns with resilience scoring | In Progress |
+
+**What's new since the original roadmap:**
+
+- **Load testing during chaos** — k6 runs concurrently via `--load` flag, real disruption measured in numbers
+- **Native plugin dispatch** — tumult-kubernetes (kube-rs) and tumult-ssh (russh) wired into the experiment runner
+- **Pumba network chaos** — 10 container-scoped actions, cross-platform
+- **GameDay orchestration** — `tumult gameday run` executes coordinated campaigns with shared load, resilience scoring, and DORA/NIS2 compliance mapping
+- **Default `tumult analyze`** — structured summaries without SQL, `--last N`, `--all` aggregate
+- **tumult.rs** — live website with landing page and interactive demo
+- **162 platform tests, 99.4% pass** — zero failures, zero issues
+
+## What's Next
+
+- **GameDay dashboards** — pre-built SigNoz dashboards filtered by gameday_id
+- **GameDay DuckDB table** — `gamedays` table for SQL analytics over campaigns
+- **HTTP chaos** — nginx target in Docker stack for HTTP fault injection
+- **Agentic QE integration** — autonomous experiment composition via MCP
+- **Production GameDay templates** — industry-specific templates for financial services, e-commerce, healthcare
+
+## The Series
 
 1. [Introducing Tumult](./01-introducing-tumult.md) — what it is, why Rust, why now
-2. [The AI Advantage](./02-ai-advantage.md) — the TOON format and token efficiency for LLM analysis
-3. [Built-In Observability](./03-built-in-observability.md) — native OTel, span hierarchy, the `resilience.*` namespace
-4. [The Plugin System](./04-plugin-system.md) — script plugins, native plugins, the no-Rust requirement
-5. [The Experiment Format](./05-experiment-format.md) — TOON in depth, all sections and providers
-6. [The Analytics Pipeline](./06-analytics-pipeline.md) — DuckDB, SQL queries, Parquet export
-7. [Kubernetes Chaos](./07-kubernetes-chaos.md) — tumult-kubernetes, pod/deployment/node/network scenarios
-8. [Statistical Baselines](./08-statistical-baselines.md) — data-derived tolerances, baseline methods
-9. [Regulatory Compliance](./09-regulatory-compliance.md) — DORA, NIS2, PCI-DSS evidence generation
-10. [The Road Ahead](./10-road-ahead.md) — MCP, autonomous chaos, Phase 3-5 roadmap
-
-Each post in this series corresponds to a capability you can use today (Phases 0-2) or will be able to use in the near term (Phases 3-5). The foundation is built. The trajectory is clear.
+2. [The AI Advantage](./02-ai-advantage.md) — TOON format and LLM readiness
+3. [Built-In Observability](./03-built-in-observability.md) — native OTel spans
+4. [The Plugin System](./04-plugin-system.md) — script and native plugins
+5. [The Experiment Format](./05-experiment-format.md) — TOON in depth
+6. [The Analytics Pipeline](./06-analytics-pipeline.md) — DuckDB + Arrow + Parquet
+7. [Kubernetes Chaos](./07-kubernetes-chaos.md) — pod, deployment, node chaos
+8. [Statistical Baselines](./08-statistical-baselines.md) — data-derived tolerances
+9. [Regulatory Compliance](./09-regulatory-compliance.md) — DORA, NIS2, PCI-DSS
+10. [Chaos Under Load](./10-chaos-under-load.md) — network faults + load testing
+12. [The Full Span Waterfall](./12-traces-in-production.md) — real SigNoz traces
+13. [Load During Chaos](./13-load-during-chaos.md) — proving disruption in numbers
+14. [GameDay Is Here](./14-gameday-is-here.md) — compliance programmes with resilience scoring
 
 ---
 
 **Start here:**
 
 ```bash
-git clone https://github.com/mwigge/tumult.git
-cd tumult
-cargo build --release
-cp target/release/tumult /usr/local/bin/
-tumult init
-tumult validate experiment.toon
-tumult run experiment.toon --dry-run
+curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
+tumult run examples/redis-chaos.toon
+tumult gameday run gamedays/q2-postgres-resilience.gameday.toon
 ```
 
-Chaos engineering shouldn't create chaos for your platform team. That was the premise. Tumult is how we deliver on it.
+Chaos engineering that proves compliance — not just resilience. That was the premise. Tumult delivers on it.

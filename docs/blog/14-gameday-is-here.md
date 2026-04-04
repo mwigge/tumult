@@ -160,10 +160,32 @@ One GameDay, two regulations, documented in a single journal.
 
 ---
 
+## Real Results
+
+The Q2 PostgreSQL Resilience Programme ran against a live Docker stack with shared k6 load:
+
+```
+GameDay: Q2 PostgreSQL Resilience Programme
+Status:  4/4 PASS (COMPLIANT)
+Duration: 60.3s
+
+  #1 [PASS] PostgreSQL connection kill under load (2225ms)
+  #2 [PASS] PostgreSQL container pause — total unavailability (7394ms)
+  #3 [PASS] PostgreSQL CPU stress — resource pressure (10626ms)
+  #4 [PASS] PostgreSQL memory stress — resource pressure (8942ms)
+
+Resilience Score: 1.00
+  Pass rate:    1.00  Recovery: 1.00  Load: 1.00  Compliance: 1.00
+
+Load (k6): 2,980 requests, p95=101ms, error_rate=0.03%
+```
+
+Four fault scenarios. One minute. Full compliance evidence. All under shared load.
+
 ## Try It
 
 ```bash
-git clone https://github.com/mwigge/tumult.git && cd tumult
+curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
 make up-targets
 tumult gameday run gamedays/q2-postgres-resilience.gameday.toon
 tumult gameday analyze gamedays/q2-postgres-resilience.gameday.toon
