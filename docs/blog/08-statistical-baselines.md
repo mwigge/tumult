@@ -329,6 +329,10 @@ tumult run experiment.toon --baseline-mode only
 
 `--baseline-mode only` is useful for getting a snapshot of current system behavior without any risk of fault injection. Use it to verify the experiment configuration and understand what the derived tolerances would be before running the full experiment.
 
+**Update:** All baseline statistical methods are validated with property-based tests (proptest). The `--baseline-mode skip|only|full` flags work as described.
+
 ---
 
-*Next in the series: [Part 9 — Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult →](./09-regulatory-compliance.md)*
+*Try Tumult at [tumult.rs](https://tumult.rs)*
+
+*Next in the series: [Part 9 — Compliance as Code →](./09-regulatory-compliance.md)*
