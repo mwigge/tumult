@@ -181,15 +181,23 @@ nav_exclude: true
   <img src="/images/tumult.png" alt="Tumult" class="hero-logo">
   <h1>Embrace the <span>Tumult</span></h1>
   <p class="tagline">
-    Rust-native chaos engineering. One binary. Native OpenTelemetry. Embedded analytics.
-    Data-driven and LLM-ready — every result flows into structured pipelines as readable
-    by machines as by engineers.
+    Rust-native chaos engineering. GameDay orchestration with resilience scoring.
+    DORA/NIS2 compliance mapping. MCP server for agent fleets.
+    Every result flows into DuckDB analytics — queryable, exportable, audit-ready.
   </p>
 
   <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
     <div>
       <span class="prompt">$</span>
       curl -sSL https://tumult.rs/install.sh | sh
+    </div>
+    <span class="copy-hint">click to copy</span>
+  </div>
+
+  <div class="install-box" onclick="navigator.clipboard.writeText('docker pull ghcr.io/mwigge/tumult:latest')" style="max-width: 480px;">
+    <div>
+      <span class="prompt">$</span>
+      docker pull ghcr.io/mwigge/tumult:latest
     </div>
     <span class="copy-hint">click to copy</span>
   </div>
@@ -209,8 +217,8 @@ nav_exclude: true
 <!-- Stats                                                -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="stats">
-  <div class="stat"><div class="num">562</div><div class="label">Unit Tests</div></div>
-  <div class="stat"><div class="num">166</div><div class="label">Platform Tests</div></div>
+  <div class="stat"><div class="num">574</div><div class="label">Unit Tests</div></div>
+  <div class="stat"><div class="num">14</div><div class="label">MCP Tools</div></div>
   <div class="stat"><div class="num">10</div><div class="label">Plugins</div></div>
   <div class="stat"><div class="num">45</div><div class="label">Chaos Actions</div></div>
   <div class="stat"><div class="num">0</div><div class="label">Unsafe Blocks</div></div>
@@ -246,16 +254,24 @@ nav_exclude: true
     <p>100% safe Rust across all 11 crates. Zero <code>unsafe</code> blocks. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🌐</span> Custom OTel Collector</h3>
-    <p>Purpose-built collector with OTLP + Arrow receivers, ClickHouse storage, Prometheus metrics, and span-to-metrics APM. Traces, metrics, and logs in one pipeline.</p>
+    <h3><span class="icon">🎯</span> GameDay Orchestration</h3>
+    <p>Coordinated campaigns of experiments with shared load, resilience scoring, and compliance article mapping. One command: 4 experiments, DORA/NIS2 evidence, audit-ready journal.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🤖</span> LLM-Ready</h3>
-    <p>TOON format is 40-50% more token-efficient than JSON. MCP server exposes 11 tools for autonomous experiment orchestration. Structured output feeds directly into analysis pipelines.</p>
+    <h3><span class="icon">🌐</span> MCP Server (HTTP/SSE)</h3>
+    <p>14 MCP tools over stdio or HTTP/SSE. Agent fleets, CI/CD pipelines, and quality engineering systems connect via standard Streamable HTTP protocol. Session management and resumability built in.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🐳</span> Docker Test Stack</h3>
-    <p>One command starts PostgreSQL, Redis, Kafka, SSH, ClickHouse, and the OTel Collector. Run real chaos experiments against real infrastructure in minutes.</p>
+    <h3><span class="icon">🤖</span> Agent-Ready</h3>
+    <p>TOON format is 40-50% more token-efficient than JSON. Pre-built Docker images on GHCR. Any MCP-compatible agent can discover plugins, run experiments, query analytics, and generate compliance reports.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🐳</span> Docker Images</h3>
+    <p>Pre-built on GHCR — no Rust toolchain needed. <code>docker pull ghcr.io/mwigge/tumult</code>. Composable bundles: infra, observability, MCP server, agent fleet. Full e2e in one command.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">📡</span> SigNoz Observability</h3>
+    <p>OTel Collector (contrib) with OTLP + Arrow receivers, span-to-metrics APM, host metrics, Prometheus. Traces flow to SigNoz — dashboards, alerting, log aggregation. No custom build needed.</p>
   </div>
 </section>
 
@@ -287,6 +303,43 @@ nav_exclude: true
 </script>
 
 <!-- ════════════════════════════════════════════════════ -->
+<!-- GameDay Results                                       -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="demo-section">
+  <h2>GameDay: One Command, Full Compliance</h2>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <div class="terminal-dot red"></div>
+      <div class="terminal-dot yellow"></div>
+      <div class="terminal-dot green"></div>
+    </div>
+    <div class="terminal-body">
+<span class="prompt-sign">$</span> <span class="cmd">./scripts/gameday-demo.sh</span>
+<span class="output">
+Targets: ✓ postgres  ✓ redis  ✓ kafka
+MCP Session: 2609892c-8e73-4587-b96a-56eaf6020ec6
+
+Discovering chaos capabilities:
+  Plugins: 10 | Actions: 45
+
+Running Q2 PostgreSQL Resilience GameDay...
+  Compliance: DORA EU 2022/2554 Art. 11, 24, 25 | NIS2
+</span>
+<span class="success">  GameDay: Q2 PostgreSQL Resilience Programme
+  Status: COMPLIANT
+  Resilience Score: 1.00
+    #1 [PASS] Connection kill under load       (2197ms)
+    #2 [PASS] Container pause — total outage   (7402ms)
+    #3 [PASS] CPU stress — resource pressure   (9331ms)
+    #4 [PASS] Memory stress — resource pressure (9305ms)</span>
+<span class="output">
+  Score: Pass 1.00 | Recovery 1.00 | Load 1.00 | Compliance 1.00
+  Store: 67 experiments, 244 activities (DuckDB)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
 <!-- Architecture                                         -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section">
@@ -310,10 +363,11 @@ nav_exclude: true
 <!-- ════════════════════════════════════════════════════ -->
 <section class="cta">
   <h2>Ready to Build Resilience?</h2>
-  <p>One command to install. One command to run your first chaos experiment.</p>
+  <p>One command to install. One script to run a full DORA-compliant GameDay.</p>
   <div class="hero-buttons">
     <a href="https://github.com/mwigge/tumult" class="btn-primary-custom">View on GitHub</a>
-    <a href="/guides/experiment-format/" class="btn-secondary-custom">Read the Docs</a>
+    <a href="https://github.com/mwigge/tumult/blob/main/QUICKSTART.md" class="btn-secondary-custom">Quickstart</a>
+    <a href="/blog/14-gameday-is-here/" class="btn-secondary-custom">GameDay Guide</a>
   </div>
 </section>
 
