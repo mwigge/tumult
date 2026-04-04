@@ -1,0 +1,77 @@
+name: Plugin Suggestion
+description: Suggest a new chaos action or probe for the Tumult platform
+title: "[plugin-suggestion] "
+labels: ["plugin-suggestion", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest a new chaos action or probe. Include the script code and
+        manifest so reviewers can evaluate the implementation.
+
+  - type: input
+    id: plugin-name
+    attributes:
+      label: Plugin name
+      description: "Which plugin does this belong to? (e.g., tumult-db-postgres, tumult-network, or a new plugin name)"
+      placeholder: "tumult-db-postgres"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component-type
+    attributes:
+      label: Component type
+      options:
+        - action (mutates system state)
+        - probe (observes system state)
+    validations:
+      required: true
+
+  - type: input
+    id: component-name
+    attributes:
+      label: Component name
+      description: "Name for the action or probe (e.g., check-replication-lag)"
+      placeholder: "check-replication-lag"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: "What does this component do? When would you use it?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: script
+    attributes:
+      label: Script implementation
+      description: "The shell script (bash/sh) that implements the action or probe."
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Plugin manifest entry (TOON)
+      description: "The entry to add to plugin.toon"
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment variables
+      description: "TUMULT_* environment variables the script expects"
+      render: text
+
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: "How to verify this works (Docker targets needed, expected output)"
