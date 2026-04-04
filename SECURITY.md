@@ -12,9 +12,7 @@ If you discover a security vulnerability in Tumult, please report it responsibly
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email: **security@tumult.dev**
-
-Or use [GitHub's private vulnerability reporting](https://github.com/mwigge/tumult/security/advisories/new).
+Please use [GitHub's private vulnerability reporting](https://github.com/mwigge/tumult/security/advisories/new) to report security issues.
 
 ### What to include
 
