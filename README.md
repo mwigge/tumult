@@ -29,6 +29,26 @@ Then run your first chaos experiment:
 tumult run examples/redis-chaos.toon
 ```
 
+### Run a full GameDay (E2E)
+
+One script — starts infrastructure, runs 4 PostgreSQL resilience experiments via MCP, scores results, maps to DORA compliance:
+
+```bash
+./scripts/gameday-demo.sh
+```
+
+```
+GameDay: Q2 PostgreSQL Resilience Programme
+Status: COMPLIANT
+Resilience Score: 1.00
+  #1 [PASS] PostgreSQL connection kill under load
+  #2 [PASS] PostgreSQL container pause — total unavailability
+  #3 [PASS] PostgreSQL CPU stress — resource pressure
+  #4 [PASS] PostgreSQL memory stress — resource pressure
+
+Compliance: DORA EU 2022/2554 Art. 11, 24, 25 | NIS2
+```
+
 See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough, or watch the **[interactive demo](https://tumult.rs/#demo-player)** on the website.
 
 <details>
