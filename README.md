@@ -150,7 +150,7 @@ cargo install tumult --features kubernetes,aws
 | **tumult-baseline** | Native (Rust) | Statistical baseline derivation, percentiles, deviation detection |
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
-| **tumult-mcp** | Native (Rust) | MCP server with 11 tools for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 14 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
@@ -169,11 +169,17 @@ See [docs/plugins/](docs/plugins/) for detailed documentation per plugin.
 Tumult ships a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server, enabling AI assistants to run, analyze, and create chaos experiments natively.
 
 ```bash
-# Start the MCP server (stdio transport)
-tumult mcp
+# Stdio transport (IDE integration)
+tumult-mcp
+
+# HTTP/SSE transport (containers, agent fleets, CI/CD)
+tumult-mcp --transport http --port 3100
+
+# Docker (HTTP mode by default)
+docker run --network tumult-e2e -p 3100:3100 tumult-mcp
 
 # With authentication (recommended in production)
-TUMULT_MCP_TOKEN=my-secret tumult mcp
+TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http
 ```
 
 | MCP Tool | Description |
@@ -189,6 +195,9 @@ TUMULT_MCP_TOKEN=my-secret tumult mcp
 | `tumult_store_stats` | Return persistent store statistics |
 | `tumult_analyze_store` | SQL query directly against the persistent DuckDB store |
 | `tumult_list_experiments` | List experiment .toon files in a directory |
+| `tumult_gameday_run` | Run a coordinated GameDay campaign |
+| `tumult_gameday_analyze` | Analyze GameDay results with resilience scoring |
+| `tumult_gameday_list` | List available GameDay definitions |
 
 ### Authentication
 
@@ -378,13 +387,19 @@ The OTel Collector automatically scrapes all services:
 
 ## Docker Test Infrastructure
 
-Tumult provides composable Docker Compose stacks for testing. All ports use the `1xxxx` range.
+Tumult provides composable Docker bundles. Use `start.sh` for one-command setup:
 
 ```bash
-cd docker/
-docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
-docker compose -f docker-compose.yml -f docker-compose.observability.yml ps
+./start.sh                  # infra + observe (default)
+./start.sh infra            # chaos targets only
+./start.sh infra observe    # targets + observability
+./start.sh tumult           # MCP server (HTTP, needs infra)
+./start.sh all              # everything including AQE
+./start.sh down             # stop all
+./start.sh status           # container health
 ```
+
+All ports use the `1xxxx` range to avoid conflicts.
 
 | Stack | Service | Port | Purpose |
 |-------|---------|------|---------|
@@ -433,7 +448,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (11 tools), AI-assisted chaos engineering | Done |
+| **3 — Automation** | MCP server (14 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
@@ -679,8 +694,10 @@ tumult compliance journals/ --framework dora
 # Export to Parquet for external tools
 tumult export journal.toon --format parquet
 
-# Start MCP server (with optional auth)
-TUMULT_MCP_TOKEN=my-secret tumult mcp
+# Start MCP server (stdio for IDE, HTTP for containers)
+tumult-mcp                                # stdio (default)
+tumult-mcp --transport http --port 3100   # HTTP/SSE
+TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http  # with auth
 ```
 
 See [CLI Reference](docs/guides/cli-reference.md) for full command documentation.
@@ -714,7 +731,7 @@ make clean           # cargo clean + docker compose down
 | JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
 | opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
 | Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
-| No AI integration | `tumult-mcp` (11 MCP tools) | AI assistants run experiments natively |
+| No AI integration | `tumult-mcp` (14 MCP tools) | AI assistants run experiments natively |
 | Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---

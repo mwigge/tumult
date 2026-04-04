@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -91,9 +92,53 @@ jobs:
           name: tumult-${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
 
+  docker:
+    name: Publish Docker images
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - image: tumult
+            dockerfile: docker/Dockerfile.tumult
+          - image: tumult-mcp
+            dockerfile: docker/Dockerfile.tumult-mcp
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2  # v3.10.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198e19c816612b  # v6.18.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run --rm ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.version.outputs.version }} --version
+
   release:
     name: Create Release
-    needs: build
+    needs: [build, docker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -115,12 +160,44 @@ jobs:
           sha256sum *.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda  # v2.2.1
         with:
           files: |
             release/*.tar.gz
             release/SHA256SUMS.txt
+          body: |
+            ## Docker Images
+
+            Both images contain the full Tumult platform: CLI + MCP server, all 10 plugins (45 actions), examples, and GameDay definitions.
+
+            | Image | Description | Pull |
+            |-------|-------------|------|
+            | `tumult` | CLI tool (default entrypoint) | `docker pull ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }}` |
+            | `tumult-mcp` | MCP server (HTTP/SSE mode) | `docker pull ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}` |
+
+            ```bash
+            # Run CLI commands
+            docker run ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} discover
+            docker run ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} --help
+
+            # Start MCP server
+            docker run -p 3100:3100 ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}
+
+            # Or use the CLI image with MCP entrypoint override
+            docker run -p 3100:3100 ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} tumult-mcp --transport http
+            ```
+
+            ## Binary Downloads
+
+            See assets below. One-liner install:
+            ```bash
+            curl -fsSL https://github.com/mwigge/tumult/releases/download/v${{ steps.version.outputs.version }}/tumult-v${{ steps.version.outputs.version }}-$(uname -m | sed 's/arm64/aarch64/')-apple-darwin.tar.gz | tar xz && sudo mv tumult-*/tumult /usr/local/bin/
+            ```
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
