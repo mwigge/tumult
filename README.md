@@ -82,6 +82,7 @@ Tumult solves these issues by being built in Rust:
 - [MCP Server (AI Integration)](#mcp-server-ai-integration)
 - [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
 - [Load Testing During Chaos](#load-testing-during-chaos)
+- [GameDay Orchestration](#gameday-orchestration)
 - [OpenTelemetry Observability](#opentelemetry-observability)
 - [Security](#security)
 - [Hardening](#hardening)
@@ -259,6 +260,47 @@ JOIN load_results l ON e.experiment_id = l.experiment_id
 WHERE l.error_rate > 0.01
 ```
 
+## GameDay Orchestration
+
+A GameDay is a **coordinated campaign** of experiments that runs under shared load and maps results to regulatory compliance articles. It's the difference between "we ran a test" and "we executed a quarterly resilience testing programme per DORA Article 24."
+
+```bash
+# Create a GameDay from existing experiments
+tumult gameday create q2-postgres-resilience \
+  --load k6 --load-script examples/k6/smoke-test.js \
+  --experiments gamedays/pg-connection-kill.toon,gamedays/pg-container-pause.toon,gamedays/pg-cpu-stress.toon,gamedays/pg-mem-stress.toon \
+  --framework dora
+
+# Run all experiments under shared load
+tumult gameday run q2-postgres-resilience.gameday.toon
+
+# View aggregate results with resilience score
+tumult gameday analyze q2-postgres-resilience.gameday.toon
+```
+
+Output:
+
+```
+GameDay: Q2 PostgreSQL Resilience Programme
+Status:  4/4 PASS (COMPLIANT)
+Duration: 45.2s
+
+  #1 [PASS] PG connection kill (8200ms)
+  #2 [PASS] PG container pause (10700ms)
+  #3 [PASS] PG CPU stress (15300ms)
+  #4 [PASS] PG memory stress (12100ms)
+
+Resilience Score: 0.91
+  Pass rate:    1.00  Recovery: 0.85  Load: 0.90  Compliance: 0.80
+
+Compliance:
+  DORA Art. 24 — Testing programme:   MET
+  DORA Art. 25 — Scenario testing:    MET
+  DORA Art. 11 — Response & recovery: MET
+```
+
+See `gamedays/q2-postgres-resilience.gameday.toon` for the reference example.
+
 ## OpenTelemetry Observability
 
 Tumult creates **real OpenTelemetry spans** across every module — not just the experiment runner, but SSH, Kubernetes, plugin execution, baseline acquisition, analytics pipeline, MCP dispatch, and ClickHouse storage.
@@ -396,7 +438,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
 | **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
-| **8 — Deployment** | AQE integration, GameDay orchestration, dashboards | Planned |
+| **8 — GameDay & Deployment** | GameDay orchestration with resilience scoring, DORA/NIS2 compliance mapping, AQE integration | In Progress |
 
 ## Security
 
