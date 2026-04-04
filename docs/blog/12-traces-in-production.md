@@ -171,4 +171,6 @@ The trace is automatic. Open SigNoz at `http://localhost:3301`, navigate to Trac
 
 ---
 
-*Next in the series: building custom SigNoz dashboards for resilience scoring and experiment trend analysis.*
+*Try Tumult at [tumult.rs](https://tumult.rs)*
+
+*Next in the series: [Part 13 — Load During Chaos →](./13-load-during-chaos.md)*
