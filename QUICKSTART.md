@@ -2,26 +2,39 @@
 
 Get Tumult running in 5 minutes.
 
-## One-command setup
+## Install
+
+### Option A: From source
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
 ```
 
-Or clone and run manually:
+Builds the binary, starts Docker targets, runs a verification experiment. Requires [Rust](https://rustup.rs/) and Docker.
+
+### Option B: Docker (no Rust toolchain needed)
 
 ```bash
-git clone https://github.com/mwigge/tumult.git && cd tumult && ./install.sh
+docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
+docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
 ```
 
-This builds the binary, starts Docker targets (PostgreSQL, Redis, Kafka, SSH), and runs a verification experiment.
-
-## Step-by-step
-
-### 1. Build
+Both images contain the full platform: 11 crates, 10 plugins, 45 actions, examples, GameDays.
 
 ```bash
-cargo build --release -p tumult-cli
+# Run CLI commands
+docker run --rm ghcr.io/mwigge/tumult discover
+docker run --rm ghcr.io/mwigge/tumult --help
+
+# Start MCP server for agent access
+docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
+```
+
+### Option C: Clone and build
+
+```bash
+git clone https://github.com/mwigge/tumult.git && cd tumult
+cargo build --release -p tumult-cli -p tumult-mcp
 ```
 
 ### 2. Start infrastructure
@@ -101,27 +114,50 @@ tumult discover
 tumult init
 ```
 
-## Add observability
+## Run a GameDay (full e2e)
 
-Start the full observability stack with traces, metrics, and dashboards:
+One command — starts infrastructure, runs 4 PostgreSQL resilience experiments via MCP, scores results, maps to DORA compliance:
 
 ```bash
-make up
+./scripts/gameday-demo.sh
 ```
 
-Then run experiments with OpenTelemetry:
+Output:
+```
+GameDay: Q2 PostgreSQL Resilience Programme
+Status: COMPLIANT
+Resilience Score: 1.00
+  #1 [PASS] PostgreSQL connection kill under load (2197ms)
+  #2 [PASS] PostgreSQL container pause — total unavailability (7402ms)
+  #3 [PASS] PostgreSQL CPU stress — resource pressure (9331ms)
+  #4 [PASS] PostgreSQL memory stress — resource pressure (9305ms)
+
+Compliance: DORA EU 2022/2554 Art. 11, 24, 25 | NIS2
+```
+
+The demo script exercises the full pipeline: Agent → MCP HTTP → experiment runner → plugins → Docker targets → DuckDB analytics → compliance mapping.
+
+## Add observability
+
+Start the full stack with SigNoz dashboards:
+
+```bash
+./start.sh infra observe
+```
+
+Then run experiments with OpenTelemetry tracing:
 
 ```bash
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run examples/redis-chaos.toon
 ```
 
-Traces flow to ClickHouse and are visible in the collector's Prometheus metrics at `http://localhost:18889/metrics`.
+Open SigNoz at http://localhost:3301 to see traces, metrics, and dashboards.
 
 | Endpoint | What |
 |----------|------|
+| localhost:3301 | SigNoz UI (traces, metrics, logs) |
 | localhost:14317 | OTLP gRPC (send traces here) |
 | localhost:18889 | Prometheus metrics (host + APM) |
-| localhost:18123 | ClickHouse HTTP (direct SQL) |
 | localhost:13133 | Collector health check |
 
 ## Bring your own target
