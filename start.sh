@@ -20,10 +20,17 @@ set -eu
 COMPOSE_DIR="$(cd "$(dirname "$0")/docker" && pwd)"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-INFRA="docker compose -f ${COMPOSE_DIR}/docker-compose.yml"
-OBSERVE="docker compose -f ${COMPOSE_DIR}/docker-compose.observability.yml"
-AQE="docker compose -f ${COMPOSE_DIR}/docker-compose.aqe.yml"
-TUMULT="docker compose -f ${COMPOSE_DIR}/docker-compose.tumult.yml"
+# Detect compose command (v2 plugin or standalone)
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE="docker compose"
+else
+    COMPOSE="docker-compose"
+fi
+
+INFRA="${COMPOSE} -f ${COMPOSE_DIR}/docker-compose.yml"
+OBSERVE="${COMPOSE} -f ${COMPOSE_DIR}/docker-compose.observability.yml"
+AQE="${COMPOSE} -f ${COMPOSE_DIR}/docker-compose.aqe.yml"
+TUMULT="${COMPOSE} -f ${COMPOSE_DIR}/docker-compose.tumult.yml"
 
 # Ensure network exists
 docker network create tumult-e2e 2>/dev/null || true

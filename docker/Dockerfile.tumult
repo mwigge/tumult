@@ -43,7 +43,11 @@ RUN cargo build --release -p tumult-cli -p tumult-mcp && \
 
 FROM rust:1.89-bookworm AS runtime
 
-RUN rm -rf /usr/local/cargo /usr/local/rustup
+# Install Docker CLI + tools needed by script plugins (docker exec, curl, ssh)
+# The bookworm repos are already cached in this image — no network fetch needed
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    docker.io openssh-client curl wget psmisc procps && \
+    rm -rf /var/lib/apt/lists/* /usr/local/cargo /usr/local/rustup
 
 COPY --from=builder /build/target/release/tumult /usr/local/bin/
 COPY --from=builder /build/target/release/tumult-mcp /usr/local/bin/
