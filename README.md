@@ -86,7 +86,8 @@ Tumult solves these issues by being built in Rust:
 - [OpenTelemetry Observability](#opentelemetry-observability)
 - [Security](#security)
 - [Hardening](#hardening)
-- [Docker Test Infrastructure](#docker-test-infrastructure)
+- [Docker Images](#docker-images)
+- [Local End-to-End Environment](#local-end-to-end-environment)
 - [Phasing & Roadmap](#phasing--roadmap)
 - [Example Experiment](#example-experiment)
 - [Quick Start](#quick-start)
@@ -385,36 +386,153 @@ The OTel Collector automatically scrapes all services:
 | Host | `hostmetrics` | CPU, memory, disk, network |
 | Tumult | OTLP | experiment spans, analytics gauges, script counters |
 
-## Docker Test Infrastructure
+## Docker Images
 
-Tumult provides composable Docker bundles. Use `start.sh` for one-command setup:
+Pre-built images are published to [GitHub Container Registry](https://ghcr.io/mwigge/tumult) on every release.
+
+```bash
+# Pull pre-built images (no Rust toolchain needed)
+docker pull ghcr.io/mwigge/tumult:latest        # CLI tool
+docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP/SSE)
+
+# Run CLI commands
+docker run --rm ghcr.io/mwigge/tumult discover
+docker run --rm ghcr.io/mwigge/tumult --help
+
+# Start MCP server
+docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
+```
+
+Both images contain the full platform: all 11 Rust crates, 10 plugins (45 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
+
+| Image | Entrypoint | Use case |
+|-------|-----------|----------|
+| `ghcr.io/mwigge/tumult` | `tumult` (CLI) | Run experiments, analyze, export, GameDays |
+| `ghcr.io/mwigge/tumult-mcp` | `tumult-mcp --transport http` | MCP server for agent fleets and CI/CD |
+
+## Local End-to-End Environment
+
+Tumult provides composable Docker bundles for a complete chaos engineering lab with observability. Use `start.sh` for one-command setup:
 
 ```bash
 ./start.sh                  # infra + observe (default)
 ./start.sh infra            # chaos targets only
 ./start.sh infra observe    # targets + observability
 ./start.sh tumult           # MCP server (HTTP, needs infra)
-./start.sh all              # everything including AQE
+./start.sh all              # everything
 ./start.sh down             # stop all
 ./start.sh status           # container health
 ```
 
-All ports use the `1xxxx` range to avoid conflicts.
+### Full stack architecture
 
-| Stack | Service | Port | Purpose |
-|-------|---------|------|---------|
-| Targets | PostgreSQL 16 | 15432 | Database chaos testing |
-| Targets | Redis 7 | 16379 | Cache chaos testing |
-| Targets | Kafka 3.8 (KRaft) | 19092 | Message broker chaos testing |
-| Targets | SSH Server | 12222 | Remote execution testing |
-| Observability | **Tumult OTel Collector** | 14317 | Custom-built OTLP gateway (traces, metrics, logs, Arrow) |
-| Observability | ClickHouse | 18123 | Persistent trace/metric storage |
-| Observability | Prometheus metrics | 18889 | Host + APM span metrics |
-| Observability | SigNoz | 13301 | Unified traces + metrics + logs dashboard |
-| Classic (opt) | Jaeger | 16686 | Trace visualization (`--profile classic`) |
-| Classic (opt) | Grafana | 13000 | Dashboards (`--profile classic`) |
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  ./start.sh all                                                         │
+├─────────────────┬─────────────────┬────────────────┬────────────────────┤
+│  infra bundle   │  observe bundle │  tumult bundle │  aqe bundle        │
+│                 │                 │                │                    │
+│  PostgreSQL 16  │  SigNoz UI      │  tumult-mcp    │  Agentic QE Fleet  │
+│  :15432         │  :3301          │  :3100 (HTTP)  │  (autonomous QE)   │
+│                 │                 │                │                    │
+│  Redis 7        │  OTel Collector │  14 MCP tools  │  Connects to       │
+│  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
+│                 │  :18889 (prom)  │  10 plugins    │                    │
+│  Kafka 3.8      │                 │  45 actions    │                    │
+│  :19092         │  ClickHouse     │                │                    │
+│                 │  (inside SigNoz)│                │                    │
+│  SSH Server     │                 │                │                    │
+│  :12222         │                 │                │                    │
+└─────────────────┴─────────────────┴────────────────┴────────────────────┘
+                          │                  │
+                          ▼                  ▼
+              ┌──────────────────────────────────────┐
+              │  tumult-e2e Docker network            │
+              │  All services communicate internally  │
+              └──────────────────────────────────────┘
+```
 
-The **Tumult OTel Collector** uses the standard [OpenTelemetry Collector Contrib](https://github.com/open-telemetry/opentelemetry-collector-contrib) image with a custom pipeline config. No build required — just `docker pull`. Includes OTLP + Arrow receivers, ClickHouse exporter, Prometheus metrics, host metrics, and span-to-metrics APM connector. See [docker/tumult-collector/config.yaml](docker/tumult-collector/config.yaml) for the pipeline configuration.
+### Port map
+
+All ports use the `1xxxx` range to avoid conflicts with local services.
+
+| Bundle | Service | Port | Purpose |
+|--------|---------|------|---------|
+| infra | PostgreSQL 16 | 15432 | Database chaos target |
+| infra | Redis 7 | 16379 | Cache chaos target |
+| infra | Kafka 3.8 (KRaft) | 19092 | Message broker chaos target |
+| infra | SSH Server | 12222 | Remote execution target |
+| observe | SigNoz UI | 3301 | Traces, metrics, logs dashboard |
+| observe | OTel Collector (OTLP) | 14317 | OTLP gRPC ingest |
+| observe | OTel Collector (Prom) | 18889 | Prometheus metrics (host + APM) |
+| observe | OTel Collector (health) | 13133 | Collector health endpoint |
+| tumult | MCP Server (HTTP/SSE) | 3100 | MCP tools for agents and CI/CD |
+| classic | Jaeger | 16686 | Trace visualization (optional) |
+| classic | Grafana | 13000 | Dashboards (optional) |
+
+### End-to-end workflow
+
+```bash
+# 1. Start infrastructure + observability
+./start.sh infra observe
+
+# 2. Run a chaos experiment (traces flow to SigNoz automatically)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317
+tumult run examples/postgres-failover.toon
+
+# 3. Analyze results with SQL
+tumult analyze --all --query "SELECT title, status, duration_ms FROM experiments"
+
+# 4. View traces in SigNoz
+open http://localhost:3301    # → Traces → Filter by service: tumult
+
+# 5. Run a GameDay campaign
+tumult gameday run gamedays/q2-postgres-resilience.gameday.toon
+
+# 6. Export for external tools
+tumult export --format parquet --output results.parquet
+
+# 7. Start MCP server for agent access
+./start.sh tumult
+# Agents connect to http://localhost:3100/mcp
+
+# 8. Stop everything
+./start.sh down
+```
+
+### OTel data flow
+
+```
+tumult run experiment.toon
+    │
+    ▼
+┌───────────────────────┐
+│  tumult-otel          │  7 canonical spans:
+│  (built into CLI)     │  resilience.experiment, .hypothesis.before/after,
+│                       │  .action, .probe, .rollback, .analytics.ingest
+└───────────┬───────────┘
+            │ OTLP gRPC :14317
+            ▼
+┌───────────────────────┐
+│  OTel Collector       │  Contrib image with:
+│  (tumult-collector)   │  - OTLP + Arrow receivers
+│                       │  - Span-to-metrics (APM)
+│                       │  - Host metrics
+│                       │  - Prometheus exporter (:18889)
+└───────────┬───────────┘
+            │ OTLP gRPC :4317
+            ▼
+┌───────────────────────┐
+│  SigNoz Standalone    │  - ClickHouse storage
+│  (all-in-one)         │  - Trace explorer
+│                       │  - Metrics dashboard
+│                       │  - Log aggregation
+│                       │  - Alerting
+│  UI: :3301            │
+└───────────────────────┘
+```
+
+The OTel Collector uses the standard [Contrib image](https://github.com/open-telemetry/opentelemetry-collector-contrib) — no custom build. See [docker/tumult-collector/config.yaml](docker/tumult-collector/config.yaml) for the pipeline configuration.
 
 ## Platform Test Protocol
 
@@ -453,7 +571,9 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
 | **7 — Infrastructure** | SigNoz observability platform, Docker Compose stacks | Done |
-| **8 — GameDay & Deployment** | GameDay orchestration with resilience scoring, DORA/NIS2 compliance mapping, AQE integration | In Progress |
+| **8 — GameDay** | GameDay orchestration with resilience scoring, DORA/NIS2 compliance mapping | Done |
+| **9 — Containerization** | HTTP/SSE transport, GHCR Docker images, composable bundles, e2e environment | Done |
+| **10 — Agentic QE** | AQE Fleet integration, autonomous chaos engineering, demo pipeline | In Progress |
 
 ## Security
 
