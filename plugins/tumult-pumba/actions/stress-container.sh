@@ -27,15 +27,15 @@ PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
 validate_enum "TUMULT_STRESS_TYPE" "$STRESS_TYPE" "cpu memory io all"
 validate_integer "TUMULT_CPU_WORKERS" "$CPU_WORKERS"
 
-STRESS_ARGS=""
+STRESSORS=""
 case "$STRESS_TYPE" in
-    cpu)  STRESS_ARGS="--stress-cpu ${CPU_WORKERS}" ;;
-    memory) STRESS_ARGS="--stress-vm ${MEM_WORKERS}" ;;
-    io) STRESS_ARGS="--stress-io ${IO_WORKERS}" ;;
-    all) STRESS_ARGS="--stress-cpu ${CPU_WORKERS} --stress-vm ${MEM_WORKERS} --stress-io ${IO_WORKERS}" ;;
+    cpu)  STRESSORS="--cpu ${CPU_WORKERS} --timeout ${DURATION}" ;;
+    memory) STRESSORS="--vm ${MEM_WORKERS} --vm-bytes 64M --timeout ${DURATION}" ;;
+    io) STRESSORS="--io ${IO_WORKERS} --timeout ${DURATION}" ;;
+    all) STRESSORS="--cpu ${CPU_WORKERS} --vm ${MEM_WORKERS} --io ${IO_WORKERS} --timeout ${DURATION}" ;;
 esac
 
-PUMBA_ARGS="stress -d ${DURATION} ${STRESS_ARGS}"
+PUMBA_ARGS="stress -d ${DURATION} --stressors=${STRESSORS}"
 
 if command -v pumba >/dev/null 2>&1; then
     pumba ${PUMBA_ARGS} "${CONTAINER}" >/dev/null 2>&1
