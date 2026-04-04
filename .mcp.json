@@ -3,6 +3,11 @@
     "tumult": {
       "command": "tumult-mcp",
       "args": []
+    },
+    "aqe": {
+      "command": "aqe-mcp",
+      "args": [],
+      "disabled": true
     }
   }
 }
