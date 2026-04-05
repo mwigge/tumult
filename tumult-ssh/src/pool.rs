@@ -16,7 +16,7 @@
 //! `Arc<SshPool>`.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::config::SshConfig;
 use crate::error::SshError;
@@ -42,9 +42,12 @@ impl PoolKey {
 
 /// A pooled SSH session entry: the live session plus the config used to
 /// (re)create it.
+///
+/// `config` is reference-counted so the return-to-pool path can store the
+/// same `Arc` back without cloning the full [`SshConfig`].
 struct PoolEntry {
     session: SshSession,
-    config: SshConfig,
+    config: Arc<SshConfig>,
 }
 
 /// Pool of reusable SSH sessions.
@@ -123,17 +126,19 @@ impl SshPool {
             guard.remove(&key)
         };
 
-        let session = if let Some(e) = entry {
+        // Arc used to avoid cloning SshConfig on the return-to-pool path.
+        let (session, arc_config) = if let Some(e) = entry {
             // Probe the cached session with a no-op to detect staleness.
             if e.session.execute("true").await.is_ok() {
-                e.session
+                (e.session, e.config)
             } else {
                 tracing::debug!(
                     host = %key.host,
                     port = key.port,
                     "cached SSH session stale — reconnecting"
                 );
-                SshSession::connect(e.config.clone()).await?
+                let new_session = SshSession::connect((*e.config).clone()).await?;
+                (new_session, e.config)
             }
         } else {
             tracing::debug!(
@@ -141,7 +146,9 @@ impl SshPool {
                 port = key.port,
                 "opening new SSH session"
             );
-            SshSession::connect(config.clone()).await?
+            let arc = Arc::new(config.clone());
+            let new_session = SshSession::connect((*arc).clone()).await?;
+            (new_session, arc)
         };
 
         let result = session.execute(command).await;
@@ -155,7 +162,7 @@ impl SshPool {
                 key,
                 PoolEntry {
                     session,
-                    config: config.clone(),
+                    config: arc_config,
                 },
             );
         }
