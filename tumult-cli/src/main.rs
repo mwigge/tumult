@@ -1,4 +1,8 @@
 use tumult_cli::commands;
+use tumult_cli::commands::{
+    build_load_override, parse_var_args, ComplianceFramework, ExportFormat, LoadToolArg,
+    ReportFormat,
+};
 
 use std::path::PathBuf;
 
@@ -32,19 +36,6 @@ enum OutputFormat {
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum ExportFormat {
-    Parquet,
-    Csv,
-    Json,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum ReportFormat {
-    Html,
-    Pdf,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum BaselineMode {
     /// Run full baseline then inject fault (default)
     Full,
@@ -52,29 +43,6 @@ enum BaselineMode {
     Skip,
     /// Run baseline only, no fault injection
     Only,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum LoadToolArg {
-    K6,
-    Jmeter,
-    /// Disable load even if experiment defines it
-    None,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum ComplianceFramework {
-    Dora,
-    Nis2,
-    #[value(name = "pci-dss")]
-    PciDss,
-    #[value(name = "iso-22301")]
-    Iso22301,
-    #[value(name = "iso-27001")]
-    Iso27001,
-    Soc2,
-    #[value(name = "basel-iii")]
-    BaselIii,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -263,71 +231,6 @@ enum GameDayAction {
     },
 }
 
-/// Parse `--var KEY=VALUE` arguments into a `HashMap`.
-///
-/// # Errors
-///
-/// Returns an error if any argument does not contain `=`.
-/// Builds a `LoadConfig` override from CLI flags.
-///
-/// Returns `None` if `--load none` was specified (explicitly disable load).
-/// Returns `Some(None)` if no load flags were given (use experiment default).
-/// Returns `Some(Some(config))` if load flags were specified (override experiment).
-fn build_load_override(
-    tool: Option<LoadToolArg>,
-    script: Option<PathBuf>,
-    vus: Option<u32>,
-    duration: Option<String>,
-) -> Option<tumult_core::types::LoadConfig> {
-    // --load none explicitly disables
-    if matches!(tool, Some(LoadToolArg::None)) {
-        return None;
-    }
-
-    let tool = tool?; // No --load flag at all → no override
-    let script = script.unwrap_or_else(|| PathBuf::from("load.js"));
-    let duration_s = duration.map(|d| parse_duration_str(&d));
-
-    let load_tool = match tool {
-        LoadToolArg::K6 => tumult_core::types::LoadTool::K6,
-        LoadToolArg::Jmeter => tumult_core::types::LoadTool::Jmeter,
-        LoadToolArg::None => unreachable!(),
-    };
-
-    Some(tumult_core::types::LoadConfig {
-        tool: load_tool,
-        script,
-        vus: Some(vus.unwrap_or(10)),
-        duration_s: duration_s.or(Some(30.0)),
-        thresholds: std::collections::HashMap::new(),
-    })
-}
-
-/// Parses a human duration like "30s", "5m", "1h" to seconds.
-fn parse_duration_str(s: &str) -> f64 {
-    let s = s.trim();
-    if let Some(num) = s.strip_suffix('s') {
-        num.parse().unwrap_or(30.0)
-    } else if let Some(num) = s.strip_suffix('m') {
-        num.parse::<f64>().unwrap_or(1.0) * 60.0
-    } else if let Some(num) = s.strip_suffix('h') {
-        num.parse::<f64>().unwrap_or(1.0) * 3600.0
-    } else {
-        s.parse().unwrap_or(30.0)
-    }
-}
-
-fn parse_var_args(vars: &[String]) -> anyhow::Result<std::collections::HashMap<String, String>> {
-    let mut map = std::collections::HashMap::new();
-    for entry in vars {
-        let (key, value) = entry.split_once('=').ok_or_else(|| {
-            anyhow::anyhow!("--var argument must be in KEY=VALUE format, got: {entry:?}")
-        })?;
-        map.insert(key.to_string(), value.to_string());
-    }
-    Ok(map)
-}
-
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
@@ -404,27 +307,13 @@ async fn main() -> anyhow::Result<()> {
             commands::cmd_analyze(journals.as_deref(), query.as_deref(), last, all)?;
         }
         Commands::Export { journal, format } => {
-            let fmt = match format {
-                ExportFormat::Parquet => "parquet",
-                ExportFormat::Csv => "csv",
-                ExportFormat::Json => "json",
-            };
-            commands::cmd_export(&journal, fmt)?;
+            commands::cmd_export(&journal, format)?;
         }
         Commands::Compliance {
             journals,
             framework,
         } => {
-            let fw = match framework {
-                ComplianceFramework::Dora => "DORA",
-                ComplianceFramework::Nis2 => "NIS2",
-                ComplianceFramework::PciDss => "PCI-DSS",
-                ComplianceFramework::Iso22301 => "ISO-22301",
-                ComplianceFramework::Iso27001 => "ISO-27001",
-                ComplianceFramework::Soc2 => "SOC2",
-                ComplianceFramework::BaselIii => "Basel-III",
-            };
-            commands::cmd_compliance(&journals, fw)?;
+            commands::cmd_compliance(&journals, framework)?;
         }
         Commands::Trend {
             journals,
@@ -439,11 +328,7 @@ async fn main() -> anyhow::Result<()> {
             output,
             format,
         } => {
-            let fmt = match format {
-                ReportFormat::Html => "html",
-                ReportFormat::Pdf => "pdf",
-            };
-            commands::cmd_report(&journal, output.as_deref(), fmt)?;
+            commands::cmd_report(&journal, output.as_deref(), format)?;
         }
         Commands::Import { parquet_dir } => {
             commands::cmd_import(&parquet_dir)?;
@@ -464,27 +349,13 @@ async fn main() -> anyhow::Result<()> {
                 load_vus,
                 framework,
             } => {
-                let load_tool = load.map(|l| match l {
-                    LoadToolArg::K6 => "k6",
-                    LoadToolArg::Jmeter => "jmeter",
-                    LoadToolArg::None => "none",
-                });
-                let fw = framework.map(|f| match f {
-                    ComplianceFramework::Dora => "DORA",
-                    ComplianceFramework::Nis2 => "NIS2",
-                    ComplianceFramework::PciDss => "PCI-DSS",
-                    ComplianceFramework::Iso22301 => "ISO-22301",
-                    ComplianceFramework::Iso27001 => "ISO-27001",
-                    ComplianceFramework::Soc2 => "SOC2",
-                    ComplianceFramework::BaselIii => "Basel-III",
-                });
                 commands::cmd_gameday_create(
                     &name,
                     &experiments,
-                    load_tool,
+                    load,
                     load_script.as_deref(),
                     load_vus,
-                    fw,
+                    framework,
                 )?;
             }
             GameDayAction::Run { gameday } => {
