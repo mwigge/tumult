@@ -150,6 +150,12 @@ impl AcquisitionStream {
     /// [`ProbeSamples`]. Does not consume the stream — samples can continue
     /// to be pushed after calling `derive`.
     ///
+    /// # Performance
+    ///
+    /// This method clones the entire `values` buffer on every call. For
+    /// one-shot derivation, prefer [`Self::finish`] which moves the buffer
+    /// instead of cloning it.
+    ///
     /// # Errors
     ///
     /// Returns [`AcquisitionError::NoSamplesAfterWarmup`] if no successful
