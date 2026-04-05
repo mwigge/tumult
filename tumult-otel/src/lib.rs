@@ -160,7 +160,10 @@ mod tests {
             ..TelemetryConfig::default()
         };
         let telemetry = TumultTelemetry::new(config);
-        assert!(telemetry.is_enabled());
+        // No OTLP endpoint and no console export means no provider is built,
+        // so is_enabled() correctly returns false — telemetry is configured but
+        // no spans are exported.  This is the correct behaviour after ERR-06 fix.
+        assert!(!telemetry.is_enabled());
         assert_eq!(telemetry.service_name(), "tumult");
         telemetry.shutdown();
     }
