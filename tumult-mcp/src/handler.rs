@@ -106,10 +106,11 @@ pub struct StoreStatsTool {
     pub store_path: String,
 }
 fn default_store_path() -> String {
-    tumult_analytics::AnalyticsStore::default_path()
-        .to_str()
-        .unwrap_or_default()
-        .to_string()
+    let path = tumult_analytics::AnalyticsStore::default_path();
+    path.to_str().map_or_else(
+        || ".tumult/analytics.db".to_string(),
+        std::string::ToString::to_string,
+    )
 }
 
 #[macros::mcp_tool(
@@ -438,10 +439,46 @@ impl TumultHandler {
     }
 
     /// Validate and resolve a user-supplied file path against the workspace root.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CallToolError` if the path escapes the workspace root or
+    /// the resolved path contains non-UTF-8 characters.
     fn resolve_path(&self, user_path: &str) -> std::result::Result<String, CallToolError> {
         let resolved = tools::safe_resolve_path(&self.workspace_root, user_path)
             .map_err(|e| CallToolError::invalid_arguments("path", Some(e.to_string())))?;
-        Ok(resolved.to_str().unwrap_or_default().to_string())
+        resolved
+            .to_str()
+            .map(std::string::ToString::to_string)
+            .ok_or_else(|| {
+                CallToolError::invalid_arguments(
+                    "path",
+                    Some(format!(
+                        "path contains non-UTF-8 characters: {}",
+                        resolved.display()
+                    )),
+                )
+            })
+    }
+
+    /// Return the workspace root as a UTF-8 string.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CallToolError` when the workspace root path contains non-UTF-8 characters.
+    fn workspace_root_str(&self) -> std::result::Result<String, CallToolError> {
+        self.workspace_root
+            .to_str()
+            .map(std::string::ToString::to_string)
+            .ok_or_else(|| {
+                CallToolError::invalid_arguments(
+                    "workspace_root",
+                    Some(format!(
+                        "workspace root path contains non-UTF-8 characters: {}",
+                        self.workspace_root.display()
+                    )),
+                )
+            })
     }
 
     /// Extract authorization token from `_meta.authorization` in the call params.
@@ -571,7 +608,7 @@ impl ServerHandler for TumultHandler {
                 let search_root = if let Some(ref p) = args.path {
                     self.resolve_path(p)?
                 } else {
-                    self.workspace_root.to_str().unwrap_or_default().to_string()
+                    self.workspace_root_str()?
                 };
                 tools::list_experiments(&search_root)
             }
@@ -590,7 +627,7 @@ impl ServerHandler for TumultHandler {
                 let search_root = if let Some(ref p) = args.path {
                     self.resolve_path(p)?
                 } else {
-                    self.workspace_root.to_str().unwrap_or_default().to_string()
+                    self.workspace_root_str()?
                 };
                 tools::gameday_list(&search_root)
             }
@@ -894,5 +931,28 @@ mod tests {
     fn handler_with_workspace_root_sets_path() {
         let handler = TumultHandler::with_workspace_root("/tmp".into());
         assert_eq!(handler.workspace_root, std::path::PathBuf::from("/tmp"));
+    }
+
+    #[test]
+    fn default_store_path_returns_non_empty_string() {
+        // Verifies default_store_path() never silently produces an empty string.
+        let path = default_store_path();
+        assert!(!path.is_empty(), "default_store_path must not be empty");
+    }
+
+    #[test]
+    fn workspace_root_str_returns_valid_path_for_utf8_root() {
+        let handler = TumultHandler::with_workspace_root("/tmp".into());
+        let result = handler.workspace_root_str();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "/tmp");
+    }
+
+    #[test]
+    fn resolve_path_returns_error_for_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let handler = TumultHandler::with_workspace_root(tmp.path().to_path_buf());
+        let result = handler.resolve_path("../../etc/passwd");
+        assert!(result.is_err(), "path traversal must be rejected");
     }
 }
