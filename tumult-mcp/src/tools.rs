@@ -26,6 +26,30 @@ pub fn validate_select_only(query: &str) -> Result<(), String> {
     }
 }
 
+/// Validate that an action or probe name contains only safe characters.
+///
+/// Allowed characters: ASCII alphanumerics, hyphens (`-`), underscores (`_`),
+/// and dots (`.`).  This whitelist prevents SQL injection when the name is
+/// interpolated into a query string (e.g., in the `coverage` tool).
+///
+/// # Errors
+///
+/// Returns an error string if the name is empty or contains any character
+/// outside the allowed set.
+pub fn validate_action_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("action name must not be empty".into());
+    }
+    if name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        Ok(())
+    } else {
+        Err(format!("action name contains invalid characters: {name:?}"))
+    }
+}
+
 /// Resolve a user-supplied path safely within a base directory.
 ///
 /// Joins `base` with `user_path`, canonicalizes the result, and verifies
@@ -906,6 +930,11 @@ pub fn coverage(store_path: &str) -> Result<String, String> {
             let action_names: Vec<String> = plugin.actions.iter().map(|a| a.name.clone()).collect();
             let mut count = 0;
             for name in &action_names {
+                // Validate the name before interpolating into a query to
+                // prevent SQL injection via a crafted plugin manifest.
+                if validate_action_name(name).is_err() {
+                    continue;
+                }
                 let q =
                     format!("SELECT count(*) FROM activity_results WHERE name = '{name}' LIMIT 1");
                 if let Ok(rows) = s.query(&q) {
@@ -1262,6 +1291,33 @@ mod tests {
     #[test]
     fn validate_select_only_rejects_empty() {
         assert!(validate_select_only("").is_err());
+    }
+
+    // ── validate_action_name ─────────────────────────────────
+
+    #[test]
+    fn validate_action_name_allows_simple_name() {
+        assert!(validate_action_name("kill-process").is_ok());
+    }
+
+    #[test]
+    fn validate_action_name_allows_underscores_and_dots() {
+        assert!(validate_action_name("cpu_stress.v2").is_ok());
+    }
+
+    #[test]
+    fn validate_action_name_rejects_single_quote() {
+        assert!(validate_action_name("name' OR '1'='1").is_err());
+    }
+
+    #[test]
+    fn validate_action_name_rejects_semicolon() {
+        assert!(validate_action_name("name; DROP TABLE activity_results --").is_err());
+    }
+
+    #[test]
+    fn validate_action_name_rejects_empty() {
+        assert!(validate_action_name("").is_err());
     }
 
     #[test]

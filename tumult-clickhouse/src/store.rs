@@ -529,33 +529,53 @@ impl ClickHouseStore {
 impl tumult_analytics::backend::private::Sealed for ClickHouseStore {}
 
 // Synchronous wrapper for AnalyticsBackend trait.
+//
+// `tokio::task::block_in_place` is used instead of a bare
+// `Handle::current().block_on(...)` because `block_on` panics (or deadlocks)
+// when called from inside an already-running Tokio task.  `block_in_place`
+// moves the calling thread out of the async worker pool first, making the
+// nested `block_on` safe on a multi-threaded runtime.
 impl AnalyticsBackend for ClickHouseStore {
     fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.ingest_journal_async(journal))
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.ingest_journal_async(journal))
+        })
     }
 
     fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.query_async(sql))
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.query_async(sql))
+        })
     }
 
     fn query_columns(&self, sql: &str) -> Result<Vec<String>, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.query_columns_async(sql))
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.query_columns_async(sql))
+        })
     }
 
     fn experiment_count(&self) -> Result<usize, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.experiment_count_async())
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.experiment_count_async())
+        })
     }
 
     fn stats(&self) -> Result<StoreStats, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.stats_async())
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.stats_async())
+        })
     }
 
     fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.purge_older_than_days_async(days))
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.purge_older_than_days_async(days))
+        })
     }
 
     fn schema_version(&self) -> Result<i64, AnalyticsError> {
-        tokio::runtime::Handle::current().block_on(self.schema_version_async())
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.schema_version_async())
+        })
     }
 }
 
@@ -633,5 +653,45 @@ mod tests {
         };
         let json = serde_json::to_string(&row).unwrap();
         assert!(json.contains("test-action"));
+    }
+
+    /// Verifies that the synchronous `AnalyticsBackend` wrapper methods use
+    /// `block_in_place` rather than a bare `block_on`, which would panic when
+    /// called from inside an already-running multi-threaded Tokio context.
+    ///
+    /// The test spawns a real multi-thread runtime and then, from within an
+    /// async task, calls the synchronous trait methods via a `ClickHouseStore`
+    /// configured with an unreachable URL.  The calls are expected to return
+    /// an `Err` (connection refused / timeout), but must NOT panic.
+    #[test]
+    fn analytics_backend_sync_methods_do_not_panic_inside_tokio_task() {
+        use tumult_analytics::backend::AnalyticsBackend as _;
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build runtime");
+
+        rt.block_on(async {
+            // Spawn a task — this is the "inside a Tokio task" scenario that
+            // previously triggered a panic from bare Handle::current().block_on().
+            tokio::task::spawn(async {
+                // Build a store pointing at an unreachable URL — no real
+                // ClickHouse needed; we only care that the call doesn't panic.
+                let store = ClickHouseStore {
+                    client: Client::default().with_url("http://127.0.0.1:1"),
+                    database: "test".into(),
+                    query_timeout: std::time::Duration::from_millis(100),
+                };
+
+                // Each of these must not panic; errors are expected and OK.
+                let _ = store.experiment_count();
+                let _ = store.stats();
+                let _ = store.schema_version();
+            })
+            .await
+            .expect("task should not panic");
+        });
     }
 }
