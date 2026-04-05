@@ -18,4 +18,7 @@ pub enum AnalyticsError {
 
     #[error("clickhouse error: {0}")]
     ClickHouse(String),
+
+    #[error("internal analytics error: {0}")]
+    Internal(String),
 }
