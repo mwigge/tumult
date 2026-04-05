@@ -126,11 +126,22 @@ impl TumultTelemetry {
     }
 
     /// Flush pending telemetry and shut down providers.
+    ///
+    /// Shuts down the locally-held `SdkTracerProvider` clone **and** replaces
+    /// the globally registered provider with a `NoopTracerProvider`.
+    ///
+    /// Without resetting the global, any spans emitted after this call would be
+    /// routed to an already-closed exporter, causing silent drops or error-log
+    /// storms depending on the exporter implementation.
     pub fn shutdown(&self) {
         if let Some(ref provider) = self.tracer_provider {
             if let Err(e) = provider.shutdown() {
                 tracing::warn!(error = %e, "tracer provider shutdown error");
             }
         }
+        // Replace the global provider with a noop so that spans emitted after
+        // shutdown are silently discarded rather than routed to a dead exporter.
+        // This is a no-op in tests or when OTel was never configured.
+        global::set_tracer_provider(opentelemetry::trace::noop::NoopTracerProvider::new());
     }
 }
