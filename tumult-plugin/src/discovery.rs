@@ -18,6 +18,7 @@ pub enum DiscoveryError {
     #[error("failed to parse plugin manifest at {path}: {source}")]
     ManifestParse {
         path: PathBuf,
+        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
