@@ -28,6 +28,7 @@ pub mod backend;
 pub mod duckdb_store;
 pub mod error;
 pub mod export;
+pub mod query_row;
 pub mod telemetry;
 
 pub use arrow_convert::journal_to_record_batch;
@@ -35,3 +36,4 @@ pub use backend::AnalyticsBackend;
 pub use duckdb_store::{AnalyticsStore, StoreStats};
 pub use error::AnalyticsError;
 pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
+pub use query_row::QueryRow;
