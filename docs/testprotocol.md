@@ -1676,7 +1676,7 @@ Use this section to record actual test execution results.
 | TP-CLI-02 | Help output | PASS | All 12 subcommands listed: run, validate, discover, analyze, export, compliance, report, trend, init, import, store, help |
 | TP-CLI-03 | Validate experiment | PASS | Exit 0, validation passed with experiment details |
 | TP-CLI-04 | Validate invalid | PASS | Exit 1, error: `experiment has no method steps` |
-| TP-CLI-05 | Discover plugins | PASS | 10 plugins (incl. tumult-pumba), 45 actions discovered |
+| TP-CLI-05 | Discover plugins | PASS | 10 plugins (incl. tumult-pumba), 48 actions discovered |
 | TP-CLI-06 | Run experiment | PASS | Completed in 30ms, journal written, ingested to store |
 | TP-CLI-07 | JSON output | PASS | `--output-format json` produces valid JSON with all 18 journal keys |
 | TP-CLI-08 | Rollback strategies | PASS | `--rollback-strategy always` produces rollback_results[1]. Flag is `--rollback-strategy` not `--rollback` |
