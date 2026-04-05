@@ -20,7 +20,7 @@ We have covered a lot of ground in this series: the Rust-native architecture, th
 
 Tumult has delivered Phases 0 through 9:
 
-**Phases 0-2 — Foundation + Plugins**: 11 Rust crates, 10 plugins (45 chaos actions), native Kubernetes (kube-rs) and SSH (russh), DuckDB + Arrow analytics pipeline, Parquet/CSV/JSON export. All production-ready.
+**Phases 0-2 — Foundation + Plugins**: 11 Rust crates, 10 plugins (48 chaos actions), native Kubernetes (kube-rs) and SSH (russh), DuckDB + Arrow analytics pipeline, Parquet/CSV/JSON export. All production-ready.
 
 **Phases 3-5 — Automation + Analytics + Compliance**: MCP server with 14 tools, persistent DuckDB + ClickHouse dual-mode analytics, 7 regulatory compliance frameworks (DORA EU 2022/2554, NIS2, PCI-DSS, ISO-22301, ISO-27001, SOC2, Basel III) with article-level detail and official source URLs.
 
