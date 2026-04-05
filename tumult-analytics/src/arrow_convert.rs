@@ -85,15 +85,30 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
 /// Returns an error if the Arrow `RecordBatch` construction fails.
 pub fn journal_to_activity_batch(journal: &Journal) -> Result<RecordBatch, AnalyticsError> {
     let schema = Arc::new(activity_results_schema());
-    let mut exp_ids: Vec<String> = Vec::new();
-    let mut names: Vec<String> = Vec::new();
-    let mut types: Vec<String> = Vec::new();
-    let mut statuses: Vec<String> = Vec::new();
-    let mut started_ns: Vec<i64> = Vec::new();
-    let mut durations: Vec<u64> = Vec::new();
-    let mut outputs: Vec<Option<String>> = Vec::new();
-    let mut errors: Vec<Option<String>> = Vec::new();
-    let mut phases: Vec<String> = Vec::new();
+
+    // Pre-calculate total row count to avoid repeated allocations.
+    let hyp_before_len = journal
+        .steady_state_before
+        .as_ref()
+        .map_or(0, |h| h.probe_results.len());
+    let hyp_after_len = journal
+        .steady_state_after
+        .as_ref()
+        .map_or(0, |h| h.probe_results.len());
+    let total = hyp_before_len
+        + journal.method_results.len()
+        + hyp_after_len
+        + journal.rollback_results.len();
+
+    let mut exp_ids: Vec<String> = Vec::with_capacity(total);
+    let mut names: Vec<String> = Vec::with_capacity(total);
+    let mut types: Vec<String> = Vec::with_capacity(total);
+    let mut statuses: Vec<String> = Vec::with_capacity(total);
+    let mut started_ns: Vec<i64> = Vec::with_capacity(total);
+    let mut durations: Vec<u64> = Vec::with_capacity(total);
+    let mut outputs: Vec<Option<String>> = Vec::with_capacity(total);
+    let mut errors: Vec<Option<String>> = Vec::with_capacity(total);
+    let mut phases: Vec<String> = Vec::with_capacity(total);
 
     let mut push = |results: &[ActivityResult], phase: &str| {
         for r in results {
@@ -243,14 +258,22 @@ pub fn probe_samples_schema() -> Schema {
 pub fn probe_samples_to_batch(samples: &[ProbeSamples]) -> Result<RecordBatch, AnalyticsError> {
     let schema = Arc::new(probe_samples_schema());
 
-    let mut probe_names: Vec<String> = Vec::new();
-    let mut timestamps: Vec<i64> = Vec::new();
-    let mut values: Vec<f64> = Vec::new();
+    // Pre-calculate total rows to avoid repeated reallocations.
+    let total: usize = samples
+        .iter()
+        .map(|ps| ps.values.len().min(ps.sampled_at.len()))
+        .sum();
+
+    let mut probe_names: Vec<String> = Vec::with_capacity(total);
+    let mut timestamps: Vec<i64> = Vec::with_capacity(total);
+    let mut values: Vec<f64> = Vec::with_capacity(total);
 
     for ps in samples {
+        // Clone the probe name once per ProbeSamples entry, not once per sample.
+        let name = ps.name.clone();
         for (i, &value) in ps.values.iter().enumerate() {
             if let Some(&ts) = ps.sampled_at.get(i) {
-                probe_names.push(ps.name.clone());
+                probe_names.push(name.clone());
                 timestamps.push(ts);
                 values.push(value);
             }
