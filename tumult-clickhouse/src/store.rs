@@ -315,6 +315,8 @@ impl ClickHouseStore {
 
         // Type-safe insert for activity results
         let mut activity_count = 0usize;
+        // Clone once outside the loop instead of once per ActivityRow.
+        let experiment_id = journal.experiment_id.clone();
         let phases: Vec<(&str, &[tumult_core::types::ActivityResult])> = vec![
             (
                 "hypothesis_before",
@@ -343,7 +345,7 @@ impl ClickHouseStore {
         for (phase, results) in phases {
             for r in results {
                 let row = ActivityRow {
-                    experiment_id: journal.experiment_id.clone(),
+                    experiment_id: experiment_id.clone(),
                     name: r.name.clone(),
                     activity_type: r.activity_type.to_string(),
                     status: r.status.to_string(),
