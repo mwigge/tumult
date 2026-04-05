@@ -413,7 +413,7 @@ async fn authenticate(
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let metadata = std::fs::metadata(key_path).map_err(|e| {
+                let metadata = tokio::fs::metadata(key_path).await.map_err(|e| {
                     SshError::KeyParseError(format!("failed to read key metadata: {e}"))
                 })?;
                 let mode = metadata.permissions().mode() & 0o777;
@@ -519,18 +519,24 @@ impl client::Handler for ClientHandler {
                 );
                 Ok(true)
             }
-            HostKeyPolicy::Verify => verify_host_key(
-                &self.host,
-                self.port,
-                &self.known_hosts_path,
-                server_public_key,
-            ),
-            HostKeyPolicy::TrustOnFirstUse => trust_on_first_use(
-                &self.host,
-                self.port,
-                &self.known_hosts_path,
-                server_public_key,
-            ),
+            HostKeyPolicy::Verify => {
+                verify_host_key(
+                    &self.host,
+                    self.port,
+                    &self.known_hosts_path,
+                    server_public_key,
+                )
+                .await
+            }
+            HostKeyPolicy::TrustOnFirstUse => {
+                trust_on_first_use(
+                    &self.host,
+                    self.port,
+                    &self.known_hosts_path,
+                    server_public_key,
+                )
+                .await
+            }
         }
     }
 }
@@ -540,7 +546,7 @@ impl client::Handler for ClientHandler {
 /// Returns `Ok(true)` if a matching entry is found and the key matches.
 /// Returns `Err(SshError::HostKeyNotFound)` if no entry exists for the host.
 /// Returns `Err(SshError::HostKeyMismatch)` if an entry exists but the key differs.
-fn verify_host_key(
+async fn verify_host_key(
     host: &str,
     port: u16,
     known_hosts_path: &Path,
@@ -548,7 +554,7 @@ fn verify_host_key(
 ) -> Result<bool, SshError> {
     let actual_fp = key_fingerprint(server_key);
 
-    let file_content = match std::fs::read_to_string(known_hosts_path) {
+    let file_content = match tokio::fs::read_to_string(known_hosts_path).await {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // No known_hosts file → treat as not found
@@ -572,7 +578,7 @@ fn verify_host_key(
 ///
 /// Returns `Ok(true)` if verified or newly recorded.
 /// Returns `Err(SshError::HostKeyMismatch)` if a stored key differs from the server's key.
-fn trust_on_first_use(
+async fn trust_on_first_use(
     host: &str,
     port: u16,
     known_hosts_path: &Path,
@@ -580,7 +586,7 @@ fn trust_on_first_use(
 ) -> Result<bool, SshError> {
     let actual_fp = key_fingerprint(server_key);
 
-    let file_content = match std::fs::read_to_string(known_hosts_path) {
+    let file_content = match tokio::fs::read_to_string(known_hosts_path).await {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
@@ -610,7 +616,7 @@ fn trust_on_first_use(
         fingerprint = %actual_fp,
         "TOFU: adding new host key to known_hosts"
     );
-    append_known_hosts_entry(host, port, known_hosts_path, server_key)?;
+    append_known_hosts_entry(host, port, known_hosts_path, server_key).await?;
     Ok(true)
 }
 
@@ -647,21 +653,23 @@ fn find_and_verify_entry(
 /// Append a new `known_hosts` entry for the given host and key.
 ///
 /// Creates parent directories if they don't exist.
-fn append_known_hosts_entry(
+async fn append_known_hosts_entry(
     host: &str,
     port: u16,
     known_hosts_path: &Path,
     key: &ssh_key::PublicKey,
 ) -> Result<(), SshError> {
-    use std::io::Write;
+    use tokio::io::AsyncWriteExt as _;
 
     // Create parent directory if needed
     if let Some(parent) = known_hosts_path.parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| SshError::KnownHostsIo {
-                path: parent.display().to_string(),
-                reason: e.to_string(),
-            })?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| SshError::KnownHostsIo {
+                    path: parent.display().to_string(),
+                    reason: e.to_string(),
+                })?;
         }
     }
 
@@ -670,16 +678,18 @@ fn append_known_hosts_entry(
     let key_str = key.to_string();
     let line = format!("{host_pattern} {key_str}\n");
 
-    let mut file = std::fs::OpenOptions::new()
+    let mut file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(known_hosts_path)
+        .await
         .map_err(|e| SshError::KnownHostsIo {
             path: known_hosts_path.display().to_string(),
             reason: e.to_string(),
         })?;
 
     file.write_all(line.as_bytes())
+        .await
         .map_err(|e| SshError::KnownHostsIo {
             path: known_hosts_path.display().to_string(),
             reason: e.to_string(),
