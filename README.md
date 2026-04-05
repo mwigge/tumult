@@ -423,7 +423,7 @@ docker run --rm ghcr.io/mwigge/tumult --help
 docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
 ```
 
-Both images contain the full platform: all 11 Rust crates, 10 plugins (45 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
+Both images contain the full platform: all 11 Rust crates, 10 plugins (48 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
 
 | Image | Entrypoint | Use case |
 |-------|-----------|----------|
@@ -458,7 +458,7 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │  Redis 7        │  OTel Collector │  14 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
 │                 │  :18889 (prom)  │  10 plugins    │                    │
-│  Kafka 3.8      │                 │  45 actions    │                    │
+│  Kafka 3.8      │                 │  48 actions    │                    │
 │  :19092         │  ClickHouse     │                │                    │
 │                 │  (inside SigNoz)│                │                    │
 │  SSH Server     │                 │                │                    │
@@ -564,7 +564,7 @@ Full functional validation of all platform components is documented in [docs/tes
 |----------|-------|------|
 | CLI + Core Engine | 17 | 17 |
 | TOON Format + Plugins | 8 | 8 |
-| Script Plugins (10 plugins, 45 actions) | 15 | 13 |
+| Script Plugins (10 plugins, 48 actions) | 15 | 13 |
 | Arrow + DuckDB Analytics | 12 | 12 |
 | OpenTelemetry (7 canonical spans) | 10 | 10 |
 | Custom OTel Collector (build + signals) | 10 | 9 |
@@ -782,7 +782,7 @@ tumult run examples/redis-chaos.toon       # break Redis, watch it recover
 tumult run examples/postgres-failover.toon  # kill PG connections
 tumult run examples/pumba-latency.toon      # inject 200ms network latency
 tumult analyze --query "SELECT title, status, duration_ms FROM experiments"
-tumult discover                             # list all 10 plugins and 45 actions
+tumult discover                             # list all 10 plugins and 48 actions
 tumult init                                 # create your own experiment
 ```
 

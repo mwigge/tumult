@@ -19,7 +19,7 @@ docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
 docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
 ```
 
-Both images contain the full platform: 11 crates, 10 plugins, 45 actions, examples, GameDays.
+Both images contain the full platform: 11 crates, 10 plugins, 48 actions, examples, GameDays.
 
 ```bash
 # Run CLI commands
@@ -107,7 +107,7 @@ tumult compliance --framework dora .
 ### 5. See what's available
 
 ```bash
-# List all 10 plugins and 45 actions
+# List all 10 plugins and 48 actions
 tumult discover
 
 # Create your own experiment interactively
