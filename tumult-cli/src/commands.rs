@@ -2053,16 +2053,24 @@ pub async fn cmd_store_migrate() -> Result<()> {
 
     for row in &rows {
         let experiment_id = &row[0];
-        // Read the full journal from DuckDB by querying individual fields
-        // and reconstructing — but we don't have full journals in DuckDB,
-        // only the tabular data. So we export via Parquet and re-import.
-        // For now, just log what would be migrated.
+        // Validate experiment_id is safe for interpolation: UUIDs contain only
+        // hex digits and hyphens; reject anything else before building the query.
+        let safe_id = if experiment_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            experiment_id.as_str()
+        } else {
+            eprintln!("warning: skipping invalid experiment_id: {experiment_id}");
+            skipped += 1;
+            continue;
+        };
+
         let ch_exists = ch_store
             .query(&format!(
-                "SELECT count() FROM experiments WHERE experiment_id = '{}'",
-                experiment_id.replace('\'', "")
+                "SELECT count() FROM experiments WHERE experiment_id = '{safe_id}'"
             ))
-            .unwrap_or_default();
+            .with_context(|| format!("ClickHouse query failed for experiment_id: {safe_id}"))?;
 
         let already_exists = ch_exists
             .first()
@@ -2088,7 +2096,12 @@ pub async fn cmd_store_migrate() -> Result<()> {
             "INSERT INTO experiments SELECT * FROM file('{}', Parquet)",
             exp_path.display()
         ))
-        .ok(); // Best-effort — ClickHouse may not support file() in all configs
+        .unwrap_or_else(|e| {
+            // Best-effort — ClickHouse may not support file() in all configurations.
+            // Log the error but do not abort the migration.
+            eprintln!("warning: ClickHouse INSERT from Parquet failed (non-fatal): {e}");
+            vec![]
+        });
 
     println!("Migration complete: {migrated} to migrate, {skipped} already in ClickHouse");
     println!("DuckDB store retained at: {}", db_path.display());
