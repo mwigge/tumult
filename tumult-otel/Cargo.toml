@@ -16,5 +16,4 @@ tracing-subscriber = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
 tokio-minimal = { workspace = true }
-thiserror = { workspace = true }
 

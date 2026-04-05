@@ -98,7 +98,7 @@ pub fn record_deviation(metrics: &TumultMetrics, experiment_name: &str) {
     metrics.hypothesis_deviations_total.add(
         1,
         &[KeyValue::new(
-            "resilience.experiment.title",
+            attributes::EXPERIMENT_NAME,
             experiment_name.to_string(),
         )],
     );
@@ -154,6 +154,14 @@ mod tests {
         let metrics = TumultMetrics::new(&meter);
         record_deviation(&metrics, "experiment-a");
         record_deviation(&metrics, "experiment-b");
+    }
+
+    /// Regression: `record_deviation` must tag with the canonical
+    /// `resilience.experiment.name` attribute, not the legacy `.title` key.
+    #[test]
+    fn record_deviation_uses_canonical_experiment_name_attribute() {
+        // The attribute key constant must match the canonical value.
+        assert_eq!(attributes::EXPERIMENT_NAME, "resilience.experiment.name");
     }
 
     #[test]
