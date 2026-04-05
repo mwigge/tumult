@@ -6,10 +6,12 @@ use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-kubernetes";
 
-fn k8s_span(name: &str, attrs: Vec<KeyValue>) -> SpanGuard {
+/// All call sites pass `&'static str` span names; tightening the signature
+/// makes the `Into<Cow<'static, str>>` conversion zero-cost (K-T-01).
+fn k8s_span(name: &'static str, attrs: Vec<KeyValue>) -> SpanGuard {
     let tracer = global::tracer(TRACER);
     let span = tracer
-        .span_builder(name.to_string())
+        .span_builder(name)
         .with_kind(SpanKind::Client)
         .with_attributes(attrs)
         .start(&tracer);
@@ -145,7 +147,7 @@ pub(crate) fn event_drain_completed(evicted: usize, failed: usize, skipped_daemo
 }
 
 // Retained for future integration with eviction probes/actions; not yet called from an active code path.
-#[allow(dead_code)]
+#[allow(dead_code)] // Intentional: reserved for upcoming eviction probe integration; not yet reachable.
 pub(crate) fn event_pod_evicted(pod_name: &str) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
@@ -155,7 +157,7 @@ pub(crate) fn event_pod_evicted(pod_name: &str) {
 }
 
 // Retained for future integration with pod-count probes; not yet called from an active code path.
-#[allow(dead_code)]
+#[allow(dead_code)] // Intentional: reserved for upcoming pod-count probe integration; not yet reachable.
 pub(crate) fn event_pods_counted(count: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
