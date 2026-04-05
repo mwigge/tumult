@@ -42,6 +42,10 @@ impl TumultTelemetry {
     /// to stdout in addition to any configured OTLP endpoint. This is
     /// useful for local development and debugging.
     pub fn new(config: TelemetryConfig) -> Self {
+        // Move service_name out of config immediately so the Resource builder
+        // and the final struct both consume the owned String without cloning.
+        let service_name = config.service_name;
+
         if !config.enabled {
             // Install a minimal tracing subscriber for log output only
             let _ = tracing_subscriber::registry()
@@ -49,21 +53,23 @@ impl TumultTelemetry {
                 .with(tracing_subscriber::fmt::layer())
                 .try_init();
             return Self {
-                enabled: config.enabled,
-                service_name: config.service_name,
+                enabled: false,
+                service_name,
                 tracer_provider: None,
             };
         }
 
         let resource = Resource::builder()
-            .with_service_name(config.service_name.clone())
+            .with_service_name(service_name.clone())
             .with_attribute(KeyValue::new("service.version", SERVICE_VERSION))
             .build();
 
-        let provider = if let Some(ref endpoint) = config.otlp_endpoint {
+        // Move the endpoint out of the Option so it can be passed by value to
+        // `with_endpoint`, avoiding a `.clone()` on the full String.
+        let provider = if let Some(endpoint) = config.otlp_endpoint {
             match opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
-                .with_endpoint(endpoint.clone())
+                .with_endpoint(endpoint.as_str())
                 .build()
             {
                 Ok(exporter) => {
@@ -93,7 +99,7 @@ impl TumultTelemetry {
                         .with(otel_layer)
                         .try_init();
 
-                    tracing::info!(endpoint = %endpoint, service = %config.service_name, "OTLP exporter initialized");
+                    tracing::info!(endpoint = %endpoint, service = %service_name, "OTLP exporter initialized");
                     Some(provider)
                 }
                 Err(e) => {
@@ -127,7 +133,7 @@ impl TumultTelemetry {
                 .with(otel_layer)
                 .try_init();
 
-            tracing::debug!(service = %config.service_name, "console-only span export enabled");
+            tracing::debug!(service = %service_name, "console-only span export enabled");
             Some(provider)
         } else {
             // Install subscriber without OTel layer
@@ -135,13 +141,17 @@ impl TumultTelemetry {
                 .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
                 .with(tracing_subscriber::fmt::layer())
                 .try_init();
-            tracing::debug!(service = %config.service_name, "OTel enabled, no OTLP endpoint configured");
+            tracing::debug!(service = %service_name, "OTel enabled, no OTLP endpoint configured");
             None
         };
 
         Self {
-            enabled: config.enabled,
-            service_name: config.service_name,
+            // Only mark telemetry enabled when a provider was successfully built.
+            // An OTLP build failure leaves `provider = None`; reporting `enabled =
+            // true` in that state would mislead callers into believing spans are
+            // being exported when they are silently dropped.
+            enabled: config.enabled && provider.is_some(),
+            service_name,
             tracer_provider: provider,
         }
     }

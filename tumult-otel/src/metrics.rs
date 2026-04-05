@@ -58,7 +58,7 @@ impl TumultMetrics {
                 .with_description("Total plugin execution errors")
                 .build(),
             recovery_time_seconds: meter
-                .f64_gauge("resilience.outcome.recovery_time_s")
+                .f64_gauge("tumult_recovery_time_seconds")
                 .with_description("Time in seconds for the system to recover after fault injection")
                 .with_unit("s")
                 .build(),
