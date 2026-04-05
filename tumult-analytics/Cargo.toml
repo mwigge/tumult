@@ -17,9 +17,9 @@ serde_json = { workspace = true }
 toon-format = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
-dirs-next = "2"
+dirs-next = { workspace = true }
 opentelemetry = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }
