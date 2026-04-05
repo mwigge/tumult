@@ -573,7 +573,7 @@ fn extract_title(content: &str) -> Option<String> {
 ///
 /// Returns a [`ToolError`] if the `GameDay` cannot be read, parsed,
 /// or any experiment fails to execute.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and result aggregation
 pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
     use tumult_core::controls::ControlRegistry;
     use tumult_core::engine::parse_experiment;
@@ -769,7 +769,7 @@ fn collect_gameday_files(dir: &Path, entries: &mut Vec<(String, String)>) {
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the store cannot be opened or queried.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Recommendation logic covers multiple metrics and formatting stages; splitting would not reduce complexity
 pub fn recommend(store_path: &str) -> Result<String, ToolError> {
     let path = std::path::PathBuf::from(store_path);
     if !path.exists() {

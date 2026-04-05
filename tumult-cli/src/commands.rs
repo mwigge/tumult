@@ -522,6 +522,8 @@ fn execute_process_sync(
 struct K6LoadExecutor;
 
 /// Handle holding the k6 child process and output path.
+// K6Handle fields are populated but k6 summary is currently parsed from stderr;
+// JSON-output-mode reading is not yet implemented — retained for future use.
 #[allow(dead_code)]
 struct K6Handle {
     child: std::process::Child,
@@ -1403,7 +1405,7 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if journals cannot be read or the analytics query fails.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Multi-probe trend analysis output requires verbose formatting across multiple metric types
 pub fn cmd_trend(
     journals_path: &Path,
     metric: &str,
@@ -2175,7 +2177,7 @@ pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> R
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // HTML report generation embeds styles, scripts, and data in one pass; splitting would not improve clarity
 fn generate_html_report(journal: &Journal) -> String {
     let status_class = match journal.status {
         ExperimentStatus::Completed => "success",
@@ -2437,7 +2439,7 @@ pub fn cmd_gameday_create(
 /// # Errors
 ///
 /// Returns an error if the `GameDay` file cannot be read, parsed, or experiments fail.
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and scoring summary
 pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     use tumult_core::controls::ControlRegistry;
     use tumult_core::engine::parse_experiment;

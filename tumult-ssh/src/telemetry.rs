@@ -80,6 +80,7 @@ pub(crate) fn event_command_completed(exit_code: i64, stdout_bytes: usize, stder
     );
 }
 
+// Retained for future integration with upload-complete spans in upload_file; not yet called.
 #[allow(dead_code)]
 pub(crate) fn event_upload_completed(bytes: u64) {
     let cx = opentelemetry::Context::current();
