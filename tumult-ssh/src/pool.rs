@@ -108,6 +108,7 @@ impl SshPool {
     /// # Panics
     ///
     /// Panics if the internal mutex has been poisoned.
+    #[must_use = "the command result or error must be handled"]
     pub async fn execute(
         &self,
         config: &SshConfig,
@@ -183,6 +184,7 @@ impl SshPool {
     /// # Panics
     ///
     /// Panics if the internal mutex has been poisoned.
+    #[must_use]
     pub fn evict(&self, config: &SshConfig) -> bool {
         let key = PoolKey::from_config(config);
         let mut guard = self.entries.lock().expect("pool lock poisoned");

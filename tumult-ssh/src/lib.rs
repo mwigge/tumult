@@ -28,9 +28,11 @@
 
 pub mod config;
 pub mod error;
+pub mod pool;
 pub mod session;
 pub(crate) mod telemetry;
 
 pub use config::{AuthMethod, HostKeyPolicy, SshConfig};
 pub use error::SshError;
+pub use pool::SshPool;
 pub use session::{CommandResult, SshSession};
