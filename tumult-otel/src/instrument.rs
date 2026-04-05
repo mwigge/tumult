@@ -53,7 +53,7 @@ pub fn record_action(
     let attrs = &[
         KeyValue::new(attributes::PLUGIN_NAME, plugin_name.to_string()),
         KeyValue::new(attributes::ACTION_NAME, action_name.to_string()),
-        KeyValue::new(attributes::OUTCOME, outcome.to_string()),
+        KeyValue::new(attributes::OUTCOME, outcome),
     ];
 
     metrics.actions_total.add(1, attrs);
@@ -79,7 +79,7 @@ pub fn record_probe(
     let attrs = &[
         KeyValue::new(attributes::PLUGIN_NAME, plugin_name.to_string()),
         KeyValue::new(attributes::PROBE_NAME, probe_name.to_string()),
-        KeyValue::new(attributes::OUTCOME, outcome.to_string()),
+        KeyValue::new(attributes::OUTCOME, outcome),
     ];
 
     metrics.probes_total.add(1, attrs);
@@ -107,10 +107,9 @@ pub fn record_deviation(metrics: &TumultMetrics, experiment_name: &str) {
 /// Record experiment completion.
 pub fn record_experiment(metrics: &TumultMetrics, success: bool) {
     let outcome = if success { "success" } else { "failure" };
-    metrics.experiments_total.add(
-        1,
-        &[KeyValue::new(attributes::OUTCOME, outcome.to_string())],
-    );
+    metrics
+        .experiments_total
+        .add(1, &[KeyValue::new(attributes::OUTCOME, outcome)]);
 }
 
 #[cfg(test)]
