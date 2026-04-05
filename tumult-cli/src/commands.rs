@@ -2016,6 +2016,11 @@ fn print_dry_run(experiment: &Experiment) {
 
 // ── Path validation ─────────────────────────────────────────
 
+/// Best-effort symlink check. Note: there is an inherent TOCTOU race
+/// between this check and subsequent file operations — the path could
+/// become a symlink after validation. This is acceptable for our threat
+/// model (local CLI tool, not a network service). For stronger guarantees,
+/// callers should use `O_NOFOLLOW` or `openat2` with `RESOLVE_NO_SYMLINKS`.
 fn validate_path_no_symlink(path: &Path) -> Result<()> {
     if path.is_symlink() {
         bail!("symlink not allowed for security: {}", path.display());

@@ -10,7 +10,6 @@ description = "Kubernetes chaos actions and probes for the Tumult platform"
 tumult-otel = { path = "../tumult-otel" }
 kube = { workspace = true }
 k8s-openapi = { workspace = true }
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
