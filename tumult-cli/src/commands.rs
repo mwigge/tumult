@@ -664,13 +664,12 @@ fn execute_process_sync(
 /// and parses the JSON summary to produce a `LoadResult`.
 struct K6LoadExecutor;
 
-/// Handle holding the k6 child process and output path.
-// K6Handle fields are populated but k6 summary is currently parsed from stderr;
-// JSON-output-mode reading is not yet implemented — retained for future use.
-#[allow(dead_code)]
+/// Handle holding the k6 child process.
+///
+/// k6 summary is parsed from the combined stdout/stderr output; the `--out json=...`
+/// flag is intentionally omitted because JSON-output reading is not yet implemented.
 struct K6Handle {
     child: std::process::Child,
-    output_path: String,
     started_at_ns: i64,
     tool: LoadTool,
     vus: u32,
@@ -678,7 +677,6 @@ struct K6Handle {
 
 impl LoadExecutor for K6LoadExecutor {
     fn start(&self, config: &LoadConfig) -> Result<LoadHandle, String> {
-        let output_path = format!("/tmp/tumult-k6-{}.json", std::process::id());
         let vus = config.vus.unwrap_or(10);
         let duration = config
             .duration_s
@@ -692,8 +690,6 @@ impl LoadExecutor for K6LoadExecutor {
             .arg(vus.to_string())
             .arg("--duration")
             .arg(&duration)
-            .arg("--out")
-            .arg(format!("json={output_path}"))
             .arg(config.script.as_os_str())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -712,7 +708,6 @@ impl LoadExecutor for K6LoadExecutor {
         Ok(LoadHandle {
             inner: Box::new(K6Handle {
                 child,
-                output_path,
                 started_at_ns,
                 tool: config.tool.clone(),
                 vus,
@@ -3583,5 +3578,86 @@ mod tests {
         assert!(matches!(config.tool, tumult_core::types::LoadTool::Jmeter));
         assert_eq!(config.vus, Some(10)); // default
         assert!((config.duration_s.unwrap() - 30.0).abs() < f64::EPSILON); // default
+    }
+
+    // ── k6 metric parser tests (CLI-TEST-01) ─────────────────────────────
+
+    #[test]
+    fn parse_k6_metric_extracts_stat_value() {
+        let output = "iteration_duration...: avg=97.77ms min=55.75ms med=63.81ms max=201.09ms p(90)=67.34ms p(95)=148.01ms";
+        assert!(
+            (parse_k6_metric(output, "iteration_duration", "avg").unwrap() - 97.77).abs() < 0.001
+        );
+        assert!(
+            (parse_k6_metric(output, "iteration_duration", "med").unwrap() - 63.81).abs() < 0.001
+        );
+        assert!(
+            (parse_k6_metric(output, "iteration_duration", "p(95)").unwrap() - 148.01).abs()
+                < 0.001
+        );
+    }
+
+    #[test]
+    fn parse_k6_metric_returns_none_for_missing_metric() {
+        let output = "iteration_duration...: avg=10ms";
+        assert!(parse_k6_metric(output, "missing_metric", "avg").is_none());
+    }
+
+    #[test]
+    fn parse_k6_metric_returns_none_for_missing_stat() {
+        let output = "iteration_duration...: avg=10ms";
+        assert!(parse_k6_metric(output, "iteration_duration", "p(99)").is_none());
+    }
+
+    #[test]
+    fn parse_k6_counter_extracts_integer_value() {
+        let output = "iterations...........: 1025 51.006998/s";
+        assert_eq!(parse_k6_counter(output, "iterations"), Some(1025));
+    }
+
+    #[test]
+    fn parse_k6_counter_returns_none_for_missing_counter() {
+        let output = "iterations...........: 1025 51.006998/s";
+        assert!(parse_k6_counter(output, "checks_total").is_none());
+    }
+
+    #[test]
+    fn parse_k6_counter_handles_zero_value() {
+        let output = "checks_failed.......: 0 0/s";
+        assert_eq!(parse_k6_counter(output, "checks_failed"), Some(0));
+    }
+
+    #[test]
+    fn parse_k6_rate_extracts_per_second_value() {
+        let output = "iterations...........: 300 29.82/s";
+        let rate = parse_k6_rate(output, "iterations").unwrap();
+        assert!((rate - 29.82).abs() < 0.001);
+    }
+
+    #[test]
+    fn parse_k6_rate_returns_none_for_missing_counter() {
+        let output = "iterations...........: 300 29.82/s";
+        assert!(parse_k6_rate(output, "http_reqs").is_none());
+    }
+
+    #[test]
+    fn parse_k6_rate_handles_integer_rate() {
+        let output = "http_reqs...........: 100 10/s";
+        let rate = parse_k6_rate(output, "http_reqs").unwrap();
+        assert!((rate - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn parse_k6_metric_multiline_finds_correct_metric() {
+        let output = "\
+http_req_duration...: avg=12ms p(95)=50ms\n\
+iteration_duration..: avg=97ms p(95)=148ms\n\
+";
+        assert!(
+            (parse_k6_metric(output, "iteration_duration", "p(95)").unwrap() - 148.0).abs() < 0.001
+        );
+        assert!(
+            (parse_k6_metric(output, "http_req_duration", "avg").unwrap() - 12.0).abs() < 0.001
+        );
     }
 }
