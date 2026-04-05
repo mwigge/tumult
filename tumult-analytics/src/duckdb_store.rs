@@ -144,7 +144,7 @@ impl AnalyticsStore {
             CREATE INDEX IF NOT EXISTS idx_load_experiment_id
                 ON load_results (experiment_id);
             CREATE TABLE IF NOT EXISTS schema_meta (
-                key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL
+                key VARCHAR PRIMARY KEY, value BIGINT NOT NULL
             );",
         )?;
         Ok(())
@@ -154,12 +154,14 @@ impl AnalyticsStore {
         let mut stmt = self
             .conn
             .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
-        let version: Option<String> = stmt.query_row(params![], |row| row.get(0)).ok();
+        // Read as i64 directly — the column is now BIGINT, no String round-trip.
+        let version: Option<i64> = stmt.query_row(params![], |row| row.get(0)).ok();
 
         if version.is_none() {
             self.conn.execute(
                 "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
-                params![CURRENT_SCHEMA_VERSION.to_string()],
+                // Bind i64 directly — avoids a String allocation and type mismatch.
+                params![CURRENT_SCHEMA_VERSION],
             )?;
         }
         // Future: if version < CURRENT_SCHEMA_VERSION, run migrations here
@@ -168,19 +170,15 @@ impl AnalyticsStore {
 
     /// # Errors
     ///
-    /// Returns an error if the schema version cannot be read or parsed.
+    /// Returns an error if the schema version cannot be read.
     #[must_use = "callers must use the returned schema version"]
     pub fn schema_version(&self) -> Result<i64, AnalyticsError> {
         let mut stmt = self
             .conn
             .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
-        let version: String = stmt.query_row(params![], |row| row.get(0))?;
-        version.parse::<i64>().map_err(|_| {
-            AnalyticsError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("invalid schema version: {version}"),
-            ))
-        })
+        // Column is BIGINT — no String parse round-trip needed.
+        stmt.query_row(params![], |row| row.get(0))
+            .map_err(AnalyticsError::from)
     }
 
     /// Check if an `experiment_id` already exists in the store.
