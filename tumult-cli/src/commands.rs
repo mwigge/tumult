@@ -6,6 +6,149 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
+// ── Typed CLI enums ───────────────────────────────────────────
+
+/// Export format for journal files.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportFormat {
+    /// Apache Parquet columnar format
+    Parquet,
+    /// Comma-separated values
+    Csv,
+    /// JSON
+    Json,
+}
+
+/// Report output format.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportFormat {
+    /// HTML report
+    Html,
+    /// PDF (generates HTML then prints instructions for conversion)
+    Pdf,
+}
+
+/// Regulatory compliance framework.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComplianceFramework {
+    /// EU Digital Operational Resilience Act
+    Dora,
+    /// EU Network and Information Security Directive
+    Nis2,
+    /// Payment Card Industry Data Security Standard
+    #[value(name = "pci-dss")]
+    PciDss,
+    /// ISO 22301 Business Continuity Management
+    #[value(name = "iso-22301")]
+    Iso22301,
+    /// ISO 27001 Information Security Management
+    #[value(name = "iso-27001")]
+    Iso27001,
+    /// SOC 2 Service Organization Control Type 2
+    Soc2,
+    /// Basel III / BCBS 239 Risk Data Aggregation
+    #[value(name = "basel-iii")]
+    BaselIii,
+}
+
+impl ComplianceFramework {
+    /// Returns the canonical string identifier used in report output.
+    #[must_use]
+    pub fn as_report_str(&self) -> &'static str {
+        match self {
+            ComplianceFramework::Dora => "DORA",
+            ComplianceFramework::Nis2 => "NIS2",
+            ComplianceFramework::PciDss => "PCI-DSS",
+            ComplianceFramework::Iso22301 => "ISO-22301",
+            ComplianceFramework::Iso27001 => "ISO-27001",
+            ComplianceFramework::Soc2 => "SOC2",
+            ComplianceFramework::BaselIii => "Basel-III",
+        }
+    }
+}
+
+/// Load test tool selection.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadToolArg {
+    /// k6 load testing tool
+    K6,
+    /// Apache `JMeter` load testing tool
+    Jmeter,
+    /// Explicitly disable load testing even if the experiment defines it
+    None,
+}
+
+// ── CLI helper functions ──────────────────────────────────────
+
+/// Parses a human duration like "30s", "5m", "1h" to seconds.
+#[must_use]
+pub fn parse_duration_str(s: &str) -> f64 {
+    let s = s.trim();
+    if let Some(num) = s.strip_suffix('s') {
+        num.parse().unwrap_or(30.0)
+    } else if let Some(num) = s.strip_suffix('m') {
+        num.parse::<f64>().unwrap_or(1.0) * 60.0
+    } else if let Some(num) = s.strip_suffix('h') {
+        num.parse::<f64>().unwrap_or(1.0) * 3600.0
+    } else {
+        s.parse().unwrap_or(30.0)
+    }
+}
+
+/// Parses `--var KEY=VALUE` arguments into a `HashMap`.
+///
+/// # Errors
+///
+/// Returns an error if any argument does not contain `=`.
+pub fn parse_var_args(
+    vars: &[String],
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    let mut map = std::collections::HashMap::new();
+    for entry in vars {
+        let (key, value) = entry.split_once('=').ok_or_else(|| {
+            anyhow::anyhow!("--var argument must be in KEY=VALUE format, got: {entry:?}")
+        })?;
+        map.insert(key.to_string(), value.to_string());
+    }
+    Ok(map)
+}
+
+/// Builds a `LoadConfig` override from CLI flags.
+///
+/// Returns `None` if `--load none` was specified (explicitly disable load).
+/// Returns `None` if no `--load` flag was given at all (use experiment default).
+/// Returns `Some(config)` if a real load tool was specified (override experiment).
+#[must_use]
+pub fn build_load_override(
+    tool: Option<LoadToolArg>,
+    script: Option<std::path::PathBuf>,
+    vus: Option<u32>,
+    duration: Option<String>,
+) -> Option<tumult_core::types::LoadConfig> {
+    // --load none explicitly disables
+    if matches!(tool, Some(LoadToolArg::None)) {
+        return None;
+    }
+
+    let tool = tool?; // No --load flag at all → no override
+    let script = script.unwrap_or_else(|| std::path::PathBuf::from("load.js"));
+    let duration_s = duration.map(|d| parse_duration_str(&d));
+
+    let load_tool = match tool {
+        LoadToolArg::K6 => tumult_core::types::LoadTool::K6,
+        LoadToolArg::Jmeter => tumult_core::types::LoadTool::Jmeter,
+        LoadToolArg::None => unreachable!(),
+    };
+
+    Some(tumult_core::types::LoadConfig {
+        tool: load_tool,
+        script,
+        vus: Some(vus.unwrap_or(10)),
+        duration_s: duration_s.or(Some(30.0)),
+        thresholds: std::collections::HashMap::new(),
+    })
+}
+
 use tumult_core::controls::ControlRegistry;
 use tumult_core::engine::{
     apply_vars, parse_experiment, resolve_config, resolve_secrets, validate_experiment,
@@ -1365,7 +1508,7 @@ pub fn cmd_analyze(
 ///
 /// Returns an error if the journal cannot be read or the export operation fails.
 #[must_use = "callers must handle export errors"]
-pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
+pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
     use tumult_analytics::arrow_convert::journal_to_record_batch;
     use tumult_analytics::export::{export_csv, export_parquet};
     use tumult_core::journal::read_journal;
@@ -1374,10 +1517,9 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
         .with_context(|| format!("failed to read journal: {}", journal_path.display()))?;
 
     let ext = match format {
-        "parquet" => "parquet",
-        "csv" => "csv",
-        "json" => "json",
-        _ => bail!("unsupported format: {format}"),
+        ExportFormat::Parquet => "parquet",
+        ExportFormat::Csv => "csv",
+        ExportFormat::Json => "json",
     };
     let stem = journal_path
         .file_stem()
@@ -1387,19 +1529,18 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
     let out_path = std::path::PathBuf::from(format!("{stem}.{ext}"));
 
     match format {
-        "parquet" | "csv" => {
+        ExportFormat::Parquet | ExportFormat::Csv => {
             let (exp_batch, _) = journal_to_record_batch(std::slice::from_ref(&journal))?;
             match format {
-                "parquet" => export_parquet(&exp_batch, &out_path)?,
-                "csv" => export_csv(&exp_batch, &out_path)?,
-                _ => unreachable!(),
+                ExportFormat::Parquet => export_parquet(&exp_batch, &out_path)?,
+                ExportFormat::Csv => export_csv(&exp_batch, &out_path)?,
+                ExportFormat::Json => unreachable!(),
             }
         }
-        "json" => {
+        ExportFormat::Json => {
             let json = serde_json::to_string_pretty(&journal)?;
             std::fs::write(&out_path, json)?;
         }
-        _ => unreachable!(),
     }
     println!("Exported to: {}", out_path.display());
     Ok(())
@@ -1551,7 +1692,7 @@ pub fn cmd_trend(
 /// Returns an error if journals cannot be read or the analytics query fails.
 #[allow(clippy::too_many_lines)] // Framework-specific output is intentionally verbose for audit clarity
 #[must_use = "callers must handle compliance check errors"]
-pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
+pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
 
@@ -1586,15 +1727,17 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
         bail!("path does not exist: {}", journals_path.display());
     }
 
+    let fw = framework.as_report_str();
     let full_name = match framework {
-        "DORA" => "DORA — Digital Operational Resilience Act (EU 2022/2554)",
-        "NIS2" => "NIS2 — Network and Information Security Directive (EU 2022/2555)",
-        "PCI-DSS" => "PCI-DSS 4.0 — Payment Card Industry Data Security Standard",
-        "ISO-22301" => "ISO 22301 — Business Continuity Management Systems",
-        "ISO-27001" => "ISO 27001 — Information Security Management Systems",
-        "SOC2" => "SOC 2 — Service Organization Control Type 2",
-        "Basel-III" => "Basel III — BCBS 239 Risk Data Aggregation",
-        _ => framework,
+        ComplianceFramework::Dora => "DORA — Digital Operational Resilience Act (EU 2022/2554)",
+        ComplianceFramework::Nis2 => {
+            "NIS2 — Network and Information Security Directive (EU 2022/2555)"
+        }
+        ComplianceFramework::PciDss => "PCI-DSS 4.0 — Payment Card Industry Data Security Standard",
+        ComplianceFramework::Iso22301 => "ISO 22301 — Business Continuity Management Systems",
+        ComplianceFramework::Iso27001 => "ISO 27001 — Information Security Management Systems",
+        ComplianceFramework::Soc2 => "SOC 2 — Service Organization Control Type 2",
+        ComplianceFramework::BaselIii => "Basel III — BCBS 239 Risk Data Aggregation",
     };
     println!("=== {full_name} ===\n");
     println!("Journals analyzed: {count}");
@@ -1634,7 +1777,7 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
     );
 
     // Framework-specific requirements and evidence
-    match framework {
+    match fw {
         "DORA" => {
             println!("\nSource: https://eur-lex.europa.eu/eli/reg/2022/2554/oj");
             println!("Applies to EU financial entities. Mandates ICT resilience testing");
@@ -2152,7 +2295,7 @@ pub async fn cmd_store_migrate() -> Result<()> {
 /// Returns an error if the journal cannot be read or the report cannot be
 /// written to disk.
 #[must_use = "callers must handle report generation errors"]
-pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> Result<()> {
+pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: ReportFormat) -> Result<()> {
     use tumult_core::journal::read_journal;
 
     let journal = read_journal(journal_path)
@@ -2163,7 +2306,11 @@ pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> R
         .unwrap_or_default()
         .to_str()
         .unwrap_or("report");
-    let ext = if format == "pdf" { "pdf" } else { "html" };
+    let ext = if matches!(format, ReportFormat::Pdf) {
+        "pdf"
+    } else {
+        "html"
+    };
     let out_path = output.map_or_else(
         || std::path::PathBuf::from(format!("{stem}.{ext}")),
         std::path::Path::to_path_buf,
@@ -2171,7 +2318,7 @@ pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> R
 
     let html = generate_html_report(&journal);
 
-    if format == "pdf" {
+    if matches!(format, ReportFormat::Pdf) {
         // PDF: write HTML first, then note that wkhtmltopdf or browser print is needed
         std::fs::write(out_path.with_extension("html"), &html)?;
         println!(
@@ -2398,10 +2545,10 @@ fn html_escape(s: &str) -> String {
 pub fn cmd_gameday_create(
     name: &str,
     experiments: &[std::path::PathBuf],
-    load_tool: Option<&str>,
+    load_tool: Option<LoadToolArg>,
     load_script: Option<&std::path::Path>,
     load_vus: Option<u32>,
-    framework: Option<&str>,
+    framework: Option<ComplianceFramework>,
 ) -> Result<()> {
     use std::fmt::Write;
     let mut content = String::new();
@@ -2410,10 +2557,15 @@ pub fn cmd_gameday_create(
     writeln!(content, "description: GameDay campaign\n").ok();
     writeln!(content, "tags[1]: gameday\n").ok();
 
-    if let Some(tool) = load_tool {
-        if tool != "none" {
+    if let Some(ref tool) = load_tool {
+        if !matches!(tool, LoadToolArg::None) {
+            let tool_str = match tool {
+                LoadToolArg::K6 => "k6",
+                LoadToolArg::Jmeter => "jmeter",
+                LoadToolArg::None => unreachable!(),
+            };
             writeln!(content, "load:").ok();
-            writeln!(content, "  tool: {tool}").ok();
+            writeln!(content, "  tool: {tool_str}").ok();
             if let Some(script) = load_script {
                 writeln!(content, "  script: {}", script.display()).ok();
             }
@@ -2425,8 +2577,9 @@ pub fn cmd_gameday_create(
     }
 
     if let Some(fw) = framework {
+        let fw_str = fw.as_report_str();
         writeln!(content, "regulatory:").ok();
-        writeln!(content, "  frameworks[1]: {fw}").ok();
+        writeln!(content, "  frameworks[1]: {fw_str}").ok();
         writeln!(content, "  requirements[0]:\n").ok();
     }
 
@@ -3264,7 +3417,7 @@ mod tests {
         .unwrap();
 
         let report_path = d.path().join("report.html");
-        cmd_report(&journal_path, Some(&report_path), "html").unwrap();
+        cmd_report(&journal_path, Some(&report_path), ReportFormat::Html).unwrap();
         assert!(report_path.exists());
 
         let content = std::fs::read_to_string(&report_path).unwrap();
@@ -3295,7 +3448,7 @@ mod tests {
         // Change to temp dir so default output lands there
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(d.path()).unwrap();
-        cmd_report(&journal_path, None, "html").unwrap();
+        cmd_report(&journal_path, None, ReportFormat::Html).unwrap();
         std::env::set_current_dir(prev).unwrap();
 
         assert!(d.path().join("my-experiment.html").exists());
@@ -3320,7 +3473,7 @@ mod tests {
         .unwrap();
 
         let report_path = d.path().join("report.html");
-        cmd_report(&journal_path, Some(&report_path), "html").unwrap();
+        cmd_report(&journal_path, Some(&report_path), ReportFormat::Html).unwrap();
 
         let content = std::fs::read_to_string(&report_path).unwrap();
         // Should contain method steps
@@ -3329,7 +3482,106 @@ mod tests {
 
     #[test]
     fn report_nonexistent_journal_returns_error() {
-        let result = cmd_report(Path::new("/nonexistent.toon"), None, "html");
+        let result = cmd_report(Path::new("/nonexistent.toon"), None, ReportFormat::Html);
         assert!(result.is_err());
+    }
+
+    // ── parse_duration_str tests ──────────────────────────────
+
+    #[test]
+    fn parse_duration_seconds() {
+        assert!((parse_duration_str("30s") - 30.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_duration_minutes() {
+        assert!((parse_duration_str("5m") - 300.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_duration_hours() {
+        assert!((parse_duration_str("2h") - 7200.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_duration_bare_number() {
+        assert!((parse_duration_str("45") - 45.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_duration_invalid_falls_back_to_default() {
+        assert!((parse_duration_str("nonsense") - 30.0).abs() < f64::EPSILON);
+    }
+
+    // ── parse_var_args tests ──────────────────────────────────
+
+    #[test]
+    fn parse_var_args_valid() {
+        let vars = vec!["HOST=localhost".to_string(), "PORT=8080".to_string()];
+        let map = parse_var_args(&vars).unwrap();
+        assert_eq!(map.get("HOST").map(String::as_str), Some("localhost"));
+        assert_eq!(map.get("PORT").map(String::as_str), Some("8080"));
+    }
+
+    #[test]
+    fn parse_var_args_empty_is_ok() {
+        let map = parse_var_args(&[]).unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn parse_var_args_missing_equals_is_error() {
+        let vars = vec!["NOEQUALSSIGN".to_string()];
+        let result = parse_var_args(&vars);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("KEY=VALUE format"));
+    }
+
+    #[test]
+    fn parse_var_args_value_with_equals() {
+        // KEY=VALUE=WITH=EQUALS should split on first = only
+        let vars = vec!["URL=http://localhost:8080/path?a=1".to_string()];
+        let map = parse_var_args(&vars).unwrap();
+        assert_eq!(
+            map.get("URL").map(String::as_str),
+            Some("http://localhost:8080/path?a=1")
+        );
+    }
+
+    // ── build_load_override tests ─────────────────────────────
+
+    #[test]
+    fn build_load_override_none_tool_returns_none() {
+        let result = build_load_override(None, None, None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_load_override_explicit_none_returns_none() {
+        let result = build_load_override(Some(LoadToolArg::None), None, None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_load_override_k6_returns_config() {
+        let result = build_load_override(
+            Some(LoadToolArg::K6),
+            None,
+            Some(20),
+            Some("60s".to_string()),
+        );
+        let config = result.unwrap();
+        assert_eq!(config.vus, Some(20));
+        assert!((config.duration_s.unwrap() - 60.0).abs() < f64::EPSILON);
+        assert!(matches!(config.tool, tumult_core::types::LoadTool::K6));
+    }
+
+    #[test]
+    fn build_load_override_jmeter_returns_config() {
+        let result = build_load_override(Some(LoadToolArg::Jmeter), None, None, None);
+        let config = result.unwrap();
+        assert!(matches!(config.tool, tumult_core::types::LoadTool::Jmeter));
+        assert_eq!(config.vus, Some(10)); // default
+        assert!((config.duration_s.unwrap() - 30.0).abs() < f64::EPSILON); // default
     }
 }
