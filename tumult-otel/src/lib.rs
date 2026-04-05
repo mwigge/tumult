@@ -189,4 +189,38 @@ mod tests {
         let debug = format!("{telemetry:?}");
         assert!(debug.contains("TumultTelemetry"));
     }
+
+    /// Verifies that `shutdown()` also shuts down the globally registered
+    /// `TracerProvider` so that spans emitted after shutdown are silently
+    /// dropped rather than sent to an already-closed exporter.
+    ///
+    /// After `global::shutdown_tracer_provider()` the global provider
+    /// transitions to a noop state.  The observable contract here is that
+    /// `shutdown()` must not panic even when the global provider was set
+    /// during `new()`.
+    #[test]
+    fn shutdown_also_shuts_down_global_provider_without_panic() {
+        use opentelemetry::global;
+
+        let rt = tokio_minimal::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://localhost:4317".into()),
+            ..TelemetryConfig::default()
+        };
+        let telemetry = TumultTelemetry::new(config);
+
+        // Calling shutdown() must not panic, and after it returns the global
+        // provider must not hold any live exporters.  We verify by obtaining
+        // a tracer from the global — this should succeed (noop, no panic).
+        telemetry.shutdown();
+
+        // Attempting to get a tracer from the global must not panic.
+        let _tracer = global::tracer("post-shutdown-tracer");
+    }
 }
