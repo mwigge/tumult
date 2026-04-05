@@ -1459,19 +1459,25 @@ pub fn cmd_trend(
         "method_step_count" => "SELECT experiment_id, title, status, method_step_count, started_at_ns FROM experiments WHERE method_step_count IS NOT NULL",
         _ => unreachable!("validated above"),
     };
-    let target_filter = if let Some(t) = target {
-        // Use LIKE for case-insensitive title matching (safe — no user SQL interpolation)
-        format!(
-            " AND lower(title) LIKE '%{}%'",
-            t.to_lowercase().replace('\'', "")
-        )
+    let target_filter = if target.is_some() {
+        // Bind the LIKE pattern as a query parameter to prevent SQL injection.
+        " AND lower(title) LIKE ?"
     } else {
-        String::new()
+        ""
     };
     let sql = format!("{base_sql}{time_filter}{target_filter} ORDER BY started_at_ns");
 
-    let columns = store.query_columns(&sql)?;
-    let rows = store.query(&sql)?;
+    let (columns, rows) = if let Some(t) = target {
+        let like_pattern = format!("%{}%", t.to_lowercase());
+        // Fetch column names from the base SQL (schema is identical regardless of filter).
+        let columns = store.query_columns(base_sql)?;
+        let rows = store.query_with_param(&sql, &like_pattern)?;
+        (columns, rows)
+    } else {
+        let columns = store.query_columns(&sql)?;
+        let rows = store.query(&sql)?;
+        (columns, rows)
+    };
 
     if rows.is_empty() {
         println!("No data points for metric: {metric}");
