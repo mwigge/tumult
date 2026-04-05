@@ -189,9 +189,18 @@ pub struct CoverageTool {
 
 // ── Process executor (shared pattern with CLI) ────────────────
 
+/// Executes activities that invoke external processes, using async I/O via
+/// the current Tokio runtime.
 pub struct ProcessExecutor;
 
 impl tumult_core::runner::ActivityExecutor for ProcessExecutor {
+    /// Executes the given activity by spawning an external process.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from a Tokio `current_thread` runtime context.
+    /// `tokio::task::block_in_place` requires the `multi_thread` scheduler
+    /// and will panic if the current runtime uses `current_thread`.
     fn execute(
         &self,
         activity: &tumult_core::types::Activity,

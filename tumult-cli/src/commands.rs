@@ -79,6 +79,12 @@ impl ActivityExecutor for ProviderExecutor {
 ///
 /// Routes `plugin::function` to `tumult-kubernetes` or `tumult-ssh`
 /// implementations. Runs async functions on the current Tokio runtime.
+///
+/// # Panics
+///
+/// Panics if called from outside a Tokio multi-threaded runtime context.
+/// `tokio::task::block_in_place` requires the `multi_thread` scheduler; it
+/// will panic when used with `current_thread` or with no active runtime.
 fn execute_native(
     plugin: &str,
     function: &str,
@@ -291,6 +297,14 @@ fn format_http_method(method: &HttpMethod) -> &'static str {
     }
 }
 
+/// Execute an external process with optional timeout, using async I/O when a
+/// Tokio runtime is available or falling back to `std::process::Command`.
+///
+/// # Panics
+///
+/// Panics if a Tokio runtime is present but it uses the `current_thread`
+/// scheduler. `tokio::task::block_in_place` requires the `multi_thread`
+/// scheduler and will panic otherwise.
 fn execute_process(
     path: &str,
     arguments: &[String],
