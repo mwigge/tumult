@@ -4,14 +4,18 @@ use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter};
 
 /// Standard metrics emitted by the Tumult engine.
 pub struct TumultMetrics {
-    pub experiments_total: Counter<u64>,
-    pub actions_total: Counter<u64>,
-    pub probes_total: Counter<u64>,
-    pub action_duration_seconds: Histogram<f64>,
-    pub probe_duration_seconds: Histogram<f64>,
-    pub hypothesis_deviations_total: Counter<u64>,
-    pub plugin_errors_total: Counter<u64>,
-    pub recovery_time_seconds: Gauge<f64>,
+    pub(crate) experiments_total: Counter<u64>,
+    pub(crate) actions_total: Counter<u64>,
+    pub(crate) probes_total: Counter<u64>,
+    pub(crate) action_duration_seconds: Histogram<f64>,
+    pub(crate) probe_duration_seconds: Histogram<f64>,
+    pub(crate) hypothesis_deviations_total: Counter<u64>,
+    pub(crate) plugin_errors_total: Counter<u64>,
+    // Intentionally not yet wired to a `record_recovery_time` function;
+    // the gauge is emitted when the runner computes MTTR. Suppressing the
+    // lint here until the recording site is added in a follow-up commit.
+    #[allow(dead_code)]
+    pub(crate) recovery_time_seconds: Gauge<f64>,
 }
 
 impl TumultMetrics {
