@@ -18,3 +18,7 @@ tracing-opentelemetry = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
 tokio-minimal = { workspace = true }
 
+[dev-dependencies]
+# Required for ManualReader and SdkMeterProvider in behavioral metric tests (TEST-01).
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+
