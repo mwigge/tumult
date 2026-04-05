@@ -935,8 +935,8 @@ mod tests {
     }
 
     /// TOFU: first connection adds key to `known_hosts`
-    #[test]
-    fn trust_on_first_use_adds_new_host() {
+    #[tokio::test]
+    async fn trust_on_first_use_adds_new_host() {
         let dir = tempfile::TempDir::new().unwrap();
         let known_hosts = dir.path().join("known_hosts");
         // known_hosts does not exist yet
@@ -948,16 +948,12 @@ mod tests {
             known_hosts_path: known_hosts.clone(),
             policy: HostKeyPolicy::TrustOnFirstUse,
         };
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = client::Handler::check_server_key(&mut handler, &key).await;
         assert!(result.is_ok(), "TOFU: new host should be accepted");
         assert!(result.unwrap());
 
         // known_hosts should now exist and contain the key
-        let contents = std::fs::read_to_string(&known_hosts).unwrap();
+        let contents = tokio::fs::read_to_string(&known_hosts).await.unwrap();
         assert!(
             contents.contains("new-server"),
             "known_hosts should contain host"
