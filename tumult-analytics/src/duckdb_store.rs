@@ -78,6 +78,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the in-memory `DuckDB` connection or schema initialisation fails.
+    #[must_use = "callers must handle connection or schema errors"]
     pub fn in_memory() -> Result<Self, AnalyticsError> {
         let conn = Connection::open_in_memory()?;
         let store = Self { conn };
@@ -88,6 +89,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the `DuckDB` file cannot be opened or schema initialisation fails.
+    #[must_use = "callers must handle file open or schema errors"]
     pub fn open(path: &Path) -> Result<Self, AnalyticsError> {
         // Ensure parent directory exists with restricted permissions
         if let Some(parent) = path.parent() {
@@ -167,6 +169,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the schema version cannot be read or parsed.
+    #[must_use = "callers must use the returned schema version"]
     pub fn schema_version(&self) -> Result<i64, AnalyticsError> {
         let mut stmt = self
             .conn
@@ -230,6 +233,7 @@ impl AnalyticsStore {
     /// store.ingest_journal(&journal).unwrap();
     /// assert_eq!(store.experiment_count().unwrap(), 1);
     /// ```
+    #[must_use = "callers must check whether the journal was ingested or skipped as a duplicate"]
     pub fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
         let _span = telemetry::begin_ingest(&journal.experiment_id, &journal.experiment_title);
 
@@ -258,6 +262,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if any individual journal ingestion fails.
+    #[must_use = "callers must check the count of newly ingested journals"]
     pub fn ingest_journals(&self, journals: &[Journal]) -> Result<usize, AnalyticsError> {
         let mut count = 0;
         for journal in journals {
@@ -275,6 +280,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the SQL query fails to execute.
+    #[must_use = "callers must use the returned query rows"]
     pub fn query(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
@@ -307,6 +313,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the SQL query fails to execute.
+    #[must_use = "callers must use the returned query rows"]
     pub fn query_with_param(
         &self,
         sql: &str,
@@ -337,6 +344,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the SQL query fails to execute.
+    #[must_use = "callers must use the returned column names"]
     pub fn query_columns(&self, sql: &str) -> Result<Vec<String>, AnalyticsError> {
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query(params![])?;
@@ -350,6 +358,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the count query fails.
+    #[must_use = "callers must use the returned experiment count"]
     pub fn experiment_count(&self) -> Result<usize, AnalyticsError> {
         let mut stmt = self.conn.prepare("SELECT count(*) FROM experiments")?;
         let count: i64 = stmt.query_row(params![], |row| row.get(0))?;
@@ -361,6 +370,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if either count query fails.
+    #[must_use = "callers must use the returned store statistics"]
     pub fn stats(&self) -> Result<StoreStats, AnalyticsError> {
         let exp_count = self.experiment_count()?;
         let mut stmt = self.conn.prepare("SELECT count(*) FROM activity_results")?;
@@ -383,6 +393,7 @@ impl AnalyticsStore {
     /// # Panics
     ///
     /// Panics if `days * 86_400_000_000_000` overflows an `i64`.
+    #[must_use = "callers must check the count of purged experiments"]
     pub fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
         let _span = telemetry::begin_purge(days);
 
@@ -418,6 +429,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if any `DuckDB` query or Parquet write fails.
+    #[must_use = "callers must handle export errors"]
     pub fn export_tables(
         &self,
         experiments_path: &Path,
@@ -461,6 +473,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the Parquet read or `DuckDB` insert fails.
+    #[must_use = "callers must handle import errors"]
     pub fn import_tables(
         &self,
         experiments_path: &Path,

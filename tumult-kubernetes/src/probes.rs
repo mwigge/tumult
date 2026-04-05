@@ -53,6 +53,7 @@ pub struct NodeCondition {
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must check whether the pod is ready"]
 pub async fn pod_is_ready(client: Client, namespace: &str, name: &str) -> Result<bool, KubeError> {
     let _span = crate::telemetry::begin_pod_probe(namespace, name);
     let pods: Api<Pod> = Api::namespaced(client, namespace);
@@ -66,6 +67,7 @@ pub async fn pod_is_ready(client: Client, namespace: &str, name: &str) -> Result
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must inspect the returned pod statuses"]
 pub async fn pods_by_label(
     client: Client,
     namespace: &str,
@@ -85,6 +87,7 @@ pub async fn pods_by_label(
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must check the (total, ready) counts"]
 pub async fn all_pods_ready(
     client: Client,
     namespace: &str,
@@ -101,6 +104,7 @@ pub async fn all_pods_ready(
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must inspect the deployment status"]
 pub async fn deployment_is_ready(
     client: Client,
     namespace: &str,
@@ -136,6 +140,7 @@ pub async fn deployment_is_ready(
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must inspect the node status"]
 pub async fn node_status(client: Client, name: &str) -> Result<NodeStatus, KubeError> {
     let _span = crate::telemetry::begin_node_status(name);
     let nodes: Api<Node> = Api::all(client);
@@ -179,6 +184,7 @@ pub async fn node_status(client: Client, name: &str) -> Result<NodeStatus, KubeE
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must check whether the service has endpoints"]
 pub async fn service_has_endpoints(
     client: Client,
     namespace: &str,
@@ -201,6 +207,7 @@ pub async fn service_has_endpoints(
 /// # Errors
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
+#[must_use = "callers must use the returned pod count"]
 pub async fn count_pods_in_phase(
     client: Client,
     namespace: &str,
