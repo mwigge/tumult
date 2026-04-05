@@ -14,7 +14,7 @@ tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
-dirs-next = "2"
+dirs-next = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }

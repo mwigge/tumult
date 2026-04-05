@@ -7,6 +7,15 @@ unmaintained = "warn"
 yanked = "warn"
 notice = "warn"
 
+# RUSTSEC-2023-0071: Marvin Attack timing side-channel in the `rsa` crate.
+# Pulled in transitively via `internal-russh-forked-ssh-key` (a vendored fork inside
+# russh 0.59). No fixed version exists. Mitigated by disabling the `rsa` feature on
+# our direct `russh` dependency — tumult-ssh uses only Ed25519/ECDSA via aws-lc-rs,
+# so the vulnerable RSA code path is unreachable at runtime.
+# Re-evaluate when russh ships a version that removes or patches the rsa dep.
+[[advisories.ignore]]
+id = "RUSTSEC-2023-0071"
+
 [licenses]
 unlicensed = "deny"
 allow = [
