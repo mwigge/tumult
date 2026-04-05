@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tumult_analytics::backend::AnalyticsBackend;
 use tumult_analytics::duckdb_store::StoreStats;
 use tumult_analytics::error::AnalyticsError;
+use tumult_analytics::query_row::QueryRow;
 use tumult_analytics::telemetry;
 use tumult_core::types::Journal;
 
@@ -365,7 +366,7 @@ impl ClickHouseStore {
     }
 
     /// Async query execution — returns rows as TSV-parsed string vectors.
-    pub(crate) async fn query_async(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
+    pub(crate) async fn query_async(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
         let mut cursor = self
@@ -381,7 +382,7 @@ impl ClickHouseStore {
                 .split('\t')
                 .map(std::string::ToString::to_string)
                 .collect();
-            result.push(fields);
+            result.push(QueryRow::from(fields));
         }
 
         telemetry::event_query_executed(result.len(), 0);
@@ -542,7 +543,7 @@ impl AnalyticsBackend for ClickHouseStore {
         })
     }
 
-    fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
+    fn query(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError> {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(self.query_async(sql))
         })
