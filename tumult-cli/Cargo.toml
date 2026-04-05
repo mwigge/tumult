@@ -35,5 +35,5 @@ opentelemetry = { workspace = true }
 tokio-util = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }
 indexmap = { workspace = true }

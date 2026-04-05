@@ -99,6 +99,21 @@ rust-mcp-sdk = "0.9"
 # Cancellation
 tokio-util = "0.7"
 
+# Pattern matching (used in tumult-core for experiment-name validation)
+regex-lite = "0.1"
+
+# Constant-time comparison (used in tumult-mcp for bearer-token auth)
+subtle = "2.6"
+
+# ClickHouse client (used in tumult-clickhouse)
+clickhouse = { version = "0.14", features = ["time", "uuid"] }
+
+# SSH known-hosts path resolution (used in tumult-analytics, tumult-ssh)
+dirs-next = "2"
+
+# Temporary file/directory creation (dev-dependency across all crates)
+tempfile = "3"
+
 [profile.release]
 opt-level = 3
 lto = "fat"
