@@ -106,3 +106,11 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+[workspace.lints.rust]
+# Deny all warnings so `cargo build` outside CI is also strict.
+warnings = "deny"
+
+[workspace.lints.clippy]
+# Mirror the `-W clippy::pedantic` flag used in CI and the pre-commit hook.
+pedantic = "warn"
+
