@@ -144,6 +144,7 @@ pub(crate) fn event_drain_completed(evicted: usize, failed: usize, skipped_daemo
     );
 }
 
+// Retained for future integration with eviction probes/actions; not yet called from an active code path.
 #[allow(dead_code)]
 pub(crate) fn event_pod_evicted(pod_name: &str) {
     let cx = opentelemetry::Context::current();
@@ -153,6 +154,7 @@ pub(crate) fn event_pod_evicted(pod_name: &str) {
     );
 }
 
+// Retained for future integration with pod-count probes; not yet called from an active code path.
 #[allow(dead_code)]
 pub(crate) fn event_pods_counted(count: usize) {
     let cx = opentelemetry::Context::current();

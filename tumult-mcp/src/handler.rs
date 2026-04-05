@@ -490,7 +490,7 @@ impl ServerHandler for TumultHandler {
         })
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)] // Tool dispatch requires one match arm per tool; extracting to closures would not reduce the logical complexity
     async fn handle_call_tool_request(
         &self,
         params: CallToolRequestParams,
@@ -629,6 +629,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(
 }
 
 #[cfg(test)]
+// `vec![…]` is used to build expected tool name lists inline; the verbosity aids readability in tests.
 #[allow(clippy::useless_vec)]
 mod tests {
     use super::*;
