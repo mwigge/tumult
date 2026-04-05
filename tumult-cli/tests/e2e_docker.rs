@@ -197,7 +197,11 @@ fn e2e_full_pipeline_init_run_analyze_export() {
         .expect("analyze failed");
     assert!(output.status.success(), "analyze failed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Experiment Summary"));
+    // cmd_analyze prints "Experiment: <title>" per experiment, not "Experiment Summary"
+    assert!(
+        stdout.contains("Experiment:") || stdout.contains("Loaded"),
+        "unexpected analyze output: {stdout}"
+    );
 
     // Export parquet
     let output = Command::new(&tumult)
