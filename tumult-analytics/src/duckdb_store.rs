@@ -297,6 +297,42 @@ impl AnalyticsStore {
         Ok(result)
     }
 
+    /// Execute a SQL query with a single bound string parameter (e.g. a `LIKE`
+    /// pattern). The SQL must contain exactly one `?` placeholder.
+    ///
+    /// Use this instead of [`Self::query`] when the query includes a value
+    /// derived from user input — binding via a parameter prevents SQL injection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the SQL query fails to execute.
+    pub fn query_with_param(
+        &self,
+        sql: &str,
+        param: &str,
+    ) -> Result<Vec<Vec<String>>, AnalyticsError> {
+        let _span = telemetry::begin_query(sql);
+
+        let mut stmt = self.conn.prepare(sql)?;
+        let mut rows_iter = stmt.query(params![param])?;
+        let column_count = rows_iter
+            .as_ref()
+            .map_or(0, duckdb::Statement::column_count);
+        let mut result = Vec::new();
+        while let Some(row) = rows_iter.next()? {
+            let mut values = Vec::with_capacity(column_count);
+            for i in 0..column_count {
+                let val: String = row
+                    .get::<_, duckdb::types::Value>(i)
+                    .map_or_else(|_| "NULL".to_string(), |v| format_value(&v));
+                values.push(val);
+            }
+            result.push(values);
+        }
+        telemetry::event_query_executed(result.len(), column_count);
+        Ok(result)
+    }
+
     /// # Errors
     ///
     /// Returns an error if the SQL query fails to execute.
@@ -931,5 +967,44 @@ mod tests {
             .unwrap();
         let rows = s.query("SELECT count(*) FROM load_results").unwrap();
         assert_eq!(rows[0][0], "0");
+    }
+
+    #[test]
+    fn query_with_param_binds_like_pattern() {
+        use tumult_core::types::ExperimentStatus;
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("alpha-1", ExperimentStatus::Completed))
+            .unwrap();
+        s.ingest_journal(&sample_journal("beta-2", ExperimentStatus::Completed))
+            .unwrap();
+
+        // Pattern matches only the first journal's title (which equals its ID).
+        let rows = s
+            .query_with_param(
+                "SELECT experiment_id FROM experiments WHERE lower(title) LIKE ?",
+                "%alpha%",
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], "alpha-1");
+    }
+
+    #[test]
+    fn query_with_param_single_quote_in_pattern_does_not_cause_error() {
+        use tumult_core::types::ExperimentStatus;
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("no-match", ExperimentStatus::Completed))
+            .unwrap();
+
+        // A single quote in the bind value must not trigger a SQL error.
+        let rows = s
+            .query_with_param(
+                "SELECT experiment_id FROM experiments WHERE lower(title) LIKE ?",
+                "%o'clock%",
+            )
+            .unwrap();
+        assert!(rows.is_empty());
     }
 }
