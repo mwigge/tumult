@@ -480,7 +480,9 @@ impl AnalyticsStore {
             let schema = crate::arrow_convert::experiments_schema();
             Ok(RecordBatch::new_empty(std::sync::Arc::new(schema)))
         } else if batches.len() == 1 {
-            Ok(batches.into_iter().next().expect("len==1 asserted above"))
+            batches.into_iter().next().ok_or_else(|| {
+                AnalyticsError::Internal("query returned one batch but iterator was empty".into())
+            })
         } else {
             let schema = batches[0].schema();
             Ok(arrow::compute::concat_batches(&schema, &batches)?)
