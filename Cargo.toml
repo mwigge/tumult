@@ -105,6 +105,9 @@ regex-lite = "0.1"
 # Constant-time comparison (used in tumult-mcp for bearer-token auth)
 subtle = "2.6"
 
+# Secure memory zeroing for sensitive credentials (used in tumult-ssh)
+zeroize = { version = "1.8", features = ["derive"] }
+
 # ClickHouse client (used in tumult-clickhouse)
 clickhouse = { version = "0.14", features = ["time", "uuid"] }
 
