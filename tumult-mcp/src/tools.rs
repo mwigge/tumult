@@ -6,6 +6,8 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::error::ToolError;
+
 /// Validate that a SQL query is read-only (SELECT or WITH only).
 ///
 /// Prevents SQL injection by rejecting any query that does not start
@@ -13,16 +15,17 @@ use std::path::{Path, PathBuf};
 ///
 /// # Errors
 ///
-/// Returns an error string if the query does not start with `SELECT` or `WITH`.
-pub fn validate_select_only(query: &str) -> Result<(), String> {
+/// Returns [`ToolError::InvalidInput`] if the query does not start with
+/// `SELECT` or `WITH`.
+pub fn validate_select_only(query: &str) -> Result<(), ToolError> {
     let normalized = query.trim().to_uppercase();
     if normalized.starts_with("SELECT") || normalized.starts_with("WITH") {
         Ok(())
     } else {
-        Err(format!(
+        Err(ToolError::InvalidInput(format!(
             "only SELECT/WITH queries are allowed, got: {}",
             normalized.split_whitespace().next().unwrap_or("(empty)")
-        ))
+        )))
     }
 }
 
@@ -34,11 +37,13 @@ pub fn validate_select_only(query: &str) -> Result<(), String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the name is empty or contains any character
-/// outside the allowed set.
-pub fn validate_action_name(name: &str) -> Result<(), String> {
+/// Returns [`ToolError::InvalidInput`] if the name is empty or contains any
+/// character outside the allowed set.
+pub fn validate_action_name(name: &str) -> Result<(), ToolError> {
     if name.is_empty() {
-        return Err("action name must not be empty".into());
+        return Err(ToolError::InvalidInput(
+            "action name must not be empty".into(),
+        ));
     }
     if name
         .chars()
@@ -46,7 +51,9 @@ pub fn validate_action_name(name: &str) -> Result<(), String> {
     {
         Ok(())
     } else {
-        Err(format!("action name contains invalid characters: {name:?}"))
+        Err(ToolError::InvalidInput(format!(
+            "action name contains invalid characters: {name:?}"
+        )))
     }
 }
 
@@ -58,24 +65,24 @@ pub fn validate_action_name(name: &str) -> Result<(), String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the path cannot be canonicalized or if the
+/// Returns [`ToolError::Path`] if the path cannot be canonicalized or if the
 /// resolved path escapes the base directory.
-pub fn safe_resolve_path(base: &Path, user_path: &str) -> Result<PathBuf, String> {
+pub fn safe_resolve_path(base: &Path, user_path: &str) -> Result<PathBuf, ToolError> {
     let candidate = base.join(user_path);
     let resolved = candidate
         .canonicalize()
-        .map_err(|e| format!("path resolution error: {e}"))?;
+        .map_err(|e| ToolError::Path(format!("path resolution error: {e}")))?;
     let base_canonical = base
         .canonicalize()
-        .map_err(|e| format!("base path resolution error: {e}"))?;
+        .map_err(|e| ToolError::Path(format!("base path resolution error: {e}")))?;
     if resolved.starts_with(&base_canonical) {
         Ok(resolved)
     } else {
-        Err(format!(
+        Err(ToolError::Path(format!(
             "path traversal detected: resolved path {} is outside base {}",
             resolved.display(),
             base_canonical.display()
-        ))
+        )))
     }
 }
 
@@ -83,14 +90,14 @@ pub fn safe_resolve_path(base: &Path, user_path: &str) -> Result<PathBuf, String
 ///
 /// # Errors
 ///
-/// Returns an error string if the file cannot be read, parsed, or fails validation.
-pub fn validate_experiment(experiment_path: &str) -> Result<String, String> {
+/// Returns a [`ToolError`] if the file cannot be read, parsed, or fails
+/// validation.
+pub fn validate_experiment(experiment_path: &str) -> Result<String, ToolError> {
     use tumult_core::engine::{parse_experiment, validate_experiment};
 
-    let content = std::fs::read_to_string(Path::new(experiment_path))
-        .map_err(|e| format!("read error: {e}"))?;
-    let experiment = parse_experiment(&content).map_err(|e| format!("parse error: {e}"))?;
-    validate_experiment(&experiment).map_err(|e| format!("validation error: {e}"))?;
+    let content = std::fs::read_to_string(Path::new(experiment_path))?;
+    let experiment = parse_experiment(&content).map_err(|e| ToolError::Parse(e.to_string()))?;
+    validate_experiment(&experiment).map_err(|e| ToolError::Validation(e.to_string()))?;
 
     Ok(format!(
         "Valid: '{}' — {} method steps, {} rollbacks",
@@ -107,13 +114,13 @@ pub fn validate_experiment(experiment_path: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the file cannot be read, parsed, validated,
+/// Returns a [`ToolError`] if the file cannot be read, parsed, validated,
 /// executed, or encoded.
 pub fn run_experiment(
     experiment_path: &str,
     rollback_strategy: &str,
     parent_context: Option<opentelemetry::Context>,
-) -> Result<String, String> {
+) -> Result<String, ToolError> {
     use std::sync::Arc;
     use tumult_core::controls::ControlRegistry;
     use tumult_core::engine::{parse_experiment, validate_experiment};
@@ -121,10 +128,9 @@ pub fn run_experiment(
     use tumult_core::journal::encode_journal;
     use tumult_core::runner::{run_experiment as run, ActivityExecutor, RunConfig};
 
-    let content = std::fs::read_to_string(Path::new(experiment_path))
-        .map_err(|e| format!("read error: {e}"))?;
-    let experiment = parse_experiment(&content).map_err(|e| format!("parse error: {e}"))?;
-    validate_experiment(&experiment).map_err(|e| format!("validation error: {e}"))?;
+    let content = std::fs::read_to_string(Path::new(experiment_path))?;
+    let experiment = parse_experiment(&content).map_err(|e| ToolError::Parse(e.to_string()))?;
+    validate_experiment(&experiment).map_err(|e| ToolError::Validation(e.to_string()))?;
 
     let strategy = match rollback_strategy {
         "always" => RollbackStrategy::Always,
@@ -141,34 +147,34 @@ pub fn run_experiment(
         load_executor: None,
     };
 
-    let journal =
-        run(&experiment, &executor, &controls, &config).map_err(|e| format!("run error: {e}"))?;
-    encode_journal(&journal).map_err(|e| format!("encode error: {e}"))
+    let journal = run(&experiment, &executor, &controls, &config)
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
+    encode_journal(&journal).map_err(|e| ToolError::Execution(e.to_string()))
 }
 
 /// Analyze journals with a SQL query via `DuckDB`.
 ///
 /// # Errors
 ///
-/// Returns an error string if the query is not a SELECT/WITH, the store cannot
+/// Returns a [`ToolError`] if the query is not a SELECT/WITH, the store cannot
 /// be created, a journal cannot be read or ingested, or the query fails.
-pub fn analyze(journals_path: &str, query: &str) -> Result<String, String> {
+pub fn analyze(journals_path: &str, query: &str) -> Result<String, ToolError> {
     use tumult_core::journal::read_journal;
 
     validate_select_only(query)?;
 
-    let store =
-        tumult_analytics::AnalyticsStore::in_memory().map_err(|e| format!("store error: {e}"))?;
+    let store = tumult_analytics::AnalyticsStore::in_memory()
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let path = Path::new(journals_path);
     if path.is_file() {
-        let journal = read_journal(path).map_err(|e| format!("read error: {e}"))?;
+        let journal = read_journal(path).map_err(|e| ToolError::Parse(e.to_string()))?;
         store
             .ingest_journal(&journal)
-            .map_err(|e| format!("ingest error: {e}"))?;
+            .map_err(|e| ToolError::Store(e.to_string()))?;
     } else if path.is_dir() {
-        for entry in std::fs::read_dir(path).map_err(|e| format!("dir error: {e}"))? {
-            let entry = entry.map_err(|e| e.to_string())?;
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
             if entry.path().extension().and_then(|e| e.to_str()) == Some("toon") {
                 if let Ok(journal) = read_journal(&entry.path()) {
                     let _ = store.ingest_journal(&journal);
@@ -179,10 +185,10 @@ pub fn analyze(journals_path: &str, query: &str) -> Result<String, String> {
 
     let columns = store
         .query_columns(query)
-        .map_err(|e| format!("query error: {e}"))?;
+        .map_err(|e| ToolError::Store(e.to_string()))?;
     let rows = store
         .query(query)
-        .map_err(|e| format!("query error: {e}"))?;
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let mut output = columns.join("\t") + "\n";
     for row in &rows {
@@ -197,20 +203,20 @@ pub fn analyze(journals_path: &str, query: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the file cannot be read.
-pub fn read_journal(journal_path: &str) -> Result<String, String> {
-    std::fs::read_to_string(journal_path).map_err(|e| format!("read error: {e}"))
+/// Returns [`ToolError::Io`] if the file cannot be read.
+pub fn read_journal(journal_path: &str) -> Result<String, ToolError> {
+    std::fs::read_to_string(journal_path).map_err(ToolError::Io)
 }
 
 /// List .toon journal files in a directory.
 ///
 /// # Errors
 ///
-/// Returns an error string if the directory cannot be read.
-pub fn list_journals(directory: &str) -> Result<Vec<String>, String> {
+/// Returns [`ToolError::Io`] if the directory cannot be read.
+pub fn list_journals(directory: &str) -> Result<Vec<String>, ToolError> {
     let mut journals = Vec::new();
-    for entry in std::fs::read_dir(directory).map_err(|e| format!("dir error: {e}"))? {
-        let entry = entry.map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
         if entry.path().extension().and_then(|e| e.to_str()) == Some("toon") {
             journals.push(entry.path().display().to_string());
         }
@@ -249,11 +255,14 @@ pub fn discover_plugins() -> String {
 ///
 /// # Errors
 ///
-/// Returns an error string if the file already exists or cannot be written.
-pub fn create_experiment(output_path: &str, plugin: Option<&str>) -> Result<String, String> {
+/// Returns [`ToolError::AlreadyExists`] if the file already exists, or
+/// [`ToolError::Io`] if the file cannot be written.
+pub fn create_experiment(output_path: &str, plugin: Option<&str>) -> Result<String, ToolError> {
     let path = Path::new(output_path);
     if path.exists() {
-        return Err(format!("{output_path} already exists"));
+        return Err(ToolError::AlreadyExists(format!(
+            "{output_path} already exists"
+        )));
     }
 
     let plugin_name = plugin.unwrap_or("tumult-example");
@@ -288,7 +297,7 @@ method[1]:
 "#
     );
 
-    std::fs::write(path, &template).map_err(|e| format!("write error: {e}"))?;
+    std::fs::write(path, &template)?;
     Ok(format!("Created {output_path}"))
 }
 
@@ -300,11 +309,12 @@ method[1]:
 ///
 /// # Errors
 ///
-/// Returns an error string if the journal file cannot be read or decoded.
-pub fn query_traces(journal_path: &str) -> Result<String, String> {
+/// Returns a [`ToolError`] if the journal file cannot be read or decoded.
+pub fn query_traces(journal_path: &str) -> Result<String, ToolError> {
     use tumult_core::journal::read_journal;
 
-    let journal = read_journal(Path::new(journal_path)).map_err(|e| format!("read error: {e}"))?;
+    let journal =
+        read_journal(Path::new(journal_path)).map_err(|e| ToolError::Parse(e.to_string()))?;
 
     let mut output = format!(
         "Experiment: {} ({})\nStatus: {:?}\nTrace data:\n\n",
@@ -390,20 +400,22 @@ pub fn query_traces(journal_path: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the store does not exist, cannot be opened, or
+/// Returns a [`ToolError`] if the store does not exist, cannot be opened, or
 /// the stats/schema-version query fails.
-pub fn store_stats(store_path: &str) -> Result<String, String> {
+pub fn store_stats(store_path: &str) -> Result<String, ToolError> {
     let path = std::path::PathBuf::from(store_path);
     if !path.exists() {
-        return Err(format!("store not found: {store_path}"));
+        return Err(ToolError::NotFound(format!(
+            "store not found: {store_path}"
+        )));
     }
 
-    let store =
-        tumult_analytics::AnalyticsStore::open(&path).map_err(|e| format!("open error: {e}"))?;
-    let stats = store.stats().map_err(|e| format!("stats error: {e}"))?;
+    let store = tumult_analytics::AnalyticsStore::open(&path)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let stats = store.stats().map_err(|e| ToolError::Store(e.to_string()))?;
     let version = store
         .schema_version()
-        .map_err(|e| format!("version error: {e}"))?;
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let mut output = format!("store: {store_path}\n");
     let _ = writeln!(output, "schema_version: {version}");
@@ -424,25 +436,27 @@ pub fn store_stats(store_path: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the query is not a SELECT/WITH, the store cannot
+/// Returns a [`ToolError`] if the query is not a SELECT/WITH, the store cannot
 /// be opened, or the query fails.
-pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, String> {
+pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, ToolError> {
     validate_select_only(query)?;
 
     let path = std::path::PathBuf::from(store_path);
     if !path.exists() {
-        return Err(format!("store not found: {store_path}"));
+        return Err(ToolError::NotFound(format!(
+            "store not found: {store_path}"
+        )));
     }
 
-    let store =
-        tumult_analytics::AnalyticsStore::open(&path).map_err(|e| format!("open error: {e}"))?;
+    let store = tumult_analytics::AnalyticsStore::open(&path)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let columns = store
         .query_columns(query)
-        .map_err(|e| format!("query error: {e}"))?;
+        .map_err(|e| ToolError::Store(e.to_string()))?;
     let rows = store
         .query(query)
-        .map_err(|e| format!("query error: {e}"))?;
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let mut output = columns.join("\t") + "\n";
     for row in &rows {
@@ -460,8 +474,8 @@ pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, Strin
 ///
 /// # Errors
 ///
-/// Returns an error string if the `search_root` directory cannot be read.
-pub fn list_experiments(search_root: &str) -> Result<String, String> {
+/// Returns a [`ToolError`] if the `search_root` directory cannot be read.
+pub fn list_experiments(search_root: &str) -> Result<String, ToolError> {
     let root = Path::new(search_root);
     let mut results: Vec<String> = Vec::new();
 
@@ -481,12 +495,11 @@ pub fn list_experiments(search_root: &str) -> Result<String, String> {
 }
 
 /// Recursively collect `.toon` experiment entries under `dir`.
-fn collect_toon_files(base: &Path, dir: &Path, results: &mut Vec<String>) -> Result<(), String> {
-    let read_dir =
-        std::fs::read_dir(dir).map_err(|e| format!("dir error reading {}: {e}", dir.display()))?;
+fn collect_toon_files(base: &Path, dir: &Path, results: &mut Vec<String>) -> Result<(), ToolError> {
+    let read_dir = std::fs::read_dir(dir).map_err(ToolError::Io)?;
 
     for entry in read_dir {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = entry?;
         let path = entry.path();
 
         if path.is_dir() {
@@ -558,21 +571,20 @@ fn extract_title(content: &str) -> Option<String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the `GameDay` cannot be read, parsed,
+/// Returns a [`ToolError`] if the `GameDay` cannot be read, parsed,
 /// or any experiment fails to execute.
 #[allow(clippy::too_many_lines)]
-pub fn gameday_run(gameday_path: &str) -> Result<String, String> {
+pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
     use tumult_core::controls::ControlRegistry;
     use tumult_core::engine::parse_experiment;
     use tumult_core::runner::{run_gameday, RunConfig};
     use tumult_core::types::GameDay;
 
     let path = Path::new(gameday_path);
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("failed to read gameday file: {e}"))?;
+    let content = std::fs::read_to_string(path)?;
 
     let gameday: GameDay = toon_format::decode_default(&content)
-        .map_err(|e| format!("failed to parse gameday: {e}"))?;
+        .map_err(|e| ToolError::Parse(format!("failed to parse gameday: {e}")))?;
 
     let gameday_dir = path.parent().unwrap_or(Path::new("."));
 
@@ -583,10 +595,10 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, String> {
         } else {
             gameday_dir.join(&gd_exp.path)
         };
-        let exp_content = std::fs::read_to_string(&exp_path)
-            .map_err(|e| format!("failed to read {}: {e}", exp_path.display()))?;
-        let experiment = parse_experiment(&exp_content)
-            .map_err(|e| format!("failed to parse {}: {e}", exp_path.display()))?;
+        let exp_content = std::fs::read_to_string(&exp_path)?;
+        let experiment = parse_experiment(&exp_content).map_err(|e| {
+            ToolError::Parse(format!("failed to parse {}: {e}", exp_path.display()))
+        })?;
         experiments.push(experiment);
     }
 
@@ -596,14 +608,13 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, String> {
     let config = RunConfig::default();
 
     let journal = run_gameday(&gameday, &experiments, &executor, &controls, &config)
-        .map_err(|e| format!("gameday failed: {e}"))?;
+        .map_err(|e| ToolError::Execution(format!("gameday failed: {e}")))?;
 
     // Write journal
     let journal_path = path.with_extension("journal.toon");
     let toon_out = toon_format::encode_default(&journal)
-        .map_err(|e| format!("failed to encode journal: {e}"))?;
-    std::fs::write(&journal_path, &toon_out)
-        .map_err(|e| format!("failed to write journal: {e}"))?;
+        .map_err(|e| ToolError::Execution(format!("failed to encode journal: {e}")))?;
+    std::fs::write(&journal_path, &toon_out)?;
 
     let mut output = String::new();
     writeln!(output, "GameDay: {}", journal.title).ok();
@@ -635,17 +646,16 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the journal cannot be read or parsed.
-pub fn gameday_analyze(gameday_path: &str) -> Result<String, String> {
+/// Returns a [`ToolError`] if the journal cannot be read or parsed.
+pub fn gameday_analyze(gameday_path: &str) -> Result<String, ToolError> {
     use tumult_core::types::GameDayJournal;
 
     let path = Path::new(gameday_path);
     let journal_path = path.with_extension("journal.toon");
-    let content =
-        std::fs::read_to_string(&journal_path).map_err(|e| format!("failed to read: {e}"))?;
+    let content = std::fs::read_to_string(&journal_path)?;
 
-    let journal: GameDayJournal =
-        toon_format::decode_default(&content).map_err(|e| format!("failed to parse: {e}"))?;
+    let journal: GameDayJournal = toon_format::decode_default(&content)
+        .map_err(|e| ToolError::Parse(format!("failed to parse: {e}")))?;
 
     let mut output = String::new();
     writeln!(output, "GameDay: {}", journal.title).ok();
@@ -701,11 +711,13 @@ pub fn gameday_analyze(gameday_path: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the directory cannot be read.
-pub fn gameday_list(search_root: &str) -> Result<String, String> {
+/// Returns [`ToolError::InvalidInput`] if `search_root` is not a directory.
+pub fn gameday_list(search_root: &str) -> Result<String, ToolError> {
     let root = Path::new(search_root);
     if !root.is_dir() {
-        return Err(format!("not a directory: {search_root}"));
+        return Err(ToolError::InvalidInput(format!(
+            "not a directory: {search_root}"
+        )));
     }
 
     let mut entries = Vec::new();
@@ -756,16 +768,16 @@ fn collect_gameday_files(dir: &Path, entries: &mut Vec<(String, String)>) {
 ///
 /// # Errors
 ///
-/// Returns an error string if the store cannot be opened or queried.
+/// Returns a [`ToolError`] if the store cannot be opened or queried.
 #[allow(clippy::too_many_lines)]
-pub fn recommend(store_path: &str) -> Result<String, String> {
+pub fn recommend(store_path: &str) -> Result<String, ToolError> {
     let path = std::path::PathBuf::from(store_path);
     if !path.exists() {
         return Ok("No analytics store found. Run some experiments first.".to_string());
     }
 
-    let store =
-        tumult_analytics::AnalyticsStore::open(&path).map_err(|e| format!("open error: {e}"))?;
+    let store = tumult_analytics::AnalyticsStore::open(&path)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let mut output = String::new();
 
@@ -901,8 +913,8 @@ pub fn recommend(store_path: &str) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Returns an error string if the store cannot be opened or queried.
-pub fn coverage(store_path: &str) -> Result<String, String> {
+/// Returns a [`ToolError`] if the store cannot be opened or queried.
+pub fn coverage(store_path: &str) -> Result<String, ToolError> {
     let path = std::path::PathBuf::from(store_path);
 
     // Available capabilities
@@ -1265,7 +1277,7 @@ mod tests {
     fn validate_select_only_rejects_drop() {
         let result = validate_select_only("DROP TABLE experiments");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("only SELECT/WITH"));
+        assert!(result.unwrap_err().to_string().contains("only SELECT/WITH"));
     }
 
     #[test]
@@ -1325,7 +1337,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let result = analyze(dir.path().to_str().unwrap(), "DROP TABLE experiments");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("only SELECT/WITH"));
+        assert!(result.unwrap_err().to_string().contains("only SELECT/WITH"));
     }
 
     #[test]
@@ -1337,7 +1349,7 @@ mod tests {
 
         let result = analyze_persistent(db_path.to_str().unwrap(), "DROP TABLE experiments");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("only SELECT/WITH"));
+        assert!(result.unwrap_err().to_string().contains("only SELECT/WITH"));
     }
 
     // ── safe_resolve_path ────────────────────────────────────
