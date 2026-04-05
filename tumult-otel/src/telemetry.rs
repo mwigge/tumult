@@ -37,6 +37,10 @@ impl TumultTelemetry {
     /// and installs a global tracer provider. The tracing subscriber
     /// with OpenTelemetry bridge is installed **after** the provider
     /// is registered globally, ensuring correct init order.
+    ///
+    /// When `config.console_export` is `true`, span data is also written
+    /// to stdout in addition to any configured OTLP endpoint. This is
+    /// useful for local development and debugging.
     pub fn new(config: TelemetryConfig) -> Self {
         if !config.enabled {
             // Install a minimal tracing subscriber for log output only
@@ -63,10 +67,17 @@ impl TumultTelemetry {
                 .build()
             {
                 Ok(exporter) => {
-                    let provider = SdkTracerProvider::builder()
+                    let mut builder = SdkTracerProvider::builder()
                         .with_resource(resource)
-                        .with_batch_exporter(exporter)
-                        .build();
+                        .with_batch_exporter(exporter);
+
+                    if config.console_export {
+                        let stdout_exporter = opentelemetry_stdout::SpanExporter::default();
+                        builder = builder.with_simple_exporter(stdout_exporter);
+                        tracing::debug!("console span export enabled");
+                    }
+
+                    let provider = builder.build();
 
                     // Step 1: Register TracerProvider BEFORE installing subscriber
                     global::set_tracer_provider(provider.clone());
@@ -98,6 +109,26 @@ impl TumultTelemetry {
                     None
                 }
             }
+        } else if config.console_export {
+            // No OTLP endpoint but console export requested: build a provider
+            // that writes spans to stdout only.
+            let stdout_exporter = opentelemetry_stdout::SpanExporter::default();
+            let provider = SdkTracerProvider::builder()
+                .with_resource(resource)
+                .with_simple_exporter(stdout_exporter)
+                .build();
+
+            global::set_tracer_provider(provider.clone());
+
+            let otel_layer = tracing_opentelemetry::layer();
+            let _ = tracing_subscriber::registry()
+                .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+                .with(tracing_subscriber::fmt::layer())
+                .with(otel_layer)
+                .try_init();
+
+            tracing::debug!(service = %config.service_name, "console-only span export enabled");
+            Some(provider)
         } else {
             // Install subscriber without OTel layer
             let _ = tracing_subscriber::registry()
