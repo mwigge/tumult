@@ -12,18 +12,17 @@
 //!
 //! # Authentication methods
 //!
-//! [`AuthMethod`] supports three strategies:
+//! [`AuthMethod`] supports two strategies:
 //!
 //! | Variant | Description |
-//! |-------------|---------------------------------------------|
-//! | `KeyFile` | Path to a PEM-encoded private key on disk |
-//! | `Agent` | Delegates to a running `ssh-agent` process |
-//! | `Password` | Password-based auth (least recommended) |
+//! |---------|-------------------------------------------------------|
+//! | `Key`   | Path to a PEM-encoded private key on disk (optional passphrase, zeroized on drop) |
+//! | `Agent` | Delegates to a running `ssh-agent` / pageant process |
 //!
 //! # Usage
 //!
 //! Build an [`SshConfig`], open an [`SshSession`], then call
-//! [`SshSession::exec`] to run commands on the remote host. The returned
+//! [`SshSession::execute`] to run commands on the remote host. The returned
 //! [`CommandResult`] captures exit code, stdout, and stderr.
 
 pub mod config;

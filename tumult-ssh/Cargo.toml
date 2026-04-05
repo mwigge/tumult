@@ -15,6 +15,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
 dirs-next = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

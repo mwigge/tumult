@@ -425,8 +425,9 @@ async fn authenticate(
                 }
             }
 
-            let key_pair = russh::keys::load_secret_key(key_path, passphrase.as_deref())
-                .map_err(|e| SshError::KeyParseError(e.to_string()))?;
+            let key_pair =
+                russh::keys::load_secret_key(key_path, passphrase.as_deref().map(String::as_str))
+                    .map_err(|e| SshError::KeyParseError(e.to_string()))?;
 
             let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
 

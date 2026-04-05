@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::time::Duration;
+use zeroize::Zeroizing;
 
 /// Policy for verifying the SSH server's host key against `known_hosts`.
 ///
@@ -40,7 +41,9 @@ pub enum AuthMethod {
     /// Authenticate with a private key file.
     Key {
         key_path: PathBuf,
-        passphrase: Option<String>,
+        /// Passphrase for the private key. Wrapped in [`Zeroizing`] so the
+        /// bytes are overwritten in memory when the value is dropped.
+        passphrase: Option<Zeroizing<String>>,
     },
     /// Authenticate via SSH agent (ssh-agent / pageant).
     Agent,
@@ -303,7 +306,7 @@ mod tests {
     fn debug_redacts_passphrase() {
         let auth = AuthMethod::Key {
             key_path: PathBuf::from("/tmp/key"),
-            passphrase: Some("s3cret".into()),
+            passphrase: Some("s3cret".to_string().into()),
         };
         let debug = format!("{auth:?}");
         assert!(debug.contains("REDACTED"));
