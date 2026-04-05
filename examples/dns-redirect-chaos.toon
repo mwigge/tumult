@@ -1,0 +1,46 @@
+title: DNS redirect chaos — verify application handles wrong DNS responses
+description: Redirect a domain to 127.0.0.1 via /etc/hosts and verify the probe detects it
+
+tags[2]: dns, network
+
+steady_state_hypothesis:
+  title: DNS resolves correctly
+  probes[1]:
+    - name: dns-baseline
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "dig +short google.com 2>/dev/null | head -1 || echo failed"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "\\d+\\.\\d+\\.\\d+\\.\\d+"
+
+method[2]:
+  - name: dns-latency-before
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "dig +noall +stats google.com 2>/dev/null | awk '/Query time:/ {print $4}'"
+      timeout_s: 10.0
+  - name: redirect-dns
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      action: redirect-dns
+      env:
+        TUMULT_DNS_DOMAIN: "test-redirect.tumult.local"
+        TUMULT_DNS_REDIRECT: "127.0.0.1"
+      timeout_s: 10.0
+
+rollbacks[1]:
+  - name: restore-dns
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      action: redirect-dns-rollback
+      timeout_s: 10.0
