@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 /// Configuration for the `ClickHouse` analytics backend.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ClickHouseConfig {
     /// `ClickHouse` HTTP URL (e.g., `http://localhost:8123`)
     pub url: String,
@@ -15,6 +15,19 @@ pub struct ClickHouseConfig {
     pub password: String,
     /// Timeout for individual query execution (default: 30s)
     pub query_timeout: Duration,
+}
+
+impl std::fmt::Debug for ClickHouseConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClickHouseConfig")
+            .field("url", &self.url)
+            .field("database", &self.database)
+            .field("user", &self.user)
+            // Redact password to prevent accidental leakage in logs or panic output.
+            .field("password", &"[REDACTED]")
+            .field("query_timeout", &self.query_timeout)
+            .finish()
+    }
 }
 
 impl ClickHouseConfig {
@@ -90,5 +103,25 @@ mod tests {
         let config = ClickHouseConfig::from_env();
         assert_eq!(config.url, "http://localhost:8123");
         assert_eq!(config.database, "tumult");
+    }
+
+    #[test]
+    fn debug_redacts_password() {
+        let config = ClickHouseConfig {
+            url: "http://localhost:8123".into(),
+            database: "tumult".into(),
+            user: "alice".into(),
+            password: "super-secret".into(),
+            query_timeout: std::time::Duration::from_secs(30),
+        };
+        let debug_output = format!("{config:?}");
+        assert!(
+            !debug_output.contains("super-secret"),
+            "Debug output must not contain plaintext password"
+        );
+        assert!(
+            debug_output.contains("[REDACTED]"),
+            "Debug output must show [REDACTED] for password"
+        );
     }
 }
