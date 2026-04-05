@@ -196,6 +196,7 @@ impl SshSession {
     ///
     /// # Errors
     ///
+    /// Returns [`SshError::InvalidPath`] if `remote_path` contains control characters.
     /// Returns [`SshError::UploadFailed`] if the local file cannot be read or the remote write fails.
     /// Returns [`SshError::ChannelError`] if a channel cannot be opened.
     /// Returns [`SshError::Timeout`] if the upload exceeds the configured command timeout.
@@ -219,8 +220,8 @@ impl SshSession {
 
         let cmd = format!(
             "cat > {} && chmod 755 {}",
-            shell_escape(remote_path),
-            shell_escape(remote_path)
+            shell_escape(remote_path)?,
+            shell_escape(remote_path)?
         );
         channel
             .exec(true, cmd)
@@ -295,8 +296,17 @@ impl SshSession {
 }
 
 /// Simple shell escaping for remote paths.
-fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
+///
+/// # Errors
+///
+/// Returns [`SshError::InvalidPath`] if `s` contains any ASCII control
+/// character (U+0000–U+001F or U+007F), which would allow shell command
+/// injection via an embedded newline or similar bypass.
+fn shell_escape(s: &str) -> Result<String, SshError> {
+    if s.chars().any(|c| c.is_ascii_control()) {
+        return Err(SshError::InvalidPath { path: s.to_owned() });
+    }
+    Ok(format!("'{}'", s.replace('\'', "'\\''")))
 }
 
 /// Resolve the `known_hosts` file path: use provided path or fall back to `~/.ssh/known_hosts`.
@@ -724,12 +734,48 @@ mod tests {
 
     #[test]
     fn shell_escape_simple_path() {
-        assert_eq!(shell_escape("/tmp/file.sh"), "'/tmp/file.sh'");
+        assert_eq!(
+            shell_escape("/tmp/file.sh").expect("valid path"),
+            "'/tmp/file.sh'"
+        );
     }
 
     #[test]
     fn shell_escape_path_with_single_quote() {
-        assert_eq!(shell_escape("/tmp/it's"), "'/tmp/it'\\''s'");
+        assert_eq!(
+            shell_escape("/tmp/it's").expect("valid path"),
+            "'/tmp/it'\\''s'"
+        );
+    }
+
+    #[test]
+    fn shell_escape_rejects_path_with_embedded_newline() {
+        // A path containing '\n' could inject arbitrary shell commands after
+        // the escaped argument — e.g. "/tmp/x\nrm -rf /". Ensure the function
+        // returns an error instead of producing a bypassable escaped string.
+        let result = shell_escape("/tmp/evil\nrm -rf /");
+        assert!(
+            matches!(result, Err(SshError::InvalidPath { .. })),
+            "expected InvalidPath error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn shell_escape_rejects_path_with_carriage_return() {
+        let result = shell_escape("/tmp/evil\r");
+        assert!(
+            matches!(result, Err(SshError::InvalidPath { .. })),
+            "expected InvalidPath error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn shell_escape_rejects_path_with_nul_byte() {
+        let result = shell_escape("/tmp/evil\x00");
+        assert!(
+            matches!(result, Err(SshError::InvalidPath { .. })),
+            "expected InvalidPath error, got {result:?}"
+        );
     }
 
     #[cfg(unix)]
