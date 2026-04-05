@@ -17,6 +17,7 @@ use crate::error::KubeError;
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
+#[must_use = "callers must check whether the pod was successfully deleted"]
 pub async fn delete_pod(
     client: Client,
     namespace: &str,
@@ -39,6 +40,7 @@ pub async fn delete_pod(
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
+#[must_use = "callers must check whether the deployment was successfully scaled"]
 pub async fn scale_deployment(
     client: Client,
     namespace: &str,
@@ -69,6 +71,7 @@ pub async fn scale_deployment(
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
+#[must_use = "callers must check whether the node was successfully cordoned"]
 pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError> {
     let _span = crate::telemetry::begin_cordon_node(name);
     let nodes: Api<Node> = Api::all(client);
@@ -92,6 +95,7 @@ pub async fn cordon_node(client: Client, name: &str) -> Result<String, KubeError
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
+#[must_use = "callers must check whether the node was successfully uncordoned"]
 pub async fn uncordon_node(client: Client, name: &str) -> Result<String, KubeError> {
     let _span = crate::telemetry::begin_uncordon_node(name);
     let nodes: Api<Node> = Api::all(client);
@@ -137,6 +141,7 @@ impl std::fmt::Display for DrainResult {
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails (cordon or pod list).
 #[tracing::instrument(skip(client))]
+#[must_use = "callers must check the drain result for eviction failures"]
 pub async fn drain_node(
     client: Client,
     name: &str,
@@ -191,6 +196,7 @@ pub async fn drain_node(
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client, policy))]
+#[must_use = "callers must check whether the network policy was successfully applied"]
 pub async fn apply_network_policy(
     client: Client,
     namespace: &str,
@@ -215,6 +221,7 @@ pub async fn apply_network_policy(
 ///
 /// Returns [`KubeError`] if the Kubernetes API call fails.
 #[tracing::instrument(skip(client))]
+#[must_use = "callers must check whether the network policy was successfully deleted"]
 pub async fn delete_network_policy(
     client: Client,
     namespace: &str,
