@@ -7,6 +7,7 @@ use tumult_core::types::Journal;
 
 use crate::duckdb_store::StoreStats;
 use crate::error::AnalyticsError;
+use crate::query_row::QueryRow;
 
 #[doc(hidden)]
 pub mod private {
@@ -50,7 +51,7 @@ pub trait AnalyticsBackend: private::Sealed {
     /// # Errors
     ///
     /// Returns an error if the SQL query fails to execute.
-    fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError>;
+    fn query(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError>;
 
     /// Get column names for a SQL query.
     ///
@@ -100,7 +101,7 @@ impl AnalyticsBackend for crate::duckdb_store::AnalyticsStore {
         self.ingest_journals(journals)
     }
 
-    fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
+    fn query(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError> {
         self.query(sql)
     }
 

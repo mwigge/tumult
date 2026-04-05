@@ -24,6 +24,7 @@ use crate::arrow_convert::{
 };
 use crate::error::AnalyticsError;
 use crate::export::{export_parquet, import_parquet};
+use crate::query_row::QueryRow;
 use crate::telemetry;
 
 const CURRENT_SCHEMA_VERSION: i64 = 1;
@@ -274,7 +275,7 @@ impl AnalyticsStore {
     /// # Errors
     ///
     /// Returns an error if the SQL query fails to execute.
-    pub fn query(&self, sql: &str) -> Result<Vec<Vec<String>>, AnalyticsError> {
+    pub fn query(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
         let mut stmt = self.conn.prepare(sql)?;
@@ -291,7 +292,7 @@ impl AnalyticsStore {
                     .map_or_else(|_| "NULL".to_string(), |v| format_value(&v));
                 values.push(val);
             }
-            result.push(values);
+            result.push(QueryRow::from(values));
         }
         telemetry::event_query_executed(result.len(), column_count);
         Ok(result)
@@ -310,7 +311,7 @@ impl AnalyticsStore {
         &self,
         sql: &str,
         param: &str,
-    ) -> Result<Vec<Vec<String>>, AnalyticsError> {
+    ) -> Result<Vec<QueryRow>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
         let mut stmt = self.conn.prepare(sql)?;
@@ -327,7 +328,7 @@ impl AnalyticsStore {
                     .map_or_else(|_| "NULL".to_string(), |v| format_value(&v));
                 values.push(val);
             }
-            result.push(values);
+            result.push(QueryRow::from(values));
         }
         telemetry::event_query_executed(result.len(), column_count);
         Ok(result)
