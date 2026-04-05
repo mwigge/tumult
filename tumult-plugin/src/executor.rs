@@ -77,20 +77,24 @@ impl ScriptResult {
     }
 }
 
-/// Validate that no argument keys or values contain null bytes.
+/// Validate that no argument keys or values contain null bytes or empty keys.
 ///
 /// Null bytes in environment variable names or values can cause truncation
-/// or injection issues in child processes.
+/// or injection issues in child processes. Empty keys produce no-op env vars
+/// with the `TUMULT_` prefix that silently swallow caller mistakes.
 ///
 /// # Errors
 ///
 /// Returns [`ExecutorError::NullByteInArgument`] if any key or value contains a
-/// null byte (`\0`).
+/// null byte (`\0`), or if any key is empty.
 #[must_use = "callers must handle null-byte validation errors"]
 pub fn validate_arguments<S: std::hash::BuildHasher>(
     arguments: &HashMap<String, String, S>,
 ) -> Result<(), ExecutorError> {
     for (k, v) in arguments {
+        if k.is_empty() {
+            return Err(ExecutorError::NullByteInArgument("<empty key>".to_string()));
+        }
         if k.contains('\0') || v.contains('\0') {
             return Err(ExecutorError::NullByteInArgument(k.clone()));
         }
@@ -111,26 +115,45 @@ pub fn build_env_vars<S: std::hash::BuildHasher>(
 
 /// Execute a script at the given path with TUMULT_* env vars.
 ///
+/// `plugin_root` is the canonical directory the plugin was loaded from.
+/// The script path is resolved relative to `plugin_root` and must remain
+/// within it after canonicalization, preventing path-traversal via manifests
+/// that specify `../../etc/passwd` as the script path.
+///
 /// # Errors
 ///
 /// Returns [`ExecutorError::ScriptNotFound`] if the script path does not exist.
-/// Returns [`ExecutorError::NullByteInArgument`] if any argument contains a null byte.
+/// Returns [`ExecutorError::ScriptNotFound`] if the resolved path escapes `plugin_root`.
+/// Returns [`ExecutorError::NullByteInArgument`] if any argument contains a null byte or empty key.
 /// Returns [`ExecutorError::ExecutionFailed`] if the process cannot be spawned.
 /// Returns [`ExecutorError::Timeout`] if the script does not finish within the given duration.
 #[must_use = "callers must check the script result for success or failure"]
 pub async fn execute_script<S: std::hash::BuildHasher>(
     script_path: &Path,
+    plugin_root: &Path,
     arguments: &HashMap<String, String, S>,
     timeout: Option<Duration>,
 ) -> Result<ScriptResult, ExecutorError> {
+    // Pre-compute the display string once to avoid repeated allocations
+    // (PLUGIN-ALLOC-01: was called 3-4× via .display().to_string() inline).
+    let path_str = script_path.display().to_string();
     let timeout_f64 = timeout.map(|d| d.as_secs_f64());
-    let _span = crate::telemetry::begin_execute(&script_path.display().to_string(), timeout_f64);
-    crate::telemetry::event_script_started(&script_path.display().to_string());
+    let _span = crate::telemetry::begin_execute(&path_str, timeout_f64);
+    crate::telemetry::event_script_started(&path_str);
 
     if !script_path.exists() {
-        return Err(ExecutorError::ScriptNotFound(
-            script_path.display().to_string(),
-        ));
+        return Err(ExecutorError::ScriptNotFound(path_str));
+    }
+
+    // Bounds-check: resolve the script path and verify it stays within the
+    // plugin root directory (PLUGIN-SEC-01). This prevents a manifest with
+    // `script: ../../etc/passwd` from reaching outside the plugin directory.
+    let canonical_root = std::fs::canonicalize(plugin_root)
+        .map_err(|_| ExecutorError::ScriptNotFound(path_str.clone()))?;
+    let canonical_script = std::fs::canonicalize(script_path)
+        .map_err(|_| ExecutorError::ScriptNotFound(path_str.clone()))?;
+    if !canonical_script.starts_with(&canonical_root) {
+        return Err(ExecutorError::ScriptNotFound(path_str));
     }
 
     validate_arguments(arguments)?;
@@ -156,10 +179,7 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
         if let Ok(result) = tokio::time::timeout(duration, cmd.output()).await {
             result?
         } else {
-            crate::telemetry::event_script_timed_out(
-                &script_path.display().to_string(),
-                duration.as_secs_f64(),
-            );
+            crate::telemetry::event_script_timed_out(&path_str, duration.as_secs_f64());
             crate::telemetry::record_execution(false);
             return Err(ExecutorError::Timeout(duration.as_secs_f64()));
         }
@@ -231,7 +251,7 @@ mod tests {
     async fn execute_script_captures_stdout() {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hello");
-        let result = execute_script(&script, &HashMap::new(), None)
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         assert_eq!(result.exit_status, ScriptExitStatus::Code(0));
@@ -244,7 +264,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let script =
             create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho error >&2\nexit 1");
-        let result = execute_script(&script, &HashMap::new(), None)
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         assert_eq!(result.exit_status, ScriptExitStatus::Code(1));
@@ -258,14 +278,22 @@ mod tests {
         let script =
             create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho $TUMULT_BROKER_ID");
         let args = HashMap::from([("broker_id".into(), "42".into())]);
-        let result = execute_script(&script, &args, None).await.unwrap();
+        let result = execute_script(&script, dir.path(), &args, None)
+            .await
+            .unwrap();
         assert_eq!(result.stdout.trim(), "42");
     }
 
     #[tokio::test]
     async fn execute_script_not_found_returns_error() {
-        let result =
-            execute_script(Path::new("/nonexistent/script.sh"), &HashMap::new(), None).await;
+        let dir = TempDir::new().unwrap();
+        let result = execute_script(
+            Path::new("/nonexistent/script.sh"),
+            dir.path(),
+            &HashMap::new(),
+            None,
+        )
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, ExecutorError::ScriptNotFound(_)));
@@ -275,8 +303,13 @@ mod tests {
     async fn execute_script_timeout_returns_error() {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\nsleep 10");
-        let result =
-            execute_script(&script, &HashMap::new(), Some(Duration::from_millis(100))).await;
+        let result = execute_script(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            Some(Duration::from_millis(100)),
+        )
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, ExecutorError::Timeout(_)));
@@ -319,12 +352,38 @@ mod tests {
             "test.sh",
             "#!/bin/bash\necho \"traceparent=${TRACEPARENT}\"",
         );
-        let result = execute_script(&script, &HashMap::new(), None)
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         // The script must succeed regardless of whether a span is active.
         assert_eq!(result.exit_status, ScriptExitStatus::Code(0));
         // Output always contains the "traceparent=" line (value may be empty).
         assert!(result.stdout.contains("traceparent="));
+    }
+
+    #[test]
+    fn validate_arguments_rejects_empty_key() {
+        let args = HashMap::from([(String::new(), "value".into())]);
+        let result = validate_arguments(&args);
+        assert!(
+            matches!(result, Err(ExecutorError::NullByteInArgument(_))),
+            "empty key should be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_script_rejects_path_traversal() {
+        // A script path that escapes the plugin root after canonicalization
+        // must be rejected with ScriptNotFound — even if the target file exists.
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let escaped_script =
+            create_test_script(outside.path(), "evil.sh", "#!/bin/bash\necho pwned");
+
+        let result = execute_script(&escaped_script, root.path(), &HashMap::new(), None).await;
+        assert!(
+            matches!(result, Err(ExecutorError::ScriptNotFound(_))),
+            "expected ScriptNotFound when script is outside plugin root, got: {result:?}"
+        );
     }
 }
