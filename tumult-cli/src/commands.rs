@@ -713,6 +713,7 @@ fn parse_k6_rate(output: &str, counter_name: &str) -> Option<f64> {
 /// Returns an error if the experiment cannot be read, parsed, validated,
 /// executed, or the journal cannot be written.
 #[allow(clippy::too_many_arguments)]
+#[must_use = "callers must handle experiment run errors"]
 pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     experiment_path: &Path,
     journal_path: &Path,
@@ -899,6 +900,7 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) 
 /// # Errors
 ///
 /// Returns an error if the file cannot be read, parsed, or fails validation.
+#[must_use = "callers must handle validation errors"]
 pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     let content = std::fs::read_to_string(experiment_path).with_context(|| {
         format!(
@@ -995,6 +997,7 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 ///
 /// Returns an error if the requested plugin filter does not match any
 /// discovered plugin.
+#[must_use = "callers must handle plugin discovery errors"]
 pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     let mut registry = PluginRegistry::new();
 
@@ -1280,6 +1283,7 @@ fn print_store_aggregate(store: &tumult_analytics::AnalyticsStore) -> Result<()>
 /// # Errors
 ///
 /// Returns an error if the analytics store cannot be opened or the query fails.
+#[must_use = "callers must handle analytics errors"]
 pub fn cmd_analyze(
     journals_path: Option<&Path>,
     query: Option<&str>,
@@ -1360,6 +1364,7 @@ pub fn cmd_analyze(
 /// # Errors
 ///
 /// Returns an error if the journal cannot be read or the export operation fails.
+#[must_use = "callers must handle export errors"]
 pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
     use tumult_analytics::arrow_convert::journal_to_record_batch;
     use tumult_analytics::export::{export_csv, export_parquet};
@@ -1406,6 +1411,7 @@ pub fn cmd_export(journal_path: &Path, format: &str) -> Result<()> {
 ///
 /// Returns an error if journals cannot be read or the analytics query fails.
 #[allow(clippy::too_many_lines)] // Multi-probe trend analysis output requires verbose formatting across multiple metric types
+#[must_use = "callers must handle trend analysis errors"]
 pub fn cmd_trend(
     journals_path: &Path,
     metric: &str,
@@ -1544,6 +1550,7 @@ pub fn cmd_trend(
 ///
 /// Returns an error if journals cannot be read or the analytics query fails.
 #[allow(clippy::too_many_lines)] // Framework-specific output is intentionally verbose for audit clarity
+#[must_use = "callers must handle compliance check errors"]
 pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
@@ -1723,6 +1730,7 @@ pub fn cmd_compliance(journals_path: &Path, framework: &str) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the file already exists or cannot be written.
+#[must_use = "callers must handle init errors"]
 pub fn cmd_init(plugin: Option<&str>) -> Result<()> {
     init_at(Path::new("experiment.toon"), plugin)
 }
@@ -1880,6 +1888,7 @@ fn validate_path_no_symlink(path: &Path) -> Result<()> {
 ///
 /// Returns an error if the directory is invalid, the parquet files are missing,
 /// or the import operation fails.
+#[must_use = "callers must handle import errors"]
 pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1917,6 +1926,7 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the store cannot be opened or the stats query fails.
+#[must_use = "callers must handle store stats errors"]
 pub fn cmd_store_stats() -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1950,6 +1960,7 @@ pub fn cmd_store_stats() -> Result<()> {
 ///
 /// Returns an error if the store cannot be opened, the backup directory cannot
 /// be created, or the export operation fails.
+#[must_use = "callers must handle backup errors"]
 pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -1980,6 +1991,7 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the store cannot be opened or the purge operation fails.
+#[must_use = "callers must handle purge errors"]
 pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -2008,6 +2020,7 @@ pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
 ///
 /// Returns an error if the store path cannot be determined or the metadata
 /// cannot be read.
+#[must_use = "callers must handle store path errors"]
 pub fn cmd_store_path() -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
@@ -2032,6 +2045,7 @@ pub fn cmd_store_path() -> Result<()> {
 ///
 /// Returns an error if `ClickHouse` is not configured, the `DuckDB` store
 /// cannot be opened, or the migration fails.
+#[must_use = "callers must handle migration errors"]
 pub async fn cmd_store_migrate() -> Result<()> {
     use tumult_analytics::{AnalyticsBackend, AnalyticsStore};
 
@@ -2137,6 +2151,7 @@ pub async fn cmd_store_migrate() -> Result<()> {
 ///
 /// Returns an error if the journal cannot be read or the report cannot be
 /// written to disk.
+#[must_use = "callers must handle report generation errors"]
 pub fn cmd_report(journal_path: &Path, output: Option<&Path>, format: &str) -> Result<()> {
     use tumult_core::journal::read_journal;
 
@@ -2379,6 +2394,7 @@ fn html_escape(s: &str) -> String {
 /// # Errors
 ///
 /// Returns an error if the file cannot be written.
+#[must_use = "callers must handle gameday creation errors"]
 pub fn cmd_gameday_create(
     name: &str,
     experiments: &[std::path::PathBuf],
@@ -2440,6 +2456,7 @@ pub fn cmd_gameday_create(
 ///
 /// Returns an error if the `GameDay` file cannot be read, parsed, or experiments fail.
 #[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and scoring summary
+#[must_use = "callers must handle gameday run errors"]
 pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     use tumult_core::controls::ControlRegistry;
     use tumult_core::engine::parse_experiment;
@@ -2578,6 +2595,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the journal cannot be read or parsed.
+#[must_use = "callers must handle gameday analysis errors"]
 pub fn cmd_gameday_analyze(gameday_path: &std::path::Path) -> Result<()> {
     use tumult_core::types::GameDayJournal;
 

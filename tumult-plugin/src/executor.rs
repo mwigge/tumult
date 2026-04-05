@@ -86,6 +86,7 @@ impl ScriptResult {
 ///
 /// Returns [`ExecutorError::NullByteInArgument`] if any key or value contains a
 /// null byte (`\0`).
+#[must_use = "callers must handle null-byte validation errors"]
 pub fn validate_arguments<S: std::hash::BuildHasher>(
     arguments: &HashMap<String, String, S>,
 ) -> Result<(), ExecutorError> {
@@ -116,6 +117,7 @@ pub fn build_env_vars<S: std::hash::BuildHasher>(
 /// Returns [`ExecutorError::NullByteInArgument`] if any argument contains a null byte.
 /// Returns [`ExecutorError::ExecutionFailed`] if the process cannot be spawned.
 /// Returns [`ExecutorError::Timeout`] if the script does not finish within the given duration.
+#[must_use = "callers must check the script result for success or failure"]
 pub async fn execute_script<S: std::hash::BuildHasher>(
     script_path: &Path,
     arguments: &HashMap<String, String, S>,
