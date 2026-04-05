@@ -18,6 +18,65 @@ pub use telemetry::TumultTelemetry;
 mod tests {
     use super::*;
 
+    // ── Panic-safe env-var guard (ERR-04, TEST-04) ─────────────────────────
+    //
+    // `std::env::set_var` is not thread-safe and is deprecated as `unsafe` in
+    // Rust 1.80+.  We serialise all env-var mutations via `ENV_MUTEX` (already
+    // present) and additionally wrap each mutation in this `Drop` guard so that
+    // if the assertion between `set_var` and the restoration panics, the env var
+    // is still restored before the next test acquires the mutex.
+
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII guard that restores an environment variable to its previous value
+    /// when dropped, even on panic.
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        /// Save the current value of `key` and set it to `value`.
+        ///
+        /// The caller must hold `ENV_MUTEX` for the entire lifetime of the guard.
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: we hold ENV_MUTEX, so no other thread can concurrently
+            // read or write this env var via this crate's test suite.
+            #[allow(unused_unsafe)] // safe in single-threaded test context with mutex held
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, prev }
+        }
+
+        /// Remove `key` from the environment and save its current value.
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: we hold ENV_MUTEX (see `set` above).
+            #[allow(unused_unsafe)]
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: called while ENV_MUTEX is still held by the test that
+            // created this guard (guards are dropped at end of scope, before
+            // the MutexGuard is dropped).
+            #[allow(unused_unsafe)]
+            unsafe {
+                match &self.prev {
+                    Some(v) => std::env::set_var(self.key, v),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
     // ── TelemetryConfig ────────────────────────────────────────
 
     #[test]
@@ -28,33 +87,22 @@ mod tests {
         assert!(!config.console_export);
     }
 
-    // Env-var tests use a shared mutex to avoid race conditions when
-    // multiple tests manipulate the same environment variable.
-    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn config_from_env_respects_disabled() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let prev = std::env::var("TUMULT_OTEL_ENABLED").ok();
-        std::env::set_var("TUMULT_OTEL_ENABLED", "false");
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let _guard = EnvGuard::set("TUMULT_OTEL_ENABLED", "false");
         let config = TelemetryConfig::from_env();
         assert!(!config.enabled);
-        match prev {
-            Some(v) => std::env::set_var("TUMULT_OTEL_ENABLED", v),
-            None => std::env::remove_var("TUMULT_OTEL_ENABLED"),
-        }
+        // _guard restores the env var on drop (even if the assertion above panics).
     }
 
     #[test]
     fn config_from_env_defaults_to_enabled() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let prev = std::env::var("TUMULT_OTEL_ENABLED").ok();
-        std::env::remove_var("TUMULT_OTEL_ENABLED");
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let _guard = EnvGuard::remove("TUMULT_OTEL_ENABLED");
         let config = TelemetryConfig::from_env();
         assert!(config.enabled);
-        if let Some(v) = prev {
-            std::env::set_var("TUMULT_OTEL_ENABLED", v);
-        }
+        // _guard restores the env var on drop.
     }
 
     // ── Attribute constants ────────────────────────────────────

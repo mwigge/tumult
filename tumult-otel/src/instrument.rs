@@ -116,44 +116,152 @@ pub fn record_experiment(metrics: &TumultMetrics, success: bool) {
 mod tests {
     use super::*;
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// Build an isolated SDK `MeterProvider` backed by an `InMemoryMetricExporter`
+    /// so that metric data points can be inspected in tests without touching the
+    /// global provider (TEST-01).
+    #[cfg(test)]
+    fn sdk_harness() -> (
+        opentelemetry::metrics::Meter,
+        opentelemetry_sdk::metrics::InMemoryMetricExporter,
+        opentelemetry_sdk::metrics::SdkMeterProvider,
+    ) {
+        use opentelemetry_sdk::metrics::{InMemoryMetricExporter, SdkMeterProvider};
+        let exporter = InMemoryMetricExporter::default();
+        let provider = SdkMeterProvider::builder()
+            .with_periodic_exporter(exporter.clone())
+            .build();
+        let meter = opentelemetry::metrics::MeterProvider::meter(&provider, "test");
+        (meter, exporter, provider)
+    }
+
+    /// Collect all exported metric names after a `force_flush`.
+    fn flush_and_names(
+        provider: &opentelemetry_sdk::metrics::SdkMeterProvider,
+        exporter: &opentelemetry_sdk::metrics::InMemoryMetricExporter,
+    ) -> Vec<String> {
+        provider.force_flush().unwrap();
+        exporter
+            .get_finished_metrics()
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|rm| {
+                rm.scope_metrics()
+                    .flat_map(|sm| sm.metrics().map(|m| m.name().to_owned()))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    // ── Behavioral assertions (TEST-01) ──────────────────────────────────────
+
     #[test]
-    fn record_action_does_not_panic_on_success() {
-        let meter = opentelemetry::global::meter("test");
+    fn record_action_success_increments_actions_total() {
+        let (meter, exporter, provider) = sdk_harness();
         let metrics = TumultMetrics::new(&meter);
         let start = Instant::now();
         record_action(&metrics, "tumult-db", "kill-connections", start, true);
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names.iter().any(|n| n == "tumult_actions_total"),
+            "expected tumult_actions_total in {names:?}"
+        );
+        // On success, plugin_errors_total must NOT be reported (no data points recorded).
+        assert!(
+            !names.iter().any(|n| n == "tumult_plugin_errors_total"),
+            "plugin_errors_total must not be emitted on success; found in {names:?}"
+        );
     }
 
     #[test]
-    fn record_action_does_not_panic_on_failure() {
-        let meter = opentelemetry::global::meter("test");
+    fn record_action_failure_increments_actions_total_and_plugin_errors_total() {
+        let (meter, exporter, provider) = sdk_harness();
         let metrics = TumultMetrics::new(&meter);
         let start = Instant::now();
         record_action(&metrics, "tumult-db", "kill-connections", start, false);
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names.iter().any(|n| n == "tumult_actions_total"),
+            "expected tumult_actions_total in {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "tumult_plugin_errors_total"),
+            "expected tumult_plugin_errors_total on failure in {names:?}"
+        );
     }
 
     #[test]
-    fn record_probe_does_not_panic() {
-        let meter = opentelemetry::global::meter("test");
+    fn record_action_records_duration_histogram() {
+        let (meter, exporter, provider) = sdk_harness();
+        let metrics = TumultMetrics::new(&meter);
+        let start = Instant::now();
+        record_action(&metrics, "tumult-db", "kill-connections", start, true);
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names.iter().any(|n| n == "tumult_action_duration_seconds"),
+            "expected tumult_action_duration_seconds histogram in {names:?}"
+        );
+    }
+
+    #[test]
+    fn record_probe_success_does_not_increment_plugin_errors_total() {
+        let (meter, exporter, provider) = sdk_harness();
         let metrics = TumultMetrics::new(&meter);
         let start = Instant::now();
         record_probe(&metrics, "tumult-http", "health-check", start, true);
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names.iter().any(|n| n == "tumult_probes_total"),
+            "expected tumult_probes_total in {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n == "tumult_plugin_errors_total"),
+            "plugin_errors_total must not be emitted on probe success"
+        );
     }
 
     #[test]
-    fn record_deviation_does_not_panic() {
-        let meter = opentelemetry::global::meter("test");
+    fn record_probe_failure_increments_plugin_errors_total() {
+        let (meter, exporter, provider) = sdk_harness();
+        let metrics = TumultMetrics::new(&meter);
+        let start = Instant::now();
+        record_probe(&metrics, "tumult-http", "health-check", start, false);
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names.iter().any(|n| n == "tumult_plugin_errors_total"),
+            "expected tumult_plugin_errors_total on probe failure in {names:?}"
+        );
+    }
+
+    #[test]
+    fn record_deviation_increments_hypothesis_deviations_total() {
+        let (meter, exporter, provider) = sdk_harness();
         let metrics = TumultMetrics::new(&meter);
         record_deviation(&metrics, "db-connection-pool-exhaustion");
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names
+                .iter()
+                .any(|n| n == "tumult_hypothesis_deviations_total"),
+            "expected tumult_hypothesis_deviations_total in {names:?}"
+        );
     }
 
     #[test]
-    fn record_deviation_accepts_different_experiment_names() {
-        let meter = opentelemetry::global::meter("test");
+    fn record_experiment_increments_experiments_total() {
+        let (meter, exporter, provider) = sdk_harness();
         let metrics = TumultMetrics::new(&meter);
-        record_deviation(&metrics, "experiment-a");
-        record_deviation(&metrics, "experiment-b");
+        record_experiment(&metrics, true);
+        record_experiment(&metrics, false);
+        let names = flush_and_names(&provider, &exporter);
+        assert!(
+            names.iter().any(|n| n == "tumult_experiments_total"),
+            "expected tumult_experiments_total in {names:?}"
+        );
     }
+
+    // ── Attribute key correctness ─────────────────────────────────────────────
 
     /// Regression: `record_deviation` must tag with the canonical
     /// `resilience.experiment.name` attribute, not the legacy `.title` key.
@@ -163,13 +271,7 @@ mod tests {
         assert_eq!(attributes::EXPERIMENT_NAME, "resilience.experiment.name");
     }
 
-    #[test]
-    fn record_experiment_does_not_panic() {
-        let meter = opentelemetry::global::meter("test");
-        let metrics = TumultMetrics::new(&meter);
-        record_experiment(&metrics, true);
-        record_experiment(&metrics, false);
-    }
+    // ── InstrumentedResult ────────────────────────────────────────────────────
 
     #[test]
     fn instrumented_result_captures_all_fields() {
