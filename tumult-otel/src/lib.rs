@@ -190,6 +190,19 @@ mod tests {
         assert!(debug.contains("TumultTelemetry"));
     }
 
+    #[test]
+    fn telemetry_console_export_without_endpoint_does_not_panic() {
+        let config = TelemetryConfig {
+            enabled: true,
+            console_export: true,
+            otlp_endpoint: None,
+            ..TelemetryConfig::default()
+        };
+        let telemetry = TumultTelemetry::new(config);
+        assert!(telemetry.is_enabled());
+        telemetry.shutdown();
+    }
+
     /// Verifies that `shutdown()` also shuts down the globally registered
     /// `TracerProvider` so that spans emitted after shutdown are silently
     /// dropped rather than sent to an already-closed exporter.

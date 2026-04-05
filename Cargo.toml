@@ -55,6 +55,7 @@ opentelemetry = { version = "0.31", features = ["trace", "metrics", "logs"] }
 opentelemetry_sdk = { version = "0.31", features = ["trace", "metrics", "logs", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "trace", "metrics", "logs"] }
 opentelemetry-semantic-conventions = "0.31"
+opentelemetry-stdout = { version = "0.31", features = ["trace"] }
 
 # Tracing (Rust idiomatic) + OTel bridge
 tracing = "0.1"
