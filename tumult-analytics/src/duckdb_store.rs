@@ -522,11 +522,13 @@ impl AnalyticsStore {
     fn query_to_batch(&self, sql: &str) -> Result<RecordBatch, AnalyticsError> {
         let mut stmt = self.conn.prepare(sql)?;
         let arrow = stmt.query_arrow(params![])?;
+        // Capture the schema before consuming the iterator so that an empty
+        // result set uses the schema of the actual query, not the hardcoded
+        // experiments schema (ANA-MED-8).
+        let schema = arrow.get_schema();
         let batches: Vec<RecordBatch> = arrow.collect();
         if batches.is_empty() {
-            // Return empty batch with the right schema from the experiments schema
-            let schema = crate::arrow_convert::experiments_schema();
-            Ok(RecordBatch::new_empty(std::sync::Arc::new(schema)))
+            Ok(RecordBatch::new_empty(schema))
         } else if batches.len() == 1 {
             batches.into_iter().next().ok_or_else(|| {
                 AnalyticsError::Internal("query returned one batch but iterator was empty".into())
@@ -672,6 +674,33 @@ mod tests {
             .query_columns("SELECT experiment_id, status FROM experiments")
             .unwrap();
         assert_eq!(cols, vec!["experiment_id", "status"]);
+    }
+
+    /// Regression test for ANA-MED-8: an empty query on `activity_results` must
+    /// return a batch with the activity schema, not the experiments schema.
+    #[test]
+    fn empty_query_returns_correct_schema() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        // No data ingested — both tables are empty.
+        let batch = s
+            .query_to_batch(
+                "SELECT experiment_id, name, activity_type, status, started_at_ns, \
+                 duration_ms, output, error, phase FROM activity_results",
+            )
+            .unwrap();
+        assert_eq!(batch.num_rows(), 0);
+        // The schema must contain 'activity_type' (an activity column),
+        // not columns exclusive to the experiments table.
+        let schema = batch.schema();
+        let col_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert!(
+            col_names.contains(&"activity_type"),
+            "expected activity schema but got: {col_names:?}"
+        );
+        assert!(
+            !col_names.contains(&"resilience_score"),
+            "got experiments schema instead of activity schema: {col_names:?}"
+        );
     }
 
     // ── Phase 4: Persistent store ─────────────────────────────
