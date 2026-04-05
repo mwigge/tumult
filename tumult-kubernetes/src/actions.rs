@@ -148,10 +148,11 @@ pub async fn drain_node(
     grace_period_seconds: Option<u32>,
 ) -> Result<DrainResult, KubeError> {
     let _span = crate::telemetry::begin_drain_node(name, grace_period_seconds);
+    // Cordon first, then list pods.  `client` is Arc-backed; one clone covers
+    // the cordon helper — the original is moved into the pod-list Api (K-A-01).
     cordon_node(client.clone(), name).await?;
 
-    let pods: Api<Pod> = Api::all(client.clone());
-    let pod_list = pods
+    let pod_list = Api::<Pod>::all(client.clone())
         .list(&kube::api::ListParams::default().fields(&format!("spec.nodeName={name}")))
         .await?;
 
@@ -174,6 +175,8 @@ pub async fn drain_node(
             }
         }
 
+        // Per-namespace Api requires an owned Client; kube Client is Arc-backed
+        // so each clone here is a single atomic refcount increment.
         let ns_pods: Api<Pod> = Api::namespaced(client.clone(), &pod_ns);
         match ns_pods.delete(&pod_name, &dp).await {
             Ok(_) => evicted.push(format!("{pod_ns}/{pod_name}")),
@@ -247,7 +250,10 @@ mod tests {
 
     #[test]
     fn error_formats_invalid_config() {
-        let err = KubeError::InvalidConfig("replicas must be >= 0".into());
+        let err = KubeError::InvalidConfig {
+            field: "replicas",
+            reason: "must be >= 0".into(),
+        };
         assert!(err.to_string().contains("replicas"));
     }
 }
