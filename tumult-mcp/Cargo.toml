@@ -27,6 +27,7 @@ toon-format = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+thiserror = { workspace = true }
 opentelemetry = { workspace = true }
 subtle = "2.6.1"
 

@@ -347,9 +347,12 @@ impl McpAuth {
     ///
     /// # Errors
     ///
-    /// Returns an error string if the token is missing or does not match the
-    /// configured bearer token.
-    pub fn check(&self, authorization: Option<&str>) -> std::result::Result<(), String> {
+    /// Returns [`crate::error::ToolError::InvalidInput`] if the token is
+    /// missing or does not match the configured bearer token.
+    pub fn check(
+        &self,
+        authorization: Option<&str>,
+    ) -> std::result::Result<(), crate::error::ToolError> {
         match &self.token {
             None => Ok(()), // no token configured, allow all
             Some(expected) => match authorization {
@@ -361,13 +364,19 @@ impl McpAuth {
                         if matches {
                             Ok(())
                         } else {
-                            Err("invalid bearer token".into())
+                            Err(crate::error::ToolError::InvalidInput(
+                                "invalid bearer token".into(),
+                            ))
                         }
                     } else {
-                        Err("expected Bearer token in Authorization header".into())
+                        Err(crate::error::ToolError::InvalidInput(
+                            "expected Bearer token in Authorization header".into(),
+                        ))
                     }
                 }
-                None => Err("missing Authorization header".into()),
+                None => Err(crate::error::ToolError::InvalidInput(
+                    "missing Authorization header".into(),
+                )),
             },
         }
     }
@@ -431,7 +440,7 @@ impl TumultHandler {
     /// Validate and resolve a user-supplied file path against the workspace root.
     fn resolve_path(&self, user_path: &str) -> std::result::Result<String, CallToolError> {
         let resolved = tools::safe_resolve_path(&self.workspace_root, user_path)
-            .map_err(|e| CallToolError::invalid_arguments("path", Some(e)))?;
+            .map_err(|e| CallToolError::invalid_arguments("path", Some(e.to_string())))?;
         Ok(resolved.to_str().unwrap_or_default().to_string())
     }
 
@@ -602,7 +611,7 @@ impl ServerHandler for TumultHandler {
                 Ok(CallToolResult::text_content(vec![content.into()]))
             }
             Err(e) => {
-                crate::telemetry::event_tool_error(&params.name, &e);
+                crate::telemetry::event_tool_error(&params.name, &e.to_string());
                 Ok(CallToolResult::text_content(vec![
                     format!("Error: {e}").into()
                 ]))
@@ -708,7 +717,10 @@ mod tests {
         };
         let result = auth.check(None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("missing Authorization"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing Authorization"));
     }
 
     #[test]
@@ -718,7 +730,10 @@ mod tests {
         };
         let result = auth.check(Some("Bearer wrong_token"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("invalid bearer token"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid bearer token"));
     }
 
     #[test]
@@ -728,7 +743,10 @@ mod tests {
         };
         let result = auth.check(Some("Basic dXNlcjpwYXNz"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("expected Bearer token"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected Bearer token"));
     }
 
     // ── Auth wired into handler ──────────────────────────────
