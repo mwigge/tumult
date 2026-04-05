@@ -29,7 +29,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }
-subtle = "2.6.1"
+subtle = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }
