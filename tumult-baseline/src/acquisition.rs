@@ -328,8 +328,12 @@ pub fn derive_baseline(
 
     if any_anomaly {
         if let Some(ref reason) = anomaly_reason {
-            let cv = stddev(&all_values) / mean(&all_values);
-            crate::telemetry::event_anomaly_detected(reason, cv);
+            // Re-use the CV already computed by check_baseline_anomaly; no need
+            // to call stddev()/mean() a second time.
+            crate::telemetry::event_anomaly_detected(
+                reason,
+                anomaly_check.coefficient_of_variation,
+            );
         }
     }
 
@@ -444,6 +448,35 @@ mod tests {
         let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
         assert!(result.anomaly_detected);
         assert!(result.anomaly_reason.is_some());
+    }
+
+    /// Verify that the CV passed to the anomaly telemetry event matches what
+    /// `check_baseline_anomaly` computes — i.e., it is not recomputed from
+    /// scratch via a second `stddev/mean` call (BAS-MED-1).
+    #[test]
+    fn anomaly_cv_is_not_recomputed() {
+        use crate::anomaly::check_baseline_anomaly;
+
+        let values = vec![1.0, 100.0, 2.0, 99.0, 3.0, 98.0, 1.0, 200.0];
+        // The CV stored on AnomalyCheck is the authoritative value.
+        let anomaly_check = check_baseline_anomaly(&values, 5);
+        assert!(anomaly_check.anomaly_detected);
+        // CV must be nonzero for high-variance data.
+        assert!(
+            anomaly_check.coefficient_of_variation > 0.0,
+            "expected nonzero CV, got {}",
+            anomaly_check.coefficient_of_variation
+        );
+        // derive_baseline must succeed without recomputing CV.
+        let samples = vec![ProbeSamples {
+            name: "unstable2".into(),
+            values,
+            errors: 0,
+            total_attempts: 8,
+            sampled_at: vec![],
+        }];
+        let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
+        assert!(result.anomaly_detected);
     }
 
     #[test]
