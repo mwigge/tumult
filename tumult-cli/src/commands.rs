@@ -862,7 +862,8 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     load_override: Option<tumult_core::types::LoadConfig>,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
-    let file_size = std::fs::metadata(experiment_path)
+    let file_size = tokio::fs::metadata(experiment_path)
+        .await
         .map(|m| m.len())
         .unwrap_or(0);
     if file_size > 10 * 1024 * 1024 {
@@ -873,12 +874,14 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         );
     }
 
-    let content = std::fs::read_to_string(experiment_path).with_context(|| {
-        format!(
-            "failed to read experiment file: {}",
-            experiment_path.display()
-        )
-    })?;
+    let content = tokio::fs::read_to_string(experiment_path)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to read experiment file: {}",
+                experiment_path.display()
+            )
+        })?;
 
     let experiment = parse_experiment(&content)
         .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
@@ -2254,7 +2257,7 @@ pub async fn cmd_store_migrate() -> Result<()> {
 
     // Export from DuckDB to temp Parquet, import into ClickHouse via Arrow
     let tmp_dir = std::env::temp_dir().join("tumult-migrate");
-    std::fs::create_dir_all(&tmp_dir)?;
+    tokio::fs::create_dir_all(&tmp_dir).await?;
     let exp_path = tmp_dir.join("experiments.parquet");
     let act_path = tmp_dir.join("activities.parquet");
     duckdb.export_tables(&exp_path, &act_path)?;
