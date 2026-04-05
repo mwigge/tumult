@@ -11,7 +11,7 @@ docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
 docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
 ```
 
-Both images contain the full platform — all 11 crates, 10 plugins, 45 actions,
+Both images contain the full platform — all 11 crates, 10 plugins, 48 actions,
 example experiments, and GameDay definitions.
 
 ## Architecture
@@ -29,7 +29,7 @@ example experiments, and GameDay definitions.
 │  Redis 7         │  :14317 (OTLP)   │  14 MCP tools   │                    │
 │  :16379          │  :18889 (prom)   │  DuckDB store   │                    │
 │                  │                  │  10 plugins     │                    │
-│  Kafka 3.8       │  ClickHouse      │  45 actions     │                    │
+│  Kafka 3.8       │  ClickHouse      │  48 actions     │                    │
 │  :19092          │  (in SigNoz)     │                 │                    │
 │                  │                  │                 │                    │
 │  SSH Server      │                  │                 │                    │
