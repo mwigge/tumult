@@ -1,11 +1,11 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)
+![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
+![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Phase](https://img.shields.io/badge/phase-Hardening-blue)
 ![Crates](https://img.shields.io/badge/crates-11-green)
-![Tests](https://img.shields.io/badge/tests-562%20unit%20%2B%20166%20platform-brightgreen)
-![Plugins](https://img.shields.io/badge/plugins-10-green)
+![Tests](https://img.shields.io/badge/tests-634%20unit-brightgreen)
+![Plugins](https://img.shields.io/badge/plugins-10%20%7C%2048%20actions-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
