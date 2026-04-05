@@ -1,7 +1,7 @@
 ---
 title: "The Road Ahead: Autonomous Chaos, MCP, and the Future"
 parent: Blog
-nav_order: 15
+nav_order: 18
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Road Ahead: Autonomous Chaos, MCP, and the Future of Resilience Engineering
