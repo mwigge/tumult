@@ -100,7 +100,7 @@ size_mb: 2.51
                                            ┌────────┴────────┐
                                            │  tumult-core    │
                                            │  10 plugins     │
-                                           │  45 actions     │
+                                           │  48 actions     │
                                            │  DuckDB store   │
                                            └─────────────────┘
 ```
