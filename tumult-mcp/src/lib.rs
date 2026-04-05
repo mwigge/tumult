@@ -9,6 +9,7 @@
 //! - `tumult_list_journals` — list journal files
 //! - `tumult_create_experiment` — scaffold from template
 
+pub mod error;
 pub mod handler;
 pub(crate) mod telemetry;
 pub mod tools;
