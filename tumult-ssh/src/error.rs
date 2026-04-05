@@ -65,4 +65,9 @@ pub enum SshError {
 
     #[error("timeout after {seconds}s")]
     Timeout { seconds: f64 },
+
+    /// A remote path contained control characters (e.g. `\n`, `\r`, NUL) that
+    /// could be used to inject shell commands through the escaped argument.
+    #[error("invalid remote path — contains control characters: {path:?}")]
+    InvalidPath { path: String },
 }
