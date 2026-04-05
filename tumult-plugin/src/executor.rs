@@ -29,18 +29,51 @@ pub enum ExecutorError {
     NullByteInArgument(String),
 }
 
+/// Exit status of a completed script process.
+///
+/// Distinguishes between a normal exit code (`Code`) and termination by
+/// an OS signal without a numeric code (`Signal`).  The magic sentinel
+/// value `-1` that `std::process::ExitStatus::code()` returns on signal
+/// termination is replaced by this typed variant so callers can match
+/// exhaustively.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScriptExitStatus {
+    /// Process exited with the given numeric code.
+    Code(i32),
+    /// Process was terminated by an OS signal (no numeric exit code).
+    Signal,
+}
+
+impl ScriptExitStatus {
+    /// Returns the numeric exit code, or `None` if terminated by a signal.
+    #[must_use]
+    pub fn code(self) -> Option<i32> {
+        match self {
+            Self::Code(n) => Some(n),
+            Self::Signal => None,
+        }
+    }
+
+    /// Returns `true` only when the process exited with code `0`.
+    #[must_use]
+    pub fn is_success(self) -> bool {
+        matches!(self, Self::Code(0))
+    }
+}
+
 /// Result of executing a script plugin action or probe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptResult {
-    pub exit_code: i32,
+    pub exit_status: ScriptExitStatus,
     pub stdout: String,
     pub stderr: String,
 }
 
 impl ScriptResult {
+    /// Returns `true` only when the script exited with code `0`.
     #[must_use]
     pub fn succeeded(&self) -> bool {
-        self.exit_code == 0
+        self.exit_status.is_success()
     }
 }
 
@@ -132,13 +165,18 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
         cmd.output().await?
     };
 
+    let exit_status = match output.status.code() {
+        Some(n) => ScriptExitStatus::Code(n),
+        None => ScriptExitStatus::Signal,
+    };
+    let exit_code_for_telemetry = exit_status.code().unwrap_or(-1);
     let result = ScriptResult {
-        exit_code: output.status.code().unwrap_or(-1),
+        exit_status,
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     };
     crate::telemetry::event_script_completed(
-        result.exit_code,
+        exit_code_for_telemetry,
         result.stdout.len(),
         result.stderr.len(),
     );
@@ -194,7 +232,7 @@ mod tests {
         let result = execute_script(&script, &HashMap::new(), None)
             .await
             .unwrap();
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.exit_status, ScriptExitStatus::Code(0));
         assert_eq!(result.stdout.trim(), "hello");
         assert!(result.succeeded());
     }
@@ -207,7 +245,7 @@ mod tests {
         let result = execute_script(&script, &HashMap::new(), None)
             .await
             .unwrap();
-        assert_eq!(result.exit_code, 1);
+        assert_eq!(result.exit_status, ScriptExitStatus::Code(1));
         assert_eq!(result.stderr.trim(), "error");
         assert!(!result.succeeded());
     }
@@ -245,18 +283,25 @@ mod tests {
     #[test]
     fn script_result_succeeded_checks_exit_code() {
         let success = ScriptResult {
-            exit_code: 0,
+            exit_status: ScriptExitStatus::Code(0),
             stdout: String::new(),
             stderr: String::new(),
         };
         assert!(success.succeeded());
 
         let failure = ScriptResult {
-            exit_code: 1,
+            exit_status: ScriptExitStatus::Code(1),
             stdout: String::new(),
             stderr: String::new(),
         };
         assert!(!failure.succeeded());
+
+        let signalled = ScriptResult {
+            exit_status: ScriptExitStatus::Signal,
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+        assert!(!signalled.succeeded());
     }
 
     #[tokio::test]
@@ -276,7 +321,7 @@ mod tests {
             .await
             .unwrap();
         // The script must succeed regardless of whether a span is active.
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.exit_status, ScriptExitStatus::Code(0));
         // Output always contains the "traceparent=" line (value may be empty).
         assert!(result.stdout.contains("traceparent="));
     }
