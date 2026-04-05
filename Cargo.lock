@@ -6130,7 +6130,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
- "tokio",
  "tokio-util",
  "toon-format",
  "tracing",
@@ -6150,7 +6149,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tokio",
  "tracing",
  "tumult-otel",
 ]
