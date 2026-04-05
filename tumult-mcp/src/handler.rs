@@ -399,11 +399,11 @@ const DEFAULT_EXECUTION_TIMEOUT_SECS: u64 = 300;
 
 pub struct TumultHandler {
     /// Semaphore limiting concurrent tool execution.
-    pub semaphore: tokio::sync::Semaphore,
+    pub(crate) semaphore: tokio::sync::Semaphore,
     /// Base directory for file operations (path traversal prevention).
-    pub workspace_root: std::path::PathBuf,
+    pub(crate) workspace_root: std::path::PathBuf,
     /// Bearer token authentication configuration.
-    pub auth: McpAuth,
+    pub(crate) auth: McpAuth,
 }
 
 impl Default for TumultHandler {
