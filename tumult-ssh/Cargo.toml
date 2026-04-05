@@ -10,7 +10,8 @@ description = "SSH remote execution for the Tumult chaos engineering platform"
 tumult-otel = { path = "../tumult-otel" }
 russh = { workspace = true }
 async-trait = { workspace = true }
-tokio = { workspace = true }
+# Minimal tokio features — library crate, not binary
+tokio = { version = "1", features = ["rt", "time", "fs", "io-util", "process"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }

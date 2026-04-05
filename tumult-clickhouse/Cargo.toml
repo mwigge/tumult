@@ -13,7 +13,8 @@ tumult-otel = { path = "../tumult-otel" }
 clickhouse = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }
-tokio = { workspace = true }
+# Minimal tokio features — library crate
+tokio = { version = "1", features = ["rt", "time"] }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
 opentelemetry = { workspace = true }

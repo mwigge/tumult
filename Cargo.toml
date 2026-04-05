@@ -21,6 +21,7 @@ members = [
     "tumult-mcp",
     # Phase 4
     "tumult-clickhouse",
+    "tumult-test-utils",
     # "tumult-cloud-aws",
     # "tumult-cloud-gcp",
     # "tumult-cloud-azure",
@@ -117,12 +118,20 @@ dirs-next = "2"
 # Temporary file/directory creation (dev-dependency across all crates)
 tempfile = "3"
 
+# Speed up dev builds for heavy C/C++ dependencies (DuckDB, Arrow, Parquet).
+# Only affects dependencies, not workspace crates (those stay at -O0 for fast
+# incremental compilation with debug info).
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = true
+# Strip only debug info, preserve symbol names for panic backtraces.
+# Use `strip = true` in Dockerfiles for smaller distribution binaries.
+strip = "debuginfo"
 
 [workspace.lints.rust]
 # Deny all warnings so `cargo build` outside CI is also strict.
