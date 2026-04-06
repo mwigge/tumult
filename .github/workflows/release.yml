@@ -93,16 +93,9 @@ jobs:
           path: ${{ env.ARCHIVE }}
 
   docker:
-    name: Publish Docker images
+    name: Publish tumult image
     needs: build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - image: tumult
-            dockerfile: docker/Dockerfile.tumult
-          - image: tumult-mcp
-            dockerfile: docker/Dockerfile.tumult-mcp
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
@@ -124,21 +117,58 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: docker/Dockerfile.tumult
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/tumult:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/tumult:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Smoke test
         run: |
-          docker run --rm ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.version.outputs.version }} --version
+          docker run --rm ghcr.io/${{ github.repository_owner }}/tumult:${{ steps.version.outputs.version }} --version
+
+  docker-mcp:
+    name: Publish tumult-mcp image
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2  # v3.10.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
+        with:
+          context: .
+          file: docker/Dockerfile.tumult-mcp
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/tumult-mcp:latest
+          build-args: |
+            BASE=ghcr.io/${{ github.repository_owner }}/tumult:${{ steps.version.outputs.version }}
+
+      - name: Smoke test
+        run: |
+          docker run --rm ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} --version
 
   release:
     name: Create Release
-    needs: [build, docker]
+    needs: [build, docker, docker-mcp]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
