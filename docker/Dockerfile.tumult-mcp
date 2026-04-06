@@ -1,54 +1,19 @@
-# Tumult MCP Server — HTTP/SSE entrypoint variant
+# Tumult MCP Server — thin layer over the main tumult image
 #
-# Same contents as Dockerfile.tumult but defaults to MCP server mode.
+# Reuses the full tumult image (both binaries already present)
+# and overrides the entrypoint to default to MCP server mode.
 #
-# Build:
-#   docker build -f docker/Dockerfile.tumult-mcp -t tumult-mcp .
+# Build (requires tumult image to exist first):
+#   docker build -f docker/Dockerfile.tumult -t tumult .
+#   docker build -f docker/Dockerfile.tumult-mcp --build-arg BASE=tumult -t tumult-mcp .
+#
+# In CI the base is the GHCR image from the previous job:
+#   --build-arg BASE=ghcr.io/mwigge/tumult:1.0.0
 #
 # Run:
 #   docker run --network tumult-e2e -p 3100:3100 tumult-mcp
-#
-# Equivalent to:
-#   docker run --network tumult-e2e -p 3100:3100 tumult tumult-mcp --transport http
 
-FROM rust:1.89-bookworm AS builder
-
-WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY tumult-core/ tumult-core/
-COPY tumult-cli/ tumult-cli/
-COPY tumult-mcp/ tumult-mcp/
-COPY tumult-otel/ tumult-otel/
-COPY tumult-plugin/ tumult-plugin/
-COPY tumult-analytics/ tumult-analytics/
-COPY tumult-baseline/ tumult-baseline/
-COPY tumult-ssh/ tumult-ssh/
-COPY tumult-kubernetes/ tumult-kubernetes/
-COPY tumult-clickhouse/ tumult-clickhouse/
-COPY tumult-test-utils/ tumult-test-utils/
-
-RUN cargo build --release -p tumult-cli -p tumult-mcp && \
-    strip target/release/tumult target/release/tumult-mcp
-
-# ── Runtime ─────────────────────────────────────────────────
-
-FROM rust:1.89-bookworm AS runtime
-
-RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    docker.io openssh-client curl wget psmisc procps && \
-    rm -rf /var/lib/apt/lists/* /usr/local/cargo /usr/local/rustup
-
-COPY --from=builder /build/target/release/tumult /usr/local/bin/
-COPY --from=builder /build/target/release/tumult-mcp /usr/local/bin/
-COPY plugins/ /opt/tumult/plugins/
-COPY examples/ /opt/tumult/examples/
-COPY gamedays/ /opt/tumult/gamedays/
-
-ENV TUMULT_PLUGIN_PATH=/opt/tumult/plugins
-
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD tumult --version || exit 1
-
-EXPOSE 3100
+ARG BASE=tumult
+FROM ${BASE}
 
 ENTRYPOINT ["tumult-mcp", "--transport", "http"]
