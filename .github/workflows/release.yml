@@ -121,7 +121,7 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198e19c816612b  # v6.18.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -173,7 +173,7 @@ jobs:
           body: |
             ## Docker Images
 
-            Both images contain the full Tumult platform: CLI + MCP server, all 10 plugins (45 actions), examples, and GameDay definitions.
+            Both images contain the full Tumult platform: CLI + MCP server, all 10 plugins (48 actions), examples, and GameDay definitions.
 
             | Image | Description | Pull |
             |-------|-------------|------|
