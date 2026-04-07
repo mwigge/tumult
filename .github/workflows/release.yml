@@ -164,7 +164,9 @@ jobs:
 
       - name: Smoke test
         run: |
-          docker run --rm ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} --version
+          # The tumult-mcp image has ENTRYPOINT [tumult-mcp, --transport, http],
+          # so we override to run the tumult CLI binary that's also in the image.
+          docker run --rm --entrypoint tumult ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} --version
 
   release:
     name: Create Release
