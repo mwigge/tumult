@@ -1037,9 +1037,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clickhouse"
-version = "0.14.3"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bfb36e41b644dcd5be4ef54a3b7d2abc9bb07eda777ab3f90d1b0dbb97c940a"
+checksum = "35330181022b5f972325aa41fd3465f636be6527499c383cacd3fb2e51c5a8bc"
 dependencies = [
  "bnum",
  "bstr",
@@ -1055,9 +1055,11 @@ dependencies = [
  "lz4_flex 0.11.6",
  "polonius-the-crab",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "time",
  "tokio",
+ "tracing",
  "url",
  "uuid",
 ]
@@ -6038,7 +6040,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-analytics"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "arrow",
  "chrono",
@@ -6058,7 +6060,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-baseline"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -6069,7 +6071,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6095,7 +6097,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -6113,7 +6115,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6135,7 +6137,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "k8s-openapi",
  "kube",
@@ -6149,7 +6151,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6171,7 +6173,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "opentelemetry",
  "opentelemetry-appender-tracing",
@@ -6187,7 +6189,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "indexmap",
  "opentelemetry",
@@ -6203,7 +6205,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ssh"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6219,7 +6221,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "indexmap",
  "serde_json",
