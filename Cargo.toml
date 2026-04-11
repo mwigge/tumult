@@ -110,7 +110,7 @@ subtle = "2.6"
 zeroize = { version = "1.8", features = ["derive"] }
 
 # ClickHouse client (used in tumult-clickhouse)
-clickhouse = { version = "0.14", features = ["time", "uuid"] }
+clickhouse = { version = "0.15", features = ["time", "uuid"] }
 
 # SSH known-hosts path resolution (used in tumult-analytics, tumult-ssh)
 dirs-next = "2"
