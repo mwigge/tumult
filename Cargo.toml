@@ -87,7 +87,7 @@ indexmap = { version = "2", features = ["serde"] }
 
 # SSH
 # rsa feature disabled: RUSTSEC-2023-0071 (Marvin Attack) has no fix; RSA keys not used in tumult-ssh
-russh = { version = "0.59", default-features = false, features = ["flate2", "aws-lc-rs"] }
+russh = { version = "0.60", default-features = false, features = ["flate2", "aws-lc-rs"] }
 async-trait = "0.1"
 
 # Kubernetes
