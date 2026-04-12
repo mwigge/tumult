@@ -562,46 +562,52 @@ impl ServerHandler for TumultHandler {
             "tumult_run_experiment" => {
                 let args: RunExperimentTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.experiment_path)?;
-                tools::run_experiment(&path, &args.rollback_strategy, Some(mcp_context))
+                tokio::task::block_in_place(|| {
+                    tools::run_experiment(&path, &args.rollback_strategy, Some(mcp_context))
+                })
             }
             "tumult_validate" => {
                 let args: ValidateTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.experiment_path)?;
-                tools::validate_experiment(&path)
+                tokio::task::block_in_place(|| tools::validate_experiment(&path))
             }
             "tumult_analyze" => {
                 let args: AnalyzeTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.journals_path)?;
-                tools::analyze(&path, &args.query)
+                tokio::task::block_in_place(|| tools::analyze(&path, &args.query))
             }
             "tumult_read_journal" => {
                 let args: ReadJournalTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.journal_path)?;
-                tools::read_journal(&path)
+                tokio::task::block_in_place(|| tools::read_journal(&path))
             }
             "tumult_list_journals" => {
                 let args: ListJournalsTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.directory)?;
-                tools::list_journals(&path).map(|v| v.join("\n"))
+                tokio::task::block_in_place(|| tools::list_journals(&path).map(|v| v.join("\n")))
             }
-            "tumult_discover" => Ok(tools::discover_plugins()),
+            "tumult_discover" => tokio::task::block_in_place(|| Ok(tools::discover_plugins())),
             "tumult_create_experiment" => {
                 let args: CreateExperimentTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.output_path)?;
-                tools::create_experiment(&path, args.plugin.as_deref())
+                tokio::task::block_in_place(|| {
+                    tools::create_experiment(&path, args.plugin.as_deref())
+                })
             }
             "tumult_query_traces" => {
                 let args: QueryTracesTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.journal_path)?;
-                tools::query_traces(&path)
+                tokio::task::block_in_place(|| tools::query_traces(&path))
             }
             "tumult_store_stats" => {
                 let args: StoreStatsTool = parse_args(&params)?;
-                tools::store_stats(&args.store_path)
+                tokio::task::block_in_place(|| tools::store_stats(&args.store_path))
             }
             "tumult_analyze_store" => {
                 let args: AnalyzeStoreTool = parse_args(&params)?;
-                tools::analyze_persistent(&args.store_path, &args.query)
+                tokio::task::block_in_place(|| {
+                    tools::analyze_persistent(&args.store_path, &args.query)
+                })
             }
             "tumult_list_experiments" => {
                 let args: ListExperimentsTool = parse_args(&params)?;
@@ -610,17 +616,17 @@ impl ServerHandler for TumultHandler {
                 } else {
                     self.workspace_root_str()?
                 };
-                tools::list_experiments(&search_root)
+                tokio::task::block_in_place(|| tools::list_experiments(&search_root))
             }
             "tumult_gameday_run" => {
                 let args: GameDayRunTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.gameday_path)?;
-                tools::gameday_run(&path)
+                tokio::task::block_in_place(|| tools::gameday_run(&path))
             }
             "tumult_gameday_analyze" => {
                 let args: GameDayAnalyzeTool = parse_args(&params)?;
                 let path = self.resolve_path(&args.gameday_path)?;
-                tools::gameday_analyze(&path)
+                tokio::task::block_in_place(|| tools::gameday_analyze(&path))
             }
             "tumult_gameday_list" => {
                 let args: GameDayListTool = parse_args(&params)?;
@@ -629,15 +635,15 @@ impl ServerHandler for TumultHandler {
                 } else {
                     self.workspace_root_str()?
                 };
-                tools::gameday_list(&search_root)
+                tokio::task::block_in_place(|| tools::gameday_list(&search_root))
             }
             "tumult_recommend" => {
                 let args: RecommendTool = parse_args(&params)?;
-                tools::recommend(&args.store_path)
+                tokio::task::block_in_place(|| tools::recommend(&args.store_path))
             }
             "tumult_coverage" => {
                 let args: CoverageTool = parse_args(&params)?;
-                tools::coverage(&args.store_path)
+                tokio::task::block_in_place(|| tools::coverage(&args.store_path))
             }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };

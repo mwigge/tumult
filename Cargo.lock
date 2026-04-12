@@ -6194,7 +6194,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-analytics"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "arrow",
  "chrono",
@@ -6214,7 +6214,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-baseline"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -6225,7 +6225,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6251,7 +6251,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -6269,7 +6269,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6291,7 +6291,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "k8s-openapi",
  "kube",
@@ -6305,7 +6305,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6327,7 +6327,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "opentelemetry",
  "opentelemetry-appender-tracing",
@@ -6343,7 +6343,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "indexmap",
  "opentelemetry",
@@ -6359,7 +6359,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ssh"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6375,7 +6375,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "indexmap",
  "serde_json",
