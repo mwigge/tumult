@@ -4,16 +4,20 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [1.0.2] — Release workflow fix
+## [1.0.3] — Release workflow fix
 
 ### Fixed
 
-- **Release workflow**: filter `download-artifact` step to `tumult-*` pattern so internal `.dockerbuild` layer-cache artifacts are no longer mixed in with release binaries. This unblocks the "Create Release" step that had been failing with `Not a valid zip file` on every tag push since v0.5.0, and is the reason there is no GitHub Release for v1.0.0 or v1.0.1 despite both tags existing.
+- **Release workflow**: filter `download-artifact` step to `tumult-*` pattern so internal `.dockerbuild` layer-cache artifacts are no longer mixed in with release binaries. Fixes the "Create Release" failure that blocked every release since v0.5.0.
 
 ### Notes
 
-- No runtime or API changes. This release exists purely to land the CI fix and get a working GitHub Release published with signed binaries.
-- All changes accumulated under tags v1.0.0 and v1.0.1 (which never successfully published) are included.
+- No runtime or API changes. This release exists to land the CI fix and produce a working GitHub Release with binary assets.
+- All changes accumulated under tags v1.0.0, v1.0.1, and v1.0.2 (none of which published successfully) are included. v1.0.2 was blocked by GitHub's immutable-releases feature locking the tag after a partial release creation.
+
+## [1.0.2] — Unreleased
+
+Tag exists but no GitHub Release published — the immutable-releases feature locked the tag after a partial release creation. See 1.0.3 for the fix.
 
 ## [1.0.1] — Unreleased
 
