@@ -408,6 +408,8 @@ The OTel Collector automatically scrapes all services:
 
 ## Docker Images
 
+> **Development and evaluation only.** The Docker images shipped with this repository are convenience images for local development, demos, and sandbox testing. They are not hardened for production use — they run as root, bind to `0.0.0.0`, and do not enforce authentication by default. For production deployments, build your own images with your organisation's security baseline (non-root user, pinned base image digests, network policies, mandatory auth tokens).
+
 Pre-built images are published to [GitHub Container Registry](https://ghcr.io/mwigge/tumult) on every release.
 
 ```bash
