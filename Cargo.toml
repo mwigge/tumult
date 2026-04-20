@@ -77,7 +77,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Analytics (Phase 2) — Arrow columnar format + Parquet + DuckDB
 arrow = { version = "58", features = ["json", "ipc", "ffi"] }
 parquet = { version = "58", features = ["arrow", "snap", "zstd"] }
-duckdb = { version = "1.10501", features = ["bundled", "appender-arrow", "vtab-arrow"] }
+duckdb = { version = "1.10502", features = ["bundled", "appender-arrow", "vtab-arrow"] }
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
