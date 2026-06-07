@@ -7,6 +7,7 @@ license.workspace = true
 description = "OpenTelemetry instrumentation for Tumult chaos engineering platform"
 
 [dependencies]
+serde = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 opentelemetry-otlp = { workspace = true }
