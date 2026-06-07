@@ -4,6 +4,16 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.2] — Docker image build fix
+
+### Fixed
+
+- **Docker image**: add `tumult-agentic` and `tumult-intelligence` to the
+  `COPY` list in `docker/Dockerfile.tumult`. The 1.1.1 release build's
+  "Publish tumult image" job failed because these two workspace crates
+  (added in 1.1.0) were never copied into the Docker build context, so
+  `cargo build` could not load their manifests as workspace members.
+
 ## [1.1.1] — Release build fix
 
 ### Fixed

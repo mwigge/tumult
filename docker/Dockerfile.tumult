@@ -1,6 +1,6 @@
 # Tumult — chaos engineering platform (CLI + MCP server)
 #
-# Single image with both binaries. Contains all 11 crates, 10 plugins,
+# Single image with both binaries. Contains all 13 crates, 10 plugins,
 # example experiments, and GameDay definitions.
 #
 # Build:
@@ -31,6 +31,8 @@ COPY tumult-baseline/ tumult-baseline/
 COPY tumult-ssh/ tumult-ssh/
 COPY tumult-kubernetes/ tumult-kubernetes/
 COPY tumult-clickhouse/ tumult-clickhouse/
+COPY tumult-agentic/ tumult-agentic/
+COPY tumult-intelligence/ tumult-intelligence/
 COPY tumult-test-utils/ tumult-test-utils/
 
 RUN cargo build --release -p tumult-cli -p tumult-mcp && \
