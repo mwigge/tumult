@@ -35,6 +35,21 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum RecommendFormat {
+    Text,
+    Json,
+}
+
+impl From<RecommendFormat> for tumult_intelligence::OutputFormat {
+    fn from(format: RecommendFormat) -> Self {
+        match format {
+            RecommendFormat::Text => Self::Text,
+            RecommendFormat::Json => Self::Json,
+        }
+    }
+}
+
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum BaselineMode {
     /// Run full baseline then inject fault (default)
@@ -167,11 +182,68 @@ enum Commands {
         #[command(subcommand)]
         action: StoreAction,
     },
+    /// AI-assisted recommendation for the next useful chaos experiment
+    Recommend {
+        /// Recommendation goal or operator intent
+        #[arg(long)]
+        goal: Option<String>,
+        /// Analytics store path to inspect
+        #[arg(long)]
+        store_path: Option<PathBuf>,
+        /// Model label to include in deterministic recommendation metadata
+        #[arg(long)]
+        model: Option<String>,
+        /// Do not include a draft TOON experiment
+        #[arg(long)]
+        no_draft: bool,
+        /// Output format
+        #[arg(long, default_value_t = RecommendFormat::Text, value_enum)]
+        format: RecommendFormat,
+    },
+    /// Agentic AI fault-injection scenarios and local smoke tests
+    Agentic {
+        #[command(subcommand)]
+        action: AgenticAction,
+    },
     /// Coordinated experiment campaigns with resilience scoring
     #[command(name = "gameday")]
     GameDay {
         #[command(subcommand)]
         action: GameDayAction,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum AgenticAction {
+    /// List bundled agentic scenario packs
+    #[command(name = "list-packs")]
+    ListPacks,
+    /// Run the deterministic local malformed-output smoke path
+    Smoke {
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/smoke-journal.toon")]
+        journal: PathBuf,
+    },
+    /// Run a bundled scenario pack with deterministic local fixtures
+    Run {
+        /// Bundled scenario pack name
+        #[arg(long, default_value = "malformed-json-recovery")]
+        scenario: String,
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/run-journal.toon")]
+        journal: PathBuf,
+    },
+    /// Run deterministic replay fixture validation
+    Replay {
+        /// Replay fixture path
+        #[arg(
+            long,
+            default_value = "examples/agentic/malformed-json-recovery.fixture.json"
+        )]
+        fixture: PathBuf,
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/replay-journal.toon")]
+        journal: PathBuf,
     },
 }
 
@@ -339,6 +411,40 @@ async fn main() -> anyhow::Result<()> {
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
             StoreAction::Migrate => commands::cmd_store_migrate().await?,
+        },
+        Commands::Recommend {
+            goal,
+            store_path,
+            model,
+            no_draft,
+            format,
+        } => {
+            let options = tumult_intelligence::RecommendOptions {
+                store_path: store_path
+                    .unwrap_or_else(tumult_analytics::AnalyticsStore::default_path),
+                goal,
+                model,
+                include_draft: !no_draft,
+                format: format.into(),
+            };
+            println!("{}", tumult_intelligence::recommend(&options)?);
+        }
+        Commands::Agentic { action } => match action {
+            AgenticAction::ListPacks => {
+                print!("{}", commands::cmd_agentic_list_scenario_packs()?);
+            }
+            AgenticAction::Smoke { journal } => {
+                print!("{}", commands::cmd_agentic_smoke(&journal)?);
+            }
+            AgenticAction::Run { scenario, journal } => {
+                print!(
+                    "{}",
+                    commands::cmd_agentic_run_scenario(&scenario, &journal)?
+                );
+            }
+            AgenticAction::Replay { fixture, journal } => {
+                print!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
+            }
         },
         Commands::GameDay { action } => match action {
             GameDayAction::Create {
@@ -834,6 +940,155 @@ mod tests {
     fn parse_run_invalid_output_format_is_error() {
         let result = Cli::try_parse_from(["tumult", "run", "exp.toon", "--output-format", "xml"]);
         assert!(result.is_err());
+    }
+
+    // ── Recommend ─────────────────────────────────────────────
+
+    #[test]
+    fn parse_recommend_defaults() {
+        let cli = Cli::try_parse_from(["tumult", "recommend"]).unwrap();
+        let Commands::Recommend {
+            goal,
+            store_path,
+            model,
+            no_draft,
+            format,
+        } = cli.command
+        else {
+            panic!("expected Recommend command");
+        };
+        assert!(goal.is_none());
+        assert!(store_path.is_none());
+        assert!(model.is_none());
+        assert!(!no_draft);
+        assert_eq!(format, RecommendFormat::Text);
+    }
+
+    #[test]
+    fn parse_recommend_all_flags() {
+        let cli = Cli::try_parse_from([
+            "tumult",
+            "recommend",
+            "--goal",
+            "test database failover",
+            "--store-path",
+            "analytics.duckdb",
+            "--model",
+            "qwen3",
+            "--no-draft",
+            "--format",
+            "json",
+        ])
+        .unwrap();
+        let Commands::Recommend {
+            goal,
+            store_path,
+            model,
+            no_draft,
+            format,
+        } = cli.command
+        else {
+            panic!("expected Recommend command");
+        };
+        assert_eq!(goal.as_deref(), Some("test database failover"));
+        assert_eq!(store_path, Some(PathBuf::from("analytics.duckdb")));
+        assert_eq!(model.as_deref(), Some("qwen3"));
+        assert!(no_draft);
+        assert_eq!(format, RecommendFormat::Json);
+    }
+
+    #[test]
+    fn parse_recommend_text_format() {
+        let cli = Cli::try_parse_from(["tumult", "recommend", "--format", "text"]).unwrap();
+        let Commands::Recommend { format, .. } = cli.command else {
+            panic!("expected Recommend command");
+        };
+        assert_eq!(format, RecommendFormat::Text);
+    }
+
+    #[test]
+    fn parse_recommend_invalid_format_is_error() {
+        let result = Cli::try_parse_from(["tumult", "recommend", "--format", "xml"]);
+        assert!(result.is_err());
+    }
+
+    // ── Agentic ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_agentic_list_packs() {
+        let cli = Cli::try_parse_from(["tumult", "agentic", "list-packs"]).unwrap();
+        let Commands::Agentic { action } = cli.command else {
+            panic!("expected Agentic command");
+        };
+        assert!(matches!(action, AgenticAction::ListPacks));
+    }
+
+    #[test]
+    fn parse_agentic_smoke() {
+        let cli = Cli::try_parse_from(["tumult", "agentic", "smoke"]).unwrap();
+        let Commands::Agentic { action } = cli.command else {
+            panic!("expected Agentic command");
+        };
+        let AgenticAction::Smoke { journal } = action else {
+            panic!("expected Agentic smoke action");
+        };
+        assert_eq!(journal, PathBuf::from("target/agentic/smoke-journal.toon"));
+    }
+
+    #[test]
+    fn parse_agentic_run() {
+        let cli = Cli::try_parse_from([
+            "tumult",
+            "agentic",
+            "run",
+            "--scenario",
+            "tool-timeout-fallback",
+            "--journal",
+            "target/agentic/tool.toon",
+        ])
+        .unwrap();
+        let Commands::Agentic { action } = cli.command else {
+            panic!("expected Agentic command");
+        };
+        let AgenticAction::Run { scenario, journal } = action else {
+            panic!("expected Agentic run action");
+        };
+        assert_eq!(scenario, "tool-timeout-fallback");
+        assert_eq!(journal, PathBuf::from("target/agentic/tool.toon"));
+    }
+
+    #[test]
+    fn parse_agentic_replay() {
+        let cli = Cli::try_parse_from([
+            "tumult",
+            "agentic",
+            "replay",
+            "--fixture",
+            "examples/agentic/malformed-json-recovery.fixture.json",
+            "--journal",
+            "target/agentic/replay.toon",
+        ])
+        .unwrap();
+        let Commands::Agentic { action } = cli.command else {
+            panic!("expected Agentic command");
+        };
+        let AgenticAction::Replay { fixture, journal } = action else {
+            panic!("expected Agentic replay action");
+        };
+        assert_eq!(
+            fixture,
+            PathBuf::from("examples/agentic/malformed-json-recovery.fixture.json")
+        );
+        assert_eq!(journal, PathBuf::from("target/agentic/replay.toon"));
+    }
+
+    #[test]
+    fn parse_agentic_requires_subcommand() {
+        let err = Cli::try_parse_from(["tumult", "agentic"]).unwrap_err();
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
     }
 
     // ── Import ────────────────────────────────────────────────

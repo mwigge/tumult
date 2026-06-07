@@ -4,6 +4,42 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.0] — Agentic Fault Injection
+
+### Added
+
+- **tumult-agentic**: new crate that treats AI agents as systems under test —
+  fault injection, behavioral contracts, replay fixtures, scoring, and
+  OpenTelemetry correlation for agent workflows that call models, tools, MCP
+  servers, or retrieval systems.
+- **Agent target model**: run against HTTP agents and MCP tools/servers, with
+  framework adapters (LangChain, AutoGen, CrewAI, Google ADK) planned.
+- **Fault types**: model latency/timeouts/rate limits, malformed or truncated
+  output, hallucinated tool calls, tool latency/failure, retrieval poisoning,
+  context truncation, token budget exhaustion, and retry-loop pressure.
+- **Behavioral contracts**: validity, safety, fallback behavior, citation
+  presence, schema conformance, retry budget, task success, latency, and cost
+  controls.
+- **Deterministic replay**: turn captured agent traces or production sessions
+  into regression experiments.
+- **Scenario packs**: concurrency storm, hallucination under timeout, cost
+  explosion detector, malformed JSON recovery, tool timeout fallback, and
+  retrieval poisoning — all runnable locally without an external LLM via
+  `tumult agentic list-packs` and `tumult agentic smoke`.
+- **CLI surfaces**: `tumult agentic smoke`, `tumult agentic run --scenario`,
+  and `tumult agentic replay --fixture`, all writing metadata-only journals
+  with trace correlation and contract evidence.
+- **MCP integration**: new tool support for discovering and running agentic
+  fault scenarios through the MCP server.
+- **Analytics**: new ingestion tables for agent runs, contract checks, fault
+  injections, replay outcomes, and resilience scores in `tumult-analytics`.
+- **Telemetry**: agentic spans keep Tumult's `resilience.*` experiment
+  attributes and add GenAI-aligned `gen_ai.*` attributes for operation, model,
+  tool, provider, and evaluation correlation. Raw prompts, completions, tool
+  payloads, and retrieved documents default to metadata-only capture.
+- **Docs**: Agentic Quickstart, Agentic Observability, and Agentic Scenarios
+  guides, plus runnable examples under `examples/agentic/`.
+
 ## [1.0.3] — Release workflow fix
 
 ### Fixed

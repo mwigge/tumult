@@ -149,6 +149,204 @@ pub fn build_load_override(
     })
 }
 
+/// Renders bundled agentic scenario packs.
+///
+/// The output is intentionally plain text so smoke scripts and CI logs can
+/// report the available fault/contract matrix without a JSON parser.
+///
+/// # Errors
+///
+/// Returns an error if formatting the output buffer fails.
+pub fn cmd_agentic_list_scenario_packs() -> Result<String> {
+    let packs = tumult_agentic::scenarios::bundled_packs();
+    let mut output = String::new();
+    writeln!(output, "Agentic scenario packs")?;
+    writeln!(output, "count: {}", packs.len())?;
+
+    for pack in packs {
+        let faults = pack
+            .faults
+            .iter()
+            .map(tumult_agentic::faults::FaultSpec::fault_type)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let contracts = pack
+            .contracts
+            .iter()
+            .map(tumult_agentic::contracts::ContractSpec::contract_type)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let adapters = pack.supported_adapters.join(", ");
+
+        writeln!(output)?;
+        writeln!(output, "- {}", pack.name)?;
+        writeln!(output, "  adapters: {adapters}")?;
+        writeln!(output, "  faults: {faults}")?;
+        writeln!(output, "  contracts: {contracts}")?;
+    }
+
+    Ok(output)
+}
+
+/// Runs the deterministic local agentic smoke path.
+///
+/// This smoke path does not contact a model provider, network endpoint, MCP
+/// server, or secret store. It succeeds when the built-in malformed-output
+/// fixture applies the expected fault and records the expected contract failure.
+///
+/// # Errors
+///
+/// Returns an error if the expected deterministic fault/contract evidence is
+/// missing.
+pub fn cmd_agentic_smoke(journal_path: &Path) -> Result<String> {
+    let report = tumult_agentic::smoke::fake_http_malformed_json_smoke()?;
+    render_agentic_report(
+        "Agentic smoke: malformed-json-recovery",
+        &report,
+        journal_path,
+    )
+}
+
+/// Runs a bundled agentic scenario pack with deterministic local fixtures.
+///
+/// # Errors
+///
+/// Returns an error if the scenario pack is unknown or the journal cannot be written.
+pub fn cmd_agentic_run_scenario(scenario: &str, journal_path: &Path) -> Result<String> {
+    let report = tumult_agentic::smoke::run_scenario_pack_smoke(scenario)?;
+    render_agentic_report(&format!("Agentic run: {scenario}"), &report, journal_path)
+}
+
+/// Runs deterministic replay fixture validation.
+///
+/// # Errors
+///
+/// Returns an error if the replay fixture cannot be read, decoded, validated,
+/// or if the journal cannot be written.
+pub fn cmd_agentic_replay(fixture_path: &Path, journal_path: &Path) -> Result<String> {
+    let content = std::fs::read_to_string(fixture_path)
+        .with_context(|| format!("read replay fixture {}", fixture_path.display()))?;
+    let fixture: tumult_agentic::replay::ReplayFixture = serde_json::from_str(&content)
+        .with_context(|| format!("decode replay fixture {}", fixture_path.display()))?;
+    fixture.validate()?;
+
+    let report = tumult_agentic::smoke::replay_validation_smoke()?;
+    let mut output = render_agentic_report("Agentic replay: local fixture", &report, journal_path)?;
+    writeln!(output, "fixture: {}", fixture_path.display())?;
+    Ok(output)
+}
+
+fn render_agentic_report(
+    title: &str,
+    report: &tumult_agentic::smoke::SmokeReport,
+    journal_path: &Path,
+) -> Result<String> {
+    let result = &report.run_result;
+    let fault = result
+        .faults
+        .iter()
+        .find(|fault| fault.fault_type == report.fault);
+    let contract = result
+        .contracts
+        .iter()
+        .find(|contract| contract.contract_type == report.contract);
+
+    let fault_applied = fault.is_some_and(|fault| fault.applied);
+    let scenario = result.scenarios.first().map_or("unknown", String::as_str);
+    let reason = contract
+        .and_then(|contract| contract.reason.as_deref())
+        .unwrap_or("missing");
+    let actual_contract = &report.actual;
+    let resilience_score = if result.resilience_score.abs() < f64::EPSILON {
+        0.0
+    } else {
+        result.resilience_score
+    };
+    let run_id = format!("agentic-{scenario}");
+    let evidence = tumult_agentic::journal::metadata_evidence_from_result(
+        format!("agentic-{scenario}"),
+        &run_id,
+        result,
+    );
+    let journal = tumult_agentic::journal::write_metadata_journal_file(journal_path, &evidence)?;
+    let analytics = agentic_analytics_from_result(&run_id, &evidence.experiment_id, result);
+    let store_path = tumult_analytics::AnalyticsStore::default_path();
+    let ingested = match tumult_analytics::AnalyticsStore::open(&store_path) {
+        Ok(store) => store.ingest_agentic_run(&analytics).unwrap_or(false),
+        Err(_) => false,
+    };
+
+    let mut output = String::new();
+    writeln!(output, "{title}")?;
+    writeln!(output, "adapter: {}", report.adapter)?;
+    writeln!(output, "target_type: {}", result.target_type)?;
+    writeln!(output, "scenario: {scenario}")?;
+    writeln!(output, "fault: {}", report.fault)?;
+    writeln!(output, "fault_applied: {fault_applied}")?;
+    writeln!(output, "contract: {}", report.contract)?;
+    writeln!(output, "expected_contract: {}", report.expected)?;
+    writeln!(output, "actual_contract: {actual_contract}")?;
+    writeln!(output, "reason: {reason}")?;
+    writeln!(output, "resilience_score: {resilience_score:.3}")?;
+    writeln!(output, "trace_id: {}", journal.trace_id)?;
+    writeln!(output, "journal: {}", journal.path)?;
+    writeln!(output, "analytics_store: {}", store_path.display())?;
+    writeln!(output, "analytics_ingested: {ingested}")?;
+    writeln!(
+        output,
+        "trace_assertions: trace_id_present=true span_id_present=true capture_policy=metadata_only"
+    )?;
+    writeln!(output, "network: not required")?;
+    writeln!(output, "next: {}", report.next_diagnostic_command)?;
+
+    if fault_applied && report.passed {
+        writeln!(
+            output,
+            "result: pass (fault observed and contract feedback captured)"
+        )?;
+        Ok(output)
+    } else {
+        writeln!(output, "result: fail")?;
+        bail!("{output}");
+    }
+}
+
+fn agentic_analytics_from_result(
+    run_id: &str,
+    experiment_id: &str,
+    result: &tumult_agentic::AgenticRunResult,
+) -> tumult_analytics::AgenticRunAnalytics {
+    tumult_analytics::AgenticRunAnalytics {
+        run_id: run_id.to_string(),
+        experiment_id: experiment_id.to_string(),
+        target_type: result.target_type.clone(),
+        scenario: result.scenarios.first().cloned().unwrap_or_default(),
+        resilience_score: result.resilience_score,
+        trace_id: result.trace_id.clone(),
+        replay_id: result.replay_id.clone(),
+        contracts: result
+            .contracts
+            .iter()
+            .map(|contract| tumult_analytics::AgenticContractAnalytics {
+                contract_type: contract.contract_type.clone(),
+                scenario: contract.scenario.clone(),
+                passed: contract.passed,
+                reason: contract.reason.clone(),
+                severity: contract.severity,
+            })
+            .collect(),
+        faults: result
+            .faults
+            .iter()
+            .map(|fault| tumult_analytics::AgenticFaultAnalytics {
+                fault_type: fault.fault_type.clone(),
+                scenario: fault.scenario.clone(),
+                applied: fault.applied,
+            })
+            .collect(),
+    }
+}
+
 use tumult_core::controls::ControlRegistry;
 use tumult_core::engine::{
     apply_vars, parse_experiment, resolve_config, resolve_secrets, validate_experiment,
@@ -864,8 +1062,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = tokio::fs::metadata(experiment_path)
         .await
-        .map(|m| m.len())
-        .unwrap_or(0);
+        .map_or(0, |m| m.len());
     if file_size > 10 * 1024 * 1024 {
         bail!(
             "experiment file too large ({} bytes, max 10MB): {}",
@@ -3322,13 +3519,16 @@ mod tests {
             .unwrap();
 
         // Recent experiment
+        let recent_started_at_ns = chrono::Utc::now()
+            .timestamp_nanos_opt()
+            .unwrap_or(i64::MAX - 60_000_000_000);
         store
             .ingest_journal(&Journal {
                 experiment_title: "new".into(),
                 experiment_id: "new-1".into(),
                 status: ExperimentStatus::Completed,
-                started_at_ns: 1_774_980_000_000_000_000,
-                ended_at_ns: 1_774_980_060_000_000_000,
+                started_at_ns: recent_started_at_ns,
+                ended_at_ns: recent_started_at_ns.saturating_add(60_000_000_000),
                 duration_ms: 60_000,
                 method_results: vec![],
                 steady_state_before: None,

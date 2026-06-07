@@ -21,6 +21,8 @@ members = [
     "tumult-mcp",
     # Phase 4
     "tumult-clickhouse",
+    "tumult-agentic",
+    "tumult-intelligence",
     "tumult-test-utils",
     # "tumult-cloud-aws",
     # "tumult-cloud-gcp",
@@ -29,7 +31,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.3"
+version = "1.1.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -140,4 +142,3 @@ warnings = "deny"
 [workspace.lints.clippy]
 # Mirror the `-W clippy::pedantic` flag used in CI and the pre-commit hook.
 pedantic = "warn"
-

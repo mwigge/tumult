@@ -176,6 +176,18 @@ pub struct GameDayListTool {
 pub struct RecommendTool {
     #[serde(default = "default_store_path")]
     pub store_path: String,
+    pub goal: Option<String>,
+    pub model: Option<String>,
+    #[serde(default = "default_include_draft")]
+    pub include_draft: bool,
+    #[serde(default = "default_recommend_format")]
+    pub format: String,
+}
+fn default_include_draft() -> bool {
+    true
+}
+fn default_recommend_format() -> String {
+    "text".into()
 }
 
 #[macros::mcp_tool(
@@ -186,6 +198,52 @@ pub struct RecommendTool {
 pub struct CoverageTool {
     #[serde(default = "default_store_path")]
     pub store_path: String,
+}
+
+// ── Agentic AI tools ─────────────────────────────────────────
+
+#[macros::mcp_tool(
+    name = "tumult_agentic_list_scenarios",
+    description = "List deterministic agentic AI fault-injection scenario packs. Returns metadata only; no prompts or raw payloads."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgenticListScenariosTool {}
+
+#[macros::mcp_tool(
+    name = "tumult_agentic_smoke",
+    description = "Run a deterministic local agentic AI smoke check with clear fault, contract, expected/actual, and diagnostic feedback. Metadata only; raw payloads are not accepted or returned."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgenticSmokeTool {
+    #[serde(default = "default_agentic_adapter")]
+    pub adapter: String,
+    #[serde(default = "default_agentic_scenario")]
+    pub scenario: String,
+    pub fault: Option<String>,
+    pub contract: Option<String>,
+}
+
+#[macros::mcp_tool(
+    name = "tumult_agentic_run_experiment",
+    description = "Run a deterministic bundled agentic AI experiment with input schema validation. Metadata only; raw payloads are not accepted or returned."
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgenticRunExperimentTool {
+    #[serde(default = "default_agentic_adapter")]
+    pub adapter: String,
+    #[serde(default = "default_agentic_scenario")]
+    pub scenario: String,
+    pub fault: Option<String>,
+    pub contract: Option<String>,
+}
+fn default_agentic_adapter() -> String {
+    "fake-http".into()
+}
+fn default_agentic_scenario() -> String {
+    "malformed-json-recovery".into()
 }
 
 // ── Process executor (shared pattern with CLI) ────────────────
@@ -521,6 +579,9 @@ impl ServerHandler for TumultHandler {
                 GameDayListTool::tool(),
                 RecommendTool::tool(),
                 CoverageTool::tool(),
+                AgenticListScenariosTool::tool(),
+                AgenticSmokeTool::tool(),
+                AgenticRunExperimentTool::tool(),
             ],
             meta: None,
             next_cursor: None,
@@ -639,11 +700,45 @@ impl ServerHandler for TumultHandler {
             }
             "tumult_recommend" => {
                 let args: RecommendTool = parse_args(&params)?;
-                tokio::task::block_in_place(|| tools::recommend(&args.store_path))
+                tokio::task::block_in_place(|| {
+                    tools::recommend(
+                        &args.store_path,
+                        args.goal.as_deref(),
+                        args.model.as_deref(),
+                        args.include_draft,
+                        &args.format,
+                    )
+                })
             }
             "tumult_coverage" => {
                 let args: CoverageTool = parse_args(&params)?;
                 tokio::task::block_in_place(|| tools::coverage(&args.store_path))
+            }
+            "tumult_agentic_list_scenarios" => {
+                let _args: AgenticListScenariosTool = parse_args(&params)?;
+                tokio::task::block_in_place(tools::agentic_list_scenarios)
+            }
+            "tumult_agentic_smoke" => {
+                let args: AgenticSmokeTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| {
+                    tools::agentic_smoke(
+                        &args.adapter,
+                        &args.scenario,
+                        args.fault.as_deref(),
+                        args.contract.as_deref(),
+                    )
+                })
+            }
+            "tumult_agentic_run_experiment" => {
+                let args: AgenticRunExperimentTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| {
+                    tools::agentic_run_experiment(
+                        &args.adapter,
+                        &args.scenario,
+                        args.fault.as_deref(),
+                        args.contract.as_deref(),
+                    )
+                })
             }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
@@ -697,8 +792,11 @@ mod tests {
             GameDayListTool::tool(),
             RecommendTool::tool(),
             CoverageTool::tool(),
+            AgenticListScenariosTool::tool(),
+            AgenticSmokeTool::tool(),
+            AgenticRunExperimentTool::tool(),
         ];
-        assert_eq!(tools.len(), 16);
+        assert_eq!(tools.len(), 19);
     }
 
     #[test]
@@ -727,6 +825,14 @@ mod tests {
             StoreStatsTool::tool(),
             AnalyzeStoreTool::tool(),
             ListExperimentsTool::tool(),
+            GameDayRunTool::tool(),
+            GameDayAnalyzeTool::tool(),
+            GameDayListTool::tool(),
+            RecommendTool::tool(),
+            CoverageTool::tool(),
+            AgenticListScenariosTool::tool(),
+            AgenticSmokeTool::tool(),
+            AgenticRunExperimentTool::tool(),
         ];
         for tool in &tools {
             assert!(
@@ -944,6 +1050,82 @@ mod tests {
         // Verifies default_store_path() never silently produces an empty string.
         let path = default_store_path();
         assert!(!path.is_empty(), "default_store_path must not be empty");
+    }
+
+    #[test]
+    fn recommend_tool_preserves_legacy_store_path_only_args() {
+        let args: RecommendTool = serde_json::from_value(serde_json::json!({
+            "store_path": "/tmp/tumult.db"
+        }))
+        .unwrap();
+
+        assert_eq!(args.store_path, "/tmp/tumult.db");
+        assert_eq!(args.goal, None);
+        assert_eq!(args.model, None);
+        assert!(args.include_draft);
+        assert_eq!(args.format, "text");
+    }
+
+    #[test]
+    fn recommend_tool_accepts_expanded_args() {
+        let args: RecommendTool = serde_json::from_value(serde_json::json!({
+            "store_path": "/tmp/tumult.db",
+            "goal": "prioritize payment-path resilience",
+            "model": "qwen3",
+            "include_draft": false,
+            "format": "json"
+        }))
+        .unwrap();
+
+        assert_eq!(
+            args.goal.as_deref(),
+            Some("prioritize payment-path resilience")
+        );
+        assert_eq!(args.model.as_deref(), Some("qwen3"));
+        assert!(!args.include_draft);
+        assert_eq!(args.format, "json");
+    }
+
+    #[test]
+    fn agentic_smoke_tool_defaults_to_metadata_only_fixture() {
+        let args: AgenticSmokeTool = serde_json::from_value(serde_json::json!({})).unwrap();
+
+        assert_eq!(args.adapter, "fake-http");
+        assert_eq!(args.scenario, "malformed-json-recovery");
+        assert_eq!(args.fault, None);
+        assert_eq!(args.contract, None);
+    }
+
+    #[test]
+    fn agentic_smoke_tool_rejects_raw_payload_fields() {
+        let err = serde_json::from_value::<AgenticSmokeTool>(serde_json::json!({
+            "scenario": "malformed-json-recovery",
+            "prompt": "customer secret"
+        }))
+        .expect_err("raw prompt fields must not be accepted");
+
+        assert!(
+            err.to_string().contains("unknown field"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn agentic_run_tool_defaults_and_rejects_raw_payload_fields() {
+        let args: AgenticRunExperimentTool = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(args.adapter, "fake-http");
+        assert_eq!(args.scenario, "malformed-json-recovery");
+
+        let err = serde_json::from_value::<AgenticRunExperimentTool>(serde_json::json!({
+            "scenario": "malformed-json-recovery",
+            "completion": "raw model output"
+        }))
+        .expect_err("raw completion fields must not be accepted");
+
+        assert!(
+            err.to_string().contains("unknown field"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

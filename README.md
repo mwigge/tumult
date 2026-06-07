@@ -100,6 +100,7 @@ Tumult solves these issues by being built in Rust:
 - [Experiment Format & Plugin Model](#experiment-format--plugin-model)
 - [Available Plugins](#available-plugins)
 - [MCP Server (AI Integration)](#mcp-server-ai-integration)
+- [Agentic Fault Injection](#agentic-fault-injection)
 - [Data-Driven Chaos Engineering](#data-driven-chaos-engineering)
 - [Load Testing During Chaos](#load-testing-during-chaos)
 - [GameDay Orchestration](#gameday-orchestration)
@@ -223,6 +224,37 @@ TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http
 ### Authentication
 
 Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool calls (constant-time comparison, no timing attack surface). If unset, the server runs without auth and emits a log warning.
+
+## Agentic Fault Injection
+
+Tumult also treats AI agents as systems under test. The `tumult-agentic`
+module defines fault injection, behavioral contracts, replay fixtures, and
+OpenTelemetry correlation for agent workflows that call models, tools, MCP
+servers, or retrieval systems.
+
+The first local feedback loop is deterministic and does not call an external
+LLM or provider:
+
+```bash
+tumult agentic list-packs
+tumult agentic smoke
+```
+
+Faults cover agent-specific failure modes such as model latency, provider
+errors, rate limits, malformed or truncated output, hallucinated tool calls,
+tool latency/failure, retrieval poisoning, context truncation, token budget
+exhaustion, and retry-loop pressure. Contracts verify behavior such as valid
+JSON, required citations, no PII, no secret leakage, bounded latency, bounded
+retries/tool calls/token usage, fallback behavior, and graceful errors.
+
+Agentic spans keep Tumult's `resilience.*` experiment attributes and add
+GenAI-aligned `gen_ai.*` attributes for operation, model, tool, provider, and
+evaluation correlation. Raw prompts, completions, tool payloads, and retrieved
+documents default to metadata-only capture.
+
+See [Agentic Quickstart](docs/guides/agentic-quickstart.md),
+[Agentic Observability](docs/guides/agentic-observability.md), and
+[Agentic Scenarios](docs/guides/agentic-scenarios.md).
 
 ## Data-Driven Chaos Engineering
 

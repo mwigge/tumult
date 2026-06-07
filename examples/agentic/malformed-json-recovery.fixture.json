@@ -1,0 +1,16 @@
+{
+  "source": "local-smoke",
+  "session_id": "malformed-json-recovery",
+  "steps": [
+    {
+      "type": "model_response",
+      "operation": "chat",
+      "output_ref": "fixtures/malformed-json-response.json"
+    },
+    {
+      "type": "tool_result",
+      "tool_name": "validate_json",
+      "output_ref": "fixtures/validation-error.json"
+    }
+  ]
+}

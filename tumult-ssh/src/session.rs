@@ -202,10 +202,7 @@ impl SshSession {
     /// Returns [`SshError::Timeout`] if the upload exceeds the configured command timeout.
     #[tracing::instrument(skip(self), fields(remote_path = %remote_path))]
     pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
-        let file_size = tokio::fs::metadata(local_path)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let file_size = tokio::fs::metadata(local_path).await.map_or(0, |m| m.len());
         let _span = crate::telemetry::begin_upload(remote_path, file_size);
 
         let content = tokio::fs::read(local_path)
