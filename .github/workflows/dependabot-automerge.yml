@@ -1,7 +1,13 @@
 name: Dependabot auto-merge
 
-# Auto-merges Dependabot PRs for low-risk updates (patch and minor semver bumps)
-# once all required checks pass. Major bumps are left for manual review.
+# Auto-merges Dependabot PRs for the lowest-risk updates only: patch-level
+# semver bumps. Minor and major bumps are left for manual review.
+#
+# Scope is deliberately narrow because `main` has no branch protection, so
+# `gh pr merge --auto` merges as soon as it is enabled rather than waiting for
+# required checks. Patch bumps are safe to land that way; minor bumps (which are
+# breaking for 0.x crates, common across the Rust ecosystem) are not — they must
+# be reviewed and verified against a real build first.
 
 on: pull_request
 
@@ -20,8 +26,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge for patch and minor updates
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+      - name: Enable auto-merge for patch updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
