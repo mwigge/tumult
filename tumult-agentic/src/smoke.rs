@@ -3,13 +3,18 @@ use crate::adapters::{
     AgentResponse, FakeHttpAgentAdapter, FakeMcpAdapter, McpToolInvocation,
 };
 use crate::contracts::{evaluate_contract, ContractSpec};
-use crate::faults::FaultSpec;
+use crate::engine::execute;
+use crate::faults::{FaultSpec, FaultTargetResponse};
 use crate::model::{AgenticError, AgenticRunResult, AgenticScenario, FaultApplication};
 use crate::replay::{
     complete_replay_fixture, incomplete_replay_fixture_missing_output_ref, ReplayAdapter,
+    ReplayFixture,
 };
 use crate::scenarios::bundled_packs;
 use crate::scoring::resilience_score;
+
+/// Fixed seed so local scenario-pack runs are reproducible.
+const SCENARIO_PACK_SEED: u64 = 0x5eed;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SmokeReport {
@@ -249,96 +254,122 @@ pub fn run_local_smoke_suite() -> Result<Vec<SmokeReport>, AgenticError> {
     ])
 }
 
-/// Run one bundled scenario pack through a deterministic local adapter.
+/// The headline (fault, contract, expected-outcome) a scenario pack is built
+/// to demonstrate. The pack also exercises its other faults/contracts, but the
+/// `SmokeReport` summary surfaces this primary signal.
+struct PackHeadline {
+    fault: &'static str,
+    contract: &'static str,
+    expected: &'static str,
+}
+
+/// Run one bundled scenario pack through the real fault-execution engine.
+///
+/// Every fault in the pack is gated by the seeded [`crate::faults::FaultEngine`]
+/// and applied via [`crate::faults::apply_fault`] against a per-pack baseline
+/// response; every contract in the pack is then evaluated against the resulting
+/// response. The returned [`SmokeReport`] surfaces the pack's headline
+/// fault/contract pair while the embedded [`AgenticRunResult`] carries the full
+/// fault and contract evidence.
 ///
 /// # Errors
 ///
-/// Returns [`AgenticError::InvalidConfig`] when the scenario pack is unknown.
-/// Returns adapter errors if the underlying local fixture fails unexpectedly.
+/// Returns [`AgenticError::InvalidConfig`] when the scenario pack is unknown,
+/// or propagates [`AgenticError`] from fault application.
 pub fn run_scenario_pack_smoke(scenario_pack: &str) -> Result<SmokeReport, AgenticError> {
-    let exists = bundled_packs()
-        .iter()
-        .any(|pack| pack.name == scenario_pack);
-    if !exists {
-        return Err(AgenticError::InvalidConfig(format!(
-            "unknown scenario pack: {scenario_pack}"
-        )));
-    }
+    let pack = bundled_packs()
+        .into_iter()
+        .find(|pack| pack.name == scenario_pack)
+        .ok_or_else(|| {
+            AgenticError::InvalidConfig(format!("unknown scenario pack: {scenario_pack}"))
+        })?;
 
-    match scenario_pack {
-        "malformed-json-recovery" => fake_http_malformed_json_smoke(),
-        "tool-timeout-fallback" => fake_mcp_tool_failure_smoke(),
-        "retrieval-poisoning" => Ok(scenario_contract_smoke(
-            "http",
-            "retrieval-poisoning",
-            "retrieval_poisoning",
-            &ContractSpec::RequiredCitation {
-                severity: Some(0.75),
-            },
-            &fixture_response(r#"{"answer":"uncited degraded retrieval answer"}"#),
-            "contract_failed:citation_missing",
-        )),
-        "concurrency-storm" => Ok(scenario_contract_smoke(
-            "http",
-            "concurrency-storm",
-            "retry_loop_pressure",
-            &ContractSpec::RetryBudget {
-                max_retries: 2,
-                severity: Some(1.0),
-            },
-            &AgentResponse {
-                body: r#"{"status":"retry pressure"}"#.to_string(),
-                latency_ms: 200,
-                tool_calls: 0,
-                retry_count: 5,
-                input_tokens: 3,
-                output_tokens: 3,
-                fallback_used: false,
-            },
-            "contract_failed:retry_budget_exceeded",
-        )),
-        "hallucination-under-timeout" => Ok(scenario_contract_smoke(
-            "mcp",
-            "hallucination-under-timeout",
-            "hallucinated_tool_call",
-            &ContractSpec::MaxToolCalls {
-                max_calls: 1,
-                severity: Some(1.0),
-            },
-            &AgentResponse {
-                body: r#"{"tool":"unknown_tool"}"#.to_string(),
-                latency_ms: 1_500,
-                tool_calls: 3,
-                retry_count: 1,
-                input_tokens: 4,
-                output_tokens: 4,
-                fallback_used: false,
-            },
-            "contract_failed:tool_call_budget_exceeded",
-        )),
-        "cost-explosion-detector" => Ok(scenario_contract_smoke(
-            "http",
-            "cost-explosion-detector",
-            "token_budget_exhaustion",
-            &ContractSpec::MaxTokenUsage {
-                max_tokens: 512,
-                severity: Some(1.0),
-            },
-            &AgentResponse {
-                body: r#"{"status":"token budget exceeded"}"#.to_string(),
-                latency_ms: 120,
-                tool_calls: 0,
-                retry_count: 4,
-                input_tokens: 400,
-                output_tokens: 300,
-                fallback_used: false,
-            },
-            "contract_failed:token_budget_exceeded",
-        )),
-        _ => Err(AgenticError::InvalidConfig(format!(
-            "unknown scenario pack: {scenario_pack}"
-        ))),
-    }
+    let target_type = pack.supported_adapters.first().copied().unwrap_or("http");
+    let headline = pack_headline(pack.name);
+    let baseline = pack_baseline(pack.name);
+
+    let context = crate::engine::RunContext {
+        target_type,
+        scenario: pack.name,
+        seed: SCENARIO_PACK_SEED,
+        trace_id: Some(format!("trace-pack-{}", pack.name)),
+        replay_id: None,
+    };
+    let executed = execute(&context, baseline, &pack.faults, &pack.contracts)?;
+    let run_result = executed.result;
+
+    let actual = run_result
+        .contracts
+        .iter()
+        .find(|outcome| outcome.contract_type == headline.contract)
+        .map_or_else(|| "contract_missing".to_string(), contract_outcome_actual);
+
+    Ok(SmokeReport {
+        adapter: format!("fake_{target_type}"),
+        scenario: pack.name.to_string(),
+        fault: headline.fault.to_string(),
+        contract: headline.contract.to_string(),
+        expected: headline.expected.to_string(),
+        actual: actual.clone(),
+        next_diagnostic_command: format!(
+            "cargo test -p tumult-agentic {} -- --nocapture",
+            pack.name
+        ),
+        passed: actual == headline.expected,
+        run_result,
+    })
+}
+
+/// Replay a captured fixture through the real [`ReplayAdapter`].
+///
+/// Unlike [`replay_validation_smoke`], which exercises a built-in fixture, this
+/// runs the caller-supplied fixture end to end: it is validated, every step is
+/// replayed, and the resulting response is checked against the `ValidJson`
+/// contract. The report's `replay_id` and trace echo the fixture's own
+/// `session_id`.
+///
+/// # Errors
+///
+/// Returns [`AgenticError::IncompleteReplay`] when the fixture is missing steps
+/// or output references, or [`AgenticError::Adapter`] if replay fails.
+pub fn replay_fixture_smoke(fixture: ReplayFixture) -> Result<SmokeReport, AgenticError> {
+    let session_id = fixture.session_id.clone();
+    let source = fixture.source.clone();
+    let step_count = fixture.steps.len();
+
+    let scenario = AgenticScenario {
+        name: format!("replay-{session_id}"),
+        input: format!("replay {step_count} captured steps from {source}"),
+        expected_behavior: Some("replay produces valid JSON for every captured step".to_string()),
+    };
+
+    let adapter = ReplayAdapter::new(fixture)?;
+    let response = adapter.invoke(&scenario)?;
+    let contract = ContractSpec::ValidJson {
+        severity: Some(1.0),
+    };
+    let outcome = evaluate_contract(&scenario.name, &contract, &response);
+    let run_result = smoke_run_result(
+        "replay",
+        &scenario.name,
+        "replay_fixture",
+        vec![outcome],
+        Some(format!("trace-replay-{session_id}")),
+        Some(session_id),
+    );
+
+    Ok(SmokeReport {
+        adapter: "replay".to_string(),
+        scenario: scenario.name,
+        fault: "replay_fixture".to_string(),
+        contract: "valid_json".to_string(),
+        expected: "contract_passed".to_string(),
+        actual: contract_actual(&run_result),
+        next_diagnostic_command: "cargo test -p tumult-agentic replay_fixture -- --nocapture"
+            .to_string(),
+        passed: run_result.contracts[0].passed,
+        run_result,
+    })
 }
 
 #[must_use]
@@ -350,36 +381,86 @@ pub fn smoke_failure_output(report: &SmokeReport) -> Option<String> {
     }
 }
 
-fn scenario_contract_smoke(
-    target_type: &str,
-    scenario: &str,
-    fault_type: &str,
-    contract: &ContractSpec,
-    response: &AgentResponse,
-    expected: &str,
-) -> SmokeReport {
-    let outcome = evaluate_contract(scenario, contract, response);
-    let run_result = smoke_run_result(
-        target_type,
-        scenario,
-        fault_type,
-        vec![outcome],
-        Some(format!("trace-smoke-{scenario}")),
-        None,
-    );
-    let actual = contract_actual(&run_result);
-    let contract_type = contract.contract_type().to_string();
-    SmokeReport {
-        adapter: format!("fake_{target_type}"),
-        scenario: scenario.to_string(),
-        fault: fault_type.to_string(),
-        contract: contract_type,
-        expected: expected.to_string(),
-        actual: actual.clone(),
-        next_diagnostic_command: format!("cargo test -p tumult-agentic {scenario} -- --nocapture"),
-        passed: actual == expected,
-        run_result,
+/// The per-pack headline fault/contract pair surfaced in the smoke report.
+fn pack_headline(scenario_pack: &str) -> PackHeadline {
+    match scenario_pack {
+        "concurrency-storm" => PackHeadline {
+            fault: "retry_loop_pressure",
+            contract: "retry_budget",
+            expected: "contract_failed:retry_budget_exceeded",
+        },
+        "hallucination-under-timeout" => PackHeadline {
+            fault: "hallucinated_tool_call",
+            contract: "max_tool_calls",
+            expected: "contract_failed:tool_call_budget_exceeded",
+        },
+        "cost-explosion-detector" => PackHeadline {
+            fault: "token_budget_exhaustion",
+            contract: "max_token_usage",
+            expected: "contract_failed:token_budget_exceeded",
+        },
+        "tool-timeout-fallback" => PackHeadline {
+            fault: "tool_failure",
+            contract: "fallback_used",
+            expected: "contract_failed:fallback_not_used",
+        },
+        "retrieval-poisoning" => PackHeadline {
+            fault: "retrieval_poisoning",
+            contract: "required_citation",
+            expected: "contract_failed:citation_missing",
+        },
+        // malformed-json-recovery and any future pack default to the
+        // validity contract, which the malformed-output fault breaks.
+        _ => PackHeadline {
+            fault: "malformed_output",
+            contract: "valid_json",
+            expected: "contract_failed:invalid_json",
+        },
     }
+}
+
+/// A per-pack baseline response chosen so the pack's faults, when applied by
+/// the real engine, drive the pack's headline contract to its documented
+/// outcome. A single universal baseline cannot do this: e.g. the hallucination
+/// pack needs a legitimate in-flight tool call so one extra hallucinated call
+/// trips the `max_tool_calls: 1` budget, while the cost pack needs a
+/// token-heavy request that exceeds the `max_token_usage: 512` budget.
+fn pack_baseline(scenario_pack: &str) -> FaultTargetResponse {
+    let mut baseline = FaultTargetResponse {
+        body: r#"{"status":"ok"}"#.to_string(),
+        latency_ms: 50,
+        retry_count: 0,
+        tool_calls: 0,
+        input_tokens: 16,
+        output_tokens: 16,
+        fallback_used: false,
+        tool_name: None,
+        retrieved_documents: Vec::new(),
+    };
+
+    match scenario_pack {
+        "hallucination-under-timeout" => {
+            // One legitimate tool call is already in flight; the hallucinated
+            // call pushes the total past the max_tool_calls budget of 1.
+            baseline.tool_calls = 1;
+            baseline.tool_name = Some("lookup_order".to_string());
+        }
+        "cost-explosion-detector" => {
+            // A large prompt already exceeds the 512-token cost budget, so even
+            // after budget-exhaustion truncation the run is flagged as costly.
+            baseline.input_tokens = 600;
+            baseline.output_tokens = 200;
+        }
+        "tool-timeout-fallback" => {
+            baseline.tool_name = Some("lookup_order".to_string());
+        }
+        "retrieval-poisoning" => {
+            baseline.body = r#"{"answer":"a confident but unsourced answer"}"#.to_string();
+        }
+        _ => {}
+    }
+
+    baseline
 }
 
 fn smoke_run_result(
@@ -411,7 +492,10 @@ fn contract_actual(run_result: &AgenticRunResult) -> String {
     let Some(outcome) = run_result.contracts.first() else {
         return "contract_missing".to_string();
     };
+    contract_outcome_actual(outcome)
+}
 
+fn contract_outcome_actual(outcome: &crate::model::ContractOutcome) -> String {
     if outcome.passed {
         "contract_passed".to_string()
     } else {

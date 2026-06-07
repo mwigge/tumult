@@ -101,6 +101,29 @@ If the smoke path fails, the output names the adapter, scenario, fault, contract
 expected value, actual value, and next diagnostic command. Use that output as the
 first feedback loop before running broader crate or workspace tests.
 
+## Run Against a Live Client
+
+The smoke, run, and replay paths above exercise faults against deterministic
+local baselines. To inject the *same* faults into a real agent — Claude Code,
+the Codex CLI, OpenCode, or GitHub Copilot — run the fault-injecting proxy in
+front of the provider endpoint and point the agent at it:
+
+```bash
+tumult agentic proxy \
+  --listen 127.0.0.1:8080 \
+  --upstream https://api.anthropic.com \
+  --scenario malformed-json-recovery
+```
+
+```bash
+# in another terminal
+ANTHROPIC_BASE_URL=http://127.0.0.1:8080 claude
+```
+
+See [Agentic Live Clients](agentic-live-clients.md) for per-client wiring
+(Claude Code, Codex, OpenCode, Copilot) and how each fault maps onto HTTP
+behaviour.
+
 ## Observe the Run
 
 The smoke path is local, but it still reports the trace correlation fields that

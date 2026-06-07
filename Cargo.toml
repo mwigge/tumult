@@ -31,7 +31,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.1.2"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -68,6 +68,9 @@ opentelemetry-appender-tracing = "0.31"
 
 # HTTP
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# HTTP server (used by tumult-agentic's fault-injecting proxy and tumult-mcp)
+axum = "0.8"
 
 # Error handling
 thiserror = "2"

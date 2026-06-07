@@ -228,12 +228,90 @@ pub fn cmd_agentic_replay(fixture_path: &Path, journal_path: &Path) -> Result<St
         .with_context(|| format!("read replay fixture {}", fixture_path.display()))?;
     let fixture: tumult_agentic::replay::ReplayFixture = serde_json::from_str(&content)
         .with_context(|| format!("decode replay fixture {}", fixture_path.display()))?;
-    fixture.validate()?;
 
-    let report = tumult_agentic::smoke::replay_validation_smoke()?;
-    let mut output = render_agentic_report("Agentic replay: local fixture", &report, journal_path)?;
+    let source = fixture.source.clone();
+    let session_id = fixture.session_id.clone();
+    let step_count = fixture.steps.len();
+
+    // Replay the caller-supplied fixture end to end through the real replay
+    // adapter — validation, step replay, and contract evaluation all run
+    // against *this* fixture rather than a built-in one.
+    let report = tumult_agentic::smoke::replay_fixture_smoke(fixture)?;
+    let mut output =
+        render_agentic_report("Agentic replay: captured fixture", &report, journal_path)?;
     writeln!(output, "fixture: {}", fixture_path.display())?;
+    writeln!(output, "replay_source: {source}")?;
+    writeln!(output, "replay_session: {session_id}")?;
+    writeln!(output, "replay_steps: {step_count}")?;
     Ok(output)
+}
+
+/// Runs a fault-injecting proxy in front of a live agent's model endpoint.
+///
+/// Point any agentic client (Claude Code, Codex, Copilot, and other
+/// base-URL-configurable agents) at the printed address and the chosen scenario
+/// pack's faults are injected into the client's real model traffic. Runs until
+/// interrupted.
+///
+/// # Errors
+///
+/// Returns an error if the scenario pack is unknown, the listen address is
+/// invalid, the socket cannot be bound, or the proxy server exits with an error.
+pub async fn cmd_agentic_proxy(
+    listen: &str,
+    upstream: &str,
+    scenario: &str,
+    journal: Option<&Path>,
+    seed: u64,
+) -> Result<()> {
+    let pack = tumult_agentic::scenarios::bundled_packs()
+        .into_iter()
+        .find(|pack| pack.name == scenario)
+        .ok_or_else(|| anyhow::anyhow!("unknown scenario pack: {scenario}"))?;
+    let faults = pack
+        .faults
+        .iter()
+        .map(tumult_agentic::faults::FaultSpec::fault_type)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let addr: std::net::SocketAddr = listen
+        .parse()
+        .with_context(|| format!("invalid --listen address {listen}"))?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("bind proxy listener {addr}"))?;
+    let bound = listener.local_addr().unwrap_or(addr);
+    let base = format!("http://{bound}");
+
+    println!("Tumult agentic fault-injecting proxy");
+    println!("  listening: {base}");
+    println!("  upstream:  {upstream}");
+    println!("  scenario:  {scenario}");
+    println!("  faults:    {faults}");
+    println!(
+        "  journal:   {}",
+        journal.map_or_else(|| "(none)".to_string(), |path| path.display().to_string())
+    );
+    println!();
+    println!("Point your agent at the proxy, then drive it as usual:");
+    println!("  Claude Code:  ANTHROPIC_BASE_URL={base} claude");
+    println!("  Codex CLI:    OPENAI_BASE_URL={base}/v1 codex");
+    println!("  OpenCode:     OPENAI_BASE_URL={base}/v1 opencode");
+    println!("  Copilot CLI:  HTTPS_PROXY={base} copilot");
+    println!();
+    println!("Press Ctrl-C to stop.");
+
+    let config = tumult_agentic::proxy::ProxyConfig {
+        upstream: upstream.to_string(),
+        scenario_pack: scenario.to_string(),
+        journal_path: journal.map(Path::to_path_buf),
+        seed,
+    };
+    tumult_agentic::proxy::serve(listener, config)
+        .await
+        .map_err(|err| anyhow::anyhow!("proxy: {err}"))?;
+    Ok(())
 }
 
 fn render_agentic_report(
