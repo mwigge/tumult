@@ -34,6 +34,35 @@ pub struct StoreStats {
     pub activity_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgenticRunAnalytics {
+    pub run_id: String,
+    pub experiment_id: String,
+    pub target_type: String,
+    pub scenario: String,
+    pub resilience_score: f64,
+    pub trace_id: Option<String>,
+    pub replay_id: Option<String>,
+    pub contracts: Vec<AgenticContractAnalytics>,
+    pub faults: Vec<AgenticFaultAnalytics>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgenticContractAnalytics {
+    pub contract_type: String,
+    pub scenario: String,
+    pub passed: bool,
+    pub reason: Option<String>,
+    pub severity: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgenticFaultAnalytics {
+    pub fault_type: String,
+    pub scenario: String,
+    pub applied: bool,
+}
+
 /// Embedded `DuckDB` analytics store for experiment journals.
 ///
 /// **Not thread-safe.** Each instance holds a single `DuckDB` connection.
@@ -143,6 +172,32 @@ impl AnalyticsStore {
             );
             CREATE INDEX IF NOT EXISTS idx_load_experiment_id
                 ON load_results (experiment_id);
+            CREATE TABLE IF NOT EXISTS agentic_runs (
+                run_id VARCHAR PRIMARY KEY, experiment_id VARCHAR NOT NULL,
+                target_type VARCHAR NOT NULL, scenario VARCHAR NOT NULL,
+                resilience_score DOUBLE NOT NULL, trace_id VARCHAR, replay_id VARCHAR
+            );
+            CREATE INDEX IF NOT EXISTS idx_agentic_runs_experiment_id
+                ON agentic_runs (experiment_id);
+            CREATE TABLE IF NOT EXISTS agentic_contract_outcomes (
+                run_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL,
+                contract_type VARCHAR NOT NULL, passed BOOLEAN NOT NULL,
+                reason VARCHAR, severity DOUBLE NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agentic_contracts_run_id
+                ON agentic_contract_outcomes (run_id);
+            CREATE TABLE IF NOT EXISTS agentic_fault_applications (
+                run_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL,
+                fault_type VARCHAR NOT NULL, applied BOOLEAN NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agentic_faults_run_id
+                ON agentic_fault_applications (run_id);
+            CREATE TABLE IF NOT EXISTS agentic_replay_outcomes (
+                run_id VARCHAR NOT NULL, replay_id VARCHAR NOT NULL,
+                scenario VARCHAR NOT NULL, passed BOOLEAN NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agentic_replay_run_id
+                ON agentic_replay_outcomes (run_id);
             CREATE TABLE IF NOT EXISTS schema_meta (
                 key VARCHAR PRIMARY KEY, value BIGINT NOT NULL
             );",
@@ -273,6 +328,75 @@ impl AnalyticsStore {
             telemetry::record_store_gauges(stats.experiment_count, stats.activity_count, None);
         }
         Ok(count)
+    }
+
+    /// Ingest one agentic run into analytics tables.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any `DuckDB` insert fails.
+    #[must_use = "callers must check whether the agentic run was ingested"]
+    pub fn ingest_agentic_run(&self, run: &AgenticRunAnalytics) -> Result<bool, AnalyticsError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT count(*) FROM agentic_runs WHERE run_id = ?")?;
+        let count: i64 = stmt.query_row(params![run.run_id], |row| row.get(0))?;
+        if count > 0 {
+            return Ok(false);
+        }
+
+        self.conn.execute(
+            "INSERT INTO agentic_runs (
+                run_id, experiment_id, target_type, scenario,
+                resilience_score, trace_id, replay_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params![
+                run.run_id,
+                run.experiment_id,
+                run.target_type,
+                run.scenario,
+                run.resilience_score,
+                run.trace_id,
+                run.replay_id
+            ],
+        )?;
+
+        for contract in &run.contracts {
+            self.conn.execute(
+                "INSERT INTO agentic_contract_outcomes (
+                    run_id, scenario, contract_type, passed, reason, severity
+                ) VALUES (?, ?, ?, ?, ?, ?)",
+                params![
+                    run.run_id,
+                    contract.scenario,
+                    contract.contract_type,
+                    contract.passed,
+                    contract.reason,
+                    contract.severity
+                ],
+            )?;
+        }
+
+        for fault in &run.faults {
+            self.conn.execute(
+                "INSERT INTO agentic_fault_applications (
+                    run_id, scenario, fault_type, applied
+                ) VALUES (?, ?, ?, ?)",
+                params![run.run_id, fault.scenario, fault.fault_type, fault.applied],
+            )?;
+        }
+
+        if let Some(replay_id) = &run.replay_id {
+            let passed = run.contracts.iter().all(|contract| contract.passed);
+            self.conn.execute(
+                "INSERT INTO agentic_replay_outcomes (
+                    run_id, replay_id, scenario, passed
+                ) VALUES (?, ?, ?, ?)",
+                params![run.run_id, replay_id, run.scenario, passed],
+            )?;
+        }
+
+        Ok(true)
     }
 
     /// # Errors
@@ -455,12 +579,8 @@ impl AnalyticsStore {
         export_parquet(&act_batch, activities_path)?;
 
         let total_rows = exp_batch.num_rows() + act_batch.num_rows();
-        let total_bytes = std::fs::metadata(experiments_path)
-            .map(|m| m.len())
-            .unwrap_or(0)
-            + std::fs::metadata(activities_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
+        let total_bytes = std::fs::metadata(experiments_path).map_or(0, |m| m.len())
+            + std::fs::metadata(activities_path).map_or(0, |m| m.len());
         telemetry::event_export_completed("parquet", total_rows, total_bytes);
 
         Ok(())
@@ -868,7 +988,8 @@ mod tests {
         old.started_at_ns = 1_577_836_800_000_000_000; // 2020-01-01
 
         // Create journal with recent timestamp
-        let recent = sample_journal("new-1", ExperimentStatus::Completed);
+        let mut recent = sample_journal("new-1", ExperimentStatus::Completed);
+        recent.started_at_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX);
 
         s.ingest_journal(&old).unwrap();
         s.ingest_journal(&recent).unwrap();
@@ -892,8 +1013,9 @@ mod tests {
         old.started_at_ns = 1_577_836_800_000_000_000; // 2020-01-01
 
         s.ingest_journal(&old).unwrap();
-        s.ingest_journal(&sample_journal("new-1", ExperimentStatus::Completed))
-            .unwrap();
+        let mut recent = sample_journal("new-1", ExperimentStatus::Completed);
+        recent.started_at_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX);
+        s.ingest_journal(&recent).unwrap();
 
         s.purge_older_than_days(30).unwrap();
 
@@ -1008,6 +1130,59 @@ mod tests {
             .unwrap();
         let rows = s.query("SELECT count(*) FROM load_results").unwrap();
         assert_eq!(rows[0][0], "0");
+    }
+
+    #[test]
+    fn ingest_agentic_run_writes_queryable_tables() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let run = AgenticRunAnalytics {
+            run_id: "agentic-run-1".to_string(),
+            experiment_id: "agentic-exp-1".to_string(),
+            target_type: "http".to_string(),
+            scenario: "malformed-json-recovery".to_string(),
+            resilience_score: 0.0,
+            trace_id: Some("trace-agentic-1".to_string()),
+            replay_id: Some("replay-agentic-1".to_string()),
+            contracts: vec![AgenticContractAnalytics {
+                contract_type: "valid_json".to_string(),
+                scenario: "malformed-json-recovery".to_string(),
+                passed: false,
+                reason: Some("invalid_json".to_string()),
+                severity: 1.0,
+            }],
+            faults: vec![AgenticFaultAnalytics {
+                fault_type: "malformed_output".to_string(),
+                scenario: "malformed-json-recovery".to_string(),
+                applied: true,
+            }],
+        };
+
+        assert!(s.ingest_agentic_run(&run).unwrap());
+        assert!(!s.ingest_agentic_run(&run).unwrap());
+
+        let runs = s
+            .query("SELECT scenario, resilience_score FROM agentic_runs")
+            .unwrap();
+        assert_eq!(runs[0][0], "malformed-json-recovery");
+        assert_eq!(runs[0][1], "0.0000");
+
+        let contracts = s
+            .query("SELECT contract_type, reason FROM agentic_contract_outcomes")
+            .unwrap();
+        assert_eq!(contracts[0][0], "valid_json");
+        assert_eq!(contracts[0][1], "invalid_json");
+
+        let faults = s
+            .query("SELECT fault_type, applied FROM agentic_fault_applications")
+            .unwrap();
+        assert_eq!(faults[0][0], "malformed_output");
+        assert_eq!(faults[0][1], "true");
+
+        let replay = s
+            .query("SELECT replay_id, passed FROM agentic_replay_outcomes")
+            .unwrap();
+        assert_eq!(replay[0][0], "replay-agentic-1");
+        assert_eq!(replay[0][1], "false");
     }
 
     #[test]

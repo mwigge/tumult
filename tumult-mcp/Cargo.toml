@@ -19,6 +19,7 @@ tumult-core = { path = "../tumult-core" }
 tumult-analytics = { path = "../tumult-analytics" }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-otel = { path = "../tumult-otel" }
+tumult-agentic = { path = "../tumult-agentic" }
 rust-mcp-sdk = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

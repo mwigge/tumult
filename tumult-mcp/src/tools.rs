@@ -759,18 +759,167 @@ fn collect_gameday_files(dir: &Path, entries: &mut Vec<(String, String)>) {
 
 // ── Intelligence tools (agent reasoning) ────────────────────────
 
-/// Returns recommendations for what to test next, based on coverage gaps
-/// in the persistent analytics store.
+#[derive(Debug, serde::Serialize)]
+struct AgenticSmokeReport {
+    status: String,
+    adapter: String,
+    scenario: String,
+    fault: String,
+    contract: String,
+    expected: String,
+    actual: String,
+    resilience_score: f64,
+    raw_payloads_captured: bool,
+    next_diagnostic_command: String,
+}
+
+/// Lists bundled agentic scenario packs without exposing prompt or payload data.
 ///
-/// Analyzes which plugins, actions, and fault types have been tested
-/// vs available, which experiments fail most, and which targets lack
-/// recent testing.
+/// # Errors
+///
+/// Returns a [`ToolError`] if the scenario list cannot be serialized.
+pub fn agentic_list_scenarios() -> Result<String, ToolError> {
+    let packs = tumult_agentic::scenarios::bundled_packs()
+        .into_iter()
+        .map(|pack| {
+            serde_json::json!({
+                "name": pack.name,
+                "adapters": pack.supported_adapters,
+                "faults": pack.faults.iter().map(tumult_agentic::faults::FaultSpec::fault_type).collect::<Vec<_>>(),
+                "contracts": pack.contracts.iter().map(tumult_agentic::contracts::ContractSpec::contract_type).collect::<Vec<_>>(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    serde_json::to_string_pretty(&serde_json::json!({
+        "capture_policy": "metadata_only",
+        "raw_payloads_captured": false,
+        "packs": packs,
+    }))
+    .map_err(|e| ToolError::Execution(e.to_string()))
+}
+
+/// Runs a deterministic local agentic smoke scenario.
+///
+/// # Errors
+///
+/// Returns [`ToolError::InvalidInput`] for unsupported adapters, scenarios,
+/// faults, or contracts. The report never includes raw prompt or response bodies.
+pub fn agentic_smoke(
+    adapter: &str,
+    scenario: &str,
+    fault: Option<&str>,
+    contract: Option<&str>,
+) -> Result<String, ToolError> {
+    if adapter != "fake-http" && adapter != "fake-mcp" && adapter != "replay" {
+        return Err(ToolError::InvalidInput(format!(
+            "unsupported agentic smoke adapter '{adapter}'; expected fake-http, fake-mcp, or replay"
+        )));
+    }
+
+    let report = tumult_agentic::smoke::run_scenario_pack_smoke(scenario)
+        .map_err(|err| ToolError::InvalidInput(err.to_string()))?;
+    if let Some(selected_fault) = fault {
+        if selected_fault != report.fault {
+            return Err(ToolError::InvalidInput(format!(
+                "fault '{selected_fault}' is not valid for scenario '{scenario}'"
+            )));
+        }
+    }
+    if let Some(selected_contract) = contract {
+        if selected_contract != report.contract {
+            return Err(ToolError::InvalidInput(format!(
+                "contract '{selected_contract}' is not valid for scenario '{scenario}'"
+            )));
+        }
+    }
+
+    render_agentic_tool_report(
+        report,
+        "cargo test -p tumult-mcp agentic_smoke -- --nocapture",
+    )
+}
+
+/// Runs a deterministic local agentic experiment from a bundled scenario pack.
+///
+/// # Errors
+///
+/// Returns [`ToolError::InvalidInput`] for unsupported adapters, scenarios,
+/// faults, or contracts. The report never includes raw prompt or response bodies.
+pub fn agentic_run_experiment(
+    adapter: &str,
+    scenario: &str,
+    fault: Option<&str>,
+    contract: Option<&str>,
+) -> Result<String, ToolError> {
+    if adapter != "fake-http" && adapter != "fake-mcp" && adapter != "replay" {
+        return Err(ToolError::InvalidInput(format!(
+            "unsupported agentic run adapter '{adapter}'; expected fake-http, fake-mcp, or replay"
+        )));
+    }
+
+    let report = tumult_agentic::smoke::run_scenario_pack_smoke(scenario)
+        .map_err(|err| ToolError::InvalidInput(err.to_string()))?;
+    if let Some(selected_fault) = fault {
+        if selected_fault != report.fault {
+            return Err(ToolError::InvalidInput(format!(
+                "fault '{selected_fault}' is not valid for scenario '{scenario}'"
+            )));
+        }
+    }
+    if let Some(selected_contract) = contract {
+        if selected_contract != report.contract {
+            return Err(ToolError::InvalidInput(format!(
+                "contract '{selected_contract}' is not valid for scenario '{scenario}'"
+            )));
+        }
+    }
+
+    render_agentic_tool_report(
+        report,
+        "cargo run -p tumult-cli -- agentic run --scenario <scenario>",
+    )
+}
+
+fn render_agentic_tool_report(
+    report: tumult_agentic::smoke::SmokeReport,
+    next_diagnostic_command: &str,
+) -> Result<String, ToolError> {
+    let report = AgenticSmokeReport {
+        status: if report.passed { "passed" } else { "failed" }.to_string(),
+        adapter: report.adapter,
+        scenario: report.scenario,
+        fault: report.fault,
+        contract: report.contract,
+        expected: report.expected,
+        actual: report.actual,
+        resilience_score: report.run_result.resilience_score,
+        raw_payloads_captured: false,
+        next_diagnostic_command: next_diagnostic_command.to_string(),
+    };
+
+    serde_json::to_string_pretty(&report).map_err(|e| ToolError::Execution(e.to_string()))
+}
+
+/// Returns recommendations for what to test next.
 ///
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the store cannot be opened or queried.
 #[allow(clippy::too_many_lines)] // Recommendation logic covers multiple metrics and formatting stages; splitting would not reduce complexity
-pub fn recommend(store_path: &str) -> Result<String, ToolError> {
+pub fn recommend(
+    store_path: &str,
+    goal: Option<&str>,
+    model: Option<&str>,
+    include_draft: bool,
+    format: &str,
+) -> Result<String, ToolError> {
+    if format != "text" && format != "json" {
+        return Err(ToolError::InvalidInput(format!(
+            "unsupported recommend format '{format}'; expected text or json"
+        )));
+    }
+
     let path = std::path::PathBuf::from(store_path);
     if !path.exists() {
         return Ok("No analytics store found. Run some experiments first.".to_string());
@@ -779,9 +928,6 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
     let store = tumult_analytics::AnalyticsStore::open(&path)
         .map_err(|e| ToolError::Store(e.to_string()))?;
 
-    let mut output = String::new();
-
-    // 1. Available plugins vs tested
     let available_plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
     let available_actions: Vec<String> = available_plugins
         .iter()
@@ -792,7 +938,6 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
         })
         .collect();
 
-    // 2. Which actions have been executed (from activity_results)?
     let tested_actions = store
         .query("SELECT DISTINCT name FROM activity_results WHERE activity_type = 'action'")
         .unwrap_or_default();
@@ -801,7 +946,6 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
         .filter_map(|row| row.into_iter().next())
         .collect();
 
-    // 3. Find untested actions
     let untested: Vec<&String> = available_actions
         .iter()
         .filter(|a| {
@@ -810,10 +954,53 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
         })
         .collect();
 
+    let failures = store
+        .query(
+            "SELECT title, count(*) as fails FROM experiments \
+             WHERE status != 'completed' GROUP BY title \
+             ORDER BY fails DESC LIMIT 5",
+        )
+        .unwrap_or_default();
+
+    let stale = store
+        .query(
+            "SELECT title, max(started_at_ns) as last_run \
+             FROM experiments GROUP BY title \
+             ORDER BY last_run ASC LIMIT 5",
+        )
+        .unwrap_or_default();
+
+    if format == "json" {
+        let failures_json: Vec<Vec<String>> =
+            failures.iter().map(|row| row.as_slice().to_vec()).collect();
+        let stale_json: Vec<Vec<String>> =
+            stale.iter().map(|row| row.as_slice().to_vec()).collect();
+
+        return serde_json::to_string_pretty(&serde_json::json!({
+            "goal": goal,
+            "model": model,
+            "include_draft": include_draft,
+            "coverage": {
+                "tested_actions": available_actions.len().saturating_sub(untested.len()),
+                "available_actions": available_actions.len(),
+                "untested_actions": untested,
+            },
+            "failures": failures_json,
+            "stale_experiments": stale_json,
+            "draft": include_draft.then_some("Run coverage gaps first, then replay failing journals as deterministic regression tests."),
+        }))
+        .map_err(|e| ToolError::Execution(e.to_string()));
+    }
+
+    let mut output = String::new();
     writeln!(output, "=== Recommendations ===").ok();
     writeln!(output).ok();
-
-    // Coverage gaps
+    if let Some(goal) = goal {
+        writeln!(output, "Goal: {goal}").ok();
+    }
+    if let Some(model) = model {
+        writeln!(output, "Model: {model}").ok();
+    }
     writeln!(
         output,
         "Coverage: {}/{} actions tested ({:.0}%)",
@@ -842,15 +1029,6 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
         }
     }
 
-    // 4. Most failing experiments
-    let failures = store
-        .query(
-            "SELECT title, count(*) as fails FROM experiments \
-             WHERE status != 'completed' GROUP BY title \
-             ORDER BY fails DESC LIMIT 5",
-        )
-        .unwrap_or_default();
-
     if !failures.is_empty() {
         writeln!(output).ok();
         writeln!(output, "Most failing experiments:").ok();
@@ -860,15 +1038,6 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
             }
         }
     }
-
-    // 5. Stale experiments (not run recently)
-    let stale = store
-        .query(
-            "SELECT title, max(started_at_ns) as last_run \
-             FROM experiments GROUP BY title \
-             ORDER BY last_run ASC LIMIT 5",
-        )
-        .unwrap_or_default();
 
     if !stale.is_empty() {
         writeln!(output).ok();
@@ -880,7 +1049,6 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
         }
     }
 
-    // 6. Suggested next steps
     writeln!(output).ok();
     writeln!(output, "Suggested next steps:").ok();
     if !untested.is_empty() {
@@ -904,6 +1072,13 @@ pub fn recommend(store_path: &str) -> Result<String, ToolError> {
         "  3. Run a GameDay to validate end-to-end resilience with compliance scoring"
     )
     .ok();
+    if include_draft {
+        writeln!(
+            output,
+            "  4. Draft deterministic replay cases from any failed journals"
+        )
+        .ok();
+    }
 
     Ok(output)
 }
@@ -1249,6 +1424,74 @@ mod tests {
     fn store_stats_missing_store_returns_error() {
         let result = store_stats("/nonexistent/analytics.duckdb");
         assert!(result.is_err());
+    }
+
+    // ── agentic smoke ────────────────────────────────────────
+
+    #[test]
+    fn agentic_list_scenarios_returns_metadata_only_packs() {
+        let output = agentic_list_scenarios().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(value["capture_policy"], "metadata_only");
+        assert_eq!(value["raw_payloads_captured"], false);
+        assert!(output.contains("malformed-json-recovery"));
+        assert!(!output.contains("prompt"));
+        assert!(!output.contains("customer secret"));
+        assert!(!output.contains("\"input\""));
+    }
+
+    #[test]
+    fn agentic_smoke_reports_clear_feedback_loop() {
+        let output = agentic_smoke("fake-http", "malformed-json-recovery", None, None).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(value["status"], "passed");
+        assert_eq!(value["adapter"], "fake_http");
+        assert_eq!(value["scenario"], "fake-http-malformed-json");
+        assert_eq!(value["fault"], "malformed_output");
+        assert_eq!(value["contract"], "valid_json");
+        assert_eq!(value["expected"], "contract_failed:invalid_json");
+        assert_eq!(value["actual"], "contract_failed:invalid_json");
+        assert_eq!(value["raw_payloads_captured"], false);
+        assert!(value["next_diagnostic_command"]
+            .as_str()
+            .unwrap()
+            .contains("cargo test -p tumult-mcp agentic_smoke"));
+    }
+
+    #[test]
+    fn agentic_smoke_validates_scenario_fault_and_contract() {
+        assert!(agentic_smoke("real-http", "malformed-json-recovery", None, None).is_err());
+        assert!(agentic_smoke("fake-http", "unknown", None, None).is_err());
+        assert!(agentic_smoke(
+            "fake-http",
+            "malformed-json-recovery",
+            Some("tool_timeout"),
+            None
+        )
+        .is_err());
+        assert!(agentic_smoke(
+            "fake-http",
+            "malformed-json-recovery",
+            None,
+            Some("fallback_used")
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn agentic_run_experiment_reports_metadata_only_feedback() {
+        let output =
+            agentic_run_experiment("fake-http", "cost-explosion-detector", None, None).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(value["status"], "passed");
+        assert_eq!(value["scenario"], "cost-explosion-detector");
+        assert_eq!(value["fault"], "token_budget_exhaustion");
+        assert_eq!(value["contract"], "max_token_usage");
+        assert_eq!(value["raw_payloads_captured"], false);
+        assert!(!output.contains("raw model output"));
     }
 
     // ── validate_select_only ─────────────────────────────────

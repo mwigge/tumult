@@ -1,0 +1,16 @@
+name: fake-http-malformed-json
+target:
+  type: http
+  endpoint: fixture://fake-http
+scenario:
+  name: fake-http-malformed-json
+  input_ref: local-fixture
+fault:
+  type: malformed_output
+  probability: 1.0
+contract:
+  type: valid_json
+expected_feedback:
+  adapter: fake_http
+  expected: contract_failed:invalid_json
+  next_diagnostic_command: cargo test -p tumult-agentic smoke_fake_http -- --nocapture

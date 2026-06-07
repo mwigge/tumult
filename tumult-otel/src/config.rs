@@ -34,13 +34,11 @@ impl TelemetryConfig {
     pub fn from_env() -> Self {
         Self {
             enabled: std::env::var("TUMULT_OTEL_ENABLED")
-                .map(|v| v != "false" && v != "0")
-                .unwrap_or(true),
+                .map_or(true, |v| v != "false" && v != "0"),
             service_name: std::env::var("OTEL_SERVICE_NAME")
                 .unwrap_or_else(|_| DEFAULT_SERVICE_NAME.to_string()),
             console_export: std::env::var("TUMULT_OTEL_CONSOLE")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
+                .is_ok_and(|v| v == "true" || v == "1"),
             otlp_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(),
         }
     }

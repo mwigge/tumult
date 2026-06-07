@@ -197,14 +197,12 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
                     });
                 }
             }
-            Some(Tolerance::Range { from, to }) => {
-                if from > to {
-                    return Err(EngineError::InvalidToleranceBounds {
-                        activity: activity.name.clone(),
-                        from: *from,
-                        to: *to,
-                    });
-                }
+            Some(Tolerance::Range { from, to }) if from > to => {
+                return Err(EngineError::InvalidToleranceBounds {
+                    activity: activity.name.clone(),
+                    from: *from,
+                    to: *to,
+                });
             }
             _ => {}
         }

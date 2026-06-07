@@ -1,0 +1,21 @@
+[package]
+name = "tumult-agentic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Agentic AI fault injection and resilience scoring for Tumult"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+opentelemetry = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+toon-format = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

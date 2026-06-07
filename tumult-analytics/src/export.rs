@@ -27,7 +27,7 @@ pub fn export_parquet(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsE
     writer.write(batch)?;
     writer.close()?;
 
-    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let bytes = std::fs::metadata(path).map_or(0, |m| m.len());
     telemetry::event_export_completed("parquet", batch.num_rows(), bytes);
     Ok(())
 }
@@ -45,7 +45,7 @@ pub fn export_arrow_ipc(batch: &RecordBatch, path: &Path) -> Result<(), Analytic
     writer.write(batch)?;
     writer.finish()?;
 
-    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let bytes = std::fs::metadata(path).map_or(0, |m| m.len());
     telemetry::event_export_completed("arrow_ipc", batch.num_rows(), bytes);
     Ok(())
 }
@@ -60,7 +60,7 @@ pub fn export_csv(batch: &RecordBatch, path: &Path) -> Result<(), AnalyticsError
     let mut writer = CsvWriterBuilder::new().with_header(true).build(file);
     writer.write(batch)?;
 
-    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let bytes = std::fs::metadata(path).map_or(0, |m| m.len());
     telemetry::event_export_completed("csv", batch.num_rows(), bytes);
     Ok(())
 }
