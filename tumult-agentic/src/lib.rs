@@ -2,9 +2,11 @@
 
 pub mod adapters;
 pub mod contracts;
+pub mod engine;
 pub mod faults;
 pub mod journal;
 pub mod model;
+pub mod proxy;
 pub mod replay;
 pub mod scenarios;
 pub mod scoring;

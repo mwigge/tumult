@@ -187,9 +187,19 @@ pub fn apply_fault(
             response.body = format!(r#"{{"tool_error":"{error_type}"}}"#);
         }
         FaultSpec::RetrievalPoisoning { document_count, .. } => {
+            let documents: Vec<String> = (0..*document_count)
+                .map(|idx| format!("poisoned-document-{idx}"))
+                .collect();
             response
                 .retrieved_documents
-                .extend((0..*document_count).map(|idx| format!("poisoned-document-{idx}")));
+                .extend(documents.iter().cloned());
+            // Fold the poisoned context into the answer body so the body-based
+            // safety contracts (citation, PII, secret leakage) actually observe
+            // the contamination — without this, poisoning retrieved_documents
+            // alone would be invisible to contract evaluation.
+            let joined = documents.join(" ");
+            response.body =
+                format!(r#"{{"answer":"answer contaminated by poisoned retrieval: {joined}"}}"#);
         }
         FaultSpec::ContextTruncation { max_tokens, .. }
         | FaultSpec::TokenBudgetExhaustion { max_tokens, .. } => {

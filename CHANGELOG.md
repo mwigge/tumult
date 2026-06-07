@@ -4,6 +4,44 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.0] — Live agentic fault injection + real fault-execution engine
+
+### Added
+
+- **`tumult agentic proxy`**: a fault-injecting HTTP reverse proxy that puts a
+  scenario pack's faults into the live model traffic of any base-URL-configurable
+  agent. Point Claude Code (`ANTHROPIC_BASE_URL`), the Codex CLI / OpenCode
+  (`OPENAI_BASE_URL`), or GitHub Copilot (`HTTPS_PROXY`) at the proxy and watch
+  how the real agent copes with injected latency, rate limits, provider errors,
+  timeouts, malformed/truncated output, tool failures, and retrieval poisoning.
+  Each request is logged and optionally appended to a metadata-only JSONL journal
+  with live contract verdicts. New module `tumult-agentic::proxy`.
+- **Shared fault-execution engine** (`tumult-agentic::engine`): a single
+  `execute` entry point that gates every fault through the seeded `FaultEngine`,
+  applies it via `apply_fault`, and evaluates every contract against the
+  resulting response.
+- **Live-client guide**: `docs/guides/agentic-live-clients.md` documents wiring
+  each agent to the proxy and how faults map onto HTTP behaviour.
+
+### Changed
+
+- **Scenario packs now run through the real engine.** `tumult agentic run
+  --scenario` previously reported hand-scripted, pre-computed "post-fault"
+  responses. Every pack now applies its declared faults through `FaultEngine` +
+  `apply_fault` against a per-pack baseline and evaluates its real contracts, so
+  the reported pass/fail genuinely reflects what the faults do.
+- **`tumult agentic replay --fixture` now replays the supplied fixture.** It
+  previously validated the caller's fixture and then discarded it, always
+  reporting a built-in smoke fixture. It now runs the caller's fixture end to
+  end through the replay adapter; the report's session, source, and step count
+  echo that fixture.
+
+### Fixed
+
+- **`retrieval_poisoning` now contaminates the evaluated response body**, not
+  just the `retrieved_documents` list, so the body-based safety contracts
+  (citation, PII, secret leakage) actually observe the poisoning.
+
 ## [1.1.2] — Docker image build fix
 
 ### Fixed

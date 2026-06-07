@@ -12,6 +12,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }
 opentelemetry = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
@@ -19,3 +21,4 @@ toon-format = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+axum = { workspace = true }

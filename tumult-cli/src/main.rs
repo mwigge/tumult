@@ -245,6 +245,28 @@ enum AgenticAction {
         #[arg(long, default_value = "target/agentic/replay-journal.toon")]
         journal: PathBuf,
     },
+    /// Inject a scenario pack's faults into a live agent's model traffic
+    ///
+    /// Stands up a local reverse proxy in front of a provider endpoint; point
+    /// any base-URL-configurable agent (Claude Code, Codex, Copilot, and others)
+    /// at it via its base-URL or proxy environment variable.
+    Proxy {
+        /// Address to listen on — set your agent's base URL to this
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        listen: String,
+        /// Upstream provider base URL to forward to
+        #[arg(long, default_value = "https://api.anthropic.com")]
+        upstream: String,
+        /// Scenario pack whose faults are injected into live traffic
+        #[arg(long, default_value = "malformed-json-recovery")]
+        scenario: String,
+        /// Optional JSONL journal: one line appended per proxied request
+        #[arg(long)]
+        journal: Option<PathBuf>,
+        /// Base seed for the per-request fault gate
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+    },
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -444,6 +466,22 @@ async fn main() -> anyhow::Result<()> {
             }
             AgenticAction::Replay { fixture, journal } => {
                 print!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
+            }
+            AgenticAction::Proxy {
+                listen,
+                upstream,
+                scenario,
+                journal,
+                seed,
+            } => {
+                commands::cmd_agentic_proxy(
+                    &listen,
+                    &upstream,
+                    &scenario,
+                    journal.as_deref(),
+                    seed,
+                )
+                .await?;
             }
         },
         Commands::GameDay { action } => match action {
@@ -1089,6 +1127,67 @@ mod tests {
             err.kind(),
             clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
         );
+    }
+
+    #[test]
+    fn parse_agentic_proxy() {
+        let cli = Cli::try_parse_from([
+            "tumult",
+            "agentic",
+            "proxy",
+            "--listen",
+            "127.0.0.1:9090",
+            "--upstream",
+            "https://api.openai.com",
+            "--scenario",
+            "concurrency-storm",
+            "--journal",
+            "target/agentic/proxy.jsonl",
+            "--seed",
+            "7",
+        ])
+        .unwrap();
+        let Commands::Agentic { action } = cli.command else {
+            panic!("expected Agentic command");
+        };
+        let AgenticAction::Proxy {
+            listen,
+            upstream,
+            scenario,
+            journal,
+            seed,
+        } = action
+        else {
+            panic!("expected Agentic proxy action");
+        };
+        assert_eq!(listen, "127.0.0.1:9090");
+        assert_eq!(upstream, "https://api.openai.com");
+        assert_eq!(scenario, "concurrency-storm");
+        assert_eq!(journal, Some(PathBuf::from("target/agentic/proxy.jsonl")));
+        assert_eq!(seed, 7);
+    }
+
+    #[test]
+    fn parse_agentic_proxy_defaults() {
+        let cli = Cli::try_parse_from(["tumult", "agentic", "proxy"]).unwrap();
+        let Commands::Agentic { action } = cli.command else {
+            panic!("expected Agentic command");
+        };
+        let AgenticAction::Proxy {
+            listen,
+            upstream,
+            scenario,
+            journal,
+            seed,
+        } = action
+        else {
+            panic!("expected Agentic proxy action");
+        };
+        assert_eq!(listen, "127.0.0.1:8080");
+        assert_eq!(upstream, "https://api.anthropic.com");
+        assert_eq!(scenario, "malformed-json-recovery");
+        assert_eq!(journal, None);
+        assert_eq!(seed, 1);
     }
 
     // ── Import ────────────────────────────────────────────────
