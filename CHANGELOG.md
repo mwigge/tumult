@@ -4,6 +4,18 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.1] — Release test fix
+
+### Fixed
+
+- **tumult-mcp**: update the `agentic_smoke` tool test that pinned the old
+  `fake-http-malformed-json` scenario label. The 1.2.0 change routed every
+  scenario pack through the real fault-execution engine, so the smoke report's
+  scenario is now the bundled pack name (`malformed-json-recovery`). The 1.2.0
+  release build's "Run tests before release" step failed on the native
+  `x86_64-unknown-linux-gnu` and macOS targets (the musl targets skip test
+  execution when cross-compiling, which is why they passed).
+
 ## [1.2.0] — Live agentic fault injection + real fault-execution engine
 
 ### Added

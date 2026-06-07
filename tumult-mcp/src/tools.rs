@@ -1448,7 +1448,9 @@ mod tests {
 
         assert_eq!(value["status"], "passed");
         assert_eq!(value["adapter"], "fake_http");
-        assert_eq!(value["scenario"], "fake-http-malformed-json");
+        // The scenario label is the bundled pack name now that the smoke runner
+        // routes every pack through the real fault-execution engine.
+        assert_eq!(value["scenario"], "malformed-json-recovery");
         assert_eq!(value["fault"], "malformed_output");
         assert_eq!(value["contract"], "valid_json");
         assert_eq!(value["expected"], "contract_failed:invalid_json");

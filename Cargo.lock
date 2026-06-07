@@ -6210,7 +6210,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agentic"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "axum",
  "chrono",
@@ -6228,7 +6228,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-analytics"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "arrow",
  "chrono",
@@ -6248,7 +6248,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-baseline"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -6259,7 +6259,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6287,7 +6287,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -6305,7 +6305,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6327,7 +6327,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-intelligence"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -6341,7 +6341,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "k8s-openapi",
  "kube",
@@ -6355,7 +6355,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6378,7 +6378,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "opentelemetry",
  "opentelemetry-appender-tracing",
@@ -6394,7 +6394,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "indexmap",
  "opentelemetry",
@@ -6410,7 +6410,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ssh"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6426,7 +6426,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "indexmap",
  "serde_json",
