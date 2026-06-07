@@ -6079,6 +6079,7 @@ dependencies = [
  "tokio",
  "toon-format",
  "tracing",
+ "tumult-otel",
  "uuid",
 ]
 
@@ -6242,6 +6243,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
+ "serde",
  "tokio",
  "tracing",
  "tracing-opentelemetry",

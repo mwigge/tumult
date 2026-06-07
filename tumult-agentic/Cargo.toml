@@ -7,6 +7,7 @@ license.workspace = true
 description = "Agentic AI fault injection and resilience scoring for Tumult"
 
 [dependencies]
+tumult-otel = { path = "../tumult-otel" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

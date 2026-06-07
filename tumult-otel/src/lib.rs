@@ -3,10 +3,12 @@
 //! Provides always-on tracing, metrics, and logging via the
 //! `tracing` + `tracing-opentelemetry` bridge with OTLP export.
 
+pub mod agentic;
 pub mod attributes;
 pub mod config;
 pub mod instrument;
 pub mod metrics;
+pub mod propagation;
 pub mod telemetry;
 
 pub use config::TelemetryConfig;
