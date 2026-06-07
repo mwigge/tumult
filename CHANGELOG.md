@@ -4,6 +4,27 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.2] — Dependency upgrades + CI action bumps
+
+### Changed
+
+- **Dependency upgrades** (all verified green with `cargo build`/`test`/`clippy`
+  across the workspace): OpenTelemetry stack `0.31` → `0.32`
+  (`opentelemetry`, `-sdk`, `-otlp`, `-semantic-conventions`, `-stdout`,
+  `-appender-tracing`) and `tracing-opentelemetry` `0.32` → `0.33`; `toon-format`
+  `0.4` → `0.5`; `duckdb` `1.10501` → `1.10503`; `russh` `0.60` → `0.61`; plus
+  `uuid` and `serde_json` patch bumps.
+- **CI workflow actions**: `actions/download-artifact` 4 → 8,
+  `softprops/action-gh-release` 2 → 3, `docker/setup-buildx-action` 3 → 4,
+  `docker/login-action` 4.1 → 4.2 (release workflow), and
+  `actions/deploy-pages` 4 → 5 (pages workflow).
+
+### Notes
+
+- No source or API changes — this release lands accumulated dependency and CI
+  maintenance and verifies the bumped release-workflow actions produce a working
+  release.
+
 ## [1.2.1] — Release test fix
 
 ### Fixed
