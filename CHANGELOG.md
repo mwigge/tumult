@@ -4,6 +4,20 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.1] — Release build fix
+
+### Fixed
+
+- **Cross-compilation**: pin the workspace `reqwest` dependency to
+  `default-features = false` with `rustls-tls` instead of the default
+  `native-tls`/OpenSSL backend. The 1.1.0 release build failed for the
+  `*-unknown-linux-musl` targets because `tumult-agentic`'s direct `reqwest`
+  dependency activated `default-tls`, pulling in `openssl-sys`, which has no
+  OpenSSL development headers in the musl cross-compilation containers.
+  Switching to `rustls-tls` matches the TLS stack already used everywhere
+  else in the workspace and removes ~155 lines of `native-tls`/OpenSSL
+  transitive dependencies from `Cargo.lock`.
+
 ## [1.1.0] — Agentic Fault Injection
 
 ### Added
