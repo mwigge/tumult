@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="460" viewBox="0 0 960 460" font-family="'DejaVu Sans','Segoe UI',sans-serif">
+  <rect width="960" height="460" fill="#ffffff"/>
+  <style>
+    .title{font-size:24px;font-weight:700;fill:#1f2a44}
+    .sub{font-size:14px;fill:#5b6675}
+    .span{font-size:13px;font-weight:600;fill:#1f2a44;font-family:monospace}
+    .who{font-size:11px;fill:#6b7785}
+    .note{font-size:12px;fill:#a1531a;font-weight:600}
+  </style>
+  <text x="40" y="44" class="title">One trace. Inject the fault, watch the agent flinch.</text>
+  <text x="40" y="70" class="sub">tumult is the root; the client's own spans nest underneath — so you see cause and effect together.</text>
+
+  <!-- waterfall bars: x grid 300..900 -->
+  <!-- row 1 root -->
+  <rect x="300" y="100" width="600" height="26" rx="5" fill="#1f2a44"/>
+  <text x="40" y="118" class="span">tumult.experiment</text>
+  <text x="40" y="134" class="who">tumult (trace root)</text>
+
+  <!-- row 2 interaction -->
+  <rect x="330" y="138" width="555" height="26" rx="5" fill="#33415e"/>
+  <text x="60" y="156" class="span">claude_code.interaction</text>
+  <text x="60" y="172" class="who">Claude Code (nested via TRACEPARENT)</text>
+
+  <!-- row 3 llm_request -->
+  <rect x="360" y="176" width="430" height="26" rx="5" fill="#4a5b7d"/>
+  <text x="80" y="194" class="span">claude_code.llm_request</text>
+  <text x="80" y="210" class="who">ttft_ms · attempt · tokens · stop_reason</text>
+
+  <!-- row 4 tumult.agentic.fault -->
+  <rect x="395" y="214" width="360" height="26" rx="5" fill="#c8881f"/>
+  <text x="100" y="232" class="span" fill="#1f2a44">tumult.agentic.fault</text>
+  <text x="100" y="248" class="who">the injected fault, in the same trace</text>
+
+  <!-- row 5 provider -->
+  <rect x="470" y="252" width="230" height="26" rx="5" fill="#8a97ad"/>
+  <text x="120" y="270" class="span">upstream provider call</text>
+
+  <!-- annotations -->
+  <line x1="360" y1="176" x2="360" y2="300" stroke="#a1531a" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="366" y="318" class="note">latency fault → ttft_ms spikes here</text>
+
+  <line x1="640" y1="176" x2="640" y2="340" stroke="#a1531a" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="500" y="358" class="note">rate-limit fault → attempt climbs, retries appear</text>
+
+  <!-- legend -->
+  <rect x="40" y="392" width="880" height="46" rx="10" fill="#f6f7fa" stroke="#d6dbe4"/>
+  <text x="60" y="414" font-size="12.5" fill="#3a4654">The experiment side (faults, contracts, score) and the target side (the agent's real reaction) land in</text>
+  <text x="60" y="430" font-size="12.5" fill="#3a4654">one distributed trace — correlated by a <tspan font-family="monospace" fill="#1f2a44">tumult.client</tspan> tag when a client can't propagate context.</text>
+</svg>

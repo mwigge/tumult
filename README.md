@@ -230,7 +230,10 @@ Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool calls 
 Tumult also treats AI agents as systems under test. The `tumult-agentic`
 module defines fault injection, behavioral contracts, replay fixtures, and
 OpenTelemetry correlation for agent workflows that call models, tools, MCP
-servers, or retrieval systems.
+servers, or retrieval systems — and it works with the agents people actually
+run: **Claude Code, the Codex CLI, GitHub Copilot, and OpenCode.**
+
+![tumult-agentic proxy](docs/images/tumult-agentic-proxy.png)
 
 The first local feedback loop is deterministic and does not call an external
 LLM or provider:
@@ -238,6 +241,7 @@ LLM or provider:
 ```bash
 tumult agentic list-packs
 tumult agentic smoke
+tumult agentic run --scenario retrieval-poisoning
 ```
 
 Faults cover agent-specific failure modes such as model latency, provider
@@ -247,14 +251,43 @@ exhaustion, and retry-loop pressure. Contracts verify behavior such as valid
 JSON, required citations, no PII, no secret leakage, bounded latency, bounded
 retries/tool calls/token usage, fallback behavior, and graceful errors.
 
-Agentic spans keep Tumult's `resilience.*` experiment attributes and add
-GenAI-aligned `gen_ai.*` attributes for operation, model, tool, provider, and
-evaluation correlation. Raw prompts, completions, tool payloads, and retrieved
-documents default to metadata-only capture.
+### Against a live agent
 
-See [Agentic Quickstart](docs/guides/agentic-quickstart.md),
-[Agentic Observability](docs/guides/agentic-observability.md), and
-[Agentic Scenarios](docs/guides/agentic-scenarios.md).
+Point any client at the fault-injecting proxy — every one of them honors a
+base-URL or proxy environment variable:
+
+```bash
+# faults in front of the real provider
+tumult agentic proxy --upstream https://api.anthropic.com --scenario malformed-json-recovery
+
+# then drive your agent as usual
+ANTHROPIC_BASE_URL=http://127.0.0.1:8080 claude     # Codex: OPENAI_BASE_URL · Copilot: HTTPS_PROXY
+```
+
+Or let tumult drive the loop and be the trace root:
+
+```bash
+tumult agentic run-live --prompt "summarize the repo" --scenario tool-timeout-fallback
+```
+
+### Two-sided, cross-client observability
+
+A run is observed from both sides in one distributed trace — the *experiment*
+side (`resilience.agentic.experiment` span with fault decisions, contract
+outcomes, and the resilience score) and the *target* side (the agent's own
+`gen_ai.*` spans, nested via W3C `traceparent`). Every client's native
+telemetry is normalized onto one canonical schema — `gen_ai.*` +
+`resilience.agent.*` + a `tumult.client` tag — via a drop-in collector config
+(`collector/otel-agentic-normalization.yaml`). Raw prompts, completions, tool
+payloads, and retrieved documents default to metadata-only capture.
+
+See the blog post,
+[Chaos-Test Your AI Agent](docs/blog/11-agentic-fault-injection.md), and the
+[Agentic Quickstart](docs/guides/agentic-quickstart.md),
+[Live Clients](docs/guides/agentic-live-clients.md),
+[Cross-Client Observability](docs/guides/agentic-cross-client-observability.md),
+[Observability](docs/guides/agentic-observability.md), and
+[Scenarios](docs/guides/agentic-scenarios.md) guides.
 
 ## Data-Driven Chaos Engineering
 
