@@ -26,3 +26,6 @@ CLAUDE.md
 # Local OpenSpec change proposals / specs (not tracked)
 openspec/
 
+
+# Local Claude Code state (skills, settings, worktrees)
+.claude/
