@@ -1,0 +1,39 @@
+title: CPU stress — verify the host stays responsive under load
+description: Confirm the host responds, inject CPU stress with stress-ng, confirm it still responds
+
+tags[2]: stress, resilience
+
+steady_state_hypothesis:
+  title: Host shell is responsive
+  probes[1]:
+    - name: host-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "echo alive"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "alive"
+
+method[2]:
+  - name: cpu-stress
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "stress-ng --cpu 2 --timeout 5s --metrics-brief 2>&1 | tail -1"
+      timeout_s: 20.0
+  - name: verify-responsive
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo alive"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "alive"
+
+rollbacks[0]:

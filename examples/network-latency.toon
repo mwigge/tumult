@@ -1,0 +1,53 @@
+title: Network latency — verify connectivity survives injected loopback delay
+description: Confirm loopback ping works, add netem latency, confirm it still works, reset
+
+tags[2]: network, resilience
+
+steady_state_hypothesis:
+  title: Loopback responds to ping
+  probes[1]:
+    - name: ping-baseline
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "ping -c 1 -W 2 127.0.0.1"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "1 received"
+
+method[3]:
+  - name: add-latency
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sudo tc qdisc add dev lo root netem delay 100ms && echo added"
+      timeout_s: 10.0
+  - name: verify-under-latency
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "ping -c 1 -W 2 127.0.0.1"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "1 received"
+  - name: reset-tc
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sudo tc qdisc del dev lo root && echo reset"
+      timeout_s: 10.0
+
+rollbacks[1]:
+  - name: ensure-tc-reset
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sudo tc qdisc del dev lo root 2>/dev/null || true"
+      timeout_s: 10.0

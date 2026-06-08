@@ -47,6 +47,23 @@ services:
     networks:
       - tumult-e2e
 
+  # ── MySQL 8 ──────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "13306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: tumult_test
+      MYSQL_DATABASE: tumult_test
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ptumult_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    networks:
+      - tumult-e2e
+
   # ── Kafka 3.8 (KRaft — no ZooKeeper) ────────────────────────
   kafka:
     image: apache/kafka:3.8.0

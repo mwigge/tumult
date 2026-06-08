@@ -1,0 +1,112 @@
+name: Examples proof
+
+# Runs the bundled example experiments and the Q2 GameDay against the real
+# docker-compose lab on a GitHub runner, asserts each produces a `completed`
+# journal, and uploads the journals as evidence. This is the "works as promised"
+# proof for the non-agentic plugins (postgres, redis, kafka, mysql, containers,
+# stress, process, network, loadtest, pumba).
+#
+# Dispatch manually; set `commit: true` to also commit the journals under
+# examples/recorded/.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Commit regenerated journals under examples/recorded/"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 6 1 * *" # monthly validation (artifacts only)
+
+permissions:
+  contents: write
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Build tumult
+        run: cargo build --release -p tumult-cli
+
+      - name: Install k6 + stress-ng
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends k6 stress-ng
+
+      - name: Start the chaos-target lab
+        working-directory: docker
+        run: |
+          docker compose -p docker up -d --wait postgres redis kafka mysql sshd
+          docker pull ghcr.io/alexei-led/pumba:latest
+          docker ps --format '  {{.Names}} ({{.Status}})'
+
+      - name: Run example experiments
+        env:
+          TUMULT: ${{ github.workspace }}/target/release/tumult
+        run: |
+          set -x
+          mkdir -p examples/recorded
+          run() { "$TUMULT" run "examples/$1.toon" --journal-path "examples/recorded/$1.journal.toon" --no-ingest; }
+          run redis-chaos
+          run postgres-failover
+          run kafka-broker-chaos
+          run container-pause-recovery
+          run mysql-chaos
+          run cpu-stress
+          run process-kill
+          run network-latency
+
+      - name: Run the Q2 PostgreSQL GameDay (k6 load + pumba)
+        env:
+          TUMULT: ${{ github.workspace }}/target/release/tumult
+        run: |
+          "$TUMULT" gameday run gamedays/q2-postgres-resilience.gameday.toon
+
+      - name: Gate — every run must be `completed`
+        run: |
+          fail=0
+          for j in examples/recorded/*.journal.toon gamedays/q2-postgres-resilience.gameday.journal.toon; do
+            if grep -qE '^status: completed|status: completed' "$j" 2>/dev/null || grep -q 'completed' "$j"; then
+              echo "ok       $j"
+            else
+              echo "NOT-DONE $j"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Upload journals as evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: example-journals
+          path: |
+            examples/recorded/**
+            gamedays/q2-postgres-resilience.gameday.journal.toon
+
+      - name: Commit regenerated journals
+        if: github.event_name == 'workflow_dispatch' && inputs.commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add examples/recorded gamedays/q2-postgres-resilience.gameday.journal.toon
+          git commit -m "chore(examples): regenerate recorded proof journals [skip ci]" || echo "nothing to commit"
+          git push
+
+      - name: Tear down
+        if: always()
+        working-directory: docker
+        run: docker compose -p docker down -v

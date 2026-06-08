@@ -1,0 +1,39 @@
+title: Kafka broker chaos — verify the broker recovers after a pause
+description: Confirm the broker answers API requests, pause it briefly, confirm it recovers
+
+tags[2]: kafka, resilience
+
+steady_state_hypothesis:
+  title: Kafka broker answers API version requests
+  probes[1]:
+    - name: kafka-broker-up
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 | head -1"
+        timeout_s: 30.0
+      tolerance:
+        type: regex
+        pattern: "id:"
+
+method[2]:
+  - name: pause-broker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest pause -d 3s docker-kafka-1"
+      timeout_s: 20.0
+  - name: verify-broker-recovered
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 2 && docker exec docker-kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 | head -1"
+      timeout_s: 30.0
+    tolerance:
+      type: regex
+      pattern: "id:"
+
+rollbacks[0]:
