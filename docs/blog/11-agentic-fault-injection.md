@@ -12,7 +12,7 @@ You wouldn't ship a payments service without breaking it on purpose first. So wh
 
 It works with the agents people actually run: **Claude Code, the Codex CLI, GitHub Copilot, and OpenCode.**
 
-![How the tumult-agentic proxy sits between any agent and its model provider](/images/tumult-agentic-proxy.png)
+![How the tumult-agentic proxy sits between any agent and its model provider](../images/tumult-agentic-proxy.png)
 
 ## The trick: a fault-injecting proxy
 
@@ -54,7 +54,7 @@ Here's the part the SREs in the room will like. Injecting a fault is only half t
 - the **experiment side** — a `tumult.experiment` / `resilience.agentic.experiment` span tree with every fault decision, every contract outcome, and the resilience score;
 - the **target side** — the agent's own spans (Claude Code emits beautiful `gen_ai.*` telemetry), nested under tumult's trace via W3C `traceparent`.
 
-![One distributed trace showing the injected fault and the agent's reaction together](/images/tumult-agentic-trace.png)
+![One distributed trace showing the injected fault and the agent's reaction together](../images/tumult-agentic-trace.png)
 
 So a latency fault shows up as a spike in the agent's `ttft_ms`. A rate-limit fault shows the `attempt` counter climbing and the retries appearing. Cause and effect, side by side, in one waterfall.
 
@@ -64,7 +64,7 @@ If you've ever tried to build a dashboard across multiple AI tools, you know the
 
 tumult normalizes all of it onto **one canonical schema** — OpenTelemetry GenAI conventions (`gen_ai.*`) plus tumult's `resilience.agent.*`, tagged with a `tumult.client` resource attribute — so you build your contracts and dashboards once and they work for all four.
 
-![Normalizing four clients' native telemetry onto one canonical schema](/images/tumult-agentic-clients.png)
+![Normalizing four clients' native telemetry onto one canonical schema](../images/tumult-agentic-clients.png)
 
 A drop-in OTel Collector config does the lifting (`collector/otel-agentic-normalization.yaml`, and it's already wired into the docker lab). The guaranteed-uniform floor is the proxy span — even for a client that can't propagate trace context, you still get an identical, client-tagged span.
 
