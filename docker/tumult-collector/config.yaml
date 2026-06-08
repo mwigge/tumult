@@ -58,6 +58,38 @@ processors:
         value: tumult-otel-collector
         action: upsert
 
+  # Cross-client agentic telemetry normalization (see
+  # collector/otel-agentic-normalization.yaml for the standalone reference).
+  # Tags every signal with tumult.client and lifts Claude Code's native
+  # llm_request keys onto the canonical gen_ai.* schema so the four agentic
+  # clients correlate by attribute regardless of native shape.
+  transform/normalize:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["tumult.client"], "unknown") where attributes["tumult.client"] == nil
+      - context: span
+        statements:
+          - set(attributes["gen_ai.request.model"], attributes["model"])
+              where name == "claude_code.llm_request" and attributes["model"] != nil
+          - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"])
+              where name == "claude_code.llm_request" and attributes["input_tokens"] != nil
+          - set(attributes["gen_ai.usage.output_tokens"], attributes["output_tokens"])
+              where name == "claude_code.llm_request" and attributes["output_tokens"] != nil
+          - set(attributes["gen_ai.response.finish_reasons"], [attributes["stop_reason"]])
+              where name == "claude_code.llm_request" and attributes["stop_reason"] != nil
+          - set(attributes["gen_ai.operation.name"], "chat")
+              where name == "claude_code.llm_request" and attributes["gen_ai.operation.name"] == nil
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["tumult.client"], "unknown") where attributes["tumult.client"] == nil
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["tumult.client"], "unknown") where attributes["tumult.client"] == nil
+
 exporters:
   # ClickHouse — standard OTel schema (otel_traces table)
   # Coexists with SigNoz's signoz_index_v3 in the same database
@@ -115,13 +147,13 @@ service:
     # Traces: OTLP/Arrow -> ClickHouse + SigNoz + APM metrics
     traces:
       receivers: [otlp, otelarrow]
-      processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, transform/normalize, batch]
       exporters: [clickhouse, otlp/signoz, debug, spanmetrics]
 
     # Metrics: OTLP/Arrow + host metrics -> SigNoz + Prometheus
     metrics:
       receivers: [otlp, otelarrow, hostmetrics]
-      processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, transform/normalize, batch]
       exporters: [otlp/signoz, prometheus]
 
     # APM: Span-derived RED metrics -> Prometheus
@@ -133,7 +165,7 @@ service:
     # Logs: OTLP -> SigNoz
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/tumult, batch]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, transform/normalize, batch]
       exporters: [otlp/signoz, debug]
 
   telemetry:
