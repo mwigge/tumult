@@ -4,6 +4,7 @@
 //! `tracing` + `tracing-opentelemetry` bridge with OTLP export.
 
 pub mod agentic;
+pub mod agentic_span;
 pub mod attributes;
 pub mod config;
 pub mod instrument;

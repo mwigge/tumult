@@ -27,6 +27,7 @@
 //!   recorded but not injectable at the HTTP layer (the proxy forwards as-is)
 #![allow(clippy::doc_markdown)] // module doc names many products (OpenCode, etc.)
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -169,6 +170,20 @@ fn error_body(kind: &str) -> String {
     format!(r#"{{"type":"error","error":{{"type":"{kind}","message":"injected by tumult"}}}}"#)
 }
 
+/// Project request headers into a lowercase string map for trace-context
+/// extraction (`traceparent`/`tracestate` are matched lowercase).
+fn header_map_lower(headers: &axum::http::HeaderMap) -> HashMap<String, String> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_ascii_lowercase(), value.to_string()))
+        })
+        .collect()
+}
+
 async fn handle(State(state): State<Arc<ProxyState>>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
     let request_body = match axum::body::to_bytes(body, MAX_BODY_BYTES).await {
@@ -212,6 +227,17 @@ async fn handle(State(state): State<Arc<ProxyState>>, request: Request) -> Respo
         }
     }
 
+    // Start a fault span parented under the client's inbound trace context (or
+    // standalone, tagged by tumult.client, when the client did not propagate).
+    let parent = tumult_otel::propagation::parse_traceparent(&header_map_lower(&parts.headers));
+    let proxy_span = tumult_otel::agentic_span::start_proxy_span(
+        &parent,
+        tumult_otel::agentic::TumultClient::Unknown.as_str(),
+        &state.scenario,
+        parts.method.as_str(),
+        parts.uri.path(),
+    );
+
     if !delay.is_zero() {
         tokio::time::sleep(delay).await;
     }
@@ -222,6 +248,8 @@ async fn handle(State(state): State<Arc<ProxyState>>, request: Request) -> Respo
     if let Some((status, body, retry_after_ms)) = short_circuit {
         let elapsed = elapsed_ms(started, delay);
         record(&state, &parts, &applied, status, &body, elapsed);
+        proxy_span.set_outcome(status, elapsed, &applied);
+        proxy_span.end();
         return synthetic(
             StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
             body,
@@ -236,18 +264,22 @@ async fn handle(State(state): State<Arc<ProxyState>>, request: Request) -> Respo
         .map_or_else(|| parts.uri.path().to_string(), ToString::to_string);
     let url = format!("{}{path_and_query}", state.upstream);
 
-    let upstream = match forward(&state.client, &parts, &url, request_body).await {
+    let upstream = match forward(
+        &state.client,
+        &parts,
+        &url,
+        request_body,
+        proxy_span.context(),
+    )
+    .await
+    {
         Ok(response) => response,
         Err(err) => {
             let body = error_body("upstream_unreachable");
-            record(
-                &state,
-                &parts,
-                &applied,
-                502,
-                &body,
-                elapsed_ms(started, delay),
-            );
+            let elapsed = elapsed_ms(started, delay);
+            record(&state, &parts, &applied, 502, &body, elapsed);
+            proxy_span.set_outcome(502, elapsed, &applied);
+            proxy_span.end();
             return synthetic(StatusCode::BAD_GATEWAY, body, None)
                 .into_response_with_note(&err.to_string());
         }
@@ -267,6 +299,8 @@ async fn handle(State(state): State<Arc<ProxyState>>, request: Request) -> Respo
         &response_body,
         elapsed,
     );
+    proxy_span.set_outcome(upstream.status, elapsed, &applied);
+    proxy_span.end();
 
     let status = StatusCode::from_u16(upstream.status).unwrap_or(StatusCode::BAD_GATEWAY);
     let mut response = (status, response_body).into_response();
@@ -289,6 +323,7 @@ async fn forward(
     parts: &axum::http::request::Parts,
     url: &str,
     body: Bytes,
+    trace: &opentelemetry::Context,
 ) -> Result<UpstreamResponse, AgenticError> {
     let method = reqwest::Method::from_bytes(parts.method.as_str().as_bytes())
         .map_err(|err| AgenticError::Adapter(format!("bad method: {err}")))?;
@@ -300,6 +335,18 @@ async fn forward(
         if let (Ok(rname), Ok(rvalue)) = (
             reqwest::header::HeaderName::from_bytes(name.as_str().as_bytes()),
             reqwest::header::HeaderValue::from_bytes(value.as_bytes()),
+        ) {
+            builder = builder.header(rname, rvalue);
+        }
+    }
+    // Propagate this proxy span's W3C trace context upstream so a compliant
+    // intermediary or server continues the same distributed trace.
+    let mut trace_headers: HashMap<String, String> = HashMap::new();
+    tumult_otel::propagation::inject_traceparent(trace, &mut trace_headers);
+    for (name, value) in trace_headers {
+        if let (Ok(rname), Ok(rvalue)) = (
+            reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+            reqwest::header::HeaderValue::from_str(&value),
         ) {
             builder = builder.header(rname, rvalue);
         }
@@ -356,6 +403,10 @@ fn is_hop_by_hop(name: &str) -> bool {
             | "content-length"
             // Force identity encoding so we can read and mutate the body.
             | "accept-encoding"
+            // Managed by the proxy span: strip inbound W3C context so we inject
+            // our own (avoids duplicate traceparent on the upstream request).
+            | "traceparent"
+            | "tracestate"
             | "connection"
             | "transfer-encoding"
             | "keep-alive"

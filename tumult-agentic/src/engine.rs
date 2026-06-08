@@ -89,7 +89,49 @@ pub fn execute(
         replay_id: context.replay_id.clone(),
     };
 
+    emit_experiment_telemetry(context, &result);
     Ok(ExecutedRun { response, result })
+}
+
+/// Emit tumult's own experiment-side observability (span tree + metrics) for a
+/// completed run, via the canonical tumult-otel instrumentation. This is the
+/// experiment side of the two-sided picture — independent of the target's own
+/// telemetry and produced even for offline scenario-pack/replay runs.
+fn emit_experiment_telemetry(context: &RunContext, result: &AgenticRunResult) {
+    use tumult_otel::agentic_span::{
+        record_agentic_run, AgenticRunTelemetry, ContractRecord, FaultRecord,
+    };
+
+    let faults: Vec<FaultRecord> = result
+        .faults
+        .iter()
+        .map(|fault| FaultRecord {
+            fault_type: fault.fault_type.clone(),
+            applied: fault.applied,
+        })
+        .collect();
+    let contracts: Vec<ContractRecord> = result
+        .contracts
+        .iter()
+        .map(|contract| ContractRecord {
+            contract_type: contract.contract_type.clone(),
+            passed: contract.passed,
+            reason: contract.reason.clone(),
+            severity: contract.severity,
+        })
+        .collect();
+
+    record_agentic_run(
+        &AgenticRunTelemetry {
+            scenario: context.scenario,
+            target_type: context.target_type,
+            client: None,
+            resilience_score: result.resilience_score,
+            faults: &faults,
+            contracts: &contracts,
+        },
+        None,
+    );
 }
 
 /// Project the fault-engine response onto the contract-evaluation view.

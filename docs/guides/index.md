@@ -19,3 +19,4 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Load Testing Guide](load-testing-guide.md) | k6 and JMeter integration with chaos experiments |
 | [Agentic Quickstart](agentic-quickstart.md) | Fault injection for AI agents: scenario packs, contracts, replay |
 | [Agentic Live Clients](agentic-live-clients.md) | Inject faults into Claude Code, Codex, OpenCode, and Copilot traffic |
+| [Agentic Cross-Client Observability](agentic-cross-client-observability.md) | Normalize agent telemetry onto one schema; two-sided spans and trace-nesting tiers per client |
