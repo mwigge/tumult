@@ -4,6 +4,45 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.3.0] — Cross-client agentic observability
+
+### Added
+
+- **Canonical agentic telemetry schema (`tumult-otel::agentic`)**: a single home
+  for the agentic observability vocabulary — `resilience.agent.*` and `gen_ai.*`
+  attributes, the `tumult.client` resource tag (`claude-code` / `codex` /
+  `copilot` / `opencode` / `unknown`), `GenAiOperation`, and `TelemetryEvidence`,
+  migrated out of `tumult-agentic` so observability lives in one place.
+- **W3C trace-context helpers (`tumult-otel::propagation`)**: `parse_traceparent`,
+  `inject_traceparent`, and `current_traceparent` used by both the proxy and MCP
+  surfaces.
+- **Experiment-side instrumentation**: every agentic run now emits a
+  `resilience.agentic.experiment` span (with a child event per fault decision and
+  per contract outcome) plus run metrics, via `tumult-otel::agentic_span` — for
+  offline scenario-pack and replay runs too, not just live targets.
+- **Proxy trace propagation**: each proxied request gets a `tumult.agentic.fault`
+  span parented under the client's inbound `traceparent` (standalone + `tumult.client`
+  tag when absent), and propagates its context upstream.
+- **MCP tool-surface span**: agentic MCP tool calls are wrapped in a
+  `tumult.agentic.tool` span the experiment span nests under (correlate tier; the
+  MCP transport hides the inbound `traceparent`).
+- **Client profiles + `--client` selector**: declarative per-client wiring
+  (base-URL env, native-OTel, per-surface trace-nesting tier) for the four clients.
+- **Orchestrator mode (`tumult agentic run-live`)**: tumult as the trace root —
+  starts a `tumult.experiment` span, runs `claude -p` with the minted trace
+  context + telemetry + proxy base URL, and evaluates contracts against the
+  agent's response. The agent call is behind an `AgentRunner` trait (testable).
+- **Collector normalization**: `collector/otel-agentic-normalization.yaml` plus
+  the same OTTL transform grafted into the docker lab collector, normalizing the
+  four clients' native telemetry onto the canonical schema.
+- **Docs**: cross-client observability guide.
+
+### Fixed
+
+- `retrieval_poisoning` now contaminates the evaluated response body (regression
+  noted in 1.2.0 follow-up work) and `tumult-agentic` no longer defines its own
+  OTel attribute constants (now sourced from `tumult-otel`).
+
 ## [1.2.2] — Dependency upgrades + CI action bumps
 
 ### Changed

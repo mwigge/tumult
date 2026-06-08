@@ -56,6 +56,18 @@ pub fn inject_traceparent<S: BuildHasher>(
     TraceContextPropagator::new().inject_context(context, &mut HeaderInjector(headers));
 }
 
+/// Mint the W3C `traceparent` value for `context`'s active span.
+///
+/// Returns `None` when the context has no valid span (e.g. no tracer provider
+/// is installed). Use this to pass `TRACEPARENT` to a child process such as
+/// `claude -p`, so the agent's spans nest under a tumult experiment span.
+#[must_use]
+pub fn current_traceparent(context: &Context) -> Option<String> {
+    let mut headers = HashMap::new();
+    inject_traceparent(context, &mut headers);
+    headers.remove("traceparent")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,5 +111,13 @@ mod tests {
     fn parse_without_traceparent_yields_invalid_span() {
         let extracted = parse_traceparent(&HashMap::new());
         assert!(!extracted.span().span_context().is_valid());
+    }
+
+    #[test]
+    fn current_traceparent_mints_value_for_remote_context() {
+        let cx = remote_context();
+        let tp = current_traceparent(&cx).expect("traceparent");
+        assert!(tp.starts_with("00-0af7651916cd43dd8448eb211c80319c-"));
+        assert!(current_traceparent(&Context::new()).is_none());
     }
 }
