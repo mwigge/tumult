@@ -263,7 +263,10 @@ pub async fn cmd_agentic_proxy(
     scenario: &str,
     journal: Option<&Path>,
     seed: u64,
+    client: &str,
 ) -> Result<()> {
+    let client = tumult_agentic::profiles::parse_client(client);
+    let profile = tumult_agentic::profiles::profile_for(client);
     let pack = tumult_agentic::scenarios::bundled_packs()
         .into_iter()
         .find(|pack| pack.name == scenario)
@@ -288,6 +291,10 @@ pub async fn cmd_agentic_proxy(
     println!("  listening: {base}");
     println!("  upstream:  {upstream}");
     println!("  scenario:  {scenario}");
+    println!("  client:    {}", client.as_str());
+    if let Some(env) = profile.base_url_env {
+        println!("  base-url:  set {env}={base}");
+    }
     println!("  faults:    {faults}");
     println!(
         "  journal:   {}",
@@ -307,6 +314,7 @@ pub async fn cmd_agentic_proxy(
         scenario_pack: scenario.to_string(),
         journal_path: journal.map(Path::to_path_buf),
         seed,
+        client,
     };
     tumult_agentic::proxy::serve(listener, config)
         .await

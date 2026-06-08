@@ -266,6 +266,9 @@ enum AgenticAction {
         /// Base seed for the per-request fault gate
         #[arg(long, default_value_t = 1)]
         seed: u64,
+        /// Client targeted by the proxy: claude-code, codex, copilot, opencode
+        #[arg(long, default_value = "unknown")]
+        client: String,
     },
 }
 
@@ -473,6 +476,7 @@ async fn main() -> anyhow::Result<()> {
                 scenario,
                 journal,
                 seed,
+                client,
             } => {
                 commands::cmd_agentic_proxy(
                     &listen,
@@ -480,6 +484,7 @@ async fn main() -> anyhow::Result<()> {
                     &scenario,
                     journal.as_deref(),
                     seed,
+                    &client,
                 )
                 .await?;
             }
@@ -1145,6 +1150,8 @@ mod tests {
             "target/agentic/proxy.jsonl",
             "--seed",
             "7",
+            "--client",
+            "codex",
         ])
         .unwrap();
         let Commands::Agentic { action } = cli.command else {
@@ -1156,6 +1163,7 @@ mod tests {
             scenario,
             journal,
             seed,
+            client,
         } = action
         else {
             panic!("expected Agentic proxy action");
@@ -1165,6 +1173,7 @@ mod tests {
         assert_eq!(scenario, "concurrency-storm");
         assert_eq!(journal, Some(PathBuf::from("target/agentic/proxy.jsonl")));
         assert_eq!(seed, 7);
+        assert_eq!(client, "codex");
     }
 
     #[test]
@@ -1179,6 +1188,7 @@ mod tests {
             scenario,
             journal,
             seed,
+            client,
         } = action
         else {
             panic!("expected Agentic proxy action");
@@ -1188,6 +1198,7 @@ mod tests {
         assert_eq!(scenario, "malformed-json-recovery");
         assert_eq!(journal, None);
         assert_eq!(seed, 1);
+        assert_eq!(client, "unknown");
     }
 
     // ── Import ────────────────────────────────────────────────

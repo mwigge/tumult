@@ -58,6 +58,8 @@ pub struct ProxyConfig {
     pub journal_path: Option<PathBuf>,
     /// Base seed for the per-request fault gate (kept reproducible).
     pub seed: u64,
+    /// Client this proxy run targets; tags the proxy span's `tumult.client`.
+    pub client: tumult_otel::agentic::TumultClient,
 }
 
 struct ProxyState {
@@ -68,6 +70,7 @@ struct ProxyState {
     client: reqwest::Client,
     journal_path: Option<PathBuf>,
     seed: u64,
+    tumult_client: tumult_otel::agentic::TumultClient,
     counter: AtomicU64,
 }
 
@@ -101,6 +104,7 @@ pub fn router(config: ProxyConfig) -> Result<Router, AgenticError> {
         client,
         journal_path: config.journal_path,
         seed: config.seed,
+        tumult_client: config.client,
         counter: AtomicU64::new(0),
     });
 
@@ -232,7 +236,7 @@ async fn handle(State(state): State<Arc<ProxyState>>, request: Request) -> Respo
     let parent = tumult_otel::propagation::parse_traceparent(&header_map_lower(&parts.headers));
     let proxy_span = tumult_otel::agentic_span::start_proxy_span(
         &parent,
-        tumult_otel::agentic::TumultClient::Unknown.as_str(),
+        state.tumult_client.as_str(),
         &state.scenario,
         parts.method.as_str(),
         parts.uri.path(),
