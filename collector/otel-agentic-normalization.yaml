@@ -1,0 +1,152 @@
+# OTel Collector configuration — cross-client agentic telemetry normalization
+#
+# Part of "add-agentic-cross-client-observability".
+#
+# Tumult ingests telemetry from four different agentic coding clients, each of
+# which emits in a slightly different native shape:
+#
+#   - claude-code : OTel SPANS named claude_code.interaction / claude_code.llm_request
+#                   / claude_code.tool, already carrying gen_ai.* style attributes but
+#                   using NATIVE short keys (model, input_tokens, output_tokens,
+#                   stop_reason).
+#   - codex       : OTLP METRICS + LOG EVENTS only (NO spans).
+#   - opencode    : OTLP traces / logs / metrics emitted via a plugin.
+#   - copilot     : OTLP emitted via an SDK.
+#
+# This collector normalizes everything onto a single canonical schema so the four
+# clients correlate by attribute regardless of native shape:
+#
+#   - resource attr `tumult.client` : one of claude-code | codex | copilot |
+#                                      opencode | unknown  (identifies origin)
+#   - canonical signal attrs        : OpenTelemetry GenAI semantic conventions
+#                                      gen_ai.*  PLUS tumult's resilience.agent.*
+#
+# The transform processor only RENAMES/COPIES native keys onto canonical gen_ai.*
+# keys; it never drops the originals, so nothing is lost downstream.
+#
+# Usage:
+#   otelcol --config otel-agentic-normalization.yaml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Guard against backpressure / OOM under bursty multi-client load.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # ---------------------------------------------------------------------------
+  # transform/normalize — canonicalize cross-client agentic telemetry via OTTL.
+  #
+  # Three concerns, applied across traces, metrics, and logs:
+  #   (a) Tag EVERY signal with tumult.client (default "unknown" if a client
+  #       forgot to set it) so every span/metric/log is attributable.
+  #   (b) For claude-code spans named claude_code.llm_request, lift the native
+  #       short attribute keys onto the canonical gen_ai.* keys.
+  #   (c) Codex / OpenCode / Copilot metrics + logs are left as-is beyond the
+  #       tumult.client tag — they already emit gen_ai.* / resilience.agent.*
+  #       natively, so attribute-level correlation just works.
+  # ---------------------------------------------------------------------------
+  transform/normalize:
+    # Skip any statement whose referenced field is absent rather than erroring.
+    error_mode: ignore
+
+    # --- TRACES --------------------------------------------------------------
+    trace_statements:
+      # (a) Ensure every span's resource is tagged with an originating client.
+      #     Serves: all clients (claude-code, codex, opencode, copilot).
+      - context: resource
+        statements:
+          - set(attributes["tumult.client"], "unknown") where attributes["tumult.client"] == nil
+
+      # (b) Normalize claude-code llm_request spans onto canonical gen_ai.* keys.
+      #     Claude Code emits native short keys; copy them onto the GenAI
+      #     semantic-convention keys only when the native key is present.
+      #     Serves: claude-code.
+      - context: span
+        statements:
+          # model -> gen_ai.request.model
+          - set(attributes["gen_ai.request.model"], attributes["model"])
+              where name == "claude_code.llm_request" and attributes["model"] != nil
+
+          # input_tokens -> gen_ai.usage.input_tokens
+          - set(attributes["gen_ai.usage.input_tokens"], attributes["input_tokens"])
+              where name == "claude_code.llm_request" and attributes["input_tokens"] != nil
+
+          # output_tokens -> gen_ai.usage.output_tokens
+          - set(attributes["gen_ai.usage.output_tokens"], attributes["output_tokens"])
+              where name == "claude_code.llm_request" and attributes["output_tokens"] != nil
+
+          # stop_reason -> gen_ai.response.finish_reasons
+          # The canonical key is a list of reasons; wrap the scalar native value.
+          - set(attributes["gen_ai.response.finish_reasons"], [attributes["stop_reason"]])
+              where name == "claude_code.llm_request" and attributes["stop_reason"] != nil
+
+          # Record the GenAI operation for llm_request spans so claude-code spans
+          # line up with codex/opencode/copilot chat operations.
+          - set(attributes["gen_ai.operation.name"], "chat")
+              where name == "claude_code.llm_request" and attributes["gen_ai.operation.name"] == nil
+
+    # --- METRICS -------------------------------------------------------------
+    # Codex emits OTLP metrics (no spans); OpenCode/Copilot also emit metrics.
+    # We only guarantee the tumult.client resource tag here; the gen_ai.* /
+    # resilience.agent.* datapoint attributes are already canonical natively.
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["tumult.client"], "unknown") where attributes["tumult.client"] == nil
+
+    # --- LOGS ----------------------------------------------------------------
+    # Codex emits log EVENTS (e.g. token usage, tool calls); OpenCode/Copilot
+    # emit logs too. Tag with tumult.client so log events correlate with the
+    # spans/metrics from the same client by attribute.
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["tumult.client"], "unknown") where attributes["tumult.client"] == nil
+
+  # Batch after normalization to amortize export cost.
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  # Default: dump normalized signals to stdout for inspection/debugging.
+  debug:
+    verbosity: detailed
+
+  # Passthrough to a downstream OTLP backend (Tempo/SigNoz/Grafana/etc.).
+  # Uncomment and point at your collector/backend to forward normalized signals,
+  # then add `otlp/downstream` to the exporters list of each pipeline below.
+  # otlp/downstream:
+  #   endpoint: downstream-collector:4317
+  #   tls:
+  #     insecure: true
+
+service:
+  pipelines:
+    # memory_limiter first, transform/normalize before batch so downstream sees
+    # canonical attributes, batch last.
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/normalize, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/normalize, batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/normalize, batch]
+      exporters: [debug]
+
+  telemetry:
+    logs:
+      level: info

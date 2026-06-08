@@ -6071,6 +6071,7 @@ dependencies = [
  "axum",
  "chrono",
  "opentelemetry",
+ "opentelemetry_sdk",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

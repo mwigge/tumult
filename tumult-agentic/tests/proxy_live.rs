@@ -108,6 +108,67 @@ async fn retrieval_poisoning_contaminates_the_live_body() {
     );
 }
 
+/// Mock upstream that echoes back the `traceparent` it received, so the test
+/// can assert the proxy continued the inbound trace.
+async fn start_echo_upstream() -> SocketAddr {
+    let app = Router::new().route(
+        "/v1/messages",
+        post(|headers: axum::http::HeaderMap| async move {
+            let tp = headers
+                .get("traceparent")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("none")
+                .to_string();
+            format!(r#"{{"traceparent":"{tp}"}}"#)
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind echo upstream");
+    let addr = listener.local_addr().expect("echo addr");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    addr
+}
+
+#[tokio::test]
+async fn proxy_continues_inbound_trace_context_upstream() {
+    // A real tracer provider so the proxy's span has a valid context to inject.
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
+    opentelemetry::global::set_tracer_provider(provider);
+
+    let upstream = start_echo_upstream().await;
+    // cost-explosion-detector forwards the body unchanged (no body mutation, no
+    // short-circuit), so the echoed traceparent reaches the client intact.
+    let proxy = start_proxy(upstream, "cost-explosion-detector").await;
+
+    let trace_id = "0af7651916cd43dd8448eb211c80319c";
+    let inbound = format!("00-{trace_id}-b7ad6b7169203331-01");
+    let body = reqwest::Client::new()
+        .post(format!("http://{proxy}/v1/messages"))
+        .header("traceparent", &inbound)
+        .header("content-type", "application/json")
+        .body(r#"{"model":"demo"}"#)
+        .send()
+        .await
+        .expect("request through proxy")
+        .text()
+        .await
+        .expect("body");
+
+    // The upstream received a traceparent, and it continues the inbound trace
+    // (same trace id, new span id) — i.e. the proxy span nested under the client.
+    assert!(
+        body.contains(trace_id),
+        "upstream should receive a traceparent continuing the inbound trace: {body}"
+    );
+    assert!(
+        !body.contains(&inbound),
+        "proxy should inject its own child span context, not echo the inbound one verbatim: {body}"
+    );
+}
+
 #[tokio::test]
 async fn cost_pack_forwards_unchanged_at_the_http_layer() {
     // Token/retry faults are agent-internal: the proxy records them but cannot
