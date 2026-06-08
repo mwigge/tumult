@@ -23,3 +23,6 @@ docs_local/
 # Local AI rules (not tracked)
 CLAUDE.md
 
+# Local OpenSpec change proposals / specs (not tracked)
+openspec/
+
