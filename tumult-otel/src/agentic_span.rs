@@ -203,18 +203,15 @@ impl ProxySpan {
     }
 }
 
-pub const TOOL_SPAN: &str = "tumult.agentic.tool";
-
-/// A live span wrapping one MCP tool invocation. While its context is attached
-/// as current, the experiment span emitted by [`record_agentic_run`] nests under
-/// it (tool → experiment). Span lifecycle stays in tumult-otel.
-pub struct ToolSpan {
+/// A live span held in a parentable context, returned by the tool-surface and
+/// experiment-root helpers. Attach a clone of [`context`](Self::context) as the
+/// current context so descendant spans nest under it, then [`end`](Self::end).
+pub struct SpanScope {
     context: Context,
 }
 
-impl ToolSpan {
-    /// The context whose active span is this tool span. Attach a clone of it as
-    /// the current context so descendant spans nest under it.
+impl SpanScope {
+    /// The context whose active span is this scope's span.
     #[must_use]
     pub fn context(&self) -> &Context {
         &self.context
@@ -226,13 +223,40 @@ impl ToolSpan {
     }
 }
 
+pub const EXPERIMENT_ROOT_SPAN: &str = "tumult.experiment";
+
+/// Start a `tumult.experiment` root span for an orchestrated run, tagged by
+/// `client`. tumult mints a `traceparent` from it (via
+/// [`crate::propagation::current_traceparent`]) and passes it to the agent
+/// subprocess, so the agent's spans nest under tumult's experiment.
+#[must_use]
+pub fn start_experiment_root(scenario: &str, client: &str) -> SpanScope {
+    let tracer = global::tracer(SCOPE);
+    let span = tracer
+        .span_builder(EXPERIMENT_ROOT_SPAN)
+        .with_kind(SpanKind::Internal)
+        .with_attributes([
+            KeyValue::new(agentic::RESILIENCE_AGENT_SCENARIO, scenario.to_string()),
+            KeyValue::new(agentic::TUMULT_CLIENT, client.to_string()),
+            KeyValue::new(agentic::RESILIENCE_AGENT_CAPTURE_POLICY, "metadata_only"),
+        ])
+        .start(&tracer);
+    SpanScope {
+        context: Context::current().with_span(span),
+    }
+}
+
+pub const TOOL_SPAN: &str = "tumult.agentic.tool";
+
 /// Start a tool-surface span for an MCP agentic tool call, tagged by `client`.
 ///
 /// The MCP transport does not expose the inbound `traceparent` to tool handlers,
 /// so this span parents under the current context (a standalone root when none
 /// is active) rather than the calling agent's trace — the "correlate" tier.
+/// While its context is attached as current, the experiment span emitted by
+/// [`record_agentic_run`] nests under it (tool → experiment).
 #[must_use]
-pub fn start_tool_span(client: &str, tool_name: &str) -> ToolSpan {
+pub fn start_tool_span(client: &str, tool_name: &str) -> SpanScope {
     let tracer = global::tracer(SCOPE);
     let span = tracer
         .span_builder(TOOL_SPAN)
@@ -243,7 +267,7 @@ pub fn start_tool_span(client: &str, tool_name: &str) -> ToolSpan {
             KeyValue::new(agentic::RESILIENCE_AGENT_CAPTURE_POLICY, "metadata_only"),
         ])
         .start(&tracer);
-    ToolSpan {
+    SpanScope {
         context: Context::current().with_span(span),
     }
 }
@@ -341,6 +365,50 @@ mod tests {
             .collect();
         assert!(event_names.contains(&"fault"));
         assert!(event_names.contains(&"contract"));
+    }
+
+    #[test]
+    fn experiment_span_nests_under_tool_span() {
+        use opentelemetry::global;
+        use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+
+        let exporter = InMemorySpanExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        global::set_tracer_provider(provider.clone());
+
+        let tool = start_tool_span(
+            agentic::TumultClient::Unknown.as_str(),
+            "tumult_agentic_smoke",
+        );
+        let guard = tool.context().clone().attach();
+        record_agentic_run(
+            &AgenticRunTelemetry {
+                scenario: "tool-nesting",
+                target_type: "http",
+                client: None,
+                resilience_score: 0.0,
+                faults: &[],
+                contracts: &[],
+            },
+            None,
+        );
+        drop(guard);
+        tool.end();
+        provider.force_flush().ok();
+
+        let spans = exporter.get_finished_spans().expect("spans");
+        let tool_ids: Vec<_> = spans
+            .iter()
+            .filter(|span| span.name == TOOL_SPAN)
+            .map(|span| span.span_context.span_id())
+            .collect();
+        let nested = spans
+            .iter()
+            .filter(|span| span.name == EXPERIMENT_SPAN)
+            .any(|span| tool_ids.contains(&span.parent_span_id));
+        assert!(nested, "experiment span must nest under the tool span");
     }
 
     #[test]

@@ -270,6 +270,28 @@ enum AgenticAction {
         #[arg(long, default_value = "unknown")]
         client: String,
     },
+    /// Orchestrate a live agent run with tumult as the trace root
+    ///
+    /// Starts a tumult.experiment root span, runs `claude -p` with that trace
+    /// context + telemetry export + a base URL pointing at the proxy, and
+    /// evaluates the scenario pack's contracts against the agent's response.
+    RunLive {
+        /// Prompt to send to the agent
+        #[arg(long)]
+        prompt: String,
+        /// Scenario pack whose contracts are evaluated against the response
+        #[arg(long, default_value = "malformed-json-recovery")]
+        scenario: String,
+        /// Base URL the agent should use (point at the tumult proxy)
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
+        base_url: String,
+        /// Optional OTLP endpoint for the agent's telemetry export
+        #[arg(long)]
+        otlp: Option<String>,
+        /// Client being orchestrated (tags telemetry)
+        #[arg(long, default_value = "claude-code")]
+        client: String,
+    },
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -487,6 +509,24 @@ async fn main() -> anyhow::Result<()> {
                     &client,
                 )
                 .await?;
+            }
+            AgenticAction::RunLive {
+                prompt,
+                scenario,
+                base_url,
+                otlp,
+                client,
+            } => {
+                print!(
+                    "{}",
+                    commands::cmd_agentic_run_live(
+                        &prompt,
+                        &scenario,
+                        &base_url,
+                        otlp.as_deref(),
+                        &client,
+                    )?
+                );
             }
         },
         Commands::GameDay { action } => match action {

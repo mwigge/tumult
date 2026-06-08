@@ -322,6 +322,56 @@ pub async fn cmd_agentic_proxy(
     Ok(())
 }
 
+/// Orchestrates a live agent run with tumult as the trace root.
+///
+/// Runs `claude -p` with a minted trace context, telemetry export, and a base
+/// URL pointing at the proxy, then evaluates the scenario pack's contracts
+/// against the agent's response. Requires the `claude` CLI on `PATH`.
+///
+/// # Errors
+///
+/// Returns an error if the scenario pack is unknown, the agent cannot be run,
+/// or formatting fails.
+pub fn cmd_agentic_run_live(
+    prompt: &str,
+    scenario: &str,
+    base_url: &str,
+    otlp: Option<&str>,
+    client: &str,
+) -> Result<String> {
+    let pack = tumult_agentic::scenarios::bundled_packs()
+        .into_iter()
+        .find(|pack| pack.name == scenario)
+        .ok_or_else(|| anyhow::anyhow!("unknown scenario pack: {scenario}"))?;
+
+    let runner = tumult_agentic::orchestrator::CommandAgentRunner::claude();
+    let run = tumult_agentic::orchestrator::LiveRun {
+        scenario: pack.name,
+        client,
+        contracts: &pack.contracts,
+        prompt,
+        otlp_endpoint: otlp,
+        base_url,
+    };
+    let result = tumult_agentic::orchestrator::run_live(&runner, &run)
+        .map_err(|err| anyhow::anyhow!("run-live: {err}"))?;
+
+    let mut output = String::new();
+    writeln!(output, "Agentic run-live: {scenario}")?;
+    writeln!(output, "client: {client}")?;
+    writeln!(output, "base_url: {base_url}")?;
+    writeln!(output, "resilience_score: {:.3}", result.resilience_score)?;
+    for contract in &result.contracts {
+        writeln!(
+            output,
+            "contract: {} = {}",
+            contract.contract_type,
+            if contract.passed { "pass" } else { "fail" }
+        )?;
+    }
+    Ok(output)
+}
+
 fn render_agentic_report(
     title: &str,
     report: &tumult_agentic::smoke::SmokeReport,
