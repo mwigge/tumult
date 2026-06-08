@@ -720,25 +720,42 @@ impl ServerHandler for TumultHandler {
             }
             "tumult_agentic_smoke" => {
                 let args: AgenticSmokeTool = parse_args(&params)?;
-                tokio::task::block_in_place(|| {
+                // Tool-surface span; the experiment span emitted inside nests
+                // under it. The MCP transport hides the inbound traceparent, so
+                // this is the correlate tier (tagged tumult.client=unknown).
+                let tool = tumult_otel::agentic_span::start_tool_span(
+                    tumult_otel::agentic::TumultClient::Unknown.as_str(),
+                    "tumult_agentic_smoke",
+                );
+                let _guard = tool.context().clone().attach();
+                let result = tokio::task::block_in_place(|| {
                     tools::agentic_smoke(
                         &args.adapter,
                         &args.scenario,
                         args.fault.as_deref(),
                         args.contract.as_deref(),
                     )
-                })
+                });
+                tool.end();
+                result
             }
             "tumult_agentic_run_experiment" => {
                 let args: AgenticRunExperimentTool = parse_args(&params)?;
-                tokio::task::block_in_place(|| {
+                let tool = tumult_otel::agentic_span::start_tool_span(
+                    tumult_otel::agentic::TumultClient::Unknown.as_str(),
+                    "tumult_agentic_run_experiment",
+                );
+                let _guard = tool.context().clone().attach();
+                let result = tokio::task::block_in_place(|| {
                     tools::agentic_run_experiment(
                         &args.adapter,
                         &args.scenario,
                         args.fault.as_deref(),
                         args.contract.as_deref(),
                     )
-                })
+                });
+                tool.end();
+                result
             }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };

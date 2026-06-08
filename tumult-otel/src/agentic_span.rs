@@ -203,6 +203,51 @@ impl ProxySpan {
     }
 }
 
+pub const TOOL_SPAN: &str = "tumult.agentic.tool";
+
+/// A live span wrapping one MCP tool invocation. While its context is attached
+/// as current, the experiment span emitted by [`record_agentic_run`] nests under
+/// it (tool → experiment). Span lifecycle stays in tumult-otel.
+pub struct ToolSpan {
+    context: Context,
+}
+
+impl ToolSpan {
+    /// The context whose active span is this tool span. Attach a clone of it as
+    /// the current context so descendant spans nest under it.
+    #[must_use]
+    pub fn context(&self) -> &Context {
+        &self.context
+    }
+
+    /// End the span. Consumes the wrapper so it cannot be reused.
+    pub fn end(self) {
+        self.context.span().end();
+    }
+}
+
+/// Start a tool-surface span for an MCP agentic tool call, tagged by `client`.
+///
+/// The MCP transport does not expose the inbound `traceparent` to tool handlers,
+/// so this span parents under the current context (a standalone root when none
+/// is active) rather than the calling agent's trace — the "correlate" tier.
+#[must_use]
+pub fn start_tool_span(client: &str, tool_name: &str) -> ToolSpan {
+    let tracer = global::tracer(SCOPE);
+    let span = tracer
+        .span_builder(TOOL_SPAN)
+        .with_kind(SpanKind::Server)
+        .with_attributes([
+            KeyValue::new(agentic::TUMULT_CLIENT, client.to_string()),
+            KeyValue::new(agentic::GEN_AI_TOOL_NAME, tool_name.to_string()),
+            KeyValue::new(agentic::RESILIENCE_AGENT_CAPTURE_POLICY, "metadata_only"),
+        ])
+        .start(&tracer);
+    ToolSpan {
+        context: Context::current().with_span(span),
+    }
+}
+
 /// Start a proxy fault span parented under `parent` (the client's inbound trace
 /// context, or an empty context for a standalone span tagged by `client`).
 #[must_use]
