@@ -1,7 +1,7 @@
 # Tumult Security Assessment
 
-**Date:** 2026-04-01  
-**Scope:** Full workspace — 11 crates, 10 script plugins, Docker infrastructure  
+**Date:** 2026-06-08 (tumult 1.3.0)  
+**Scope:** Full workspace — 13 crates (incl. `tumult-agentic`, `tumult-otel`, `tumult-intelligence`), 10 script plugins, the agentic fault-injection proxy, and Docker infrastructure  
 **Tools:** cargo-audit, cargo-geiger, manual source review  
 **References:** [Rust Foundation Security Initiative](https://rustfoundation.org/security-initiative/), [RustSec Advisory Database](https://rustsec.org/), [OpenCVE Rust](https://app.opencve.io/cve/?vendor=rust-lang)
 
@@ -224,7 +224,53 @@ Tumult trusts the content of plugin scripts. A malicious `plugin.toon` + script 
 
 ---
 
-## 10. Recommendations
+## 10. Agentic Fault Injection Security
+
+The `tumult-agentic` proxy (`tumult agentic proxy`) and orchestrator (`tumult
+agentic run-live`) introduce a new, deliberately privileged surface: they sit
+in the path between a real coding agent and its model provider. This section
+documents that trust boundary and its mitigations.
+
+### 10.1 Trust boundary — credential and payload forwarding
+
+| Concern | Behavior | Mitigation |
+|---------|----------|------------|
+| **API credentials** | The proxy is a transparent forwarder: it does **not** strip `Authorization` / `x-api-key`, so the agent's real provider credentials flow *through* tumult to the configured `--upstream`. | The proxy is operator-run and binds to `127.0.0.1` by default; it forwards only to the single `--upstream` you configure (no open relay). Treat it like any local TLS-terminating dev proxy. |
+| **Prompts / completions** | Request and response bodies pass through tumult in memory (some are mutated for fault injection). | **Metadata-only capture is the default** — no prompt, completion, tool payload, or body content is written to the journal or telemetry. Only counts, durations, fault types, and contract verdicts are recorded. |
+| **Egress** | The proxy forwards to `--upstream` only; it never fans out to other hosts. | Operator controls the upstream. `accept-encoding`, `host`, and `content-length` are stripped/managed; inbound `traceparent`/`tracestate` are replaced with tumult's own. |
+
+**Operator guidance:** point a client at the proxy only for throwaway/test work,
+keep the listener on `127.0.0.1`, and never expose the proxy port to a network.
+Pointing a production client at it means trusting the local tumult process with
+that session's credentials and traffic.
+
+### 10.2 `run-live` subprocess
+
+`tumult agentic run-live` spawns `claude -p` with a constructed environment
+(`TRACEPARENT`, `CLAUDE_CODE_*` telemetry flags, `ANTHROPIC_BASE_URL`,
+`OTEL_EXPORTER_OTLP_ENDPOINT`). It sets only these well-known variables, inherits
+the operator's environment, and passes the prompt as an argument — no shell
+interpolation. The agent binary itself (`claude`) is trusted operator-installed
+tooling, run with the operator's own credentials.
+
+### 10.3 Telemetry privacy
+
+All agentic spans/metrics follow the `metadata_only` capture policy by default
+(`resilience.agent.payload.capture_policy = metadata_only`). W3C trace context
+is propagated, but the W3C spec carries no payload. The OTLP collector config
+(`collector/otel-agentic-normalization.yaml`) only tags and renames attributes;
+it does not capture content. Operators who opt into content capture (client-side
+`OTEL_LOG_*` flags) must ensure their backend is approved for that data.
+
+### 10.4 Surface unchanged
+
+The proxy adds no `unsafe`, no new credential storage, and no new network
+listeners beyond the operator-launched proxy port. The MCP tool-surface span
+wrapping added in 1.3.0 does not change MCP authentication.
+
+---
+
+## 11. Recommendations
 
 ### Immediate (P0)
 

@@ -1,9 +1,15 @@
 # Tumult Platform Test Protocol
 
-**Version:** 1.0  
-**Date:** 2026-04-01  
-**Scope:** Full platform functional validation — CLI, crates, plugins, data pipelines, observability, containers, analytics, and reporting.  
+**Version:** 1.1  
+**Date:** 2026-06-08  
+**Platform version:** tumult 1.3.0 · Rust 1.89  
+**Scope:** Full platform functional validation — CLI, crates, plugins, data pipelines, observability, containers, analytics, reporting, and **agentic fault injection** (cross-client proxy, contracts, two-sided observability, orchestrator).  
 **Methodology:** Output-driven verification. We verify that each component produces the correct output, not that the code is correct internally.
+
+> **Note (1.1):** the full end-to-end results tables in this protocol were last
+> executed against an earlier build and are pending a fresh full re-run for
+> 1.3.0. The unit-test summary (TP-UNIT) and the agentic procedures (TP-AGENTIC)
+> below reflect the current 1.3.0 codebase.
 
 ---
 
@@ -1525,6 +1531,70 @@ tumult analyze --query "SELECT title, status, duration_ms FROM experiments ORDER
 
 ---
 
+## 22b. TP-AGENTIC: Agentic Fault Injection Tests
+
+Validates the `tumult-agentic` module — fault injection, behavioral contracts,
+replay, the live proxy, and orchestrator mode. The first three are deterministic
+and need no model provider; the proxy/run-live procedures need a reachable
+upstream (or the mock used in the integration tests).
+
+### TP-AGENTIC-01: List scenario packs
+
+```bash
+tumult agentic list-packs
+```
+
+**Expected:** `count: 6` with the bundled packs (`concurrency-storm`,
+`hallucination-under-timeout`, `cost-explosion-detector`,
+`malformed-json-recovery`, `tool-timeout-fallback`, `retrieval-poisoning`) and
+their fault/contract matrices.
+
+### TP-AGENTIC-02: Offline smoke + run + replay
+
+```bash
+tumult agentic smoke
+tumult agentic run --scenario retrieval-poisoning
+tumult agentic replay --fixture examples/agentic/malformed-json-recovery.fixture.json
+```
+
+**Expected:** each prints `result: pass (fault observed and contract feedback
+captured)`. For `retrieval-poisoning`, `actual_contract:
+contract_failed:citation_missing` (the documented failure is the success
+signal — the fault landed and the contract caught it). Journals are written
+metadata-only.
+
+### TP-AGENTIC-03: Live proxy fault injection
+
+```bash
+tumult agentic proxy --upstream <provider-or-mock> --scenario malformed-json-recovery
+# point a client at it, e.g. ANTHROPIC_BASE_URL=http://127.0.0.1:8080
+```
+
+**Expected:** the malformed-output fault corrupts the response body; a
+`concurrency-storm` scenario returns a synthetic `429` with `retry-after`
+without contacting the upstream. Covered hermetically by
+`tumult-agentic/tests/proxy_live.rs` (mock upstream, no API keys).
+
+### TP-AGENTIC-04: Two-sided observability
+
+**Expected:** every run emits a `resilience.agentic.experiment` span (offline
+too); a proxied request emits a `tumult.agentic.fault` span that continues an
+inbound `traceparent` upstream. Covered by `experiment_telemetry.rs` and the
+`proxy_continues_inbound_trace_context_upstream` integration test.
+
+### TP-AGENTIC-05: Orchestrator (run-live)
+
+```bash
+tumult agentic run-live --prompt "…" --scenario tool-timeout-fallback
+```
+
+**Expected:** a `tumult.experiment` root span with the agent's spans and the
+experiment span nested under it; contracts evaluated against the response. The
+agent call is behind the `AgentRunner` trait and unit-tested with a stub runner
+(`orchestrator::tests`).
+
+---
+
 ## 23. TP-UNIT: Workspace Unit Test Suite
 
 ### TP-UNIT-01: Full workspace test run
@@ -1547,15 +1617,21 @@ cargo test --workspace 2>&1 | grep "test result:"
 |-------|-------|--------|
 | tumult-core | ~150+ | All pass |
 | tumult-analytics | ~50+ | All pass |
-| tumult-otel | ~30+ | All pass |
+| tumult-agentic | 58 | All pass |
+| tumult-otel | 28 | All pass |
+| tumult-mcp | 75 | All pass |
 | tumult-plugin | ~40+ | All pass |
-| tumult-cli | ~30+ | All pass |
+| tumult-cli | ~60+ | All pass |
 | tumult-baseline | ~30+ | All pass |
 | tumult-ssh | ~20+ | All pass |
 | tumult-clickhouse | ~10+ | All pass |
-| tumult-mcp | ~20+ | All pass |
 | tumult-kubernetes | ~10+ | All pass |
-| tumult-test-utils | ~5+ | All pass |
+| tumult-intelligence | small | All pass |
+| tumult-test-utils | small | All pass |
+
+> `tumult-agentic` / `tumult-otel` counts cover the cross-client observability
+> work (1.3.0): fault engine, scenario packs, proxy trace propagation,
+> experiment-side instrumentation, client profiles, and orchestrator mode.
 
 ### TP-UNIT-03: Property-based tests (proptest)
 
