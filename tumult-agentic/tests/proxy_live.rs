@@ -35,6 +35,7 @@ async fn start_proxy(upstream: SocketAddr, scenario_pack: &str) -> SocketAddr {
         scenario_pack: scenario_pack.to_string(),
         journal_path: None,
         seed: 1,
+        client: tumult_otel::agentic::TumultClient::Unknown,
     };
     let app = router(config).expect("build proxy router");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
