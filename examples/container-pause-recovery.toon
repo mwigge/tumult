@@ -1,0 +1,53 @@
+title: Container pause — verify a paused service recovers when unpaused
+description: Confirm Redis is alive, pause its container, unpause it, confirm it responds again
+
+tags[2]: containers, resilience
+
+steady_state_hypothesis:
+  title: Redis container responds to ping
+  probes[1]:
+    - name: redis-ping
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec docker-redis-1 redis-cli ping"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "PONG"
+
+method[3]:
+  - name: pause-container
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker pause docker-redis-1 && echo paused"
+      timeout_s: 10.0
+  - name: unpause-container
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker unpause docker-redis-1 && echo unpaused"
+      timeout_s: 10.0
+  - name: verify-recovered
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec docker-redis-1 redis-cli ping"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "PONG"
+
+rollbacks[1]:
+  - name: ensure-unpaused
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker unpause docker-redis-1 2>/dev/null || true"
+      timeout_s: 10.0

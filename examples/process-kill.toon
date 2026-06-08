@@ -1,0 +1,46 @@
+title: Process kill — verify a disrupted process can be detected and removed
+description: Start a target process, confirm it exists, kill it, confirm it is gone
+
+tags[2]: process, resilience
+
+steady_state_hypothesis:
+  title: A target process can be started and is running
+  probes[1]:
+    - name: start-and-check
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "setsid sleep 300 >/dev/null 2>&1 < /dev/null & sleep 1 && pgrep -f 'sleep 300' | head -1"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "[0-9]+"
+
+method[2]:
+  - name: kill-process
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "pkill -f 'sleep 300'; echo killed"
+      timeout_s: 5.0
+  - name: verify-gone
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "pgrep -f 'sleep 300' >/dev/null && echo present || echo gone"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "gone"
+
+rollbacks[1]:
+  - name: cleanup
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "pkill -f 'sleep 300' 2>/dev/null || true"
+      timeout_s: 5.0
