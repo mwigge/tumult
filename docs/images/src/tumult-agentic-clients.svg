@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" font-family="'DejaVu Sans','Segoe UI',sans-serif">
+  <rect width="960" height="500" fill="#ffffff"/>
+  <style>
+    .title{font-size:24px;font-weight:700;fill:#1f2a44}
+    .sub{font-size:14px;fill:#5b6675}
+    .name{font-size:14px;font-weight:700;fill:#1f2a44}
+    .shape{font-size:11.5px;fill:#5b6675;font-family:monospace}
+    .arr{stroke:#1f2a44;stroke-width:2;fill:none;marker-end:url(#a)}
+    .canon{font-size:13px;fill:#d9e0ec;font-family:monospace}
+  </style>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#1f2a44"/></marker>
+  </defs>
+
+  <text x="40" y="44" class="title">Four agents, four telemetry dialects, one schema.</text>
+  <text x="40" y="70" class="sub">Each client emits something different. tumult normalizes them so you build dashboards and contracts once.</text>
+
+  <!-- clients with native shapes -->
+  <g>
+    <rect x="40" y="110" width="270" height="64" rx="10" fill="#eef1f7" stroke="#1f2a44" stroke-width="1.5"/>
+    <text x="56" y="134" class="name">Claude Code</text><text x="56" y="156" class="shape">spans claude_code.* + gen_ai.* + W3C</text>
+    <rect x="40" y="186" width="270" height="64" rx="10" fill="#eef1f7" stroke="#1f2a44" stroke-width="1.5"/>
+    <text x="56" y="210" class="name">Codex CLI</text><text x="56" y="232" class="shape">OTLP metrics + log events (no spans)</text>
+    <rect x="40" y="262" width="270" height="64" rx="10" fill="#eef1f7" stroke="#1f2a44" stroke-width="1.5"/>
+    <text x="56" y="286" class="name">OpenCode</text><text x="56" y="308" class="shape">OTLP via plugin · MCP traceparent</text>
+    <rect x="40" y="338" width="270" height="64" rx="10" fill="#eef1f7" stroke="#1f2a44" stroke-width="1.5"/>
+    <text x="56" y="362" class="name">GitHub Copilot</text><text x="56" y="384" class="shape">OTLP via SDK TelemetryConfig</text>
+  </g>
+
+  <!-- arrows to collector -->
+  <path class="arr" d="M312,142 L408,230"/>
+  <path class="arr" d="M312,218 L408,245"/>
+  <path class="arr" d="M312,294 L408,262"/>
+  <path class="arr" d="M312,370 L408,278"/>
+
+  <!-- collector transform -->
+  <rect x="412" y="196" width="180" height="120" rx="12" fill="#fbf3e3" stroke="#c8881f" stroke-width="2"/>
+  <text x="502" y="232" text-anchor="middle" class="name">Collector</text>
+  <text x="502" y="254" text-anchor="middle" font-size="12" fill="#a1531a">OTTL transform</text>
+  <text x="502" y="276" text-anchor="middle" font-size="11.5" fill="#5b6675">tag tumult.client</text>
+  <text x="502" y="294" text-anchor="middle" font-size="11.5" fill="#5b6675">lift native → gen_ai.*</text>
+
+  <!-- arrow to canonical -->
+  <path class="arr" d="M594,256 L666,256"/>
+
+  <!-- canonical schema -->
+  <rect x="670" y="170" width="250" height="172" rx="14" fill="#1f2a44"/>
+  <text x="795" y="200" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Canonical schema</text>
+  <line x1="690" y1="214" x2="900" y2="214" stroke="#3a4658"/>
+  <text x="690" y="240" class="canon">gen_ai.system / request.model</text>
+  <text x="690" y="262" class="canon">gen_ai.usage.*_tokens</text>
+  <text x="690" y="284" class="canon">resilience.agent.*</text>
+  <text x="690" y="306" class="canon" fill="#f2c66a">tumult.client</text>
+  <text x="690" y="328" font-size="11" fill="#9aa6bd">claude-code · codex · copilot · opencode</text>
+
+  <!-- footer -->
+  <rect x="40" y="430" width="880" height="44" rx="10" fill="#f6f7fa" stroke="#d6dbe4"/>
+  <text x="60" y="458" font-size="12.5" fill="#3a4654">Trace-nesting tier varies by client (full / tool-only / correlate) — but the proxy span floor is identical for all four.</text>
+</svg>

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" font-family="'DejaVu Sans','Segoe UI',sans-serif">
+  <rect width="960" height="520" fill="#ffffff"/>
+  <style>
+    .title{font-size:26px;font-weight:700;fill:#1f2a44}
+    .sub{font-size:14px;fill:#5b6675}
+    .box{fill:#ffffff;stroke:#1f2a44;stroke-width:2;rx:10}
+    .client{fill:#eef1f7;stroke:#1f2a44;stroke-width:1.5}
+    .lbl{font-size:14px;font-weight:600;fill:#1f2a44}
+    .small{font-size:12px;fill:#3a4654}
+    .amber{fill:#c8881f}
+    .arr{stroke:#1f2a44;stroke-width:2;fill:none;marker-end:url(#a)}
+    .arrA{stroke:#c8881f;stroke-width:2;fill:none;marker-end:url(#aA)}
+    .tag{font-size:11px;fill:#6b7785;font-family:monospace}
+  </style>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#1f2a44"/></marker>
+    <marker id="aA" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#c8881f"/></marker>
+  </defs>
+
+  <text x="40" y="46" class="title">Point your agent at the proxy. Break things on purpose.</text>
+  <text x="40" y="72" class="sub">tumult-agentic sits between any coding agent and its model — and injects chaos.</text>
+
+  <!-- clients -->
+  <g>
+    <rect x="40" y="120" width="170" height="46" rx="9" class="client"/><text x="125" y="148" text-anchor="middle" class="lbl">Claude Code</text>
+    <rect x="40" y="186" width="170" height="46" rx="9" class="client"/><text x="125" y="214" text-anchor="middle" class="lbl">Codex CLI</text>
+    <rect x="40" y="252" width="170" height="46" rx="9" class="client"/><text x="125" y="280" text-anchor="middle" class="lbl">GitHub Copilot</text>
+    <rect x="40" y="318" width="170" height="46" rx="9" class="client"/><text x="125" y="346" text-anchor="middle" class="lbl">OpenCode</text>
+  </g>
+  <text x="40" y="396" class="tag">ANTHROPIC_BASE_URL</text>
+  <text x="40" y="412" class="tag">OPENAI_BASE_URL</text>
+  <text x="40" y="428" class="tag">HTTPS_PROXY</text>
+
+  <!-- arrows clients -> proxy -->
+  <path class="arr" d="M212,143 L372,210"/>
+  <path class="arr" d="M212,209 L372,225"/>
+  <path class="arr" d="M212,275 L372,245"/>
+  <path class="arr" d="M212,341 L372,262"/>
+
+  <!-- proxy -->
+  <rect x="376" y="150" width="248" height="220" rx="14" fill="#1f2a44"/>
+  <text x="500" y="184" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">tumult agentic proxy</text>
+  <text x="500" y="206" text-anchor="middle" font-size="12" fill="#f2c66a">fault injection · contracts · OTel</text>
+  <line x1="398" y1="220" x2="602" y2="220" stroke="#3a4658" stroke-width="1"/>
+  <text x="398" y="244" font-size="12.5" fill="#d9e0ec">▸ model latency / timeout</text>
+  <text x="398" y="266" font-size="12.5" fill="#d9e0ec">▸ rate limits / provider errors</text>
+  <text x="398" y="288" font-size="12.5" fill="#d9e0ec">▸ malformed / truncated output</text>
+  <text x="398" y="310" font-size="12.5" fill="#d9e0ec">▸ tool failures</text>
+  <text x="398" y="332" font-size="12.5" fill="#d9e0ec">▸ retrieval poisoning</text>
+  <text x="398" y="356" font-size="11.5" fill="#9aa6bd" font-family="monospace">metadata-only by default</text>
+
+  <!-- arrow proxy -> provider -->
+  <path class="arr" d="M626,235 L740,235"/>
+  <text x="632" y="226" class="tag">faulted / forwarded</text>
+
+  <!-- provider -->
+  <rect x="744" y="190" width="176" height="92" rx="12" class="box"/>
+  <text x="832" y="226" text-anchor="middle" class="lbl">Model provider</text>
+  <text x="832" y="248" text-anchor="middle" class="small">Anthropic · OpenAI</text>
+  <text x="832" y="266" text-anchor="middle" class="small">Bedrock · Vertex · …</text>
+
+  <!-- otel down -->
+  <path class="arrA" d="M500,372 L500,430"/>
+  <rect x="320" y="432" width="360" height="60" rx="12" fill="#fbf3e3" stroke="#c8881f" stroke-width="1.5"/>
+  <text x="500" y="458" text-anchor="middle" class="lbl">OpenTelemetry collector</text>
+  <text x="500" y="478" text-anchor="middle" class="small">one canonical schema · trace + metrics + journal</text>
+</svg>
