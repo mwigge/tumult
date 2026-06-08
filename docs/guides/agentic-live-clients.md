@@ -134,5 +134,11 @@ probability in a custom pack and the same `--seed` replays the same decisions.
 - `accept-encoding` is stripped so responses arrive uncompressed and can be
   inspected and mutated; everything else (including `authorization`) is forwarded
   verbatim.
+- Bodies pass through tumult in memory, but **capture is metadata-only by
+  default** — no prompt, completion, or body content is written to the journal or
+  telemetry (only counts, durations, fault types, and contract verdicts).
 - Faults are injected, so the agent will receive corrupted or error responses by
   design. Point it at a throwaway task, not production work.
+
+See the [Security Assessment](../security-assessment.md) (§10, Agentic Fault
+Injection Security) for the full trust-boundary analysis.
