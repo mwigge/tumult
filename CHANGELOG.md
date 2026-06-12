@@ -4,6 +4,55 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.4.0] — Code review hardening pass
+
+### Added
+
+- **k6 JSON summary export**: `tumult-cli`'s k6 load executor now runs k6 with
+  `--summary-export` and parses the stable JSON summary first, falling back to
+  the human-readable text output only if the file is missing or unparseable.
+  Metrics that fail to parse from either source now log a `tracing::warn!`
+  instead of silently defaulting to `0`.
+
+### Changed
+
+- **Runner phase ordering**: during-method steady-state probe sampling now runs
+  concurrently with the method (on a background thread) instead of after
+  rollback, and post-method recovery sampling now runs immediately after the
+  method completes rather than at the very end of the experiment. This makes
+  `during_result` and `post_result.recovery_time_s` reflect the fault window and
+  recovery from the fault itself, rather than recovery from rollback actions.
+- **`tumult-cli`**: `commands.rs` (4,155 lines) split into a `commands/` module
+  (`exec`, `load`, `run`, `store`, `report`, `gameday`, plus `mod.rs` and
+  `tests.rs`) along its existing section boundaries; no behavior or public API
+  changes. The `arg_u32`/`arg_i32`/`arg_u16` helpers were consolidated into one
+  generic `arg_num::<T>`.
+- **`tumult-core`**: deduplicated rollback execution, journal construction, and
+  hypothesis-evaluation activity-span boilerplate in `runner.rs` via a shared
+  `execute_single_activity` helper and `Journal::for_experiment` constructor.
+- **GameDay compliance coverage**: `compute_compliance_coverage` now zips
+  controls with their evaluations instead of indexing by position, avoiding
+  silent misalignment if the two lists ever diverge.
+- **Template variable substitution**: `${var}` values are now escaped for TOON
+  string context (quotes, backslashes, newlines) before being spliced into the
+  encoded experiment, preventing a variable value from breaking the document or
+  injecting structure.
+
+### Fixed
+
+- **Background activity panics**: a panicking background activity now produces
+  a `Failed` result carrying that activity's own name and type, instead of being
+  misattributed to a different activity by join order.
+- **SSH command logging**: `tumult-ssh`'s instrumented `execute()` no longer
+  panics when truncating a command for tracing if the truncation point falls
+  inside a multi-byte UTF-8 character.
+- **Sync process execution timeout**: `execute_process_sync` now polls the
+  child process and kills it on timeout instead of leaking it in the background
+  via a detached thread.
+- **MCP SQL guard**: `validate_select_only` hardening — rejects stacked
+  statements and forbidden keywords as standalone tokens (not substrings),
+  closing gaps in the read-only query guard.
+
 ## [1.3.0] — Cross-client agentic observability
 
 ### Added

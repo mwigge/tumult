@@ -216,26 +216,13 @@ pub fn run_experiment(
         let duration_ms = started.elapsed().as_millis() as u64;
 
         // Run rollbacks if strategy says so and there are rollbacks to run
-        let rollback_results = if !experiment.rollbacks.is_empty()
-            && should_rollback(&config.rollback_strategy, true)
-        {
-            controls.emit(&LifecycleEvent::BeforeRollback);
-            let rb_tracer = opentelemetry::global::tracer(TRACER_NAME);
-            let rb_span = rb_tracer
-                .span_builder("resilience.rollback")
-                .start(&rb_tracer);
-            let rb_cx = opentelemetry::Context::current_with_span(rb_span);
-            let _rb_guard = rb_cx.attach();
-            let results = execute_rollback_activities(
-                &experiment.rollbacks,
-                executor.as_ref(),
-                controls.as_ref(),
-            );
-            controls.emit(&LifecycleEvent::AfterRollback);
-            results
-        } else {
-            vec![]
-        };
+        let rollback_results = run_rollbacks(
+            experiment,
+            executor,
+            controls,
+            &config.rollback_strategy,
+            true,
+        );
 
         controls.emit(&LifecycleEvent::AfterExperiment);
 
@@ -247,24 +234,17 @@ pub fn run_experiment(
             .count() as u32;
 
         return Ok(Journal {
-            experiment_title: experiment.title.clone(),
-            experiment_id,
-            status: ExperimentStatus::Aborted,
-            started_at_ns,
             ended_at_ns,
             duration_ms,
             steady_state_before: hypothesis_before,
-            steady_state_after: None,
-            method_results: vec![],
             rollback_results,
             rollback_failures: rb_failures,
-            estimate: experiment.estimate.clone(),
-            baseline_result: None,
-            during_result: None,
-            post_result: None,
-            load_result: None,
-            analysis: None,
-            regulatory: experiment.regulatory.clone(),
+            ..Journal::for_experiment(
+                experiment,
+                experiment_id,
+                ExperimentStatus::Aborted,
+                started_at_ns,
+            )
         });
     }
 
@@ -277,24 +257,15 @@ pub fn run_experiment(
             let duration_ms = started.elapsed().as_millis() as u64;
             controls.emit(&LifecycleEvent::AfterExperiment);
             return Ok(Journal {
-                experiment_title: experiment.title.clone(),
-                experiment_id,
-                status: ExperimentStatus::Interrupted,
-                started_at_ns,
                 ended_at_ns,
                 duration_ms,
                 steady_state_before: hypothesis_before,
-                steady_state_after: None,
-                method_results: vec![],
-                rollback_results: vec![],
-                rollback_failures: 0,
-                estimate: experiment.estimate.clone(),
-                baseline_result: None,
-                during_result: None,
-                post_result: None,
-                load_result: None,
-                analysis: None,
-                regulatory: experiment.regulatory.clone(),
+                ..Journal::for_experiment(
+                    experiment,
+                    experiment_id,
+                    ExperimentStatus::Interrupted,
+                    started_at_ns,
+                )
             });
         }
     }
@@ -346,6 +317,25 @@ pub fn run_experiment(
 
     // -- Phase 2: Execute Method (DURING)
     controls.emit(&LifecycleEvent::BeforeMethod);
+
+    // Sample probes concurrently with method execution, on a separate
+    // thread, so `during_result` reflects probe behavior while the fault
+    // is actually active (rather than after the method, hypothesis-after,
+    // and rollbacks have already completed).
+    let during_handle = experiment
+        .steady_state_hypothesis
+        .as_ref()
+        .map(|hypothesis| {
+            let hypothesis = hypothesis.clone();
+            let executor = std::sync::Arc::clone(executor);
+            std::thread::spawn(move || {
+                let started_at_ns = epoch_nanos_now();
+                let samples = collect_probe_samples(&hypothesis, executor.as_ref(), 3);
+                let ended_at_ns = epoch_nanos_now();
+                (started_at_ns, ended_at_ns, samples)
+            })
+        });
+
     let method_results = execute_activities(
         &experiment.method,
         executor.as_ref(),
@@ -355,6 +345,27 @@ pub fn run_experiment(
     controls.emit(&LifecycleEvent::AfterMethod);
 
     let actions_succeeded = all_succeeded(&method_results);
+
+    let during_result = during_handle.and_then(|handle| {
+        let (started_at_ns, ended_at_ns, samples) = handle
+            .join()
+            .expect("during-phase probe sampling thread panicked");
+        build_during_result(started_at_ns, ended_at_ns, &samples)
+    });
+
+    // -- Phase 3: POST -- recovery measurement, taken immediately after the
+    // method completes (and before hypothesis-after / rollback run), so
+    // `post_result.recovery_time_s` reflects recovery from the fault itself
+    // rather than from rollback actions.
+    let post_result = experiment
+        .steady_state_hypothesis
+        .as_ref()
+        .and_then(|hypothesis| {
+            let started_at_ns = epoch_nanos_now();
+            let samples = collect_probe_samples(hypothesis, executor.as_ref(), 3);
+            let ended_at_ns = epoch_nanos_now();
+            build_post_result(started_at_ns, ended_at_ns, &samples)
+        });
 
     // -- Stop load test, collect results, and enrich the span
     let load_result =
@@ -417,9 +428,6 @@ pub fn run_experiment(
     // Drop the load span guard so the span is exported
     drop(load_span_guard);
 
-    // -- Phase 3: POST -- recovery measurement
-    // Post-phase sampling is done externally; hypothesis after captures it.
-
     // -- Hypothesis AFTER
     let hypothesis_after = if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
         controls.emit(&LifecycleEvent::BeforeHypothesis);
@@ -451,26 +459,13 @@ pub fn run_experiment(
 
     // -- Rollbacks
     let deviated = status == ExperimentStatus::Deviated;
-    let rollback_results = if !experiment.rollbacks.is_empty()
-        && should_rollback(&config.rollback_strategy, deviated)
-    {
-        controls.emit(&LifecycleEvent::BeforeRollback);
-        let rb_tracer = opentelemetry::global::tracer(TRACER_NAME);
-        let rb_span = rb_tracer
-            .span_builder("resilience.rollback")
-            .start(&rb_tracer);
-        let rb_cx = opentelemetry::Context::current_with_span(rb_span);
-        let _rb_guard = rb_cx.attach();
-        let results = execute_rollback_activities(
-            &experiment.rollbacks,
-            executor.as_ref(),
-            controls.as_ref(),
-        );
-        controls.emit(&LifecycleEvent::AfterRollback);
-        results
-    } else {
-        vec![]
-    };
+    let rollback_results = run_rollbacks(
+        experiment,
+        executor,
+        controls,
+        &config.rollback_strategy,
+        deviated,
+    );
 
     // -- Phase 4: Analysis
     let analysis = compute_analysis(experiment, &status);
@@ -500,31 +495,7 @@ pub fn run_experiment(
         "experiment.completed"
     );
 
-    // -- During-phase and post-phase probe sampling
-    let (during_result, post_result) =
-        if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
-            // During-phase: sample probes to capture behavior while fault is active
-            let during_start = epoch_nanos_now();
-            let during_samples = collect_probe_samples(hypothesis, executor.as_ref(), 3);
-            let during_end = epoch_nanos_now();
-            let during = build_during_result(during_start, during_end, &during_samples);
-
-            // Post-phase: sample probes to measure recovery after method completion
-            let post_start = epoch_nanos_now();
-            let post_samples = collect_probe_samples(hypothesis, executor.as_ref(), 3);
-            let post_end = epoch_nanos_now();
-            let post = build_post_result(post_start, post_end, &post_samples);
-
-            (during, post)
-        } else {
-            (None, None)
-        };
-
     Ok(Journal {
-        experiment_title: experiment.title.clone(),
-        experiment_id,
-        status,
-        started_at_ns,
         ended_at_ns,
         duration_ms,
         steady_state_before: hypothesis_before,
@@ -532,13 +503,11 @@ pub fn run_experiment(
         method_results,
         rollback_results,
         rollback_failures: rb_failures,
-        estimate: experiment.estimate.clone(),
-        baseline_result: None,
         during_result,
         post_result,
         load_result,
         analysis,
-        regulatory: experiment.regulatory.clone(),
+        ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
     })
 }
 
@@ -711,6 +680,17 @@ fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 
 
 /// Computes compliance coverage from article mappings.
 fn compute_compliance_coverage(gameday: &GameDay, journals: &[Journal]) -> f64 {
+    // `journals[i]` must be the result of running `gameday.experiments[i]` --
+    // callers build both lists by iterating the same experiment list in the
+    // same order. A length mismatch means the two lists are misaligned and
+    // coverage would be attributed to the wrong articles.
+    debug_assert_eq!(
+        gameday.experiments.len(),
+        journals.len(),
+        "compute_compliance_coverage: gameday.experiments and journals must have the same \
+         length and order"
+    );
+
     // Collect all unique mapped articles
     let all_articles: std::collections::HashSet<&str> = gameday
         .experiments
@@ -725,12 +705,14 @@ fn compute_compliance_coverage(gameday: &GameDay, journals: &[Journal]) -> f64 {
     // An article is "met" if at least one experiment mapped to it completed
     let mut met = 0;
     for article in &all_articles {
-        let has_passing = gameday.experiments.iter().enumerate().any(|(i, exp)| {
-            exp.compliance_maps.iter().any(|a| a == article)
-                && journals
-                    .get(i)
-                    .is_some_and(|j| j.status == ExperimentStatus::Completed)
-        });
+        let has_passing = gameday
+            .experiments
+            .iter()
+            .zip(journals)
+            .any(|(exp, journal)| {
+                exp.compliance_maps.iter().any(|a| a == article)
+                    && journal.status == ExperimentStatus::Completed
+            });
         if has_passing {
             met += 1;
         }
@@ -751,42 +733,12 @@ fn evaluate_hypothesis(
     let mut probe_results = Vec::with_capacity(hypothesis.probes.len());
     let mut all_met = true;
 
-    let tracer = opentelemetry::global::tracer(TRACER_NAME);
-
     for probe in &hypothesis.probes {
-        controls.emit(&LifecycleEvent::BeforeActivity {
-            name: probe.name.clone(),
-        });
-
-        // Create an OTel span for this probe with target + fault attributes
-        let mut attrs = vec![KeyValue::new("resilience.probe.name", probe.name.clone())];
-        attrs.extend(target_attributes(probe));
-        attrs.extend(fault_attributes(probe));
-        let span = tracer
-            .span_builder("resilience.probe".to_string())
-            .with_attributes(attrs)
-            .start(&tracer);
-        let cx = opentelemetry::Context::current_with_span(span);
-        let _guard = cx.attach();
-
-        let started_at_ns = epoch_nanos_now();
-        let outcome = executor.execute(probe);
-        set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
-
-        let result = make_result(ResultParams {
-            activity: probe,
-            started_at_ns,
-            duration_ms: outcome.duration_ms,
-            success: outcome.success,
-            output: outcome.output.clone(),
-            error: outcome.error.clone(),
-            trace_id: current_trace_id(),
-            span_id: current_span_id(),
-        });
+        let result = execute_single_activity(probe, executor, controls);
 
         // Check tolerance if defined
         if let Some(ref tolerance) = probe.tolerance {
-            if let Some(ref output) = outcome.output {
+            if let Some(ref output) = result.output {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(output) {
                     if !evaluate_tolerance(&value, tolerance) {
                         all_met = false;
@@ -802,13 +754,9 @@ fn evaluate_hypothesis(
                 // Tolerance defined but no output -- cannot evaluate, treat as failure
                 all_met = false;
             }
-        } else if !outcome.success {
+        } else if result.status != ActivityStatus::Succeeded {
             all_met = false;
         }
-
-        controls.emit(&LifecycleEvent::AfterActivity {
-            name: probe.name.clone(),
-        });
 
         probe_results.push(result);
     }
@@ -979,14 +927,14 @@ fn execute_activities(
     let mut results = fg_results;
     results.reserve(background.len());
 
-    for join_result in bg_results {
+    for (activity, join_result) in background.iter().zip(bg_results) {
         match join_result {
             Ok(activity_result) => results.push(activity_result),
             Err(_panic) => {
-                tracing::error!("background activity panicked");
+                tracing::error!(activity = %activity.name, "background activity panicked");
                 results.push(ActivityResult {
-                    name: "background-task".into(),
-                    activity_type: ActivityType::Action,
+                    name: activity.name.clone(),
+                    activity_type: activity.activity_type.clone(),
                     status: ActivityStatus::Failed,
                     started_at_ns: epoch_nanos_now(),
                     duration_ms: 0,
@@ -1002,6 +950,34 @@ fn execute_activities(
     results
 }
 
+/// Run `experiment`'s rollback activities, if any, and if `strategy` calls
+/// for rollbacks given `deviated`. Wraps execution in a `resilience.rollback`
+/// span and the `BeforeRollback`/`AfterRollback` lifecycle events. Returns an
+/// empty vec if rollbacks are skipped.
+fn run_rollbacks(
+    experiment: &Experiment,
+    executor: &std::sync::Arc<dyn ActivityExecutor>,
+    controls: &std::sync::Arc<ControlRegistry>,
+    strategy: &RollbackStrategy,
+    deviated: bool,
+) -> Vec<ActivityResult> {
+    if experiment.rollbacks.is_empty() || !should_rollback(strategy, deviated) {
+        return vec![];
+    }
+
+    controls.emit(&LifecycleEvent::BeforeRollback);
+    let rb_tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let rb_span = rb_tracer
+        .span_builder("resilience.rollback")
+        .start(&rb_tracer);
+    let rb_cx = opentelemetry::Context::current_with_span(rb_span);
+    let _rb_guard = rb_cx.attach();
+    let results =
+        execute_rollback_activities(&experiment.rollbacks, executor.as_ref(), controls.as_ref());
+    controls.emit(&LifecycleEvent::AfterRollback);
+    results
+}
+
 /// Execute rollback activities. Unlike `execute_activities`, this function
 /// continues executing remaining rollbacks even if one fails, logging a
 /// warning for each failure.
@@ -1010,66 +986,20 @@ fn execute_rollback_activities(
     executor: &dyn ActivityExecutor,
     controls: &ControlRegistry,
 ) -> Vec<ActivityResult> {
-    let mut results = Vec::with_capacity(activities.len());
-
-    let tracer = opentelemetry::global::tracer(TRACER_NAME);
-
-    for activity in activities {
-        controls.emit(&LifecycleEvent::BeforeActivity {
-            name: activity.name.clone(),
-        });
-
-        let span_name = match activity.activity_type {
-            ActivityType::Action => "resilience.action",
-            ActivityType::Probe => "resilience.probe",
-        };
-        let mut attrs = vec![
-            KeyValue::new("resilience.action.name", activity.name.clone()),
-            KeyValue::new(
-                "resilience.activity.type",
-                activity.activity_type.to_string(),
-            ),
-        ];
-        attrs.extend(target_attributes(activity));
-        attrs.extend(fault_attributes(activity));
-        let span = tracer
-            .span_builder(span_name.to_string())
-            .with_attributes(attrs)
-            .start(&tracer);
-        let cx = opentelemetry::Context::current_with_span(span);
-        let _guard = cx.attach();
-
-        let started_at_ns = epoch_nanos_now();
-        let outcome = executor.execute(activity);
-        set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
-
-        if !outcome.success {
-            tracing::warn!(
-                activity = %activity.name,
-                error = ?outcome.error,
-                "rollback activity failed, continuing with remaining rollbacks"
-            );
-        }
-
-        let result = make_result(ResultParams {
-            activity,
-            started_at_ns,
-            duration_ms: outcome.duration_ms,
-            success: outcome.success,
-            output: outcome.output,
-            error: outcome.error,
-            trace_id: current_trace_id(),
-            span_id: current_span_id(),
-        });
-
-        controls.emit(&LifecycleEvent::AfterActivity {
-            name: activity.name.clone(),
-        });
-
-        results.push(result);
-    }
-
-    results
+    activities
+        .iter()
+        .map(|activity| {
+            let result = execute_single_activity(activity, executor, controls);
+            if result.status == ActivityStatus::Failed {
+                tracing::warn!(
+                    activity = %activity.name,
+                    error = ?result.error,
+                    "rollback activity failed, continuing with remaining rollbacks"
+                );
+            }
+            result
+        })
+        .collect()
 }
 
 /// Compute Phase 4 analysis from estimate and actual results.
@@ -1333,26 +1263,12 @@ fn build_post_result(
 
 /// Build a Journal for an experiment interrupted before it started.
 fn make_interrupted_journal(experiment: &Experiment, now_ns: i64) -> Journal {
-    Journal {
-        experiment_title: experiment.title.clone(),
-        experiment_id: uuid::Uuid::new_v4().to_string(),
-        status: ExperimentStatus::Interrupted,
-        started_at_ns: now_ns,
-        ended_at_ns: now_ns,
-        duration_ms: 0,
-        steady_state_before: None,
-        steady_state_after: None,
-        method_results: vec![],
-        rollback_results: vec![],
-        rollback_failures: 0,
-        estimate: experiment.estimate.clone(),
-        baseline_result: None,
-        during_result: None,
-        post_result: None,
-        load_result: None,
-        analysis: None,
-        regulatory: experiment.regulatory.clone(),
-    }
+    Journal::for_experiment(
+        experiment,
+        uuid::Uuid::new_v4().to_string(),
+        ExperimentStatus::Interrupted,
+        now_ns,
+    )
 }
 
 /// Extract target attributes from an activity's provider.
@@ -1447,7 +1363,7 @@ mod tests {
     };
     use indexmap::IndexMap;
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
 
     // -- Mock executor
@@ -1705,25 +1621,49 @@ mod tests {
 
     #[test]
     fn hypothesis_after_fail_marks_deviated() {
+        // Probes report healthy ("200") until the method action runs, then
+        // report unhealthy ("500"). The hypothesis-before probe (which runs
+        // before the method) sees "200" and passes; the hypothesis-after
+        // probe (which runs after the method) sees "500" and fails,
+        // marking the experiment Deviated. During-phase probes run
+        // concurrently with the method and may observe either value, but
+        // during_result doesn't gate `status` so that race doesn't matter
+        // for this test.
         struct AlternatingExecutor {
-            call_count: Arc<AtomicUsize>,
+            method_ran: Arc<AtomicBool>,
         }
         impl ActivityExecutor for AlternatingExecutor {
-            fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-                let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-                let output = if count == 2 { "500" } else { "200" };
-                ActivityOutcome {
-                    success: true,
-                    output: Some(output.into()),
-                    error: None,
-                    duration_ms: 10,
+            fn execute(&self, activity: &Activity) -> ActivityOutcome {
+                match activity.activity_type {
+                    ActivityType::Action => {
+                        self.method_ran.store(true, Ordering::SeqCst);
+                        ActivityOutcome {
+                            success: true,
+                            output: None,
+                            error: None,
+                            duration_ms: 10,
+                        }
+                    }
+                    ActivityType::Probe => {
+                        let output = if self.method_ran.load(Ordering::SeqCst) {
+                            "500"
+                        } else {
+                            "200"
+                        };
+                        ActivityOutcome {
+                            success: true,
+                            output: Some(output.into()),
+                            error: None,
+                            duration_ms: 10,
+                        }
+                    }
                 }
             }
         }
 
         let exp = experiment_with_hypothesis();
         let executor: Arc<dyn ActivityExecutor> = Arc::new(AlternatingExecutor {
-            call_count: Arc::new(AtomicUsize::new(0)),
+            method_ran: Arc::new(AtomicBool::new(false)),
         });
         let controls = Arc::new(ControlRegistry::new());
 
@@ -1738,18 +1678,38 @@ mod tests {
 
     #[test]
     fn rollbacks_execute_on_deviation_with_default_strategy() {
+        // Same probe-flips-after-method-runs pattern as
+        // `hypothesis_after_fail_marks_deviated`: the hypothesis-after probe
+        // observes "500" and fails, marking the experiment Deviated and
+        // triggering rollbacks under the default `OnDeviation` strategy.
         struct DeviatingExecutor {
-            call_count: Arc<AtomicUsize>,
+            method_ran: Arc<AtomicBool>,
         }
         impl ActivityExecutor for DeviatingExecutor {
-            fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-                let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-                let output = if count == 2 { "500" } else { "200" };
-                ActivityOutcome {
-                    success: true,
-                    output: Some(output.into()),
-                    error: None,
-                    duration_ms: 10,
+            fn execute(&self, activity: &Activity) -> ActivityOutcome {
+                match activity.activity_type {
+                    ActivityType::Action => {
+                        self.method_ran.store(true, Ordering::SeqCst);
+                        ActivityOutcome {
+                            success: true,
+                            output: None,
+                            error: None,
+                            duration_ms: 10,
+                        }
+                    }
+                    ActivityType::Probe => {
+                        let output = if self.method_ran.load(Ordering::SeqCst) {
+                            "500"
+                        } else {
+                            "200"
+                        };
+                        ActivityOutcome {
+                            success: true,
+                            output: Some(output.into()),
+                            error: None,
+                            duration_ms: 10,
+                        }
+                    }
                 }
             }
         }
@@ -1757,7 +1717,7 @@ mod tests {
         let mut exp = experiment_with_hypothesis();
         exp.rollbacks = vec![test_action("rollback-1")];
         let executor: Arc<dyn ActivityExecutor> = Arc::new(DeviatingExecutor {
-            call_count: Arc::new(AtomicUsize::new(0)),
+            method_ran: Arc::new(AtomicBool::new(false)),
         });
         let controls = Arc::new(ControlRegistry::new());
 

@@ -8,25 +8,54 @@ use std::path::{Path, PathBuf};
 
 use crate::error::ToolError;
 
+/// Keywords that introduce a write or schema/configuration change. Rejected
+/// as standalone tokens anywhere in the query, since DuckDB allows DML/DDL
+/// after a leading `WITH` CTE (e.g. `WITH x AS (SELECT 1) INSERT INTO ...`).
+const FORBIDDEN_SQL_KEYWORDS: &[&str] = &[
+    "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "ATTACH", "DETACH", "COPY", "EXPORT",
+    "IMPORT", "INSTALL", "LOAD", "PRAGMA", "SET", "CALL", "VACUUM", "TRUNCATE",
+];
+
 /// Validate that a SQL query is read-only (SELECT or WITH only).
 ///
 /// Prevents SQL injection by rejecting any query that does not start
-/// with SELECT or WITH (e.g., DROP, INSERT, UPDATE, DELETE, CREATE).
+/// with SELECT or WITH (e.g., DROP, INSERT, UPDATE, DELETE, CREATE), any
+/// query containing more than one statement (stacked statements via `;`),
+/// and any query containing a write/DDL keyword as a standalone token (to
+/// catch DML smuggled in after a `WITH` CTE).
 ///
 /// # Errors
 ///
 /// Returns [`ToolError::InvalidInput`] if the query does not start with
-/// `SELECT` or `WITH`.
+/// `SELECT` or `WITH`, contains more than one statement, or contains a
+/// forbidden keyword.
 pub fn validate_select_only(query: &str) -> Result<(), ToolError> {
-    let normalized = query.trim().to_uppercase();
-    if normalized.starts_with("SELECT") || normalized.starts_with("WITH") {
-        Ok(())
-    } else {
-        Err(ToolError::InvalidInput(format!(
+    let trimmed = query.trim();
+    let normalized = trimmed.to_uppercase();
+    if !(normalized.starts_with("SELECT") || normalized.starts_with("WITH")) {
+        return Err(ToolError::InvalidInput(format!(
             "only SELECT/WITH queries are allowed, got: {}",
             normalized.split_whitespace().next().unwrap_or("(empty)")
-        )))
+        )));
     }
+
+    let without_trailing_semicolons =
+        trimmed.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+    if without_trailing_semicolons.contains(';') {
+        return Err(ToolError::InvalidInput(
+            "only a single statement is allowed (no `;`-separated statements)".into(),
+        ));
+    }
+
+    for token in normalized.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+        if FORBIDDEN_SQL_KEYWORDS.contains(&token) {
+            return Err(ToolError::InvalidInput(format!(
+                "query contains a forbidden keyword: {token}"
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 /// Validate that an action or probe name contains only safe characters.
@@ -1548,6 +1577,44 @@ mod tests {
     #[test]
     fn validate_select_only_rejects_empty() {
         assert!(validate_select_only("").is_err());
+    }
+
+    #[test]
+    fn validate_select_only_rejects_stacked_statement() {
+        let result = validate_select_only("SELECT 1; DROP TABLE experiments");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("single statement"));
+    }
+
+    #[test]
+    fn validate_select_only_allows_single_trailing_semicolon() {
+        assert!(validate_select_only("SELECT * FROM experiments;").is_ok());
+        assert!(validate_select_only("SELECT * FROM experiments ; ").is_ok());
+    }
+
+    #[test]
+    fn validate_select_only_rejects_dml_after_cte() {
+        let result =
+            validate_select_only("WITH x AS (SELECT 1) INSERT INTO experiments SELECT * FROM x");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("forbidden keyword"));
+    }
+
+    #[test]
+    fn validate_select_only_rejects_pragma_and_attach() {
+        assert!(validate_select_only("SELECT 1; PRAGMA database_list").is_err());
+        assert!(validate_select_only(
+            "WITH x AS (SELECT 1) ATTACH 'evil.db' AS evil SELECT * FROM x"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn validate_select_only_allows_identifiers_containing_keyword_substrings() {
+        assert!(validate_select_only("SELECT alter_ego, settings FROM experiments").is_ok());
     }
 
     // ── validate_action_name ─────────────────────────────────
