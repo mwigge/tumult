@@ -791,6 +791,42 @@ pub struct Journal {
     pub regulatory: Option<RegulatoryMapping>,
 }
 
+impl Journal {
+    /// Build a `Journal` skeleton for `experiment`: fills in the fields
+    /// derived from the experiment definition (`experiment_title`,
+    /// `estimate`, `regulatory`) plus the given identity/status/timing, and
+    /// zeroes/empties every execution-result field. Callers use struct
+    /// update syntax (`..Journal::for_experiment(...)`) to set whichever
+    /// result fields apply to their completion path.
+    pub(crate) fn for_experiment(
+        experiment: &Experiment,
+        experiment_id: String,
+        status: ExperimentStatus,
+        started_at_ns: i64,
+    ) -> Self {
+        Self {
+            experiment_title: experiment.title.clone(),
+            experiment_id,
+            status,
+            started_at_ns,
+            ended_at_ns: started_at_ns,
+            duration_ms: 0,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            estimate: experiment.estimate.clone(),
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: experiment.regulatory.clone(),
+        }
+    }
+}
+
 // ── GameDay types (Phase 8 — coordinated experiment campaigns) ──
 
 /// A single experiment reference within a `GameDay`.

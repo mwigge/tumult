@@ -22,6 +22,16 @@ pub struct CommandResult {
     pub stderr: String,
 }
 
+/// Truncates `command` to at most 64 bytes for tracing, without splitting a
+/// multi-byte UTF-8 character.
+fn command_preview(command: &str) -> &str {
+    let mut end = command.len().min(64);
+    while !command.is_char_boundary(end) {
+        end -= 1;
+    }
+    &command[..end]
+}
+
 impl CommandResult {
     /// Returns true if the command exited with code 0.
     #[must_use]
@@ -101,7 +111,7 @@ impl SshSession {
     /// Returns [`SshError::ChannelError`] if a channel cannot be opened.
     /// Returns [`SshError::ExecutionFailed`] if the command cannot be sent.
     /// Returns [`SshError::Timeout`] if the command exceeds the configured timeout.
-    #[tracing::instrument(skip(self), fields(command_preview = &command[..command.len().min(64)]))]
+    #[tracing::instrument(skip(self), fields(command_preview = command_preview(command)))]
     pub async fn execute(&self, command: &str) -> Result<CommandResult, SshError> {
         let _span = crate::telemetry::begin_execute(
             command,

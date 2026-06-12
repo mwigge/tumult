@@ -5,7 +5,7 @@
 //! background activities, and estimate accuracy.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -619,17 +619,33 @@ fn estimate_accuracy_zero_when_prediction_wrong() {
 }
 
 struct DeviationExecutor {
-    call_count: AtomicUsize,
+    method_ran: AtomicBool,
 }
 impl ActivityExecutor for DeviationExecutor {
-    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-        let count = self.call_count.fetch_add(1, Ordering::Relaxed);
-        let output = if count == 2 { "500" } else { "200" };
-        ActivityOutcome {
-            success: true,
-            output: Some(output.into()),
-            error: None,
-            duration_ms: 10,
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        match activity.activity_type {
+            ActivityType::Action => {
+                self.method_ran.store(true, Ordering::SeqCst);
+                ActivityOutcome {
+                    success: true,
+                    output: None,
+                    error: None,
+                    duration_ms: 10,
+                }
+            }
+            ActivityType::Probe => {
+                let output = if self.method_ran.load(Ordering::SeqCst) {
+                    "500"
+                } else {
+                    "200"
+                };
+                ActivityOutcome {
+                    success: true,
+                    output: Some(output.into()),
+                    error: None,
+                    duration_ms: 10,
+                }
+            }
         }
     }
 }
@@ -656,7 +672,7 @@ fn estimate_accuracy_when_deviated_matches_estimate() {
 
     // Hypothesis before passes, method succeeds, hypothesis after fails → deviated
     let executor: Arc<dyn ActivityExecutor> = Arc::new(DeviationExecutor {
-        call_count: AtomicUsize::new(0),
+        method_ran: AtomicBool::new(false),
     });
     let controls = Arc::new(ControlRegistry::new());
 

@@ -271,7 +271,10 @@ fn substitute_vars<S: ::std::hash::BuildHasher>(
             let value = vars
                 .get(&name)
                 .ok_or_else(|| EngineError::UndefinedVar { name: name.clone() })?;
-            result.push_str(value);
+            // Escape the value for TOON string context (quotes, backslashes,
+            // newlines) so it can't break parsing or inject structure into
+            // the surrounding document.
+            result.push_str(&toon_format::escape_string(value));
         } else {
             result.push(ch);
         }
@@ -832,5 +835,16 @@ mod tests {
         let vars = HashMap::from([("env".into(), "prod".into())]);
         let result = apply_vars(&exp, &vars).unwrap();
         assert_eq!(result.title, "prod-prod");
+    }
+
+    #[test]
+    fn apply_vars_escapes_quotes_and_newlines() {
+        let exp = template_experiment("Deploy ${env} canary");
+        let vars = HashMap::from([("env".into(), "prod\"; injected: true\nmore".into())]);
+        let result = apply_vars(&exp, &vars).unwrap();
+        assert_eq!(result.title, "Deploy prod\"; injected: true\nmore canary");
+        // Only the title was substituted; no extra fields were injected.
+        assert!(result.description.is_none());
+        assert_eq!(result.method.len(), 1);
     }
 }
