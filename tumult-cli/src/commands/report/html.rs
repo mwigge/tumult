@@ -208,11 +208,12 @@ pub(crate) fn format_activity_row(
             None => format!(r#"<span class="trace-link">{short}</span>"#),
         }
     };
-    // FIX 3: surface failure detail (error/output text) for Failed/Timeout activities,
-    // plus a next-diagnostic-command hint. Note: `next_diagnostic_command` is NOT
-    // persisted on the Journal — it lives only in tumult-agentic/tumult-mcp result
-    // types. So the hint below is SYNTHESIZED from trace_id (a `tumult replay`
-    // suggestion), not read from the journal.
+    // FIX 3: surface failure detail (error/output text) for Failed/Timeout activities.
+    // A per-activity diagnostic command is intentionally NOT synthesized here: the
+    // core experiment path has no such field (`next_diagnostic_command` exists only
+    // in tumult-agentic result types), and `activity_results` is not keyed by trace,
+    // so any suggested command would be fabricated. The captured error text plus the
+    // trace column are the actionable signal.
     let detail = match r.status {
         ActivityStatus::Failed | ActivityStatus::Timeout => {
             let msg = r
@@ -220,19 +221,7 @@ pub(crate) fn format_activity_row(
                 .as_deref()
                 .or(r.output.as_deref())
                 .unwrap_or("(no detail captured)");
-            let hint = if r.trace_id.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<br><code>tumult replay --trace {}</code>",
-                    html_escape(r.trace_id.as_str())
-                )
-            };
-            format!(
-                r#"<span class="detail-error">{}</span>{}"#,
-                html_escape(msg),
-                hint
-            )
+            format!(r#"<span class="detail-error">{}</span>"#, html_escape(msg))
         }
         _ => String::new(),
     };
