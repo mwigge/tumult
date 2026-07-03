@@ -4,6 +4,39 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.0] — 2026-07-03 — Privilege-free network chaos + CI-ready reporting
+
+### Added
+
+- **`tumult-net`**: a new native crate providing a userspace TCP chaos proxy
+  built on [`tokio-netem`](https://crates.io/crates/tokio-netem) `0.1.1` (MIT).
+  It forwards TCP traffic through a detached `tumult-net-proxyd` daemon and
+  injects directional faults with no `tc`/`iptables`/`NET_ADMIN` privileges:
+  `inject_latency`, `throttle_bandwidth`, `fragment_stream`, `corrupt_bytes`,
+  `terminate_connections`, and the composite `start_proxy`, all rolled back by
+  `stop_proxy`. Read-only probes `reachable` and `measured_latency` validate
+  steady state. A `seed` makes the fault schedule (jitter) and the byte
+  corruption / termination RNGs reproducible. Wired into the CLI native dispatch
+  as plugin `tumult-net`; new example `examples/net-chaos.toon`. Spans use the
+  `net.*` domain prefix and attach under the resilience parent spans.
+- **`tumult report --format junit|json`**: machine-readable report output for CI
+  gating (one JUnit `<testcase>` per activity; JSON for tooling), alongside the
+  existing HTML.
+- **HTML report**: optional clickable trace links (`--trace-ui-base` /
+  `TUMULT_TRACE_UI_BASE`, off by default, using the full trace ID), per-activity
+  failure detail and `next_diagnostic_command` hints, and a footer recording the
+  generation timestamp, tool version, and journal content hash for audit
+  defensibility.
+
+### Changed
+
+- **Compliance verdict** (`tumult compliance`) now requires both a passing
+  pass-rate and a recovery signal (MTTR under target, or `resilience_score`,
+  falling back to pass-rate-only with an explicit reduced-assurance warning),
+  instead of raw completion rate — closing a false-`COMPLIANT` gap.
+- **Internal refactor**: every Rust source file over 400 lines was split into
+  `mod.rs` submodules (public APIs preserved via re-exports); no behavior change.
+
 ## [1.4.0] — Code review hardening pass
 
 ### Added

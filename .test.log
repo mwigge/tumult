@@ -1,0 +1,24 @@
+    Blocking waiting for file lock on build directory
+   Compiling toon-format v0.5.0
+   Compiling tumult-plugin v1.5.0 (/data/src/tumult/tumult-plugin)
+   Compiling tumult-core v1.5.0 (/data/src/tumult/tumult-core)
+   Compiling tumult-analytics v1.5.0 (/data/src/tumult/tumult-analytics)
+   Compiling tumult-intelligence v1.5.0 (/data/src/tumult/tumult-intelligence)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5m 14s
+     Running unittests src/lib.rs (target/debug/deps/tumult_intelligence-161d04b74d3c2bb6)
+
+running 11 tests
+test tests::parse_output_format_defaults_to_text ... ok
+test tests::parses_json_embedded_in_model_text ... ok
+test tests::rejects_model_json_without_recommendations ... ok
+test tests::json_rendering_preserves_output_shape ... ok
+test tests::parses_json_from_markdown_fence_after_noisy_braces ... ok
+test tests::validate_draft_clears_stale_state_when_draft_absent ... ok
+test tests::validate_draft_marks_decode_failures_invalid ... ok
+test tests::validate_draft_marks_engine_validation_failures_invalid ... ok
+test tests::render_text_includes_recommendation_details_notes_and_valid_draft ... ok
+test tests::missing_store_heuristic_is_useful ... ok
+test tests::heuristic_output_preserves_goal_and_context_without_draft ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,362 @@
+//! Command-line interface definitions for the `tumult` binary.
+//!
+//! Holds the `clap`-derived argument parser types (`Cli`, `Commands`, and the
+//! subcommand/value enums). The dispatch logic lives in the crate root
+//! (`main.rs`); parser-behavior tests live in the sibling `main/tests/*`
+//! modules.
+
+use std::path::PathBuf;
+
+use clap::Parser;
+
+pub(crate) use tumult_cli::commands::{
+    ComplianceFramework, ExportFormat, LoadToolArg, ReportFormat,
+};
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "tumult",
+    version,
+    propagate_version = true,
+    about = "Rust-native chaos engineering platform"
+)]
+pub(crate) struct Cli {
+    #[command(subcommand)]
+    pub(crate) command: Commands,
+}
+
+/// Maps to `tumult_core::execution::RollbackStrategy`
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum RollbackStrategy {
+    Always,
+    #[value(alias = "deviated")]
+    OnDeviation,
+    Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum OutputFormat {
+    /// Print journal as JSON to stdout
+    Json,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RecommendFormat {
+    Text,
+    Json,
+}
+
+impl From<RecommendFormat> for tumult_intelligence::OutputFormat {
+    fn from(format: RecommendFormat) -> Self {
+        match format {
+            RecommendFormat::Text => Self::Text,
+            RecommendFormat::Json => Self::Json,
+        }
+    }
+}
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum BaselineMode {
+    /// Run full baseline then inject fault (default)
+    Full,
+    /// Skip baseline, use static tolerances
+    Skip,
+    /// Run baseline only, no fault injection
+    Only,
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum Commands {
+    /// Execute a chaos experiment
+    Run {
+        /// Path to experiment .toon file
+        experiment: PathBuf,
+        /// Output journal location
+        #[arg(long, default_value = "journal.toon")]
+        journal_path: PathBuf,
+        /// Validate and show plan without executing
+        #[arg(long)]
+        dry_run: bool,
+        /// Rollback strategy
+        #[arg(long, default_value_t = RollbackStrategy::OnDeviation, value_enum)]
+        rollback_strategy: RollbackStrategy,
+        /// Baseline mode
+        #[arg(long, default_value_t = BaselineMode::Full, value_enum)]
+        baseline_mode: BaselineMode,
+        /// Skip auto-ingestion into persistent analytics store
+        #[arg(long)]
+        no_ingest: bool,
+        /// Output format for journal (human-readable summary or JSON to stdout)
+        #[arg(long, value_enum)]
+        output_format: Option<OutputFormat>,
+        /// Template variable substitution: KEY=VALUE (may be repeated)
+        #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
+        vars: Vec<String>,
+        /// Run a load test concurrently with the experiment method
+        #[arg(long, value_enum)]
+        load: Option<LoadToolArg>,
+        /// Path to load test script (k6 `.js` or `JMeter` `.jmx`)
+        #[arg(long)]
+        load_script: Option<PathBuf>,
+        /// Number of virtual users for load test
+        #[arg(long)]
+        load_vus: Option<u32>,
+        /// Load test duration (e.g. "30s", "5m")
+        #[arg(long)]
+        load_duration: Option<String>,
+    },
+    /// Validate experiment syntax and plugin references
+    Validate {
+        /// Path to experiment .toon file
+        experiment: PathBuf,
+    },
+    /// List all discovered plugins, actions, and probes
+    Discover {
+        /// Show details for a specific plugin
+        #[arg(long)]
+        plugin: Option<String>,
+    },
+    /// SQL analytics over journal files
+    Analyze {
+        /// Directory containing journal files (omit to use persistent store)
+        journals: Option<PathBuf>,
+        /// SQL query to execute (raw SQL mode)
+        #[arg(long)]
+        query: Option<String>,
+        /// Show summary of last N experiments (default: 1 if no --query)
+        #[arg(long)]
+        last: Option<usize>,
+        /// Show store-wide aggregate summary
+        #[arg(long)]
+        all: bool,
+    },
+    /// Convert journal to other formats
+    Export {
+        /// Journal file to export
+        journal: PathBuf,
+        /// Output format
+        #[arg(long, default_value_t = ExportFormat::Parquet, value_enum)]
+        format: ExportFormat,
+    },
+    /// Regulatory compliance report
+    Compliance {
+        /// Directory containing journal files
+        journals: PathBuf,
+        /// Target regulatory framework
+        #[arg(long, value_enum)]
+        framework: ComplianceFramework,
+    },
+    /// Generate report from journal (HTML or PDF)
+    Report {
+        /// Journal file
+        journal: PathBuf,
+        /// Output path
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Report format
+        #[arg(long, default_value_t = ReportFormat::Html, value_enum)]
+        format: ReportFormat,
+        /// Base URL of a trace UI (e.g. Jaeger/Tempo). When set, HTML reports
+        /// render each activity's trace_id as a clickable link. Falls back to
+        /// the `TUMULT_TRACE_UI_BASE` env var (resolved in `cmd_report`). Off by
+        /// default.
+        #[arg(long)]
+        trace_ui_base: Option<String>,
+    },
+    /// Cross-run trend analysis
+    Trend {
+        /// Directory containing journal files
+        journals: PathBuf,
+        /// Metric to track
+        #[arg(long, default_value = "resilience_score")]
+        metric: String,
+        /// Time window (e.g., 30d, 90d)
+        #[arg(long)]
+        last: Option<String>,
+        /// Filter by target technology (matches experiment title)
+        #[arg(long)]
+        target: Option<String>,
+    },
+    /// Interactive experiment creation
+    Init {
+        /// Start with a specific plugin
+        #[arg(long)]
+        plugin: Option<String>,
+    },
+    /// Import journals from Parquet backup
+    Import {
+        /// Directory containing Parquet backup files
+        parquet_dir: PathBuf,
+    },
+    /// Persistent analytics store management
+    Store {
+        #[command(subcommand)]
+        action: StoreAction,
+    },
+    /// AI-assisted recommendation for the next useful chaos experiment
+    Recommend {
+        /// Recommendation goal or operator intent
+        #[arg(long)]
+        goal: Option<String>,
+        /// Analytics store path to inspect
+        #[arg(long)]
+        store_path: Option<PathBuf>,
+        /// Model label to include in deterministic recommendation metadata
+        #[arg(long)]
+        model: Option<String>,
+        /// Do not include a draft TOON experiment
+        #[arg(long)]
+        no_draft: bool,
+        /// Output format
+        #[arg(long, default_value_t = RecommendFormat::Text, value_enum)]
+        format: RecommendFormat,
+    },
+    /// Agentic AI fault-injection scenarios and local smoke tests
+    Agentic {
+        #[command(subcommand)]
+        action: AgenticAction,
+    },
+    /// Coordinated experiment campaigns with resilience scoring
+    #[command(name = "gameday")]
+    GameDay {
+        #[command(subcommand)]
+        action: GameDayAction,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum AgenticAction {
+    /// List bundled agentic scenario packs
+    #[command(name = "list-packs")]
+    ListPacks,
+    /// Run the deterministic local malformed-output smoke path
+    Smoke {
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/smoke-journal.toon")]
+        journal: PathBuf,
+    },
+    /// Run a bundled scenario pack with deterministic local fixtures
+    Run {
+        /// Bundled scenario pack name
+        #[arg(long, default_value = "malformed-json-recovery")]
+        scenario: String,
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/run-journal.toon")]
+        journal: PathBuf,
+    },
+    /// Run deterministic replay fixture validation
+    Replay {
+        /// Replay fixture path
+        #[arg(
+            long,
+            default_value = "examples/agentic/malformed-json-recovery.fixture.json"
+        )]
+        fixture: PathBuf,
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/replay-journal.toon")]
+        journal: PathBuf,
+    },
+    /// Inject a scenario pack's faults into a live agent's model traffic
+    ///
+    /// Stands up a local reverse proxy in front of a provider endpoint; point
+    /// any base-URL-configurable agent (Claude Code, Codex, Copilot, and others)
+    /// at it via its base-URL or proxy environment variable.
+    Proxy {
+        /// Address to listen on — set your agent's base URL to this
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        listen: String,
+        /// Upstream provider base URL to forward to
+        #[arg(long, default_value = "https://api.anthropic.com")]
+        upstream: String,
+        /// Scenario pack whose faults are injected into live traffic
+        #[arg(long, default_value = "malformed-json-recovery")]
+        scenario: String,
+        /// Optional JSONL journal: one line appended per proxied request
+        #[arg(long)]
+        journal: Option<PathBuf>,
+        /// Base seed for the per-request fault gate
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Client targeted by the proxy: claude-code, codex, copilot, opencode
+        #[arg(long, default_value = "unknown")]
+        client: String,
+    },
+    /// Orchestrate a live agent run with tumult as the trace root
+    ///
+    /// Starts a tumult.experiment root span, runs `claude -p` with that trace
+    /// context + telemetry export + a base URL pointing at the proxy, and
+    /// evaluates the scenario pack's contracts against the agent's response.
+    RunLive {
+        /// Prompt to send to the agent
+        #[arg(long)]
+        prompt: String,
+        /// Scenario pack whose contracts are evaluated against the response
+        #[arg(long, default_value = "malformed-json-recovery")]
+        scenario: String,
+        /// Base URL the agent should use (point at the tumult proxy)
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
+        base_url: String,
+        /// Optional OTLP endpoint for the agent's telemetry export
+        #[arg(long)]
+        otlp: Option<String>,
+        /// Client being orchestrated (tags telemetry)
+        #[arg(long, default_value = "claude-code")]
+        client: String,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum StoreAction {
+    /// Show store statistics
+    Stats,
+    /// Export entire store to Parquet backup
+    Backup {
+        /// Output directory for backup files
+        #[arg(long, default_value = "tumult-backup")]
+        output: PathBuf,
+    },
+    /// Purge experiments older than N days
+    Purge {
+        /// Number of days to retain
+        #[arg(long)]
+        older_than_days: u32,
+    },
+    /// Show store file path
+    Path,
+    /// Migrate data from `DuckDB` to `ClickHouse`
+    Migrate,
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum GameDayAction {
+    /// Create a `.gameday.toon` file from experiment paths
+    Create {
+        /// Name for the `GameDay`
+        name: String,
+        /// Experiment `.toon` files (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        experiments: Vec<PathBuf>,
+        /// Load tool to run during the `GameDay`
+        #[arg(long, value_enum)]
+        load: Option<LoadToolArg>,
+        /// Path to load test script
+        #[arg(long)]
+        load_script: Option<PathBuf>,
+        /// Number of virtual users
+        #[arg(long)]
+        load_vus: Option<u32>,
+        /// Compliance framework to map
+        #[arg(long)]
+        framework: Option<ComplianceFramework>,
+    },
+    /// Run all experiments in a `GameDay` under shared load
+    Run {
+        /// Path to `.gameday.toon` file
+        gameday: PathBuf,
+    },
+    /// Show aggregate analysis of a completed `GameDay`
+    Analyze {
+        /// Path to `.gameday.toon` file (uses journals from same directory)
+        gameday: PathBuf,
+    },
+}

@@ -1,0 +1,43 @@
+title: TCP latency chaos via native tokio-netem proxy
+description: Inject one-way latency through a tumult-net chaos proxy and roll it back
+
+tags[2]: network, resilience
+
+steady_state_hypothesis:
+  title: System check
+  probes[1]:
+    - name: system-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: echo
+        arguments[1]: "ready"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ready"
+
+method[1]:
+  - name: inject-latency
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: inject_latency
+      arguments:
+        listen: 127.0.0.1:18080
+        upstream: 127.0.0.1:8080
+        delay_ms: 200
+        jitter_ms: 25
+        seed: 42
+    pause_after_s: 3.0
+
+rollbacks[1]:
+  - name: stop-proxy
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: stop_proxy
+      arguments:
+        listen: 127.0.0.1:18080

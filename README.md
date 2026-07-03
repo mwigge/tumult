@@ -1,11 +1,11 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.5.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Crates](https://img.shields.io/badge/crates-11-green)
+![Crates](https://img.shields.io/badge/crates-12-green)
 ![Tests](https://img.shields.io/badge/tests-634%20unit-brightgreen)
-![Plugins](https://img.shields.io/badge/plugins-10%20%7C%2048%20actions-green)
+![Plugins](https://img.shields.io/badge/plugins-11%20%7C%2055%20actions-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -172,6 +172,7 @@ cargo install tumult --features kubernetes,aws
 | **tumult-baseline** | Native (Rust) | Statistical baseline derivation, percentiles, deviation detection |
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
+| **tumult-net** | Native (Rust) | Privilege-free userspace TCP chaos proxy (via [`tokio-netem`](https://crates.io/crates/tokio-netem)) — latency, bandwidth throttle, write fragmentation, byte corruption, connection termination, all seed-reproducible. No `tc`/`iptables`/`NET_ADMIN` required. |
 | **tumult-mcp** | Native (Rust) | MCP server with 14 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
@@ -407,6 +408,7 @@ resilience.experiment           (root span — tumult-core)
 ├── resilience.action           (per action)
 │   ├── ssh.connect / ssh.execute   (tumult-ssh)
 │   ├── k8s.pod.delete / k8s.node.drain  (tumult-kubernetes)
+│   ├── net.inject_latency / net.corrupt_bytes  (tumult-net)
 │   └── script.execute          (tumult-plugin)
 ├── resilience.hypothesis.after
 │   └── resilience.probe
@@ -490,7 +492,7 @@ docker run --rm ghcr.io/mwigge/tumult --help
 docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
 ```
 
-Both images contain the full platform: all 11 Rust crates, 10 plugins (48 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
+Both images contain the full platform: all 12 Rust crates, 11 plugins (55 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
 
 | Image | Entrypoint | Use case |
 |-------|-----------|----------|
@@ -524,8 +526,8 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │                 │                 │                │                    │
 │  Redis 7        │  OTel Collector │  14 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
-│                 │  :18889 (prom)  │  10 plugins    │                    │
-│  Kafka 3.8      │                 │  48 actions    │                    │
+│                 │  :18889 (prom)  │  11 plugins    │                    │
+│  Kafka 3.8      │                 │  55 actions    │                    │
 │  :19092         │  ClickHouse     │                │                    │
 │                 │  (inside SigNoz)│                │                    │
 │  SSH Server     │                 │                │                    │
@@ -664,7 +666,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 
 ## Security
 
-Tumult is built entirely in safe Rust — **zero `unsafe` blocks** across all 11 crates. The full security posture is documented in [docs/security-assessment.md](docs/security-assessment.md) and vulnerability reporting in [SECURITY.md](SECURITY.md).
+Tumult is built entirely in safe Rust — **zero `unsafe` blocks** across all 12 crates. The full security posture is documented in [docs/security-assessment.md](docs/security-assessment.md) and vulnerability reporting in [SECURITY.md](SECURITY.md).
 
 | Area | Status |
 |------|--------|

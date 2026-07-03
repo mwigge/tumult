@@ -1,0 +1,32 @@
+[package]
+name = "tumult-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TCP chaos proxy actions and probes for the Tumult platform (wraps tokio-netem)"
+
+[dependencies]
+tumult-otel = { path = "../tumult-otel" }
+tokio-netem = { workspace = true }
+# Minimal tokio features — library crate plus the tumult-net-proxyd daemon binary.
+# "rt-multi-thread" + "macros" drive the daemon's #[tokio::main]; "net"/"io-util"
+# carry the proxy pipes; "process" spawns/stops the daemon; "sync" is used by the
+# tokio-netem injector/shutdowner surface.
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "net",
+    "io-util",
+    "macros",
+    "time",
+    "sync",
+    "fs",
+    "process",
+] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+opentelemetry = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
