@@ -1,0 +1,7 @@
+    Blocking waiting for file lock on build directory
+    Checking libduckdb-sys v1.10503.1
+    Checking tumult-core v1.5.0 (/data/src/tumult/tumult-core)
+    Checking duckdb v1.10503.1
+    Checking tumult-analytics v1.5.0 (/data/src/tumult/tumult-analytics)
+    Checking tumult-intelligence v1.5.0 (/data/src/tumult/tumult-intelligence)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.92s
