@@ -4,6 +4,20 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.5.1] — 2026-07-03 — Patch: test stability + honest report output
+
+### Fixed
+
+- **`tumult-net` probe test**: `reachable_is_false_for_a_closed_port` no longer
+  flakes under fully-parallel test runs. It retries with fresh ephemeral ports so
+  a sibling test transiently re-binding a just-freed port can no longer fail it.
+- **HTML report**: dropped the fabricated `tumult replay --trace <id>` hint on
+  failed activities. The core experiment path has no per-activity diagnostic
+  command (`next_diagnostic_command` exists only in agentic result types) and
+  `activity_results` is not keyed by trace, so the suggestion was misleading
+  (`tumult replay` takes a fixture path, not a trace). The captured error text
+  and the trace column remain as the actionable signal.
+
 ## [1.5.0] — 2026-07-03 — Privilege-free network chaos + CI-ready reporting
 
 ### Added

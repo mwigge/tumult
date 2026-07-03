@@ -164,14 +164,12 @@ fn html_without_trace_ui_base_is_plain_text() {
 }
 
 #[test]
-fn html_surfaces_failure_detail_and_diagnostic_hint() {
+fn html_surfaces_failure_detail() {
     let journal = journal_with_failure();
     let html = generate_html_report(&journal, None, "deadbeef");
     assert!(html.contains(r#"<span class="detail-error">connection refused on port 5432</span>"#));
-    // next-diagnostic-command hint synthesized from the trace_id.
-    assert!(
-        html.contains("tumult replay --trace 00112233445566778899aabbccddeeff")
-    );
+    // No fabricated diagnostic command is emitted (the core path has no such field).
+    assert!(!html.contains("tumult replay --trace"));
     // Failed rows carry the row-failed class.
     assert!(html.contains(r#"<tr class="row-failed">"#));
 }

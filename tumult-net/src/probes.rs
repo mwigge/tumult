@@ -67,11 +67,20 @@ mod tests {
 
     #[tokio::test]
     async fn reachable_is_false_for_a_closed_port() {
-        // Bind then drop to obtain an almost-certainly-free port.
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        assert!(!reachable("127.0.0.1", port).await.unwrap());
+        // Bind then drop to obtain a free port. Under a fully parallel test run a
+        // sibling can transiently re-bind that just-freed ephemeral port, so retry
+        // with fresh ports and only fail if every attempt appears reachable.
+        let mut last = true;
+        for _ in 0..8 {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            drop(listener);
+            last = reachable("127.0.0.1", port).await.unwrap();
+            if !last {
+                break;
+            }
+        }
+        assert!(!last, "a freshly-freed port kept reporting reachable");
     }
 
     #[tokio::test]
