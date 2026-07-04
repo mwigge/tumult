@@ -36,6 +36,7 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_gameday_list",
     "tumult_chaosgraph_query",
     "tumult_chaosgraph_neighbors",
+    "tumult_chaosgraph_coverage_gaps",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -447,9 +448,46 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                             "src": { "type": "string" },
                             "rel": {
                                 "type": "string",
-                                "enum": ["targets", "injects", "yielded", "observed_on", "exhibited"],
+                                "enum": ["targets", "injects", "yielded", "observed_on", "exhibited", "evidences", "maps_to_compliance", "gap_in"],
                             },
                             "dst": { "type": "string" },
+                        },
+                    },
+                },
+            }),
+        )),
+        "tumult_chaosgraph_coverage_gaps" => Some(schema_object(
+            &["count", "gaps"],
+            json!({
+                "count": { "type": "integer", "description": "Number of untested actions (after any domain filter)." },
+                "gaps": {
+                    "type": "array",
+                    "description": "Untested plugin actions.",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "plugin", "action", "domain"],
+                        "properties": {
+                            "id": { "type": "string", "description": "Coverage-gap node id (gap:<plugin>::<action>)." },
+                            "plugin": { "type": "string" },
+                            "action": { "type": "string" },
+                            "domain": { "type": "string", "description": "FaultDomain node id (domain:<plugin>)." },
+                        },
+                    },
+                },
+                "framework": {
+                    "type": "string",
+                    "description": "Framework report id; present only when a framework filter was given.",
+                },
+                "unevidenced_articles": {
+                    "type": "array",
+                    "description": "Framework articles with no evidences edge yet; present only when a framework filter was given.",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "control_id", "strength"],
+                        "properties": {
+                            "id": { "type": "string" },
+                            "control_id": { "type": "string" },
+                            "strength": { "type": "string" },
                         },
                     },
                 },
@@ -468,7 +506,7 @@ fn graph_node_summary_schema() -> Value {
             "id": { "type": "string" },
             "kind": {
                 "type": "string",
-                "enum": ["experiment", "fault", "service", "journal", "deviation"],
+                "enum": ["experiment", "fault", "service", "journal", "deviation", "compliance_article", "coverage_gap", "fault_domain"],
             },
             "label": { "type": "string" },
         },

@@ -118,6 +118,155 @@ pub fn chaosgraph_neighbors(
     })
 }
 
+/// `chaosgraph_coverage_gaps`: plugin-catalog actions that have never appeared
+/// in a tested run, optionally filtered by fault domain (plugin) and annotated,
+/// when a framework is given, with that framework's still-unevidenced articles.
+///
+/// Side effect: refreshes the persistent `CoverageGap` / `FaultDomain` nodes and
+/// `gap_in` edges in the store's graph so `chaosgraph_query`/`_neighbors` can
+/// see them. Read-only with respect to the analytics *history* (it derives from
+/// existing data and only rewrites the derived coverage-gap sub-graph).
+///
+/// The structured object is
+/// `{count, gaps:[{id,plugin,action,domain}], framework?, unevidenced_articles?}`.
+///
+/// # Errors
+///
+/// Returns a [`ToolError`] if the store does not exist, cannot be opened, the
+/// derivation fails, or an unknown `framework` is given.
+pub fn chaosgraph_coverage_gaps(
+    store_path: &str,
+    framework: Option<&str>,
+    domain: Option<&str>,
+) -> Result<StructuredReport, ToolError> {
+    let store = open_store(store_path)?;
+
+    // Available capabilities from the plugin catalog.
+    let plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
+    let available: Vec<tumult_graph::AvailableAction> = plugins
+        .iter()
+        .flat_map(|p| {
+            p.actions
+                .iter()
+                .map(move |a| tumult_graph::AvailableAction::new(&p.name, &a.name))
+        })
+        .collect();
+
+    // Tested actions from the store, then derive the gap sub-graph and persist
+    // it so the graph tools can navigate it.
+    let tested = store
+        .tested_action_names()
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let delta = tumult_graph::coverage_gap_delta(&available, &tested);
+    store
+        .refresh_coverage_gaps(&delta)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+
+    // Optional domain (plugin) filter, applied to the returned list only.
+    let domain_filter = domain.map(str::to_ascii_lowercase);
+    let mut gaps: Vec<serde_json::Value> = Vec::new();
+    for node in &delta.nodes {
+        if node.kind != tumult_graph::NodeKind::CoverageGap {
+            continue;
+        }
+        let plugin = node.attrs["plugin"].as_str().unwrap_or_default();
+        let action = node.attrs["action"].as_str().unwrap_or_default();
+        if let Some(ref want) = domain_filter {
+            if !plugin.to_ascii_lowercase().contains(want) {
+                continue;
+            }
+        }
+        gaps.push(serde_json::json!({
+            "id": node.id,
+            "plugin": plugin,
+            "action": action,
+            "domain": format!("domain:{plugin}"),
+        }));
+    }
+    gaps.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+
+    let mut structured = serde_json::Map::new();
+    structured.insert("count".into(), serde_json::json!(gaps.len()));
+    structured.insert("gaps".into(), serde_json::Value::Array(gaps.clone()));
+
+    let mut text = format!("coverage gaps: {} untested action(s)", gaps.len());
+    if let Some(d) = domain {
+        let _ = write!(text, "  (domain filter: {d})");
+    }
+    text.push('\n');
+    for gap in &gaps {
+        let _ = writeln!(
+            text,
+            "  {}  (domain {})",
+            gap["id"].as_str().unwrap_or_default(),
+            gap["plugin"].as_str().unwrap_or_default()
+        );
+    }
+
+    // Framework annotation: which of the framework's articles have no
+    // `evidences` edge yet.
+    if let Some(fw) = framework {
+        let parsed = tumult_core::compliance::ComplianceFramework::parse(fw)
+            .map_err(ToolError::InvalidInput)?;
+        let evidenced = evidenced_article_ids(&store)?;
+        let unevidenced: Vec<serde_json::Value> = tumult_core::compliance::CITATIONS
+            .iter()
+            .filter(|c| c.framework == parsed)
+            .map(|c| {
+                (
+                    tumult_graph::compliance_article_id(c.framework, c.control_id),
+                    c,
+                )
+            })
+            .filter(|(id, _)| !evidenced.contains(id))
+            .map(|(id, c)| {
+                serde_json::json!({
+                    "id": id,
+                    "control_id": c.control_id,
+                    "strength": c.strength.as_str(),
+                })
+            })
+            .collect();
+
+        let _ = writeln!(
+            text,
+            "\nframework {}: {} article(s) still unevidenced",
+            parsed.as_report_str(),
+            unevidenced.len()
+        );
+        for art in &unevidenced {
+            let _ = writeln!(text, "  {}", art["id"].as_str().unwrap_or_default());
+        }
+        structured.insert(
+            "framework".into(),
+            serde_json::json!(parsed.as_report_str()),
+        );
+        structured.insert(
+            "unevidenced_articles".into(),
+            serde_json::Value::Array(unevidenced),
+        );
+    }
+
+    Ok(StructuredReport {
+        text: crate::tools::cap_text(text, "filter by domain or framework"),
+        structured,
+    })
+}
+
+/// The set of `ComplianceArticle` node ids that have at least one `evidences`
+/// edge pointing at them in the store.
+fn evidenced_article_ids(
+    store: &tumult_analytics::AnalyticsStore,
+) -> Result<std::collections::HashSet<String>, ToolError> {
+    let rows = store
+        .query("SELECT DISTINCT dst FROM graph_edges WHERE rel = 'evidences'")
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| row.into_iter().next())
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +353,100 @@ mod tests {
     fn missing_store_errors() {
         let err = chaosgraph_query("/nonexistent/x.duckdb", "experiment", None).unwrap_err();
         assert!(err.to_string().contains("store not found"));
+    }
+
+    /// Seed a store from a process-provider experiment (like the demo's
+    /// demo-postgres) and confirm a service node + `targets` edge are produced.
+    #[test]
+    fn process_provider_experiment_yields_service_node_and_targets_edge() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("analytics.duckdb");
+        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let exp = Experiment {
+            title: "Demo — PostgreSQL connection kill".into(),
+            method: vec![Activity {
+                name: "kill-connections".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Process {
+                    path: "sh".into(),
+                    arguments: vec![
+                        "-c".into(),
+                        "docker exec demo-postgres psql -U demo -c 'SELECT 1'".into(),
+                    ],
+                    env: std::collections::HashMap::new(),
+                    timeout_s: Some(15.0),
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let journal = Journal {
+            experiment_title: "Demo — PostgreSQL connection kill".into(),
+            experiment_id: "demo-postgres-1".into(),
+            status: ExperimentStatus::Completed,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_ms: 1,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: None,
+            halt: None,
+            blast_radius: None,
+        };
+        store
+            .ingest_journal_with_experiment(&journal, Some(&exp))
+            .unwrap();
+        drop(store);
+
+        let services = chaosgraph_query(db.to_str().unwrap(), "service", None).unwrap();
+        assert_eq!(services.structured["nodes"][0]["id"], "svc:demo-postgres");
+
+        let ego = chaosgraph_neighbors(
+            db.to_str().unwrap(),
+            "exp:Demo — PostgreSQL connection kill",
+            Some("targets"),
+            1,
+        )
+        .unwrap();
+        let edges = ego.structured["edges"].as_array().unwrap();
+        assert!(edges
+            .iter()
+            .any(|e| e["dst"] == "svc:demo-postgres" && e["rel"] == "targets"));
+    }
+
+    #[test]
+    fn coverage_gaps_round_trip_reports_and_persists_gaps() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("analytics.duckdb");
+        // Create the store so the tool can open it.
+        drop(tumult_analytics::AnalyticsStore::open(&db).unwrap());
+
+        let report = chaosgraph_coverage_gaps(db.to_str().unwrap(), None, None).unwrap();
+        // Structured content conforms: count + gaps present.
+        assert!(report.structured.contains_key("count"));
+        assert!(report.structured["gaps"].is_array());
+        // No framework filter → no framework annotation keys.
+        assert!(!report.structured.contains_key("framework"));
+
+        // With a framework filter, the unevidenced-articles list is present and
+        // (with no runs) contains that framework's articles.
+        let report = chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("dora"), None).unwrap();
+        assert_eq!(report.structured["framework"], "DORA");
+        assert!(report.structured["unevidenced_articles"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty()));
+
+        // Unknown framework is rejected.
+        let err = chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("hipaa"), None).unwrap_err();
+        assert!(err.to_string().contains("hipaa"));
     }
 }

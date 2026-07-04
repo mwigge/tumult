@@ -6,9 +6,13 @@ use serde::{Deserialize, Serialize};
 
 /// The kind of a graph node.
 ///
-/// A chaos run is modelled with five node kinds. `Experiment` and `Service`
-/// are stable identities that recur across runs; `Journal` and `Deviation`
-/// are per-run; `Fault` is shared by every run that injects the same fault.
+/// A chaos run is modelled with five per-run/identity node kinds. `Experiment`
+/// and `Service` are stable identities that recur across runs; `Journal` and
+/// `Deviation` are per-run; `Fault` is shared by every run that injects the
+/// same fault. Phase 2 adds three deterministic, mostly-static kinds:
+/// `ComplianceArticle` (from the compliance citation registry), `CoverageGap`
+/// (an untested plugin action) and `FaultDomain` (a plugin grouping targeted
+/// by coverage gaps).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
@@ -23,6 +27,14 @@ pub enum NodeKind {
     Journal,
     /// A run's deviation: present when the run did not complete cleanly.
     Deviation,
+    /// A regulatory control/article from the compliance citation registry
+    /// (e.g. `compliance:DORA/Art.25`). Static and deterministic.
+    ComplianceArticle,
+    /// An untested plugin action (`gap:<plugin>::<action>`): a fault primitive
+    /// available in the catalog that has never appeared in a tested run.
+    CoverageGap,
+    /// A plugin grouping (`domain:<plugin>`) that coverage gaps belong to.
+    FaultDomain,
 }
 
 impl NodeKind {
@@ -35,6 +47,9 @@ impl NodeKind {
             Self::Service => "service",
             Self::Journal => "journal",
             Self::Deviation => "deviation",
+            Self::ComplianceArticle => "compliance_article",
+            Self::CoverageGap => "coverage_gap",
+            Self::FaultDomain => "fault_domain",
         }
     }
 
@@ -47,6 +62,9 @@ impl NodeKind {
             "service" => Some(Self::Service),
             "journal" => Some(Self::Journal),
             "deviation" => Some(Self::Deviation),
+            "compliance_article" => Some(Self::ComplianceArticle),
+            "coverage_gap" => Some(Self::CoverageGap),
+            "fault_domain" => Some(Self::FaultDomain),
             _ => None,
         }
     }
@@ -72,6 +90,15 @@ pub enum EdgeRel {
     ObservedOn,
     /// `Journal -> Deviation`: this run exhibited this deviation.
     Exhibited,
+    /// `Experiment -> ComplianceArticle`: a passing run supplies evidence
+    /// toward this control. Carries the citation `strength` on the edge attrs.
+    Evidences,
+    /// `Experiment -> ComplianceArticle`: the experiment definition *declares*
+    /// a mapping to this control (intent, not run-produced evidence).
+    MapsToCompliance,
+    /// `CoverageGap -> FaultDomain`: this untested action is a gap in the
+    /// plugin/fault-domain.
+    GapIn,
 }
 
 impl EdgeRel {
@@ -84,6 +111,9 @@ impl EdgeRel {
             Self::Yielded => "yielded",
             Self::ObservedOn => "observed_on",
             Self::Exhibited => "exhibited",
+            Self::Evidences => "evidences",
+            Self::MapsToCompliance => "maps_to_compliance",
+            Self::GapIn => "gap_in",
         }
     }
 
@@ -96,6 +126,9 @@ impl EdgeRel {
             "yielded" => Some(Self::Yielded),
             "observed_on" => Some(Self::ObservedOn),
             "exhibited" => Some(Self::Exhibited),
+            "evidences" => Some(Self::Evidences),
+            "maps_to_compliance" => Some(Self::MapsToCompliance),
+            "gap_in" => Some(Self::GapIn),
             _ => None,
         }
     }
@@ -129,6 +162,10 @@ pub struct Edge {
     pub rel: EdgeRel,
     /// Destination node id.
     pub dst: String,
+    /// Small structured attributes, stored as JSON (e.g. the citation
+    /// `strength` on an `evidences` edge). Empty object when unused.
+    #[serde(default)]
+    pub attrs: serde_json::Value,
 }
 
 /// The set of nodes and edges a single run contributes to the graph.
@@ -189,6 +226,9 @@ mod tests {
             NodeKind::Service,
             NodeKind::Journal,
             NodeKind::Deviation,
+            NodeKind::ComplianceArticle,
+            NodeKind::CoverageGap,
+            NodeKind::FaultDomain,
         ] {
             assert_eq!(NodeKind::parse(kind.as_str()), Some(kind));
             assert_eq!(NodeKind::parse(&kind.as_str().to_uppercase()), Some(kind));
@@ -204,6 +244,9 @@ mod tests {
             EdgeRel::Yielded,
             EdgeRel::ObservedOn,
             EdgeRel::Exhibited,
+            EdgeRel::Evidences,
+            EdgeRel::MapsToCompliance,
+            EdgeRel::GapIn,
         ] {
             assert_eq!(EdgeRel::parse(rel.as_str()), Some(rel));
         }

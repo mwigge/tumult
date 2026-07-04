@@ -13,11 +13,13 @@
 //! * **Journal only** (the CLI auto-ingest path): faults fall back to the
 //!   injecting activity's name; no service/target information is available.
 
-use std::collections::HashMap;
+use tumult_core::types::{
+    ActivityType, Experiment, ExperimentStatus, Journal, Provider, RegulatoryMapping,
+};
 
-use tumult_core::types::{ActivityType, Experiment, ExperimentStatus, Journal, Provider};
-
+use crate::compliance::resolve_citation;
 use crate::model::{Edge, EdgeRel, GraphDelta, Node, NodeKind};
+use crate::service::{service_from_arguments, service_from_process};
 
 /// Turn a run into its graph delta. Pass `Some(experiment)` for the full
 /// `Fault = plugin::function` + `Service` model; pass `None` for the
@@ -68,35 +70,69 @@ pub fn journal_to_graph(journal: &Journal, experiment: Option<&Experiment>) -> G
         None => map_from_journal(&mut builder, &exp_id, journal),
     }
 
+    // ── Compliance articles (from a declared regulatory mapping) ──
+    // Prefer the experiment definition; fall back to the journal. Only
+    // requirement ids that resolve to a specific registry citation produce
+    // edges — unresolved ids are skipped (no guessing).
+    let regulatory = experiment
+        .and_then(|e| e.regulatory.as_ref())
+        .or(journal.regulatory.as_ref());
+    if let Some(mapping) = regulatory {
+        map_compliance(
+            &mut builder,
+            &exp_id,
+            mapping,
+            journal.status == ExperimentStatus::Completed,
+        );
+    }
+
     builder.finish()
 }
 
-/// Richest path: derive `Fault = plugin::function` and `Service` nodes from the
-/// experiment's action activities (native providers).
+/// Richest path: derive `Fault` and `Service` nodes from the experiment's
+/// action activities. Native providers give `Fault = plugin::function` and a
+/// service from provider arguments; process providers give `Fault =
+/// activity name` and, where a container/host/URL can be extracted with
+/// confidence, a service too.
 fn map_from_experiment(builder: &mut Builder, exp_id: &str, exp: &Experiment) {
     for activity in &exp.method {
         if activity.activity_type != ActivityType::Action {
             continue;
         }
-        let Provider::Native {
-            plugin,
-            function,
-            arguments,
-        } = &activity.provider
-        else {
-            continue;
+        let (fault_id, service) = match &activity.provider {
+            Provider::Native {
+                plugin,
+                function,
+                arguments,
+            } => {
+                let fault_label = format!("{plugin}::{function}");
+                let fault_id = format!("fault:{fault_label}");
+                builder.push_node(Node {
+                    id: fault_id.clone(),
+                    kind: NodeKind::Fault,
+                    label: fault_label,
+                    attrs: serde_json::json!({ "plugin": plugin, "function": function }),
+                });
+                (fault_id, service_from_arguments(arguments))
+            }
+            Provider::Process {
+                path, arguments, ..
+            } => {
+                // Process providers have no plugin::function; key the fault by
+                // the activity name and record the executable for context.
+                let fault_id = format!("fault:{}", activity.name);
+                builder.push_node(Node {
+                    id: fault_id.clone(),
+                    kind: NodeKind::Fault,
+                    label: activity.name.clone(),
+                    attrs: serde_json::json!({ "process": path }),
+                });
+                (fault_id, service_from_process(path, arguments))
+            }
         };
-        let fault_label = format!("{plugin}::{function}");
-        let fault_id = format!("fault:{fault_label}");
-        builder.push_node(Node {
-            id: fault_id.clone(),
-            kind: NodeKind::Fault,
-            label: fault_label,
-            attrs: serde_json::json!({ "plugin": plugin, "function": function }),
-        });
         builder.push_edge(exp_id, EdgeRel::Injects, &fault_id);
 
-        if let Some(service) = service_from_arguments(arguments) {
+        if let Some(service) = service {
             let svc_id = format!("svc:{service}");
             builder.push_node(Node {
                 id: svc_id.clone(),
@@ -106,6 +142,41 @@ fn map_from_experiment(builder: &mut Builder, exp_id: &str, exp: &Experiment) {
             });
             builder.push_edge(exp_id, EdgeRel::Targets, &svc_id);
             builder.push_edge(&fault_id, EdgeRel::ObservedOn, &svc_id);
+        }
+    }
+}
+
+/// Map a declared [`RegulatoryMapping`] onto `maps_to_compliance` (declared
+/// intent) and, when the run completed, `evidences` (run-produced evidence)
+/// edges from the experiment to the matching [`NodeKind::ComplianceArticle`]
+/// nodes. The citation `strength` is carried on each edge's attrs.
+fn map_compliance(
+    builder: &mut Builder,
+    exp_id: &str,
+    mapping: &RegulatoryMapping,
+    completed: bool,
+) {
+    for framework in &mapping.frameworks {
+        for requirement in &mapping.requirements {
+            let Some(citation) = resolve_citation(framework, &requirement.id) else {
+                continue;
+            };
+            let article_id =
+                crate::compliance::compliance_article_id(citation.framework, citation.control_id);
+            let attrs = serde_json::json!({
+                "strength": citation.strength.as_str(),
+                "framework": citation.framework.as_report_str(),
+                "control_id": citation.control_id,
+            });
+            builder.push_edge_with_attrs(
+                exp_id,
+                EdgeRel::MapsToCompliance,
+                &article_id,
+                attrs.clone(),
+            );
+            if completed {
+                builder.push_edge_with_attrs(exp_id, EdgeRel::Evidences, &article_id, attrs);
+            }
         }
     }
 }
@@ -127,42 +198,6 @@ fn map_from_journal(builder: &mut Builder, exp_id: &str, journal: &Journal) {
     }
 }
 
-/// Argument keys, in priority order, that name the service/target a native
-/// fault acts on. The first present string value wins.
-const SERVICE_ARG_KEYS: &[&str] = &[
-    "upstream", "target", "host", "service", "endpoint", "address", "url", "pod",
-];
-
-/// Extract a short service name from a native provider's arguments, stripping a
-/// URL scheme, path, and `:port` suffix so `http://demo-app:8080/health`,
-/// `demo-app:8080`, and `demo-app` all collapse to `demo-app`.
-fn service_from_arguments(arguments: &HashMap<String, serde_json::Value>) -> Option<String> {
-    let raw = SERVICE_ARG_KEYS
-        .iter()
-        .find_map(|key| arguments.get(*key).and_then(serde_json::Value::as_str))?;
-    let host = normalize_service(raw);
-    (!host.is_empty()).then_some(host)
-}
-
-/// Reduce a raw target string to a bare host name.
-fn normalize_service(raw: &str) -> String {
-    // Drop a scheme (`http://`, `tcp://`, …).
-    let no_scheme = raw.split_once("://").map_or(raw, |(_, rest)| rest);
-    // Drop any path/query.
-    let authority = no_scheme.split(['/', '?']).next().unwrap_or(no_scheme);
-    // Drop a `:port` suffix.
-    let host = authority
-        .rsplit_once(':')
-        .map_or(authority, |(host, port)| {
-            if port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty() {
-                host
-            } else {
-                authority
-            }
-        });
-    host.trim().to_string()
-}
-
 /// Accumulates nodes/edges while deduplicating by id / `(src, rel, dst)`.
 #[derive(Default)]
 struct Builder {
@@ -180,12 +215,23 @@ impl Builder {
     }
 
     fn push_edge(&mut self, src: &str, rel: EdgeRel, dst: &str) {
+        self.push_edge_with_attrs(src, rel, dst, serde_json::json!({}));
+    }
+
+    fn push_edge_with_attrs(
+        &mut self,
+        src: &str,
+        rel: EdgeRel,
+        dst: &str,
+        attrs: serde_json::Value,
+    ) {
         let key = (src.to_string(), rel.as_str(), dst.to_string());
         if self.seen_edges.insert(key) {
             self.edges.push(Edge {
                 src: src.to_string(),
                 rel,
                 dst: dst.to_string(),
+                attrs,
             });
         }
     }
@@ -314,6 +360,119 @@ mod tests {
         )));
     }
 
+    fn process_experiment() -> Experiment {
+        Experiment {
+            title: "Latency drill".into(),
+            method: vec![Activity {
+                name: "kill-connections".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Process {
+                    path: "sh".into(),
+                    arguments: vec![
+                        "-c".into(),
+                        "docker exec demo-postgres psql -U demo -c 'SELECT 1'".into(),
+                    ],
+                    env: HashMap::new(),
+                    timeout_s: Some(15.0),
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn process_provider_experiment_extracts_service_and_targets_edge() {
+        let journal = base_journal("run-proc", ExperimentStatus::Completed);
+        let delta = journal_to_graph(&journal, Some(&process_experiment()));
+
+        let ids = node_ids(&delta);
+        // Fault keyed by activity name (process providers have no plugin::fn).
+        assert!(ids.contains(&"fault:kill-connections"));
+        // Service extracted from `docker exec demo-postgres`.
+        assert!(ids.contains(&"svc:demo-postgres"));
+
+        let edges = edge_tuples(&delta);
+        assert!(edges.contains(&(
+            "exp:Latency drill".into(),
+            "targets",
+            "svc:demo-postgres".into()
+        )));
+        assert!(edges.contains(&(
+            "fault:kill-connections".into(),
+            "observed_on",
+            "svc:demo-postgres".into()
+        )));
+    }
+
+    fn regulatory_experiment() -> Experiment {
+        use tumult_core::types::{RegulatoryMapping, RegulatoryRequirement};
+        let mut exp = latency_experiment();
+        exp.regulatory = Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 25".into(),
+                description: "Testing of ICT tools and systems".into(),
+                evidence: "scenario-based fault injection".into(),
+            }],
+        });
+        exp
+    }
+
+    #[test]
+    fn regulatory_mapping_adds_compliance_edges_with_strength() {
+        let journal = base_journal("run-reg", ExperimentStatus::Completed);
+        let delta = journal_to_graph(&journal, Some(&regulatory_experiment()));
+
+        let article = "compliance:DORA/Art.25";
+        // Declared-intent edge is always present.
+        assert!(delta
+            .edges
+            .iter()
+            .any(|e| e.rel == EdgeRel::MapsToCompliance
+                && e.src == "exp:Latency drill"
+                && e.dst == article));
+        // Evidence edge present because the run completed, carrying strength.
+        let evidences = delta
+            .edges
+            .iter()
+            .find(|e| e.rel == EdgeRel::Evidences && e.dst == article)
+            .expect("completed run must produce an evidences edge");
+        assert_eq!(evidences.attrs["strength"], "direct");
+    }
+
+    #[test]
+    fn regulatory_mapping_evidences_only_on_completion() {
+        let journal = base_journal("run-dev", ExperimentStatus::Deviated);
+        let delta = journal_to_graph(&journal, Some(&regulatory_experiment()));
+        // A deviated run declares the mapping but produces no evidence.
+        assert!(delta
+            .edges
+            .iter()
+            .any(|e| e.rel == EdgeRel::MapsToCompliance));
+        assert!(!delta.edges.iter().any(|e| e.rel == EdgeRel::Evidences));
+    }
+
+    #[test]
+    fn unresolved_regulatory_requirement_is_skipped() {
+        use tumult_core::types::{RegulatoryMapping, RegulatoryRequirement};
+        let mut exp = latency_experiment();
+        exp.regulatory = Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 999".into(),
+                description: "not a real control".into(),
+                evidence: "n/a".into(),
+            }],
+        });
+        let journal = base_journal("run-x", ExperimentStatus::Completed);
+        let delta = journal_to_graph(&journal, Some(&exp));
+        assert!(!delta
+            .edges
+            .iter()
+            .any(|e| matches!(e.rel, EdgeRel::Evidences | EdgeRel::MapsToCompliance)));
+    }
+
     #[test]
     fn journal_only_falls_back_to_activity_name_faults() {
         let journal = base_journal("run-3", ExperimentStatus::Completed);
@@ -350,15 +509,5 @@ mod tests {
         edges.sort();
         edges.dedup();
         assert_eq!(edges.len(), ecount, "edges must be unique");
-    }
-
-    #[test]
-    fn service_extraction_strips_scheme_path_and_port() {
-        assert_eq!(normalize_service("http://demo-app:8080/health"), "demo-app");
-        assert_eq!(normalize_service("demo-app:8080"), "demo-app");
-        assert_eq!(normalize_service("demo-app"), "demo-app");
-        assert_eq!(normalize_service("10.0.0.1:5432"), "10.0.0.1");
-        // A non-numeric suffix is kept (not a port).
-        assert_eq!(normalize_service("cache:main"), "cache:main");
     }
 }

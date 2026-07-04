@@ -187,9 +187,9 @@ mod tests {
         assert!(result.is_ok());
         let report = result.unwrap();
         assert!(report.text.contains("experiments: 0"));
-        assert!(report.text.contains("schema_version: 2"));
+        assert!(report.text.contains("schema_version: 3"));
         assert_eq!(report.structured["experiments"], 0);
-        assert_eq!(report.structured["schema_version"], 2);
+        assert_eq!(report.structured["schema_version"], 3);
         assert!(report.structured.contains_key("store"));
         assert!(report.structured.contains_key("activities"));
     }

@@ -55,9 +55,14 @@
 //! ~2 600 → ~70 tokens (≈37× smaller) for the same "what did this experiment
 //! touch?" question.
 
+pub mod compliance;
+pub mod coverage;
 mod map;
 mod model;
+mod service;
 pub mod sql;
 
+pub use compliance::{compliance_article_id, compliance_article_nodes, resolve_citation};
+pub use coverage::{coverage_gap_delta, AvailableAction, COVERAGE_GAP_RUN_ID};
 pub use map::journal_to_graph;
 pub use model::{Edge, EdgeRel, EgoGraph, EgoTuple, GraphDelta, Node, NodeKind, NodeSummary};

@@ -18,11 +18,11 @@ use crate::tools;
 use super::output_schema::output_schema_for;
 use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
-    AnalyzeStoreTool, AnalyzeTool, ChaosGraphNeighborsTool, ChaosGraphQueryTool, ComplianceTool,
-    CoverageTool, CreateExperimentTool, DiscoverTool, GameDayAnalyzeTool, GameDayCreateTool,
-    GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool, QueryTracesTool,
-    ReadJournalTool, RecommendTool, ReportTool, RunExperimentTool, StoreStatsTool, TrendTool,
-    ValidateTool,
+    AnalyzeStoreTool, AnalyzeTool, ChaosGraphCoverageGapsTool, ChaosGraphNeighborsTool,
+    ChaosGraphQueryTool, ComplianceTool, CoverageTool, CreateExperimentTool, DiscoverTool,
+    GameDayAnalyzeTool, GameDayCreateTool, GameDayListTool, GameDayRunTool, ListExperimentsTool,
+    ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool, ReportTool,
+    RunExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
 };
 use super::TumultHandler;
 
@@ -150,6 +150,7 @@ impl ServerHandler for TumultHandler {
             AgenticRunExperimentTool::tool(),
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
+            ChaosGraphCoverageGapsTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
         // hand-written schemas for tools that return structured content.
@@ -474,6 +475,17 @@ impl ServerHandler for TumultHandler {
                 })
                 .map(ToolOutput::from)
             }
+            "tumult_chaosgraph_coverage_gaps" => {
+                let args: ChaosGraphCoverageGapsTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| {
+                    tools::chaosgraph_coverage_gaps(
+                        &args.store_path,
+                        args.framework.as_deref(),
+                        args.domain.as_deref(),
+                    )
+                })
+                .map(ToolOutput::from)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -574,8 +586,9 @@ mod tests {
             AgenticRunExperimentTool::tool(),
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
+            ChaosGraphCoverageGapsTool::tool(),
         ];
-        assert_eq!(tools.len(), 26);
+        assert_eq!(tools.len(), 27);
     }
 
     #[test]
@@ -619,6 +632,7 @@ mod tests {
             AgenticRunExperimentTool::tool(),
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
+            ChaosGraphCoverageGapsTool::tool(),
         ];
         for tool in &tools {
             assert!(
@@ -788,6 +802,7 @@ mod tests {
             "tumult_agentic_run_experiment",
             "tumult_chaosgraph_query",
             "tumult_chaosgraph_neighbors",
+            "tumult_chaosgraph_coverage_gaps",
         ];
         let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(
@@ -875,6 +890,7 @@ mod tests {
             AgenticRunExperimentTool::tool(),
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
+            ChaosGraphCoverageGapsTool::tool(),
         ];
         for tool in &read_only {
             let a = tool
@@ -1196,6 +1212,12 @@ mod tests {
                 "tumult_chaosgraph_neighbors",
                 serde_json::json!({
                     "node_id": "exp:MCP test experiment",
+                    "store_path": store_path.to_str().unwrap(),
+                }),
+            ),
+            (
+                "tumult_chaosgraph_coverage_gaps",
+                serde_json::json!({
                     "store_path": store_path.to_str().unwrap(),
                 }),
             ),

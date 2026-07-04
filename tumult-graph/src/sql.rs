@@ -8,6 +8,9 @@
 
 /// DDL for the two graph tables. Idempotent (`IF NOT EXISTS`), so it is safe to
 /// run on every store open and doubles as the additive v1 → v2 migration.
+///
+/// The `graph_edges.attrs` column is part of the fresh-install schema (v3).
+/// Stores created at v2 gain it via [`MIGRATE_EDGES_ADD_ATTRS`].
 pub const CREATE_TABLES: &str = "\
 CREATE TABLE IF NOT EXISTS graph_nodes (
     id TEXT PRIMARY KEY,
@@ -20,12 +23,19 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     rel TEXT NOT NULL,
     dst TEXT NOT NULL,
     run_id TEXT NOT NULL,
-    ts BIGINT NOT NULL
+    ts BIGINT NOT NULL,
+    attrs JSON
 );
 CREATE INDEX IF NOT EXISTS idx_graph_edges_src ON graph_edges (src);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_dst ON graph_edges (dst);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_run ON graph_edges (run_id);
 CREATE INDEX IF NOT EXISTS idx_graph_nodes_kind ON graph_nodes (kind);";
+
+/// Additive v2 → v3 migration: add the `attrs` column to an existing
+/// `graph_edges` table. Idempotent via `IF NOT EXISTS`, so it is safe to run on
+/// every store open (a no-op once applied or on a fresh v3 table).
+pub const MIGRATE_EDGES_ADD_ATTRS: &str =
+    "ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS attrs JSON";
 
 /// Upsert a node. Parameters, in order: `id`, `kind`, `label`, `attrs` (JSON
 /// text). On id conflict the label/kind/attrs are refreshed.
@@ -40,12 +50,18 @@ ON CONFLICT (id) DO UPDATE SET
 /// Delete every edge previously recorded for a run. Parameter: `run_id`.
 ///
 /// Run before re-inserting a run's edges so re-ingesting the same run never
-/// duplicates edges.
+/// duplicates edges. Static sub-graphs (coverage gaps) use a sentinel `run_id`
+/// so the same clear-then-insert keeps them idempotent.
 pub const DELETE_EDGES_FOR_RUN: &str = "DELETE FROM graph_edges WHERE run_id = ?";
 
-/// Insert one edge. Parameters, in order: `src`, `rel`, `dst`, `run_id`, `ts`.
+/// Delete every node of a given `kind`. Parameter: `kind`. Used to clear a
+/// derived, recomputable node set (coverage gaps) before re-deriving it.
+pub const DELETE_NODES_BY_KIND: &str = "DELETE FROM graph_nodes WHERE kind = ?";
+
+/// Insert one edge. Parameters, in order: `src`, `rel`, `dst`, `run_id`, `ts`,
+/// `attrs` (JSON text).
 pub const INSERT_EDGE: &str =
-    "INSERT INTO graph_edges (src, rel, dst, run_id, ts) VALUES (?, ?, ?, ?, ?)";
+    "INSERT INTO graph_edges (src, rel, dst, run_id, ts, attrs) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))";
 
 /// Does a node with this id exist? Parameter: `id`. Selects `count(*)`.
 pub const NODE_EXISTS: &str = "SELECT count(*) FROM graph_nodes WHERE id = ?";

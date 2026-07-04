@@ -30,7 +30,9 @@ pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnaly
 /// Schema history:
 /// * v1 — experiments, activity/load results, agentic tables.
 /// * v2 — `ChaosGraph` `graph_nodes` / `graph_edges` (additive, no data loss).
-const CURRENT_SCHEMA_VERSION: i64 = 2;
+/// * v3 — `ChaosGraph` Phase 2: `graph_edges.attrs` column plus static
+///   `ComplianceArticle` nodes seeded from the citation registry (additive).
+const CURRENT_SCHEMA_VERSION: i64 = 3;
 
 /// Embedded `DuckDB` analytics store for experiment journals.
 ///
@@ -106,6 +108,7 @@ impl AnalyticsStore {
 
     fn init_schema(&self) -> Result<(), AnalyticsError> {
         self.create_tables()?;
+        self.populate_compliance_articles()?;
         self.ensure_schema_version()?;
         Ok(())
     }
@@ -175,6 +178,11 @@ impl AnalyticsStore {
         // both the fresh-install DDL and the additive v1 → v2 migration: an
         // existing store simply gains the two tables, keeping all prior data.
         self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
+        // ChaosGraph Phase 2 (schema v3): add the edges `attrs` column to a
+        // pre-existing v2 `graph_edges` table. `ADD COLUMN IF NOT EXISTS` makes
+        // this a no-op on fresh v3 tables and idempotent on every open.
+        self.conn
+            .execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
         Ok(())
     }
 
@@ -403,11 +411,23 @@ mod tests {
         assert_eq!(s.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         // Prior data preserved.
         assert_eq!(s.experiment_count().unwrap(), 1);
-        // Graph tables now queryable.
-        let rows = s.query("SELECT count(*) FROM graph_nodes").unwrap();
-        assert_eq!(rows[0][0], "0");
+        // Graph tables now queryable. No runs ingested → no run-derived nodes,
+        // but the static compliance-article nodes are seeded at migration.
+        let compliance = s
+            .query("SELECT count(*) FROM graph_nodes WHERE kind = 'compliance_article'")
+            .unwrap();
+        assert_eq!(
+            compliance[0][0],
+            tumult_graph::compliance_article_nodes().len().to_string()
+        );
+        let run_nodes = s
+            .query("SELECT count(*) FROM graph_nodes WHERE kind != 'compliance_article'")
+            .unwrap();
+        assert_eq!(run_nodes[0][0], "0");
         let rows = s.query("SELECT count(*) FROM graph_edges").unwrap();
         assert_eq!(rows[0][0], "0");
+        // The v3 attrs column exists on graph_edges.
+        s.query("SELECT attrs FROM graph_edges LIMIT 0").unwrap();
     }
 
     #[test]

@@ -4,6 +4,31 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.7.0] - 2026-07-04
+
+Added:
+- ChaosGraph Phase 2 — the graph now answers coverage and compliance questions,
+  not just "what did this experiment touch":
+  - ComplianceArticle nodes (one per citation in the compliance registry) with
+    strength-weighted `evidences` / `maps_to_compliance` edges from experiments
+    that declare a regulatory mapping.
+  - CoverageGap + FaultDomain nodes: actions in the plugin catalog never seen in
+    a tested run, grouped by plugin.
+  - New MCP tool `tumult_chaosgraph_coverage_gaps {framework?, domain?}` (27
+    tools total) — returns untested actions, optionally with the compliance
+    articles a framework still leaves unevidenced.
+  - Process-provider service extraction (the Phase-1 gap): `docker exec/pause/...
+    <container>`, a curl URL host, or an ssh host now yield a Service node +
+    `targets` edge — conservatively, only when confidently extractable. Validated
+    live: demo-postgres now produces `svc:demo-postgres`; coverage-gaps returns
+    52 untested actions; 16 compliance-article nodes seeded.
+  - Analytics store schema v2 -> v3 (additive: graph edge attrs + compliance seed).
+
+Fixed:
+- Dockerfile.tumult copied workspace crates via a hand-maintained per-crate list,
+  which silently dropped new crates (tumult-graph, tumult-cloud) and failed the
+  GHCR image build while release binaries succeeded. Now `COPY . .` with a
+  tightened .dockerignore, so adding a crate can never break the image again.
 ## [2.6.0] - 2026-07-04
 
 Added:

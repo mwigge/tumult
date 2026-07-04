@@ -4,9 +4,11 @@
 //! The graph model and SQL live in `tumult-graph`; this module is the thin
 //! executor that binds parameters against the embedded `DuckDB` connection.
 
+use std::collections::HashSet;
+
 use duckdb::params;
 use tumult_core::types::{Experiment, Journal};
-use tumult_graph::{sql, EgoGraph, EgoTuple, NodeSummary};
+use tumult_graph::{sql, EgoGraph, EgoTuple, GraphDelta, NodeSummary};
 
 use crate::error::AnalyticsError;
 
@@ -46,7 +48,94 @@ impl AnalyticsStore {
                     edge.rel.as_str(),
                     edge.dst,
                     journal.experiment_id,
-                    journal.started_at_ns
+                    journal.started_at_ns,
+                    edge.attrs.to_string()
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Upsert the static `ComplianceArticle` nodes from the citation registry.
+    ///
+    /// These nodes are deterministic and independent of any run, so they are
+    /// seeded at store-open / schema-migration time. Idempotent — nodes upsert
+    /// on their primary key, so re-opening a store never duplicates them.
+    pub(super) fn populate_compliance_articles(&self) -> Result<(), AnalyticsError> {
+        for node in tumult_graph::compliance_article_nodes() {
+            self.conn.execute(
+                sql::UPSERT_NODE,
+                params![
+                    node.id,
+                    node.kind.as_str(),
+                    node.label,
+                    node.attrs.to_string()
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Distinct tested action names — the `activity_results.name` values of
+    /// `action` activities. This is the "tested" set the coverage-gap
+    /// derivation subtracts the plugin catalog against.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    #[must_use = "callers must use the returned set of tested action names"]
+    pub fn tested_action_names(&self) -> Result<HashSet<String>, AnalyticsError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT name FROM activity_results WHERE activity_type = 'action'")?;
+        let rows = stmt
+            .query_map(params![], |row| row.get::<_, String>(0))?
+            .collect::<Result<HashSet<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Replace the coverage-gap sub-graph with a freshly derived [`GraphDelta`].
+    ///
+    /// The whole `coverage_gap` node set and the sentinel-`run_id` `gap_in`
+    /// edges are cleared and re-inserted, so calling this repeatedly is
+    /// idempotent and stale gaps are dropped. `FaultDomain` nodes are upserted
+    /// (they are stable per plugin and may be shared).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a delete or insert fails.
+    pub fn refresh_coverage_gaps(&self, delta: &GraphDelta) -> Result<(), AnalyticsError> {
+        // Clear the previous gap nodes and their edges.
+        self.conn.execute(
+            sql::DELETE_NODES_BY_KIND,
+            params![tumult_graph::NodeKind::CoverageGap.as_str()],
+        )?;
+        self.conn.execute(
+            sql::DELETE_EDGES_FOR_RUN,
+            params![tumult_graph::COVERAGE_GAP_RUN_ID],
+        )?;
+
+        for node in &delta.nodes {
+            self.conn.execute(
+                sql::UPSERT_NODE,
+                params![
+                    node.id,
+                    node.kind.as_str(),
+                    node.label,
+                    node.attrs.to_string()
+                ],
+            )?;
+        }
+        for edge in &delta.edges {
+            self.conn.execute(
+                sql::INSERT_EDGE,
+                params![
+                    edge.src,
+                    edge.rel.as_str(),
+                    edge.dst,
+                    tumult_graph::COVERAGE_GAP_RUN_ID,
+                    0_i64,
+                    edge.attrs.to_string()
                 ],
             )?;
         }
@@ -264,13 +353,84 @@ mod tests {
             .ingest_journal_with_experiment(&journal, Some(&exp))
             .unwrap());
 
-        let node_count = s.query("SELECT count(*) FROM graph_nodes").unwrap();
-        // exp + fault + service + journal = 4 nodes.
+        let node_count = s
+            .query("SELECT count(*) FROM graph_nodes WHERE kind NOT IN ('compliance_article', 'coverage_gap', 'fault_domain')")
+            .unwrap();
+        // exp + fault + service + journal = 4 run-derived nodes.
         assert_eq!(node_count[0][0], "4");
         let edge_count = s
             .query("SELECT count(DISTINCT (src, rel, dst)) FROM graph_edges")
             .unwrap();
         // injects + targets + yielded + observed_on = 4 edges.
         assert_eq!(edge_count[0][0], "4");
+    }
+
+    #[test]
+    fn compliance_articles_seeded_on_open() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let articles = s.graph_query("compliance_article", None).unwrap();
+        assert_eq!(
+            articles.len(),
+            tumult_graph::compliance_article_nodes().len()
+        );
+        // A well-known article id is present.
+        assert!(articles.iter().any(|n| n.id == "compliance:DORA/Art.25"));
+    }
+
+    #[test]
+    fn refresh_coverage_gaps_is_idempotent_and_queryable() {
+        use tumult_graph::AvailableAction;
+        let s = AnalyticsStore::in_memory().unwrap();
+        let available = [
+            AvailableAction::new("tumult-net", "inject_latency"),
+            AvailableAction::new("tumult-net", "drop_packets"),
+        ];
+        let tested = std::collections::HashSet::new();
+        let delta = tumult_graph::coverage_gap_delta(&available, &tested);
+
+        s.refresh_coverage_gaps(&delta).unwrap();
+        let gaps = s.graph_query("coverage_gap", None).unwrap();
+        assert_eq!(gaps.len(), 2);
+
+        // Re-running does not duplicate.
+        s.refresh_coverage_gaps(&delta).unwrap();
+        let gaps = s.graph_query("coverage_gap", None).unwrap();
+        assert_eq!(gaps.len(), 2);
+
+        // gap_in edge to the fault domain is traversable.
+        let ego = s
+            .graph_neighbors("gap:tumult-net::drop_packets", None, 1)
+            .unwrap()
+            .expect("gap node exists");
+        assert!(ego
+            .edges
+            .iter()
+            .any(|e| e.rel == "gap_in" && e.dst == "domain:tumult-net"));
+    }
+
+    #[test]
+    fn evidences_edge_attrs_persist() {
+        use tumult_core::types::{RegulatoryMapping, RegulatoryRequirement};
+        let s = AnalyticsStore::in_memory().unwrap();
+        let mut exp = latency_experiment();
+        exp.regulatory = Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 25".into(),
+                description: "d".into(),
+                evidence: "e".into(),
+            }],
+        });
+        s.ingest_journal_with_experiment(
+            &sample_journal("e1", ExperimentStatus::Completed),
+            Some(&exp),
+        )
+        .unwrap();
+
+        let rows = s
+            .query("SELECT attrs->>'strength' FROM graph_edges WHERE rel = 'evidences'")
+            .unwrap();
+        assert!(!rows.is_empty(), "an evidences edge must be recorded");
+        assert_eq!(rows[0][0], "direct");
     }
 }
