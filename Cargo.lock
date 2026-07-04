@@ -201,15 +201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arc-swap"
-version = "1.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "argon2"
 version = "0.6.0-rc.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -585,28 +576,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "axum-server"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1ab4a3ec9ea8a657c72d99a03a824af695bd0fb5ec639ccbd9cd3543b41a5f9"
-dependencies = [
- "arc-swap",
- "bytes",
- "fs-err",
- "http",
- "http-body",
- "hyper",
- "hyper-util",
- "pin-project-lite",
- "rustls",
- "rustls-pemfile",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tower-service",
 ]
 
 [[package]]
@@ -1969,16 +1938,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "fs-err"
-version = "3.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73fde052dbfc920003cfd2c8e2c6e6d4cc7c1091538c3a24226cec0665ab08c0"
-dependencies = [
- "autocfg",
- "tokio",
 ]
 
 [[package]]
@@ -4721,9 +4680,9 @@ dependencies = [
 
 [[package]]
 name = "rust-mcp-macros"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce215e41f0eb2e2303ca1d9e2dfcc986d6154b3e56577b1544528a01bb66f8eb"
+checksum = "b7e8751685f5cf1d7fd2e8326f119fb32ba9a7f5e64353a9a6eff5c4e5b5938f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4744,20 +4703,17 @@ dependencies = [
 
 [[package]]
 name = "rust-mcp-sdk"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31bc179a103326562f0a30c0813bc08744eb0fdd5fb1a3577c7583559cb115e"
+checksum = "36211f84d11c2c0be694b65b35de51d7824dfc54dfe62b3b821da2b946448257"
 dependencies = [
  "async-trait",
- "axum",
- "axum-server",
  "base64",
  "bytes",
  "futures",
  "http",
  "http-body",
  "http-body-util",
- "hyper",
  "jsonwebtoken",
  "reqwest 0.12.28",
  "rust-mcp-macros",
@@ -4765,6 +4721,7 @@ dependencies = [
  "rust-mcp-transport",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.18",
  "time",
  "tokio",
@@ -4776,9 +4733,9 @@ dependencies = [
 
 [[package]]
 name = "rust-mcp-transport"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cccce04bbd0408eff35520fb1d33efc00ac402584557daebd72f5baa0ff8158e"
+checksum = "fba7bc9923fa088afb3783f65679e6058d463488f1bac80ca62c27ead0bceaf1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4863,7 +4820,6 @@ version = "0.23.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
 dependencies = [
- "aws-lc-rs",
  "log",
  "once_cell",
  "ring",
@@ -4886,15 +4842,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustls-pemfile"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
-dependencies = [
- "rustls-pki-types",
-]
-
-[[package]]
 name = "rustls-pki-types"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4910,7 +4857,6 @@ version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
- "aws-lc-rs",
  "ring",
  "rustls-pki-types",
  "untrusted 0.9.0",
