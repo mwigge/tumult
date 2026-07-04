@@ -8,7 +8,7 @@ nav_order: 12
 
 Tumult ships a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server, `tumult-mcp`, that gives AI assistants and agent fleets the full chaos engineering workflow: discover, author, validate, run, analyze, report, prove compliance, orchestrate GameDays, and decide what to test next — all without shelling out to the CLI.
 
-The server negotiates MCP protocol revision `2025-11-25` and exposes **24 tools** plus workspace **resources** under the `tumult://` URI scheme.
+The server negotiates MCP protocol revision `2025-11-25` and exposes **26 tools** plus workspace **resources** under the `tumult://` URI scheme.
 
 ## Starting the server
 
@@ -39,7 +39,7 @@ run_experiment ──► journal written + ingested ──► store
 
 An agent can run an experiment and immediately see the result reflected in recommendations, coverage, and trend — the same loop `tumult run` + `tumult recommend` gives a human at the terminal.
 
-## The 24 tools, by workflow stage
+## The 26 tools, by workflow stage
 
 ### Discover & author
 
@@ -100,23 +100,32 @@ An agent can run an experiment and immediately see the result reflected in recom
 | `tumult_agentic_smoke` | Deterministic local smoke check, metadata-only |
 | `tumult_agentic_run_experiment` | Bundled agentic experiment with input schema validation |
 
+### ChaosGraph
+
+| Tool | Notes |
+|------|-------|
+| `tumult_chaosgraph_query` | Node ids + one-line summaries for a `kind` (`experiment`, `fault`, `service`, `journal`, `deviation`), optional case-insensitive label `filter`. Structured: `{kind, count, nodes:[{id,kind,label}]}` |
+| `tumult_chaosgraph_neighbors` | A node's ego sub-graph as compact `(src)-[rel]->(dst)` tuples plus labels, within `depth` (default 1), optional `rel` filter. Structured: `{node_id, depth, nodes, edges}` |
+
+These serve compact sub-graphs instead of whole journals — roughly **37× fewer tokens** for "what did this experiment touch?". See the [ChaosGraph guide](chaosgraph.md) for the node/edge model, request/response examples, and the roadmap.
+
 ## Tool annotations
 
 Every tool declares the MCP annotation hints — `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` — so a client can make policy decisions before calling anything:
 
 | Class | Count | Tools |
 |-------|-------|-------|
-| Read-only, idempotent | 18 | `validate`, `analyze`, `read_journal`, `list_journals`, `discover`, `query_traces`, `store_stats`, `analyze_store`, `list_experiments`, `compliance`, `trend`, `agents`, `gameday_analyze`, `gameday_list`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment` |
+| Read-only, idempotent | 20 | `validate`, `analyze`, `read_journal`, `list_journals`, `discover`, `query_traces`, `store_stats`, `analyze_store`, `list_experiments`, `compliance`, `trend`, `agents`, `gameday_analyze`, `gameday_list`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment`, `chaosgraph_query`, `chaosgraph_neighbors` |
 | Destructive + open-world | 2 | `run_experiment`, `gameday_run` — these inject real faults into real systems |
 | Non-destructive writers | 4 | `create_experiment`, `gameday_create` (refuses overwrite), `report` (idempotent), `recommend` (open-world when `agent` is set: the local agent CLI may reach its model API, and validated experiments are written to disk) |
 
-A well-behaved MCP client can auto-approve the 18 read-only tools and require explicit human approval for the two destructive ones. That is the intended contract: reads are free, chaos is gated.
+A well-behaved MCP client can auto-approve the 20 read-only tools and require explicit human approval for the two destructive ones. That is the intended contract: reads are free, chaos is gated.
 
 ## Structured output
 
-16 tools return `structuredContent` alongside their human-readable text, and advertise a matching `outputSchema` in `tools/list` so clients can validate results mechanically:
+18 tools return `structuredContent` alongside their human-readable text, and advertise a matching `outputSchema` in `tools/list` so clients can validate results mechanically:
 
-`run_experiment`, `read_journal`, `report`, `compliance`, `trend`, `gameday_create`, `agents`, `recommend`, `store_stats`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment`, `list_journals`, `list_experiments`, `gameday_list`.
+`run_experiment`, `read_journal`, `report`, `compliance`, `trend`, `gameday_create`, `agents`, `recommend`, `store_stats`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment`, `list_journals`, `list_experiments`, `gameday_list`, `chaosgraph_query`, `chaosgraph_neighbors`.
 
 Example — `tumult_run_experiment` structured content (shape per its advertised schema):
 

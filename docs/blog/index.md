@@ -27,3 +27,4 @@ The Tumult blog series covers the platform end-to-end, from first principles to 
 | [Bring Your Own Agent](18-agentic-recommendations.md) | `tumult recommend --agent`: Claude Code / Codex enhance recommendations and propose validated experiments |
 | [Chaos Without Root](19-net-chaos-proxy.md) | `tumult-net`: a userspace TCP chaos proxy — latency, throttling, corruption, and connection kills with no root, no tc, no docker |
 | [Your Agent Is Now a First-Class Tumult Operator](20-mcp-first-class.md) | The MCP server grows to 24 tools with annotations, structured output schemas, `tumult://` resources — and a run→ingest→recommend loop that closes over MCP |
+| [ChaosGraph: Your Agent Stops Re-Reading Journals](21-chaosgraph.md) | A typed knowledge graph over chaos data, built from journals on ingest and served to agents over MCP — ~37× fewer tokens than raw journals for "what did this experiment touch?" |

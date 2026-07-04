@@ -4,7 +4,7 @@
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Crates](https://img.shields.io/badge/crates-15-green)
-![Tests](https://img.shields.io/badge/tests-921%20unit-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1026%20unit-brightgreen)
 ![Plugins](https://img.shields.io/badge/plugins-10%20script%20%2B%203%20native%20%7C%2064%20actions-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
@@ -181,7 +181,8 @@ provider:
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload, host-key verification (`verify` default, `trust-on-first-use`, `accept-any`) |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
 | **tumult-net** | Native (Rust) | Privilege-free userspace TCP chaos proxy (via [`tokio-netem`](https://crates.io/crates/tokio-netem)) — latency, bandwidth throttle, write fragmentation, byte corruption, connection termination, all seed-reproducible. No `tc`/`iptables`/`NET_ADMIN` required. |
-| **tumult-mcp** | Native (Rust) | MCP server with 24 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 26 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
+| **tumult-graph** | Native (Rust) | ChaosGraph model — turns journals into a typed knowledge graph (`graph_nodes`/`graph_edges`) for token-efficient agent context |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
@@ -213,7 +214,7 @@ docker run --network tumult-e2e -p 3100:3100 tumult-mcp
 TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http
 ```
 
-The server exposes **24 tools**, covering the full workflow from discovery to compliance evidence:
+The server exposes **26 tools**, covering the full workflow from discovery to compliance evidence:
 
 | MCP Tool | Description |
 |----------|-------------|
@@ -248,6 +249,9 @@ The server exposes **24 tools**, covering the full workflow from discovery to co
 | `tumult_agentic_list_scenarios` | List agentic AI fault-injection scenario packs |
 | `tumult_agentic_smoke` | Run a deterministic local agentic smoke check |
 | `tumult_agentic_run_experiment` | Run a bundled agentic experiment (metadata-only) |
+| **ChaosGraph** | |
+| `tumult_chaosgraph_query` | List graph node ids + one-line summaries for a `kind` (experiment, fault, service, journal, deviation), optional label `filter` |
+| `tumult_chaosgraph_neighbors` | Return a node's ego sub-graph as compact `(src)-[rel]->(dst)` tuples plus labels, within `depth` (default 1), optional `rel` filter |
 
 Because `tumult_run_experiment` persists and ingests its journal, the loop closes over MCP alone: an agent can run an experiment, then immediately see it reflected in `tumult_recommend`, `tumult_coverage`, and `tumult_trend` — no CLI round-trip required.
 
@@ -259,11 +263,11 @@ The server negotiates MCP protocol revision `2025-11-25` and uses the spec's too
 
 | Class | Tools |
 |-------|-------|
-| Read-only, idempotent (18) | `validate`, `analyze`, `read_journal`, `list_journals`, `discover`, `query_traces`, `store_stats`, `analyze_store`, `list_experiments`, `compliance`, `trend`, `agents`, `gameday_analyze`, `gameday_list`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment` |
+| Read-only, idempotent (20) | `validate`, `analyze`, `read_journal`, `list_journals`, `discover`, `query_traces`, `store_stats`, `analyze_store`, `list_experiments`, `compliance`, `trend`, `agents`, `gameday_analyze`, `gameday_list`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment`, `chaosgraph_query`, `chaosgraph_neighbors` |
 | Destructive, open-world (2) | `run_experiment`, `gameday_run` — these inject real faults |
 | Non-destructive writers (4) | `create_experiment`, `gameday_create` (refuses overwrite), `report` (idempotent), `recommend` (open-world when `agent` is set — the local agent CLI may reach its model API) |
 
-**Structured output** — 16 tools return `structuredContent` alongside their text and advertise a matching `outputSchema` in `tools/list`, so clients validate results instead of parsing prose. Journals are returned as JSON by default (TOON on request). Enum-like parameters (`format`, `rollback_strategy`, `framework`, `metric`, `load_tool`) reject unknown values with the list of valid ones, and all inline text content is capped at 512 KiB with an explicit truncation notice.
+**Structured output** — 18 tools return `structuredContent` alongside their text and advertise a matching `outputSchema` in `tools/list`, so clients validate results instead of parsing prose. Journals are returned as JSON by default (TOON on request). Enum-like parameters (`format`, `rollback_strategy`, `framework`, `metric`, `load_tool`) reject unknown values with the list of valid ones, and all inline text content is capped at 512 KiB with an explicit truncation notice.
 
 **Resources** — workspace files are addressable as MCP resources and flow out of tool results as `resource_link` content items (e.g. `tumult_run_experiment` links the journal it just wrote):
 
@@ -280,6 +284,40 @@ Tool failures are reported with `isError: true` per the MCP spec, and authentica
 ### Authentication
 
 Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool and resource requests (constant-time comparison, no timing attack surface; a Semaphore(10) rate-limits concurrent calls). If unset, the server runs without auth and emits a log warning.
+
+### ChaosGraph — token-efficient chaos knowledge graph
+
+An agent answering "what did this experiment touch?" does not need a whole journal. It needs a node's neighbourhood. ChaosGraph is a typed knowledge graph built from journals **as they ingest** — five node kinds (`experiment`, `fault`, `service`, `journal`, `deviation`) joined by typed edges (`injects`, `targets`, `yielded`, `observed_on`, `exhibited`) — persisted in two DuckDB tables (`graph_nodes`, `graph_edges`, analytics schema v2, additive migration; no new service, the single binary is preserved). The two read-only MCP tools above serve compact sub-graphs instead of raw JSON.
+
+The win is token cost. A representative journal serialises to about **2,600 tokens** of JSON; the same question answered by `tumult_chaosgraph_neighbors` on the experiment node is about **70 tokens** — roughly **37× smaller**:
+
+```
+before:  agent ──► read_journal ──► ~2,600 tokens of JSON  ──► "what did it touch?"
+after:   agent ──► chaosgraph_neighbors ──► ~70 tokens of tuples ──► same answer
+```
+
+A real `tumult_chaosgraph_neighbors` result (centre = the experiment node, `depth: 1`):
+
+```json
+{
+  "node_id": "exp:Demo — network latency via the tumult-net userspace proxy",
+  "depth": 1,
+  "nodes": [
+    { "id": "exp:Demo — network latency via the tumult-net userspace proxy", "kind": "experiment", "label": "Demo — network latency via the tumult-net userspace proxy" },
+    { "id": "fault:tumult-net::inject_latency", "kind": "fault", "label": "tumult-net::inject_latency" },
+    { "id": "run:b1f2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "kind": "journal", "label": "completed" },
+    { "id": "svc:demo-app", "kind": "service", "label": "demo-app" }
+  ],
+  "edges": [
+    { "src": "exp:Demo — network latency via the tumult-net userspace proxy", "rel": "injects", "dst": "fault:tumult-net::inject_latency" },
+    { "src": "exp:Demo — network latency via the tumult-net userspace proxy", "rel": "targets", "dst": "svc:demo-app" },
+    { "src": "exp:Demo — network latency via the tumult-net userspace proxy", "rel": "yielded", "dst": "run:b1f2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" },
+    { "src": "fault:tumult-net::inject_latency", "rel": "observed_on", "dst": "svc:demo-app" }
+  ]
+}
+```
+
+Each new run appends exactly one `journal` node to the experiment's neighbourhood, so re-running the same experiment grows the graph one run at a time without duplicating nodes or edges. See the [ChaosGraph guide](docs/guides/chaosgraph.md) for the full model and roadmap.
 
 ## Agentic Fault Injection
 
@@ -607,7 +645,7 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │  PostgreSQL 16  │  SigNoz UI      │  tumult-mcp    │  Agentic QE Fleet  │
 │  :15432         │  :3301          │  :3100 (HTTP)  │  (autonomous QE)   │
 │                 │                 │                │                    │
-│  Redis 7        │  OTel Collector │  24 MCP tools  │  Connects to       │
+│  Redis 7        │  OTel Collector │  26 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
 │                 │  :18889 (prom)  │  13 plugins    │                    │
 │  Kafka 3.8      │                 │  64 actions    │                    │
@@ -740,7 +778,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (24 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
+| **3 — Automation** | MCP server (26 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
@@ -1029,7 +1067,7 @@ make clean           # cargo clean + docker compose down
 | JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
 | opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
 | Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
-| No AI integration | `tumult-mcp` (24 MCP tools) | AI assistants run experiments natively |
+| No AI integration | `tumult-mcp` (26 MCP tools) | AI assistants run experiments natively |
 | Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---
