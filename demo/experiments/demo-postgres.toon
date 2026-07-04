@@ -1,0 +1,37 @@
+title: Demo — PostgreSQL connection kill
+description: Terminate every active backend on demo-postgres and verify the database keeps accepting connections
+
+tags[3]: demo, postgres, resilience
+
+steady_state_hypothesis:
+  title: demo-postgres is accepting connections
+  probes[1]:
+    - name: pg-ready
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec demo-postgres pg_isready -U demo -d orders"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "accepting connections"
+
+method[1]:
+  - name: kill-connections
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec demo-postgres psql -U demo -d orders -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='orders' AND pid <> pg_backend_pid()\""
+      timeout_s: 15.0
+    pause_after_s: 2.0
+
+rollbacks[1]:
+  - name: ensure-pg-accessible
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec demo-postgres psql -U demo -d orders -c 'SELECT 1' || docker restart demo-postgres"
+      timeout_s: 20.0

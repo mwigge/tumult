@@ -1,0 +1,246 @@
+# Tumult 2.2 — One-command demo stack
+#
+# A single, self-contained docker network (`tumult-demo`) that stands up:
+#   demo-postgres  →  demo-app (axum, OTel)  ←  demo-traffic (load)
+#   tumult-collector → signoz (traces + metrics + dashboards)
+#   tumult-mcp (chaos engine, MCP/HTTP)  ←  demo-control-panel (web UI)
+#   demo-sshd (ssh fault target)
+#
+# Driven by the repo Makefile:
+#   make demo        Build + up, import dashboards, run the fault sweep, print URLs
+#   make demo-down   Tear down + remove volumes
+#   make demo-check  Headless smoke test (up, sweep, assert telemetry landed)
+#
+# All names/ports are pinned by demo/CONTRACT.md — do not change one in
+# isolation. Build contexts are relative to this file's directory (docker/),
+# so `..` is the repo root.
+
+name: tumult-demo
+
+services:
+  # ── Postgres 16 — the database demo-app depends on ───────────────
+  demo-postgres:
+    image: postgres:16-alpine
+    container_name: demo-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+    volumes:
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── demo-app — purpose-built axum order service, OTel-instrumented ─
+  demo-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.demo-app
+    container_name: demo-app
+    ports:
+      - "8080:8080"
+    environment:
+      # App → collector (contract pins OTLP HTTP on 4318)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tumult-collector:4318
+      OTEL_SERVICE_NAME: demo-app
+      DATABASE_URL: postgres://demo:demo@demo-postgres:5432/orders
+      PGHOST: demo-postgres
+      PGPORT: "5432"
+      PGUSER: demo
+      PGPASSWORD: demo
+      PGDATABASE: orders
+    depends_on:
+      demo-postgres:
+        condition: service_healthy
+    healthcheck:
+      # Best-effort; the app image should ship wget or curl. Readiness is
+      # also polled from the host in scripts/demo-check.sh, which does not
+      # depend on tools inside this container.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || curl -sf http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── demo-sshd — ssh fault target (reuse the e2e sshd image) ───────
+  # Copies its build-time private key onto a shared volume so tumult-mcp
+  # can authenticate for the demo-ssh experiment, then execs sshd.
+  demo-sshd:
+    build:
+      context: .
+      dockerfile: Dockerfile.sshd
+    container_name: demo-sshd
+    command:
+      - sh
+      - -c
+      - "cp /test_key /demo/ssh-key/id_ed25519 && chmod 600 /demo/ssh-key/id_ed25519 && exec /usr/sbin/sshd -D -e"
+    ports:
+      - "2222:22"
+    volumes:
+      - demo-ssh-key:/demo/ssh-key
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 22 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── SigNoz — observability UI (traces + metrics + dashboards) ─────
+  signoz:
+    image: ghcr.io/aetherall/signoz-standalone:latest
+    container_name: demo-signoz
+    ports:
+      - "3301:8080"    # SigNoz UI
+    volumes:
+      - signoz-clickhouse-data:/var/lib/clickhouse
+      - signoz-data:/var/lib/signoz
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4G
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── Tumult OTel collector (reuse the production config) ───────────
+  tumult-collector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    container_name: demo-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./tumult-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    environment:
+      CLICKHOUSE_ENDPOINT: "tcp://signoz:9000"
+      SIGNOZ_ENDPOINT: "signoz:4317"
+    ports:
+      - "14317:4317"   # OTLP gRPC  (tumult-mcp / experiment runs send here)
+      - "14318:4318"   # OTLP HTTP  (demo-app sends here)
+      - "18889:8889"   # Prometheus (host + APM metrics)
+      - "18888:8888"   # Collector self-telemetry (span counters; demo-check asserts on these)
+      - "13133:13133"  # Health check
+    # No healthcheck: the collector-contrib image is distroless (no shell,
+    # wget or curl), so an in-container CMD probe can never succeed. Readiness
+    # is instead gated by dependents on service_started, and demo-check.sh
+    # asserts real span throughput via the :18888 self-telemetry endpoint.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+    depends_on:
+      signoz:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── Tumult MCP server — the chaos engine (HTTP transport) ─────────
+  # Built from the full tumult image (BASE=tumult) so it is self-contained:
+  # ships both binaries, all plugins, docker CLI, ssh + curl. Mounts the
+  # docker socket so container/pumba faults can reach sibling containers,
+  # the demo experiments (read-only), and a writable journals volume.
+  tumult-mcp:
+    image: tumult-mcp:demo
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.tumult-mcp
+      args:
+        BASE: tumult
+    container_name: demo-mcp
+    # Image ENTRYPOINT already runs `tumult-mcp --transport http` (0.0.0.0:3100,
+    # /health on 3101). No command override needed.
+    ports:
+      - "3100:3100"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../demo/experiments:/demo/experiments:ro
+      - demo-journals:/journals
+      - demo-ssh-key:/demo/ssh-key:ro
+    environment:
+      TUMULT_MCP_TOKEN: ${TUMULT_MCP_TOKEN:-tumult-demo}
+      TUMULT_PLUGIN_PATH: /opt/tumult/plugins
+      DEMO_EXPERIMENTS_DIR: /demo/experiments
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tumult-collector:4317
+      OTEL_SERVICE_NAME: tumult-mcp
+      TUMULT_OTEL_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3101/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    depends_on:
+      tumult-collector:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── Control panel — the web UI, an MCP client of tumult-mcp ───────
+  demo-control-panel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.demo-control-panel
+    container_name: demo-control-panel
+    ports:
+      - "8088:8088"
+    environment:
+      MCP_URL: http://tumult-mcp:3100
+      TUMULT_MCP_TOKEN: ${TUMULT_MCP_TOKEN:-tumult-demo}
+      DEMO_EXPERIMENTS_DIR: /demo/experiments
+      SIGNOZ_URL: http://localhost:3301
+    volumes:
+      - ../demo/experiments:/demo/experiments:ro
+    depends_on:
+      tumult-mcp:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── Traffic generator — baseline load on demo-app ────────────────
+  demo-traffic:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.demo-traffic
+    container_name: demo-traffic
+    environment:
+      TARGET_URL: http://demo-app:8080
+    depends_on:
+      demo-app:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+volumes:
+  signoz-clickhouse-data:
+  signoz-data:
+  demo-journals:
+  demo-ssh-key:
+
+networks:
+  tumult-demo:
+    name: tumult-demo

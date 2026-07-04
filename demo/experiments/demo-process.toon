@@ -1,0 +1,45 @@
+title: Demo — process suspend and resume on demo-app
+description: Freeze demo-app's main process with SIGSTOP, then resume it with SIGCONT and confirm the service recovers
+
+tags[3]: demo, process, resilience
+
+steady_state_hypothesis:
+  title: demo-app is healthy
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[2]:
+  - name: suspend-app-process
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker kill -s SIGSTOP demo-app && echo suspended"
+      timeout_s: 10.0
+    pause_after_s: 3.0
+  - name: resume-app-process
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker kill -s SIGCONT demo-app && echo resumed"
+      timeout_s: 10.0
+    pause_after_s: 2.0
+
+rollbacks[1]:
+  - name: ensure-resumed
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker kill -s SIGCONT demo-app 2>/dev/null || true"
+      timeout_s: 10.0

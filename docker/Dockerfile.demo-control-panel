@@ -1,0 +1,43 @@
+# Tumult demo control panel — web MCP client for the one-command demo.
+#
+# Self-contained crate (its own workspace) under demo/control-panel. Build from
+# the repository root so the build context includes it:
+#   docker build -f docker/Dockerfile.demo-control-panel -t demo-control-panel .
+#
+# Run:
+#   docker run -p 8088:8088 \
+#     -e MCP_URL=http://tumult-mcp:3100 -e TUMULT_MCP_TOKEN=tumult-demo \
+#     demo-control-panel
+
+# ── Build ───────────────────────────────────────────────────
+FROM rust:1.89-bookworm AS builder
+WORKDIR /build
+
+# Copy the self-contained crate (Cargo.toml declares its own [workspace]).
+COPY demo/control-panel/ ./
+
+RUN cargo build --release && strip target/release/demo-control-panel
+
+# ── Runtime ─────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/demo-control-panel /usr/local/bin/
+
+# Defaults; overridden by compose. No secrets baked in — the bearer token is
+# supplied via TUMULT_MCP_TOKEN at runtime.
+ENV PORT=8088 \
+    MCP_URL=http://tumult-mcp:3100 \
+    DEMO_EXPERIMENTS_DIR=/demo/experiments \
+    SIGNOZ_URL=http://localhost:3301 \
+    DEMO_APP_URL=http://localhost:8080
+
+EXPOSE 8088
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/healthz" || exit 1
+
+ENTRYPOINT ["/usr/local/bin/demo-control-panel"]

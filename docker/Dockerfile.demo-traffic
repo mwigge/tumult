@@ -1,0 +1,33 @@
+# demo-traffic — baseline load generator for the Tumult one-command demo.
+#
+# Build context: the repository root (so the standalone demo/traffic crate can
+# be copied). Example:
+#   docker build -f docker/Dockerfile.demo-traffic -t demo-traffic .
+
+# ---- Stage 1: build ----
+FROM rust:1.89-bookworm AS builder
+WORKDIR /build
+
+COPY demo/traffic/Cargo.toml demo/traffic/Cargo.lock* ./
+RUN mkdir src \
+    && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release \
+    && rm -rf src
+
+COPY demo/traffic/src ./src
+RUN touch src/main.rs && cargo build --release
+
+# ---- Stage 2: runtime ----
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home demo
+
+COPY --from=builder /build/target/release/demo-traffic /usr/local/bin/demo-traffic
+
+USER demo
+ENV TARGET_URL=http://demo-app:8080 \
+    REQS_PER_SEC=3
+
+ENTRYPOINT ["/usr/local/bin/demo-traffic"]

@@ -1,0 +1,45 @@
+title: Demo — container pause and recovery
+description: Freeze the demo-postgres container briefly, then unpause it and confirm the database recovers
+
+tags[3]: demo, containers, resilience
+
+steady_state_hypothesis:
+  title: demo-postgres is accepting connections
+  probes[1]:
+    - name: pg-ready
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec demo-postgres pg_isready -U demo -d orders"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "accepting connections"
+
+method[2]:
+  - name: pause-postgres
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker pause demo-postgres && echo paused"
+      timeout_s: 10.0
+    pause_after_s: 3.0
+  - name: unpause-postgres
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker unpause demo-postgres && echo unpaused"
+      timeout_s: 10.0
+    pause_after_s: 2.0
+
+rollbacks[1]:
+  - name: ensure-unpaused
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker unpause demo-postgres 2>/dev/null || true"
+      timeout_s: 10.0

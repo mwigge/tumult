@@ -37,8 +37,10 @@ COPY tumult-test-utils/ tumult-test-utils/
 COPY tumult-net/ tumult-net/
 COPY tumult-agent-cli/ tumult-agent-cli/
 
-RUN cargo build --release -p tumult-cli -p tumult-mcp && \
-    strip target/release/tumult target/release/tumult-mcp
+# tumult-net-proxyd is the userspace TCP proxy daemon that tumult-net faults
+# spawn; it must ship alongside the main binary (located next to current_exe).
+RUN cargo build --release -p tumult-cli -p tumult-mcp --bin tumult-net-proxyd && \
+    strip target/release/tumult target/release/tumult-mcp target/release/tumult-net-proxyd
 
 # ── Runtime ─────────────────────────────────────────────────
 # Uses the builder image as base to avoid a second apt-get step.
@@ -55,6 +57,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /build/target/release/tumult /usr/local/bin/
 COPY --from=builder /build/target/release/tumult-mcp /usr/local/bin/
+COPY --from=builder /build/target/release/tumult-net-proxyd /usr/local/bin/
 COPY plugins/ /opt/tumult/plugins/
 COPY examples/ /opt/tumult/examples/
 COPY gamedays/ /opt/tumult/gamedays/

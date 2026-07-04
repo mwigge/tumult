@@ -1,0 +1,30 @@
+title: Demo — agentic fault-injection smoke
+description: Run the bundled malformed-output agentic scenario (fake HTTP adapter, no external API) and confirm the contract-feedback loop fires
+
+tags[3]: demo, agentic, resilience
+
+steady_state_hypothesis:
+  title: demo-app is healthy before the agentic scenario
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[1]:
+  - name: agentic-smoke
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "tumult agentic smoke --journal /journals/agentic-smoke.toon | grep -q 'result: pass'"
+      timeout_s: 30.0
+    pause_after_s: 1.0
+
+rollbacks[0]:

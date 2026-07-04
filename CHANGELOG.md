@@ -4,6 +4,34 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.2.0] - 2026-07-04
+
+Added:
+- One-command demo (`make demo`): a single Docker network with an OTel-instrumented
+  axum+Postgres app, SigNoz observability with pre-imported dashboards, the Tumult
+  CLI+MCP server, per-domain fault injection (net, postgres, container, stress,
+  process, ssh, agentic), a continuous traffic generator, and a web control panel
+  that drives faults as an MCP client. `make demo-check` runs the same sweep
+  headlessly as a functional smoke test (exit non-zero on failure).
+- `tumult-net-proxyd` is now packaged in the container image alongside the main
+  binary, so tumult-net userspace-proxy faults work out of the box.
+
+Fixed:
+- Regex tolerance now matches against a probe's serialized JSON value, so a
+  pattern like `ok` matches a `{"status":"ok"}` health endpoint (previously only
+  bare JSON strings matched, silently aborting experiments).
+- `sync_await` no longer panics when a native plugin (ssh/net/kubernetes) executes
+  on the runner's scoped worker thread — it falls back to a temporary runtime when
+  no ambient one exists. Native plugins previously crashed the process in the real
+  experiment runner (masked by tests that ran inside a Tokio runtime).
+- tumult-net `upstream`/`listen` now resolve DNS hostnames (`demo-app:8080`), not
+  just literal IPs — the norm on container/Kubernetes networks.
+
+Changed:
+- Release profile switched from fat to thin LTO (codegen-units 16): near-identical
+  runtime performance for this IO-bound CLI, far faster and more reliable builds
+  (fat LTO could intermittently SIGSEGV rustc on a workspace this size).
+
 ## [2.1.0] - 2026-07-04
 
 The MCP server grows from 19 to 24 tools and becomes a spec-honest,

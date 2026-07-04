@@ -1,0 +1,30 @@
+title: Demo — CPU stress on demo-app
+description: Drive stress-ng inside demo-app's namespaces via Pumba and confirm the service stays healthy under CPU pressure
+
+tags[3]: demo, stress, resilience
+
+steady_state_hypothesis:
+  title: demo-app is healthy
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[1]:
+  - name: cpu-stress-demo-app
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest stress --duration 8s --stressors '--cpu 2 --timeout 8s' demo-app"
+      timeout_s: 90.0
+    pause_after_s: 2.0
+
+rollbacks[0]:

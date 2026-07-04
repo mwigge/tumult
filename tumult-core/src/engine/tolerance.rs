@@ -25,27 +25,31 @@ pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> 
             }
         }
         Tolerance::Regex { pattern } => {
-            if let Some(s) = actual.as_str() {
-                let cache = regex_cache()
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(re) = cache.get(pattern.as_str()) {
-                    return re.is_match(s);
+            // Match against the value's text form. A bare JSON string matches on
+            // its contents (`"ok"` → `ok`); any other JSON value (object,
+            // number, bool, array) matches on its serialized form, so a regex
+            // like `ok` works against a probe returning `{"status":"ok"}`.
+            let haystack = match actual.as_str() {
+                Some(s) => s.to_owned(),
+                None => actual.to_string(),
+            };
+            let cache = regex_cache()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(re) = cache.get(pattern.as_str()) {
+                return re.is_match(&haystack);
+            }
+            drop(cache);
+            match regex_lite::Regex::new(pattern) {
+                Ok(re) => {
+                    let matched = re.is_match(&haystack);
+                    let mut cache = regex_cache()
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    cache.insert(pattern.clone(), re);
+                    matched
                 }
-                drop(cache);
-                match regex_lite::Regex::new(pattern) {
-                    Ok(re) => {
-                        let matched = re.is_match(s);
-                        let mut cache = regex_cache()
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        cache.insert(pattern.clone(), re);
-                        matched
-                    }
-                    Err(_) => false,
-                }
-            } else {
-                false
+                Err(_) => false,
             }
         }
     }
@@ -185,10 +189,30 @@ mod tests {
     }
 
     #[test]
-    fn regex_tolerance_returns_false_for_non_string() {
+    fn regex_tolerance_matches_against_json_object_body() {
+        // A probe curling a JSON health endpoint: output parses to an object,
+        // and a bare-substring pattern must still match its serialized form.
+        let actual = serde_json::json!({ "status": "ok" });
+        let tolerance = Tolerance::Regex {
+            pattern: "ok".into(),
+        };
+        assert!(evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn regex_tolerance_matches_against_number() {
         let actual = serde_json::json!(42);
         let tolerance = Tolerance::Regex {
-            pattern: ".*".into(),
+            pattern: "^4".into(),
+        };
+        assert!(evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn regex_tolerance_rejects_non_match_on_json_object() {
+        let actual = serde_json::json!({ "status": "degraded" });
+        let tolerance = Tolerance::Regex {
+            pattern: "\"status\":\"ok\"".into(),
         };
         assert!(!evaluate_tolerance(&actual, &tolerance));
     }

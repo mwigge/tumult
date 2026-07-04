@@ -17,9 +17,11 @@ COMPOSE_TARGETS = docker compose -f docker/docker-compose.yml
 COMPOSE_OBSERVE = docker compose -f docker/docker-compose.observability.yml
 COMPOSE_FULL    = $(COMPOSE_TARGETS) -f docker/docker-compose.observability.yml
 COMPOSE_CLASSIC = $(COMPOSE_FULL) --profile classic
+COMPOSE_DEMO    = docker compose -f docker/docker-compose.demo.yml
 
 .PHONY: up up-targets up-observe up-classic down status reset logs \
-        ssh-key test e2e lint precommit build clean
+        ssh-key test e2e lint precommit build clean \
+        demo demo-down demo-check demo-base
 
 # ── Docker Infrastructure ──────────────────────────────────────
 
@@ -62,6 +64,45 @@ dashboards:
 	@bash docker/signoz/dashboards/import-dashboards.sh http://localhost:3301
 	@echo ""
 	@echo "Open SigNoz: http://localhost:3301 → Dashboards"
+
+# ── Tumult 2.2 one-command demo ────────────────────────────────
+# See demo/CONTRACT.md and demo/README.md. Single network `tumult-demo`.
+
+# The tumult-mcp image builds FROM the full `tumult` image, so build that
+# base first. Reused by both `demo` and `demo-check`.
+demo-base:
+	@echo "Building tumult base image (base for tumult-mcp)..."
+	docker build -f docker/Dockerfile.tumult -t tumult .
+
+demo: demo-base
+	$(COMPOSE_DEMO) build
+	$(COMPOSE_DEMO) up -d
+	@echo ""
+	@echo "Waiting for health + running the fault sweep once to populate dashboards..."
+	@COMPOSE_DEMO="$(COMPOSE_DEMO)" bash scripts/demo-check.sh --mode populate
+	@echo ""
+	@echo "Importing SigNoz dashboards..."
+	@bash docker/signoz/dashboards/import-dashboards.sh http://localhost:3301 2>/dev/null || echo "  (SigNoz not ready yet — retry with: make dashboards)"
+	@echo ""
+	@echo "=================================================================="
+	@echo "  Tumult 2.2 demo is up on the 'tumult-demo' network"
+	@echo "=================================================================="
+	@echo "  SigNoz (traces/metrics) ... http://localhost:3301"
+	@echo "  Control panel ............. http://localhost:8088"
+	@echo "  Demo app (order service) .. http://localhost:8080"
+	@echo "  Tumult MCP (HTTP) ......... http://localhost:3100/mcp"
+	@echo "  OTLP collector ............ grpc :14317 / http :14318"
+	@echo "------------------------------------------------------------------"
+	@echo "  try: open the control panel and click Run on any fault card"
+	@echo "=================================================================="
+
+demo-check: demo-base
+	$(COMPOSE_DEMO) build
+	$(COMPOSE_DEMO) up -d
+	@COMPOSE_DEMO="$(COMPOSE_DEMO)" bash scripts/demo-check.sh --mode full
+
+demo-down:
+	$(COMPOSE_DEMO) down -v 2>/dev/null || true
 
 down:
 	$(COMPOSE_FULL) --profile classic down -v 2>/dev/null || true

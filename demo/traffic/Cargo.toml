@@ -1,0 +1,29 @@
+# demo-traffic — lightweight baseline load generator for the Tumult demo.
+#
+# Separate cargo project (empty [workspace] table) so it is excluded from the
+# root Tumult workspace and keeps its own Cargo.lock — the demo build never
+# slows the main workspace build.
+
+[package]
+name = "demo-traffic"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+description = "Continuous traffic generator that drives demo-app so there is load to disrupt"
+license = "Apache-2.0"
+
+[workspace]
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# Plain HTTP against demo-app; rustls avoids an OpenSSL build dependency.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+rand = "0.9"
+
+[lints.clippy]
+pedantic = "warn"
+
+[profile.release]
+strip = true
