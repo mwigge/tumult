@@ -12,3 +12,4 @@ openspec/
 node_modules/
 **/node_modules/
 target-deb-cp/
+target-win/

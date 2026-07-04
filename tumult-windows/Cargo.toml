@@ -1,0 +1,26 @@
+[package]
+name = "tumult-windows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Windows-native fault injection (taskkill, CPU stress, firewall blackhole) for the Tumult platform"
+
+[dependencies]
+tumult-plugin = { path = "../tumult-plugin" }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Runtime for the `#[tokio::test]` async-dispatch tests only. The library and
+# the `winfault` binary need no async runtime themselves.
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[[bin]]
+# Standalone, dependency-light fault runner the orchestrator cross-compiles to
+# `x86_64-pc-windows-gnu` and executes inside the Windows guest to validate a
+# single fault. Kept out of the default binaries so a normal workspace build
+# does not require it.
+name = "winfault"
+path = "src/bin/winfault.rs"

@@ -199,7 +199,7 @@ fn discover_labels_script_and_native_kinds() {
 
     let output = render_discover(None, &registry, native_registry()).unwrap();
 
-    assert!(output.contains("(1 script, 4 native)"));
+    assert!(output.contains("(1 script, 5 native)"));
     assert!(output.contains("tumult-kafka (script)"));
     assert!(output.contains("tumult-kafka::broker-kill"));
 }

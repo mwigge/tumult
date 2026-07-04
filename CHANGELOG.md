@@ -4,6 +4,27 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.12.0] - 2026-07-04
+
+Windows-native fault injection — the one fault domain no open-source competitor
+offers, and validated live against a real Windows 11 guest (not shipped blind).
+
+Added:
+- `tumult-windows` native plugin (5th native executor) with 3 faults:
+  - `process_kill` — terminate a process by image name or PID (taskkill /F).
+  - `cpu_stress` — saturate CPU with N worker threads for a duration.
+  - `network_blackhole` — block a port/host via the Windows firewall (netsh),
+    with a rollback that removes the rule.
+- Standalone `winfault` binary for in-guest execution; cross-compiles cleanly to
+  `x86_64-pc-windows-gnu` (no DuckDB dependency).
+- `tumult discover` now lists `tumult-windows` and its 3 functions
+  (19 crates, 16 plugins = 11 script + 5 native, 85 actions).
+
+Validated live in a Windows 11 guest (WinBoat/dockur, driven over RDP):
+process_kill killed a running notepad and confirmed it gone; cpu_stress drove
+guest CPU from ~3% baseline to a sustained ~50% (1 worker on 2 cores) and
+recovered; network_blackhole added a firewall block rule, verified it via netsh,
+and rolled it back. Command construction is unit-tested on Linux (24 tests).
 ## [2.11.0] - 2026-07-04
 
 A real, role-aware Web UI — the control panel becomes a deployable product, not a

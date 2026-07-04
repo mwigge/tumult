@@ -25,6 +25,7 @@ tumult-kubernetes = { path = "../tumult-kubernetes" }
 tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }
 tumult-cloud = { path = "../tumult-cloud" }
+tumult-windows = { path = "../tumult-windows" }
 tumult-agent-cli = { path = "../tumult-agent-cli" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-intelligence = { path = "../tumult-intelligence" }
