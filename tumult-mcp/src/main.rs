@@ -8,7 +8,7 @@ use rust_mcp_sdk::{
     mcp_server::{hyper_server, server_runtime, HyperServerOptions, McpServerOptions},
     schema::{
         Implementation, InitializeResult, ProtocolVersion, ServerCapabilities,
-        ServerCapabilitiesTools,
+        ServerCapabilitiesResources, ServerCapabilitiesTools,
     },
     task_store::InMemoryTaskStore,
     McpServer, StdioTransport, ToMcpServerHandler, TransportOptions,
@@ -114,6 +114,12 @@ fn server_details() -> InitializeResult {
         },
         capabilities: ServerCapabilities {
             tools: Some(ServerCapabilitiesTools { list_changed: None }),
+            // Workspace journals/experiments/gamedays as tumult:// resources.
+            // No list-changed notifications or subscriptions yet.
+            resources: Some(ServerCapabilitiesResources {
+                list_changed: None,
+                subscribe: None,
+            }),
             ..Default::default()
         },
         protocol_version: ProtocolVersion::V2025_11_25.into(),

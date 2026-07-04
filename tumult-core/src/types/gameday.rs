@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use super::definition::{LoadConfig, RegulatoryMapping};
+use super::enums::LoadTool;
 use super::journal::Journal;
 use super::results::LoadResult;
 
@@ -132,6 +133,75 @@ pub struct GameDayJournal {
     pub regulatory: Option<RegulatoryMapping>,
 }
 
+// ── GameDay scaffolding template ──────────────────────────────
+
+/// Parameters for [`gameday_toon_template`] — the `gameday create`
+/// scaffolding shared by the CLI and the MCP server.
+#[derive(Debug, Clone, Default)]
+pub struct GameDayTemplateSpec<'a> {
+    /// `GameDay` title.
+    pub name: &'a str,
+    /// Experiment `.toon` paths referenced by the campaign.
+    pub experiments: &'a [PathBuf],
+    /// Load tool to run during the campaign, if any.
+    pub load_tool: Option<LoadTool>,
+    /// Load script path (only meaningful with `load_tool`).
+    pub load_script: Option<&'a std::path::Path>,
+    /// Virtual users for the load test (only meaningful with `load_tool`).
+    pub load_vus: Option<u32>,
+    /// Compliance framework report identifier (e.g. `DORA`), if mapped.
+    pub framework_report_str: Option<&'a str>,
+}
+
+/// Render the `.gameday.toon` scaffolding for [`GameDayTemplateSpec`].
+///
+/// The output decodes as a [`GameDay`] and includes empty
+/// `compliance_maps` / `requirements` stubs for the operator to fill in.
+#[must_use]
+pub fn gameday_toon_template(spec: &GameDayTemplateSpec<'_>) -> String {
+    use std::fmt::Write;
+
+    let mut content = String::new();
+    writeln!(content, "title: {}", spec.name).ok();
+    writeln!(content, "description: GameDay campaign\n").ok();
+    writeln!(content, "tags[1]: gameday\n").ok();
+
+    if let Some(ref tool) = spec.load_tool {
+        let tool_str = match tool {
+            LoadTool::K6 => "k6",
+            LoadTool::Jmeter => "jmeter",
+        };
+        writeln!(content, "load:").ok();
+        writeln!(content, "  tool: {tool_str}").ok();
+        if let Some(script) = spec.load_script {
+            writeln!(content, "  script: {}", script.display()).ok();
+        }
+        if let Some(vus) = spec.load_vus {
+            writeln!(content, "  vus: {vus}").ok();
+        }
+        writeln!(content, "  duration_s: 120.0\n").ok();
+    }
+
+    if let Some(fw_str) = spec.framework_report_str {
+        writeln!(content, "regulatory:").ok();
+        writeln!(content, "  frameworks[1]: {fw_str}").ok();
+        writeln!(content, "  requirements[0]:\n").ok();
+    }
+
+    writeln!(content, "experiments[{}]:", spec.experiments.len()).ok();
+    for exp in spec.experiments {
+        writeln!(content, "  - path: {}", exp.display()).ok();
+        writeln!(content, "    compliance_maps[0]:").ok();
+    }
+
+    writeln!(content, "\nscoring:").ok();
+    writeln!(content, "  pass_threshold: 0.75").ok();
+    writeln!(content, "  mttr_target_s: 30.0").ok();
+    writeln!(content, "  recovery_required: true").ok();
+
+    content
+}
+
 #[cfg(test)]
 mod tests {
     use crate::types::test_support::toon_round_trip;
@@ -193,6 +263,46 @@ mod tests {
         let score = ResilienceScore::compute(0.50, 0.50, 0.50, 0.50);
         assert!(score.overall < 0.75);
         assert_eq!(score.status(), "NON-COMPLIANT");
+    }
+
+    #[test]
+    fn gameday_template_decodes_as_gameday_with_all_options() {
+        let experiments = vec![PathBuf::from("a.toon"), PathBuf::from("b.toon")];
+        let content = gameday_toon_template(&GameDayTemplateSpec {
+            name: "Q3 Drill",
+            experiments: &experiments,
+            load_tool: Some(LoadTool::K6),
+            load_script: Some(std::path::Path::new("load.js")),
+            load_vus: Some(25),
+            framework_report_str: Some("DORA"),
+        });
+
+        assert!(content.contains("title: Q3 Drill"));
+        assert!(content.contains("tool: k6"));
+        assert!(content.contains("vus: 25"));
+        assert!(content.contains("frameworks[1]: DORA"));
+        assert!(content.contains("experiments[2]:"));
+
+        let gameday: GameDay = toon_format::decode_default(&content).expect("template must parse");
+        assert_eq!(gameday.title, "Q3 Drill");
+        assert_eq!(gameday.experiments.len(), 2);
+        assert_eq!(gameday.experiments[0].path, PathBuf::from("a.toon"));
+        assert!(gameday.load.is_some());
+        assert!(gameday.scoring.recovery_required);
+    }
+
+    #[test]
+    fn gameday_template_minimal_decodes_without_load_or_regulatory() {
+        let experiments = vec![PathBuf::from("only.toon")];
+        let content = gameday_toon_template(&GameDayTemplateSpec {
+            name: "minimal",
+            experiments: &experiments,
+            ..Default::default()
+        });
+        let gameday: GameDay = toon_format::decode_default(&content).expect("template must parse");
+        assert!(gameday.load.is_none());
+        assert!(gameday.regulatory.is_none());
+        assert_eq!(gameday.experiments.len(), 1);
     }
 
     #[test]

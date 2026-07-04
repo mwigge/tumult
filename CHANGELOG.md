@@ -4,6 +4,129 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.0] - 2026-07-04
+
+The MCP server grows from 19 to 24 tools and becomes a spec-honest,
+first-class operator surface: tool annotations on every tool, structured
+content with advertised output schemas on 16, workspace files served as
+`tumult://` resources, and a run→ingest→recommend feedback loop that now
+closes entirely over MCP.
+
+### Added
+
+- **Five new MCP tools** (19 → 24):
+  - **`tumult_report`**: render a journal as `json` (raw journal) or
+    `junit` XML via the shared `tumult_core::report` renderers (extracted
+    from the CLI). With `output_path` the report is written inside the
+    workspace; otherwise the content is returned inline, capped at
+    512 KiB. HTML/PDF remain CLI-only.
+  - **`tumult_compliance`**: pass rate, recovery compliance, and
+    COMPLIANT/PARTIAL/NON-COMPLIANT verdict over a journal file or
+    directory for one of seven frameworks (`dora`, `nis2`, `pci-dss`,
+    `iso-22301`, `iso-27001`, `soc2`, `basel-iii`). The scoring and
+    framework catalog moved into the new `tumult_core::compliance` module
+    so `tumult compliance` and the MCP tool share one source of truth.
+  - **`tumult_trend`**: cross-run metric trend over journals
+    (`resilience_score`, `duration_ms`, `estimate_accuracy`,
+    `method_step_count`; optional `last` window and `target` title filter)
+    with time-ordered `{ts, value}` points and a direction verdict.
+  - **`tumult_gameday_create`**: scaffold a `.gameday.toon` campaign
+    (experiments, optional k6/jmeter load config, compliance framework)
+    via the shared `tumult_core::types::gameday_toon_template` (also now
+    used by `tumult gameday create`). Unlike the CLI it refuses to
+    overwrite an existing file and requires `load_script` when a load tool
+    is chosen.
+  - **`tumult_agents`**: agent CLI adapter detection table (`claude-code`,
+    `codex` — installed/version/auth state). Probes local binaries by
+    spawning short version checks; documented in the tool description.
+- **`tumult_recommend` agent parameters**: `agent`, `agent_model`,
+  `agent_timeout_secs`, `generate_experiments_dir` bring the CLI's 2.0
+  agent-enhancement flow to MCP. Generated experiments pass the same
+  parse+validate gate as the CLI (now shared as
+  `tumult_intelligence::write_validated_experiments`). The tool is
+  annotated `open_world_hint=true` / `read_only_hint=false` because the
+  agent CLI may reach its model API and validated experiments are written
+  to disk.
+- **Tool annotations on all 24 tools**: every tool now declares
+  `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`,
+  so MCP clients can auto-approve reads and gate chaos — 18 tools are
+  read-only and idempotent, 2 are destructive and open-world
+  (`tumult_run_experiment`, `tumult_gameday_run`), and 4 are
+  non-destructive writers (`tumult_create_experiment`,
+  `tumult_gameday_create`, `tumult_report`, `tumult_recommend`).
+- **Structured content + output schemas on 16 tools**: results carry
+  `structuredContent` alongside the existing text, and `tools/list`
+  advertises a matching `outputSchema` (hand-written compact JSON Schemas
+  derived from the serde types, journal status/activity enums included) so
+  clients validate results instead of parsing prose.
+- **MCP resources**: the server now declares the `resources` capability (no
+  subscriptions or list-changed notifications yet) and serves workspace
+  files under three URI schemes — `tumult://journal/{filename}` (journals,
+  read as the same `{summary, journal}` JSON as `tumult_read_journal`, with
+  the 512 KiB cap degrading to the summary plus a note),
+  `tumult://experiment/{filename}` and `tumult://gameday/{filename}` (raw
+  TOON text, `application/toon`). Filenames only — path separators and
+  traversal are rejected through the same containment helpers as tools, and
+  resource requests pass the same `_meta.authorization` bearer gate.
+- **`resources/list` pagination**: cursor-based pages of 100 (opaque base64
+  offset cursors; invalid cursors are protocol errors) over the sorted flat
+  listing of `.toon` files in the workspace root.
+- **`resource_link` content items**: `tumult_run_experiment` links the
+  written journal, `tumult_gameday_create` the created campaign file,
+  `tumult_report` (with `output_path`) the written report, and
+  `tumult_list_journals` one link per listed journal (capped at the first
+  50). Text content is unchanged and remains the first content block.
+- **List tool pagination**: `tumult_list_journals`,
+  `tumult_list_experiments`, and `tumult_gameday_list` accept optional
+  `limit` (default 100, max 1000) and `offset` parameters, sort their
+  results, and now return structured content `{items, total, offset,
+  limit}` (with advertised output schemas) alongside the existing text line
+  formats.
+
+### Changed
+
+- **`tumult_run_experiment` closes the MCP feedback loop.** It now persists
+  the journal (`journal_path`, default `journal.toon` — CLI parity) and
+  auto-ingests it into the analytics store, so `tumult_recommend`,
+  `tumult_coverage`, and `tumult_trend` see MCP-driven runs without a CLI
+  round-trip. New parameters `journal_path`, `no_ingest`, `store_path`, and
+  `format`; the result reports the ingestion outcome (`ingested` /
+  `duplicate` / `skipped` / `failed: <reason>` — ingestion failures are
+  warnings, not run failures). Previously the tool returned the journal
+  text and discarded it.
+- **Journals over MCP are JSON by default**: `tumult_run_experiment` and
+  `tumult_read_journal` return the journal as JSON (`format=toon` for the
+  raw TOON text), and `tumult_read_journal` gained `summary=true` for a
+  compact summary instead of the full journal.
+- **Strict enum parameters**: `format`, `rollback_strategy`, `framework`,
+  `metric`, and `load_tool` now reject unknown values with an error listing
+  the valid ones, instead of silently defaulting.
+- **512 KiB text cap**: all inline tool text content is capped at 512 KiB
+  with an explicit truncation notice appended.
+- **`tumult_recommend` now runs on `tumult-intelligence`** instead of a
+  parallel DuckDB re-implementation, so MCP and CLI recommendations cannot
+  drift. Its structured output now mirrors the serialized
+  `RecommendationOutput` (`source`, `recommendations`, `draft_toon`,
+  `notes`, `heuristic_context`, optional `agent`) and the advertised output
+  schema was updated accordingly.
+- **Shared logic extracted to library crates** so the CLI and MCP server
+  render from one implementation: `tumult_core::compliance` (framework
+  scoring), `tumult_core::report` (JSON/JUnit renderers),
+  `tumult_core::runner::k6` (k6 load executor, moved from `tumult-cli`,
+  which re-exports it unchanged),
+  `tumult_core::types::gameday_toon_template`, and
+  `tumult_intelligence::write` (validated experiment writing).
+- **Test suite growth**: 921 tests across the workspace (up from 876).
+
+### Fixed
+
+- **`tumult_gameday_run` executes declared shared load.** It previously ran
+  with `RunConfig::default()` (no load executor), silently hollowing the
+  load-impact component of the resilience score. It now wires the same k6
+  executor as `tumult gameday run`, and reports `Load: declared but
+  produced no result` when the load tool fails to start instead of omitting
+  it silently.
+
 ## [2.0.0] - 2026-07-04
 
 ### Breaking

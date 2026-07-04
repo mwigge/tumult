@@ -3,7 +3,11 @@
 mod auth;
 mod dispatch;
 mod executor;
+mod output_schema;
+mod resources;
 mod schema;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub use auth::{mcp_bind_address, McpAuth};
 pub use executor::ProcessExecutor;

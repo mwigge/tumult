@@ -35,7 +35,9 @@ toon-format = { workspace = true }
 serde_json = { workspace = true }
 opentelemetry = { workspace = true }
 tokio-util = { workspace = true }
-tempfile = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }
+# The k6 executor's tempfile use moved to tumult-core; the CLI now only
+# needs tempfile in tests.
+tempfile = { workspace = true }

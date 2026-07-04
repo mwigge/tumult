@@ -1,11 +1,5 @@
-pub(crate) fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+//! HTML escaping — re-exported from `tumult_core::report`, which owns the
+//! shared implementation (the XML variant lives there too, used by the
+//! shared `JUnit` renderer).
 
-/// XML-safe escaping. Extends [`html_escape`] with the apostrophe entity.
-pub(crate) fn xml_escape(s: &str) -> String {
-    html_escape(s).replace('\'', "&apos;")
-}
+pub(crate) use tumult_core::report::html_escape;

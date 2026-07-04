@@ -1,38 +1,79 @@
 //! Experiment-file discovery: recursively list `.toon` experiments.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::error::ToolError;
+use crate::tools::StructuredReport;
 
-/// List all `.toon` experiment files found recursively under `search_root`.
+/// One discovered experiment file.
+struct ExperimentEntry {
+    name: String,
+    path: String,
+    title: String,
+}
+
+/// List all `.toon` experiment files found recursively under `search_root`,
+/// sorted by relative path.
 ///
-/// Each result line contains the file name, relative path, and the `title`
-/// field parsed from the experiment. Files that cannot be parsed are skipped.
+/// Returns one page of `limit` entries starting at `offset`. The structured
+/// object is `{items, total, offset, limit}` with `{name, path, title}`
+/// items; the text keeps the legacy `Experiments: N` header (total count)
+/// plus one line per returned entry. Files that cannot be parsed are
+/// skipped.
 ///
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the `search_root` directory cannot be read.
-pub fn list_experiments(search_root: &str) -> Result<String, ToolError> {
+pub fn list_experiments(
+    search_root: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<StructuredReport, ToolError> {
     let root = Path::new(search_root);
-    let mut results: Vec<String> = Vec::new();
+    let mut entries: Vec<ExperimentEntry> = Vec::new();
 
-    collect_toon_files(root, root, &mut results)?;
+    collect_toon_files(root, root, &mut entries)?;
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
 
-    if results.is_empty() {
-        return Ok("No experiment files found.".to_string());
-    }
+    let total = entries.len();
+    let page: Vec<ExperimentEntry> = entries.into_iter().skip(offset).take(limit).collect();
 
-    let count = results.len();
-    let mut output = format!("Experiments: {count}\n");
-    for line in &results {
-        output += line;
-        output += "\n";
-    }
-    Ok(output)
+    let mut text = if total == 0 {
+        "No experiment files found.".to_string()
+    } else {
+        format!("Experiments: {total}\n")
+    };
+    let items: Vec<serde_json::Value> = page
+        .iter()
+        .map(|entry| {
+            let _ = writeln!(
+                text,
+                "  name={}  path={}  title={}",
+                entry.name, entry.path, entry.title
+            );
+            serde_json::json!({
+                "name": entry.name,
+                "path": entry.path,
+                "title": entry.title,
+            })
+        })
+        .collect();
+
+    let mut structured = serde_json::Map::new();
+    structured.insert("items".into(), serde_json::json!(items));
+    structured.insert("total".into(), serde_json::json!(total));
+    structured.insert("offset".into(), serde_json::json!(offset));
+    structured.insert("limit".into(), serde_json::json!(limit));
+    Ok(StructuredReport { text, structured })
 }
 
 /// Recursively collect `.toon` experiment entries under `dir`.
-fn collect_toon_files(base: &Path, dir: &Path, results: &mut Vec<String>) -> Result<(), ToolError> {
+fn collect_toon_files(
+    base: &Path,
+    dir: &Path,
+    results: &mut Vec<ExperimentEntry>,
+) -> Result<(), ToolError> {
     let read_dir = std::fs::read_dir(dir).map_err(ToolError::Io)?;
 
     for entry in read_dir {
@@ -65,9 +106,14 @@ fn collect_toon_files(base: &Path, dir: &Path, results: &mut Vec<String>) -> Res
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .to_string();
 
-        results.push(format!("  name={name}  path={rel}  title={title}"));
+        results.push(ExperimentEntry {
+            name,
+            path: rel,
+            title,
+        });
     }
 
     Ok(())
@@ -124,9 +170,9 @@ mod tests {
         std::fs::write(dir.path().join("journal.toon"), not_exp).unwrap();
         std::fs::write(dir.path().join("readme.md"), not_toon).unwrap();
 
-        let result = list_experiments(dir.path().to_str().unwrap());
-        assert!(result.is_ok(), "list_experiments should succeed");
-        let output = result.unwrap();
+        let report = list_experiments(dir.path().to_str().unwrap(), 100, 0)
+            .expect("list_experiments should succeed");
+        let output = &report.text;
 
         assert!(output.contains("First Experiment"), "must include first");
         assert!(output.contains("Second Experiment"), "must include second");
@@ -136,15 +182,19 @@ mod tests {
         );
         // Count: exactly 2 experiments found.
         assert!(output.contains("Experiments: 2"), "count must be 2");
+        assert_eq!(report.structured["total"], 2);
+        let items = report.structured["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["name"], "first.toon");
+        assert_eq!(items[0]["title"], "First Experiment");
     }
 
     #[test]
     fn list_experiments_empty_dir() {
         let dir = TempDir::new().unwrap();
-        let result = list_experiments(dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        assert!(output.contains("No experiment files found."));
+        let report = list_experiments(dir.path().to_str().unwrap(), 100, 0).unwrap();
+        assert!(report.text.contains("No experiment files found."));
+        assert_eq!(report.structured["total"], 0);
     }
 
     #[test]
@@ -152,9 +202,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         // File with no title field is skipped.
         std::fs::write(dir.path().join("no_title.toon"), "status: done\n").unwrap();
-        let result = list_experiments(dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("No experiment files found."));
+        let report = list_experiments(dir.path().to_str().unwrap(), 100, 0).unwrap();
+        assert!(report.text.contains("No experiment files found."));
     }
 
     #[test]
@@ -164,12 +213,31 @@ mod tests {
         std::fs::create_dir(&sub).unwrap();
         std::fs::write(sub.join("deep.toon"), "title: Deep Experiment\n").unwrap();
 
-        let result = list_experiments(dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-        let output = result.unwrap();
+        let report = list_experiments(dir.path().to_str().unwrap(), 100, 0).unwrap();
         assert!(
-            output.contains("Deep Experiment"),
+            report.text.contains("Deep Experiment"),
             "must recurse into subdirectory"
         );
+    }
+
+    #[test]
+    fn list_experiments_paginates_with_honest_totals() {
+        let dir = TempDir::new().unwrap();
+        for i in 0..5 {
+            std::fs::write(
+                dir.path().join(format!("exp-{i}.toon")),
+                format!("title: Experiment {i}\n"),
+            )
+            .unwrap();
+        }
+        let report = list_experiments(dir.path().to_str().unwrap(), 2, 3).unwrap();
+        assert_eq!(report.structured["total"], 5);
+        assert_eq!(report.structured["offset"], 3);
+        assert_eq!(report.structured["limit"], 2);
+        let items = report.structured["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["name"], "exp-3.toon");
+        assert!(report.text.contains("Experiments: 5"), "{}", report.text);
+        assert!(!report.text.contains("exp-0.toon"));
     }
 }

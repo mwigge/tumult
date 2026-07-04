@@ -1,10 +1,10 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-2.0.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.1.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Crates](https://img.shields.io/badge/crates-15-green)
-![Tests](https://img.shields.io/badge/tests-876%20unit-brightgreen)
+![Tests](https://img.shields.io/badge/tests-921%20unit-brightgreen)
 ![Plugins](https://img.shields.io/badge/plugins-10%20script%20%2B%203%20native%20%7C%2064%20actions-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
@@ -181,7 +181,7 @@ provider:
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload, host-key verification (`verify` default, `trust-on-first-use`, `accept-any`) |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
 | **tumult-net** | Native (Rust) | Privilege-free userspace TCP chaos proxy (via [`tokio-netem`](https://crates.io/crates/tokio-netem)) — latency, bandwidth throttle, write fragmentation, byte corruption, connection termination, all seed-reproducible. No `tc`/`iptables`/`NET_ADMIN` required. |
-| **tumult-mcp** | Native (Rust) | MCP server with 19 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 24 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
@@ -213,33 +213,73 @@ docker run --network tumult-e2e -p 3100:3100 tumult-mcp
 TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http
 ```
 
+The server exposes **24 tools**, covering the full workflow from discovery to compliance evidence:
+
 | MCP Tool | Description |
 |----------|-------------|
-| `tumult_run_experiment` | Execute an experiment and return the journal |
-| `tumult_validate` | Validate experiment syntax and provider support |
-| `tumult_analyze` | SQL query over journals via embedded DuckDB |
-| `tumult_read_journal` | Read a TOON journal and return contents |
-| `tumult_list_journals` | List .toon journal files in a directory |
+| **Discover & author** | |
 | `tumult_discover` | List all plugins, actions, and probes |
 | `tumult_create_experiment` | Create a new experiment from a template |
-| `tumult_query_traces` | Query trace data (trace/span IDs) for observability correlation |
-| `tumult_store_stats` | Return persistent store statistics |
+| `tumult_validate` | Validate experiment syntax and provider support |
+| `tumult_list_experiments` | List experiment .toon files (paginated: `limit`/`offset`/`total`) |
+| **Run** | |
+| `tumult_run_experiment` | Execute an experiment — persists the journal (`journal_path`) and auto-ingests it into the analytics store (`no_ingest` to skip) |
+| **Journals & analysis** | |
+| `tumult_read_journal` | Read a journal as JSON (default) or raw TOON, full or `summary` |
+| `tumult_list_journals` | List .toon journal files (paginated, with `resource_link`s) |
+| `tumult_analyze` | SQL query over journals via embedded DuckDB |
 | `tumult_analyze_store` | SQL query directly against the persistent DuckDB store |
-| `tumult_list_experiments` | List experiment .toon files in a directory |
-| `tumult_gameday_run` | Run a coordinated GameDay campaign |
+| `tumult_store_stats` | Return persistent store statistics |
+| `tumult_query_traces` | Query trace data (trace/span IDs) for observability correlation |
+| `tumult_trend` | Cross-run metric trend (resilience score, duration, estimate accuracy) with a direction verdict |
+| **Report & compliance** | |
+| `tumult_report` | Render a journal as JSON or JUnit XML, inline or written to the workspace |
+| `tumult_compliance` | Pass rate, recovery compliance, and verdict for one of 7 frameworks (DORA, NIS2, PCI-DSS, ISO 22301, ISO 27001, SOC 2, Basel III) |
+| **GameDay** | |
+| `tumult_gameday_create` | Scaffold a `.gameday.toon` campaign (experiments, shared load config, framework mapping) |
+| `tumult_gameday_run` | Run a coordinated GameDay campaign under shared load |
 | `tumult_gameday_analyze` | Analyze GameDay results with resilience scoring |
-| `tumult_gameday_list` | List available GameDay definitions |
-| `tumult_recommend` | Recommend what to test next — coverage gaps, failure patterns, stale experiments |
+| `tumult_gameday_list` | List available GameDay definitions (paginated) |
+| **Intelligence** | |
+| `tumult_recommend` | Recommend what to test next — heuristics over coverage gaps, failure patterns, stale experiments; optionally agent-enhanced (`agent`, `agent_model`, `agent_timeout_secs`, `generate_experiments_dir`) |
 | `tumult_coverage` | Coverage report — plugins/actions/targets tested vs available |
+| `tumult_agents` | List agent CLI adapters (claude-code, codex) with install/version/auth state |
+| **Agentic AI** | |
 | `tumult_agentic_list_scenarios` | List agentic AI fault-injection scenario packs |
 | `tumult_agentic_smoke` | Run a deterministic local agentic smoke check |
 | `tumult_agentic_run_experiment` | Run a bundled agentic experiment (metadata-only) |
+
+Because `tumult_run_experiment` persists and ingests its journal, the loop closes over MCP alone: an agent can run an experiment, then immediately see it reflected in `tumult_recommend`, `tumult_coverage`, and `tumult_trend` — no CLI round-trip required.
+
+### MCP data model
+
+The server negotiates MCP protocol revision `2025-11-25` and uses the spec's tool annotations, structured output, and resources features.
+
+**Tool annotations** — every tool declares `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`, so MCP clients can auto-approve safe reads and gate the chaos:
+
+| Class | Tools |
+|-------|-------|
+| Read-only, idempotent (18) | `validate`, `analyze`, `read_journal`, `list_journals`, `discover`, `query_traces`, `store_stats`, `analyze_store`, `list_experiments`, `compliance`, `trend`, `agents`, `gameday_analyze`, `gameday_list`, `coverage`, `agentic_list_scenarios`, `agentic_smoke`, `agentic_run_experiment` |
+| Destructive, open-world (2) | `run_experiment`, `gameday_run` — these inject real faults |
+| Non-destructive writers (4) | `create_experiment`, `gameday_create` (refuses overwrite), `report` (idempotent), `recommend` (open-world when `agent` is set — the local agent CLI may reach its model API) |
+
+**Structured output** — 16 tools return `structuredContent` alongside their text and advertise a matching `outputSchema` in `tools/list`, so clients validate results instead of parsing prose. Journals are returned as JSON by default (TOON on request). Enum-like parameters (`format`, `rollback_strategy`, `framework`, `metric`, `load_tool`) reject unknown values with the list of valid ones, and all inline text content is capped at 512 KiB with an explicit truncation notice.
+
+**Resources** — workspace files are addressable as MCP resources and flow out of tool results as `resource_link` content items (e.g. `tumult_run_experiment` links the journal it just wrote):
+
+```
+tumult://journal/{file}      journal .toon files, read as JSON {summary, journal}
+tumult://experiment/{file}   experiment definitions, raw TOON
+tumult://gameday/{file}      .gameday.toon campaigns, raw TOON
+```
+
+`resources/list` paginates with opaque cursors (pages of 100); the three list tools paginate with `limit` (default 100, max 1000) / `offset` and report `total`. Filenames only — path separators and traversal are rejected.
 
 Tool failures are reported with `isError: true` per the MCP spec, and authentication or rate-limit rejections surface as auth errors (not "Unknown tool").
 
 ### Authentication
 
-Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool calls (constant-time comparison, no timing attack surface). If unset, the server runs without auth and emits a log warning.
+Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool and resource requests (constant-time comparison, no timing attack surface; a Semaphore(10) rate-limits concurrent calls). If unset, the server runs without auth and emits a log warning.
 
 ## Agentic Fault Injection
 
@@ -567,7 +607,7 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │  PostgreSQL 16  │  SigNoz UI      │  tumult-mcp    │  Agentic QE Fleet  │
 │  :15432         │  :3301          │  :3100 (HTTP)  │  (autonomous QE)   │
 │                 │                 │                │                    │
-│  Redis 7        │  OTel Collector │  19 MCP tools  │  Connects to       │
+│  Redis 7        │  OTel Collector │  24 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
 │                 │  :18889 (prom)  │  13 plugins    │                    │
 │  Kafka 3.8      │                 │  64 actions    │                    │
@@ -700,7 +740,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (19 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
+| **3 — Automation** | MCP server (24 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
@@ -777,7 +817,7 @@ Script plugins receive `TRACEPARENT` and `TRACESTATE` environment variables, all
 
 ### Test Infrastructure
 
-- **876 tests** across the workspace (up from 391 at the start of hardening)
+- **921 tests** across the workspace (up from 391 at the start of hardening)
 - **Property-based tests** (`proptest`) for all statistical functions in `tumult-baseline`
 - **Fuzz target** for experiment TOON deserialization (`tumult-core/fuzz/`)
 - **`tumult-test-utils` crate** — shared `MockPlugin`, `EventLog`, and experiment builders for integration tests
@@ -989,7 +1029,7 @@ make clean           # cargo clean + docker compose down
 | JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
 | opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
 | Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
-| No AI integration | `tumult-mcp` (19 MCP tools) | AI assistants run experiments natively |
+| No AI integration | `tumult-mcp` (24 MCP tools) | AI assistants run experiments natively |
 | Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---

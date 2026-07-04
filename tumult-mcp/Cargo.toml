@@ -20,6 +20,8 @@ tumult-analytics = { path = "../tumult-analytics" }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-agentic = { path = "../tumult-agentic" }
+tumult-agent-cli = { path = "../tumult-agent-cli" }
+tumult-intelligence = { path = "../tumult-intelligence" }
 tumult-kubernetes = { path = "../tumult-kubernetes" }
 tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }

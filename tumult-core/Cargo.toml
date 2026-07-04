@@ -21,8 +21,9 @@ regex-lite = { workspace = true }
 # multi-thread scheduler); tokio is already in this crate's tree via tokio-util.
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tokio-util = { workspace = true }
+# k6 load executor (`runner::k6`) writes its --summary-export JSON to a tempfile.
+tempfile = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tumult-test-utils = { path = "../tumult-test-utils" }

@@ -30,10 +30,12 @@
 //! See the [data lifecycle guide](https://github.com/tumult-rs/tumult/blob/main/docs/data-lifecycle.md)
 //! for an end-to-end walkthrough of experiment authoring through journal analysis.
 
+pub mod compliance;
 pub mod controls;
 pub mod engine;
 pub mod execution;
 pub mod journal;
+pub mod report;
 pub mod runner;
 pub mod sync_bridge;
 pub mod types;

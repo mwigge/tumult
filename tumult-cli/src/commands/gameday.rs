@@ -20,49 +20,22 @@ pub fn cmd_gameday_create(
     load_vus: Option<u32>,
     framework: Option<ComplianceFramework>,
 ) -> Result<()> {
-    use std::fmt::Write;
-    let mut content = String::new();
+    use tumult_core::types::{gameday_toon_template, GameDayTemplateSpec, LoadTool};
 
-    writeln!(content, "title: {name}").ok();
-    writeln!(content, "description: GameDay campaign\n").ok();
-    writeln!(content, "tags[1]: gameday\n").ok();
-
-    if let Some(ref tool) = load_tool {
-        if !matches!(tool, LoadToolArg::None) {
-            let tool_str = match tool {
-                LoadToolArg::K6 => "k6",
-                LoadToolArg::Jmeter => "jmeter",
-                LoadToolArg::None => unreachable!(),
-            };
-            writeln!(content, "load:").ok();
-            writeln!(content, "  tool: {tool_str}").ok();
-            if let Some(script) = load_script {
-                writeln!(content, "  script: {}", script.display()).ok();
-            }
-            if let Some(vus) = load_vus {
-                writeln!(content, "  vus: {vus}").ok();
-            }
-            writeln!(content, "  duration_s: 120.0\n").ok();
-        }
-    }
-
-    if let Some(fw) = framework {
-        let fw_str = fw.as_report_str();
-        writeln!(content, "regulatory:").ok();
-        writeln!(content, "  frameworks[1]: {fw_str}").ok();
-        writeln!(content, "  requirements[0]:\n").ok();
-    }
-
-    writeln!(content, "experiments[{}]:", experiments.len()).ok();
-    for exp in experiments {
-        writeln!(content, "  - path: {}", exp.display()).ok();
-        writeln!(content, "    compliance_maps[0]:").ok();
-    }
-
-    writeln!(content, "\nscoring:").ok();
-    writeln!(content, "  pass_threshold: 0.75").ok();
-    writeln!(content, "  mttr_target_s: 30.0").ok();
-    writeln!(content, "  recovery_required: true").ok();
+    let core_load_tool = match load_tool {
+        Some(LoadToolArg::K6) => Some(LoadTool::K6),
+        Some(LoadToolArg::Jmeter) => Some(LoadTool::Jmeter),
+        Some(LoadToolArg::None) | None => None,
+    };
+    let framework_report_str = framework.map(|fw| fw.as_report_str());
+    let content = gameday_toon_template(&GameDayTemplateSpec {
+        name,
+        experiments,
+        load_tool: core_load_tool,
+        load_script,
+        load_vus,
+        framework_report_str,
+    });
 
     let filename = format!("{name}.gameday.toon");
     std::fs::write(&filename, &content).with_context(|| format!("failed to write {filename}"))?;

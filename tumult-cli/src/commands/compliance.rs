@@ -14,38 +14,22 @@ use super::ComplianceFramework;
 #[allow(clippy::too_many_lines)] // Framework-specific output is intentionally verbose for audit clarity
 #[must_use = "callers must handle compliance check errors"]
 pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> Result<()> {
-    // Matches ScoringConfig::default_mttr_target (tumult-core types.rs).
-    const MTTR_TARGET_S: f64 = 30.0;
     use tumult_analytics::AnalyticsStore;
+    use tumult_core::compliance::{ComplianceSignals, DEFAULT_MTTR_TARGET_S as MTTR_TARGET_S};
     use tumult_core::journal::read_journal;
-    use tumult_core::types::{ExperimentStatus, Journal};
 
     let store = AnalyticsStore::in_memory()?;
     let mut count = 0;
-    let mut journals_with_regulatory = 0;
 
-    // FIX 5: accumulate journal-level recovery/resilience signals directly from the
-    // Journals. The analytics `experiments` table has no MTTR column, and a true
-    // `ResilienceScore` (with recovery_compliance) is a GameDay-only aggregate — it is
-    // NOT persisted on single-experiment Journals. So we derive an equivalent
-    // recovery_compliance from PostResult.mttr_s, falling back to
+    // FIX 5: accumulate journal-level recovery/resilience signals directly
+    // from the Journals via tumult_core::compliance::ComplianceSignals (the
+    // single source of truth shared with the MCP server). The analytics
+    // `experiments` table has no MTTR column, and a true `ResilienceScore`
+    // (with recovery_compliance) is a GameDay-only aggregate — it is NOT
+    // persisted on single-experiment Journals — so recovery_compliance is
+    // derived from PostResult.mttr_s, falling back to
     // AnalysisResult.resilience_score, then to pass-rate-only.
-    let mut resilience_scores: Vec<f64> = Vec::new();
-    let mut mttrs: Vec<f64> = Vec::new();
-    let mut completed_journals = 0usize;
-    let mut total_journals = 0usize;
-    let mut accumulate = |journal: &Journal| {
-        total_journals += 1;
-        if matches!(journal.status, ExperimentStatus::Completed) {
-            completed_journals += 1;
-        }
-        if let Some(s) = journal.analysis.as_ref().and_then(|a| a.resilience_score) {
-            resilience_scores.push(s);
-        }
-        if let Some(m) = journal.post_result.as_ref().and_then(|p| p.mttr_s) {
-            mttrs.push(m);
-        }
-    };
+    let mut signals = ComplianceSignals::default();
 
     if journals_path.is_dir() {
         for entry in std::fs::read_dir(journals_path)? {
@@ -53,10 +37,7 @@ pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> R
             if path.extension().and_then(|e| e.to_str()) == Some("toon") {
                 match read_journal(&path) {
                     Ok(journal) => {
-                        if journal.regulatory.is_some() {
-                            journals_with_regulatory += 1;
-                        }
-                        accumulate(&journal);
+                        signals.accumulate(&journal);
                         store.ingest_journal(&journal)?;
                         count += 1;
                     }
@@ -66,31 +47,22 @@ pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> R
         }
     } else if journals_path.is_file() {
         let journal = read_journal(journals_path)?;
-        if journal.regulatory.is_some() {
-            journals_with_regulatory += 1;
-        }
-        accumulate(&journal);
+        signals.accumulate(&journal);
         store.ingest_journal(&journal)?;
         count = 1;
     } else {
         bail!("path does not exist: {}", journals_path.display());
     }
 
-    let fw = framework.as_report_str();
-    let full_name = match framework {
-        ComplianceFramework::Dora => "DORA — Digital Operational Resilience Act (EU 2022/2554)",
-        ComplianceFramework::Nis2 => {
-            "NIS2 — Network and Information Security Directive (EU 2022/2555)"
-        }
-        ComplianceFramework::PciDss => "PCI-DSS 4.0 — Payment Card Industry Data Security Standard",
-        ComplianceFramework::Iso22301 => "ISO 22301 — Business Continuity Management Systems",
-        ComplianceFramework::Iso27001 => "ISO 27001 — Information Security Management Systems",
-        ComplianceFramework::Soc2 => "SOC 2 — Service Organization Control Type 2",
-        ComplianceFramework::BaselIii => "Basel III — BCBS 239 Risk Data Aggregation",
-    };
+    let core_framework = framework.to_core();
+    let fw = core_framework.as_report_str();
+    let full_name = core_framework.full_name();
     println!("=== {full_name} ===\n");
     println!("Journals analyzed: {count}");
-    println!("With regulatory tagging: {journals_with_regulatory}\n");
+    println!(
+        "With regulatory tagging: {}\n",
+        signals.journals_with_regulatory
+    );
 
     // Overall status
     let rows = store.query(
@@ -103,25 +75,11 @@ pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> R
 
     // FIX 5: compliance verdict derived from journal-level pass_rate + a recovery_compliance
     // proxy (MTTR-under-target, or avg resilience_score fallback, or pass-rate-only).
-    #[allow(clippy::cast_precision_loss)]
-    let pass_rate = if total_journals > 0 {
-        completed_journals as f64 / total_journals as f64
-    } else {
-        0.0
-    };
+    let pass_rate = signals.pass_rate();
     // Kept so the framework-specific blocks below compile unchanged.
     let success_rate = pass_rate * 100.0;
 
-    #[allow(clippy::cast_precision_loss)]
-    let recovery_compliance: Option<f64> = if mttrs.is_empty() {
-        if resilience_scores.is_empty() {
-            None
-        } else {
-            Some(resilience_scores.iter().sum::<f64>() / resilience_scores.len() as f64)
-        }
-    } else {
-        Some(mttrs.iter().filter(|m| **m <= MTTR_TARGET_S).count() as f64 / mttrs.len() as f64)
-    };
+    let recovery_compliance: Option<f64> = signals.recovery_compliance(MTTR_TARGET_S);
 
     println!("\nCompliance Status:");
     println!("  Pass rate: {:.1}%", pass_rate * 100.0);
@@ -231,33 +189,7 @@ pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> R
     Ok(())
 }
 
-/// FIX 5: recovery-aware compliance verdict.
-///
-/// The COMPLIANT / PARTIAL / NON-COMPLIANT verdict requires BOTH a pass rate and
-/// a recovery signal. `recovery_compliance` is `None` when neither MTTR nor
-/// `resilience_score` data is present in the journals, in which case the verdict
-/// falls back to pass-rate-only thresholds (reduced assurance). Thresholds are
-/// aligned with `ResilienceScore::status` (0.90 / 0.75).
-#[must_use]
-pub(crate) fn compliance_verdict(pass_rate: f64, recovery_compliance: Option<f64>) -> &'static str {
-    match recovery_compliance {
-        Some(rc) => {
-            if pass_rate >= 0.95 && rc >= 0.90 {
-                "COMPLIANT"
-            } else if pass_rate >= 0.80 && rc >= 0.75 {
-                "PARTIAL"
-            } else {
-                "NON-COMPLIANT"
-            }
-        }
-        None => {
-            if pass_rate >= 0.95 {
-                "COMPLIANT (pass-rate only)"
-            } else if pass_rate >= 0.80 {
-                "PARTIAL (pass-rate only)"
-            } else {
-                "NON-COMPLIANT"
-            }
-        }
-    }
-}
+// FIX 5: recovery-aware compliance verdict — now owned by
+// `tumult_core::compliance` so the CLI and MCP server share one source of
+// truth. Re-exported here for the existing test surface.
+pub(crate) use tumult_core::compliance::compliance_verdict;

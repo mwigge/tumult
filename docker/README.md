@@ -26,7 +26,7 @@ example experiments, and GameDay definitions.
 │  PostgreSQL 16   │  SigNoz UI :3301 │  tumult-mcp     │  Agentic QE Fleet  │
 │  :15432          │                  │  :3100 (HTTP)   │                    │
 │                  │  OTel Collector  │                 │  → tumult-mcp:3100 │
-│  Redis 7         │  :14317 (OTLP)   │  14 MCP tools   │                    │
+│  Redis 7         │  :14317 (OTLP)   │  24 MCP tools   │                    │
 │  :16379          │  :18889 (prom)   │  DuckDB store   │                    │
 │                  │                  │  10 plugins     │                    │
 │  Kafka 3.8       │  ClickHouse      │  48 actions     │                    │
