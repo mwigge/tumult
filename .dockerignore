@@ -11,3 +11,4 @@ docs_local/
 openspec/
 node_modules/
 **/node_modules/
+target-deb-cp/
