@@ -85,12 +85,17 @@ pub fn cmd_chaosgraph_coverage_gaps(
     store: Option<&Path>,
     framework: Option<&str>,
     domain: Option<&str>,
+    refresh: bool,
     json: bool,
 ) -> Result<()> {
     let path = resolve_store(store);
-    let report =
-        tumult_mcp::tools::chaosgraph_coverage_gaps(&path.to_string_lossy(), framework, domain)
-            .map_err(|e| anyhow!(e.to_string()))?;
+    let report = tumult_mcp::tools::chaosgraph_coverage_gaps(
+        &path.to_string_lossy(),
+        framework,
+        domain,
+        refresh,
+    )
+    .map_err(|e| anyhow!(e.to_string()))?;
     emit(&report, json)
 }
 
@@ -158,7 +163,7 @@ mod tests {
         cmd_chaosgraph_query(Some(&db), "experiment", None, false).unwrap();
         cmd_chaosgraph_query(Some(&db), "fault", None, true).unwrap();
         cmd_chaosgraph_neighbors(Some(&db), "exp:Latency drill", None, 1, false).unwrap();
-        cmd_chaosgraph_coverage_gaps(Some(&db), None, None, false).unwrap();
+        cmd_chaosgraph_coverage_gaps(Some(&db), None, None, false, false).unwrap();
     }
 
     #[test]

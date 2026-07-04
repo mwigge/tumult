@@ -169,8 +169,11 @@ services:
       args:
         BASE: tumult
     container_name: demo-mcp
-    # Image ENTRYPOINT already runs `tumult-mcp --transport http` (0.0.0.0:3100,
-    # /health on 3101). No command override needed.
+    # Image ENTRYPOINT runs `tumult-mcp --transport http`, which now binds
+    # loopback by default. Override to 0.0.0.0 so the port mapping reaches it —
+    # safe here because TUMULT_MCP_TOKEN is set (the server refuses a non-loopback
+    # bind without a token). /health stays on 3101.
+    command: ["--host", "0.0.0.0"]
     ports:
       - "3100:3100"
     volumes:

@@ -108,7 +108,10 @@ NET_EXP = "exp:Demo — network latency via the tumult-net userspace proxy"
 # ── ChaosGraph token-efficiency tests (5) ──────────────────────────
 def test_token_efficiency() -> None:
     print("\nChaosGraph — token efficiency (measured live):")
-    run_demo("postgres")  # ensure the graph is populated at least once
+    # Ensure both experiments this test measures exist in the graph, so the suite
+    # is robust on a fresh store (not just after a full populate sweep).
+    run_demo("postgres")
+    run_demo("net")
 
     # 1) A targeted structural query is small.
     tg = structured("tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"})

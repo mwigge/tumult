@@ -189,6 +189,82 @@ pub struct CoverageGapsOutcome {
     pub unevidenced_articles: Vec<UnevidencedArticle>,
 }
 
+/// One declared argument of a catalog action (`{name, required, description}`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CatalogArg {
+    pub name: String,
+    pub required: bool,
+    pub description: String,
+}
+
+/// One fault action/probe in the catalog, reduced to the fields the picker
+/// needs to render an action option and its argument inputs.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CatalogAction {
+    pub plugin: String,
+    pub name: String,
+    pub description: String,
+    /// `action` (a fault) or `probe`.
+    pub kind: String,
+    pub args: Vec<CatalogArg>,
+}
+
+/// One fault domain and the actions grouped under it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CatalogDomain {
+    /// Stable kebab-case domain id (e.g. `network`).
+    pub domain: String,
+    /// Human label (e.g. `Network`).
+    pub label: String,
+    pub actions: Vec<CatalogAction>,
+}
+
+/// Result of `tumult_fault_catalog`: the domains → actions → args tree the
+/// "New experiment" picker populates itself from.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CatalogOutcome {
+    pub action_count: usize,
+    pub domains: Vec<CatalogDomain>,
+}
+
+/// Inputs for a `tumult_scaffold_experiment` call, mirroring the tool's
+/// argument schema. Empty optionals are omitted from the request.
+#[derive(Debug, Clone, Default)]
+pub struct ScaffoldArgs {
+    /// Owning plugin (e.g. `tumult-network`). Optional when `action` is a
+    /// fully-qualified `plugin::action`.
+    pub plugin: Option<String>,
+    /// Action name, or `plugin::action`.
+    pub action: String,
+    /// Argument values as a JSON object.
+    pub args: Value,
+    /// Logical target of the fault.
+    pub target: String,
+    /// Shell command for the steady-state probe (mutually exclusive with
+    /// `probe_url`).
+    pub probe_command: Option<String>,
+    /// HTTP URL for the steady-state probe.
+    pub probe_url: Option<String>,
+    /// Regex the probe output/response must match.
+    pub probe_expect: Option<String>,
+    /// Experiment title (defaults server-side to `<action> — <target>`).
+    pub title: Option<String>,
+}
+
+/// Result of a `tumult_scaffold_experiment` call: the generated TOON and
+/// whether it validates. Read from `structuredContent`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ScaffoldOutcome {
+    /// The fully-qualified `plugin::action` that was scaffolded.
+    pub action: String,
+    /// The generated experiment as TOON text.
+    pub toon: String,
+    /// True when the generated experiment passes validation.
+    pub valid: bool,
+    /// The validation error message, present only when `valid` is false.
+    pub validation_error: Option<String>,
+}
+
 /// Errors surfaced to the HTTP layer. Every variant maps to a clean JSON error
 /// response — the panel never panics on a bad/absent MCP server.
 #[derive(Debug)]
@@ -720,6 +796,107 @@ pub fn parse_coverage_gaps_result(result: &Value) -> Result<CoverageGapsOutcome,
     })
 }
 
+// ── Authoring parsers (fault catalog / scaffold) ──────────────
+
+/// Parse a `tumult_fault_catalog` result into a [`CatalogOutcome`] from its
+/// `structuredContent` (`{action_count, domains:[{domain,label,actions:[…]}]}`).
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_catalog_result(result: &Value) -> Result<CatalogOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(content_text(result).unwrap_or_else(
+            || "fault_catalog tool reported an error".to_string(),
+        )));
+    }
+    let sc = result.get("structuredContent").ok_or_else(|| {
+        McpError::Protocol("fault_catalog result missing structuredContent".to_string())
+    })?;
+    let domains = sc
+        .get("domains")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().map(parse_catalog_domain).collect())
+        .unwrap_or_default();
+    let action_count = sc
+        .get("action_count")
+        .and_then(Value::as_u64)
+        .map_or_else(|| 0, |c| usize::try_from(c).unwrap_or(usize::MAX));
+    Ok(CatalogOutcome {
+        action_count,
+        domains,
+    })
+}
+
+/// Parse one `{domain, label, actions}` object.
+fn parse_catalog_domain(v: &Value) -> CatalogDomain {
+    let actions = v
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().map(parse_catalog_action).collect())
+        .unwrap_or_default();
+    CatalogDomain {
+        domain: str_field(v, "domain"),
+        label: str_field(v, "label"),
+        actions,
+    }
+}
+
+/// Parse one `{plugin, name, description, kind, args}` action object.
+fn parse_catalog_action(v: &Value) -> CatalogAction {
+    let args = v
+        .get("args")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|a| CatalogArg {
+                    name: str_field(a, "name"),
+                    required: a.get("required").and_then(Value::as_bool).unwrap_or(false),
+                    description: str_field(a, "description"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    CatalogAction {
+        plugin: str_field(v, "plugin"),
+        name: str_field(v, "name"),
+        description: str_field(v, "description"),
+        kind: str_field(v, "kind"),
+        args,
+    }
+}
+
+/// Parse a `tumult_scaffold_experiment` result into a [`ScaffoldOutcome`] from
+/// its `structuredContent` (`{action, toon, valid, validation_error?}`).
+///
+/// A scaffold that produces an *invalid* experiment is NOT a tool error — the
+/// tool returns `valid: false` with a `validation_error`, which the UI badges.
+/// Only a true tool-level failure (`isError: true`) maps to an error here.
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_scaffold_result(result: &Value) -> Result<ScaffoldOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(content_text(result).unwrap_or_else(
+            || "scaffold_experiment tool reported an error".to_string(),
+        )));
+    }
+    let sc = result.get("structuredContent").ok_or_else(|| {
+        McpError::Protocol("scaffold_experiment result missing structuredContent".to_string())
+    })?;
+    Ok(ScaffoldOutcome {
+        action: str_field(sc, "action"),
+        toon: str_field(sc, "toon"),
+        valid: sc.get("valid").and_then(Value::as_bool).unwrap_or(false),
+        validation_error: sc
+            .get("validation_error")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+    })
+}
+
 /// Pull the `structuredContent` object from a ChaosGraph tool result, mapping a
 /// tool-level error into [`McpError::Protocol`].
 fn graph_structured<'a>(result: &'a Value, tool: &str) -> Result<&'a Value, McpError> {
@@ -1049,6 +1226,52 @@ impl McpClient {
             .call_tool("tumult_chaosgraph_coverage_gaps", args)
             .await?;
         parse_coverage_gaps_result(&result)
+    }
+
+    /// Fetch the live fault catalog (domains → actions → args) via
+    /// `tumult_fault_catalog` — what the "New experiment" picker populates from.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn fault_catalog(&self) -> Result<CatalogOutcome, McpError> {
+        let result = self.call_tool("tumult_fault_catalog", json!({})).await?;
+        parse_catalog_result(&result)
+    }
+
+    /// Scaffold an experiment from a chosen action via
+    /// `tumult_scaffold_experiment`, returning the generated TOON and whether it
+    /// validates. Empty optional fields are omitted from the request.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure. An
+    /// experiment that scaffolds but fails validation is NOT an error: it comes
+    /// back as [`ScaffoldOutcome`] with `valid: false`.
+    pub async fn scaffold_experiment(
+        &self,
+        req: ScaffoldArgs,
+    ) -> Result<ScaffoldOutcome, McpError> {
+        let mut args = json!({
+            "action": req.action,
+            "target": req.target,
+            "args": if req.args.is_null() { json!({}) } else { req.args },
+        });
+        if let Some(p) = req.plugin.filter(|s| !s.is_empty()) {
+            args["plugin"] = json!(p);
+        }
+        if let Some(c) = req.probe_command.filter(|s| !s.is_empty()) {
+            args["probe_command"] = json!(c);
+        }
+        if let Some(u) = req.probe_url.filter(|s| !s.is_empty()) {
+            args["probe_url"] = json!(u);
+        }
+        if let Some(e) = req.probe_expect.filter(|s| !s.is_empty()) {
+            args["probe_expect"] = json!(e);
+        }
+        if let Some(t) = req.title.filter(|s| !s.is_empty()) {
+            args["title"] = json!(t);
+        }
+        let result = self.call_tool("tumult_scaffold_experiment", args).await?;
+        parse_scaffold_result(&result)
     }
 }
 
@@ -1571,5 +1794,158 @@ mod tests {
             parse_graph_query_result(&result),
             Err(McpError::Protocol(_))
         ));
+    }
+
+    // ── fault_catalog ─────────────────────────────────────────
+
+    #[test]
+    fn parses_fault_catalog_structured_content() {
+        let result = json!({
+            "isError": false,
+            "content": [{"type":"text","text":"full catalog in structuredContent"}],
+            "structuredContent": {
+                "action_count": 3,
+                "domains": [
+                    {
+                        "domain": "network",
+                        "label": "Network",
+                        "actions": [
+                            {
+                                "plugin": "tumult-network",
+                                "name": "add-latency",
+                                "description": "Inject latency on the network path.",
+                                "kind": "action",
+                                "args": [
+                                    { "name": "delay_ms", "required": true, "description": "milliseconds of delay" },
+                                    { "name": "jitter_ms", "required": false, "description": "delay jitter" }
+                                ]
+                            },
+                            {
+                                "plugin": "tumult-network",
+                                "name": "http-probe",
+                                "description": "HTTP steady-state probe.",
+                                "kind": "probe",
+                                "args": []
+                            }
+                        ]
+                    },
+                    {
+                        "domain": "database",
+                        "label": "Database",
+                        "actions": [
+                            {
+                                "plugin": "tumult-db-postgres",
+                                "name": "kill-connections",
+                                "description": "Kill active connections.",
+                                "kind": "action",
+                                "args": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+        let c = parse_catalog_result(&result).unwrap();
+        assert_eq!(c.action_count, 3);
+        assert_eq!(c.domains.len(), 2);
+        let net = &c.domains[0];
+        assert_eq!(net.domain, "network");
+        assert_eq!(net.label, "Network");
+        assert_eq!(net.actions.len(), 2);
+        let lat = &net.actions[0];
+        assert_eq!(lat.plugin, "tumult-network");
+        assert_eq!(lat.name, "add-latency");
+        assert_eq!(lat.kind, "action");
+        assert_eq!(lat.args.len(), 2);
+        assert_eq!(lat.args[0].name, "delay_ms");
+        assert!(lat.args[0].required);
+        assert!(!lat.args[1].required);
+        // Probe kind is carried through and args may be empty.
+        assert_eq!(net.actions[1].kind, "probe");
+        assert!(net.actions[1].args.is_empty());
+        assert_eq!(c.domains[1].actions[0].plugin, "tumult-db-postgres");
+    }
+
+    #[test]
+    fn catalog_missing_structured_content_is_protocol_error() {
+        let result = json!({ "content": [{"type":"text","text":"n/a"}] });
+        assert!(matches!(
+            parse_catalog_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    #[test]
+    fn catalog_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"plugin discovery failed"}]
+        });
+        match parse_catalog_result(&result) {
+            Err(McpError::Protocol(m)) => assert!(m.contains("discovery")),
+            other => panic!("expected Protocol error, got {other:?}"),
+        }
+    }
+
+    // ── scaffold_experiment ───────────────────────────────────
+
+    #[test]
+    fn parses_valid_scaffold_result() {
+        let result = json!({
+            "isError": false,
+            "content": [{"type":"text","text":"version: 0.1\n…"}],
+            "structuredContent": {
+                "action": "tumult-network::add-latency",
+                "toon": "version: 0.1\ntitle: add-latency — demo-app\n",
+                "valid": true
+            }
+        });
+        let s = parse_scaffold_result(&result).unwrap();
+        assert_eq!(s.action, "tumult-network::add-latency");
+        assert!(s.toon.contains("add-latency"));
+        assert!(s.valid);
+        assert!(s.validation_error.is_none());
+    }
+
+    #[test]
+    fn parses_invalid_scaffold_result_without_erroring() {
+        // A scaffold that fails validation is reported in-band (valid: false),
+        // NOT as a tool error — the UI badges the validation message.
+        let result = json!({
+            "isError": false,
+            "structuredContent": {
+                "action": "tumult-network::add-latency",
+                "toon": "version: 0.1\n…",
+                "valid": false,
+                "validation_error": "missing required arg 'delay_ms'"
+            }
+        });
+        let s = parse_scaffold_result(&result).unwrap();
+        assert!(!s.valid);
+        assert_eq!(
+            s.validation_error.as_deref(),
+            Some("missing required arg 'delay_ms'")
+        );
+    }
+
+    #[test]
+    fn scaffold_missing_structured_content_is_protocol_error() {
+        let result = json!({ "content": [] });
+        assert!(matches!(
+            parse_scaffold_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    #[test]
+    fn scaffold_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"provide `plugin`, or a fully-qualified `action`"}]
+        });
+        match parse_scaffold_result(&result) {
+            Err(McpError::Protocol(m)) => assert!(m.contains("plugin")),
+            other => panic!("expected Protocol error, got {other:?}"),
+        }
     }
 }

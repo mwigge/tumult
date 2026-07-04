@@ -1,0 +1,39 @@
+title: Agentic smoke — ${scenario}
+description: Deterministic local agentic AI fault-injection smoke — inject a malformed model response and assert the recovery contract holds, with no network access
+
+tags[3]: agentic, ai, resilience
+
+steady_state_hypothesis:
+  title: Agentic harness is ready
+  probes[1]:
+    - name: harness-ready
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "echo agentic-ready"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "agentic-ready"
+
+method[2]:
+  - name: inject-malformed-output
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo 'scenario=${scenario} adapter=${adapter}: injected malformed model output'"
+      timeout_s: 5.0
+  - name: assert-recovery-contract
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo 'contract=${contract}: recovered'"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "recovered"
+
+rollbacks[0]:

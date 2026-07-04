@@ -20,9 +20,9 @@ use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
     AnalyzeStoreTool, AnalyzeTool, ChaosGraphCoverageGapsTool, ChaosGraphNeighborsTool,
     ChaosGraphQueryTool, ComplianceTool, CoverageTool, CreateExperimentTool, DiscoverTool,
-    GameDayAnalyzeTool, GameDayCreateTool, GameDayListTool, GameDayRunTool, ListExperimentsTool,
-    ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool, ReportTool,
-    RunExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
+    FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool, GameDayListTool, GameDayRunTool,
+    ListExperimentsTool, ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool,
+    ReportTool, RunExperimentTool, ScaffoldExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
 };
 use super::TumultHandler;
 
@@ -151,6 +151,8 @@ impl ServerHandler for TumultHandler {
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
             ChaosGraphCoverageGapsTool::tool(),
+            FaultCatalogTool::tool(),
+            ScaffoldExperimentTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
         // hand-written schemas for tools that return structured content.
@@ -478,13 +480,37 @@ impl ServerHandler for TumultHandler {
             "tumult_chaosgraph_coverage_gaps" => {
                 let args: ChaosGraphCoverageGapsTool = parse_args(&params)?;
                 tokio::task::block_in_place(|| {
+                    // The server must never take the store's write lock from a
+                    // read tool, so coverage gaps are always derived read-only
+                    // here (refresh = false).
                     tools::chaosgraph_coverage_gaps(
                         &args.store_path,
                         args.framework.as_deref(),
                         args.domain.as_deref(),
+                        false,
                     )
                 })
                 .map(ToolOutput::from)
+            }
+            "tumult_fault_catalog" => {
+                let _args: FaultCatalogTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| tools::fault_catalog().map(ToolOutput::from))
+            }
+            "tumult_scaffold_experiment" => {
+                let args: ScaffoldExperimentTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| {
+                    tools::scaffold_experiment(&tools::ScaffoldArgs {
+                        plugin: args.plugin.as_deref(),
+                        action: &args.action,
+                        args: &args.args,
+                        target: &args.target,
+                        probe_command: args.probe_command.as_deref(),
+                        probe_url: args.probe_url.as_deref(),
+                        probe_expect: args.probe_expect.as_deref(),
+                        title: args.title.as_deref(),
+                    })
+                    .map(ToolOutput::from)
+                })
             }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
@@ -587,8 +613,10 @@ mod tests {
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
             ChaosGraphCoverageGapsTool::tool(),
+            FaultCatalogTool::tool(),
+            ScaffoldExperimentTool::tool(),
         ];
-        assert_eq!(tools.len(), 27);
+        assert_eq!(tools.len(), 29);
     }
 
     #[test]
@@ -633,6 +661,8 @@ mod tests {
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
             ChaosGraphCoverageGapsTool::tool(),
+            FaultCatalogTool::tool(),
+            ScaffoldExperimentTool::tool(),
         ];
         for tool in &tools {
             assert!(
@@ -803,6 +833,8 @@ mod tests {
             "tumult_chaosgraph_query",
             "tumult_chaosgraph_neighbors",
             "tumult_chaosgraph_coverage_gaps",
+            "tumult_fault_catalog",
+            "tumult_scaffold_experiment",
         ];
         let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(
@@ -891,6 +923,8 @@ mod tests {
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
             ChaosGraphCoverageGapsTool::tool(),
+            FaultCatalogTool::tool(),
+            ScaffoldExperimentTool::tool(),
         ];
         for tool in &read_only {
             let a = tool
@@ -1219,6 +1253,16 @@ mod tests {
                 "tumult_chaosgraph_coverage_gaps",
                 serde_json::json!({
                     "store_path": store_path.to_str().unwrap(),
+                }),
+            ),
+            ("tumult_fault_catalog", serde_json::json!({})),
+            (
+                "tumult_scaffold_experiment",
+                serde_json::json!({
+                    "plugin": "tumult-network",
+                    "action": "add-latency",
+                    "args": { "delay_ms": 100 },
+                    "target": "demo-target",
                 }),
             ),
         ];

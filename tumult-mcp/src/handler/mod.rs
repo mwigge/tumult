@@ -9,7 +9,7 @@ mod schema;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-pub use auth::{mcp_bind_address, McpAuth};
+pub use auth::{host_is_loopback, McpAuth};
 pub use executor::ProcessExecutor;
 pub use schema::*;
 

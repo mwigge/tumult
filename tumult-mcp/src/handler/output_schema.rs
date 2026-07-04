@@ -37,6 +37,8 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_chaosgraph_query",
     "tumult_chaosgraph_neighbors",
     "tumult_chaosgraph_coverage_gaps",
+    "tumult_fault_catalog",
+    "tumult_scaffold_experiment",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -490,6 +492,61 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                             "strength": { "type": "string" },
                         },
                     },
+                },
+            }),
+        )),
+        "tumult_fault_catalog" => Some(schema_object(
+            &["action_count", "domains"],
+            json!({
+                "action_count": { "type": "integer", "description": "Total actions and probes across all domains." },
+                "domains": {
+                    "type": "array",
+                    "description": "Fault domains, each with their actions and probes.",
+                    "items": {
+                        "type": "object",
+                        "required": ["domain", "label", "actions"],
+                        "properties": {
+                            "domain": { "type": "string" },
+                            "label": { "type": "string" },
+                            "actions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["plugin", "name", "description", "kind", "args"],
+                                    "properties": {
+                                        "plugin": { "type": "string" },
+                                        "name": { "type": "string" },
+                                        "description": { "type": "string" },
+                                        "kind": { "type": "string", "enum": ["action", "probe"] },
+                                        "args": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "required": ["name", "required", "description"],
+                                                "properties": {
+                                                    "name": { "type": "string" },
+                                                    "required": { "type": "boolean" },
+                                                    "description": { "type": "string" },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            }),
+        )),
+        "tumult_scaffold_experiment" => Some(schema_object(
+            &["action", "toon", "valid"],
+            json!({
+                "action": { "type": "string", "description": "Fully-qualified plugin::action that was scaffolded." },
+                "toon": { "type": "string", "description": "Generated experiment in TOON format." },
+                "valid": { "type": "boolean", "description": "Whether the generated experiment passes `tumult validate`." },
+                "validation_error": {
+                    "type": "string",
+                    "description": "Validation failure detail; present only when valid is false.",
                 },
             }),
         )),

@@ -1,0 +1,50 @@
+# Hardened systemd unit for the Tumult MCP server.
+#
+#   install:  cp deploy/systemd/tumult-mcp.service /etc/systemd/system/
+#             install -Dm600 /dev/stdin /etc/tumult/mcp.env <<'EOF'
+#               TUMULT_MCP_TOKEN=<a long random secret>
+#               OTEL_EXPORTER_OTLP_ENDPOINT=http://your-collector:4317   # optional
+#             EOF
+#             systemctl daemon-reload && systemctl enable --now tumult-mcp
+#
+# The server binds LOCALHOST only; terminate TLS and authenticate ingress at a
+# reverse proxy (nginx/Caddy) in front of it. See docs/guides/production-deployment.md.
+
+[Unit]
+Description=Tumult MCP server (chaos engine)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# A strong bearer token is MANDATORY. The server refuses to serve HTTP on a
+# non-loopback address without one; here it binds localhost regardless.
+EnvironmentFile=/etc/tumult/mcp.env
+ExecStart=/usr/local/bin/tumult-mcp --transport http --host 127.0.0.1 --port 3100
+Restart=on-failure
+RestartSec=5
+
+# Persistent analytics/graph store lives under this state dir (~/.tumult).
+StateDirectory=tumult
+Environment=HOME=/var/lib/tumult
+
+# --- Hardening ---
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# ReadWritePaths is managed by StateDirectory=tumult (/var/lib/tumult).
+
+[Install]
+WantedBy=multi-user.target

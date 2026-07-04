@@ -1,0 +1,39 @@
+title: SSH remote stress — ${ssh_host}
+description: Reach a remote host over SSH, run stress-ng remotely, confirm it stays reachable
+
+tags[2]: process, resilience
+
+steady_state_hypothesis:
+  title: SSH host is reachable
+  probes[1]:
+    - name: ssh-check
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "ssh -i ${ssh_key} -p ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${ssh_user}@${ssh_host} 'echo alive'"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "alive"
+
+method[2]:
+  - name: ssh-cpu-stress
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "ssh -i ${ssh_key} -p ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${ssh_user}@${ssh_host} 'stress-ng --cpu ${cpus} --timeout ${duration} --metrics-brief 2>&1 | tail -1'"
+      timeout_s: 30.0
+  - name: ssh-verify-reachable
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "ssh -i ${ssh_key} -p ${ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${ssh_user}@${ssh_host} 'echo alive'"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "alive"
+
+rollbacks[0]:

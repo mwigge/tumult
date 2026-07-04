@@ -44,7 +44,9 @@ impl Default for ServeOptions {
     fn default() -> Self {
         Self {
             transport: Transport::Stdio,
-            host: String::from("0.0.0.0"),
+            // Secure by default: loopback only. Widening the bind requires an
+            // explicit host AND a configured token (enforced in `serve`).
+            host: String::from("127.0.0.1"),
             port: 3100,
             health_port: None,
         }
@@ -165,6 +167,27 @@ async fn shutdown_signal() {
 pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
     let details = server_details();
     let handler = crate::handler::TumultHandler::default().to_mcp_server_handler();
+
+    // Secure by default: never serve HTTP on a network-exposed address without a
+    // token. The MCP surface can inject faults and kill containers, so an
+    // unauthenticated non-loopback bind is refused outright.
+    if matches!(opts.transport, Transport::Http)
+        && !crate::handler::host_is_loopback(&opts.host)
+        && std::env::var("TUMULT_MCP_TOKEN")
+            .ok()
+            .is_none_or(|t| t.is_empty())
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to serve MCP over HTTP on non-loopback address {} without \
+                 authentication: set TUMULT_MCP_TOKEN to a strong secret, or bind \
+                 --host 127.0.0.1 for local-only access",
+                opts.host
+            ),
+        )
+        .into());
+    }
 
     // Determine health port: explicit flag, or MCP port + 1.
     let health_port = opts.health_port.unwrap_or(opts.port.saturating_add(1));

@@ -294,6 +294,65 @@
     .section-err { color: var(--fail); font-size: 12.5px; }
     .card .state.halted .lamp { background: var(--warn); }
     .card .state.halted { color: var(--warn); }
+
+    /* ── New experiment (web authoring) ───────────────────── */
+    .authoring {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 24px; box-shadow: var(--shadow); margin-bottom: 30px;
+    }
+    .authoring .auth-head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+    .authoring h2 { margin: 0; font-size: 19px; letter-spacing: -.01em; }
+    .authoring .auth-head .spacer { flex: 1 1 auto; }
+    .authoring .caption { margin: 10px 0 0; color: var(--muted); font-size: 13px; max-width: 82ch; }
+    .authoring .caption code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .auth-form { display: grid; gap: 14px; margin-top: 20px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .auth-form.hidden { display: none; }
+    .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .field label { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .field label .req { color: var(--fail); margin-left: 3px; }
+    .field .hint { font-size: 11px; color: var(--muted); font-weight: 400; }
+    .field select, .field input {
+      appearance: none; font: inherit; font-size: 13.5px; width: 100%;
+      padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+    }
+    .field select:focus, .field input:focus { outline: none; border-color: var(--accent); }
+    .auth-args { grid-column: 1 / -1; }
+    .auth-args .args-title { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+    .auth-args .args-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .auth-args .none { font-size: 12.5px; color: var(--muted); }
+    .auth-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    button.auth-gen {
+      appearance: none; cursor: pointer; font: inherit; font-weight: 650; font-size: 14px;
+      padding: 10px 18px; border-radius: 10px; border: 1px solid transparent;
+      background: var(--accent); color: var(--accent-ink);
+      transition: transform .06s ease, filter .15s ease;
+    }
+    button.auth-gen:hover { filter: brightness(1.06); }
+    button.auth-gen:active { transform: translateY(1px); }
+    button.auth-gen:disabled { opacity: .55; cursor: default; }
+    .auth-desc { font-size: 12.5px; color: var(--muted); flex: 1 1 200px; min-width: 0; }
+    .auth-out { grid-column: 1 / -1; display: none; flex-direction: column; gap: 10px; }
+    .auth-out.show { display: flex; }
+    .auth-out .out-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .auth-out .out-action { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--text); }
+    .auth-out pre {
+      margin: 0; padding: 14px 16px; border-radius: 10px; overflow-x: auto;
+      background: var(--surface-2); border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5;
+    }
+    .auth-out .run-hint {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted);
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    }
+    button.copy {
+      appearance: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+    }
+    button.copy:hover { border-color: var(--accent); }
+    .auth-err { grid-column: 1 / -1; color: var(--fail); font-size: 12.5px; display: none; }
+    .auth-err.show { display: block; }
   </style>
 </head>
 <body>
@@ -323,6 +382,53 @@
       </ol>
     </div>
     <div id="banner" class="banner"></div>
+
+    <section class="authoring" id="authoring" aria-labelledby="auth-title">
+      <div class="auth-head">
+        <h2 id="auth-title">New experiment</h2>
+        <span class="badge tool" title="MCP tools">tumult_fault_catalog · tumult_scaffold_experiment</span>
+        <span class="spacer"></span>
+      </div>
+      <p class="caption">Author a runnable experiment from the live fault catalog — pick a domain and action,
+        fill its arguments and a steady-state probe, and Tumult scaffolds a validated <code>.toon</code>.
+        This is the same authoring path <code>tumult new</code> and an agent drive, over
+        <code>tools/call</code>. The demo mounts experiments read-only, so copy the generated TOON and run it
+        with <code>tumult run &lt;file&gt;</code>.</p>
+      <div id="auth-form" class="auth-form hidden">
+        <div class="field">
+          <label for="auth-domain">Domain</label>
+          <select id="auth-domain"></select>
+        </div>
+        <div class="field">
+          <label for="auth-action">Action</label>
+          <select id="auth-action"></select>
+        </div>
+        <div class="field">
+          <label for="auth-target">Target <span class="req" title="required">*</span></label>
+          <input id="auth-target" type="text" placeholder="demo-app" value="demo-app" />
+        </div>
+        <div class="field">
+          <label for="auth-probe">Steady-state probe <span class="hint">— http url or exec command</span></label>
+          <input id="auth-probe" type="text" placeholder="http://demo-app:8080/health or: pg_isready -h demo-postgres" />
+        </div>
+        <div class="auth-args" id="auth-args"></div>
+        <div class="auth-actions">
+          <button class="auth-gen" id="auth-gen">Generate experiment</button>
+          <span class="auth-desc" id="auth-action-desc"></span>
+        </div>
+        <div class="auth-err" id="auth-err"></div>
+        <div class="auth-out" id="auth-out">
+          <div class="out-head">
+            <span class="verdict-badge" id="auth-verdict"></span>
+            <span class="out-action" id="auth-out-action"></span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="copy" id="auth-copy">Copy TOON</button>
+          </div>
+          <pre id="auth-toon"></pre>
+          <div class="run-hint" id="auth-run-hint"></div>
+        </div>
+      </div>
+    </section>
 
     <section class="loop" aria-labelledby="loop-title">
       <div class="loop-head">
@@ -868,6 +974,168 @@
         btn.disabled = false;
       }
     }
+
+    // ── New experiment (web authoring) ───────────────────────
+    const authoring = { catalog: null };
+
+    function currentAction() {
+      const dom = document.getElementById('auth-domain').value;
+      const key = document.getElementById('auth-action').value;
+      const domain = (authoring.catalog?.domains || []).find(d => d.domain === dom);
+      if (!domain) return null;
+      return (domain.actions || []).find(a => `${a.plugin}::${a.name}` === key) || null;
+    }
+
+    function renderArgs(action) {
+      const wrap = document.getElementById('auth-args');
+      wrap.innerHTML = '';
+      const args = (action && action.args) || [];
+      wrap.append(el('p', { class: 'args-title' }, 'Arguments'));
+      if (!args.length) {
+        wrap.append(el('div', { class: 'none' }, 'This action takes no arguments.'));
+        return;
+      }
+      const grid = el('div', { class: 'args-grid' });
+      args.forEach(a => {
+        const id = `auth-arg-${a.name}`;
+        grid.append(el('div', { class: 'field' },
+          el('label', { for: id },
+            a.name, a.required ? el('span', { class: 'req', title: 'required' }, '*') : '',
+            a.description ? el('span', { class: 'hint' }, ` — ${a.description}`) : ''),
+          el('input', { id, type: 'text', 'data-arg': a.name, placeholder: a.required ? 'required' : 'optional' }),
+        ));
+      });
+      wrap.append(grid);
+    }
+
+    function fillActions() {
+      const dom = document.getElementById('auth-domain').value;
+      const sel = document.getElementById('auth-action');
+      sel.innerHTML = '';
+      const domain = (authoring.catalog?.domains || []).find(d => d.domain === dom);
+      (domain?.actions || []).forEach(a => {
+        const key = `${a.plugin}::${a.name}`;
+        sel.append(el('option', { value: key }, `${a.name}  ·  ${a.plugin}${a.kind === 'probe' ? '  (probe)' : ''}`));
+      });
+      onActionChange();
+    }
+
+    function onActionChange() {
+      const action = currentAction();
+      const desc = document.getElementById('auth-action-desc');
+      desc.textContent = action ? (action.description || '') : '';
+      renderArgs(action);
+    }
+
+    function renderCatalog(cat) {
+      authoring.catalog = cat;
+      const domSel = document.getElementById('auth-domain');
+      domSel.innerHTML = '';
+      (cat.domains || []).forEach(d => {
+        domSel.append(el('option', { value: d.domain }, `${d.label} (${(d.actions || []).length})`));
+      });
+      document.getElementById('auth-form').classList.remove('hidden');
+      fillActions();
+    }
+
+    function authError(msg) {
+      const err = document.getElementById('auth-err');
+      err.textContent = msg;
+      err.className = 'auth-err show';
+    }
+
+    async function loadCatalog() {
+      try {
+        const res = await fetch('/api/catalog');
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        if (!body.domains || !body.domains.length) { authError('The fault catalog is empty.'); return; }
+        renderCatalog(body);
+      } catch (err) {
+        // Degrade gracefully — show the error, leave the rest of the page intact.
+        authError(`Could not load the fault catalog: ${String(err.message || err)}. The picker will work once tumult-mcp is reachable.`);
+      }
+    }
+
+    async function generateExperiment() {
+      const btn = document.getElementById('auth-gen');
+      const err = document.getElementById('auth-err');
+      const out = document.getElementById('auth-out');
+      err.className = 'auth-err';
+      const action = currentAction();
+      if (!action) { authError('Pick an action first.'); return; }
+      const target = document.getElementById('auth-target').value.trim();
+      if (!target) { authError('Target is required.'); return; }
+
+      // Collect argument values (skip blanks so optional args are omitted).
+      const args = {};
+      document.querySelectorAll('#auth-args input[data-arg]').forEach(inp => {
+        const v = inp.value.trim();
+        if (v !== '') args[inp.getAttribute('data-arg')] = v;
+      });
+
+      // A probe field starting with http(s) is a URL, otherwise an exec command.
+      const probe = document.getElementById('auth-probe').value.trim();
+      const payload = { plugin: action.plugin, action: action.name, args, target };
+      if (probe) {
+        if (/^https?:\/\//i.test(probe)) payload.probe_url = probe;
+        else payload.probe_command = probe;
+      }
+
+      btn.disabled = true;
+      out.className = 'auth-out';
+      try {
+        const res = await fetch('/api/scaffold', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        const verdict = document.getElementById('auth-verdict');
+        if (body.valid) {
+          verdict.className = 'verdict-badge ok';
+          verdict.textContent = 'valid ✓';
+        } else {
+          verdict.className = 'verdict-badge warn';
+          verdict.textContent = `invalid — ${body.validation_error || 'validation failed'}`;
+        }
+        document.getElementById('auth-out-action').textContent = body.action || `${action.plugin}::${action.name}`;
+        document.getElementById('auth-toon').textContent = body.toon || '';
+        document.getElementById('auth-run-hint').textContent =
+          body.run_hint || 'Save the TOON to a file, then run it: tumult run <file>';
+        out.className = 'auth-out show';
+      } catch (e) {
+        authError(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function copyToon() {
+      const btn = document.getElementById('auth-copy');
+      const text = document.getElementById('auth-toon').textContent || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const prev = btn.textContent;
+        btn.textContent = 'Copied ✓';
+        setTimeout(() => { btn.textContent = prev; }, 1400);
+      } catch {
+        // Clipboard API can be blocked (insecure context) — select the text instead.
+        const pre = document.getElementById('auth-toon');
+        const range = document.createRange();
+        range.selectNodeContents(pre);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+
+    document.getElementById('auth-domain').addEventListener('change', fillActions);
+    document.getElementById('auth-action').addEventListener('change', onActionChange);
+    document.getElementById('auth-gen').addEventListener('click', generateExperiment);
+    document.getElementById('auth-copy').addEventListener('click', copyToon);
+    loadCatalog();
 
     buildTimeline();
     document.getElementById('loop-run').addEventListener('click', runLoop);

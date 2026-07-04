@@ -138,10 +138,11 @@ pub fn chaosgraph_neighbors(
 /// in a tested run, optionally filtered by fault domain (plugin) and annotated,
 /// when a framework is given, with that framework's still-unevidenced articles.
 ///
-/// Side effect: refreshes the persistent `CoverageGap` / `FaultDomain` nodes and
-/// `gap_in` edges in the store's graph so `chaosgraph_query`/`_neighbors` can
-/// see them. Read-only with respect to the analytics *history* (it derives from
-/// existing data and only rewrites the derived coverage-gap sub-graph).
+/// Derived read-only by default: the gap list is computed in memory and the
+/// store is opened read-only, so it coexists with a running server. Pass
+/// `refresh = true` to also persist the `CoverageGap` / `FaultDomain` nodes and
+/// `gap_in` edges so `chaosgraph_query`/`_neighbors` can navigate them — that
+/// path takes the store's write lock and so contends with a live server.
 ///
 /// The structured object is
 /// `{count, gaps:[{id,plugin,action,domain}], framework?, unevidenced_articles?}`.
@@ -154,8 +155,15 @@ pub fn chaosgraph_coverage_gaps(
     store_path: &str,
     framework: Option<&str>,
     domain: Option<&str>,
+    refresh: bool,
 ) -> Result<StructuredReport, ToolError> {
-    let store = open_store(store_path)?;
+    // Derived read-only by default (coexists with a running server); only the
+    // opt-in `refresh` persists the derived sub-graph, and it needs a writer.
+    let store = if refresh {
+        open_store(store_path)?
+    } else {
+        open_store_ro(store_path)?
+    };
 
     // Available capabilities from the plugin catalog.
     let plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
@@ -168,15 +176,18 @@ pub fn chaosgraph_coverage_gaps(
         })
         .collect();
 
-    // Tested actions from the store, then derive the gap sub-graph and persist
-    // it so the graph tools can navigate it.
+    // Tested actions from the store, then derive the gap sub-graph in memory.
+    // The response is built entirely from `delta` below; persisting it (so
+    // `chaosgraph_query`/`_neighbors` can navigate the gap nodes) is opt-in.
     let tested = store
         .tested_action_names()
         .map_err(|e| ToolError::Store(e.to_string()))?;
     let delta = tumult_graph::coverage_gap_delta(&available, &tested);
-    store
-        .refresh_coverage_gaps(&delta)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    if refresh {
+        store
+            .refresh_coverage_gaps(&delta)
+            .map_err(|e| ToolError::Store(e.to_string()))?;
+    }
 
     // Optional domain (plugin) filter, applied to the returned list only.
     let domain_filter = domain.map(str::to_ascii_lowercase);
@@ -446,7 +457,7 @@ mod tests {
         // Create the store so the tool can open it.
         drop(tumult_analytics::AnalyticsStore::open(&db).unwrap());
 
-        let report = chaosgraph_coverage_gaps(db.to_str().unwrap(), None, None).unwrap();
+        let report = chaosgraph_coverage_gaps(db.to_str().unwrap(), None, None, false).unwrap();
         // Structured content conforms: count + gaps present.
         assert!(report.structured.contains_key("count"));
         assert!(report.structured["gaps"].is_array());
@@ -455,14 +466,16 @@ mod tests {
 
         // With a framework filter, the unevidenced-articles list is present and
         // (with no runs) contains that framework's articles.
-        let report = chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("dora"), None).unwrap();
+        let report =
+            chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("dora"), None, true).unwrap();
         assert_eq!(report.structured["framework"], "DORA");
         assert!(report.structured["unevidenced_articles"]
             .as_array()
             .is_some_and(|a| !a.is_empty()));
 
         // Unknown framework is rejected.
-        let err = chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("hipaa"), None).unwrap_err();
+        let err =
+            chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("hipaa"), None, false).unwrap_err();
         assert!(err.to_string().contains("hipaa"));
     }
 }

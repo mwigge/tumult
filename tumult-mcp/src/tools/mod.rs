@@ -7,6 +7,7 @@
 mod agentic;
 mod agents;
 mod analysis;
+mod authoring;
 mod experiment;
 mod gameday;
 mod graph;
@@ -19,6 +20,7 @@ mod validation;
 pub use agentic::{agentic_list_scenarios, agentic_run_experiment, agentic_smoke};
 pub use agents::agents;
 pub use analysis::{analyze, analyze_persistent, store_stats};
+pub use authoring::{fault_catalog, scaffold_experiment, ScaffoldArgs};
 pub use experiment::{
     create_experiment, run_experiment, validate_experiment, RunExperimentRequest,
 };

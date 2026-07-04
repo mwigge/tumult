@@ -4,6 +4,36 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.9.0] - 2026-07-04
+
+Authoring ergonomics + production-readiness: pick a fault and get a validated
+experiment in seconds, and run the server safely in production.
+
+Added:
+- `tumult-authoring` crate: a fault catalog derived live from the plugin set (so
+  it never drifts from the real actions), an experiment builder that emits
+  validated TOON, and 10 curated starter templates.
+- CLI: interactive `tumult new` (domain -> fault -> args -> target -> probe ->
+  validated .toon), `tumult new --from <template> [--set k=v]`, `tumult templates`.
+- MCP: `tumult_fault_catalog` + `tumult_scaffold_experiment` tools (both read-only);
+  the demo control panel gains a "New experiment" fault-picker card driving them.
+- Production deployment: `deploy/systemd/tumult-mcp.service` (hardened unit),
+  `deploy/k8s/tumult-mcp.yaml` (Deployment/Service/PVC/Secret), and
+  `docs/guides/production-deployment.md` (security, TLS, store model, backup, BYO
+  collector, blast-radius).
+
+Security (production):
+- Secure-by-default MCP serve: binds `127.0.0.1` by default and REFUSES to serve
+  HTTP on a non-loopback address without `TUMULT_MCP_TOKEN`. The shipped image no
+  longer exposes tools unauthenticated on 0.0.0.0. Replaced the dead
+  `mcp_bind_address` with an enforced `host_is_loopback` guard. The demo passes
+  `--host 0.0.0.0` explicitly (it sets a token).
+
+Changed:
+- `chaosgraph_coverage_gaps` derives read-only by default (coexists with a running
+  server); persisting the gap sub-graph is opt-in via `--refresh` (CLI) and never
+  happens from the MCP tool.
+- Documented `blast_radius` (advisory) vs `max_concurrent_faults` (enforced).
 ## [2.8.0] - 2026-07-04
 
 A cohesion release: close the gaps between what Tumult ships and what a user can

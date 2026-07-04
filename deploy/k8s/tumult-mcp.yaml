@@ -1,0 +1,87 @@
+# Minimal production deployment of the Tumult MCP server on Kubernetes.
+#
+#   1. Create the token secret (do NOT commit a real token):
+#        kubectl create secret generic tumult-mcp-token \
+#          --from-literal=token="$(openssl rand -hex 32)"
+#   2. kubectl apply -f deploy/k8s/tumult-mcp.yaml
+#   3. Reach it in-cluster at http://tumult-mcp:3100/mcp with the bearer token.
+#      Expose externally only through an Ingress that terminates TLS.
+#
+# The pod binds 0.0.0.0 so the Service can reach it, which is safe ONLY because a
+# bearer token is required (injected from the Secret). See
+# docs/guides/production-deployment.md.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tumult-mcp
+  labels: { app: tumult-mcp }
+spec:
+  replicas: 1 # single-writer analytics store; do not scale writers horizontally
+  strategy: { type: Recreate } # avoid two pods holding the store's write lock
+  selector:
+    matchLabels: { app: tumult-mcp }
+  template:
+    metadata:
+      labels: { app: tumult-mcp }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: tumult-mcp
+          image: ghcr.io/mwigge/tumult-mcp:latest
+          args: ["--transport", "http", "--host", "0.0.0.0", "--port", "3100"]
+          ports:
+            - { name: mcp, containerPort: 3100 }
+            - { name: health, containerPort: 3101 }
+          env:
+            - name: HOME
+              value: /home/tumult
+            - name: TUMULT_MCP_TOKEN # REQUIRED — server refuses non-loopback HTTP without it
+              valueFrom:
+                secretKeyRef: { name: tumult-mcp-token, key: token }
+            # Bring your own collector; omit to disable telemetry export.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "" # e.g. http://otel-collector.observability:4317
+          livenessProbe:
+            httpGet: { path: /health, port: health }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: health }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+          volumeMounts:
+            - { name: store, mountPath: /home/tumult/.tumult }
+      volumes:
+        - name: store
+          persistentVolumeClaim: { claimName: tumult-store }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tumult-mcp
+  labels: { app: tumult-mcp }
+spec:
+  selector: { app: tumult-mcp }
+  ports:
+    - { name: mcp, port: 3100, targetPort: mcp }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tumult-store
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { storage: 5Gi }

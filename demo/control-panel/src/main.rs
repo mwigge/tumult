@@ -21,7 +21,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use mcp::{ChaosLoopClient, McpClient, McpError};
+use mcp::{ChaosLoopClient, McpClient, McpError, ScaffoldArgs};
 
 /// SQL the chaos-loop's analyze step runs over the persistent analytics store:
 /// the five most recent experiments with their status and duration.
@@ -151,6 +151,8 @@ async fn main() {
         .route("/api/compliance", get(api_compliance))
         .route("/api/analytics", get(api_analytics))
         .route("/api/chaosgraph", get(api_chaosgraph))
+        .route("/api/catalog", get(api_catalog))
+        .route("/api/scaffold", post(api_scaffold))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -471,6 +473,87 @@ async fn api_chaosgraph(State(state): State<Arc<AppState>>) -> Response {
         coverage_gaps: GraphSection::from(coverage_gaps),
     })
     .into_response()
+}
+
+// ── New experiment (web authoring) ────────────────────────────
+// The "New experiment" card lets an SRE pick a fault from the live catalog and
+// scaffold a runnable experiment — the same authoring path the CLI (`tumult
+// new`) and an agent drive, exposed in the browser. Both routes go through the
+// shared MCP client (auth injected by `call_tool`).
+
+/// New-experiment picker: `tumult_fault_catalog` → the domains/actions/args tree
+/// the card populates its dropdowns and dynamic arg inputs from. MCP failures →
+/// a clean JSON error so the card degrades in-band instead of breaking the page.
+async fn api_catalog(State(state): State<Arc<AppState>>) -> Response {
+    match state.client.fault_catalog().await {
+        Ok(out) => Json(json!({
+            "action_count": out.action_count,
+            "domains": out.domains,
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("catalog failed: {e}");
+            error_response(status_for(&e), &e.to_string())
+        }
+    }
+}
+
+/// JSON body for `POST /api/scaffold`: the picker's selection. All fields but
+/// `action` + `target` are optional; empty strings are treated as absent.
+#[derive(Deserialize, Default)]
+struct ScaffoldBody {
+    plugin: Option<String>,
+    action: String,
+    #[serde(default)]
+    args: serde_json::Value,
+    target: String,
+    probe_command: Option<String>,
+    probe_url: Option<String>,
+    probe_expect: Option<String>,
+    title: Option<String>,
+}
+
+/// Scaffold an experiment from the picker's selection via
+/// `tumult_scaffold_experiment`. Returns `{action, toon, valid,
+/// validation_error, run_hint}` for copy/paste — the demo mounts the experiments
+/// dir read-only, so the card shows the TOON and a `tumult run` hint rather than
+/// writing or auto-running arbitrary generated experiments. A scaffold that
+/// fails validation is a 200 with `valid: false` (badged by the card), not an
+/// error; only a true MCP/tool failure returns an error status.
+async fn api_scaffold(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ScaffoldBody>,
+) -> Response {
+    if body.action.trim().is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "action is required");
+    }
+    if body.target.trim().is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "target is required");
+    }
+    let req = ScaffoldArgs {
+        plugin: body.plugin,
+        action: body.action,
+        args: body.args,
+        target: body.target,
+        probe_command: body.probe_command,
+        probe_url: body.probe_url,
+        probe_expect: body.probe_expect,
+        title: body.title,
+    };
+    match state.client.scaffold_experiment(req).await {
+        Ok(out) => Json(json!({
+            "action": out.action,
+            "toon": out.toon,
+            "valid": out.valid,
+            "validation_error": out.validation_error,
+            "run_hint": "Save the TOON to a file, then run it: tumult run <file>",
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("scaffold failed: {e}");
+            error_response(status_for(&e), &e.to_string())
+        }
+    }
 }
 
 // ── Chaos loop showcase ───────────────────────────────────────

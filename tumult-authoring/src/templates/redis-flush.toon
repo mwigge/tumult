@@ -1,0 +1,46 @@
+title: Redis disruption — ${container}
+description: Confirm Redis responds, write and flush a scratch database, confirm it still responds
+
+tags[2]: state, resilience
+
+steady_state_hypothesis:
+  title: Redis container responds to ping
+  probes[1]:
+    - name: redis-ping
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec ${container} redis-cli ping"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "PONG"
+
+method[3]:
+  - name: redis-seed-scratch
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec ${container} redis-cli -n ${scratch_db} SET tumult:canary chaos"
+      timeout_s: 5.0
+  - name: redis-flush-scratch
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec ${container} redis-cli -n ${scratch_db} FLUSHDB && echo flushed"
+      timeout_s: 5.0
+  - name: verify-recovered
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec ${container} redis-cli ping"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "PONG"
+
+rollbacks[0]:

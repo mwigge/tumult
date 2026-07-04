@@ -1,0 +1,55 @@
+title: Kubernetes pod fault — ${deployment}
+description: Scale a deployment down and back up via the native tumult-kubernetes plugin, verify recovery
+
+tags[2]: container, resilience
+
+steady_state_hypothesis:
+  title: Deployment pods are ready
+  probes[1]:
+    - name: pods-ready
+      activity_type: probe
+      provider:
+        type: native
+        plugin: tumult-kubernetes
+        function: all_pods_ready
+        arguments:
+          namespace: ${namespace}
+          label_selector: ${label_selector}
+      tolerance:
+        type: regex
+        pattern: "true"
+
+method[2]:
+  - name: scale-down
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: scale_deployment
+      arguments:
+        namespace: ${namespace}
+        name: ${deployment}
+        replicas: ${scaled_replicas}
+    pause_after_s: 3.0
+  - name: scale-restore
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: scale_deployment
+      arguments:
+        namespace: ${namespace}
+        name: ${deployment}
+        replicas: ${replicas}
+
+rollbacks[1]:
+  - name: ensure-replicas
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: scale_deployment
+      arguments:
+        namespace: ${namespace}
+        name: ${deployment}
+        replicas: ${replicas}

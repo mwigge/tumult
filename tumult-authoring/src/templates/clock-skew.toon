@@ -1,0 +1,47 @@
+title: Clock skew — ${target}
+description: Confirm ${target} is healthy, skew the perceived clock forward via the timewarp plugin, confirm the service stays healthy, then restore the clock
+
+tags[3]: time, timewarp, resilience
+
+steady_state_hypothesis:
+  title: ${target} is healthy before the clock-skew fault
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 ${health_url}"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "${health_pattern}"
+
+method[2]:
+  - name: inject-clock-skew
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "TUMULT_SKEW_SECONDS=${skew_seconds} ${plugins_dir}/tumult-timewarp/actions/skew-clock.sh && echo skewed"
+      timeout_s: 15.0
+    pause_after_s: 1.0
+  - name: app-still-healthy
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "curl -sf -m 5 ${health_url}"
+      timeout_s: 8.0
+    tolerance:
+      type: regex
+      pattern: "${health_pattern}"
+
+rollbacks[1]:
+  - name: restore-clock
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "${plugins_dir}/tumult-timewarp/actions/restore-clock.sh || true"
+      timeout_s: 10.0

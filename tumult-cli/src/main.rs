@@ -89,6 +89,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init { plugin } => {
             commands::cmd_init(plugin.as_deref())?;
         }
+        Commands::New { from, set, out } => {
+            commands::cmd_new(from.as_deref(), &set, out.as_deref())?;
+        }
+        Commands::Templates => {
+            commands::cmd_templates()?;
+        }
         Commands::Analyze {
             journals,
             query,
@@ -299,6 +305,7 @@ async fn main() -> anyhow::Result<()> {
             ChaosGraphAction::CoverageGaps {
                 framework,
                 domain,
+                refresh,
                 format,
                 store,
             } => {
@@ -306,6 +313,7 @@ async fn main() -> anyhow::Result<()> {
                     store.as_deref(),
                     framework.as_deref(),
                     domain.as_deref(),
+                    refresh,
                     matches!(format, GraphFormat::Json),
                 )?;
             }

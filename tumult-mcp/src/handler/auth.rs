@@ -62,11 +62,19 @@ impl McpAuth {
     }
 }
 
-/// Returns the address the MCP server should bind to.
-/// Always binds to localhost only — never 0.0.0.0.
+/// Whether a bind host is loopback-only (safe to serve without a token).
+///
+/// Recognises the common loopback spellings. Anything else (including
+/// `0.0.0.0`, `::`, or a routable address) is treated as network-exposed, which
+/// the server refuses to do without a configured `TUMULT_MCP_TOKEN`.
 #[must_use]
-pub fn mcp_bind_address() -> std::net::SocketAddr {
-    std::net::SocketAddr::from(([127, 0, 0, 1], 8080))
+pub fn host_is_loopback(host: &str) -> bool {
+    match host.trim().trim_matches(|c| c == '[' || c == ']') {
+        "localhost" => true,
+        h => h
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback()),
+    }
 }
 
 #[cfg(test)]
@@ -165,17 +173,18 @@ mod tests {
     }
 
     #[test]
-    fn mcp_bind_address_is_localhost_only() {
-        let addr = mcp_bind_address();
-        assert_eq!(addr.ip(), std::net::Ipv4Addr::LOCALHOST);
+    fn loopback_hosts_are_recognised() {
+        assert!(host_is_loopback("127.0.0.1"));
+        assert!(host_is_loopback("localhost"));
+        assert!(host_is_loopback("::1"));
+        assert!(host_is_loopback("[::1]"));
     }
 
     #[test]
-    fn mcp_bind_address_never_binds_to_all_interfaces() {
-        let addr = mcp_bind_address();
-        assert_ne!(
-            addr.ip(),
-            std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
-        );
+    fn network_exposed_hosts_are_not_loopback() {
+        assert!(!host_is_loopback("0.0.0.0"));
+        assert!(!host_is_loopback("::"));
+        assert!(!host_is_loopback("192.168.1.10"));
+        assert!(!host_is_loopback("10.0.0.5"));
     }
 }

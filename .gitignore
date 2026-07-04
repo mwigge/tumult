@@ -31,3 +31,5 @@ openspec/
 .claude/
 /target-deb/
 demo/*/target/
+target-deb/
+target-deb-cp/

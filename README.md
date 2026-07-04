@@ -1,6 +1,6 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-2.8.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.9.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Crates](https://img.shields.io/badge/crates-17-green)
@@ -181,7 +181,7 @@ provider:
 | **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload, host-key verification (`verify` default, `trust-on-first-use`, `accept-any`) |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
 | **tumult-net** | Native (Rust) | Privilege-free userspace TCP chaos proxy (via [`tokio-netem`](https://crates.io/crates/tokio-netem)) — latency, bandwidth throttle, write fragmentation, byte corruption, connection termination, all seed-reproducible. No `tc`/`iptables`/`NET_ADMIN` required. |
-| **tumult-mcp** | Native (Rust) | MCP server with 26 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 29 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
 | **tumult-graph** | Native (Rust) | ChaosGraph model — turns journals into a typed knowledge graph (`graph_nodes`/`graph_edges`) for token-efficient agent context |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
@@ -214,7 +214,7 @@ docker run --network tumult-e2e -p 3100:3100 tumult-mcp
 TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http
 ```
 
-The server exposes **26 tools**, covering the full workflow from discovery to compliance evidence:
+The server exposes **29 tools**, covering the full workflow from discovery to compliance evidence:
 
 | MCP Tool | Description |
 |----------|-------------|
@@ -649,7 +649,7 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │  PostgreSQL 16  │  SigNoz UI      │  tumult-mcp    │  Agentic QE Fleet  │
 │  :15432         │  :3301          │  :3100 (HTTP)  │  (autonomous QE)   │
 │                 │                 │                │                    │
-│  Redis 7        │  OTel Collector │  26 MCP tools  │  Connects to       │
+│  Redis 7        │  OTel Collector │  29 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
 │                 │  :18889 (prom)  │  15 plugins    │                    │
 │  Kafka 3.8      │                 │  82 actions    │                    │
@@ -782,7 +782,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (26 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
+| **3 — Automation** | MCP server (29 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
@@ -1071,7 +1071,7 @@ make clean           # cargo clean + docker compose down
 | JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
 | opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
 | Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
-| No AI integration | `tumult-mcp` (26 MCP tools) | AI assistants run experiments natively |
+| No AI integration | `tumult-mcp` (29 MCP tools) | AI assistants run experiments natively |
 | Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---

@@ -19,6 +19,7 @@ tumult-core = { path = "../tumult-core" }
 tumult-analytics = { path = "../tumult-analytics" }
 tumult-graph = { path = "../tumult-graph" }
 tumult-plugin = { path = "../tumult-plugin" }
+tumult-authoring = { path = "../tumult-authoring" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-agent-cli = { path = "../tumult-agent-cli" }
@@ -37,6 +38,7 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }
 subtle = { workspace = true }
+indexmap = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

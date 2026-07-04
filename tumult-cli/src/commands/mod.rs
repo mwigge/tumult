@@ -12,6 +12,7 @@ mod gameday;
 mod init;
 mod load;
 mod mcp;
+mod new;
 mod recommend;
 mod report;
 mod run;
@@ -44,6 +45,7 @@ pub use chaosgraph::{
 pub use compliance::cmd_compliance;
 pub use init::cmd_init;
 pub use mcp::{cmd_mcp_serve, Transport as McpTransportKind};
+pub use new::{cmd_new, cmd_templates};
 pub use trend::{cmd_export, cmd_trend};
 pub use types::{
     build_load_override, parse_duration_str, parse_var_args, ComplianceFramework, ExportFormat,

@@ -192,6 +192,24 @@ pub(crate) enum Commands {
         #[arg(long)]
         plugin: Option<String>,
     },
+    /// Pick a fault and get a validated, ready-to-run experiment
+    ///
+    /// With no flags this is an interactive picker (domain → action → args →
+    /// target → probe → title). With `--from <template>` it instantiates a
+    /// curated starter non-interactively. See `tumult templates`.
+    New {
+        /// Curated starter template to instantiate (non-interactive)
+        #[arg(long)]
+        from: Option<String>,
+        /// Parameter override for `--from`: KEY=VALUE (may be repeated)
+        #[arg(long = "set", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
+        set: Vec<String>,
+        /// Output path for the generated `.toon` (default: <name>.toon)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// List the curated starter templates (name, description, params)
+    Templates,
     /// Import journals from Parquet backup
     Import {
         /// Directory containing Parquet backup files
@@ -288,8 +306,9 @@ pub(crate) enum McpAction {
         /// Transport mode
         #[arg(long, default_value_t = McpTransport::Stdio, value_enum)]
         transport: McpTransport,
-        /// Bind address for the HTTP transport and health endpoint
-        #[arg(long, default_value = "0.0.0.0")]
+        /// Bind address for the HTTP transport and health endpoint. Loopback by
+        /// default; a non-loopback bind (e.g. 0.0.0.0) requires --token.
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
         /// Port for the HTTP transport
         #[arg(long, default_value_t = 3100)]
@@ -347,6 +366,11 @@ pub(crate) enum ChaosGraphAction {
         /// Filter gaps to a fault domain (plugin name substring)
         #[arg(long)]
         domain: Option<String>,
+        /// Also persist the derived gap sub-graph into the store so
+        /// `chaosgraph query/neighbors` can navigate it. Takes a write lock, so
+        /// it conflicts with a running MCP server on the same store.
+        #[arg(long)]
+        refresh: bool,
         /// Output format
         #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
         format: GraphFormat,
