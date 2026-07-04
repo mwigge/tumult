@@ -1,6 +1,7 @@
 //! Intelligence tools for agent reasoning: bundled agentic scenario smoke runs.
 
 use crate::error::ToolError;
+use crate::tools::StructuredReport;
 
 #[derive(Debug, serde::Serialize)]
 struct AgenticSmokeReport {
@@ -21,7 +22,7 @@ struct AgenticSmokeReport {
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the scenario list cannot be serialized.
-pub fn agentic_list_scenarios() -> Result<String, ToolError> {
+pub fn agentic_list_scenarios() -> Result<StructuredReport, ToolError> {
     let packs = tumult_agentic::scenarios::bundled_packs()
         .into_iter()
         .map(|pack| {
@@ -34,12 +35,17 @@ pub fn agentic_list_scenarios() -> Result<String, ToolError> {
         })
         .collect::<Vec<_>>();
 
-    serde_json::to_string_pretty(&serde_json::json!({
+    let data = serde_json::json!({
         "capture_policy": "metadata_only",
         "raw_payloads_captured": false,
         "packs": packs,
-    }))
-    .map_err(|e| ToolError::Execution(e.to_string()))
+    });
+    let serde_json::Value::Object(structured) = data else {
+        unreachable!("scenario list is built as a JSON object");
+    };
+    let text = serde_json::to_string_pretty(&serde_json::Value::Object(structured.clone()))
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
+    Ok(StructuredReport { text, structured })
 }
 
 /// Runs a deterministic local agentic smoke scenario.
@@ -53,7 +59,7 @@ pub fn agentic_smoke(
     scenario: &str,
     fault: Option<&str>,
     contract: Option<&str>,
-) -> Result<String, ToolError> {
+) -> Result<StructuredReport, ToolError> {
     if adapter != "fake-http" && adapter != "fake-mcp" && adapter != "replay" {
         return Err(ToolError::InvalidInput(format!(
             "unsupported agentic smoke adapter '{adapter}'; expected fake-http, fake-mcp, or replay"
@@ -94,7 +100,7 @@ pub fn agentic_run_experiment(
     scenario: &str,
     fault: Option<&str>,
     contract: Option<&str>,
-) -> Result<String, ToolError> {
+) -> Result<StructuredReport, ToolError> {
     if adapter != "fake-http" && adapter != "fake-mcp" && adapter != "replay" {
         return Err(ToolError::InvalidInput(format!(
             "unsupported agentic run adapter '{adapter}'; expected fake-http, fake-mcp, or replay"
@@ -127,7 +133,7 @@ pub fn agentic_run_experiment(
 fn render_agentic_tool_report(
     report: tumult_agentic::smoke::SmokeReport,
     next_diagnostic_command: &str,
-) -> Result<String, ToolError> {
+) -> Result<StructuredReport, ToolError> {
     let report = AgenticSmokeReport {
         status: if report.passed { "passed" } else { "failed" }.to_string(),
         adapter: report.adapter,
@@ -141,7 +147,13 @@ fn render_agentic_tool_report(
         next_diagnostic_command: next_diagnostic_command.to_string(),
     };
 
-    serde_json::to_string_pretty(&report).map_err(|e| ToolError::Execution(e.to_string()))
+    let value = serde_json::to_value(&report).map_err(|e| ToolError::Execution(e.to_string()))?;
+    let serde_json::Value::Object(structured) = value else {
+        unreachable!("AgenticSmokeReport serializes to a JSON object");
+    };
+    let text = serde_json::to_string_pretty(&serde_json::Value::Object(structured.clone()))
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
+    Ok(StructuredReport { text, structured })
 }
 
 #[cfg(test)]
@@ -150,7 +162,7 @@ mod tests {
 
     #[test]
     fn agentic_list_scenarios_returns_metadata_only_packs() {
-        let output = agentic_list_scenarios().unwrap();
+        let output = agentic_list_scenarios().unwrap().text;
         let value: serde_json::Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(value["capture_policy"], "metadata_only");
@@ -163,7 +175,9 @@ mod tests {
 
     #[test]
     fn agentic_smoke_reports_clear_feedback_loop() {
-        let output = agentic_smoke("fake-http", "malformed-json-recovery", None, None).unwrap();
+        let output = agentic_smoke("fake-http", "malformed-json-recovery", None, None)
+            .unwrap()
+            .text;
         let value: serde_json::Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(value["status"], "passed");
@@ -204,8 +218,9 @@ mod tests {
 
     #[test]
     fn agentic_run_experiment_reports_metadata_only_feedback() {
-        let output =
-            agentic_run_experiment("fake-http", "cost-explosion-detector", None, None).unwrap();
+        let output = agentic_run_experiment("fake-http", "cost-explosion-detector", None, None)
+            .unwrap()
+            .text;
         let value: serde_json::Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(value["status"], "passed");

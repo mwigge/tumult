@@ -380,29 +380,36 @@ tumult-mcp                                # stdio (IDE integration)
 tumult-mcp --transport http --port 3100   # HTTP/SSE (containers, CI/CD)
 ```
 
-Exposes 19 tools to AI assistants:
+Exposes 24 tools to AI assistants:
 
 | Tool | Description |
 |------|-------------|
-| `tumult_run_experiment` | Execute an experiment and return the journal |
+| `tumult_run_experiment` | Execute an experiment — persists the journal and auto-ingests it into the analytics store (`journal_path`, `no_ingest`, `store_path`, `format`) |
 | `tumult_validate` | Validate experiment syntax and provider support |
 | `tumult_analyze` | SQL query over journals via embedded DuckDB |
-| `tumult_read_journal` | Read a TOON journal and return contents |
-| `tumult_list_journals` | List .toon journal files in a directory |
+| `tumult_read_journal` | Read a journal as JSON (default) or raw TOON, full or summary |
+| `tumult_list_journals` | List .toon journal files in a directory (paginated) |
 | `tumult_discover` | List all plugins, actions, and probes |
 | `tumult_create_experiment` | Create a new experiment from a template |
 | `tumult_query_traces` | Query trace data for observability correlation |
 | `tumult_store_stats` | Return persistent store statistics |
 | `tumult_analyze_store` | SQL query directly against the persistent store |
-| `tumult_list_experiments` | List experiment .toon files in a directory |
+| `tumult_list_experiments` | List experiment .toon files in a directory (paginated) |
+| `tumult_report` | Render a journal as JSON or JUnit XML, inline or written to the workspace |
+| `tumult_compliance` | Compliance summary and verdict for one of 7 frameworks (`dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2`, `basel-iii`) |
+| `tumult_trend` | Cross-run metric trend over journals with a direction verdict |
+| `tumult_agents` | List agent CLI adapters (claude-code, codex) with install/version/auth state |
+| `tumult_gameday_create` | Scaffold a `.gameday.toon` campaign (experiments, load config, framework) |
 | `tumult_gameday_run` | Run a GameDay under shared load, return score and compliance status |
 | `tumult_gameday_analyze` | Analyze a completed GameDay journal |
-| `tumult_gameday_list` | List available `.gameday.toon` files |
-| `tumult_recommend` | Recommend what to test next — coverage gaps, failure patterns, stale experiments |
+| `tumult_gameday_list` | List available `.gameday.toon` files (paginated) |
+| `tumult_recommend` | Recommend what to test next — coverage gaps, failure patterns, stale experiments; optional agent enhancement (`agent`, `agent_model`, `agent_timeout_secs`, `generate_experiments_dir`) |
 | `tumult_coverage` | Coverage report — plugins/actions/targets tested vs available |
 | `tumult_agentic_list_scenarios` | List agentic fault-injection scenario packs (metadata only) |
 | `tumult_agentic_smoke` | Run a deterministic local agentic smoke check |
 | `tumult_agentic_run_experiment` | Run a bundled agentic experiment (metadata only) |
+
+Every tool carries MCP tool annotations (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`), 16 tools return `structuredContent` with advertised output schemas, and workspace files are served as `tumult://journal|experiment|gameday/{file}` resources. See the [MCP Guide](mcp-guide.md) for the full data model.
 
 Tool failures are returned with `isError: true` per the MCP specification. Authentication and rate-limit rejections are reported as such — not as "Unknown tool".
 

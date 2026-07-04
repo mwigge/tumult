@@ -22,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 mod activity;
 mod experiment;
 mod gameday;
+pub mod k6;
 mod load;
 mod phases;
 mod telemetry;

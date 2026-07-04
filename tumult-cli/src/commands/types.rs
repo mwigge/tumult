@@ -50,18 +50,27 @@ pub enum ComplianceFramework {
 }
 
 impl ComplianceFramework {
+    /// Maps the clap value enum onto the shared domain enum in
+    /// `tumult_core::compliance` (the single source of truth for report
+    /// identifiers, full names, and verdict logic).
+    #[must_use]
+    pub fn to_core(self) -> tumult_core::compliance::ComplianceFramework {
+        use tumult_core::compliance::ComplianceFramework as Core;
+        match self {
+            ComplianceFramework::Dora => Core::Dora,
+            ComplianceFramework::Nis2 => Core::Nis2,
+            ComplianceFramework::PciDss => Core::PciDss,
+            ComplianceFramework::Iso22301 => Core::Iso22301,
+            ComplianceFramework::Iso27001 => Core::Iso27001,
+            ComplianceFramework::Soc2 => Core::Soc2,
+            ComplianceFramework::BaselIii => Core::BaselIii,
+        }
+    }
+
     /// Returns the canonical string identifier used in report output.
     #[must_use]
     pub fn as_report_str(&self) -> &'static str {
-        match self {
-            ComplianceFramework::Dora => "DORA",
-            ComplianceFramework::Nis2 => "NIS2",
-            ComplianceFramework::PciDss => "PCI-DSS",
-            ComplianceFramework::Iso22301 => "ISO-22301",
-            ComplianceFramework::Iso27001 => "ISO-27001",
-            ComplianceFramework::Soc2 => "SOC2",
-            ComplianceFramework::BaselIii => "Basel-III",
-        }
+        self.to_core().as_report_str()
     }
 }
 

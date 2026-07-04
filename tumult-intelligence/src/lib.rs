@@ -6,6 +6,7 @@ mod recommend;
 mod render;
 mod report;
 mod types;
+mod write;
 
 #[cfg(test)]
 mod model;
@@ -17,3 +18,6 @@ pub use agent::{build_agent_prompt, enhance, split_toon_blocks, AgentEnhancement
 pub use recommend::{recommend, recommend_output, render};
 pub use report::heuristic_report;
 pub use types::{OutputFormat, RecommendOptions, RecommendationItem, RecommendationOutput};
+pub use write::{
+    json_with_agent, render_text_with_agent, write_validated_experiments, WriteOutcome,
+};

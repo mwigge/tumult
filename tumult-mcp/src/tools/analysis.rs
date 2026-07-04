@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::error::ToolError;
 use crate::tools::validation::validate_select_only;
+use crate::tools::StructuredReport;
 
 /// Analyze journals with a SQL query via `DuckDB`.
 ///
@@ -56,11 +57,14 @@ pub fn analyze(journals_path: &str, query: &str) -> Result<String, ToolError> {
 /// Query the persistent analytics store stats.
 /// If `store_path` is empty, uses the default path.
 ///
+/// The structured object contains `store`, `schema_version`, `experiments`,
+/// `activities`, and (when file metadata is readable) `size_mb`.
+///
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the store does not exist, cannot be opened, or
 /// the stats/schema-version query fails.
-pub fn store_stats(store_path: &str) -> Result<String, ToolError> {
+pub fn store_stats(store_path: &str) -> Result<StructuredReport, ToolError> {
     let path = std::path::PathBuf::from(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
@@ -75,6 +79,15 @@ pub fn store_stats(store_path: &str) -> Result<String, ToolError> {
         .schema_version()
         .map_err(|e| ToolError::Store(e.to_string()))?;
 
+    let mut structured = serde_json::Map::new();
+    structured.insert("store".into(), serde_json::json!(store_path));
+    structured.insert("schema_version".into(), serde_json::json!(version));
+    structured.insert(
+        "experiments".into(),
+        serde_json::json!(stats.experiment_count),
+    );
+    structured.insert("activities".into(), serde_json::json!(stats.activity_count));
+
     let mut output = format!("store: {store_path}\n");
     let _ = writeln!(output, "schema_version: {version}");
     let _ = writeln!(output, "experiments: {}", stats.experiment_count);
@@ -85,9 +98,13 @@ pub fn store_stats(store_path: &str) -> Result<String, ToolError> {
         #[allow(clippy::cast_precision_loss)]
         let mb = meta.len() as f64 / (1024.0 * 1024.0);
         let _ = writeln!(output, "size_mb: {mb:.2}");
+        structured.insert("size_mb".into(), serde_json::json!(mb));
     }
 
-    Ok(output)
+    Ok(StructuredReport {
+        text: output,
+        structured,
+    })
 }
 
 /// Analyze using the persistent store directly (no journal loading).
@@ -128,8 +145,7 @@ pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, ToolE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::experiment::run_experiment;
-    use crate::tools::test_support::write_valid_experiment;
+    use crate::tools::test_support::write_run_journal;
     use tempfile::TempDir;
 
     // ── analyze ───────────────────────────────────────────────
@@ -137,12 +153,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn analyze_returns_query_results() {
         let dir = TempDir::new().unwrap();
-        let path = write_valid_experiment(dir.path());
 
         // First run the experiment to get a journal
-        let journal_toon = run_experiment(&path, "always", None).unwrap();
-        let journal_path = dir.path().join("journal.toon");
-        std::fs::write(&journal_path, journal_toon).unwrap();
+        let journal_path = write_run_journal(dir.path());
 
         let result = analyze(
             journal_path.to_str().unwrap(),
@@ -172,9 +185,13 @@ mod tests {
 
         let result = store_stats(db_path.to_str().unwrap());
         assert!(result.is_ok());
-        let output = result.unwrap();
-        assert!(output.contains("experiments: 0"));
-        assert!(output.contains("schema_version: 1"));
+        let report = result.unwrap();
+        assert!(report.text.contains("experiments: 0"));
+        assert!(report.text.contains("schema_version: 1"));
+        assert_eq!(report.structured["experiments"], 0);
+        assert_eq!(report.structured["schema_version"], 1);
+        assert!(report.structured.contains_key("store"));
+        assert!(report.structured.contains_key("activities"));
     }
 
     #[test]
@@ -205,11 +222,7 @@ mod tests {
         // Pre-populate a persistent store
         {
             let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
-            let exp_path = write_valid_experiment(dir.path());
-            let journal_toon = run_experiment(&exp_path, "always", None).unwrap();
-            // Write journal to file, then read back via tumult_core
-            let journal_file = dir.path().join("journal.toon");
-            std::fs::write(&journal_file, &journal_toon).unwrap();
+            let journal_file = write_run_journal(dir.path());
             let journal = tumult_core::journal::read_journal(&journal_file).unwrap();
             store.ingest_journal(&journal).unwrap();
         }
