@@ -25,3 +25,4 @@ The Tumult blog series covers the platform end-to-end, from first principles to 
 | [GameDay Is Here](14-gameday-is-here.md) | Coordinated campaigns with resilience scoring — 4/4 PASS, Score 1.00, COMPLIANT |
 | [The Road Ahead](15-road-ahead.md) | What's delivered (Phases 0-8), what's next, the full series index |
 | [Bring Your Own Agent](18-agentic-recommendations.md) | `tumult recommend --agent`: Claude Code / Codex enhance recommendations and propose validated experiments |
+| [Chaos Without Root](19-net-chaos-proxy.md) | `tumult-net`: a userspace TCP chaos proxy — latency, throttling, corruption, and connection kills with no root, no tc, no docker |
