@@ -1,4 +1,6 @@
 target/
+target-deb/
+**/target/
 rust_out/
 .git/
 docs_local/
@@ -7,3 +9,5 @@ docs_local/
 .github/
 .claude/
 openspec/
+node_modules/
+**/node_modules/

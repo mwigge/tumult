@@ -20,22 +20,11 @@
 FROM rust:1.89-bookworm AS builder
 
 WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
-COPY tumult-core/ tumult-core/
-COPY tumult-cli/ tumult-cli/
-COPY tumult-mcp/ tumult-mcp/
-COPY tumult-otel/ tumult-otel/
-COPY tumult-plugin/ tumult-plugin/
-COPY tumult-analytics/ tumult-analytics/
-COPY tumult-baseline/ tumult-baseline/
-COPY tumult-ssh/ tumult-ssh/
-COPY tumult-kubernetes/ tumult-kubernetes/
-COPY tumult-clickhouse/ tumult-clickhouse/
-COPY tumult-agentic/ tumult-agentic/
-COPY tumult-intelligence/ tumult-intelligence/
-COPY tumult-test-utils/ tumult-test-utils/
-COPY tumult-net/ tumult-net/
-COPY tumult-agent-cli/ tumult-agent-cli/
+# Copy the whole build context (heavy dirs are excluded via .dockerignore) so
+# that adding a new workspace crate never breaks the image build — the previous
+# hand-maintained per-crate COPY list silently dropped new crates
+# (tumult-graph, tumult-cloud), failing the build with "No such file or directory".
+COPY . .
 
 # tumult-net-proxyd is the userspace TCP proxy daemon that tumult-net faults
 # spawn; it must ship alongside the main binary (located next to current_exe).
