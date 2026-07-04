@@ -4,6 +4,22 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.5.0] - 2026-07-04
+
+Added:
+- In-pod Kubernetes data-plane faults, without a privileged DaemonSet — injected
+  via the ephemeral-containers subresource (the `kubectl debug` mechanism):
+  - `pod_network_latency`: attaches an ephemeral container that runs
+    `tc qdisc netem delay` in the target pod's shared network namespace,
+    self-terminating after `duration_s`.
+  - `pod_stress`: runs `stress-ng` (CPU or memory) in the target container's
+    process namespace, self-terminating via `--timeout`.
+  Closes the biggest capability gap vs Chaos Mesh/Litmus (control-plane-only k8s)
+  while preserving the no-control-plane, single-binary identity. Honest limits
+  documented (ephemeral containers GA since k8s 1.25, cannot be removed once
+  attached, `tc` needs NET_ADMIN). Validated by hermetic fake-apiserver tests
+  asserting exact apiserver traffic + a k3d validation script (scripts/k8s-demo.sh)
+  and examples/k8s-pod-{latency,stress}.toon.
 ## [2.4.0] - 2026-07-04
 
 Added:

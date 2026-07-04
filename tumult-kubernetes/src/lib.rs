@@ -6,10 +6,25 @@
 //!
 //! # Supported chaos actions
 //!
+//! ## Control plane (via the API server only)
+//!
 //! - **Pod deletion** — immediate or graceful (`delete_pod`)
 //! - **Node drain** — cordon + evict pods (`drain_node`)
 //! - **Deployment scaling** — scale replicas up or down (`scale_deployment`)
 //! - **Network policy** — apply restrictive `NetworkPolicy` to simulate partition
+//!
+//! ## In-pod data plane (via ephemeral debug containers — [`inject`])
+//!
+//! - **Pod network latency** — `tc netem` from an ephemeral container sharing
+//!   the target pod's network namespace (`pod_network_latency`)
+//! - **Pod stress** — `stress-ng` (CPU or memory) in the target container's
+//!   process namespace (`pod_stress`)
+//!
+//! These close the data-plane gap versus Chaos Mesh / `LitmusChaos` **without** a
+//! permanent privileged `DaemonSet`: the injected container is short-lived and
+//! self-terminating. See the [`inject`] module docs for the honest lifecycle
+//! limits (ephemeral containers are GA since 1.25 and cannot be removed once
+//! attached).
 //!
 //! # Probes
 //!
@@ -26,6 +41,7 @@
 
 pub mod actions;
 pub mod error;
+pub mod inject;
 pub mod native;
 pub mod probes;
 pub(crate) mod telemetry;

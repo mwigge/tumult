@@ -79,6 +79,46 @@ pub(crate) fn begin_delete_network_policy(namespace: &str, name: &str) -> SpanGu
     )
 }
 
+// ── In-pod data-plane injection ─────────────────────────────
+
+pub(crate) fn begin_pod_network_latency(
+    namespace: &str,
+    pod: &str,
+    container: &str,
+    delay_ms: u32,
+    duration_s: u32,
+) -> SpanGuard {
+    k8s_span(
+        "k8s.pod.network_latency",
+        vec![
+            KeyValue::new("k8s.namespace.name", namespace.to_string()),
+            KeyValue::new("k8s.pod.name", pod.to_string()),
+            KeyValue::new("k8s.ephemeral_container.name", container.to_string()),
+            KeyValue::new("tumult.fault.delay_ms", i64::from(delay_ms)),
+            KeyValue::new("tumult.fault.duration_s", i64::from(duration_s)),
+        ],
+    )
+}
+
+pub(crate) fn begin_pod_stress(
+    namespace: &str,
+    pod: &str,
+    container: &str,
+    summary: &str,
+    duration_s: u32,
+) -> SpanGuard {
+    k8s_span(
+        "k8s.pod.stress",
+        vec![
+            KeyValue::new("k8s.namespace.name", namespace.to_string()),
+            KeyValue::new("k8s.pod.name", pod.to_string()),
+            KeyValue::new("k8s.ephemeral_container.name", container.to_string()),
+            KeyValue::new("tumult.fault.stress", summary.to_string()),
+            KeyValue::new("tumult.fault.duration_s", i64::from(duration_s)),
+        ],
+    )
+}
+
 // ── Probes ──────────────────────────────────────────────────
 
 pub(crate) fn begin_pod_probe(namespace: &str, name: &str) -> SpanGuard {
@@ -189,5 +229,11 @@ mod tests {
     fn network_policy_spans_do_not_panic() {
         let _g = begin_apply_network_policy("default", "deny-all");
         let _g = begin_delete_network_policy("default", "deny-all");
+    }
+
+    #[test]
+    fn injection_spans_do_not_panic() {
+        let _g = begin_pod_network_latency("default", "web-0", "tumult-netem-0", 100, 30);
+        let _g = begin_pod_stress("default", "web-0", "tumult-stress-0", "2 CPU workers", 30);
     }
 }

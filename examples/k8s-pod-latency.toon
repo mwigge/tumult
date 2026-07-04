@@ -1,0 +1,51 @@
+title: In-pod network latency via ephemeral debug container
+description: Inject tc netem latency into a running pod's network namespace, then verify it stays ready
+
+tags[3]: kubernetes, network, resilience
+
+steady_state_hypothesis:
+  title: Target pod is ready before injection
+  probes[1]:
+    - name: pod-ready
+      activity_type: probe
+      provider:
+        type: native
+        plugin: tumult-kubernetes
+        function: pod_is_ready
+        arguments:
+          namespace: default
+          name: nginx-test
+      tolerance:
+        type: regex
+        pattern: "true"
+
+method[2]:
+  - name: inject-latency
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: pod_network_latency
+      arguments:
+        namespace: default
+        pod: nginx-test
+        delay_ms: 200
+        jitter_ms: 40
+        duration_s: 30
+        iface: eth0
+        image: ghcr.io/nicolaka/netshoot:latest
+    pause_after_s: 5.0
+  - name: pod-still-ready
+    activity_type: probe
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: pod_is_ready
+      arguments:
+        namespace: default
+        name: nginx-test
+    tolerance:
+      type: regex
+      pattern: "true"
+
+rollbacks[0]:

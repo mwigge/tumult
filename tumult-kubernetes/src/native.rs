@@ -6,6 +6,7 @@
 
 use tumult_plugin::native::{arg_num, arg_str, NativeArgs, NativeError, NativeExecutor};
 
+use crate::inject::{self, StressKind};
 use crate::{actions, probes};
 
 /// Functions `tumult-kubernetes` provides to the experiment runner.
@@ -14,11 +15,55 @@ const FUNCTIONS: &[&str] = &[
     "scale_deployment",
     "cordon_node",
     "uncordon_node",
+    "pod_network_latency",
+    "pod_stress",
     "pod_is_ready",
     "deployment_is_ready",
     "all_pods_ready",
     "node_status",
 ];
+
+/// Read an optional string argument, returning `None` when absent or non-string.
+fn opt_str<'a>(args: &'a NativeArgs, key: &str) -> Option<&'a str> {
+    args.get(key).and_then(serde_json::Value::as_str)
+}
+
+/// Resolve the target pod for an in-pod fault: use the explicit `pod` argument,
+/// else resolve the first pod matching `label_selector`.
+async fn resolve_pod(
+    client: kube::Client,
+    args: &NativeArgs,
+    namespace: &str,
+) -> Result<String, NativeError> {
+    let pod = opt_str(args, "pod");
+    let selector = opt_str(args, "label_selector");
+    if pod.is_none() && selector.is_none() {
+        return Err(NativeError::MissingArgument {
+            argument: "pod (or label_selector)".to_string(),
+        });
+    }
+    inject::resolve_target_pod(client, namespace, pod, selector)
+        .await
+        .map_err(NativeError::execution)
+}
+
+/// Parse the stress kind from arguments. Exactly one of `cpu_workers` or
+/// `mem_bytes` must be present.
+fn stress_kind(args: &NativeArgs) -> Result<StressKind, NativeError> {
+    let cpu = arg_num::<u32>(args, "cpu_workers");
+    let mem = args.get("mem_bytes").and_then(serde_json::Value::as_u64);
+    match (cpu, mem) {
+        (Some(_), Some(_)) => Err(NativeError::invalid_argument(
+            "cpu_workers",
+            "set exactly one of `cpu_workers` or `mem_bytes`, not both",
+        )),
+        (Some(workers), None) => Ok(StressKind::Cpu { workers }),
+        (None, Some(bytes)) => Ok(StressKind::Memory { bytes }),
+        (None, None) => Err(NativeError::MissingArgument {
+            argument: "cpu_workers (or mem_bytes)".to_string(),
+        }),
+    }
+}
 
 /// [`NativeExecutor`] for the `tumult-kubernetes` plugin.
 pub struct KubernetesExecutor;
@@ -81,6 +126,35 @@ impl NativeExecutor for KubernetesExecutor {
                     .await
                     .map_err(NativeError::execution)
             }
+            "pod_network_latency" => {
+                let ns = arg_str(args, "namespace")?;
+                let pod = resolve_pod(client.clone(), args, ns).await?;
+                let delay_ms = arg_num::<u32>(args, "delay_ms").ok_or_else(|| {
+                    NativeError::MissingArgument {
+                        argument: "delay_ms".to_string(),
+                    }
+                })?;
+                let jitter_ms = arg_num::<u32>(args, "jitter_ms").unwrap_or(0);
+                let duration_s = arg_num::<u32>(args, "duration_s").unwrap_or(30);
+                let iface = opt_str(args, "iface").unwrap_or(inject::DEFAULT_IFACE);
+                let image = opt_str(args, "image").unwrap_or(inject::DEFAULT_NETEM_IMAGE);
+                inject::pod_network_latency(
+                    client, ns, &pod, delay_ms, jitter_ms, duration_s, iface, image,
+                )
+                .await
+                .map_err(NativeError::execution)
+            }
+            "pod_stress" => {
+                let ns = arg_str(args, "namespace")?;
+                let pod = resolve_pod(client.clone(), args, ns).await?;
+                let duration_s = arg_num::<u32>(args, "duration_s").unwrap_or(30);
+                let kind = stress_kind(args)?;
+                let target_container = opt_str(args, "target_container");
+                let image = opt_str(args, "image").unwrap_or(inject::DEFAULT_STRESS_IMAGE);
+                inject::pod_stress(client, ns, &pod, kind, duration_s, target_container, image)
+                    .await
+                    .map_err(NativeError::execution)
+            }
             "pod_is_ready" => {
                 let ns = arg_str(args, "namespace")?;
                 let name = arg_str(args, "name")?;
@@ -131,6 +205,35 @@ mod tests {
         assert_eq!(executor.name(), "tumult-kubernetes");
         assert!(executor.functions().contains(&"delete_pod"));
         assert!(executor.functions().contains(&"node_status"));
+        assert!(executor.functions().contains(&"pod_network_latency"));
+        assert!(executor.functions().contains(&"pod_stress"));
+    }
+
+    #[test]
+    fn stress_kind_requires_exactly_one_of_cpu_or_mem() {
+        let mut args = NativeArgs::new();
+        assert!(
+            matches!(stress_kind(&args), Err(NativeError::MissingArgument { .. })),
+            "no stress arg must be a missing-argument error"
+        );
+
+        args.insert("cpu_workers".into(), serde_json::json!(4));
+        assert!(matches!(
+            stress_kind(&args),
+            Ok(StressKind::Cpu { workers: 4 })
+        ));
+
+        args.insert("mem_bytes".into(), serde_json::json!(1024));
+        assert!(
+            matches!(stress_kind(&args), Err(NativeError::InvalidArgument { .. })),
+            "both cpu and mem set must be rejected"
+        );
+
+        args.remove("cpu_workers");
+        assert!(matches!(
+            stress_kind(&args),
+            Ok(StressKind::Memory { bytes: 1024 })
+        ));
     }
 
     #[tokio::test]

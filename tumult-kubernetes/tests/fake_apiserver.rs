@@ -13,6 +13,7 @@ use kube::Client;
 use serde_json::{json, Value};
 use tower_test::mock::{self, Handle};
 
+use tumult_kubernetes::inject::{self, StressKind};
 use tumult_kubernetes::{actions, probes, KubeError};
 
 type MockHandle = Handle<Request<Body>, Response<Body>>;
@@ -367,6 +368,311 @@ async fn delete_network_policy_deletes_by_namespace_and_name() {
         .expect("delete succeeds");
 
     assert_eq!(message, "network policy prod/deny-all deleted");
+    apiserver.await.expect("apiserver task");
+}
+
+// ── In-pod data-plane injection (ephemeral containers) ────────
+
+#[tokio::test]
+async fn pod_network_latency_patches_ephemeralcontainers_with_tc_netem() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+
+        // Must hit the ephemeralcontainers subresource of the named pod.
+        assert_eq!(parts.method, Method::PATCH);
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/prod/pods/web-0/ephemeralcontainers"
+        );
+        // Strategic merge appends without clobbering existing ephemeral containers.
+        assert_eq!(
+            parts.headers[http::header::CONTENT_TYPE],
+            "application/strategic-merge-patch+json"
+        );
+
+        let container = &body["spec"]["ephemeralContainers"][0];
+        assert_eq!(container["image"], "tc-image:test");
+        assert!(
+            container["name"]
+                .as_str()
+                .expect("name is string")
+                .starts_with("tumult-netem-"),
+            "unexpected container name: {}",
+            container["name"]
+        );
+        // NET_ADMIN is required for `tc` to touch the qdisc.
+        assert_eq!(
+            container["securityContext"]["capabilities"]["add"],
+            json!(["NET_ADMIN"])
+        );
+        let cmd = container["command"][2]
+            .as_str()
+            .expect("command script is a string");
+        assert!(
+            cmd.contains("tc qdisc add dev eth0 root netem delay 250ms 25ms"),
+            "cmd: {cmd}"
+        );
+        assert!(cmd.contains("sleep 45"), "must self-terminate: {cmd}");
+        assert!(
+            cmd.contains("tc qdisc del dev eth0 root netem"),
+            "must restore: {cmd}"
+        );
+
+        send.send_response(json_response(&pod_json(
+            "prod", "web-0", "Running", true, 0,
+        )));
+    });
+
+    let message = inject::pod_network_latency(
+        client,
+        "prod",
+        "web-0",
+        250,
+        25,
+        45,
+        "eth0",
+        "tc-image:test",
+    )
+    .await
+    .expect("latency injection succeeds");
+
+    assert!(message.contains("250ms latency"), "message: {message}");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn pod_network_latency_rejects_zero_delay_without_api_call() {
+    let (client, _handle) = mock_client();
+    // No apiserver task spawned: validation must fail before any request.
+    let err = inject::pod_network_latency(client, "prod", "web-0", 0, 0, 30, "eth0", "img")
+        .await
+        .expect_err("zero delay must be rejected");
+    assert!(
+        matches!(
+            err,
+            KubeError::InvalidConfig {
+                field: "delay_ms",
+                ..
+            }
+        ),
+        "expected InvalidConfig(delay_ms), got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn pod_network_latency_404_pod_yields_typed_api_error() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (_, send) = handle.next_request().await.expect("service not called");
+        send.send_response(status_response(
+            StatusCode::NOT_FOUND,
+            "NotFound",
+            "pods \"ghost\" not found",
+        ));
+    });
+
+    let err = inject::pod_network_latency(client, "prod", "ghost", 100, 0, 30, "eth0", "img")
+        .await
+        .expect_err("missing pod must fail");
+    assert!(
+        matches!(err, KubeError::Api(_)),
+        "expected KubeError::Api, got: {err:?}"
+    );
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn pod_stress_cpu_patches_ephemeralcontainers_with_stress_ng() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+
+        assert_eq!(parts.method, Method::PATCH);
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/prod/pods/api-7/ephemeralcontainers"
+        );
+        let container = &body["spec"]["ephemeralContainers"][0];
+        assert_eq!(container["image"], "stress-image:test");
+        assert!(
+            container["name"]
+                .as_str()
+                .expect("name")
+                .starts_with("tumult-stress-"),
+            "name: {}",
+            container["name"]
+        );
+        // Lands in the target container's process namespace.
+        assert_eq!(container["targetContainerName"], "app");
+        let cmd = container["command"][2].as_str().expect("script");
+        assert!(cmd.contains("stress-ng --cpu 3"), "cmd: {cmd}");
+        assert!(cmd.contains("--timeout 60s"), "self-terminating: {cmd}");
+
+        send.send_response(json_response(&pod_json(
+            "prod", "api-7", "Running", true, 0,
+        )));
+    });
+
+    let message = inject::pod_stress(
+        client,
+        "prod",
+        "api-7",
+        StressKind::Cpu { workers: 3 },
+        60,
+        Some("app"),
+        "stress-image:test",
+    )
+    .await
+    .expect("stress injection succeeds");
+
+    assert!(
+        message.contains("3 CPU workers stress"),
+        "message: {message}"
+    );
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn pod_stress_memory_sets_vm_bytes_and_no_target_container() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/default/pods/cache-0/ephemeralcontainers"
+        );
+        let container = &body["spec"]["ephemeralContainers"][0];
+        assert!(
+            container.get("targetContainerName").is_none(),
+            "no target container was requested: {container}"
+        );
+        let cmd = container["command"][2].as_str().expect("script");
+        assert!(
+            cmd.contains("--vm 1 --vm-bytes 268435456 --vm-keep"),
+            "cmd: {cmd}"
+        );
+        send.send_response(json_response(&pod_json(
+            "default", "cache-0", "Running", true, 0,
+        )));
+    });
+
+    inject::pod_stress(
+        client,
+        "default",
+        "cache-0",
+        StressKind::Memory { bytes: 268_435_456 },
+        30,
+        None,
+        "stress-image:test",
+    )
+    .await
+    .expect("memory stress injection succeeds");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn pod_stress_rejects_zero_cpu_workers_without_api_call() {
+    let (client, _handle) = mock_client();
+    let err = inject::pod_stress(
+        client,
+        "prod",
+        "web-0",
+        StressKind::Cpu { workers: 0 },
+        30,
+        None,
+        "img",
+    )
+    .await
+    .expect_err("zero workers must be rejected");
+    assert!(
+        matches!(
+            err,
+            KubeError::InvalidConfig {
+                field: "cpu_workers",
+                ..
+            }
+        ),
+        "expected InvalidConfig(cpu_workers), got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn resolve_target_pod_lists_by_label_and_picks_first_match() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods");
+        let query = parts.uri.query().unwrap_or_default();
+        assert!(
+            query.contains("labelSelector=app%3Dweb"),
+            "selector must be forwarded: {query}"
+        );
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "PodList",
+            "metadata": {},
+            "items": [
+                pod_json("prod", "web-abc", "Running", true, 0),
+                pod_json("prod", "web-def", "Running", true, 0),
+            ],
+        })));
+    });
+
+    let pod = inject::resolve_target_pod(client, "prod", None, Some("app=web"))
+        .await
+        .expect("resolution succeeds");
+    assert_eq!(pod, "web-abc");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn resolve_target_pod_explicit_name_skips_api_call() {
+    let (client, _handle) = mock_client();
+    // No apiserver task: an explicit pod name must not trigger a list request.
+    let pod = inject::resolve_target_pod(client, "prod", Some("chosen-0"), None)
+        .await
+        .expect("explicit name resolves without a call");
+    assert_eq!(pod, "chosen-0");
+}
+
+#[tokio::test]
+async fn resolve_target_pod_empty_selector_match_is_typed_error() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (_, send) = handle.next_request().await.expect("service not called");
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "PodList",
+            "metadata": {},
+            "items": [],
+        })));
+    });
+
+    let err = inject::resolve_target_pod(client, "prod", None, Some("app=ghost"))
+        .await
+        .expect_err("no match must fail");
+    assert!(
+        matches!(
+            err,
+            KubeError::InvalidConfig {
+                field: "label_selector",
+                ..
+            }
+        ),
+        "expected InvalidConfig(label_selector), got: {err:?}"
+    );
     apiserver.await.expect("apiserver task");
 }
 
