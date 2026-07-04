@@ -316,9 +316,14 @@ pub(crate) enum McpAction {
         /// Port for the /health endpoint (default: port + 1)
         #[arg(long)]
         health_port: Option<u16>,
-        /// Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`)
+        /// Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`,
+        /// mapped to the `operator` role)
         #[arg(long)]
         token: Option<String>,
+        /// Path to a TOML auth config file granting per-token roles (viewer /
+        /// operator). Overrides --token; sets `TUMULT_MCP_AUTH_CONFIG`.
+        #[arg(long)]
+        auth_config: Option<std::path::PathBuf>,
     },
 }
 

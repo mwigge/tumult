@@ -4,6 +4,33 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.10.0] - 2026-07-04
+
+Role-based access control on the MCP server — the safety control that answers
+"who may fire chaos in production", and the natural follow-on to 2.9's
+secure-by-default work.
+
+Added:
+- **2-role RBAC (viewer / operator)** on the MCP server. `viewer` may call
+  read-only tools (analyze, query, chaosgraph, compliance, discover, catalog,
+  scaffold, …); `operator` may call everything, including fault injection,
+  container kill/pause, and running experiments. Fail-closed (default-deny):
+  an unknown or unmapped token is rejected, never elevated.
+- Token → role mapping from a TOML auth config (`--auth-config <path>` /
+  `TUMULT_MCP_AUTH_CONFIG`, default `~/.tumult/mcp-auth.toml`):
+  `[[tokens]] token = "…" role = "viewer"|"operator"`. Tokens are compared in
+  constant time. A malformed config aborts startup rather than running open.
+- Tools are classified by their `read_only_hint`; a test cross-checks the role
+  table against every tool's hint so the two can never silently diverge
+  (23 viewer, 6 operator).
+
+Changed:
+- Backward-compatible: with no config file, the existing single
+  `TUMULT_MCP_TOKEN` maps to `operator`, so current deployments are unchanged.
+- The secure-by-default bind guard now refuses a non-loopback HTTP bind unless
+  auth is configured (a config file OR a token).
+- Docs (production-deployment §Security, README) describe the 2-role model,
+  config format, priority order, and rotation.
 ## [2.9.0] - 2026-07-04
 
 Authoring ergonomics + production-readiness: pick a fault and get a validated

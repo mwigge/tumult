@@ -1,6 +1,6 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-2.9.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.10.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Crates](https://img.shields.io/badge/crates-17-green)
@@ -283,7 +283,23 @@ Tool failures are reported with `isError: true` per the MCP spec, and authentica
 
 ### Authentication
 
-Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool and resource requests (constant-time comparison, no timing attack surface; a Semaphore(10) rate-limits concurrent calls). If unset, the server runs without auth and emits a log warning.
+Bearer token authentication with **two-role RBAC** (fail-closed, default-deny). Configure it one of two ways:
+
+- **Auth config file** (recommended) — `--auth-config <path>` / `TUMULT_MCP_AUTH_CONFIG` (default `~/.tumult/mcp-auth.toml` when present), granting each token a role:
+
+  ```toml
+  [[tokens]]
+  token = "<secret>"
+  role  = "viewer"    # read-only tools only
+
+  [[tokens]]
+  token = "<secret>"
+  role  = "operator"  # all tools, incl. fault injection / execution
+  ```
+
+- **Single token** — `TUMULT_MCP_TOKEN` maps to one **operator** token (backward-compatible).
+
+`operator` ⊇ `viewer`. A tool's required role is derived from its read-only hint; a viewer calling an operator-only tool (e.g. `tumult_run_experiment`) is rejected with a clear role error. Unknown tokens are rejected (never elevated); a malformed config refuses all requests. Token comparison is constant-time (`subtle`), and a Semaphore(10) rate-limits concurrent calls. With no auth configured the server runs open on loopback only — a network HTTP bind is refused.
 
 ### ChaosGraph — token-efficient chaos knowledge graph
 
@@ -843,7 +859,7 @@ Undefined variables cause a hard error at startup (not silent).
 
 ### MCP Authentication
 
-The MCP server supports opt-in bearer token authentication via `TUMULT_MCP_TOKEN`. Token comparison uses constant-time equality (`subtle` crate) to prevent timing attacks. A Semaphore(10) rate-limits concurrent tool calls.
+The MCP server authenticates bearer tokens with two-role RBAC (**viewer** = read-only tools, **operator** = all tools). Configure per-token roles with a TOML auth config file (`--auth-config` / `TUMULT_MCP_AUTH_CONFIG`, default `~/.tumult/mcp-auth.toml`), or use `TUMULT_MCP_TOKEN` for a single operator token. It is fail-closed: unknown tokens are rejected (never elevated), an under-privileged token gets a clear role error, and a malformed config refuses all requests. Token comparison uses constant-time equality (`subtle` crate) to prevent timing attacks. A Semaphore(10) rate-limits concurrent tool calls. See the [production deployment guide](docs/guides/production-deployment.md#1-security--read-this-first).
 
 ### Audit Log
 

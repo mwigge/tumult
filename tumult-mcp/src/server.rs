@@ -157,37 +157,50 @@ async fn shutdown_signal() {
 /// Run the Tumult MCP server until it exits or a shutdown signal arrives.
 ///
 /// Spawns a background health-check server (always, regardless of transport),
-/// then serves MCP requests over the configured transport. The tool handler is
-/// built with [`crate::handler::TumultHandler::default`], which reads bearer
-/// authentication from the `TUMULT_MCP_TOKEN` environment variable.
+/// then serves MCP requests over the configured transport. Authentication is
+/// resolved via [`crate::handler::McpAuth::load`] (TOML auth config file, or the
+/// legacy `TUMULT_MCP_TOKEN` env var → `operator`); a malformed config aborts
+/// startup rather than running without authentication.
 ///
 /// # Errors
 ///
 /// Returns any error surfaced by the underlying transport's `start()`.
 pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
     let details = server_details();
-    let handler = crate::handler::TumultHandler::default().to_mcp_server_handler();
 
-    // Secure by default: never serve HTTP on a network-exposed address without a
-    // token. The MCP surface can inject faults and kill containers, so an
-    // unauthenticated non-loopback bind is refused outright.
+    // Resolve authentication up front. A malformed/unreadable auth config is a
+    // hard startup error — fail closed rather than run without authentication.
+    let auth = crate::handler::McpAuth::load().map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("MCP auth config error: {e}"),
+        )
+    })?;
+
+    // Secure by default: never serve HTTP on a network-exposed address without
+    // configured authentication (an auth config file OR TUMULT_MCP_TOKEN). The
+    // MCP surface can inject faults and kill containers, so an unauthenticated
+    // non-loopback bind is refused outright.
     if matches!(opts.transport, Transport::Http)
         && !crate::handler::host_is_loopback(&opts.host)
-        && std::env::var("TUMULT_MCP_TOKEN")
-            .ok()
-            .is_none_or(|t| t.is_empty())
+        && !auth.is_configured()
     {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to serve MCP over HTTP on non-loopback address {} without \
-                 authentication: set TUMULT_MCP_TOKEN to a strong secret, or bind \
-                 --host 127.0.0.1 for local-only access",
+                 authentication: provide an auth config (--auth-config / \
+                 TUMULT_MCP_AUTH_CONFIG) or set TUMULT_MCP_TOKEN to a strong secret, \
+                 or bind --host 127.0.0.1 for local-only access",
                 opts.host
             ),
         )
         .into());
     }
+
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    let handler =
+        crate::handler::TumultHandler::with_auth(workspace_root, auth).to_mcp_server_handler();
 
     // Determine health port: explicit flag, or MCP port + 1.
     let health_port = opts.health_port.unwrap_or(opts.port.saturating_add(1));

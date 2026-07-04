@@ -17,17 +17,48 @@ operators over the network.
 The MCP server exposes tools that inject faults and can kill containers. Treat it
 like any control-plane API.
 
-- **A bearer token is mandatory for network exposure.** Set `TUMULT_MCP_TOKEN` to
-  a long random secret (`openssl rand -hex 32`). The server **refuses to serve
-  HTTP on a non-loopback address without a token**, and binds `127.0.0.1` by
-  default — you must opt into a wider bind *and* a token explicitly.
+- **Authentication is mandatory for network exposure.** The server **refuses to
+  serve HTTP on a non-loopback address without configured auth**, and binds
+  `127.0.0.1` by default — you must opt into a wider bind *and* configure auth
+  explicitly. Auth is resolved in priority order:
+  1. `--auth-config <path>` (or `TUMULT_MCP_AUTH_CONFIG`, default
+     `~/.tumult/mcp-auth.toml` when present) — a TOML file granting each token a
+     role (see below). This is the recommended production setup.
+  2. `TUMULT_MCP_TOKEN` — a single static token, mapped to the **operator** role
+     (backward-compatible with pre-RBAC deployments).
+- **Two roles, fail-closed (default-deny).** Every tool is classified by its
+  declared read-only hint:
+  - **viewer** — may call read-only tools only (`tumult_chaosgraph_query`,
+    `tumult_analyze`, `tumult_read_journal`, `tumult_compliance`,
+    `tumult_fault_catalog`, `tumult_scaffold_experiment`, the `list_*` tools, …).
+  - **operator** — may call **all** tools, including fault injection and
+    execution (`tumult_run_experiment`, `tumult_gameday_run`,
+    `tumult_create_experiment`, `tumult_report`, `tumult_gameday_create`,
+    `tumult_recommend`).
+
+  `operator` ⊇ `viewer`. A token absent from the config is **rejected, never
+  elevated**; a missing or unknown role is a startup error; and a malformed
+  config refuses every request rather than running open.
+- **Auth config file format** (`~/.tumult/mcp-auth.toml`, mode `600`):
+
+  ```toml
+  [[tokens]]
+  token = "<viewer-secret>"   # openssl rand -hex 32
+  role  = "viewer"
+
+  [[tokens]]
+  token = "<operator-secret>"
+  role  = "operator"
+  ```
+
 - **Terminate TLS at a reverse proxy.** The server speaks plain HTTP. Put
   nginx/Caddy/an Ingress in front to terminate TLS and, ideally, add a second
   auth layer (mTLS or an OIDC proxy). Never expose `:3100` directly to the
   internet.
-- **Rotate the token by restarting** with a new value. There is a single static
-  token today (no per-user roles yet — RBAC is on the roadmap); scope access with
-  network policy and the proxy in the meantime.
+- **Rotate tokens by editing the config (or the secret) and restarting.** Issue
+  a distinct token per principal so you can revoke one without disturbing the
+  rest; rotate on a schedule and on any suspected exposure. Keep the file
+  `600`-permissioned and out of version control.
 - Clients pass the token as `Authorization: Bearer <token>` **and** in
   `_meta.authorization` on each `tools/call` (stdio clients rely on the latter).
 
@@ -104,8 +135,9 @@ Two distinct fields:
 
 ## 7. Pre-flight checklist
 
-- [ ] `TUMULT_MCP_TOKEN` set to a strong secret; rotation plan documented
-- [ ] Server bound to localhost or behind a TLS-terminating proxy with the token required
+- [ ] Auth configured — an auth config file (per-token roles) or `TUMULT_MCP_TOKEN`; each token a strong secret; rotation plan documented
+- [ ] Least privilege: automation and read-only users hold **viewer** tokens; only operators hold **operator** tokens
+- [ ] Server bound to localhost or behind a TLS-terminating proxy with auth required
 - [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at your collector
 - [ ] Store volume persisted, encrypted, and on a backup schedule; single writer
 - [ ] Experiments set `max_concurrent_faults` and attach guard probes to real SLOs

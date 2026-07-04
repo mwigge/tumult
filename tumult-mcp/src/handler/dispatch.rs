@@ -24,7 +24,48 @@ use super::schema::{
     ListExperimentsTool, ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool,
     ReportTool, RunExperimentTool, ScaffoldExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
 };
-use super::TumultHandler;
+use super::{Role, TumultHandler};
+
+/// Minimum [`Role`] required to invoke a tool.
+///
+/// Derived from each tool's `read_only_hint` (the source of truth): a tool
+/// whose hint is `true` needs [`Role::Viewer`]; everything else — fault
+/// injection, execution, file writes, agent spawning — needs
+/// [`Role::Operator`]. **Fail-closed**: any tool not listed here (including an
+/// unknown name) requires `Operator`. The `required_roles_match_annotations`
+/// test cross-checks this table against every tool's declared `read_only_hint`,
+/// so the two can never silently diverge.
+pub(crate) fn required_role_for_tool(name: &str) -> Role {
+    match name {
+        "tumult_validate"
+        | "tumult_analyze"
+        | "tumult_read_journal"
+        | "tumult_list_journals"
+        | "tumult_discover"
+        | "tumult_query_traces"
+        | "tumult_store_stats"
+        | "tumult_analyze_store"
+        | "tumult_list_experiments"
+        | "tumult_compliance"
+        | "tumult_trend"
+        | "tumult_agents"
+        | "tumult_gameday_analyze"
+        | "tumult_gameday_list"
+        | "tumult_coverage"
+        | "tumult_agentic_list_scenarios"
+        | "tumult_agentic_smoke"
+        | "tumult_agentic_run_experiment"
+        | "tumult_chaosgraph_query"
+        | "tumult_chaosgraph_neighbors"
+        | "tumult_chaosgraph_coverage_gaps"
+        | "tumult_fault_catalog"
+        | "tumult_scaffold_experiment" => Role::Viewer,
+        // Operator-only (read_only_hint == false), plus any unknown tool:
+        // tumult_run_experiment, tumult_create_experiment, tumult_report,
+        // tumult_gameday_run, tumult_gameday_create, tumult_recommend.
+        _ => Role::Operator,
+    }
+}
 
 /// Journal file name used when `tumult_run_experiment` receives no
 /// `journal_path` — mirrors the CLI's `--journal-path` default.
@@ -179,12 +220,26 @@ impl ServerHandler for TumultHandler {
             .await
             .map_err(|_| CallToolError::from_message("semaphore closed".to_string()))?;
 
-        // Enforce bearer token authentication if configured.
+        // Enforce bearer-token authentication and role-based access control.
         // Clients pass the Authorization value via `_meta.authorization` since
         // stdio transport has no HTTP header context at the handler level.
         let authorization = Self::extract_authorization(&params);
-        if let Err(e) = self.auth.check(authorization.as_deref()) {
-            return Err(CallToolError::from_message(format!("Unauthorized: {e}")));
+        let principal_role = match self.auth.authenticate(authorization.as_deref()) {
+            Ok(role) => role,
+            Err(e) => return Err(CallToolError::from_message(format!("Unauthorized: {e}"))),
+        };
+        // `None` == open mode (no auth configured) → full access. Otherwise the
+        // resolved role must meet the tool's required role (Operator ⊇ Viewer).
+        if let Some(role) = principal_role {
+            let required = required_role_for_tool(&params.name);
+            if role < required {
+                return Err(CallToolError::from_message(format!(
+                    "Unauthorized: tool {} requires the '{}' role; token has '{}'",
+                    params.name,
+                    required.as_str(),
+                    role.as_str()
+                )));
+            }
         }
 
         tracing::info!(tool = %params.name, "MCP tool call");
@@ -581,7 +636,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(
 #[allow(clippy::useless_vec)]
 mod tests {
     use super::*;
-    use crate::handler::{McpAuth, TumultHandler, MAX_CONCURRENT_TOOL_CALLS};
+    use crate::handler::{McpAuth, Role, TumultHandler, MAX_CONCURRENT_TOOL_CALLS};
 
     #[test]
     fn all_tools_listed() {
@@ -623,7 +678,7 @@ mod tests {
     fn handler_has_semaphore_with_correct_limit() {
         let handler = TumultHandler::with_auth(
             std::env::current_dir().unwrap_or_else(|_| "/".into()),
-            McpAuth { token: None },
+            McpAuth::none(),
         );
         assert_eq!(
             handler.semaphore.available_permits(),
@@ -680,9 +735,7 @@ mod tests {
         // A handler with a configured token must carry it in the auth field.
         let handler = TumultHandler::with_auth(
             "/tmp".into(),
-            McpAuth {
-                token: Some("handler-secret".into()),
-            },
+            McpAuth::single_operator("handler-secret".into()),
         );
         // Auth check without token should fail (token is set on handler).
         assert!(handler.auth.check(None).is_err());
@@ -695,9 +748,7 @@ mod tests {
     fn auth_wired_accepts_valid_token() {
         let handler = TumultHandler::with_auth(
             "/tmp".into(),
-            McpAuth {
-                token: Some("valid-token-xyz".into()),
-            },
+            McpAuth::single_operator("valid-token-xyz".into()),
         );
         assert!(handler.auth.check(Some("Bearer valid-token-xyz")).is_ok());
         assert!(handler.auth.check(Some("Bearer wrong")).is_err());
@@ -792,7 +843,7 @@ mod tests {
 
     /// Handler with no auth token, rooted at the given directory.
     fn open_handler(root: &std::path::Path) -> TumultHandler {
-        TumultHandler::with_auth(root.to_path_buf(), McpAuth { token: None })
+        TumultHandler::with_auth(root.to_path_buf(), McpAuth::none())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2073,9 +2124,7 @@ mod tests {
         crate::tools::test_support::write_valid_experiment(tmp.path());
         let handler = TumultHandler::with_auth(
             tmp.path().to_path_buf(),
-            McpAuth {
-                token: Some("dispatch-secret".into()),
-            },
+            McpAuth::single_operator("dispatch-secret".into()),
         );
 
         let params = call_params(
@@ -2102,9 +2151,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let handler = TumultHandler::with_auth(
             tmp.path().to_path_buf(),
-            McpAuth {
-                token: Some("dispatch-secret".into()),
-            },
+            McpAuth::single_operator("dispatch-secret".into()),
         );
 
         // No `_meta.authorization` supplied at all.
@@ -2126,9 +2173,7 @@ mod tests {
         crate::tools::test_support::write_valid_experiment(tmp.path());
         let handler = TumultHandler::with_auth(
             tmp.path().to_path_buf(),
-            McpAuth {
-                token: Some("dispatch-secret".into()),
-            },
+            McpAuth::single_operator("dispatch-secret".into()),
         );
 
         let params = call_params(
@@ -2144,6 +2189,223 @@ mod tests {
             result_text(&result).contains("Valid: 'MCP test experiment'"),
             "authorized call must reach the tool"
         );
+    }
+
+    // ── Role-based access control (RBAC) ─────────────────────────
+
+    /// The dispatch role table must agree with every tool's declared
+    /// `read_only_hint`: read-only ⇒ Viewer, otherwise Operator. This guards
+    /// against a hint change silently drifting from the enforced role.
+    #[test]
+    fn required_roles_match_annotations() {
+        let tools = [
+            RunExperimentTool::tool(),
+            ValidateTool::tool(),
+            AnalyzeTool::tool(),
+            ReadJournalTool::tool(),
+            ListJournalsTool::tool(),
+            DiscoverTool::tool(),
+            CreateExperimentTool::tool(),
+            QueryTracesTool::tool(),
+            StoreStatsTool::tool(),
+            AnalyzeStoreTool::tool(),
+            ListExperimentsTool::tool(),
+            ReportTool::tool(),
+            ComplianceTool::tool(),
+            TrendTool::tool(),
+            AgentsTool::tool(),
+            GameDayCreateTool::tool(),
+            GameDayRunTool::tool(),
+            GameDayAnalyzeTool::tool(),
+            GameDayListTool::tool(),
+            RecommendTool::tool(),
+            CoverageTool::tool(),
+            AgenticListScenariosTool::tool(),
+            AgenticSmokeTool::tool(),
+            AgenticRunExperimentTool::tool(),
+            ChaosGraphQueryTool::tool(),
+            ChaosGraphNeighborsTool::tool(),
+            ChaosGraphCoverageGapsTool::tool(),
+            FaultCatalogTool::tool(),
+            ScaffoldExperimentTool::tool(),
+        ];
+        for tool in &tools {
+            let read_only = tool
+                .annotations
+                .as_ref()
+                .and_then(|a| a.read_only_hint)
+                .unwrap_or(false);
+            let expected = if read_only {
+                Role::Viewer
+            } else {
+                Role::Operator
+            };
+            assert_eq!(
+                required_role_for_tool(&tool.name),
+                expected,
+                "required role for '{}' must match its read_only_hint",
+                tool.name
+            );
+        }
+        // Fail-closed default for an unknown tool.
+        assert_eq!(required_role_for_tool("tumult_nonexistent"), Role::Operator);
+    }
+
+    /// A viewer token may call a read-only tool.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn viewer_allowed_on_read_only_tool() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::tools::test_support::write_valid_experiment(tmp.path());
+        let handler = TumultHandler::with_auth(
+            tmp.path().to_path_buf(),
+            McpAuth::from_tokens(vec![
+                ("view-tok".into(), Role::Viewer),
+                ("op-tok".into(), Role::Operator),
+            ]),
+        );
+
+        let params = call_params(
+            "tumult_validate",
+            serde_json::json!({ "experiment_path": "test.toon" }),
+            Some("Bearer view-tok"),
+        );
+        let result = handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .expect("viewer must reach a read-only tool");
+        assert!(result.is_error.is_none(), "{}", result_text(&result));
+        assert!(result_text(&result).contains("Valid: 'MCP test experiment'"));
+    }
+
+    /// A viewer token is rejected on operator-only tools with a clear role
+    /// error (`run_experiment` and `gameday_run` — fault injection/execution).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn viewer_rejected_on_operator_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::tools::test_support::write_valid_experiment(tmp.path());
+        let handler = TumultHandler::with_auth(
+            tmp.path().to_path_buf(),
+            McpAuth::from_tokens(vec![("view-tok".into(), Role::Viewer)]),
+        );
+
+        for tool in ["tumult_run_experiment", "tumult_gameday_run"] {
+            let params = call_params(
+                tool,
+                serde_json::json!({
+                    "experiment_path": "test.toon",
+                    "gameday_path": "x.gameday.toon",
+                    "no_ingest": true,
+                }),
+                Some("Bearer view-tok"),
+            );
+            let err = handler
+                .handle_call_tool_request(params, stub_runtime())
+                .await
+                .expect_err("viewer must be rejected on an operator-only tool");
+            let msg = err.to_string();
+            assert!(msg.contains("Unauthorized"), "got: {msg}");
+            assert!(msg.contains("requires the 'operator' role"), "got: {msg}");
+            assert!(msg.contains("token has 'viewer'"), "got: {msg}");
+            // A role rejection must not run the destructive tool.
+            assert!(
+                !tmp.path().join("journal.toon").exists(),
+                "run_experiment must not execute for a viewer"
+            );
+        }
+    }
+
+    /// An operator token may call both read-only and operator-only tools.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn operator_allowed_on_read_only_and_operator_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::tools::test_support::write_valid_experiment(tmp.path());
+        let store = tmp.path().join("analytics.duckdb");
+        let handler = TumultHandler::with_auth(
+            tmp.path().to_path_buf(),
+            McpAuth::from_tokens(vec![
+                ("view-tok".into(), Role::Viewer),
+                ("op-tok".into(), Role::Operator),
+            ]),
+        );
+
+        // Read-only tool.
+        let params = call_params(
+            "tumult_validate",
+            serde_json::json!({ "experiment_path": "test.toon" }),
+            Some("Bearer op-tok"),
+        );
+        let result = handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .expect("operator must reach a read-only tool");
+        assert!(result.is_error.is_none(), "{}", result_text(&result));
+
+        // Operator-only tool actually executes.
+        let params = call_params(
+            "tumult_run_experiment",
+            serde_json::json!({
+                "experiment_path": "test.toon",
+                "store_path": store.to_str().unwrap(),
+            }),
+            Some("Bearer op-tok"),
+        );
+        let result = handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .expect("operator must reach an operator-only tool");
+        assert!(result.is_error.is_none(), "{}", result_text(&result));
+        assert!(tmp.path().join("journal.toon").exists());
+    }
+
+    /// A token not present in the map is rejected (never elevated).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn unknown_token_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let handler = TumultHandler::with_auth(
+            tmp.path().to_path_buf(),
+            McpAuth::from_tokens(vec![("view-tok".into(), Role::Viewer)]),
+        );
+        let params = call_params(
+            "tumult_discover",
+            serde_json::json!({}),
+            Some("Bearer not-a-real-token"),
+        );
+        let err = handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .expect_err("unknown token must be rejected");
+        assert!(err.to_string().contains("Unauthorized"), "got: {err}");
+        assert!(
+            err.to_string().contains("invalid bearer token"),
+            "got: {err}"
+        );
+    }
+
+    /// Backward-compat: a single operator token (legacy `TUMULT_MCP_TOKEN` shape)
+    /// can call every tool, read-only and operator-only alike.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn legacy_single_token_is_operator() {
+        let tmp = tempfile::tempdir().unwrap();
+        crate::tools::test_support::write_valid_experiment(tmp.path());
+        let store = tmp.path().join("analytics.duckdb");
+        let handler = TumultHandler::with_auth(
+            tmp.path().to_path_buf(),
+            McpAuth::single_operator("legacy-secret".into()),
+        );
+
+        let params = call_params(
+            "tumult_run_experiment",
+            serde_json::json!({
+                "experiment_path": "test.toon",
+                "store_path": store.to_str().unwrap(),
+            }),
+            Some("Bearer legacy-secret"),
+        );
+        let result = handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .expect("legacy single token must call operator tools");
+        assert!(result.is_error.is_none(), "{}", result_text(&result));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -438,7 +438,7 @@ mod tests {
     };
 
     fn open_handler(root: &std::path::Path) -> TumultHandler {
-        TumultHandler::with_auth(root.to_path_buf(), McpAuth { token: None })
+        TumultHandler::with_auth(root.to_path_buf(), McpAuth::none())
     }
 
     fn read_params(uri: &str) -> ReadResourceRequestParams {
@@ -784,9 +784,7 @@ mod tests {
         crate::tools::test_support::write_run_journal(tmp.path());
         let handler = TumultHandler::with_auth(
             tmp.path().to_path_buf(),
-            McpAuth {
-                token: Some("resource-secret".into()),
-            },
+            McpAuth::single_operator("resource-secret".into()),
         );
 
         // No token: both entry points must reject.

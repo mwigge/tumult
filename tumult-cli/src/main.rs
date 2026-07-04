@@ -265,12 +265,14 @@ async fn main() -> anyhow::Result<()> {
                 port,
                 health_port,
                 token,
+                auth_config,
             } => {
                 let transport = match transport {
                     McpTransport::Stdio => commands::McpTransportKind::Stdio,
                     McpTransport::Http => commands::McpTransportKind::Http,
                 };
-                commands::cmd_mcp_serve(transport, host, port, health_port, token).await?;
+                commands::cmd_mcp_serve(transport, host, port, health_port, token, auth_config)
+                    .await?;
             }
         },
         Commands::ChaosGraph { action } => match action {

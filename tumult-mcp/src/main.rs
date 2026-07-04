@@ -51,6 +51,13 @@ fn parse_args() -> ServeOptions {
                     }));
                 }
             }
+            "--auth-config" => {
+                i += 1;
+                if i < args.len() {
+                    // Consumed by McpAuth::load() via the environment.
+                    std::env::set_var("TUMULT_MCP_AUTH_CONFIG", &args[i]);
+                }
+            }
             "--help" | "-h" => {
                 eprintln!("tumult-mcp [OPTIONS]");
                 eprintln!();
@@ -60,6 +67,9 @@ fn parse_args() -> ServeOptions {
                 eprintln!("  --port <port>             Port for HTTP (default: 3100)");
                 eprintln!(
                     "  --health-port <port>      Port for /health endpoint (default: port+1)"
+                );
+                eprintln!(
+                    "  --auth-config <path>      TOML auth config (token->role); sets TUMULT_MCP_AUTH_CONFIG"
                 );
                 std::process::exit(0);
             }
