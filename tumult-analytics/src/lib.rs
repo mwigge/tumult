@@ -23,20 +23,25 @@
 //! See the [data lifecycle guide](https://github.com/tumult-rs/tumult/blob/main/docs/data-lifecycle.md)
 //! for an end-to-end walkthrough from experiment execution through analytics.
 
+#[cfg(feature = "duckdb")]
 pub mod arrow_convert;
 pub mod backend;
+#[cfg(feature = "duckdb")]
 pub mod duckdb_store;
 pub mod error;
+#[cfg(feature = "duckdb")]
 pub mod export;
 pub mod query_row;
 pub mod telemetry;
 
+#[cfg(feature = "duckdb")]
 pub use arrow_convert::journal_to_record_batch;
-pub use backend::AnalyticsBackend;
+pub use backend::{AnalyticsBackend, StoreStats};
+#[cfg(feature = "duckdb")]
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
-    StoreStats,
 };
 pub use error::AnalyticsError;
+#[cfg(feature = "duckdb")]
 pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
 pub use query_row::QueryRow;

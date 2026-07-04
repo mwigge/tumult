@@ -5,7 +5,8 @@
 
 use std::time::Instant;
 
-use opentelemetry::KeyValue;
+use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
+use opentelemetry::{global, KeyValue};
 
 use crate::attributes;
 use crate::metrics::TumultMetrics;
@@ -27,6 +28,29 @@ impl SpanGuard {
     pub fn new(guard: opentelemetry::ContextGuard) -> Self {
         Self { guard }
     }
+}
+
+/// Start a `Client`-kind span on the named global tracer, attach it to the
+/// current context, and return a [`SpanGuard`] that ends the span's active
+/// window on drop.
+///
+/// Shared by the plugin crates (`tumult-net`, `tumult-kubernetes`,
+/// `tumult-ssh`) for their `<domain>.*` client spans. Both names are
+/// `&'static str` so the `Into<Cow<'static, str>>` conversions are zero-cost.
+#[must_use]
+pub fn client_span(
+    tracer_name: &'static str,
+    span_name: &'static str,
+    attrs: Vec<KeyValue>,
+) -> SpanGuard {
+    let tracer = global::tracer(tracer_name);
+    let span = tracer
+        .span_builder(span_name)
+        .with_kind(SpanKind::Client)
+        .with_attributes(attrs)
+        .start(&tracer);
+    let cx = opentelemetry::Context::current_with_span(span);
+    SpanGuard::new(cx.attach())
 }
 
 /// Result of an instrumented operation.

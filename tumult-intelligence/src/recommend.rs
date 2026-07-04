@@ -14,25 +14,30 @@ use crate::types::{OutputFormat, RecommendOptions, RecommendationOutput};
 /// Returns an error only when JSON output serialization fails. Model and store
 /// failures are represented as heuristic fallback output.
 pub fn recommend(options: &RecommendOptions) -> anyhow::Result<String> {
-    let output = recommend_struct(options);
-    match output.format {
-        OutputFormat::Text => Ok(render_text(&output.result)),
-        OutputFormat::Json => serde_json::to_string_pretty(&output.result).context("encode JSON"),
-    }
+    render(&recommend_output(options), options.format)
 }
 
-struct FormattedRecommendation {
-    format: OutputFormat,
-    result: RecommendationOutput,
-}
-
-fn recommend_struct(options: &RecommendOptions) -> FormattedRecommendation {
+/// Build the structured heuristic recommendation output (draft validated).
+///
+/// This is the same pipeline as [`recommend`] without rendering, for callers
+/// that post-process the output — e.g. the CLI's agent enhancement flow.
+#[must_use]
+pub fn recommend_output(options: &RecommendOptions) -> RecommendationOutput {
     let context = build_context(&options.store_path);
     let mut result = heuristic_output(options, &context);
     validate_draft(&mut result);
-    FormattedRecommendation {
-        format: options.format,
-        result,
+    result
+}
+
+/// Render a recommendation output as text or pretty JSON.
+///
+/// # Errors
+///
+/// Returns an error only when JSON output serialization fails.
+pub fn render(output: &RecommendationOutput, format: OutputFormat) -> anyhow::Result<String> {
+    match format {
+        OutputFormat::Text => Ok(render_text(output)),
+        OutputFormat::Json => serde_json::to_string_pretty(output).context("encode JSON"),
     }
 }
 

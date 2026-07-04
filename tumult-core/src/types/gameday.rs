@@ -1,4 +1,4 @@
-//! GameDay types (Phase 8 — coordinated experiment campaigns).
+//! `GameDay` types (Phase 8 — coordinated experiment campaigns).
 
 use std::path::PathBuf;
 

@@ -2,10 +2,10 @@
 //!
 //! [`AnalyticsStore`]: super::AnalyticsStore
 
-pub struct StoreStats {
-    pub experiment_count: usize,
-    pub activity_count: usize,
-}
+// Re-exported from the lightweight `backend` module (where it now lives, so
+// backends like `tumult-clickhouse` can use it without the DuckDB pipeline).
+// Kept at this path for backwards compatibility.
+pub use crate::backend::StoreStats;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgenticRunAnalytics {

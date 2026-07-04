@@ -112,8 +112,7 @@ fn all_fault_types_have_stable_labels() {
         .into_iter()
         .map(|fault| {
             apply_fault(&fault, target_response())
-                .map(|outcome| outcome.label)
-                .unwrap_or_else(|error| error.to_string())
+                .map_or_else(|error| error.to_string(), |outcome| outcome.label)
         })
         .collect::<Vec<_>>();
 

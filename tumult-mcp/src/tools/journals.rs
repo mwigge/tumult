@@ -30,7 +30,11 @@ pub fn list_journals(directory: &str) -> Result<Vec<String>, ToolError> {
     Ok(journals)
 }
 
-/// Discover plugins and list their actions.
+/// Discover plugins of both kinds and list their actions.
+///
+/// Script plugins are read from the filesystem search paths; native plugins
+/// come from the server's composition-root registry (`crate::native`), so
+/// the same plugins the runner can dispatch to are the ones reported here.
 #[must_use]
 pub fn discover_plugins() -> String {
     use tumult_plugin::discovery::discover_all_plugins;
@@ -42,17 +46,38 @@ pub fn discover_plugins() -> String {
             registry.register_script(manifest);
         }
     }
+    let native = crate::native::registry();
 
-    let plugins = registry.list_plugins();
-    let actions = registry.list_all_actions();
+    // (name, kind) pairs, merged and sorted by name.
+    let mut plugins: Vec<(String, &str)> = registry
+        .list_plugins()
+        .into_iter()
+        .map(|name| (name, "script"))
+        .collect();
+    plugins.extend(
+        native
+            .plugin_names()
+            .into_iter()
+            .map(|name| (name.to_string(), "native")),
+    );
+    plugins.sort();
+
+    // Actions of both kinds, sorted for stable output.
+    let mut actions: Vec<String> = registry
+        .list_all_actions()
+        .iter()
+        .map(|(plugin, desc)| format!("{plugin}::{}", desc.name))
+        .collect();
+    actions.extend(native.qualified_functions());
+    actions.sort();
 
     let mut output = format!("Plugins: {}\n", plugins.len());
-    for name in &plugins {
-        let _ = writeln!(output, "  {name}");
+    for (name, kind) in &plugins {
+        let _ = writeln!(output, "  {name} ({kind})");
     }
     let _ = writeln!(output, "Actions: {}", actions.len());
-    for (plugin, desc) in &actions {
-        let _ = writeln!(output, "  {}::{}", plugin, desc.name);
+    for action in &actions {
+        let _ = writeln!(output, "  {action}");
     }
     output
 }
@@ -204,6 +229,16 @@ mod tests {
         let output = discover_plugins();
         assert!(output.contains("Plugins:"));
         assert!(output.contains("Actions:"));
+    }
+
+    #[test]
+    fn discover_includes_native_plugins_with_functions() {
+        let output = discover_plugins();
+        assert!(output.contains("tumult-kubernetes (native)"));
+        assert!(output.contains("tumult-net (native)"));
+        assert!(output.contains("tumult-ssh (native)"));
+        assert!(output.contains("tumult-ssh::execute"));
+        assert!(output.contains("tumult-kubernetes::delete_pod"));
     }
 
     // ── query_traces ──────────────────────────────────────────

@@ -13,7 +13,7 @@ pub mod propagation;
 pub mod telemetry;
 
 pub use config::TelemetryConfig;
-pub use instrument::SpanGuard;
+pub use instrument::{client_span, SpanGuard};
 pub use metrics::TumultMetrics;
 pub use telemetry::TumultTelemetry;
 

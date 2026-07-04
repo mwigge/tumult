@@ -14,6 +14,4 @@ mod types;
 
 pub use derive::derive_baseline;
 pub use stream::AcquisitionStream;
-pub use types::{
-    AcquisitionConfig, AcquisitionError, AcquisitionResult, ProbeSamples, ProbeStats,
-};
+pub use types::{AcquisitionConfig, AcquisitionError, AcquisitionResult, ProbeSamples, ProbeStats};

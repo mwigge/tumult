@@ -6,7 +6,7 @@ nav_order: 2
 
 # Execution Flow
 
-Tumult experiments follow a five-phase lifecycle. Each phase produces data that feeds into the next. The execution is orchestrated by the `run_experiment()` function in `tumult-core::runner`.
+Tumult experiments follow a five-phase lifecycle. Each phase produces data that feeds into the next. The execution is orchestrated by the `run_experiment()` function in `tumult-core::runner` (or `run_experiment_with_sampling()` to override the probe sampling cadence).
 
 ## Phase Overview
 
@@ -26,7 +26,17 @@ The runner takes four inputs:
 - `ControlRegistry` — lifecycle event handlers
 - `RunConfig` — rollback strategy, baseline mode, dry-run flag
 
-Returns a `Journal` containing the complete experiment results with all phases.
+`run_experiment_with_sampling()` additionally takes a `SamplingConfig`:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `interval` | 1s | Pause between probe sampling rounds (during and post phases) |
+| `max_during_samples` | 300 | Cap on during-phase sampling rounds for long-running methods |
+| `recovery_timeout` | 30s | How long the post phase keeps sampling before giving up on recovery |
+
+Experiments without hypothesis probes skip sampling entirely, and probes already within tolerance finish the post phase after a single round — simple experiments see no added latency.
+
+Returns a `Journal` containing the complete experiment results with all phases. The journal records the actual sample interval used.
 
 ## Detailed Flow
 
@@ -88,13 +98,19 @@ Baseline acquisition uses `tumult-baseline::acquisition::derive_baseline()`:
 
 ```
     ├── CONTROL: BeforeMethod
+    ├── Spawn during-phase sampler (concurrent with method):
+    │   └── Sample hypothesis probes every SamplingConfig.interval
+    │       (default 1s, capped at max_during_samples rounds)
     ├── For each activity in method:
     │   ├── CONTROL: BeforeActivity{name}
     │   ├── Execute via ActivityExecutor
     │   ├── Build ActivityResult with status, output, timing, trace IDs
     │   └── CONTROL: AfterActivity{name}
+    ├── Stop during-phase sampler → DuringResult (degradation curve)
     └── CONTROL: AfterMethod
 ```
+
+During-phase probes are sampled on a real interval **while the fault is active**, capturing the degradation curve rather than a single before/after snapshot.
 
 ### 7. Hypothesis AFTER
 
@@ -108,12 +124,15 @@ Baseline acquisition uses `tumult-baseline::acquisition::derive_baseline()`:
 ### 8. Recovery (Phase 3)
 
 ```
-    ├── Sample probes at interval
-    ├── Detect recovery point (all probes within tolerance)
-    ├── Calculate MTTR
+    ├── Sample probes every SamplingConfig.interval
+    ├── Loop until all probes pass tolerance (recovery)
+    │   or SamplingConfig.recovery_timeout expires (default 30s)
+    ├── Calculate recovery_time_s / MTTR from the observed recovery point
     ├── Check data integrity
     └── Record PostResult
 ```
+
+Recovery is measured, not assumed: `recovery_time_s` and `mttr_s` reflect when the probes actually returned within tolerance. Probes that are already healthy finish after a single round.
 
 ### 9. Determine Status
 

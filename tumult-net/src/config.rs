@@ -1,7 +1,7 @@
 //! Fault configuration and the cross-process proxy specification.
 //!
 //! Because every native action runs in its own short-lived process (the CLI
-//! dispatches with `block_in_place` + `block_on`), a long-running proxy fault
+//! dispatches with `sync_await`), a long-running proxy fault
 //! must persist its configuration in the operating system. [`ProxySpec`]
 //! serialises the listen/upstream addresses, the [`FaultProfile`], and the
 //! pidfile path into a `--flag value` argv vector that the `tumult-net-proxyd`
@@ -177,18 +177,14 @@ impl ProxySpec {
                 }
                 "--seed" => profile.seed = parse_field("seed", value)?,
                 "--pidfile" => pidfile = Some(PathBuf::from(value)),
-                other => {
-                    return Err(NetError::invalid(
-                        "argv",
-                        format!("unknown flag `{other}`"),
-                    ))
-                }
+                other => return Err(NetError::invalid("argv", format!("unknown flag `{other}`"))),
             }
         }
 
         profile.validate()?;
         Ok(Self {
-            listen: listen.ok_or_else(|| NetError::invalid("listen", "flag --listen is required"))?,
+            listen: listen
+                .ok_or_else(|| NetError::invalid("listen", "flag --listen is required"))?,
             upstream: upstream
                 .ok_or_else(|| NetError::invalid("upstream", "flag --upstream is required"))?,
             profile,

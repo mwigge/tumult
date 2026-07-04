@@ -15,7 +15,7 @@ pub(crate) fn generate_json_report(journal: &Journal) -> Result<String> {
     Ok(serde_json::to_string_pretty(journal)?)
 }
 
-/// FIX 1: minimal JUnit XML — one `<testcase>` per activity across all phases.
+/// FIX 1: minimal `JUnit` XML — one `<testcase>` per activity across all phases.
 pub(crate) fn generate_junit_report(journal: &Journal) -> String {
     // Collect (phase, activity) across every phase that carries ActivityResults.
     let mut cases: Vec<(&str, &ActivityResult)> = Vec::new();

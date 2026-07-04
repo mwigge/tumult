@@ -16,11 +16,10 @@ fn regex_tolerance_in_hypothesis() {
         vec![Activity {
             name: "status-probe".into(),
             activity_type: ActivityType::Probe,
-            provider: Provider::Http {
-                method: HttpMethod::Get,
-                url: "http://localhost/status".into(),
-                headers: HashMap::new(),
-                body: None,
+            provider: Provider::Process {
+                path: "scripts/health-check.sh".into(),
+                arguments: vec![],
+                env: HashMap::new(),
                 timeout_s: Some(5.0),
             },
             tolerance: Some(Tolerance::Regex {

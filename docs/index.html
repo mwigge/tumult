@@ -189,7 +189,7 @@ nav_exclude: true
   <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
     <div>
       <span class="prompt">$</span>
-      curl -sSL https://tumult.rs/install.sh | sh
+      curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
     </div>
     <span class="copy-hint">click to copy</span>
   </div>
@@ -217,11 +217,11 @@ nav_exclude: true
 <!-- Stats                                                -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="stats">
-  <div class="stat"><div class="num">574</div><div class="label">Unit Tests</div></div>
-  <div class="stat"><div class="num">14</div><div class="label">MCP Tools</div></div>
-  <div class="stat"><div class="num">10</div><div class="label">Plugins</div></div>
-  <div class="stat"><div class="num">48</div><div class="label">Chaos Actions</div></div>
-  <div class="stat"><div class="num">0</div><div class="label">Unsafe Blocks</div></div>
+  <div class="stat"><div class="num">876</div><div class="label">Unit Tests</div></div>
+  <div class="stat"><div class="num">19</div><div class="label">MCP Tools</div></div>
+  <div class="stat"><div class="num">13</div><div class="label">Plugins</div></div>
+  <div class="stat"><div class="num">64</div><div class="label">Chaos Actions</div></div>
+  <div class="stat"><div class="num">0</div><div class="label">Unsafe Blocks (production code)</div></div>
   <div class="stat"><div class="num">7</div><div class="label">Compliance Frameworks</div></div>
 </section>
 
@@ -231,7 +231,7 @@ nav_exclude: true
 <section class="features">
   <div class="feature-card">
     <h3><span class="icon">⚡</span> Single Binary</h3>
-    <p>No runtime, no dependencies. Compiles to a ~1.8MB static binary for macOS, Linux, and Windows. Copy it to your PATH and run experiments.</p>
+    <p>One static binary — no Python, no runtime dependencies. Pre-built for macOS (x86_64/aarch64) and Linux (x86_64 gnu/musl, aarch64 musl). Copy it to your PATH and run experiments.</p>
   </div>
   <div class="feature-card">
     <h3><span class="icon">📡</span> Native OpenTelemetry</h3>
@@ -242,8 +242,8 @@ nav_exclude: true
     <p>Journals flow through Apache Arrow into DuckDB. SQL over your chaos history, export to Parquet, trend analysis across hundreds of runs. The data pipeline is built in, not bolted on.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🔌</span> 10 Plugins, 45 Actions</h3>
-    <p>PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH remote execution, CPU/memory/IO stress. Write your own in any language — just scripts + a manifest.</p>
+    <h3><span class="icon">🔌</span> 13 Plugins, 64 Actions</h3>
+    <p>PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH remote execution, userspace TCP chaos proxy, CPU/memory/IO stress. Write your own in any language — just scripts + a manifest.</p>
   </div>
   <div class="feature-card">
     <h3><span class="icon">📋</span> Regulatory Compliance</h3>
@@ -251,7 +251,7 @@ nav_exclude: true
   </div>
   <div class="feature-card">
     <h3><span class="icon">🛡️</span> Memory Safe</h3>
-    <p>100% safe Rust across all 11 crates. Zero <code>unsafe</code> blocks. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
+    <p>100% safe Rust across all 15 crates. Zero <code>unsafe</code> blocks in production code. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
   </div>
   <div class="feature-card">
     <h3><span class="icon">🎯</span> GameDay Orchestration</h3>
@@ -259,7 +259,7 @@ nav_exclude: true
   </div>
   <div class="feature-card">
     <h3><span class="icon">🌐</span> MCP Server (HTTP/SSE)</h3>
-    <p>14 MCP tools over stdio or HTTP/SSE. Agent fleets, CI/CD pipelines, and quality engineering systems connect via standard Streamable HTTP protocol. Session management and resumability built in.</p>
+    <p>19 MCP tools over stdio or HTTP/SSE. Agent fleets, CI/CD pipelines, and quality engineering systems connect via standard Streamable HTTP protocol. Session management and resumability built in.</p>
   </div>
   <div class="feature-card">
     <h3><span class="icon">🤖</span> Agent-Ready</h3>

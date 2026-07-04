@@ -7,22 +7,7 @@ use cli::{
     AgenticAction, Cli, Commands, GameDayAction, OutputFormat, RollbackStrategy, StoreAction,
 };
 
-// The crate root cannot use directory-based module resolution, so the CLI
-// definitions and parser tests are wired in explicitly via `#[path]`.
-#[path = "main/cli.rs"]
 mod cli;
-
-#[cfg(test)]
-#[path = "main/tests/cli_and_run.rs"]
-mod tests_cli_and_run;
-
-#[cfg(test)]
-#[path = "main/tests/commands.rs"]
-mod tests_commands;
-
-#[cfg(test)]
-#[path = "main/tests/agentic_store.rs"]
-mod tests_agentic_store;
 
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
@@ -122,7 +107,12 @@ async fn main() -> anyhow::Result<()> {
             format,
             trace_ui_base,
         } => {
-            commands::cmd_report(&journal, output.as_deref(), format, trace_ui_base.as_deref())?;
+            commands::cmd_report(
+                &journal,
+                output.as_deref(),
+                format,
+                trace_ui_base.as_deref(),
+            )?;
         }
         Commands::Import { parquet_dir } => {
             commands::cmd_import(&parquet_dir)?;
@@ -140,6 +130,10 @@ async fn main() -> anyhow::Result<()> {
             model,
             no_draft,
             format,
+            agent,
+            agent_model,
+            agent_timeout,
+            generate_experiments,
         } => {
             let options = tumult_intelligence::RecommendOptions {
                 store_path: store_path
@@ -149,7 +143,19 @@ async fn main() -> anyhow::Result<()> {
                 include_draft: !no_draft,
                 format: format.into(),
             };
-            println!("{}", tumult_intelligence::recommend(&options)?);
+            let agent_args = agent.map(|agent| commands::AgentArgs {
+                agent,
+                model: agent_model,
+                timeout_secs: agent_timeout,
+                generate_dir: generate_experiments,
+            });
+            println!(
+                "{}",
+                commands::cmd_recommend(&options, agent_args.as_ref())?
+            );
+        }
+        Commands::Agents => {
+            print!("{}", commands::cmd_agents());
         }
         Commands::Agentic { action } => match action {
             AgenticAction::ListPacks => {

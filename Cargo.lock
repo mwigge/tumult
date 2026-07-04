@@ -3532,18 +3532,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-appender-tracing"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c0080f0dc1d7c786f467cd85a4e395fcab11ee852004f39a29a18ab7c25d837"
-dependencies = [
- "opentelemetry",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "opentelemetry-http"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3587,12 +3575,6 @@ dependencies = [
  "tonic",
  "tonic-prost",
 ]
-
-[[package]]
-name = "opentelemetry-semantic-conventions"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c913ac17a6c451661ee255f4625d143e51647ae78ebd969b75e41c4442f4fe47"
 
 [[package]]
 name = "opentelemetry-stdout"
@@ -5839,6 +5821,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-test"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545"
+dependencies = [
+ "futures-core",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6006,6 +5999,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
+name = "tower-test"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4546773ffeab9e4ea02b8872faa49bb616a80a7da66afc2f32688943f97efa7"
+dependencies = [
+ "futures-util",
+ "pin-project",
+ "tokio",
+ "tokio-test",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6101,28 +6108,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "tumult-agent-cli"
+version = "2.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "tumult-agentic"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "axum",
- "chrono",
  "opentelemetry",
  "opentelemetry_sdk",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "toon-format",
  "tracing",
  "tumult-otel",
- "uuid",
 ]
 
 [[package]]
 name = "tumult-analytics"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "arrow",
  "chrono",
@@ -6130,19 +6145,15 @@ dependencies = [
  "duckdb",
  "opentelemetry",
  "parquet",
- "serde",
- "serde_json",
  "tempfile",
  "thiserror 2.0.18",
- "toon-format",
- "tracing",
  "tumult-baseline",
  "tumult-core",
 ]
 
 [[package]]
 name = "tumult-baseline"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -6153,13 +6164,12 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
  "indexmap",
- "kube",
  "opentelemetry",
  "serde_json",
  "tempfile",
@@ -6167,7 +6177,7 @@ dependencies = [
  "tokio-util",
  "toon-format",
  "tracing",
- "tracing-subscriber",
+ "tumult-agent-cli",
  "tumult-agentic",
  "tumult-analytics",
  "tumult-clickhouse",
@@ -6182,14 +6192,13 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "chrono",
  "clickhouse",
  "opentelemetry",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -6200,7 +6209,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6211,24 +6220,24 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "tokio-util",
  "toon-format",
  "tracing",
- "tumult-baseline",
- "tumult-plugin",
  "tumult-test-utils",
  "uuid",
 ]
 
 [[package]]
 name = "tumult-intelligence"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "serde",
  "serde_json",
  "tempfile",
  "toon-format",
+ "tumult-agent-cli",
  "tumult-analytics",
  "tumult-core",
  "tumult-plugin",
@@ -6236,23 +6245,28 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
+ "async-trait",
+ "http",
+ "http-body-util",
  "k8s-openapi",
  "kube",
  "opentelemetry",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
+ "tower-test",
  "tracing",
  "tumult-otel",
+ "tumult-plugin",
 ]
 
 [[package]]
 name = "tumult-mcp"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "opentelemetry",
  "rust-mcp-sdk",
@@ -6267,31 +6281,34 @@ dependencies = [
  "tumult-agentic",
  "tumult-analytics",
  "tumult-core",
+ "tumult-kubernetes",
+ "tumult-net",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-ssh",
 ]
 
 [[package]]
 name = "tumult-net"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
+ "async-trait",
  "opentelemetry",
- "tempfile",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-netem",
  "tracing",
  "tumult-otel",
+ "tumult-plugin",
 ]
 
 [[package]]
 name = "tumult-otel"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "opentelemetry",
- "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "serde",
@@ -6303,9 +6320,9 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
- "indexmap",
+ "async-trait",
  "opentelemetry",
  "serde",
  "serde_json",
@@ -6313,29 +6330,30 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toon-format",
- "tracing",
  "tumult-otel",
 ]
 
 [[package]]
 name = "tumult-ssh"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "async-trait",
  "dirs-next",
  "opentelemetry",
  "russh",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tumult-otel",
+ "tumult-plugin",
  "zeroize",
 ]
 
 [[package]]
 name = "tumult-test-utils"
-version = "1.5.1"
+version = "2.0.0"
 dependencies = [
  "indexmap",
  "serde_json",

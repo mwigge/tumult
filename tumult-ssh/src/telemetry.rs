@@ -1,17 +1,20 @@
 //! `OTel` instrumentation for SSH operations.
 
-use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
-use opentelemetry::{global, KeyValue};
-use tumult_otel::SpanGuard;
+use opentelemetry::trace::TraceContextExt;
+use opentelemetry::KeyValue;
+use tumult_otel::{client_span, SpanGuard};
 
 const TRACER: &str = "tumult-ssh";
 
+/// Thin wrapper over [`tumult_otel::client_span`] that fixes the tracer name.
+fn ssh_span(name: &'static str, attrs: Vec<KeyValue>) -> SpanGuard {
+    client_span(TRACER, name, attrs)
+}
+
 pub(crate) fn begin_connect(host: &str, port: u16, auth_method: &str) -> SpanGuard {
-    let tracer = global::tracer(TRACER);
-    let span = tracer
-        .span_builder("ssh.connect")
-        .with_kind(SpanKind::Client)
-        .with_attributes(vec![
+    ssh_span(
+        "ssh.connect",
+        vec![
             // Legacy tumult-specific attributes kept for backwards compatibility.
             KeyValue::new("ssh.host", host.to_string()),
             KeyValue::new("ssh.port", i64::from(port)),
@@ -19,14 +22,11 @@ pub(crate) fn begin_connect(host: &str, port: u16, auth_method: &str) -> SpanGua
             // OTel semantic conventions: network peer attributes.
             KeyValue::new("net.peer.name", host.to_string()),
             KeyValue::new("net.peer.port", i64::from(port)),
-        ])
-        .start(&tracer);
-    let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard::new(cx.attach())
+        ],
+    )
 }
 
 pub(crate) fn begin_execute(command: &str, timeout_s: Option<f64>) -> SpanGuard {
-    let tracer = global::tracer(TRACER);
     let cmd_preview = if command.len() > 256 {
         format!("{}...", &command[..256])
     } else {
@@ -36,30 +36,20 @@ pub(crate) fn begin_execute(command: &str, timeout_s: Option<f64>) -> SpanGuard 
     if let Some(t) = timeout_s {
         attrs.push(KeyValue::new("ssh.timeout_seconds", t));
     }
-    let span = tracer
-        .span_builder("ssh.execute")
-        .with_kind(SpanKind::Client)
-        .with_attributes(attrs)
-        .start(&tracer);
-    let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard::new(cx.attach())
+    ssh_span("ssh.execute", attrs)
 }
 
 pub(crate) fn begin_upload(remote_path: &str, file_bytes: u64) -> SpanGuard {
-    let tracer = global::tracer(TRACER);
-    let span = tracer
-        .span_builder("ssh.upload")
-        .with_kind(SpanKind::Client)
-        .with_attributes(vec![
+    ssh_span(
+        "ssh.upload",
+        vec![
             KeyValue::new("ssh.remote_path", remote_path.to_string()),
             KeyValue::new(
                 "ssh.file_bytes",
                 i64::try_from(file_bytes).unwrap_or(i64::MAX),
             ),
-        ])
-        .start(&tracer);
-    let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard::new(cx.attach())
+        ],
+    )
 }
 
 pub(crate) fn event_command_completed(exit_code: i64, stdout_bytes: usize, stderr_bytes: usize) {

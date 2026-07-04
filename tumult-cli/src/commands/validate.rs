@@ -7,6 +7,7 @@ use anyhow::{bail, Context, Result};
 use tumult_core::engine::{parse_experiment, resolve_config, resolve_secrets, validate_experiment};
 use tumult_core::types::Provider;
 use tumult_plugin::discovery::discover_all_plugins;
+use tumult_plugin::native::NativeExecutorRegistry;
 use tumult_plugin::registry::PluginRegistry;
 
 // ── Validate command ──────────────────────────────────────────
@@ -28,7 +29,8 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 
     validate_experiment(&experiment)?;
 
-    // SRE-10: Warn on unsupported provider types
+    // SRE-10: Warn when a native activity references an unknown plugin or function.
+    let native_registry = super::exec::native_registry();
     let all_activities = experiment
         .method
         .iter()
@@ -43,20 +45,26 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
         );
     for activity in all_activities {
         match &activity.provider {
-            Provider::Http { .. } => {
-                eprintln!(
-                    "warning: activity '{}' uses HTTP provider (not yet supported at runtime)",
-                    activity.name
-                );
-            }
             Provider::Native {
                 plugin, function, ..
-            } => {
-                eprintln!(
-                    "warning: activity '{}' uses native provider {}::{} (not yet wired to CLI executor)",
-                    activity.name, plugin, function
-                );
-            }
+            } => match native_registry.get(plugin) {
+                None => eprintln!(
+                    "warning: activity '{}' uses unknown native plugin '{}' (available: {})",
+                    activity.name,
+                    plugin,
+                    native_registry.plugin_names().join(", ")
+                ),
+                Some(executor) if !executor.functions().contains(&function.as_str()) => {
+                    eprintln!(
+                        "warning: activity '{}' uses unknown function '{}::{}' (available: {})",
+                        activity.name,
+                        plugin,
+                        function,
+                        executor.functions().join(", ")
+                    );
+                }
+                Some(_) => {} // registered native plugin + function
+            },
             Provider::Process { .. } => {} // supported
         }
     }
@@ -121,45 +129,104 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
         registry.register_script(manifest);
     }
 
-    let plugin_names = registry.list_plugins();
+    // Native plugins come from the same composition-root registry the
+    // experiment runner dispatches through, so discovery and execution
+    // can never disagree.
+    let output = render_discover(plugin_filter, &registry, super::exec::native_registry())?;
+    print!("{output}");
+    Ok(())
+}
+
+/// Render `tumult discover` output: script plugins from the filesystem and
+/// native plugins from the executor registry, labeled by kind.
+///
+/// # Errors
+///
+/// Returns an error if `plugin_filter` does not match any plugin of either
+/// kind.
+pub(crate) fn render_discover(
+    plugin_filter: Option<&str>,
+    registry: &PluginRegistry,
+    native: &NativeExecutorRegistry,
+) -> Result<String> {
+    use std::fmt::Write as _;
+
+    // (name, kind) pairs, merged and sorted by name.
+    let script_names = registry.list_plugins();
+    let mut plugins: Vec<(String, &str)> = script_names
+        .iter()
+        .map(|name| (name.clone(), "script"))
+        .collect();
+    plugins.extend(
+        native
+            .plugin_names()
+            .into_iter()
+            .map(|name| (name.to_string(), "native")),
+    );
+    plugins.sort();
 
     // Check filter early — even when no plugins, a filter for a specific one should error
     if let Some(filter) = plugin_filter {
-        if !plugin_names.iter().any(|n| n == filter) {
+        let Some((name, kind)) = plugins.iter().find(|(name, _)| name == filter) else {
             bail!(
                 "plugin '{}' not found. Discovered {} plugin(s)",
                 filter,
-                plugin_names.len()
+                plugins.len()
             );
-        }
-        // Show details for specific plugin
-        println!("Plugin: {filter}");
-        let all_actions = registry.list_all_actions();
-        let actions: Vec<_> = all_actions.iter().filter(|(p, _)| p == filter).collect();
-        if !actions.is_empty() {
-            println!("\nActions:");
-            for (_, desc) in &actions {
-                println!("  - {}", desc.name);
-            }
-        }
-    } else {
-        // List all plugins
-        println!("Discovered {} plugin(s):\n", plugin_names.len());
-        for name in &plugin_names {
-            println!("  {name}");
-        }
-        println!();
+        };
 
-        let all_actions = registry.list_all_actions();
-        if !all_actions.is_empty() {
-            println!("Actions:");
-            for (plugin, desc) in &all_actions {
-                println!("  {}::{}", plugin, desc.name);
+        // Show details for specific plugin
+        let mut output = format!("Plugin: {name} ({kind})\n");
+        let actions: Vec<String> = match native.get(filter) {
+            Some(executor) => executor
+                .functions()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            None => registry
+                .list_all_actions()
+                .into_iter()
+                .filter(|(plugin, _)| plugin == filter)
+                .map(|(_, desc)| desc.name)
+                .collect(),
+        };
+        if !actions.is_empty() {
+            output += "\nActions:\n";
+            for action in &actions {
+                let _ = writeln!(output, "  - {action}");
             }
+        }
+        return Ok(output);
+    }
+
+    // List all plugins
+    let native_count = native.plugin_names().len();
+    let mut output = format!(
+        "Discovered {} plugin(s) ({} script, {native_count} native):\n\n",
+        plugins.len(),
+        script_names.len(),
+    );
+    for (name, kind) in &plugins {
+        let _ = writeln!(output, "  {name} ({kind})");
+    }
+    output += "\n";
+
+    // Actions of both kinds, sorted for stable output.
+    let mut all_actions: Vec<String> = registry
+        .list_all_actions()
+        .iter()
+        .map(|(plugin, desc)| format!("{plugin}::{}", desc.name))
+        .collect();
+    all_actions.extend(native.qualified_functions());
+    all_actions.sort();
+    if !all_actions.is_empty() {
+        let _ = writeln!(output, "Actions: {}", all_actions.len());
+        for action in &all_actions {
+            let _ = writeln!(output, "  {action}");
         }
     }
 
-    Ok(())
+    Ok(output)
 }
 
 // ── Path validation ─────────────────────────────────────────

@@ -92,10 +92,15 @@ impl SshSession {
         .map_err(|_| SshError::Timeout {
             seconds: config.connect_timeout.as_secs_f64(),
         })?
-        .map_err(|e| SshError::ConnectionFailed {
-            host: config.host.clone(),
-            port: config.port,
-            reason: e.to_string(),
+        .map_err(|e| match e {
+            // The handler's host-key rejections are already typed — pass them
+            // through instead of flattening them into `ConnectionFailed`.
+            e @ (SshError::HostKeyNotFound { .. } | SshError::HostKeyMismatch { .. }) => e,
+            e => SshError::ConnectionFailed {
+                host: config.host.clone(),
+                port: config.port,
+                reason: e.to_string(),
+            },
         })?;
 
         // Authenticate (bounded by connect_timeout to prevent auth stalls)

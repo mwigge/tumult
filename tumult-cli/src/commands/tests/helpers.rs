@@ -48,6 +48,24 @@ pub(crate) fn write_invalid_experiment(dir: &Path) -> std::path::PathBuf {
     path
 }
 
+/// Writes an experiment that still uses the removed `http` provider, which
+/// must now fail TOON parsing with a serde unknown-variant error.
+pub(crate) fn write_http_provider_experiment(dir: &Path) -> std::path::PathBuf {
+    let path = dir.join("http-provider.toon");
+    let toon = "title: Experiment using the removed http provider
+
+method[1]:
+  - name: http-probe
+    activity_type: probe
+    provider:
+      type: http
+      method: GET
+      url: http://localhost:8080/health
+";
+    std::fs::write(&path, toon).unwrap();
+    path
+}
+
 pub(crate) fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
     let path = dir.join("empty-method.toon");
     let exp = Experiment {
@@ -72,7 +90,7 @@ pub(crate) fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
 }
 
 /// Journal with one succeeded + one failed method activity, both carrying a
-/// non-empty trace_id; the failed one carries an error message.
+/// non-empty `trace_id`; the failed one carries an error message.
 pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
@@ -123,7 +141,7 @@ pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
 pub(crate) fn sample_k6_summary() -> serde_json::Value {
     serde_json::json!({
         "metrics": {
-            "iterations": { "count": 1025, "rate": 51.006998 },
+            "iterations": { "count": 1025, "rate": 51.006_998 },
             "iteration_duration": {
                 "avg": 97.77, "min": 55.75, "med": 63.81, "max": 201.09,
                 "p(90)": 67.34, "p(95)": 148.01, "p(99)": 180.0

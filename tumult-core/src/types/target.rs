@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::enums::{ContainerRuntime, HttpMethod};
+use super::enums::ContainerRuntime;
 
 // ── Execution Target ───────────────────────────────────────────
 
@@ -53,14 +53,6 @@ pub enum Provider {
         arguments: Vec<String>,
         #[serde(default)]
         env: HashMap<String, String>,
-        timeout_s: Option<f64>,
-    },
-    Http {
-        method: HttpMethod,
-        url: String,
-        #[serde(default)]
-        headers: HashMap<String, String>,
-        body: Option<String>,
         timeout_s: Option<f64>,
     },
 }
@@ -161,19 +153,6 @@ mod tests {
             arguments: vec!["--broker-id".into(), "2".into()],
             env: HashMap::from([("CLUSTER".into(), "prod".into())]),
             timeout_s: Some(30.0),
-        };
-        let decoded: Provider = toon_round_trip(&provider);
-        assert_eq!(decoded, provider);
-    }
-
-    #[test]
-    fn provider_http_round_trips() {
-        let provider = Provider::Http {
-            method: HttpMethod::Get,
-            url: "http://localhost:8080/health".into(),
-            headers: HashMap::from([("Accept".into(), "application/json".into())]),
-            body: None,
-            timeout_s: Some(5.0),
         };
         let decoded: Provider = toon_round_trip(&provider);
         assert_eq!(decoded, provider);

@@ -137,7 +137,16 @@ fn hypothesis_after_fail_marks_deviated() {
     });
     let controls = Arc::new(ControlRegistry::new());
 
-    let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+    // Fast sampling: probes stay unhealthy after the method, so the
+    // post-phase recovery loop would otherwise run to its default timeout.
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &controls,
+        &default_config(),
+        &fast_sampling(),
+    )
+    .unwrap();
 
     assert_eq!(journal.status, ExperimentStatus::Deviated);
     assert!(journal.steady_state_after.is_some());

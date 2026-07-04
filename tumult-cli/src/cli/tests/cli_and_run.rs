@@ -106,8 +106,7 @@ fn parse_run_baseline_only_mode() {
 #[test]
 fn parse_run_rollback_never() {
     let cli =
-        Cli::try_parse_from(["tumult", "run", "exp.toon", "--rollback-strategy", "never"])
-            .unwrap();
+        Cli::try_parse_from(["tumult", "run", "exp.toon", "--rollback-strategy", "never"]).unwrap();
     let Commands::Run {
         rollback_strategy, ..
     } = cli.command
@@ -119,15 +118,13 @@ fn parse_run_rollback_never() {
 
 #[test]
 fn parse_run_invalid_rollback_strategy_is_error() {
-    let result =
-        Cli::try_parse_from(["tumult", "run", "exp.toon", "--rollback-strategy", "maybe"]);
+    let result = Cli::try_parse_from(["tumult", "run", "exp.toon", "--rollback-strategy", "maybe"]);
     assert!(result.is_err());
 }
 
 #[test]
 fn parse_run_invalid_baseline_mode_is_error() {
-    let result =
-        Cli::try_parse_from(["tumult", "run", "exp.toon", "--baseline-mode", "partial"]);
+    let result = Cli::try_parse_from(["tumult", "run", "exp.toon", "--baseline-mode", "partial"]);
     assert!(result.is_err());
 }
 
@@ -145,8 +142,7 @@ fn parse_run_unknown_flag_is_error() {
 
 #[test]
 fn parse_run_path_with_spaces() {
-    let cli =
-        Cli::try_parse_from(["tumult", "run", "path with spaces/experiment.toon"]).unwrap();
+    let cli = Cli::try_parse_from(["tumult", "run", "path with spaces/experiment.toon"]).unwrap();
     let Commands::Run { experiment, .. } = cli.command else {
         panic!("expected Run command");
     };
@@ -158,8 +154,7 @@ fn parse_run_path_with_spaces() {
 
 #[test]
 fn parse_run_path_with_unicode() {
-    let cli =
-        Cli::try_parse_from(["tumult", "run", "experiments/résilience-test.toon"]).unwrap();
+    let cli = Cli::try_parse_from(["tumult", "run", "experiments/résilience-test.toon"]).unwrap();
     let Commands::Run { experiment, .. } = cli.command else {
         panic!("expected Run command");
     };

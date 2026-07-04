@@ -59,11 +59,10 @@ mod tests {
                 probes: vec![Activity {
                     name: "health-check".into(),
                     activity_type: ActivityType::Probe,
-                    provider: Provider::Http {
-                        method: HttpMethod::Get,
-                        url: "http://localhost:8080/health".into(),
-                        headers: HashMap::new(),
-                        body: None,
+                    provider: Provider::Process {
+                        path: "scripts/health-check.sh".into(),
+                        arguments: vec![],
+                        env: HashMap::new(),
                         timeout_s: Some(5.0),
                     },
                     tolerance: Some(Tolerance::Exact {

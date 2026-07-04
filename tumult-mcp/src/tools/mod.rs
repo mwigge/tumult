@@ -20,10 +20,12 @@ pub use gameday::{gameday_analyze, gameday_list, gameday_run};
 pub use journals::{discover_plugins, list_journals, query_traces, read_journal};
 pub use listing::list_experiments;
 pub use recommend::{coverage, recommend};
-pub use validation::{safe_resolve_path, validate_action_name, validate_select_only};
+pub use validation::{
+    safe_resolve_output_path, safe_resolve_path, validate_action_name, validate_select_only,
+};
 
 #[cfg(test)]
-mod test_support {
+pub(crate) mod test_support {
     /// Write a minimal valid experiment TOON file into `dir` and return its path.
     pub(crate) fn write_valid_experiment(dir: &std::path::Path) -> String {
         let exp = tumult_core::types::Experiment {

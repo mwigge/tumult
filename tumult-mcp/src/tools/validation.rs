@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::error::ToolError;
 
 /// Keywords that introduce a write or schema/configuration change. Rejected
-/// as standalone tokens anywhere in the query, since DuckDB allows DML/DDL
+/// as standalone tokens anywhere in the query, since `DuckDB` allows DML/DDL
 /// after a leading `WITH` CTE (e.g. `WITH x AS (SELECT 1) INSERT INTO ...`).
 const FORBIDDEN_SQL_KEYWORDS: &[&str] = &[
     "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "ATTACH", "DETACH", "COPY", "EXPORT",
@@ -106,6 +106,59 @@ pub fn safe_resolve_path(base: &Path, user_path: &str) -> Result<PathBuf, ToolEr
         Err(ToolError::Path(format!(
             "path traversal detected: resolved path {} is outside base {}",
             resolved.display(),
+            base_canonical.display()
+        )))
+    }
+}
+
+/// Resolve a user-supplied *output* path safely within a base directory.
+///
+/// Unlike [`safe_resolve_path`], the leaf component is allowed to not exist
+/// yet (the caller intends to create it). The parent directory is
+/// canonicalized and verified to be within `base`, and the leaf name is
+/// validated to be a plain file name (no `..`, no separators, no null
+/// bytes). If the path already exists — including as a dangling symlink —
+/// it is resolved via [`safe_resolve_path`] so symlink escapes are caught
+/// and the caller can report its own already-exists error.
+///
+/// # Errors
+///
+/// Returns [`ToolError::Path`] if the path contains a null byte, has no
+/// valid file name, its parent cannot be canonicalized, or the resolved
+/// parent escapes the base directory.
+pub fn safe_resolve_output_path(base: &Path, user_path: &str) -> Result<PathBuf, ToolError> {
+    if user_path.contains('\0') {
+        return Err(ToolError::Path("path contains a null byte".into()));
+    }
+    let candidate = base.join(user_path);
+
+    // Existing entries (including dangling symlinks) go through the strict
+    // resolver: symlink escapes are rejected there, and callers that require
+    // a fresh file surface their own already-exists error on the result.
+    if candidate.symlink_metadata().is_ok() {
+        return safe_resolve_path(base, user_path);
+    }
+
+    // `file_name()` returns None for paths ending in `..` or a root,
+    // rejecting traversal in the leaf component.
+    let file_name = candidate.file_name().ok_or_else(|| {
+        ToolError::Path(format!("output path has no valid file name: {user_path}"))
+    })?;
+    let parent = candidate.parent().ok_or_else(|| {
+        ToolError::Path(format!("output path has no parent directory: {user_path}"))
+    })?;
+    let parent_canonical = parent
+        .canonicalize()
+        .map_err(|e| ToolError::Path(format!("output directory resolution error: {e}")))?;
+    let base_canonical = base
+        .canonicalize()
+        .map_err(|e| ToolError::Path(format!("base path resolution error: {e}")))?;
+    if parent_canonical.starts_with(&base_canonical) {
+        Ok(parent_canonical.join(file_name))
+    } else {
+        Err(ToolError::Path(format!(
+            "path traversal detected: output directory {} is outside base {}",
+            parent_canonical.display(),
             base_canonical.display()
         )))
     }
@@ -271,5 +324,96 @@ mod tests {
         // An absolute path that's outside the base
         let result = safe_resolve_path(dir.path(), "/etc/hosts");
         assert!(result.is_err());
+    }
+
+    // ── safe_resolve_output_path ─────────────────────────────
+
+    #[test]
+    fn safe_resolve_output_path_allows_new_file_in_base() {
+        let dir = TempDir::new().unwrap();
+        let result = safe_resolve_output_path(dir.path(), "new.toon").unwrap();
+        assert_eq!(result, dir.path().canonicalize().unwrap().join("new.toon"));
+    }
+
+    #[test]
+    fn safe_resolve_output_path_allows_new_file_in_subdirectory() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let result = safe_resolve_output_path(dir.path(), "sub/new.toon").unwrap();
+        assert!(result.starts_with(dir.path().canonicalize().unwrap()));
+        assert!(result.ends_with("sub/new.toon"));
+    }
+
+    #[test]
+    fn safe_resolve_output_path_resolves_existing_file() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("existing.toon"), "x").unwrap();
+        // Existing files resolve successfully; the caller decides whether
+        // overwriting is an error (create_experiment reports AlreadyExists).
+        let result = safe_resolve_output_path(dir.path(), "existing.toon");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn safe_resolve_output_path_rejects_traversal() {
+        let dir = TempDir::new().unwrap();
+        let result = safe_resolve_output_path(dir.path(), "../evil.toon");
+        assert!(result.is_err(), "parent traversal must be rejected");
+        let result = safe_resolve_output_path(dir.path(), "../../etc/cron.d/evil");
+        assert!(result.is_err(), "deep traversal must be rejected");
+    }
+
+    #[test]
+    fn safe_resolve_output_path_rejects_dotdot_leaf() {
+        let dir = TempDir::new().unwrap();
+        let result = safe_resolve_output_path(dir.path(), "sub/..");
+        assert!(result.is_err(), "`..` leaf must be rejected");
+    }
+
+    #[test]
+    fn safe_resolve_output_path_rejects_absolute_escape() {
+        let dir = TempDir::new().unwrap();
+        let result = safe_resolve_output_path(dir.path(), "/etc/evil.toon");
+        assert!(
+            result.is_err(),
+            "absolute path outside base must be rejected"
+        );
+    }
+
+    #[test]
+    fn safe_resolve_output_path_rejects_null_byte() {
+        let dir = TempDir::new().unwrap();
+        let result = safe_resolve_output_path(dir.path(), "evil\0.toon");
+        assert!(result.is_err(), "null byte must be rejected");
+    }
+
+    #[test]
+    fn safe_resolve_output_path_rejects_nonexistent_parent() {
+        let dir = TempDir::new().unwrap();
+        let result = safe_resolve_output_path(dir.path(), "no-such-dir/new.toon");
+        assert!(result.is_err(), "missing parent directory must be an error");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn safe_resolve_output_path_rejects_symlink_escape() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        // A symlinked directory pointing outside the base must not be usable
+        // as an output parent.
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
+        let result = safe_resolve_output_path(dir.path(), "link/new.toon");
+        assert!(result.is_err(), "symlinked parent escape must be rejected");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn safe_resolve_output_path_rejects_dangling_symlink_leaf() {
+        let dir = TempDir::new().unwrap();
+        // A dangling symlink at the leaf would redirect the write outside the
+        // base even though the target does not exist yet.
+        std::os::unix::fs::symlink("/nonexistent/target", dir.path().join("evil.toon")).unwrap();
+        let result = safe_resolve_output_path(dir.path(), "evil.toon");
+        assert!(result.is_err(), "dangling symlink leaf must be rejected");
     }
 }

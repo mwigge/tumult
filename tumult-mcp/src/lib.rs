@@ -11,5 +11,6 @@
 
 pub mod error;
 pub mod handler;
+pub(crate) mod native;
 pub(crate) mod telemetry;
 pub mod tools;

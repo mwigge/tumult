@@ -5,9 +5,17 @@
 
 use tumult_core::types::Journal;
 
-use crate::duckdb_store::StoreStats;
 use crate::error::AnalyticsError;
 use crate::query_row::QueryRow;
+
+/// Aggregate statistics reported by an analytics backend.
+///
+/// Also re-exported as `crate::duckdb_store::StoreStats` (with the `duckdb`
+/// feature enabled) for backwards compatibility.
+pub struct StoreStats {
+    pub experiment_count: usize,
+    pub activity_count: usize,
+}
 
 #[doc(hidden)]
 pub mod private {
@@ -21,7 +29,8 @@ pub mod private {
 /// Use the provided `AnalyticsStore` (`DuckDB`) or `ClickHouseStore` backends.
 ///
 /// Implemented by:
-/// - [`crate::duckdb_store::AnalyticsStore`] -- embedded, zero-dependency (default)
+/// - `crate::duckdb_store::AnalyticsStore` -- embedded, zero-dependency
+///   (default, requires the `duckdb` feature)
 /// - `tumult_clickhouse::ClickHouseStore` -- external, shared with `SigNoz`
 pub trait AnalyticsBackend: private::Sealed {
     /// Ingest a journal. Returns true if new, false if duplicate.
@@ -89,9 +98,11 @@ pub trait AnalyticsBackend: private::Sealed {
     fn schema_version(&self) -> Result<i64, AnalyticsError>;
 }
 
+#[cfg(feature = "duckdb")]
 impl private::Sealed for crate::duckdb_store::AnalyticsStore {}
 
 // Implement AnalyticsBackend for the existing DuckDB store.
+#[cfg(feature = "duckdb")]
 impl AnalyticsBackend for crate::duckdb_store::AnalyticsStore {
     fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
         self.ingest_journal(journal)
@@ -126,7 +137,7 @@ impl AnalyticsBackend for crate::duckdb_store::AnalyticsStore {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "duckdb"))]
 mod tests {
     use super::*;
 

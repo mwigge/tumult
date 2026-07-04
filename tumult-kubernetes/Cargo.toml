@@ -8,10 +8,19 @@ description = "Kubernetes chaos actions and probes for the Tumult platform"
 
 [dependencies]
 tumult-otel = { path = "../tumult-otel" }
+tumult-plugin = { path = "../tumult-plugin" }
 kube = { workspace = true }
 k8s-openapi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+async-trait = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+# Fake-apiserver harness: kube::Client::new over a tower-test mock service.
+tower-test = "0.4"
+http = "1"
+http-body-util = "0.1"

@@ -48,7 +48,8 @@ Every step in `method`, `rollbacks`, and `steady_state_hypothesis.probes` is an 
 |------|-------------|------------|
 | `native` | Call a compiled Rust plugin | `plugin`, `function`, `arguments` |
 | `process` | Run a script or binary | `path`, `arguments`, `env`, `timeout_s` |
-| `http` | Make an HTTP request | `method`, `url`, `headers`, `body`, `timeout_s` |
+
+The `native` provider dispatches through a registry of compiled-in executors (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`). Referencing an unknown plugin or function fails with an error listing the available names. To probe an HTTP endpoint, use a `process` provider with `curl` — the former experimental `http` provider type has been removed and now fails validation.
 
 ## Tolerance Types
 

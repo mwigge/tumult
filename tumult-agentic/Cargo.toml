@@ -16,12 +16,9 @@ reqwest = { workspace = true }
 axum = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
 toon-format = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 axum = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

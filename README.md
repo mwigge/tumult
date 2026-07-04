@@ -1,11 +1,11 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-1.5.1-brightgreen)
+![Version](https://img.shields.io/badge/version-2.0.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Crates](https://img.shields.io/badge/crates-12-green)
-![Tests](https://img.shields.io/badge/tests-634%20unit-brightgreen)
-![Plugins](https://img.shields.io/badge/plugins-11%20%7C%2055%20actions-green)
+![Crates](https://img.shields.io/badge/crates-15-green)
+![Tests](https://img.shields.io/badge/tests-876%20unit-brightgreen)
+![Plugins](https://img.shields.io/badge/plugins-10%20script%20%2B%203%20native%20%7C%2064%20actions-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -156,10 +156,18 @@ tumult-plugin-kafka/
 
 ### Native Rust Plugins
 
-Native plugins (for performance-critical or SDK-heavy tasks like kube-rs or cloud provider SDKs) are built directly into the core and enabled via Cargo feature flags.
+Native plugins (for performance-critical or SDK-heavy tasks like kube-rs or cloud provider SDKs) are compiled into the binary. Each native crate implements the `NativeExecutor` trait from `tumult-plugin` and is registered in a `NativeExecutorRegistry` — the CLI is a pure composition root that wires the registry together. Three native plugins are registered today: `tumult-ssh` (1 function), `tumult-net` (7 functions), and `tumult-kubernetes` (8 functions). Referencing an unknown plugin or function fails with a clear error listing what is available.
 
-```bash
-cargo install tumult --features kubernetes,aws
+```toon
+provider:
+  type: native
+  plugin: tumult-ssh
+  function: execute
+  arguments:
+    host: db-primary.example.com
+    user: ops
+    command: systemctl restart postgresql
+    host_key_policy: verify   # default; also trust-on-first-use, accept-any
 ```
 
 ## Available Plugins
@@ -170,10 +178,10 @@ cargo install tumult --features kubernetes,aws
 | **tumult-otel** | Native (Rust) | OTLP gRPC export, per-activity spans, resilience.* attributes |
 | **tumult-analytics** | Native (Rust) | DuckDB embedded SQL, Arrow columnar, Parquet/CSV/IPC export |
 | **tumult-baseline** | Native (Rust) | Statistical baseline derivation, percentiles, deviation detection |
-| **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload |
+| **tumult-ssh** | Native (Rust) | SSH remote execution, key/agent auth, file upload, host-key verification (`verify` default, `trust-on-first-use`, `accept-any`) |
 | **tumult-kubernetes** | Native (Rust) | Pod delete, node drain, deployment scale, network policy, label selectors |
 | **tumult-net** | Native (Rust) | Privilege-free userspace TCP chaos proxy (via [`tokio-netem`](https://crates.io/crates/tokio-netem)) — latency, bandwidth throttle, write fragmentation, byte corruption, connection termination, all seed-reproducible. No `tc`/`iptables`/`NET_ADMIN` required. |
-| **tumult-mcp** | Native (Rust) | MCP server with 14 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
+| **tumult-mcp** | Native (Rust) | MCP server with 19 tools (stdio + HTTP/SSE) for AI-assisted chaos engineering |
 | **tumult-clickhouse** | Native (Rust) | ClickHouse backend — shared storage with SigNoz for cross-correlation |
 | **tumult-stress** | Script | CPU/memory/IO stress via stress-ng, utilization probes |
 | **tumult-containers** | Script | Docker/Podman kill, stop, pause, resource limits, health probes |
@@ -221,6 +229,13 @@ TUMULT_MCP_TOKEN=my-secret tumult-mcp --transport http
 | `tumult_gameday_run` | Run a coordinated GameDay campaign |
 | `tumult_gameday_analyze` | Analyze GameDay results with resilience scoring |
 | `tumult_gameday_list` | List available GameDay definitions |
+| `tumult_recommend` | Recommend what to test next — coverage gaps, failure patterns, stale experiments |
+| `tumult_coverage` | Coverage report — plugins/actions/targets tested vs available |
+| `tumult_agentic_list_scenarios` | List agentic AI fault-injection scenario packs |
+| `tumult_agentic_smoke` | Run a deterministic local agentic smoke check |
+| `tumult_agentic_run_experiment` | Run a bundled agentic experiment (metadata-only) |
+
+Tool failures are reported with `isError: true` per the MCP spec, and authentication or rate-limit rejections surface as auth errors (not "Unknown tool").
 
 ### Authentication
 
@@ -300,6 +315,8 @@ Experiment → TOON Journal → Apache Arrow (columnar) → DuckDB (embedded SQL
 
 Every probe result, every action timing, every hypothesis evaluation is captured as structured columnar data — queryable with SQL, exportable as Parquet for any data tool, and token-efficient for LLM analysis.
 
+Recovery is **measured, not assumed**: while the fault runs, hypothesis probes are sampled on a real interval (default 1s, capped at 300 during-phase samples), and after the method completes the runner keeps sampling until the probes pass tolerance again or a 30s recovery timeout expires. `recovery_time_s` and `mttr_s` in the journal reflect observed recovery, and the journal records the actual sample interval used. The cadence is configurable via `SamplingConfig { interval, max_during_samples, recovery_timeout }` and `run_experiment_with_sampling` in `tumult-core`.
+
 ```bash
 # Run experiments — data is captured automatically
 tumult run experiment.toon
@@ -320,6 +337,28 @@ tumult export journal.toon --format parquet
 - **No infrastructure** — DuckDB is embedded, Arrow is in-memory, Parquet is a file
 
 See [Analytics Guide](docs/guides/analytics-guide.md) for table schemas, SQL examples, and export options.
+
+### Agentic recommendations
+
+`tumult recommend` derives deterministic heuristics from the analytics store — coverage gaps, failing experiments, stale experiments. With `--agent`, those heuristics are handed to a locally installed agentic coding CLI (via the `tumult-agent-cli` adapter layer) which re-ranks them with reasoning and can propose complete, ready-to-run experiments:
+
+```bash
+# Enhance recommendations with Claude Code (non-interactive, one-shot)
+tumult recommend --agent claude-code
+
+# Or with Codex, with an explicit model and timeout
+tumult recommend --agent codex --agent-model gpt-5-codex --agent-timeout 300
+
+# Also generate proposed experiments as .toon files
+tumult recommend --agent claude-code --generate-experiments out/experiments
+
+# See which agent CLIs are installed (name, version, auth state)
+tumult agents
+```
+
+Every agent-proposed experiment passes a **validation gate** before touching disk: it is parsed and validated with the same engine that runs experiments (`parse_experiment` + `validate_experiment`). Valid experiments are written to `<dir>/<title-slug>.toon` (never overwriting — collisions get `-2`, `-3`, ... suffixes); invalid ones are rejected with the validation error and counted honestly in the summary.
+
+The adapters resolve their binaries from `PATH`, overridable with `CLAUDE_CODE_BIN` / `CODEX_BIN`; API-key auth (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) is inherited from the environment. See [Agentic Recommendations](docs/guides/agentic-recommendations.md) for the adapter contract, prompt contents, and how to add a new adapter.
 
 ## Load Testing During Chaos
 
@@ -395,6 +434,8 @@ Compliance:
   DORA Art. 11 — Response & recovery: MET
 ```
 
+The recovery component of the score comes from real post-fault probe sampling — the runner samples hypothesis probes until they pass tolerance again (or a 30s timeout), so `mttr_s` reflects observed recovery rather than a fixed pause. A GameDay whose declared experiment list doesn't match the journals produced is a hard error (`RunnerError::ExperimentCountMismatch`), not a silent mismatch.
+
 See `gamedays/q2-postgres-resilience.gameday.toon` for the reference example.
 
 ## OpenTelemetry Observability
@@ -434,6 +475,8 @@ tumult run experiment.toon
 # With SigNoz: ClickHouse shared storage for cross-correlation
 TUMULT_CLICKHOUSE_URL=http://localhost:8123 tumult run experiment.toon
 ```
+
+The DuckDB engine sits behind a `duckdb` cargo feature on `tumult-analytics` (enabled by default). The ClickHouse backend depends on `tumult-analytics` with `default-features = false`, so building the ClickHouse path no longer compiles DuckDB.
 
 When ClickHouse mode is active, experiment data lives in the same database as SigNoz traces/metrics/logs, enabling queries like:
 
@@ -492,7 +535,7 @@ docker run --rm ghcr.io/mwigge/tumult --help
 docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
 ```
 
-Both images contain the full platform: all 12 Rust crates, 11 plugins (55 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
+Both images contain the full platform: all 15 Rust crates, 10 script + 3 native plugins (64 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
 
 | Image | Entrypoint | Use case |
 |-------|-----------|----------|
@@ -524,10 +567,10 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │  PostgreSQL 16  │  SigNoz UI      │  tumult-mcp    │  Agentic QE Fleet  │
 │  :15432         │  :3301          │  :3100 (HTTP)  │  (autonomous QE)   │
 │                 │                 │                │                    │
-│  Redis 7        │  OTel Collector │  14 MCP tools  │  Connects to       │
+│  Redis 7        │  OTel Collector │  19 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
-│                 │  :18889 (prom)  │  11 plugins    │                    │
-│  Kafka 3.8      │                 │  55 actions    │                    │
+│                 │  :18889 (prom)  │  13 plugins    │                    │
+│  Kafka 3.8      │                 │  64 actions    │                    │
 │  :19092         │  ClickHouse     │                │                    │
 │                 │  (inside SigNoz)│                │                    │
 │  SSH Server     │                 │                │                    │
@@ -627,24 +670,26 @@ The OTel Collector uses the standard [Contrib image](https://github.com/open-tel
 
 Full functional validation of all platform components is documented in [docs/testprotocol.md](docs/testprotocol.md).
 
-**166 tests** across 22 categories covering CLI, experiment engine, TOON format, plugins (10 including [Pumba](https://github.com/alexei-led/pumba)), Arrow/DuckDB pipeline, OpenTelemetry observability, custom OTel Collector, SigNoz, ClickHouse, containers, SSH, baseline statistics, analytics/reporting, compliance frameworks, MCP server, and end-to-end scenarios.
+**162 tests** across 23 categories covering CLI, experiment engine, TOON format, plugins (10 script plugins including [Pumba](https://github.com/alexei-led/pumba)), Arrow/DuckDB pipeline, OpenTelemetry observability, custom OTel Collector, SigNoz, ClickHouse, containers, SSH, baseline statistics, analytics/reporting, compliance frameworks, MCP server, and end-to-end scenarios.
 
 | Category | Tests | Pass |
 |----------|-------|------|
-| CLI + Core Engine | 17 | 17 |
-| TOON Format + Plugins | 8 | 8 |
-| Script Plugins (10 plugins, 48 actions) | 15 | 13 |
+| Environment + CLI + Core Engine | 21 | 21 |
+| TOON Format + Plugin System | 8 | 8 |
+| Script Plugins (10 plugins, 48 actions) | 15 | 14 |
 | Arrow + DuckDB Analytics | 12 | 12 |
 | OpenTelemetry (7 canonical spans) | 10 | 10 |
-| Custom OTel Collector (build + signals) | 10 | 9 |
+| Custom OTel Collector (build + signals) | 10 | 10 |
 | Pumba Network Chaos (netem, iptables, container) | 15 | 15 |
-| SigNoz + ClickHouse + Containers + SSH | 23 | 23 |
+| SigNoz + ClickHouse + Containers + SSH | 19 | 19 |
+| Baseline Statistics + Kubernetes | 10 | 10 |
 | Analytics, Reporting, Compliance (7 frameworks) | 14 | 14 |
+| MCP Server | 5 | 5 |
 | End-to-End Pipelines + Quickstart | 16 | 16 |
-| Unit Tests (580 Rust tests) | 7 | 7 |
+| Unit Test Suite (workspace) | 7 | 7 |
 | **Total** | **162** | **161 (99.4%)** |
 
-Zero failures. Zero issues. Zero skips. See the [full test protocol](docs/testprotocol.md) for detailed results per test.
+Zero failures, zero skips, zero open issues; the single non-passing entry is **N/A** — host-level `tc netem` is Linux-only and was superseded by the cross-platform Pumba plugin. See the [full test protocol](docs/testprotocol.md) for detailed results per test.
 
 See [docker/README.md](docker/README.md) for detailed setup instructions.
 
@@ -655,7 +700,7 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 | **0 — Foundation** | tumult-core, tumult-plugin, tumult-cli, tumult-otel | Done |
 | **1 — Essential Plugins** | SSH, stress, containers, process, Kubernetes | Done |
 | **2 — Analytics & Data** | DuckDB, Arrow, Parquet export, trend analysis, databases, Kafka, network | Done |
-| **3 — Automation** | MCP server (14 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
+| **3 — Automation** | MCP server (19 tools, stdio + HTTP/SSE), AI-assisted chaos engineering | Done |
 | **4 — Persistent Analytics** | DuckDB + ClickHouse dual-mode, SigNoz integration, backup/restore | Done |
 | **5 — Regulatory Compliance** | DORA (EU 2022/2554), NIS2, PCI-DSS evidence reporting | Done |
 | **6 — Hardening** | SSH session pool, MCP auth, streaming baseline, experiment templates, signal handlers, audit log, proptest, fuzz | Done |
@@ -666,17 +711,17 @@ See [docker/README.md](docker/README.md) for detailed setup instructions.
 
 ## Security
 
-Tumult is built entirely in safe Rust — **zero `unsafe` blocks** across all 12 crates. The full security posture is documented in [docs/security-assessment.md](docs/security-assessment.md) and vulnerability reporting in [SECURITY.md](SECURITY.md).
+Tumult is built entirely in safe Rust — **zero `unsafe` blocks** in production code across all 15 crates (the only `unsafe` in the tree is a mutex-guarded `env::set_var` helper inside a `#[cfg(test)]` module). The full security posture is documented in [docs/security-assessment.md](docs/security-assessment.md) and vulnerability reporting in [SECURITY.md](SECURITY.md).
 
 | Area | Status |
 |------|--------|
-| Unsafe code (our crates) | **0 blocks** — completely memory-safe |
+| Unsafe code (our crates) | **0 blocks** in production code — completely memory-safe |
 | `.unwrap()` in production | **0 calls** — all error paths use `?` or `.context()` |
 | SQL injection | **0 vectors** — no string-formatted queries, Arrow record batch inserts |
 | Command injection | **Mitigated** — null-byte validation, env var passing (not shell interpolation) |
 | Hardcoded credentials | **0** — secrets resolved from environment at runtime |
 | cargo-audit | **0 HIGH/CRITICAL** — 5 low-severity transitive warnings (unmaintained crates) |
-| Dependency tree | **675 crates** scanned against [RustSec Advisory Database](https://rustsec.org/) on every commit |
+| Dependency tree | **689 crates** scanned against [RustSec Advisory Database](https://rustsec.org/) on every commit; `cargo machete` in the CI lint job keeps unused dependencies out |
 
 Script plugins execute shell scripts as subprocesses with timeout enforcement (`kill_on_drop`), argument validation, and captured stdout/stderr. This is a trust boundary by design — same model as kubectl plugins or Git hooks. See the [security assessment](docs/security-assessment.md) for the full analysis including integer cast review, deserialization surface, and supply chain audit.
 
@@ -695,6 +740,10 @@ session.exec("systemctl stop myservice").await?;
 // Next call to the same host reuses the connection:
 session.exec("systemctl start myservice").await?;
 ```
+
+### SSH Host Key Verification
+
+SSH connections verify the server's host key against `known_hosts` by default. The native `execute` function accepts a `host_key_policy` argument: `verify` (default), `trust-on-first-use`, or `accept-any` (explicit opt-in for ephemeral targets). Unknown or changed keys surface as typed `HostKeyNotFound` / `HostKeyMismatch` errors instead of connecting silently.
 
 ### Experiment Templates
 
@@ -728,7 +777,7 @@ Script plugins receive `TRACEPARENT` and `TRACESTATE` environment variables, all
 
 ### Test Infrastructure
 
-- **566 tests** across the workspace (up from 391)
+- **876 tests** across the workspace (up from 391 at the start of hardening)
 - **Property-based tests** (`proptest`) for all statistical functions in `tumult-baseline`
 - **Fuzz target** for experiment TOON deserialization (`tumult-core/fuzz/`)
 - **`tumult-test-utils` crate** — shared `MockPlugin`, `EventLog`, and experiment builders for integration tests
@@ -772,33 +821,33 @@ steady_state_hypothesis:
     - name: health-check
       activity_type: probe
       provider:
-        type: http
-        method: GET
-        url: http://localhost:8080/health
+        type: process
+        path: curl
+        arguments[6]: "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8080/health"
         timeout_s: 5.0
       tolerance:
-        type: exact
-        value: 200
+        type: regex
+        pattern: "200"
 
 method[1]:
   - name: kill-db-connections
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-db
-      function: terminate_connections
-      arguments:
-        database: myapp
+      type: process
+      path: plugins/tumult-db-postgres/actions/kill-connections.sh
+      env:
+        TUMULT_PG_DATABASE: myapp
     pause_after_s: 5.0
     background: false
 
 rollbacks[1]:
-  - name: restore-connections
+  - name: restart-app-pool
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-db
-      function: reset_connection_pool
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker restart myapp"
+      timeout_s: 30.0
     background: false
 
 regulatory:
@@ -851,7 +900,7 @@ tumult run examples/redis-chaos.toon       # break Redis, watch it recover
 tumult run examples/postgres-failover.toon  # kill PG connections
 tumult run examples/pumba-latency.toon      # inject 200ms network latency
 tumult analyze --query "SELECT title, status, duration_ms FROM experiments"
-tumult discover                             # list all 10 plugins and 48 actions
+tumult discover                             # list all 13 plugins (10 script + 3 native) and their 64 actions
 tumult init                                 # create your own experiment
 ```
 
@@ -859,7 +908,7 @@ See **[QUICKSTART.md](QUICKSTART.md)** for the full guided walkthrough including
 
 ### Pre-built binaries
 
-Download from [Releases](https://github.com/mwigge/tumult/releases) — pre-built for macOS (Intel + Apple Silicon), Linux (x86_64 + aarch64), and Windows. No Rust toolchain needed for pre-built binaries.
+Download from [Releases](https://github.com/mwigge/tumult/releases) — pre-built for macOS (x86_64 + aarch64) and Linux (x86_64 gnu/musl, aarch64 musl). No Rust toolchain needed for pre-built binaries.
 
 ### Usage
 
@@ -940,7 +989,7 @@ make clean           # cargo clean + docker compose down
 | JSON experiments | TOON experiments | 40-50% fewer tokens, human-readable |
 | opentracing control | Built-in OTel (per-activity spans) | Real spans with `resilience.*` attributes, always on |
 | Manual analysis | `tumult-analytics` (DuckDB + Arrow) | Embedded SQL over journals, Parquet export |
-| No AI integration | `tumult-mcp` (14 MCP tools) | AI assistants run experiments natively |
+| No AI integration | `tumult-mcp` (19 MCP tools) | AI assistants run experiments natively |
 | Ad-hoc infrastructure | Docker Compose e2e stack | One command to spin up test services |
 
 ---

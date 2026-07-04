@@ -1,4 +1,4 @@
-//! GameDay runner tests.
+//! `GameDay` runner tests.
 
 use super::*;
 use crate::controls::ControlRegistry;
@@ -102,4 +102,49 @@ fn gameday_score_reflects_failures() {
     assert!(result.resilience_score.compliance_coverage < 1.0);
     // Overall = 0.5*0.3 + 1.0*0.25 + 1.0*0.25 + 0.5*0.2 = 0.75 → PARTIAL
     assert_eq!(result.compliance_status, "PARTIAL");
+}
+
+#[test]
+fn gameday_experiment_count_mismatch_returns_error() {
+    use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+
+    let gameday = GameDay {
+        title: "Misaligned GameDay".into(),
+        description: None,
+        tags: vec![],
+        regulatory: None,
+        load: None,
+        experiments: vec![
+            GameDayExperiment {
+                path: "exp1.toon".into(),
+                compliance_maps: vec!["ART-1".into()],
+            },
+            GameDayExperiment {
+                path: "exp2.toon".into(),
+                compliance_maps: vec!["ART-2".into()],
+            },
+        ],
+        scoring: ScoringConfig::default(),
+    };
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let controls = Arc::new(ControlRegistry::new());
+
+    // Only one parsed experiment for two declared entries: journals could
+    // not be paired with the declared experiments, so this must error.
+    let result = run_gameday(
+        &gameday,
+        &[minimal_experiment()],
+        &executor,
+        &controls,
+        &default_config(),
+    );
+
+    assert!(matches!(
+        result,
+        Err(RunnerError::ExperimentCountMismatch {
+            declared: 2,
+            provided: 1
+        })
+    ));
 }

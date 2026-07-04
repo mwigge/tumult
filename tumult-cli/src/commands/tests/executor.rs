@@ -1,4 +1,4 @@
-//! Tests for the ProviderExecutor.
+//! Tests for the `ProviderExecutor`.
 
 use super::super::*;
 use tumult_core::runner::ActivityExecutor;
@@ -101,9 +101,36 @@ async fn native_provider_rejects_unknown_plugin() {
     let outcome = executor.execute(&activity);
 
     assert!(!outcome.success);
-    assert!(outcome
-        .error
-        .as_ref()
-        .unwrap()
-        .contains("unknown native plugin"));
+    let error = outcome.error.as_ref().unwrap();
+    assert!(error.contains("unknown native plugin"));
+    // The typed error lists the registered plugins for discoverability.
+    assert!(error.contains("tumult-kubernetes"));
+    assert!(error.contains("tumult-net"));
+    assert!(error.contains("tumult-ssh"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn native_provider_rejects_unknown_function() {
+    let activity = Activity {
+        name: "native-test".into(),
+        activity_type: ActivityType::Action,
+        provider: Provider::Native {
+            plugin: "tumult-ssh".into(),
+            function: "command-exeucte".into(), // typo must not silently run anything
+            arguments: std::collections::HashMap::new(),
+        },
+        tolerance: None,
+        pause_before_s: None,
+        pause_after_s: None,
+        background: false,
+        label_selector: None,
+    };
+
+    let executor = ProviderExecutor;
+    let outcome = executor.execute(&activity);
+
+    assert!(!outcome.success);
+    let error = outcome.error.as_ref().unwrap();
+    assert!(error.contains("unknown tumult-ssh function"));
+    assert!(error.contains("execute"), "should list available functions");
 }

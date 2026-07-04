@@ -23,13 +23,12 @@ tumult-otel = { path = "../tumult-otel" }
 tumult-kubernetes = { path = "../tumult-kubernetes" }
 tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }
+tumult-agent-cli = { path = "../tumult-agent-cli" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-intelligence = { path = "../tumult-intelligence" }
-kube = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 toon-format = { workspace = true }

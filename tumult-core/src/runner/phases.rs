@@ -1,18 +1,33 @@
 //! Phase computation: analysis (Phase 4), probe sampling, and during/post
 //! result construction.
 
-use std::time::Instant;
+use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use tokio_util::sync::CancellationToken;
 
 use crate::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult, ExpectedOutcome,
     Experiment, ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, SpanId, TraceId,
 };
 
+use super::activity::probe_outcome_ok;
 use super::telemetry::epoch_nanos_now;
 use super::ActivityExecutor;
 
+/// Probe samples grouped by probe name, each group in collection order.
+pub(crate) type ProbeSamples = Vec<(String, Vec<ActivityResult>)>;
+
+/// Mutable per-probe sample sink used while sampling is in progress.
+pub(crate) type ProbeSampleMap = HashMap<String, Vec<ActivityResult>>;
+
 /// Compute Phase 4 analysis from estimate and actual results.
-pub(crate) fn compute_analysis(experiment: &Experiment, status: &ExperimentStatus) -> Option<AnalysisResult> {
+pub(crate) fn compute_analysis(
+    experiment: &Experiment,
+    status: &ExperimentStatus,
+) -> Option<AnalysisResult> {
     let estimate = experiment.estimate.as_ref()?;
 
     // Compare estimate vs actual outcome
@@ -36,56 +51,129 @@ pub(crate) fn compute_analysis(experiment: &Experiment, status: &ExperimentStatu
     })
 }
 
-/// Run hypothesis probes a fixed number of times and return per-probe
-/// sample results. Used for during-phase and post-phase collection.
-pub(crate) fn collect_probe_samples(
+/// Run every hypothesis probe once, returning the sample results and
+/// whether all probes passed their tolerance in this round.
+fn sample_probe_round(
     hypothesis: &Hypothesis,
     executor: &dyn ActivityExecutor,
-    count: usize,
-) -> Vec<(String, Vec<ActivityResult>)> {
-    let mut per_probe: std::collections::HashMap<String, Vec<ActivityResult>> =
-        std::collections::HashMap::new();
+) -> (Vec<ActivityResult>, bool) {
+    let mut round = Vec::with_capacity(hypothesis.probes.len());
+    let mut all_within_tolerance = true;
 
-    for _ in 0..count {
-        for probe in &hypothesis.probes {
-            let start = Instant::now();
-            let started_at_ns = epoch_nanos_now();
-            let outcome = executor.execute(probe);
-            // Probe durations never exceed u64::MAX milliseconds (~585M years).
-            #[allow(clippy::cast_possible_truncation)]
-            let elapsed = start.elapsed().as_millis() as u64;
+    for probe in &hypothesis.probes {
+        let start = Instant::now();
+        let started_at_ns = epoch_nanos_now();
+        let outcome = executor.execute(probe);
+        // Probe durations never exceed u64::MAX milliseconds (~585M years).
+        #[allow(clippy::cast_possible_truncation)]
+        let elapsed = start.elapsed().as_millis() as u64;
 
-            let status = if outcome.success {
-                ActivityStatus::Succeeded
-            } else {
-                ActivityStatus::Failed
-            };
-
-            per_probe
-                .entry(probe.name.clone())
-                .or_default()
-                .push(ActivityResult {
-                    name: probe.name.clone(),
-                    activity_type: ActivityType::Probe,
-                    status,
-                    started_at_ns,
-                    duration_ms: elapsed,
-                    output: outcome.output,
-                    error: outcome.error,
-                    trace_id: TraceId::empty(),
-                    span_id: SpanId::empty(),
-                });
+        let within_tolerance = probe_outcome_ok(probe, outcome.success, outcome.output.as_deref());
+        if !within_tolerance {
+            all_within_tolerance = false;
         }
+        let status = if within_tolerance {
+            ActivityStatus::Succeeded
+        } else {
+            ActivityStatus::Failed
+        };
+
+        round.push(ActivityResult {
+            name: probe.name.clone(),
+            activity_type: ActivityType::Probe,
+            status,
+            started_at_ns,
+            duration_ms: elapsed,
+            output: outcome.output,
+            error: outcome.error,
+            trace_id: TraceId::empty(),
+            span_id: SpanId::empty(),
+        });
+    }
+
+    (round, all_within_tolerance)
+}
+
+/// Append one round of samples to the per-probe map.
+fn append_round(per_probe: &mut ProbeSampleMap, round: Vec<ActivityResult>) {
+    for sample in round {
+        per_probe
+            .entry(sample.name.clone())
+            .or_default()
+            .push(sample);
+    }
+}
+
+/// Collect during-phase probe samples into `per_probe`, one round every
+/// `interval`, until the method finishes (signalled by `stop_rx`
+/// disconnecting) or `max_samples` rounds have been taken.
+///
+/// Samples are written to the shared map incrementally so the caller can
+/// still use whatever was collected if the sampling thread panics mid-run.
+pub(crate) fn collect_during_samples(
+    hypothesis: &Hypothesis,
+    executor: &dyn ActivityExecutor,
+    interval: Duration,
+    max_samples: u32,
+    stop_rx: &Receiver<()>,
+    per_probe: &Mutex<ProbeSampleMap>,
+) {
+    for round in 0..max_samples {
+        let (samples, _) = sample_probe_round(hypothesis, executor);
+        {
+            let mut guard = per_probe
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            append_round(&mut guard, samples);
+        }
+        if round + 1 == max_samples {
+            break;
+        }
+        // The receive timeout doubles as the inter-sample pause: it returns
+        // early (`Disconnected`) as soon as the runner drops the stop sender,
+        // so a fast method incurs no sampling latency.
+        match stop_rx.recv_timeout(interval) {
+            Err(RecvTimeoutError::Timeout) => {}
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+}
+
+/// Collect post-phase probe samples, one round every `interval`, until every
+/// probe passes its tolerance (recovery detected), `timeout` elapses, or the
+/// run is cancelled. Always takes at least one round, so a system that has
+/// already recovered is observed without any added latency.
+pub(crate) fn collect_post_samples(
+    hypothesis: &Hypothesis,
+    executor: &dyn ActivityExecutor,
+    interval: Duration,
+    timeout: Duration,
+    cancellation_token: Option<&CancellationToken>,
+) -> ProbeSamples {
+    let mut per_probe = ProbeSampleMap::new();
+    let deadline = Instant::now() + timeout;
+
+    loop {
+        let (samples, recovered) = sample_probe_round(hypothesis, executor);
+        append_round(&mut per_probe, samples);
+
+        let cancelled = cancellation_token.is_some_and(CancellationToken::is_cancelled);
+        if recovered || cancelled || Instant::now() + interval > deadline {
+            break;
+        }
+        std::thread::sleep(interval);
     }
 
     per_probe.into_iter().collect()
 }
 
 /// Build a `DuringResult` from probe samples collected while fault injection
-/// was active. Returns `None` if no samples were collected.
+/// was active. `sample_interval_s` is the actual interval the sampler ran
+/// with. Returns `None` if no samples were collected.
 pub(crate) fn build_during_result(
     started_at_ns: i64,
     ended_at_ns: i64,
+    sample_interval_s: f64,
     probe_samples: &[(String, Vec<ActivityResult>)],
 ) -> Option<DuringResult> {
     if probe_samples.is_empty() {
@@ -147,7 +235,7 @@ pub(crate) fn build_during_result(
         started_at_ns,
         ended_at_ns,
         fault_active_s,
-        sample_interval_s: 1.0,
+        sample_interval_s,
         probes,
         degradation_onset_s: None,
         degradation_peak_s: None,
@@ -214,19 +302,29 @@ pub(crate) fn build_post_result(
             } else {
                 failed as f64 / samples.len() as f64
             };
-            let all_succeeded = failed == 0;
-            let recovery_time_s = if all_succeeded {
+            // A probe has returned to baseline when its most recent sample
+            // passed -- earlier failures are fine as long as the probe
+            // recovered by the end of the post-phase sampling window.
+            let returned_to_baseline = samples
+                .last()
+                .is_some_and(|s| s.status == ActivityStatus::Succeeded);
+            let recovery_time_s = if failed == 0 {
                 0.0
             } else {
-                let last_failure_ns = samples
+                // Recovery point: the first succeeding sample after the last
+                // failure, or the last (failing) sample when the probe never
+                // recovered within the sampling window.
+                let last_failure_idx = samples
                     .iter()
-                    .rev()
-                    .find(|s| s.status == ActivityStatus::Failed)
-                    .map_or(started_at_ns, |s| s.started_at_ns);
+                    .rposition(|s| s.status == ActivityStatus::Failed)
+                    .unwrap_or(0);
+                let recovery_marker_ns = samples
+                    .get(last_failure_idx + 1)
+                    .map_or(samples[last_failure_idx].started_at_ns, |s| s.started_at_ns);
                 // Nanosecond delta to seconds; i64 → f64 precision loss acceptable
                 // for human-readable recovery time display.
                 #[allow(clippy::cast_precision_loss)]
-                let secs = (last_failure_ns - started_at_ns) as f64 / 1_000_000_000.0;
+                let secs = (recovery_marker_ns - started_at_ns) as f64 / 1_000_000_000.0;
                 secs
             };
 
@@ -235,7 +333,7 @@ pub(crate) fn build_post_result(
                 mean,
                 p95,
                 error_rate,
-                returned_to_baseline: all_succeeded,
+                returned_to_baseline,
                 recovery_time_s,
             }
         })

@@ -115,8 +115,7 @@ fn parse_export_defaults_to_parquet() {
 
 #[test]
 fn parse_export_csv_format() {
-    let cli =
-        Cli::try_parse_from(["tumult", "export", "journal.toon", "--format", "csv"]).unwrap();
+    let cli = Cli::try_parse_from(["tumult", "export", "journal.toon", "--format", "csv"]).unwrap();
     let Commands::Export { format, .. } = cli.command else {
         panic!("expected Export command");
     };
@@ -149,8 +148,8 @@ fn parse_export_requires_journal_path() {
 
 #[test]
 fn parse_compliance_dora() {
-    let cli = Cli::try_parse_from(["tumult", "compliance", "journals/", "--framework", "dora"])
-        .unwrap();
+    let cli =
+        Cli::try_parse_from(["tumult", "compliance", "journals/", "--framework", "dora"]).unwrap();
     let Commands::Compliance {
         journals,
         framework,
@@ -180,8 +179,7 @@ fn parse_compliance_pci_dss() {
 
 #[test]
 fn parse_compliance_invalid_framework_is_error() {
-    let result =
-        Cli::try_parse_from(["tumult", "compliance", "journals/", "--framework", "hipaa"]);
+    let result = Cli::try_parse_from(["tumult", "compliance", "journals/", "--framework", "hipaa"]);
     assert!(result.is_err());
 }
 
@@ -301,6 +299,10 @@ fn parse_recommend_defaults() {
         model,
         no_draft,
         format,
+        agent,
+        agent_model,
+        agent_timeout,
+        generate_experiments,
     } = cli.command
     else {
         panic!("expected Recommend command");
@@ -310,6 +312,10 @@ fn parse_recommend_defaults() {
     assert!(model.is_none());
     assert!(!no_draft);
     assert_eq!(format, RecommendFormat::Text);
+    assert!(agent.is_none());
+    assert!(agent_model.is_none());
+    assert_eq!(agent_timeout, 120, "default from tumult-agent-cli");
+    assert!(generate_experiments.is_none());
 }
 
 #[test]
@@ -334,6 +340,7 @@ fn parse_recommend_all_flags() {
         model,
         no_draft,
         format,
+        ..
     } = cli.command
     else {
         panic!("expected Recommend command");
@@ -358,4 +365,51 @@ fn parse_recommend_text_format() {
 fn parse_recommend_invalid_format_is_error() {
     let result = Cli::try_parse_from(["tumult", "recommend", "--format", "xml"]);
     assert!(result.is_err());
+}
+
+#[test]
+fn parse_recommend_agent_flags() {
+    let cli = Cli::try_parse_from([
+        "tumult",
+        "recommend",
+        "--agent",
+        "claude-code",
+        "--agent-model",
+        "claude-sonnet-4-5",
+        "--agent-timeout",
+        "300",
+        "--generate-experiments",
+        "out/experiments",
+    ])
+    .unwrap();
+    let Commands::Recommend {
+        agent,
+        agent_model,
+        agent_timeout,
+        generate_experiments,
+        ..
+    } = cli.command
+    else {
+        panic!("expected Recommend command");
+    };
+    assert_eq!(agent.as_deref(), Some("claude-code"));
+    assert_eq!(agent_model.as_deref(), Some("claude-sonnet-4-5"));
+    assert_eq!(agent_timeout, 300);
+    assert_eq!(generate_experiments, Some(PathBuf::from("out/experiments")));
+}
+
+#[test]
+fn parse_recommend_generate_experiments_requires_agent() {
+    let result = Cli::try_parse_from(["tumult", "recommend", "--generate-experiments", "out"]);
+    assert!(result.is_err(), "--generate-experiments requires --agent");
+    let result = Cli::try_parse_from(["tumult", "recommend", "--agent-model", "m"]);
+    assert!(result.is_err(), "--agent-model requires --agent");
+}
+
+// ── Agents ────────────────────────────────────────────────
+
+#[test]
+fn parse_agents_subcommand() {
+    let cli = Cli::try_parse_from(["tumult", "agents"]).unwrap();
+    assert!(matches!(cli.command, Commands::Agents));
 }

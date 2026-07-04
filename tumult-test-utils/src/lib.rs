@@ -10,9 +10,7 @@ use std::sync::{Arc, Mutex};
 use indexmap::IndexMap;
 use tumult_core::controls::{ControlHandler, LifecycleEvent};
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
-use tumult_core::types::{
-    Activity, ActivityType, Experiment, HttpMethod, Hypothesis, Provider, Tolerance,
-};
+use tumult_core::types::{Activity, ActivityType, Experiment, Hypothesis, Provider, Tolerance};
 
 // ── MockPlugin ────────────────────────────────────────────────
 
@@ -209,17 +207,16 @@ pub fn foreground_action(name: &str) -> Activity {
     action(name)
 }
 
-/// Builds a probe `Activity` that checks for an exact HTTP response value.
+/// Builds a probe `Activity` that checks for an exact response value.
 #[must_use]
 pub fn probe_with_tolerance(name: &str, expected: serde_json::Value) -> Activity {
     Activity {
         name: name.into(),
         activity_type: ActivityType::Probe,
-        provider: Provider::Http {
-            method: HttpMethod::Get,
-            url: "http://localhost/health".into(),
-            headers: HashMap::new(),
-            body: None,
+        provider: Provider::Process {
+            path: "scripts/health-check.sh".into(),
+            arguments: vec![],
+            env: HashMap::new(),
             timeout_s: Some(5.0),
         },
         tolerance: Some(Tolerance::Exact { value: expected }),

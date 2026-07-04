@@ -1,21 +1,28 @@
 //! `run_experiment` — the five-phase experiment orchestrator.
 
+use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use crate::controls::{ControlRegistry, LifecycleEvent};
 use crate::engine::determine_status;
 use crate::execution::all_succeeded;
-use crate::types::{ActivityStatus, Experiment, ExperimentStatus, Journal};
+use crate::types::{
+    ActivityStatus, DuringResult, Experiment, ExperimentStatus, HypothesisResult, Journal,
+};
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 
 use super::activity::{evaluate_hypothesis, execute_activities, run_rollbacks};
-use super::phases::{build_during_result, build_post_result, collect_probe_samples, compute_analysis};
+use super::phases::{
+    build_during_result, build_post_result, collect_during_samples, collect_post_samples,
+    compute_analysis, ProbeSampleMap,
+};
 use super::telemetry::{epoch_nanos_now, make_interrupted_journal};
-use super::{load, ActivityExecutor, RunConfig, RunnerError, TRACER_NAME};
+use super::{load, ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
 
-/// Run an experiment through the five-phase lifecycle.
+/// Run an experiment through the five-phase lifecycle with the default
+/// probe-sampling cadence (see [`SamplingConfig::default`]).
 ///
 /// This is the main entry point for experiment execution. It takes an
 /// experiment definition, an executor for running activities, a controls
@@ -26,13 +33,39 @@ use super::{load, ActivityExecutor, RunConfig, RunnerError, TRACER_NAME};
 /// # Errors
 ///
 /// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps.
-#[allow(clippy::too_many_lines)]
-// run_experiment is a top-level orchestrator; splitting it further would harm readability.
 pub fn run_experiment(
     experiment: &Experiment,
-    executor: &std::sync::Arc<dyn ActivityExecutor>,
-    controls: &std::sync::Arc<ControlRegistry>,
+    executor: &Arc<dyn ActivityExecutor>,
+    controls: &Arc<ControlRegistry>,
     config: &RunConfig,
+) -> Result<Journal, RunnerError> {
+    run_experiment_with_sampling(
+        experiment,
+        executor,
+        controls,
+        config,
+        &SamplingConfig::default(),
+    )
+}
+
+/// Run an experiment through the five-phase lifecycle with an explicit
+/// probe-sampling cadence.
+///
+/// Like [`run_experiment`], but `sampling` controls the during-phase probe
+/// sampling interval and the post-phase recovery timeout.
+///
+/// # Errors
+///
+/// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps.
+#[allow(clippy::too_many_lines)]
+// run_experiment_with_sampling is a top-level orchestrator; splitting it
+// further would harm readability.
+pub fn run_experiment_with_sampling(
+    experiment: &Experiment,
+    executor: &Arc<dyn ActivityExecutor>,
+    controls: &Arc<ControlRegistry>,
+    config: &RunConfig,
+    sampling: &SamplingConfig,
 ) -> Result<Journal, RunnerError> {
     if experiment.method.is_empty() {
         return Err(RunnerError::EmptyMethod);
@@ -90,24 +123,12 @@ pub fn run_experiment(
     // Baseline acquisition is handled externally; we record the estimate.
 
     // -- Hypothesis BEFORE
-    let hypothesis_before = if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
-        controls.emit(&LifecycleEvent::BeforeHypothesis);
-        let hyp_tracer = opentelemetry::global::tracer(TRACER_NAME);
-        let hyp_span = hyp_tracer
-            .span_builder("resilience.hypothesis.before")
-            .with_attributes(vec![KeyValue::new(
-                "resilience.hypothesis.title",
-                hypothesis.title.clone(),
-            )])
-            .start(&hyp_tracer);
-        let hyp_cx = opentelemetry::Context::current_with_span(hyp_span);
-        let _hyp_guard = hyp_cx.attach();
-        let result = evaluate_hypothesis(hypothesis, executor.as_ref(), controls.as_ref());
-        controls.emit(&LifecycleEvent::AfterHypothesis);
-        Some(result)
-    } else {
-        None
-    };
+    let hypothesis_before = run_hypothesis_phase(
+        experiment,
+        executor.as_ref(),
+        controls.as_ref(),
+        "resilience.hypothesis.before",
+    );
 
     let hypothesis_before_met = hypothesis_before.as_ref().map(|h| h.met);
 
@@ -183,19 +204,7 @@ pub fn run_experiment(
     // thread, so `during_result` reflects probe behavior while the fault
     // is actually active (rather than after the method, hypothesis-after,
     // and rollbacks have already completed).
-    let during_handle = experiment
-        .steady_state_hypothesis
-        .as_ref()
-        .map(|hypothesis| {
-            let hypothesis = hypothesis.clone();
-            let executor = std::sync::Arc::clone(executor);
-            std::thread::spawn(move || {
-                let started_at_ns = epoch_nanos_now();
-                let samples = collect_probe_samples(&hypothesis, executor.as_ref(), 3);
-                let ended_at_ns = epoch_nanos_now();
-                (started_at_ns, ended_at_ns, samples)
-            })
-        });
+    let during_sampler = spawn_during_sampler(experiment, executor, sampling);
 
     let method_results = execute_activities(
         &experiment.method,
@@ -207,23 +216,28 @@ pub fn run_experiment(
 
     let actions_succeeded = all_succeeded(&method_results);
 
-    let during_result = during_handle.and_then(|handle| {
-        let (started_at_ns, ended_at_ns, samples) = handle
-            .join()
-            .expect("during-phase probe sampling thread panicked");
-        build_during_result(started_at_ns, ended_at_ns, &samples)
-    });
+    let during_result = during_sampler
+        .and_then(|sampler| finish_during_sampler(sampler, sampling.interval.as_secs_f64()));
 
     // -- Phase 3: POST -- recovery measurement, taken immediately after the
     // method completes (and before hypothesis-after / rollback run), so
     // `post_result.recovery_time_s` reflects recovery from the fault itself
-    // rather than from rollback actions.
+    // rather than from rollback actions. Probes are sampled on the
+    // configured interval until they pass their tolerance (recovery) or the
+    // recovery timeout elapses.
     let post_result = experiment
         .steady_state_hypothesis
         .as_ref()
+        .filter(|hypothesis| !hypothesis.probes.is_empty())
         .and_then(|hypothesis| {
             let started_at_ns = epoch_nanos_now();
-            let samples = collect_probe_samples(hypothesis, executor.as_ref(), 3);
+            let samples = collect_post_samples(
+                hypothesis,
+                executor.as_ref(),
+                sampling.interval,
+                sampling.recovery_timeout,
+                config.cancellation_token.as_ref(),
+            );
             let ended_at_ns = epoch_nanos_now();
             build_post_result(started_at_ns, ended_at_ns, &samples)
         });
@@ -235,24 +249,12 @@ pub fn run_experiment(
     drop(load_span_guard);
 
     // -- Hypothesis AFTER
-    let hypothesis_after = if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
-        controls.emit(&LifecycleEvent::BeforeHypothesis);
-        let hyp_tracer = opentelemetry::global::tracer(TRACER_NAME);
-        let hyp_span = hyp_tracer
-            .span_builder("resilience.hypothesis.after")
-            .with_attributes(vec![KeyValue::new(
-                "resilience.hypothesis.title",
-                hypothesis.title.clone(),
-            )])
-            .start(&hyp_tracer);
-        let hyp_cx = opentelemetry::Context::current_with_span(hyp_span);
-        let _hyp_guard = hyp_cx.attach();
-        let result = evaluate_hypothesis(hypothesis, executor.as_ref(), controls.as_ref());
-        controls.emit(&LifecycleEvent::AfterHypothesis);
-        Some(result)
-    } else {
-        None
-    };
+    let hypothesis_after = run_hypothesis_phase(
+        experiment,
+        executor.as_ref(),
+        controls.as_ref(),
+        "resilience.hypothesis.after",
+    );
 
     let hypothesis_after_met = hypothesis_after.as_ref().map(|h| h.met);
 
@@ -315,4 +317,121 @@ pub fn run_experiment(
         analysis,
         ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
     })
+}
+
+/// Evaluate the steady-state hypothesis (when present) inside a dedicated
+/// span, bracketed by the `BeforeHypothesis`/`AfterHypothesis` lifecycle
+/// events. `span_name` distinguishes the before/after phases.
+fn run_hypothesis_phase(
+    experiment: &Experiment,
+    executor: &dyn ActivityExecutor,
+    controls: &ControlRegistry,
+    span_name: &'static str,
+) -> Option<HypothesisResult> {
+    let hypothesis = experiment.steady_state_hypothesis.as_ref()?;
+    controls.emit(&LifecycleEvent::BeforeHypothesis);
+    let hyp_tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let hyp_span = hyp_tracer
+        .span_builder(span_name)
+        .with_attributes(vec![KeyValue::new(
+            "resilience.hypothesis.title",
+            hypothesis.title.clone(),
+        )])
+        .start(&hyp_tracer);
+    let hyp_cx = opentelemetry::Context::current_with_span(hyp_span);
+    let _hyp_guard = hyp_cx.attach();
+    let result = evaluate_hypothesis(hypothesis, executor, controls);
+    controls.emit(&LifecycleEvent::AfterHypothesis);
+    Some(result)
+}
+
+/// Handle to the background thread that samples hypothesis probes while the
+/// method runs.
+struct DuringSampler {
+    /// Dropped to signal the sampler thread to stop.
+    stop_tx: mpsc::Sender<()>,
+    /// Joins to the sampling end timestamp (epoch nanoseconds).
+    handle: std::thread::JoinHandle<i64>,
+    /// Shared sample sink; written incrementally so samples collected before
+    /// a sampler panic are not lost.
+    samples: Arc<Mutex<ProbeSampleMap>>,
+    started_at_ns: i64,
+}
+
+/// Spawn the during-phase sampler thread, if the experiment has hypothesis
+/// probes to sample. Probes are sampled on `sampling.interval` (up to
+/// `sampling.max_during_samples` rounds) while the method executes, so the
+/// during-phase result reflects behavior while the fault is active.
+fn spawn_during_sampler(
+    experiment: &Experiment,
+    executor: &Arc<dyn ActivityExecutor>,
+    sampling: &SamplingConfig,
+) -> Option<DuringSampler> {
+    let hypothesis = experiment
+        .steady_state_hypothesis
+        .as_ref()
+        .filter(|hypothesis| !hypothesis.probes.is_empty())?
+        .clone();
+
+    let executor = Arc::clone(executor);
+    let samples = Arc::new(Mutex::new(ProbeSampleMap::new()));
+    let sink = Arc::clone(&samples);
+    let interval = sampling.interval;
+    let max_samples = sampling.max_during_samples;
+    let (stop_tx, stop_rx) = mpsc::channel();
+    let started_at_ns = epoch_nanos_now();
+
+    let handle = std::thread::spawn(move || {
+        collect_during_samples(
+            &hypothesis,
+            executor.as_ref(),
+            interval,
+            max_samples,
+            &stop_rx,
+            &sink,
+        );
+        epoch_nanos_now()
+    });
+
+    Some(DuringSampler {
+        stop_tx,
+        handle,
+        samples,
+        started_at_ns,
+    })
+}
+
+/// Stop the during-phase sampler and build its result. A panicked sampler
+/// thread is logged and downgraded to "use whatever samples were collected"
+/// rather than propagating the panic into the runner.
+fn finish_during_sampler(sampler: DuringSampler, sample_interval_s: f64) -> Option<DuringResult> {
+    let DuringSampler {
+        stop_tx,
+        handle,
+        samples,
+        started_at_ns,
+    } = sampler;
+
+    // Dropping the sender disconnects the sampler's receiver, waking it
+    // immediately from its inter-sample wait.
+    drop(stop_tx);
+
+    let ended_at_ns = match handle.join() {
+        Ok(ns) => ns,
+        Err(_panic) => {
+            tracing::warn!(
+                "during-phase probe sampling thread panicked; \
+                 continuing with samples collected so far"
+            );
+            epoch_nanos_now()
+        }
+    };
+
+    let collected: Vec<_> = samples
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .drain()
+        .collect();
+
+    build_during_result(started_at_ns, ended_at_ns, sample_interval_s, &collected)
 }

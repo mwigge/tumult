@@ -1,22 +1,14 @@
 //! `OTel` instrumentation for Kubernetes operations.
 
-use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
-use opentelemetry::{global, KeyValue};
-use tumult_otel::SpanGuard;
+use opentelemetry::trace::TraceContextExt;
+use opentelemetry::KeyValue;
+use tumult_otel::{client_span, SpanGuard};
 
 const TRACER: &str = "tumult-kubernetes";
 
-/// All call sites pass `&'static str` span names; tightening the signature
-/// makes the `Into<Cow<'static, str>>` conversion zero-cost (K-T-01).
+/// Thin wrapper over [`tumult_otel::client_span`] that fixes the tracer name.
 fn k8s_span(name: &'static str, attrs: Vec<KeyValue>) -> SpanGuard {
-    let tracer = global::tracer(TRACER);
-    let span = tracer
-        .span_builder(name)
-        .with_kind(SpanKind::Client)
-        .with_attributes(attrs)
-        .start(&tracer);
-    let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard::new(cx.attach())
+    client_span(TRACER, name, attrs)
 }
 
 // ── Actions ─────────────────────────────────────────────────

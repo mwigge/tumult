@@ -1,7 +1,7 @@
 //! TCP chaos-proxy actions.
 //!
 //! Every action is a plain async free function dispatched by the CLI. Because
-//! the CLI runs each action in a fresh `block_in_place` + `block_on` call, a
+//! the CLI runs each action in a fresh `sync_await` call, a
 //! long-running proxy fault cannot live in process memory: the disruptive
 //! `start` functions spawn a detached `tumult-net-proxyd` daemon and record its
 //! PID in a pidfile under the OS temp directory, and the [`stop_proxy`] rollback

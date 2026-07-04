@@ -33,25 +33,11 @@ pub(crate) fn evaluate_hypothesis(
     for probe in &hypothesis.probes {
         let result = execute_single_activity(probe, executor, controls);
 
-        // Check tolerance if defined
-        if let Some(ref tolerance) = probe.tolerance {
-            if let Some(ref output) = result.output {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(output) {
-                    if !evaluate_tolerance(&value, tolerance) {
-                        all_met = false;
-                    }
-                } else {
-                    // If output isn't valid JSON, try as string
-                    let value = serde_json::Value::String(output.clone());
-                    if !evaluate_tolerance(&value, tolerance) {
-                        all_met = false;
-                    }
-                }
-            } else {
-                // Tolerance defined but no output -- cannot evaluate, treat as failure
-                all_met = false;
-            }
-        } else if result.status != ActivityStatus::Succeeded {
+        if !probe_outcome_ok(
+            probe,
+            result.status == ActivityStatus::Succeeded,
+            result.output.as_deref(),
+        ) {
             all_met = false;
         }
 
@@ -63,6 +49,25 @@ pub(crate) fn evaluate_hypothesis(
         met: all_met,
         probe_results,
     }
+}
+
+/// Check whether a probe outcome satisfies the probe's tolerance.
+///
+/// When a tolerance is defined, the output is parsed as JSON (falling back
+/// to a raw string) and evaluated against it; a missing output cannot be
+/// evaluated and counts as a failure. When no tolerance is defined, plain
+/// execution success counts.
+pub(crate) fn probe_outcome_ok(probe: &Activity, success: bool, output: Option<&str>) -> bool {
+    let Some(ref tolerance) = probe.tolerance else {
+        return success;
+    };
+    let Some(output) = output else {
+        return false;
+    };
+    // If output isn't valid JSON, evaluate it as a plain string.
+    let value = serde_json::from_str::<serde_json::Value>(output)
+        .unwrap_or_else(|_| serde_json::Value::String(output.to_string()));
+    evaluate_tolerance(&value, tolerance)
 }
 
 /// Execute a single activity with `OTel` instrumentation.

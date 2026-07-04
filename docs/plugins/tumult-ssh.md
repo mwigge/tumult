@@ -15,7 +15,41 @@ Remote command execution and file transfer over SSH for the Tumult chaos enginee
 - **File upload** via SSH channel (no SFTP subsystem required)
 - **Key-based authentication** (ed25519, RSA, ECDSA)
 - **SSH agent authentication** (ssh-agent / pageant)
+- **Host key verification** against `known_hosts` (default), trust-on-first-use, or accept-any
 - **Configurable timeouts** for both connection and command execution
+- **Native plugin function** `execute` for use in experiments via the `native` provider
+
+## Native `execute` Function
+
+Experiments call the plugin through the `native` provider. The `host_key_policy` argument controls host key verification and defaults to `verify`:
+
+```toon
+method[1]:
+  - name: restart-service-remote
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: db-primary.example.com
+        port: 22
+        user: ops
+        key_file: /home/ops/.ssh/id_ed25519
+        command: systemctl restart postgresql
+        host_key_policy: verify
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `host` | Yes | — | Remote host |
+| `user` | Yes | — | SSH user |
+| `command` | Yes | — | Command to run |
+| `port` | No | `22` | SSH port |
+| `key_file` | No | agent auth | Path to a private key; omit to use the SSH agent |
+| `host_key_policy` | No | `verify` | `verify`, `trust-on-first-use`, or `accept-any` |
+
+`verify` checks the server key against `known_hosts` and fails with a typed error on unknown or changed keys. `accept-any` is an explicit opt-in for ephemeral targets with unverifiable keys — the old implicit accept-all behaviour is gone. Unknown function names error with the list of available functions.
 
 ## Configuration
 
@@ -107,7 +141,11 @@ All SSH operations return `Result<_, SshError>` with these variants:
 |-------|-------|
 | `ConnectionFailed` | TCP connection or SSH handshake failed |
 | `AuthenticationFailed` | Key rejected or agent not available |
+| `HostKeyNotFound` | Server key not present in `known_hosts` (policy `verify`) |
+| `HostKeyMismatch` | Server key differs from the `known_hosts` entry (possible MITM) |
+| `KnownHostsIo` | Failed to read or write the `known_hosts` file |
 | `KeyNotFound` | Private key file does not exist |
+| `KeyPermissionsTooOpen` | Private key file mode is looser than 0600 |
 | `KeyParseError` | Private key file is malformed |
 | `ExecutionFailed` | Command could not be started |
 | `ChannelError` | SSH channel operation failed |
@@ -118,7 +156,10 @@ All SSH operations return `Result<_, SshError>` with these variants:
 
 ### Host Key Verification
 
-Host key verification is currently **accept-all** (see ADR-006). This is acceptable for trusted internal networks and ephemeral cloud instances, but NOT for production use over untrusted networks. Known_hosts verification is planned for a future release.
+Host key verification defaults to **`verify`**: `SshSession::connect` checks the server's key against `known_hosts` and returns a typed `HostKeyNotFound` or `HostKeyMismatch` error when the key is unknown or has changed. Two relaxations are available via `HostKeyPolicy` (or the `host_key_policy` argument of the native `execute` function):
+
+- `trust-on-first-use` — record an unknown key on first connection, then verify it on subsequent connections
+- `accept-any` — skip verification entirely; an explicit opt-in for trusted internal networks and ephemeral instances, NOT for production use over untrusted networks
 
 ### RSA Key Vulnerability (RUSTSEC-2023-0071)
 

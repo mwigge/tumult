@@ -25,9 +25,9 @@ const SCOPE: &str = "tumult-agentic";
 mod tests {
     use super::*;
     use crate::agentic;
+    use opentelemetry::trace::TracerProvider as _;
     use opentelemetry::trace::{Span, Tracer};
     use opentelemetry::KeyValue;
-    use opentelemetry::trace::TracerProvider as _;
     use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
 
     #[test]
