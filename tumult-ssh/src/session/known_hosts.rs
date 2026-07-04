@@ -246,6 +246,15 @@ async fn append_known_hosts_entry(
             reason: e.to_string(),
         })?;
 
+    // Flush before returning: `tokio::fs::File` buffers internally and does NOT
+    // flush on drop, so without this the just-appended entry can still be in
+    // buffer when a subsequent read (a later verify in the same process, or a
+    // test reading the file back) runs — a race that widens under load.
+    file.flush().await.map_err(|e| SshError::KnownHostsIo {
+        path: known_hosts_path.display().to_string(),
+        reason: e.to_string(),
+    })?;
+
     Ok(())
 }
 

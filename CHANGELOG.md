@@ -4,6 +4,16 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.7.1] - 2026-07-04
+
+Fixed:
+- tumult-ssh: `append_known_hosts_entry` wrote the trust-on-first-use entry but
+  never flushed. `tokio::fs::File` buffers internally and does not flush on drop,
+  so the just-written host key could still be in-buffer when a subsequent read
+  ran — a race that surfaced as an intermittent test failure under load and could,
+  in production, make a follow-up verify miss a just-recorded key. Now flushed
+  before returning.
+
 ## [2.7.0] - 2026-07-04
 
 Added:
