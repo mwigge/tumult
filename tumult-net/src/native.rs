@@ -4,7 +4,7 @@
 //! JSON arguments into the socket addresses, timing, rate, and probability
 //! parameters each userspace fault needs.
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use tumult_plugin::native::{arg_num, arg_str, NativeArgs, NativeError, NativeExecutor};
 
@@ -119,9 +119,16 @@ impl NativeExecutor for NetExecutor {
 
 /// Extract a socket-address argument.
 fn arg_addr(args: &NativeArgs, key: &str) -> Result<SocketAddr, NativeError> {
-    arg_str(args, key)?
-        .parse::<SocketAddr>()
-        .map_err(|e| NativeError::invalid_argument(key, e.to_string()))
+    // Resolve via `to_socket_addrs` rather than a bare `SocketAddr` parse so a
+    // DNS name works as well as a literal IP — `upstream: demo-app:8080` is the
+    // norm on container/Kubernetes networks, not `10.0.0.5:8080`. A literal
+    // `host:port` still resolves through this path unchanged.
+    let value = arg_str(args, key)?;
+    value
+        .to_socket_addrs()
+        .map_err(|e| NativeError::invalid_argument(key, e.to_string()))?
+        .next()
+        .ok_or_else(|| NativeError::invalid_argument(key, "resolved to no addresses"))
 }
 
 #[cfg(test)]

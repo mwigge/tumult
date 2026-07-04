@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tumult Demo · Control Panel</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #f0f2f5;
+      --border: #e2e6eb;
+      --text: #1a1f28;
+      --muted: #667085;
+      --accent: #4f46e5;
+      --accent-ink: #ffffff;
+      --ok: #12855b;
+      --ok-bg: #e6f6ef;
+      --warn: #a15c00;
+      --warn-bg: #fdf1dd;
+      --fail: #c0392b;
+      --fail-bg: #fce8e6;
+      --run: #1f6feb;
+      --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface-2: #1c2230;
+        --border: #2a3038;
+        --text: #e6edf3;
+        --muted: #9aa4b2;
+        --accent: #7c74ff;
+        --accent-ink: #0d1117;
+        --ok: #3fb984;
+        --ok-bg: #10241c;
+        --warn: #e0a83a;
+        --warn-bg: #2a2110;
+        --fail: #f2645a;
+        --fail-bg: #2a1512;
+        --run: #58a6ff;
+        --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--run); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header.bar {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+      padding: 14px 24px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 16px; }
+    .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+    .bar .spacer { flex: 1 1 auto; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      font-size: 13px; color: var(--muted);
+    }
+    .pill .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .pill.online .status-dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+    .pill.offline .status-dot { background: var(--fail); box-shadow: 0 0 0 3px var(--fail-bg); }
+    .bar .links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .bar .links a {
+      padding: 5px 11px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); font-size: 13px;
+    }
+    .bar .links a:hover { text-decoration: none; border-color: var(--accent); }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 64px; }
+    .intro h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.01em; }
+    .intro p { margin: 0 0 28px; color: var(--muted); max-width: 70ch; }
+
+    .grid {
+      display: grid; gap: 18px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 20px; box-shadow: var(--shadow);
+      display: flex; flex-direction: column; gap: 14px; min-height: 190px;
+    }
+    .card .head { display: flex; align-items: center; gap: 10px; }
+    .card h2 { margin: 0; font-size: 17px; text-transform: capitalize; letter-spacing: -.01em; }
+    .badge {
+      font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
+      background: var(--warn-bg); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+      white-space: nowrap;
+    }
+    .card p.desc { margin: 0; color: var(--muted); font-size: 13.5px; flex: 1 1 auto; }
+    .card .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--muted); word-break: break-all; }
+
+    .card .foot { display: flex; align-items: center; gap: 12px; }
+    button.run {
+      appearance: none; cursor: pointer; font: inherit; font-weight: 600; font-size: 14px;
+      padding: 9px 16px; border-radius: 9px; border: 1px solid transparent;
+      background: var(--accent); color: var(--accent-ink);
+      transition: transform .06s ease, filter .15s ease;
+    }
+    button.run:hover { filter: brightness(1.06); }
+    button.run:active { transform: translateY(1px); }
+    button.run:disabled { opacity: .55; cursor: default; }
+
+    .state { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .state .lamp { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+    .state.idle .lamp { background: var(--muted); }
+    .state.running .lamp { background: var(--run); animation: pulse 1s ease-in-out infinite; }
+    .state.passed .lamp { background: var(--ok); }
+    .state.deviated .lamp { background: var(--warn); }
+    .state.failed .lamp { background: var(--fail); }
+    .state.passed { color: var(--ok); }
+    .state.deviated { color: var(--warn); }
+    .state.failed { color: var(--fail); }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+
+    .card .result { font-size: 12.5px; color: var(--muted); min-height: 18px; }
+    .card .result a { font-weight: 600; }
+    .confirm {
+      background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
+      border-radius: 10px; padding: 12px; font-size: 13px; display: none; flex-direction: column; gap: 10px;
+    }
+    .confirm.show { display: flex; }
+    .confirm .row { display: flex; gap: 8px; }
+    .confirm button { appearance: none; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; padding: 7px 13px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .confirm button.go { background: var(--fail); color: #fff; border-color: transparent; }
+    .banner {
+      display: none; margin-bottom: 22px; padding: 12px 16px; border-radius: 10px;
+      background: var(--fail-bg); color: var(--fail); border: 1px solid color-mix(in srgb, var(--fail) 30%, transparent);
+      font-size: 13.5px;
+    }
+    .banner.show { display: block; }
+    footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <span class="brand"><span class="dot"></span> Tumult · Demo Control Panel</span>
+    <span id="mcp-pill" class="pill"><span class="status-dot"></span><span id="mcp-text">MCP: checking…</span></span>
+    <span class="spacer"></span>
+    <nav class="links">
+      <a id="link-app" href="#" target="_blank" rel="noopener">Demo app ↗</a>
+      <a id="link-signoz" href="#" target="_blank" rel="noopener">SigNoz ↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="intro">
+      <h1>Fault injection control panel</h1>
+      <p>Each card runs one Tumult chaos experiment against the live demo stack via the
+         <strong>tumult-mcp</strong> server (MCP <code>tools/call → tumult_run_experiment</code>).
+         Destructive actions are badged from the tool's own MCP annotations and ask for confirmation.
+         After a run, follow the trace link into SigNoz.</p>
+    </div>
+    <div id="banner" class="banner"></div>
+    <section id="grid" class="grid" aria-live="polite"></section>
+  </main>
+  <footer id="foot"></footer>
+
+  <script>
+    const CONFIG = /*__CONFIG__*/null || {};
+    const state = { traceLink: CONFIG.signozTraceLink || '#', traceService: CONFIG.traceService || 'demo-app' };
+
+    const el = (tag, props = {}, ...kids) => {
+      const n = document.createElement(tag);
+      Object.entries(props).forEach(([k, v]) => {
+        if (k === 'class') n.className = v;
+        else if (k === 'html') n.innerHTML = v;
+        else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
+        else if (v !== null && v !== undefined) n.setAttribute(k, v);
+      });
+      kids.flat().forEach(kid => n.append(kid?.nodeType ? kid : document.createTextNode(kid ?? '')));
+      return n;
+    };
+
+    function setStatus(card, cls, text) {
+      const s = card.querySelector('.state');
+      s.className = 'state ' + cls;
+      s.querySelector('.label').textContent = text;
+    }
+
+    async function runDomain(domain, card, destructive) {
+      const btn = card.querySelector('button.run');
+      const result = card.querySelector('.result');
+      btn.disabled = true;
+      setStatus(card, 'running', 'running…');
+      result.textContent = '';
+      const t0 = performance.now();
+      try {
+        const res = await fetch(`/api/run/${encodeURIComponent(domain)}`, { method: 'POST' });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        const cls = body.outcome === 'passed' ? 'passed' : body.outcome === 'deviated' ? 'deviated' : 'failed';
+        const dur = body.duration_ms != null ? `${body.duration_ms} ms` : `${Math.round(performance.now() - t0)} ms (client)`;
+        setStatus(card, cls, `${body.status} · ${dur}`);
+        const link = body.signoz_trace_link || state.traceLink;
+        result.innerHTML = '';
+        result.append(
+          el('a', { href: link, target: '_blank', rel: 'noopener' }, `View traces in SigNoz (service: ${state.traceService}) ↗`),
+        );
+        if (body.journal_path) {
+          result.append(el('div', { class: 'path' }, `journal: ${body.journal_path}${body.ingestion ? ' · ' + body.ingestion : ''}`));
+        }
+      } catch (err) {
+        setStatus(card, 'failed', 'error');
+        result.textContent = String(err.message || err);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function makeCard(d) {
+      const confirm = el('div', { class: 'confirm' });
+      const card = el('div', { class: 'card', 'data-domain': d.id },
+        el('div', { class: 'head' },
+          el('h2', {}, d.id),
+          d.destructive ? el('span', { class: 'badge', title: 'tumult_run_experiment is annotated destructiveHint=true' }, '⚠ fault injection') : '',
+        ),
+        el('p', { class: 'desc' }, d.description),
+        el('div', { class: 'path' }, d.experiment_path),
+        confirm,
+        el('div', { class: 'foot' },
+          el('button', { class: 'run', onclick: () => {
+            if (d.destructive) { confirm.classList.add('show'); }
+            else { runDomain(d.id, card, false); }
+          } }, 'Run'),
+          el('div', { class: 'state idle' }, el('span', { class: 'lamp' }), el('span', { class: 'label' }, 'idle')),
+        ),
+        el('div', { class: 'result' }),
+      );
+      confirm.append(
+        el('div', {}, el('strong', {}, 'Run destructive fault injection?'), ' This experiment perturbs the live demo stack.'),
+        el('div', { class: 'row' },
+          el('button', { class: 'go', onclick: () => { confirm.classList.remove('show'); runDomain(d.id, card, true); } }, 'Yes, inject fault'),
+          el('button', { onclick: () => confirm.classList.remove('show') }, 'Cancel'),
+        ),
+      );
+      return card;
+    }
+
+    function renderStatus(s) {
+      const pill = document.getElementById('mcp-pill');
+      const text = document.getElementById('mcp-text');
+      if (s.mcp_online) {
+        pill.className = 'pill online';
+        text.textContent = `MCP: online · ${s.tool_count} tools`;
+      } else {
+        pill.className = 'pill offline';
+        text.textContent = 'MCP: offline, retrying…';
+      }
+      document.getElementById('link-app').href = s.demo_app_url || CONFIG.demoAppUrl || '#';
+      document.getElementById('link-signoz').href = s.signoz_url || CONFIG.signozUrl || '#';
+      state.traceLink = s.signoz_trace_link || state.traceLink;
+      state.traceService = s.trace_service || state.traceService;
+
+      const banner = document.getElementById('banner');
+      if (!s.mcp_online) {
+        banner.className = 'banner show';
+        banner.textContent = `MCP server unreachable${s.mcp_error ? ': ' + s.mcp_error : ''}. Cards still load; runs will report a clean error until it comes back.`;
+      } else {
+        banner.className = 'banner';
+      }
+
+      const grid = document.getElementById('grid');
+      // Build cards once; only refresh the status pill/banner on later polls.
+      if (!grid.dataset.built) {
+        s.domains.forEach(d => grid.append(makeCard(d)));
+        grid.dataset.built = '1';
+      } else {
+        // Update destructive badges if annotation availability changed.
+        s.domains.forEach(d => {
+          const card = grid.querySelector(`.card[data-domain="${d.id}"]`);
+          if (!card) return;
+          const hasBadge = !!card.querySelector('.badge');
+          if (d.destructive && !hasBadge) {
+            card.querySelector('.head').append(el('span', { class: 'badge' }, '⚠ fault injection'));
+          }
+        });
+      }
+      document.getElementById('foot').textContent =
+        `Runs call MCP tumult_run_experiment with experiment_path as mounted inside the tumult-mcp container. Trace service: ${state.traceService}.`;
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch('/api/status');
+        renderStatus(await res.json());
+      } catch (e) {
+        const pill = document.getElementById('mcp-pill');
+        pill.className = 'pill offline';
+        document.getElementById('mcp-text').textContent = 'MCP: offline, retrying…';
+      }
+    }
+
+    poll();
+    setInterval(poll, 5000);
+  </script>
+</body>
+</html>

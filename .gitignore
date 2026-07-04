@@ -29,3 +29,5 @@ openspec/
 
 # Local Claude Code state (skills, settings, worktrees)
 .claude/
+/target-deb/
+demo/*/target/

@@ -1,0 +1,27 @@
+# Self-contained demo component. The `[workspace]` table below makes this its
+# own workspace root so it is EXCLUDED from the repository's root workspace even
+# if the root ever globs `demo/*` as members. Do not add it to the root
+# workspace `members` list.
+[package]
+name = "demo-control-panel"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[[bin]]
+name = "demo-control-panel"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tower-http = { version = "0.6", features = ["trace"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Own workspace root: excludes this crate from the repository workspace.
+[workspace]

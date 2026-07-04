@@ -1,0 +1,58 @@
+# demo-app — fault-injection target for the Tumult one-command demo.
+#
+# Deliberately NOT a member of the root workspace: an empty [workspace]
+# table below keeps cargo from attaching this crate to the parent
+# workspace, so demo builds never slow the main build. It keeps its own
+# Cargo.lock. (The root Cargo.toml uses explicit members, not a glob, so
+# this crate would be excluded regardless — the empty table makes it
+# self-contained and belt-and-suspenders safe.)
+
+[package]
+name = "demo-app"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+description = "Small orders API used as the fault-injection target in the Tumult demo stack"
+license = "Apache-2.0"
+
+[workspace]
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "net"] }
+tokio-postgres = "0.7"
+deadpool-postgres = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+rand = "0.9"
+
+# Tracing + OpenTelemetry — same version family as the Tumult workspace
+# (opentelemetry 0.32 / tracing-opentelemetry 0.33). Per the demo CONTRACT
+# this service exports OTLP over HTTP to the tumult-collector on :4318.
+# reqwest-blocking-client keeps the exporter self-contained (no shared tokio
+# runtime dependency) and reqwest-rustls avoids an OpenSSL build dependency
+# in the slim runtime image.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry", "fmt"] }
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+    "http-proto",
+    "reqwest-blocking-client",
+    "reqwest-rustls",
+] }
+tracing-opentelemetry = "0.33"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+# Keep clippy honest without denying at build time (avoids breaking the Docker
+# build on a future pedantic lint). The verify step runs `clippy -D warnings`.
+[lints.clippy]
+pedantic = "warn"
+
+[profile.release]
+strip = true

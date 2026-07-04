@@ -1,0 +1,53 @@
+title: Demo — network latency via the tumult-net userspace proxy
+description: Stand a native tokio-netem proxy in front of demo-app and prove requests still succeed through the delayed path
+
+tags[3]: demo, network, resilience
+
+steady_state_hypothesis:
+  title: demo-app is healthy on the direct path
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[2]:
+  - name: inject-latency
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: inject_latency
+      arguments:
+        listen: 0.0.0.0:18080
+        upstream: demo-app:8080
+        delay_ms: 300
+        jitter_ms: 40
+        seed: 42
+    pause_after_s: 2.0
+  - name: health-through-delayed-proxy
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "curl -sf -m 10 http://127.0.0.1:18080/health"
+      timeout_s: 12.0
+    tolerance:
+      type: regex
+      pattern: "ok"
+
+rollbacks[1]:
+  - name: stop-proxy
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: stop_proxy
+      arguments:
+        listen: 0.0.0.0:18080

@@ -1,0 +1,55 @@
+title: Demo — SSH remote execution against demo-sshd
+description: Use the native tumult-ssh executor to run commands on demo-sshd, including a short stress-ng burst
+
+tags[3]: demo, ssh, resilience
+
+steady_state_hypothesis:
+  title: demo-sshd is reachable over SSH
+  probes[1]:
+    - name: ssh-alive
+      activity_type: probe
+      provider:
+        type: native
+        plugin: tumult-ssh
+        function: execute
+        arguments:
+          host: demo-sshd
+          port: 22
+          user: tumult
+          key_file: /demo/ssh-key/id_ed25519
+          command: echo alive
+          host_key_policy: accept-any
+      tolerance:
+        type: regex
+        pattern: "alive"
+
+method[2]:
+  - name: ssh-uname
+    activity_type: probe
+    provider:
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: demo-sshd
+        port: 22
+        user: tumult
+        key_file: /demo/ssh-key/id_ed25519
+        command: uname -a
+        host_key_policy: accept-any
+  - name: ssh-cpu-stress
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: demo-sshd
+        port: 22
+        user: tumult
+        key_file: /demo/ssh-key/id_ed25519
+        command: stress-ng --cpu 1 --timeout 3s --metrics-brief
+        host_key_policy: accept-any
+    pause_after_s: 1.0
+
+rollbacks[0]:

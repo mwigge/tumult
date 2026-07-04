@@ -1,0 +1,43 @@
+# demo-app — OTel-instrumented orders API, the fault-injection target for the
+# Tumult one-command demo.
+#
+# Build context: the repository root (so the standalone demo/app crate can be
+# copied). Example:
+#   docker build -f docker/Dockerfile.demo-app -t demo-app .
+
+# ---- Stage 1: build ----
+FROM rust:1.89-bookworm AS builder
+WORKDIR /build
+
+# Cache dependency compilation: build an empty shell of the crate first so the
+# dependency layers are reused across source-only changes.
+COPY demo/app/Cargo.toml demo/app/Cargo.lock* ./
+RUN mkdir src \
+    && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release \
+    && rm -rf src
+
+COPY demo/app/src ./src
+# Bust cargo's mtime-based cache for the real sources, then build for real.
+RUN touch src/main.rs && cargo build --release
+
+# ---- Stage 2: runtime ----
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home demo
+
+COPY --from=builder /build/target/release/demo-app /usr/local/bin/demo-app
+
+USER demo
+EXPOSE 8080
+ENV RUST_LOG=info \
+    LISTEN_ADDR=0.0.0.0:8080 \
+    DATABASE_URL=postgres://demo:demo@demo-postgres:5432/orders \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://tumult-collector:4318
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
+    CMD curl -fsS http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/demo-app"]

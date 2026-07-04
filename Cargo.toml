@@ -34,7 +34,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.1.0"
+version = "2.2.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -137,8 +137,12 @@ opt-level = 2
 
 [profile.release]
 opt-level = 3
-lto = "fat"
-codegen-units = 1
+# Thin LTO rather than fat: near-identical runtime performance for this IO-bound
+# CLI, but far faster to build and not prone to the intermittent rustc SIGSEGV
+# that fat LTO + codegen-units=1 can hit on a workspace this size. codegen-units
+# stays at 16 (the default) so LTO units compile in parallel.
+lto = "thin"
+codegen-units = 16
 panic = "abort"
 # Strip only debug info, preserve symbol names for panic backtraces.
 # Use `strip = true` in Dockerfiles for smaller distribution binaries.
