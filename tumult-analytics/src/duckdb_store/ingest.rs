@@ -2,7 +2,7 @@
 
 use arrow::record_batch::RecordBatch;
 use duckdb::params;
-use tumult_core::types::Journal;
+use tumult_core::types::{Experiment, Journal};
 
 use crate::arrow_convert::{
     journal_to_activity_batch, journal_to_experiment_batch, journal_to_load_batch,
@@ -67,6 +67,28 @@ impl AnalyticsStore {
     /// ```
     #[must_use = "callers must check whether the journal was ingested or skipped as a duplicate"]
     pub fn ingest_journal(&self, journal: &Journal) -> Result<bool, AnalyticsError> {
+        self.ingest_journal_with_experiment(journal, None)
+    }
+
+    /// Ingest a journal, enriching the `ChaosGraph` with the experiment
+    /// definition when available.
+    ///
+    /// Identical to [`Self::ingest_journal`] for the analytics tables, but the
+    /// graph population uses `experiment` (when `Some`) to record
+    /// `Fault = plugin::function` and `Service` nodes; with `None` the graph
+    /// falls back to deriving faults from the journal's action results.
+    /// Skips ingestion (and graph population) if the `experiment_id` already
+    /// exists, so re-ingesting a run never duplicates graph rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `DuckDB` insert or Arrow conversion fails.
+    #[must_use = "callers must check whether the journal was ingested or skipped as a duplicate"]
+    pub fn ingest_journal_with_experiment(
+        &self,
+        journal: &Journal,
+        experiment: Option<&Experiment>,
+    ) -> Result<bool, AnalyticsError> {
         let _span = telemetry::begin_ingest(&journal.experiment_id, &journal.experiment_title);
 
         if self.experiment_exists(&journal.experiment_id)? {
@@ -84,6 +106,8 @@ impl AnalyticsStore {
             let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
             self.insert_batch("load_results", &load_batch)?;
         }
+        // ChaosGraph: upsert this run's nodes/edges (schema v2).
+        self.populate_graph(journal, experiment)?;
         telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
         Ok(true)
     }

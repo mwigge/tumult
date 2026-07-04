@@ -39,7 +39,9 @@ COPY tumult-agent-cli/ tumult-agent-cli/
 
 # tumult-net-proxyd is the userspace TCP proxy daemon that tumult-net faults
 # spawn; it must ship alongside the main binary (located next to current_exe).
-RUN cargo build --release -p tumult-cli -p tumult-mcp --bin tumult-net-proxyd && \
+# `-p tumult-net` builds that crate's proxyd binary (it is not a bin of
+# tumult-cli/tumult-mcp, so a scoped `--bin` there fails to resolve).
+RUN cargo build --release -p tumult-cli -p tumult-mcp -p tumult-net && \
     strip target/release/tumult target/release/tumult-mcp target/release/tumult-net-proxyd
 
 # ── Runtime ─────────────────────────────────────────────────

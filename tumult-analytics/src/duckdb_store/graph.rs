@@ -1,0 +1,276 @@
+//! `ChaosGraph` persistence and queries over the `graph_nodes` / `graph_edges`
+//! tables.
+//!
+//! The graph model and SQL live in `tumult-graph`; this module is the thin
+//! executor that binds parameters against the embedded `DuckDB` connection.
+
+use duckdb::params;
+use tumult_core::types::{Experiment, Journal};
+use tumult_graph::{sql, EgoGraph, EgoTuple, NodeSummary};
+
+use crate::error::AnalyticsError;
+
+use super::AnalyticsStore;
+
+impl AnalyticsStore {
+    /// Upsert the graph nodes/edges contributed by a run.
+    ///
+    /// Pass `Some(experiment)` for the full `Fault = plugin::function` +
+    /// `Service` model; `None` derives faults from the journal's action
+    /// results. Idempotent: a run's edges are cleared by `run_id` before
+    /// re-insert, and nodes upsert on their primary key.
+    pub(super) fn populate_graph(
+        &self,
+        journal: &Journal,
+        experiment: Option<&Experiment>,
+    ) -> Result<(), AnalyticsError> {
+        let delta = tumult_graph::journal_to_graph(journal, experiment);
+
+        for node in &delta.nodes {
+            // `serde_json::Value`'s Display impl emits compact JSON text.
+            let attrs = node.attrs.to_string();
+            self.conn.execute(
+                sql::UPSERT_NODE,
+                params![node.id, node.kind.as_str(), node.label, attrs],
+            )?;
+        }
+
+        // Clear this run's edges first so re-ingesting never duplicates them.
+        self.conn
+            .execute(sql::DELETE_EDGES_FOR_RUN, params![journal.experiment_id])?;
+        for edge in &delta.edges {
+            self.conn.execute(
+                sql::INSERT_EDGE,
+                params![
+                    edge.src,
+                    edge.rel.as_str(),
+                    edge.dst,
+                    journal.experiment_id,
+                    journal.started_at_ns
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Return node summaries of a given `kind`, optionally filtered by a
+    /// case-insensitive label substring.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    #[must_use = "callers must use the returned node summaries"]
+    pub fn graph_query(
+        &self,
+        kind: &str,
+        filter: Option<&str>,
+    ) -> Result<Vec<NodeSummary>, AnalyticsError> {
+        let sql = sql::nodes_by_kind(filter.is_some());
+        let mut stmt = self.conn.prepare(&sql)?;
+        let map_row = |row: &duckdb::Row<'_>| {
+            Ok(NodeSummary {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                label: row.get(2)?,
+            })
+        };
+        let rows = if let Some(filter) = filter {
+            let pattern = format!("%{filter}%");
+            stmt.query_map(params![kind, pattern], map_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_map(params![kind], map_row)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(rows)
+    }
+
+    /// Whether a node with `id` exists in the graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    #[must_use = "callers must use the returned existence flag"]
+    pub fn graph_node_exists(&self, id: &str) -> Result<bool, AnalyticsError> {
+        let mut stmt = self.conn.prepare(sql::NODE_EXISTS)?;
+        let count: i64 = stmt.query_row(params![id], |row| row.get(0))?;
+        Ok(count > 0)
+    }
+
+    /// Return the ego sub-graph of `node_id`: the nodes reachable within
+    /// `depth` (following edges in both directions) plus the `(src)-[rel]->(dst)`
+    /// tuples among them, optionally filtered to a single relation.
+    ///
+    /// Returns `Ok(None)` when the node does not exist, so callers can surface a
+    /// clean "unknown node" error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a query fails.
+    #[must_use = "callers must use the returned ego sub-graph"]
+    pub fn graph_neighbors(
+        &self,
+        node_id: &str,
+        rel: Option<&str>,
+        depth: i64,
+    ) -> Result<Option<EgoGraph>, AnalyticsError> {
+        if !self.graph_node_exists(node_id)? {
+            return Ok(None);
+        }
+        let depth = depth.max(1);
+
+        let nodes_sql = sql::ego_nodes();
+        let mut stmt = self.conn.prepare(&nodes_sql)?;
+        let nodes = stmt
+            .query_map(params![node_id, depth], |row| {
+                Ok(NodeSummary {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    label: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let edges_sql = sql::ego_edges(rel.is_some());
+        let mut stmt = self.conn.prepare(&edges_sql)?;
+        let map_edge = |row: &duckdb::Row<'_>| {
+            Ok(EgoTuple {
+                src: row.get(0)?,
+                rel: row.get(1)?,
+                dst: row.get(2)?,
+            })
+        };
+        let edges = if let Some(rel) = rel {
+            stmt.query_map(params![node_id, depth, rel], map_edge)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_map(params![node_id, depth], map_edge)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        Ok(Some(EgoGraph {
+            center: node_id.to_string(),
+            nodes,
+            edges,
+        }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::sample_journal;
+    use super::super::AnalyticsStore;
+    use tumult_core::types::*;
+
+    fn latency_experiment() -> Experiment {
+        Experiment {
+            title: "Test e1".into(),
+            method: vec![Activity {
+                name: "inject-latency".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Native {
+                    plugin: "tumult-net".into(),
+                    function: "inject_latency".into(),
+                    arguments: std::collections::HashMap::from([(
+                        "upstream".into(),
+                        serde_json::Value::String("demo-app:8080".into()),
+                    )]),
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn ingest_populates_graph_tables() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal_with_experiment(
+            &sample_journal("e1", ExperimentStatus::Completed),
+            Some(&latency_experiment()),
+        )
+        .unwrap();
+
+        let nodes = s.graph_query("experiment", None).unwrap();
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id, "exp:Test e1");
+
+        let faults = s.graph_query("fault", None).unwrap();
+        assert_eq!(faults[0].label, "tumult-net::inject_latency");
+
+        let services = s.graph_query("service", None).unwrap();
+        assert_eq!(services[0].id, "svc:demo-app");
+    }
+
+    #[test]
+    fn neighbors_of_experiment_returns_fault_service_and_journal() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal_with_experiment(
+            &sample_journal("e1", ExperimentStatus::Completed),
+            Some(&latency_experiment()),
+        )
+        .unwrap();
+
+        let ego = s
+            .graph_neighbors("exp:Test e1", None, 1)
+            .unwrap()
+            .expect("experiment node must exist");
+        let kinds: std::collections::HashSet<&str> =
+            ego.nodes.iter().map(|n| n.kind.as_str()).collect();
+        assert!(kinds.contains("fault"));
+        assert!(kinds.contains("service"));
+        assert!(kinds.contains("journal"));
+
+        let rels: std::collections::HashSet<&str> =
+            ego.edges.iter().map(|e| e.rel.as_str()).collect();
+        assert!(rels.contains("injects"));
+        assert!(rels.contains("targets"));
+        assert!(rels.contains("yielded"));
+    }
+
+    #[test]
+    fn neighbors_rel_filter_restricts_edges() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal_with_experiment(
+            &sample_journal("e1", ExperimentStatus::Completed),
+            Some(&latency_experiment()),
+        )
+        .unwrap();
+
+        let ego = s
+            .graph_neighbors("exp:Test e1", Some("injects"), 1)
+            .unwrap()
+            .unwrap();
+        assert!(ego.edges.iter().all(|e| e.rel == "injects"));
+        assert!(!ego.edges.is_empty());
+    }
+
+    #[test]
+    fn neighbors_unknown_node_is_none() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        assert!(s.graph_neighbors("exp:nope", None, 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn reingest_does_not_duplicate_graph_nodes_or_edges() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let journal = sample_journal("e1", ExperimentStatus::Completed);
+        let exp = latency_experiment();
+        assert!(s
+            .ingest_journal_with_experiment(&journal, Some(&exp))
+            .unwrap());
+        // Duplicate experiment_id: skipped, no extra graph rows.
+        assert!(!s
+            .ingest_journal_with_experiment(&journal, Some(&exp))
+            .unwrap());
+
+        let node_count = s.query("SELECT count(*) FROM graph_nodes").unwrap();
+        // exp + fault + service + journal = 4 nodes.
+        assert_eq!(node_count[0][0], "4");
+        let edge_count = s
+            .query("SELECT count(DISTINCT (src, rel, dst)) FROM graph_edges")
+            .unwrap();
+        // injects + targets + yielded + observed_on = 4 edges.
+        assert_eq!(edge_count[0][0], "4");
+    }
+}

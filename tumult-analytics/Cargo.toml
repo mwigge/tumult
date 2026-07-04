@@ -19,11 +19,13 @@ duckdb = [
     "dep:chrono",
     "dep:dirs-next",
     "dep:tumult-baseline",
+    "dep:tumult-graph",
 ]
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
 tumult-baseline = { path = "../tumult-baseline", optional = true }
+tumult-graph = { path = "../tumult-graph", optional = true }
 arrow = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 duckdb = { workspace = true, optional = true }
@@ -34,3 +36,4 @@ opentelemetry = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+serde_json = { workspace = true }

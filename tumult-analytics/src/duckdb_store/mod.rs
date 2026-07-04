@@ -19,6 +19,7 @@ use duckdb::{params, Connection};
 
 use crate::error::AnalyticsError;
 
+mod graph;
 mod ingest;
 mod maintenance;
 mod query;
@@ -26,7 +27,10 @@ mod types;
 
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
 
-const CURRENT_SCHEMA_VERSION: i64 = 1;
+/// Schema history:
+/// * v1 — experiments, activity/load results, agentic tables.
+/// * v2 — `ChaosGraph` `graph_nodes` / `graph_edges` (additive, no data loss).
+const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 /// Embedded `DuckDB` analytics store for experiment journals.
 ///
@@ -167,6 +171,10 @@ impl AnalyticsStore {
                 key VARCHAR PRIMARY KEY, value BIGINT NOT NULL
             );",
         )?;
+        // ChaosGraph node/edge tables (schema v2). `IF NOT EXISTS` makes this
+        // both the fresh-install DDL and the additive v1 → v2 migration: an
+        // existing store simply gains the two tables, keeping all prior data.
+        self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
         Ok(())
     }
 
@@ -177,14 +185,25 @@ impl AnalyticsStore {
         // Read as i64 directly — the column is now BIGINT, no String round-trip.
         let version: Option<i64> = stmt.query_row(params![], |row| row.get(0)).ok();
 
-        if version.is_none() {
-            self.conn.execute(
-                "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
-                // Bind i64 directly — avoids a String allocation and type mismatch.
-                params![CURRENT_SCHEMA_VERSION],
-            )?;
+        match version {
+            None => {
+                self.conn.execute(
+                    "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
+                    // Bind i64 directly — avoids a String allocation and type mismatch.
+                    params![CURRENT_SCHEMA_VERSION],
+                )?;
+            }
+            Some(stored) if stored < CURRENT_SCHEMA_VERSION => {
+                // Migrations are additive and already applied by
+                // `create_tables` (every DDL is `IF NOT EXISTS`); here we only
+                // advance the recorded version so the upgrade is observable.
+                self.conn.execute(
+                    "UPDATE schema_meta SET value = ? WHERE key = 'version'",
+                    params![CURRENT_SCHEMA_VERSION],
+                )?;
+            }
+            Some(_) => {}
         }
-        // Future: if version < CURRENT_SCHEMA_VERSION, run migrations here
         Ok(())
     }
 
@@ -251,6 +270,7 @@ pub(crate) fn sample_journal(
 mod tests {
     use super::sample_journal;
     use super::AnalyticsStore;
+    use super::CURRENT_SCHEMA_VERSION;
     use tumult_core::types::*;
 
     #[test]
@@ -341,13 +361,53 @@ mod tests {
 
         {
             let s = AnalyticsStore::open(&db_path).unwrap();
-            assert_eq!(s.schema_version().unwrap(), 1);
+            assert_eq!(s.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         }
 
         {
             let s = AnalyticsStore::open(&db_path).unwrap();
-            assert_eq!(s.schema_version().unwrap(), 1);
+            assert_eq!(s.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         }
+    }
+
+    /// A store recorded at the pre-graph schema (v1) must migrate forward on
+    /// open: the graph tables appear, the version advances, and prior data
+    /// survives.
+    #[test]
+    fn migrates_v1_store_forward_without_data_loss() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+
+        // Seed a v1-shaped store with one experiment and no graph tables.
+        {
+            let conn = duckdb::Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE experiments (
+                    experiment_id VARCHAR NOT NULL, title VARCHAR NOT NULL,
+                    status VARCHAR NOT NULL, started_at_ns BIGINT NOT NULL,
+                    ended_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL,
+                    method_step_count BIGINT NOT NULL, rollback_count BIGINT NOT NULL,
+                    hypothesis_before_met BOOLEAN, hypothesis_after_met BOOLEAN,
+                    estimate_accuracy DOUBLE, resilience_score DOUBLE
+                );
+                CREATE TABLE schema_meta (key VARCHAR PRIMARY KEY, value BIGINT NOT NULL);
+                INSERT INTO schema_meta (key, value) VALUES ('version', 1);
+                INSERT INTO experiments VALUES
+                    ('legacy-1', 'Legacy', 'completed', 0, 1, 1, 0, 0, NULL, NULL, NULL, NULL);",
+            )
+            .unwrap();
+        }
+
+        // Opening through AnalyticsStore runs the additive migration.
+        let s = AnalyticsStore::open(&db_path).unwrap();
+        assert_eq!(s.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+        // Prior data preserved.
+        assert_eq!(s.experiment_count().unwrap(), 1);
+        // Graph tables now queryable.
+        let rows = s.query("SELECT count(*) FROM graph_nodes").unwrap();
+        assert_eq!(rows[0][0], "0");
+        let rows = s.query("SELECT count(*) FROM graph_edges").unwrap();
+        assert_eq!(rows[0][0], "0");
     }
 
     #[test]

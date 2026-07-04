@@ -142,7 +142,7 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
     let ingestion = if request.no_ingest {
         IngestionStatus::Skipped
     } else {
-        match ingest_journal(&journal, request.store_path) {
+        match ingest_journal(&journal, &experiment, request.store_path) {
             Ok(true) => IngestionStatus::Ingested,
             Ok(false) => IngestionStatus::Duplicate,
             Err(e) => IngestionStatus::Failed(e.to_string()),
@@ -178,14 +178,18 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
 
 /// Ingest a journal into the persistent `DuckDB` analytics store, as the
 /// CLI's auto-ingest does. Returns `Ok(false)` for duplicates.
+///
+/// The experiment definition is passed through so `ChaosGraph` records the full
+/// `Fault = plugin::function` + `Service` model for this run.
 fn ingest_journal(
     journal: &tumult_core::types::Journal,
+    experiment: &tumult_core::types::Experiment,
     store_path: &str,
 ) -> Result<bool, ToolError> {
     let store = tumult_analytics::AnalyticsStore::open(Path::new(store_path))
         .map_err(|e| ToolError::Store(e.to_string()))?;
     store
-        .ingest_journal(journal)
+        .ingest_journal_with_experiment(journal, Some(experiment))
         .map_err(|e| ToolError::Store(e.to_string()))
 }
 

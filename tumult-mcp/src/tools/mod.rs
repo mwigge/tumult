@@ -9,6 +9,7 @@ mod agents;
 mod analysis;
 mod experiment;
 mod gameday;
+mod graph;
 mod journals;
 mod listing;
 mod recommend;
@@ -24,6 +25,7 @@ pub use experiment::{
 pub use gameday::{
     gameday_analyze, gameday_create, gameday_list, gameday_run, GameDayCreateRequest,
 };
+pub use graph::{chaosgraph_neighbors, chaosgraph_query};
 pub use journals::{discover_plugins, list_journals, query_traces, read_journal};
 pub(crate) use listing::extract_title;
 pub use listing::list_experiments;

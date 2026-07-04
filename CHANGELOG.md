@@ -4,6 +4,27 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.4.0] - 2026-07-04
+
+Added:
+- ChaosGraph (MVP): a typed knowledge graph over chaos data, built from journals
+  as they ingest and served to agents over MCP for token-efficient context. New
+  `tumult-graph` crate (pure model) + DuckDB `graph_nodes`/`graph_edges` tables
+  (analytics schema v2, additive migration). Two read-only MCP tools —
+  `tumult_chaosgraph_query` and `tumult_chaosgraph_neighbors` (24 -> 26 tools) —
+  return compact sub-graphs instead of whole journals (~37x fewer tokens for
+  "what did this experiment touch?"). Each run appends one journal node to the
+  experiment's neighbourhood.
+- Time & entropy fault family (`tumult-timewarp` script plugin, 14th plugin):
+  clock skew (per-process libfaketime), clock-driven auth failure
+  (cert-past-expiry, token-TTL), entropy drain, and RNG/crypto pressure, with
+  probes for entropy-available / crypto-throughput / clock-offset. Two demo
+  experiments prove it end to end.
+
+Fixed:
+- Dockerfile.tumult built `tumult-net-proxyd` with a `--bin` scoped to the wrong
+  packages, breaking the GHCR image publish and a fresh `make demo` image build.
+  Now built via `-p tumult-net`. (Release binaries were unaffected.)
 ## [2.3.0] - 2026-07-04
 
 Added:

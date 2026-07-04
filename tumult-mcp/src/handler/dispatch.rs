@@ -18,10 +18,11 @@ use crate::tools;
 use super::output_schema::output_schema_for;
 use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
-    AnalyzeStoreTool, AnalyzeTool, ComplianceTool, CoverageTool, CreateExperimentTool,
-    DiscoverTool, GameDayAnalyzeTool, GameDayCreateTool, GameDayListTool, GameDayRunTool,
-    ListExperimentsTool, ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool,
-    ReportTool, RunExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
+    AnalyzeStoreTool, AnalyzeTool, ChaosGraphNeighborsTool, ChaosGraphQueryTool, ComplianceTool,
+    CoverageTool, CreateExperimentTool, DiscoverTool, GameDayAnalyzeTool, GameDayCreateTool,
+    GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool, QueryTracesTool,
+    ReadJournalTool, RecommendTool, ReportTool, RunExperimentTool, StoreStatsTool, TrendTool,
+    ValidateTool,
 };
 use super::TumultHandler;
 
@@ -147,6 +148,8 @@ impl ServerHandler for TumultHandler {
             AgenticListScenariosTool::tool(),
             AgenticSmokeTool::tool(),
             AgenticRunExperimentTool::tool(),
+            ChaosGraphQueryTool::tool(),
+            ChaosGraphNeighborsTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
         // hand-written schemas for tools that return structured content.
@@ -452,6 +455,25 @@ impl ServerHandler for TumultHandler {
                 tool.end();
                 result.map(ToolOutput::from)
             }
+            "tumult_chaosgraph_query" => {
+                let args: ChaosGraphQueryTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| {
+                    tools::chaosgraph_query(&args.store_path, &args.kind, args.filter.as_deref())
+                })
+                .map(ToolOutput::from)
+            }
+            "tumult_chaosgraph_neighbors" => {
+                let args: ChaosGraphNeighborsTool = parse_args(&params)?;
+                tokio::task::block_in_place(|| {
+                    tools::chaosgraph_neighbors(
+                        &args.store_path,
+                        &args.node_id,
+                        args.rel.as_deref(),
+                        args.depth,
+                    )
+                })
+                .map(ToolOutput::from)
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -550,8 +572,10 @@ mod tests {
             AgenticListScenariosTool::tool(),
             AgenticSmokeTool::tool(),
             AgenticRunExperimentTool::tool(),
+            ChaosGraphQueryTool::tool(),
+            ChaosGraphNeighborsTool::tool(),
         ];
-        assert_eq!(tools.len(), 24);
+        assert_eq!(tools.len(), 26);
     }
 
     #[test]
@@ -593,6 +617,8 @@ mod tests {
             AgenticListScenariosTool::tool(),
             AgenticSmokeTool::tool(),
             AgenticRunExperimentTool::tool(),
+            ChaosGraphQueryTool::tool(),
+            ChaosGraphNeighborsTool::tool(),
         ];
         for tool in &tools {
             assert!(
@@ -760,6 +786,8 @@ mod tests {
             "tumult_agentic_list_scenarios",
             "tumult_agentic_smoke",
             "tumult_agentic_run_experiment",
+            "tumult_chaosgraph_query",
+            "tumult_chaosgraph_neighbors",
         ];
         let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(
@@ -845,6 +873,8 @@ mod tests {
             AgenticListScenariosTool::tool(),
             AgenticSmokeTool::tool(),
             AgenticRunExperimentTool::tool(),
+            ChaosGraphQueryTool::tool(),
+            ChaosGraphNeighborsTool::tool(),
         ];
         for tool in &read_only {
             let a = tool
@@ -1154,6 +1184,21 @@ mod tests {
             ("tumult_list_journals", serde_json::json!({ "path": "." })),
             ("tumult_list_experiments", serde_json::json!({})),
             ("tumult_gameday_list", serde_json::json!({})),
+            (
+                // The run_experiment call above populated this store's graph.
+                "tumult_chaosgraph_query",
+                serde_json::json!({
+                    "kind": "experiment",
+                    "store_path": store_path.to_str().unwrap(),
+                }),
+            ),
+            (
+                "tumult_chaosgraph_neighbors",
+                serde_json::json!({
+                    "node_id": "exp:MCP test experiment",
+                    "store_path": store_path.to_str().unwrap(),
+                }),
+            ),
         ];
 
         // This test must exercise every tool that advertises an output schema.

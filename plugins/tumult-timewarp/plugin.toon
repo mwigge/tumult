@@ -1,0 +1,38 @@
+name: tumult-timewarp
+version: 0.1.0
+description: Clock-skew and entropy/crypto-skew fault injection (time drift, cert/token expiry, RNG starvation)
+author: tumult
+
+actions[7]:
+  - name: skew-clock
+    script: actions/skew-clock.sh
+    description: Shift a process's perceived wall-clock by N seconds via libfaketime (per-process, LD_PRELOAD)
+  - name: advance-clock-past-cert-expiry
+    script: actions/advance-clock-past-cert-expiry.sh
+    description: Prove clock skew breaks TLS auth by verifying a short-lived cert at a future time via openssl -attime
+  - name: token-ttl
+    script: actions/token-ttl.sh
+    description: Prove clock skew breaks token auth by validating a short-TTL HMAC token at a skewed now
+  - name: entropy-drain
+    script: actions/entropy-drain.sh
+    description: Apply /dev/random read pressure with background reader workers (records a pidfile for rollback)
+  - name: rng-pressure
+    script: actions/rng-pressure.sh
+    description: Sustain crypto/RNG load (random-byte generation loop) to stress the CRNG path (records a pidfile)
+  - name: stop-entropy-drain
+    script: actions/stop-entropy-drain.sh
+    description: Rollback — stop entropy-drain / rng-pressure worker processes via pidfile and pkill
+  - name: restore-clock
+    script: actions/restore-clock.sh
+    description: Rollback — kill lingering faketime helpers and remove temp cert/token state
+
+probes[3]:
+  - name: entropy-available
+    script: probes/entropy-available.sh
+    description: Read /proc/sys/kernel/random/entropy_avail (available entropy in bits)
+  - name: crypto-throughput
+    script: probes/crypto-throughput.sh
+    description: Measure milliseconds to complete a fixed RNG/crypto operation (higher under pressure)
+  - name: clock-offset
+    script: probes/clock-offset.sh
+    description: Measure wall-clock offset in seconds between a target and the runner (0 when clocks agree)

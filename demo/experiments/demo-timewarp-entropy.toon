@@ -1,0 +1,57 @@
+title: Demo — RNG pressure and crypto resilience under entropy skew
+description: Apply sustained RNG/crypto pressure on the runner, confirm crypto operations still complete and entropy stays readable, then stop the pressure and recover
+
+tags[3]: demo, timewarp, resilience
+
+steady_state_hypothesis:
+  title: kernel entropy is readable before the fault
+  probes[1]:
+    - name: entropy-available
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "/opt/tumult/plugins/tumult-timewarp/probes/entropy-available.sh"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "[0-9]"
+
+method[3]:
+  - name: apply-rng-pressure
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "TUMULT_RNG_WORKERS=4 TUMULT_RNG_DURATION=20 /opt/tumult/plugins/tumult-timewarp/actions/rng-pressure.sh"
+      timeout_s: 15.0
+    pause_after_s: 2.0
+  - name: crypto-still-completes
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "TUMULT_CRYPTO_BYTES=16777216 /opt/tumult/plugins/tumult-timewarp/probes/crypto-throughput.sh"
+      timeout_s: 20.0
+    tolerance:
+      type: regex
+      pattern: "^[0-9]+$"
+  - name: entropy-still-available
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "/opt/tumult/plugins/tumult-timewarp/probes/entropy-available.sh"
+      timeout_s: 8.0
+    tolerance:
+      type: regex
+      pattern: "[0-9]"
+
+rollbacks[1]:
+  - name: stop-entropy-drain
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "/opt/tumult/plugins/tumult-timewarp/actions/stop-entropy-drain.sh"
+      timeout_s: 10.0

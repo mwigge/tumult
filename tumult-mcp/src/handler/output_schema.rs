@@ -34,6 +34,8 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_list_journals",
     "tumult_list_experiments",
     "tumult_gameday_list",
+    "tumult_chaosgraph_query",
+    "tumult_chaosgraph_neighbors",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -373,8 +375,64 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 "limit": { "type": "integer" },
             }),
         )),
+        "tumult_chaosgraph_query" => Some(schema_object(
+            &["kind", "count", "nodes"],
+            json!({
+                "kind": { "type": "string", "description": "Node kind queried." },
+                "count": { "type": "integer", "description": "Number of matching nodes." },
+                "nodes": {
+                    "type": "array",
+                    "description": "Matching node summaries.",
+                    "items": graph_node_summary_schema(),
+                },
+            }),
+        )),
+        "tumult_chaosgraph_neighbors" => Some(schema_object(
+            &["node_id", "depth", "nodes", "edges"],
+            json!({
+                "node_id": { "type": "string", "description": "The centre node id." },
+                "depth": { "type": "integer", "description": "Neighbourhood radius expanded." },
+                "nodes": {
+                    "type": "array",
+                    "description": "Every node in the ego sub-graph (including the centre).",
+                    "items": graph_node_summary_schema(),
+                },
+                "edges": {
+                    "type": "array",
+                    "description": "(src)-[rel]->(dst) tuples among those nodes.",
+                    "items": {
+                        "type": "object",
+                        "required": ["src", "rel", "dst"],
+                        "properties": {
+                            "src": { "type": "string" },
+                            "rel": {
+                                "type": "string",
+                                "enum": ["targets", "injects", "yielded", "observed_on", "exhibited"],
+                            },
+                            "dst": { "type": "string" },
+                        },
+                    },
+                },
+            }),
+        )),
         _ => None,
     }
+}
+
+/// Schema for a `ChaosGraph` node summary (`{id, kind, label}`).
+fn graph_node_summary_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["id", "kind", "label"],
+        "properties": {
+            "id": { "type": "string" },
+            "kind": {
+                "type": "string",
+                "enum": ["experiment", "fault", "service", "journal", "deviation"],
+            },
+            "label": { "type": "string" },
+        },
+    })
 }
 
 /// Compact schema for `tumult_core::types::Journal` (`snake_case` serde

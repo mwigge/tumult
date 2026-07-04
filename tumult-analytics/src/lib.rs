@@ -41,7 +41,11 @@ pub use backend::{AnalyticsBackend, StoreStats};
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
 };
+// ChaosGraph query result types, re-exported for MCP/CLI consumers so they can
+// build responses without depending on tumult-graph directly.
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
 pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
 pub use query_row::QueryRow;
+#[cfg(feature = "duckdb")]
+pub use tumult_graph::{EgoGraph, EgoTuple, NodeSummary};

@@ -1,0 +1,57 @@
+title: Demo — clock skew breaks short-lived token auth
+description: Advance a validator's perceived clock past a short-TTL HMAC token's expiry and prove the once-valid token is now rejected, then confirm demo-app stays healthy
+
+tags[3]: demo, timewarp, resilience
+
+steady_state_hypothesis:
+  title: demo-app is healthy before the clock-skew fault
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[3]:
+  - name: inject-clock-skew-token
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "TUMULT_TOKEN_TTL_SECONDS=2 TUMULT_SKEW_SECONDS=3600 /opt/tumult/plugins/tumult-timewarp/actions/token-ttl.sh"
+      timeout_s: 15.0
+    pause_after_s: 1.0
+  - name: observe-token-auth-failure
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat /tmp/tumult-timewarp/token-result.txt"
+      timeout_s: 8.0
+    tolerance:
+      type: regex
+      pattern: "REJECTED_UNDER_SKEW"
+  - name: app-still-healthy
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+      timeout_s: 8.0
+    tolerance:
+      type: regex
+      pattern: "ok"
+
+rollbacks[1]:
+  - name: restore-clock
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "/opt/tumult/plugins/tumult-timewarp/actions/restore-clock.sh"
+      timeout_s: 10.0

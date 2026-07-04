@@ -393,6 +393,49 @@ pub struct CoverageTool {
     pub store_path: String,
 }
 
+// ── ChaosGraph tools ─────────────────────────────────────────
+
+#[macros::mcp_tool(
+    name = "tumult_chaosgraph_query",
+    description = "ChaosGraph: list graph node ids + one-line summaries for a kind (experiment, fault, service, journal, deviation) from the persistent analytics store, optionally filtered by a case-insensitive label substring. Small, token-efficient output. Structured content is {kind, count, nodes:[{id,kind,label}]}.",
+    read_only_hint = true,
+    idempotent_hint = true,
+    open_world_hint = false
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct ChaosGraphQueryTool {
+    /// Node kind: `experiment`, `fault`, `service`, `journal`, or `deviation`.
+    pub kind: String,
+    /// Optional case-insensitive label substring filter.
+    pub filter: Option<String>,
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}
+
+#[macros::mcp_tool(
+    name = "tumult_chaosgraph_neighbors",
+    description = "ChaosGraph: return the ego sub-graph of a node (its neighbourhood within `depth`, default 1) as compact (src)-[rel]->(dst) tuples plus node labels. Optionally filter to a single relation (targets, injects, yielded, observed_on, exhibited). Structured content is {node_id, depth, nodes:[{id,kind,label}], edges:[{src,rel,dst}]}.",
+    read_only_hint = true,
+    idempotent_hint = true,
+    open_world_hint = false
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct ChaosGraphNeighborsTool {
+    /// The node id to centre on (e.g. `exp:<title>`, `fault:<plugin>::<fn>`).
+    pub node_id: String,
+    /// Optional relation filter: `targets`, `injects`, `yielded`,
+    /// `observed_on`, or `exhibited`.
+    pub rel: Option<String>,
+    /// Neighbourhood radius (default 1).
+    #[serde(default = "default_graph_depth")]
+    pub depth: u32,
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}
+fn default_graph_depth() -> u32 {
+    1
+}
+
 // ── Agentic AI tools ─────────────────────────────────────────
 
 #[macros::mcp_tool(
