@@ -161,6 +161,8 @@ steady_state_hypothesis:
         to: 1.0
 ```
 
+*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
+
 If **any** probe fails its tolerance, the hypothesis is not met. Failing the hypothesis before the method causes the experiment to abort. Failing it after the method marks the experiment as `deviated`.
 
 ### Tolerance Types
@@ -204,6 +206,8 @@ method[3]:
     background: true        # run concurrently with next step
 ```
 
+*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
+
 **Activity fields:**
 
 | Field | Type | Description |
@@ -227,6 +231,8 @@ provider:
     Authorization: "Bearer {{ secrets.api_token }}"
   timeout_s: 5.0
 ```
+
+*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
 
 **Process provider** — run a script or binary:
 ```toon

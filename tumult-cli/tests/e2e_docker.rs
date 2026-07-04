@@ -9,16 +9,14 @@ fn docker_pg_available() -> bool {
     Command::new("pg_isready")
         .args(["-h", "localhost", "-p", "15432", "-U", "tumult"])
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }
 
 fn docker_redis_available() -> bool {
     Command::new("redis-cli")
         .args(["-h", "localhost", "-p", "16379", "ping"])
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("PONG"))
-        .unwrap_or(false)
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("PONG"))
 }
 
 fn run_plugin_script(script: &str, env: &[(&str, &str)]) -> (i32, String, String) {

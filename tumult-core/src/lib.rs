@@ -35,4 +35,5 @@ pub mod engine;
 pub mod execution;
 pub mod journal;
 pub mod runner;
+pub mod sync_bridge;
 pub mod types;

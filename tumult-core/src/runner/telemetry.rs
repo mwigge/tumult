@@ -26,11 +26,6 @@ pub(crate) fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
             KeyValue::new("resilience.target.type", "process"),
             KeyValue::new("resilience.target.name", path.clone()),
         ],
-        Provider::Http { url, method, .. } => vec![
-            KeyValue::new("resilience.target.type", "http"),
-            KeyValue::new("resilience.target.name", url.clone()),
-            KeyValue::new("resilience.target.endpoint", format!("{method} {url}")),
-        ],
         Provider::Native {
             plugin, function, ..
         } => vec![

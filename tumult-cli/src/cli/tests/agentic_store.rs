@@ -193,8 +193,7 @@ fn parse_store_backup_default() {
 
 #[test]
 fn parse_store_backup_custom_output() {
-    let cli =
-        Cli::try_parse_from(["tumult", "store", "backup", "--output", "my-backup"]).unwrap();
+    let cli = Cli::try_parse_from(["tumult", "store", "backup", "--output", "my-backup"]).unwrap();
     let Commands::Store { action } = cli.command else {
         panic!("expected Store command");
     };
@@ -206,8 +205,7 @@ fn parse_store_backup_custom_output() {
 
 #[test]
 fn parse_store_purge() {
-    let cli =
-        Cli::try_parse_from(["tumult", "store", "purge", "--older-than-days", "90"]).unwrap();
+    let cli = Cli::try_parse_from(["tumult", "store", "purge", "--older-than-days", "90"]).unwrap();
     let Commands::Store { action } = cli.command else {
         panic!("expected Store command");
     };

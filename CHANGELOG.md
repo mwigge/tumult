@@ -4,7 +4,96 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [1.5.1] — 2026-07-03 — Patch: test stability + honest report output
+## [2.0.0] - 2026-07-04
+
+### Breaking
+
+- **`http` provider removed** from the experiment format. It was never
+  implemented — every `type: http` activity errored at runtime — so the
+  variant is gone from `Provider`, and `type: http` in a `.toon` now fails
+  validation with an unknown-variant error. Use `type: process` (e.g. `curl`)
+  or a plugin action instead.
+- **SSH native `execute` now verifies host keys by default.** The hardcoded
+  accept-any host key check is gone. A new `host_key_policy` argument selects
+  `verify` (default — checks `known_hosts`), `trust-on-first-use`, or
+  `accept-any` (explicit opt-in for ephemeral targets). `SshSession::connect`
+  surfaces typed `HostKeyNotFound` / `HostKeyMismatch` errors.
+- **GameDay experiment/journal count mismatch is a hard error.**
+  `run_gameday` now returns `RunnerError::ExperimentCountMismatch` when the
+  number of provided experiments doesn't match `gameday.experiments`, instead
+  of a debug-only assertion. `compute_compliance_coverage` is now internal to
+  the gameday runner and operates on zipped
+  `(&GameDayExperiment, &Journal)` pairs.
+- **`tumult-analytics` gained a `duckdb` cargo feature** (enabled by
+  default). Consumers that don't need the embedded DuckDB engine — like the
+  ClickHouse backend, which now depends on `tumult-analytics` with
+  `default-features = false` — no longer compile DuckDB.
+
+### Added
+
+- **`tumult-agent-cli` crate**: an adapter layer for invoking agentic coding
+  CLIs (Claude Code, OpenAI Codex) non-interactively — one-shot batch
+  subprocess calls with no TTY and no session persistence. Provides the
+  `AgentCliAdapter` trait (detect / build / run / parse / explain),
+  `AdapterRegistry::builtin()`, and `run_prompt` with typed `AgentCliError`s.
+  Binary resolution honors `CLAUDE_CODE_BIN` / `CODEX_BIN` env overrides
+  with a `PATH` fallback; the workspace is now 15 crates.
+- **`tumult recommend --agent <name>`**: enhance the deterministic
+  recommendations with a local agent CLI (`--agent-model`,
+  `--agent-timeout`, `--generate-experiments <dir>`). The agent receives the
+  heuristic report, journal signals, and the plugin catalog in one
+  self-contained prompt and returns re-ranked recommendations plus optional
+  `.toon` experiment proposals. Every proposal passes a validation gate
+  (`parse_experiment` + `validate_experiment`) before being written to
+  `<dir>/<title-slug>.toon` (no overwrites — `-2`, `-3`, ... on collision);
+  invalid proposals are rejected with the error and counted in the summary.
+  JSON output gains an `agent` object with `experiments_written` /
+  `experiments_rejected`. New `tumult_intelligence::agent` module
+  (`build_agent_prompt`, `enhance`, `split_toon_blocks`).
+- **`tumult agents` command**: table of detected agent CLI adapters — name,
+  installed, version, auth detail, and an install hint when missing.
+- **Real probe sampling and recovery measurement** in `tumult-core`:
+  during-phase hypothesis probes are sampled on a real interval (default 1s,
+  capped at 300 samples) concurrently with fault execution, and post-phase
+  sampling loops until the probes pass tolerance again or a 30s recovery
+  timeout expires — so `recovery_time_s` / `mttr_s` measure observed
+  recovery. New public `SamplingConfig { interval, max_during_samples,
+  recovery_timeout }` and `run_experiment_with_sampling`. The journal
+  records the actual sample interval used. Experiments without hypothesis
+  probes skip sampling; already-healthy probes finish the post phase in a
+  single round.
+- **Native plugin architecture**: new `NativeExecutor` trait and
+  `NativeExecutorRegistry` in `tumult-plugin` (`src/native.rs`), with
+  implementations living in their own crates (`tumult-ssh`, `tumult-net`,
+  `tumult-kubernetes` — `src/native.rs` each). `tumult-cli` is a pure
+  composition root that registers the executors. Unknown plugin or function
+  names now error with the list of available names.
+- **Native plugins in discovery**: `tumult discover` and the MCP
+  `tumult_discover` tool now list native plugins alongside script plugins —
+  13 plugins / 64 actions in total — labeled `(script)` / `(native)`, with
+  a sorted, counted action list. `tumult discover --plugin` also accepts
+  native plugin names (e.g. `tumult-ssh`) and shows their functions. The
+  MCP server registers the same three executors at its own composition
+  root (`tumult-mcp/src/native.rs`), mirroring the CLI's, and
+  `NativeExecutorRegistry` gained a `qualified_functions()` helper both
+  binaries render from.
+- **`cargo machete`** added to the CI lint job to keep unused dependencies
+  out of the workspace.
+
+### Changed
+
+- **MCP error semantics**: tool failures now set `isError: true` on the
+  result per the MCP specification, and authentication / rate-limit
+  rejections are reported as such instead of as "Unknown tool".
+- **Module layout cleanups** across crates and pruning of unused
+  dependencies (enforced by `cargo machete`).
+- **Test suite growth**: 834 tests across the workspace (up from 755 before
+  this round).
+
+### Fixed
+
+- **`tumult_create_experiment` now actually works over MCP** — the tool
+  previously failed when invoked through the server.
 
 ### Fixed
 

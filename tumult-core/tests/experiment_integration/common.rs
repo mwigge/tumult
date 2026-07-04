@@ -12,7 +12,10 @@ use tumult_core::controls::ControlHandler;
 pub(crate) use std::sync::Arc;
 pub(crate) use tumult_core::controls::{ControlRegistry, LifecycleEvent};
 pub(crate) use tumult_core::execution::RollbackStrategy;
-pub(crate) use tumult_core::runner::{run_experiment, ActivityExecutor, ActivityOutcome, RunConfig};
+pub(crate) use tumult_core::runner::{
+    run_experiment, run_experiment_with_sampling, ActivityExecutor, ActivityOutcome, RunConfig,
+    SamplingConfig,
+};
 pub(crate) use tumult_core::types::*;
 
 // ── Mock Plugin Executor ──────────────────────────────────────
@@ -154,11 +157,10 @@ pub(crate) fn probe_with_tolerance(name: &str, expected: serde_json::Value) -> A
     Activity {
         name: name.into(),
         activity_type: ActivityType::Probe,
-        provider: Provider::Http {
-            method: HttpMethod::Get,
-            url: "http://localhost/health".into(),
-            headers: HashMap::new(),
-            body: None,
+        provider: Provider::Process {
+            path: "scripts/health-check.sh".into(),
+            arguments: vec![],
+            env: HashMap::new(),
             timeout_s: Some(5.0),
         },
         tolerance: Some(Tolerance::Exact { value: expected }),
@@ -173,6 +175,17 @@ pub(crate) fn hypothesis(title: &str, probes: Vec<Activity>) -> Hypothesis {
     Hypothesis {
         title: title.into(),
         probes,
+    }
+}
+
+/// Sampling config with tight intervals and timeouts so tests that leave
+/// probes failing after the method (deviation scenarios) don't wait out the
+/// default 30s post-phase recovery window.
+pub(crate) fn fast_sampling() -> SamplingConfig {
+    SamplingConfig {
+        interval: std::time::Duration::from_millis(10),
+        max_during_samples: 50,
+        recovery_timeout: std::time::Duration::from_millis(80),
     }
 }
 

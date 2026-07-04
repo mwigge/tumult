@@ -19,7 +19,7 @@ docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
 docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
 ```
 
-Both images contain the full platform: 11 crates, 10 plugins, 48 actions, examples, GameDays.
+Both images contain the full platform: 14 crates, 10 script + 3 native plugins, 64 actions, examples, GameDays.
 
 ```bash
 # Run CLI commands
@@ -107,7 +107,7 @@ tumult compliance --framework dora .
 ### 5. See what's available
 
 ```bash
-# List all 10 plugins and 48 actions
+# List all 13 plugins (10 script + 3 native) and their 64 actions
 tumult discover
 
 # Create your own experiment interactively
@@ -178,7 +178,7 @@ steady_state_hypothesis:
       provider:
         type: process
         path: curl
-        arguments[3]: "-s", "-o", "/dev/null -w %{http_code} http://localhost:8080/health"
+        arguments[6]: "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8080/health"
         timeout_s: 5.0
       tolerance:
         type: regex
@@ -220,5 +220,5 @@ make down
 - [Full documentation](https://mwigge.github.io/tumult/)
 - [Plugin reference](docs/plugins/)
 - [Experiment format](docs/reference/)
-- [Test protocol](docs/testprotocol.md) — 166 platform tests
+- [Test protocol](docs/testprotocol.md) — 162 platform tests
 - [Security assessment](docs/security-assessment.md)

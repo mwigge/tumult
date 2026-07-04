@@ -20,9 +20,9 @@ pub enum ReportFormat {
     Html,
     /// PDF (generates HTML then prints instructions for conversion)
     Pdf,
-    /// JSON (raw journal serialized via serde_json)
+    /// JSON (raw journal serialized via `serde_json`)
     Json,
-    /// JUnit XML (one testcase per activity across all phases)
+    /// `JUnit` XML (one testcase per activity across all phases)
     Junit,
 }
 

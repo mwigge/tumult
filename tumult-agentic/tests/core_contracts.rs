@@ -26,7 +26,7 @@ fn valid_json_contract_reports_clear_invalid_json_label() {
     assert!(!outcome.passed);
     assert_eq!(outcome.contract_type, "valid_json");
     assert_eq!(outcome.reason.as_deref(), Some("invalid_json"));
-    assert_eq!(outcome.severity, 2.0);
+    assert!((outcome.severity - 2.0).abs() < f64::EPSILON);
 }
 
 #[test]

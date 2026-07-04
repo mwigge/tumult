@@ -52,7 +52,16 @@ fn rollbacks_execute_on_deviation_with_default_strategy() {
     });
     let controls = Arc::new(ControlRegistry::new());
 
-    let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+    // Fast sampling: probes stay unhealthy after the method, so the
+    // post-phase recovery loop would otherwise run to its default timeout.
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &controls,
+        &default_config(),
+        &fast_sampling(),
+    )
+    .unwrap();
 
     assert_eq!(journal.status, ExperimentStatus::Deviated);
     assert_eq!(journal.rollback_results.len(), 1);

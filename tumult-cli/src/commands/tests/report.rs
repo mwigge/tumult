@@ -1,4 +1,4 @@
-//! Tests for cmd_report (html/junit/json) and compliance reporting.
+//! Tests for `cmd_report` (html/junit/json) and compliance reporting.
 
 use super::super::*;
 use super::helpers::*;
@@ -91,7 +91,12 @@ async fn report_html_contains_trace_ids() {
 
 #[test]
 fn report_nonexistent_journal_returns_error() {
-    let result = cmd_report(Path::new("/nonexistent.toon"), None, ReportFormat::Html, None);
+    let result = cmd_report(
+        Path::new("/nonexistent.toon"),
+        None,
+        ReportFormat::Html,
+        None,
+    );
     assert!(result.is_err());
 }
 

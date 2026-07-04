@@ -67,9 +67,7 @@ impl Proxy {
             // perturbs another, and per-connection state stays isolated.
             let handles = FaultHandles::from_profile(&self.profile)?;
             tokio::spawn(async move {
-                if let Err(e) =
-                    forward(downstream, upstream, handles, terminate_prob, seed).await
-                {
+                if let Err(e) = forward(downstream, upstream, handles, terminate_prob, seed).await {
                     tracing::debug!(error = %e, "proxied connection closed with error");
                 }
             });

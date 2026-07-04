@@ -107,7 +107,9 @@ tumult validate experiment.toon
 
 ## tumult discover
 
-List all discovered plugins, actions, and probes.
+List all available plugins and their actions — both script plugins
+(discovered from the filesystem) and native plugins (compiled into the
+binary), labeled `(script)` / `(native)`.
 
 ```
 tumult discover [OPTIONS]
@@ -119,13 +121,15 @@ tumult discover [OPTIONS]
 
 ### Plugin Search Paths
 
-Plugins are discovered from (in order):
+Script plugins are discovered from (in order):
 
 1. `./plugins/` — local to the experiment
 2. `~/.tumult/plugins/` — user-global
 3. `$TUMULT_PLUGIN_PATH` — custom paths (colon-separated)
 
 At runtime you can override the search paths without modifying the binary.
+Native plugins (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`) are
+registered in the binary itself and are always listed.
 
 ### Examples
 
@@ -133,8 +137,39 @@ At runtime you can override the search paths without modifying the binary.
 # List all plugins
 tumult discover
 
-# Show details for a specific plugin
+# Show details for a specific plugin (script or native)
 tumult discover --plugin tumult-kafka
+tumult discover --plugin tumult-ssh
+```
+
+From the repository root (10 script plugins in `./plugins/` plus the 3
+built-in native plugins):
+
+```text
+$ tumult discover
+Discovered 13 plugin(s) (10 script, 3 native):
+
+  tumult-containers (script)
+  tumult-db-mysql (script)
+  tumult-db-postgres (script)
+  tumult-db-redis (script)
+  tumult-kafka (script)
+  tumult-kubernetes (native)
+  tumult-loadtest (script)
+  tumult-net (native)
+  tumult-network (script)
+  tumult-process (script)
+  tumult-pumba (script)
+  tumult-ssh (native)
+  tumult-stress (script)
+
+Actions: 64
+  tumult-containers::kill-container
+  ...
+  tumult-kubernetes::delete_pod
+  ...
+  tumult-ssh::execute
+  ...
 ```
 
 ## tumult init
@@ -283,15 +318,69 @@ tumult store purge --older-than-days 90
 tumult store migrate   # requires TUMULT_CLICKHOUSE_URL
 ```
 
-## tumult mcp
+## tumult recommend
 
-Start the MCP (Model Context Protocol) server on stdio transport.
+Recommend the next useful chaos experiment from deterministic heuristics over the analytics store (coverage gaps, failing experiments, stale experiments), optionally enhanced by a local agent CLI.
 
 ```
-tumult mcp
+tumult recommend [OPTIONS]
 ```
 
-Exposes 11 tools to AI assistants:
+| Flag | Description |
+|------|-------------|
+| `--goal <GOAL>` | Recommendation goal or operator intent |
+| `--store-path <PATH>` | Analytics store path to inspect (default: persistent store) |
+| `--model <MODEL>` | Model label to include in deterministic recommendation metadata |
+| `--no-draft` | Do not include a draft TOON experiment |
+| `--format <text\|json>` | Output format (default: `text`) |
+| `--agent <NAME>` | Enhance recommendations with an agent CLI adapter (`claude-code`, `codex`) |
+| `--agent-model <MODEL>` | Model override passed to the agent CLI (requires `--agent`) |
+| `--agent-timeout <SECS>` | Agent CLI timeout in seconds (default: 120) |
+| `--generate-experiments <DIR>` | Write validated agent-proposed experiments into `<DIR>` (requires `--agent`) |
+
+With `--agent`, the heuristic output is printed first, followed by an "Agent-enhanced recommendations" section. With `--generate-experiments`, every proposed experiment is parsed and validated (`parse_experiment` + `validate_experiment`) before writing; valid ones are written to `<DIR>/<title-slug>.toon` (collisions get `-2`, `-3`, ... — never overwritten), invalid ones are rejected with the validation error and counted in a summary line. In JSON mode the output gains an `agent` object: `{ adapter, model, recommendations, experiments_written, experiments_rejected }`.
+
+### Examples
+
+```bash
+# Deterministic heuristics only
+tumult recommend --goal "harden the cache tier"
+
+# Enhanced by Claude Code, generating experiment files
+tumult recommend --agent claude-code --generate-experiments out/experiments
+
+# Enhanced by Codex with model + timeout overrides, JSON output
+tumult recommend --agent codex --agent-model gpt-5-codex --agent-timeout 300 --format json
+```
+
+See the [Agentic Recommendations guide](agentic-recommendations.md) for how the prompt is built and how the validation gate works.
+
+## tumult agents
+
+List agent CLI adapters and their detected state: name, installed, version, auth detail, and an install hint when the binary is missing.
+
+```
+tumult agents
+```
+
+```
+ADAPTER        INSTALLED  VERSION    DETAIL
+claude-code    yes        2.0.13     Authenticated via ANTHROPIC_API_KEY.
+codex          no         -          Codex CLI not found on PATH. Install with: npm i -g @openai/codex
+```
+
+Binary resolution honors the `CLAUDE_CODE_BIN` / `CODEX_BIN` env overrides.
+
+## tumult-mcp
+
+Start the MCP (Model Context Protocol) server — a separate binary, on stdio transport by default or HTTP/SSE.
+
+```
+tumult-mcp                                # stdio (IDE integration)
+tumult-mcp --transport http --port 3100   # HTTP/SSE (containers, CI/CD)
+```
+
+Exposes 19 tools to AI assistants:
 
 | Tool | Description |
 |------|-------------|
@@ -306,13 +395,23 @@ Exposes 11 tools to AI assistants:
 | `tumult_store_stats` | Return persistent store statistics |
 | `tumult_analyze_store` | SQL query directly against the persistent store |
 | `tumult_list_experiments` | List experiment .toon files in a directory |
+| `tumult_gameday_run` | Run a GameDay under shared load, return score and compliance status |
+| `tumult_gameday_analyze` | Analyze a completed GameDay journal |
+| `tumult_gameday_list` | List available `.gameday.toon` files |
+| `tumult_recommend` | Recommend what to test next — coverage gaps, failure patterns, stale experiments |
+| `tumult_coverage` | Coverage report — plugins/actions/targets tested vs available |
+| `tumult_agentic_list_scenarios` | List agentic fault-injection scenario packs (metadata only) |
+| `tumult_agentic_smoke` | Run a deterministic local agentic smoke check |
+| `tumult_agentic_run_experiment` | Run a bundled agentic experiment (metadata only) |
+
+Tool failures are returned with `isError: true` per the MCP specification. Authentication and rate-limit rejections are reported as such — not as "Unknown tool".
 
 ### Authentication
 
 Set `TUMULT_MCP_TOKEN` to require bearer token auth on all tool calls. If not set, the server runs without authentication (log warning emitted).
 
 ```bash
-TUMULT_MCP_TOKEN=my-secret tumult mcp
+TUMULT_MCP_TOKEN=my-secret tumult-mcp
 ```
 
 Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.
@@ -325,6 +424,8 @@ Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.
 | `TUMULT_OTEL_ENABLED` | Enable/disable OTel (default: `true`) |
 | `TUMULT_OTEL_CONSOLE` | Print spans to console (default: `false`) |
 | `TUMULT_MCP_TOKEN` | Bearer token for MCP server authentication |
+| `CLAUDE_CODE_BIN` | Explicit path to the Claude Code binary for `recommend --agent` / `agents` |
+| `CODEX_BIN` | Explicit path to the Codex binary for `recommend --agent` / `agents` |
 | `TUMULT_CLICKHOUSE_URL` | ClickHouse URL for SigNoz cross-correlation mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL |
 | `OTEL_SERVICE_NAME` | Service name for telemetry (default: `tumult`) |

@@ -7,8 +7,6 @@ license.workspace = true
 description = "Core engine for Tumult chaos engineering platform"
 
 [dependencies]
-tumult-plugin = { path = "../tumult-plugin" }
-tumult-baseline = { path = "../tumult-baseline" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
@@ -19,6 +17,9 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 indexmap = { workspace = true }
 regex-lite = { workspace = true }
+# Minimal features for `sync_bridge::sync_await` (`block_in_place` needs the
+# multi-thread scheduler); tokio is already in this crate's tree via tokio-util.
+tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tokio-util = { workspace = true }
 
 [dev-dependencies]

@@ -119,7 +119,16 @@ fn estimate_accuracy_when_deviated_matches_estimate() {
     });
     let controls = Arc::new(ControlRegistry::new());
 
-    let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+    // Fast sampling: probes stay unhealthy after the method, so the
+    // post-phase recovery loop would otherwise run to its default timeout.
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &controls,
+        &RunConfig::default(),
+        &fast_sampling(),
+    )
+    .unwrap();
 
     // Estimated: Deviated, Actual: Deviated → not "recovered"
     // Both estimate and actual are non-recovered → accuracy 1.0

@@ -14,6 +14,8 @@ use super::ComplianceFramework;
 #[allow(clippy::too_many_lines)] // Framework-specific output is intentionally verbose for audit clarity
 #[must_use = "callers must handle compliance check errors"]
 pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> Result<()> {
+    // Matches ScoringConfig::default_mttr_target (tumult-core types.rs).
+    const MTTR_TARGET_S: f64 = 30.0;
     use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
     use tumult_core::types::{ExperimentStatus, Journal};
@@ -110,8 +112,6 @@ pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> R
     // Kept so the framework-specific blocks below compile unchanged.
     let success_rate = pass_rate * 100.0;
 
-    // Matches ScoringConfig::default_mttr_target (tumult-core types.rs).
-    const MTTR_TARGET_S: f64 = 30.0;
     #[allow(clippy::cast_precision_loss)]
     let recovery_compliance: Option<f64> = if mttrs.is_empty() {
         if resilience_scores.is_empty() {
@@ -125,19 +125,19 @@ pub fn cmd_compliance(journals_path: &Path, framework: ComplianceFramework) -> R
 
     println!("\nCompliance Status:");
     println!("  Pass rate: {:.1}%", pass_rate * 100.0);
-    match recovery_compliance {
-        Some(rc) => println!(
+    if let Some(rc) = recovery_compliance {
+        println!(
             "  Recovery compliance: {:.1}% (MTTR<={MTTR_TARGET_S}s, or avg resilience proxy)",
             rc * 100.0
-        ),
-        None => {
-            println!(
-                "  Recovery compliance: N/A — no MTTR or resilience_score present in journals;"
-            );
-            println!("  verdict based on pass rate ONLY (reduced assurance).");
-        }
+        );
+    } else {
+        println!("  Recovery compliance: N/A — no MTTR or resilience_score present in journals;");
+        println!("  verdict based on pass rate ONLY (reduced assurance).");
     }
-    println!("  Overall: {}", compliance_verdict(pass_rate, recovery_compliance));
+    println!(
+        "  Overall: {}",
+        compliance_verdict(pass_rate, recovery_compliance)
+    );
 
     // Framework-specific requirements and evidence
     match fw {

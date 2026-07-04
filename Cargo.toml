@@ -29,10 +29,12 @@ members = [
     # "tumult-cloud-gcp",
     # "tumult-cloud-azure",
     # "tumult-report",
+    # Phase 5
+    "tumult-agent-cli",
 ]
 
 [workspace.package]
-version = "1.5.1"
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"

@@ -9,7 +9,9 @@
 //!
 //! - **Native plugins** implement the [`TumultPlugin`] trait in Rust.
 //!   They are compiled into the binary and registered at startup via
-//!   [`PluginRegistry::register_native`].
+//!   [`PluginRegistry::register_native`]. Plugins that execute functions
+//!   for the experiment runner additionally implement [`NativeExecutor`]
+//!   and are dispatched through a [`NativeExecutorRegistry`].
 //! - **Script plugins** are directories containing a `plugin.toon` manifest
 //!   and shell-script actions/probes. They are discovered at runtime by
 //!   [`discovery`] and registered with [`PluginRegistry::register_script`].
@@ -17,10 +19,12 @@
 //! # Key types
 //!
 //! | Type | Purpose |
-//! |------------------------|---------------------------------------------|
+//! |--------------------------|---------------------------------------------|
 //! | [`TumultPlugin`] | Trait that native plugins implement |
+//! | [`NativeExecutor`] | Trait for executing native plugin functions |
+//! | [`NativeExecutorRegistry`]| Dispatch table for native executors |
 //! | [`PluginRegistry`] | Central lookup for actions and probes |
-//! | [`ScriptPluginManifest`]| Deserialized `plugin.toon` descriptor |
+//! | [`ScriptPluginManifest`] | Deserialized `plugin.toon` descriptor |
 //! | [`ActionDescriptor`] | Metadata for a single chaos action |
 //! | [`ProbeDescriptor`] | Metadata for a single steady-state probe |
 //!
@@ -32,11 +36,13 @@
 pub mod discovery;
 pub mod executor;
 pub mod manifest;
+pub mod native;
 pub mod registry;
 pub(crate) mod telemetry;
 pub mod traits;
 
 pub use manifest::ScriptPluginManifest;
+pub use native::{NativeArgs, NativeError, NativeExecutor, NativeExecutorRegistry};
 pub use registry::PluginRegistry;
 pub use traits::{ActionDescriptor, ActionOutput, ProbeDescriptor, ProbeOutput, TumultPlugin};
 

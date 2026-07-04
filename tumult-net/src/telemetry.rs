@@ -5,23 +5,15 @@
 //! emitted by `tumult-core` and become the parent of these spans automatically
 //! through context attachment.
 
-use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
-use opentelemetry::{global, KeyValue};
-use tumult_otel::SpanGuard;
+use opentelemetry::trace::TraceContextExt;
+use opentelemetry::KeyValue;
+use tumult_otel::{client_span, SpanGuard};
 
 const TRACER: &str = "tumult-net";
 
-/// All call sites pass `&'static str` span names, keeping the
-/// `Into<Cow<'static, str>>` conversion zero-cost.
+/// Thin wrapper over [`tumult_otel::client_span`] that fixes the tracer name.
 fn net_span(name: &'static str, attrs: Vec<KeyValue>) -> SpanGuard {
-    let tracer = global::tracer(TRACER);
-    let span = tracer
-        .span_builder(name)
-        .with_kind(SpanKind::Client)
-        .with_attributes(attrs)
-        .start(&tracer);
-    let cx = opentelemetry::Context::current_with_span(span);
-    SpanGuard::new(cx.attach())
+    client_span(TRACER, name, attrs)
 }
 
 // ── Actions ─────────────────────────────────────────────────
@@ -48,7 +40,10 @@ pub(crate) fn begin_inject_latency(listen: &str, delay_ms: u64) -> SpanGuard {
         "net.latency.inject",
         vec![
             KeyValue::new("net.listen.addr", listen.to_string()),
-            KeyValue::new("net.latency.delay_ms", i64::try_from(delay_ms).unwrap_or(i64::MAX)),
+            KeyValue::new(
+                "net.latency.delay_ms",
+                i64::try_from(delay_ms).unwrap_or(i64::MAX),
+            ),
         ],
     )
 }
@@ -133,7 +128,9 @@ pub(crate) fn event_proxy_started(pid: u32) {
 
 pub(crate) fn event_proxy_stopped(pid: Option<u32>) {
     let cx = opentelemetry::Context::current();
-    let attrs = pid.map_or_else(Vec::new, |p| vec![KeyValue::new("net.proxy.pid", i64::from(p))]);
+    let attrs = pid.map_or_else(Vec::new, |p| {
+        vec![KeyValue::new("net.proxy.pid", i64::from(p))]
+    });
     cx.span().add_event("net.proxy.stopped", attrs);
 }
 

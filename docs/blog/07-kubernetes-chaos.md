@@ -221,6 +221,8 @@ regulatory:
       evidence: Recovery from complete service outage within declared RTO
 ```
 
+*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
+
 ---
 
 ## Scenario 3: Node Drain — Testing Cluster-Level Resilience

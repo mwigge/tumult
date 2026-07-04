@@ -1,28 +1,19 @@
 //! AI-assisted recommendation support shared by the Tumult CLI and MCP server.
 
-#[path = "lib/types.rs"]
+mod agent;
+mod context;
+mod recommend;
+mod render;
+mod report;
 mod types;
 
-#[path = "lib/report.rs"]
-mod report;
-
-#[path = "lib/context.rs"]
-mod context;
-
-#[path = "lib/render.rs"]
-mod render;
-
-#[path = "lib/recommend.rs"]
-mod recommend;
-
 #[cfg(test)]
-#[path = "lib/model.rs"]
 mod model;
 
 #[cfg(test)]
-#[path = "lib/tests.rs"]
 mod tests;
 
-pub use recommend::recommend;
+pub use agent::{build_agent_prompt, enhance, split_toon_blocks, AgentEnhancement, AgentOptions};
+pub use recommend::{recommend, recommend_output, render};
 pub use report::heuristic_report;
 pub use types::{OutputFormat, RecommendOptions, RecommendationItem, RecommendationOutput};

@@ -63,8 +63,8 @@ impl client::Handler for ClientHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::known_hosts::key_fingerprint;
+    use super::*;
 
     // A known ed25519 test key pair (public only needed here)
     const TEST_KEY_1: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host";

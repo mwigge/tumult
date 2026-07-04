@@ -2,8 +2,10 @@
 //!
 //! Holds the `clap`-derived argument parser types (`Cli`, `Commands`, and the
 //! subcommand/value enums). The dispatch logic lives in the crate root
-//! (`main.rs`); parser-behavior tests live in the sibling `main/tests/*`
-//! modules.
+//! (`main.rs`); parser-behavior tests live in the `cli/tests/*` submodules.
+
+#[cfg(test)]
+mod tests;
 
 use std::path::PathBuf;
 
@@ -157,7 +159,7 @@ pub(crate) enum Commands {
         #[arg(long, default_value_t = ReportFormat::Html, value_enum)]
         format: ReportFormat,
         /// Base URL of a trace UI (e.g. Jaeger/Tempo). When set, HTML reports
-        /// render each activity's trace_id as a clickable link. Falls back to
+        /// render each activity's `trace_id` as a clickable link. Falls back to
         /// the `TUMULT_TRACE_UI_BASE` env var (resolved in `cmd_report`). Off by
         /// default.
         #[arg(long)]
@@ -210,7 +212,23 @@ pub(crate) enum Commands {
         /// Output format
         #[arg(long, default_value_t = RecommendFormat::Text, value_enum)]
         format: RecommendFormat,
+        /// Enhance recommendations with an agent CLI adapter (e.g.
+        /// claude-code, codex); see `tumult agents` for detected adapters
+        #[arg(long)]
+        agent: Option<String>,
+        /// Model override passed to the agent CLI (requires --agent)
+        #[arg(long, requires = "agent")]
+        agent_model: Option<String>,
+        /// Agent CLI timeout in seconds
+        #[arg(long, default_value_t = tumult_agent_cli::adapter::DEFAULT_TIMEOUT.as_secs())]
+        agent_timeout: u64,
+        /// Write validated agent-proposed experiments (.toon) into this
+        /// directory (requires --agent)
+        #[arg(long, value_name = "DIR", requires = "agent")]
+        generate_experiments: Option<PathBuf>,
     },
+    /// List agent CLI adapters (install, version, and auth state)
+    Agents,
     /// Agentic AI fault-injection scenarios and local smoke tests
     Agentic {
         #[command(subcommand)]

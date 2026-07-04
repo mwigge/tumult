@@ -2,7 +2,7 @@
 //!
 //! A mock upstream stands in for a model provider (no API keys, no network),
 //! the proxy sits in front of it with a chosen scenario pack, and a plain HTTP
-//! client (standing in for Claude Code / Codex / OpenCode / Copilot) drives
+//! client (standing in for Claude Code / Codex / `OpenCode` / Copilot) drives
 //! requests through the proxy. We assert the fault actually changed what the
 //! client received.
 

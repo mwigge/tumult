@@ -2,7 +2,8 @@
 
 use crate::controls::ControlRegistry;
 use crate::types::{
-    Experiment, ExperimentStatus, GameDay, GameDayJournal, Journal, ResilienceScore,
+    Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal,
+    ResilienceScore,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -19,8 +20,10 @@ use super::{run_experiment, ActivityExecutor, RunConfig, RunnerError, TRACER_NAM
 ///
 /// # Errors
 ///
-/// Returns [`RunnerError`] if any experiment fails to execute (not if it
-/// deviates — deviation is a valid outcome captured in the journal).
+/// Returns [`RunnerError::ExperimentCountMismatch`] if `experiments` does
+/// not line up one-to-one with `gameday.experiments`, and [`RunnerError`]
+/// if any experiment fails to execute (not if it deviates — deviation is a
+/// valid outcome captured in the journal).
 #[must_use = "the GameDayJournal contains the aggregate results"]
 #[allow(clippy::too_many_lines)] // Orchestration function with OTel setup, load management, and scoring
 pub fn run_gameday(
@@ -30,6 +33,18 @@ pub fn run_gameday(
     controls: &std::sync::Arc<ControlRegistry>,
     config: &RunConfig,
 ) -> Result<GameDayJournal, RunnerError> {
+    // Journals are attributed to `gameday.experiments` entries by position
+    // (e.g. for compliance coverage), so reject misaligned input up front
+    // instead of trusting callers to keep the two lists in sync — a release
+    // build would otherwise silently attribute coverage to the wrong
+    // articles.
+    if gameday.experiments.len() != experiments.len() {
+        return Err(RunnerError::ExperimentCountMismatch {
+            declared: gameday.experiments.len(),
+            provided: experiments.len(),
+        });
+    }
+
     let gameday_id = uuid::Uuid::new_v4().to_string();
     let started = std::time::Instant::now();
     let started_at_ns = epoch_nanos_now();
@@ -130,8 +145,12 @@ pub fn run_gameday(
         .as_ref()
         .map_or(1.0, |lr| (1.0 - lr.error_rate).max(0.0));
 
-    // Compliance coverage: count mapped articles that have passing experiments
-    let compliance = compute_compliance_coverage(gameday, &journals);
+    // Compliance coverage: pair each declared experiment with its journal by
+    // construction (same index, lengths validated above) and count mapped
+    // articles that have passing experiments.
+    let compliance_pairs: Vec<(&GameDayExperiment, &Journal)> =
+        gameday.experiments.iter().zip(&journals).collect();
+    let compliance = compute_compliance_coverage(&compliance_pairs);
 
     let score = ResilienceScore::compute(pass_rate, recovery, load_impact, compliance);
     let compliance_status = score.status().to_string();
@@ -179,23 +198,15 @@ fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 
 }
 
 /// Computes compliance coverage from article mappings.
-fn compute_compliance_coverage(gameday: &GameDay, journals: &[Journal]) -> f64 {
-    // `journals[i]` must be the result of running `gameday.experiments[i]` --
-    // callers build both lists by iterating the same experiment list in the
-    // same order. A length mismatch means the two lists are misaligned and
-    // coverage would be attributed to the wrong articles.
-    debug_assert_eq!(
-        gameday.experiments.len(),
-        journals.len(),
-        "compute_compliance_coverage: gameday.experiments and journals must have the same \
-         length and order"
-    );
-
+///
+/// Each pair holds a declared `GameDay` experiment and the journal produced
+/// by running it, so coverage is attributed to the right articles by
+/// construction rather than by positional trust across two parallel lists.
+fn compute_compliance_coverage(pairs: &[(&GameDayExperiment, &Journal)]) -> f64 {
     // Collect all unique mapped articles
-    let all_articles: std::collections::HashSet<&str> = gameday
-        .experiments
+    let all_articles: std::collections::HashSet<&str> = pairs
         .iter()
-        .flat_map(|e| e.compliance_maps.iter().map(String::as_str))
+        .flat_map(|(exp, _)| exp.compliance_maps.iter().map(String::as_str))
         .collect();
 
     if all_articles.is_empty() {
@@ -205,14 +216,10 @@ fn compute_compliance_coverage(gameday: &GameDay, journals: &[Journal]) -> f64 {
     // An article is "met" if at least one experiment mapped to it completed
     let mut met = 0;
     for article in &all_articles {
-        let has_passing = gameday
-            .experiments
-            .iter()
-            .zip(journals)
-            .any(|(exp, journal)| {
-                exp.compliance_maps.iter().any(|a| a == article)
-                    && journal.status == ExperimentStatus::Completed
-            });
+        let has_passing = pairs.iter().any(|(exp, journal)| {
+            exp.compliance_maps.iter().any(|a| a == article)
+                && journal.status == ExperimentStatus::Completed
+        });
         if has_passing {
             met += 1;
         }

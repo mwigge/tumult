@@ -20,13 +20,15 @@ tumult-analytics = { path = "../tumult-analytics" }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-agentic = { path = "../tumult-agentic" }
+tumult-kubernetes = { path = "../tumult-kubernetes" }
+tumult-ssh = { path = "../tumult-ssh" }
+tumult-net = { path = "../tumult-net" }
 rust-mcp-sdk = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
 tracing = { workspace = true }
-anyhow = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }

@@ -73,6 +73,8 @@ Here is the same steady-state probe in JSON versus TOON:
     value: 200
 ```
 
+*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
+
 The structural difference is modest. But at scale — experiment definitions with dozens of steps, journals capturing hundreds of runs — TOON produces approximately **40-50% fewer tokens** than equivalent JSON. That is not a cosmetic improvement. It directly reduces the cost and latency of feeding experiment results to LLMs for automated analysis, and it makes journals readable by engineers without a JSON formatter.
 
 ---
@@ -157,6 +159,8 @@ rollbacks[1]:
       plugin: tumult-db
       function: reset_connection_pool
 ```
+
+*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
 
 Run it:
 

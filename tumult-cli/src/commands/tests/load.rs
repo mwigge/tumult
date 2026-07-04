@@ -187,7 +187,7 @@ fn k6_summary_metric_extracts_value() {
             < 0.001
     );
     assert!(
-        (k6_summary_metric(Some(&summary), "iterations", "rate").unwrap() - 51.006998).abs()
+        (k6_summary_metric(Some(&summary), "iterations", "rate").unwrap() - 51.006_998).abs()
             < 0.001
     );
 }
@@ -214,7 +214,7 @@ fn k6_metric_or_warn_returns_parsed_value() {
 
 #[test]
 fn k6_metric_or_warn_defaults_to_zero_when_missing() {
-    assert_eq!(k6_metric_or_warn(None, "some.metric"), 0.0);
+    assert!((k6_metric_or_warn(None, "some.metric") - 0.0).abs() < f64::EPSILON);
 }
 
 #[test]

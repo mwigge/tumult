@@ -1,0 +1,559 @@
+//! Hermetic behavior tests for actions and probes against a fake apiserver.
+//!
+//! Uses the kube-rs documented mock pattern: `kube::Client::new` wraps a
+//! `tower_test::mock` service, so every request the crate would send to a
+//! real apiserver is intercepted in-process. No network, no cluster.
+
+use std::pin::pin;
+
+use http::{Method, Request, Response, StatusCode};
+use http_body_util::BodyExt;
+use kube::client::Body;
+use kube::Client;
+use serde_json::{json, Value};
+use tower_test::mock::{self, Handle};
+
+use tumult_kubernetes::{actions, probes, KubeError};
+
+type MockHandle = Handle<Request<Body>, Response<Body>>;
+
+/// Build a mock-backed client plus the handle used to script apiserver
+/// behavior from the test body.
+fn mock_client() -> (Client, MockHandle) {
+    let (service, handle) = mock::pair::<Request<Body>, Response<Body>>();
+    (Client::new(service, "default"), handle)
+}
+
+/// Split a captured request into parts and its JSON body (`Null` when empty).
+async fn parts_and_json(request: Request<Body>) -> (http::request::Parts, Value) {
+    let (parts, body) = request.into_parts();
+    let bytes = body.collect().await.expect("collect body").to_bytes();
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("request body is JSON")
+    };
+    (parts, value)
+}
+
+fn json_response(body: &Value) -> Response<Body> {
+    Response::new(Body::from(serde_json::to_vec(body).expect("encode body")))
+}
+
+fn status_response(code: StatusCode, reason: &str, message: &str) -> Response<Body> {
+    let status = json!({
+        "kind": "Status",
+        "apiVersion": "v1",
+        "metadata": {},
+        "status": "Failure",
+        "message": message,
+        "reason": reason,
+        "code": code.as_u16(),
+    });
+    Response::builder()
+        .status(code)
+        .body(Body::from(serde_json::to_vec(&status).expect("encode")))
+        .expect("build response")
+}
+
+/// Minimal pod object; `ready` toggles the Ready condition.
+fn pod_json(namespace: &str, name: &str, phase: &str, ready: bool, restarts: i32) -> Value {
+    json!({
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": { "name": name, "namespace": namespace },
+        "spec": { "containers": [{ "name": "app", "image": "app:1" }], "nodeName": "worker-1" },
+        "status": {
+            "phase": phase,
+            "conditions": [{ "type": "Ready", "status": if ready { "True" } else { "False" } }],
+            "containerStatuses": [{
+                "name": "app", "image": "app:1", "imageID": "", "ready": ready,
+                "restartCount": restarts,
+                "state": {},
+            }],
+        },
+    })
+}
+
+// ── Pod-kill action ───────────────────────────────────────────
+
+#[tokio::test]
+async fn delete_pod_sends_delete_to_namespaced_path_with_grace_period() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::DELETE);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods/api-0");
+        assert_eq!(
+            body["gracePeriodSeconds"], 30,
+            "grace period must be forwarded: {body}"
+        );
+        send.send_response(json_response(&pod_json(
+            "prod", "api-0", "Running", true, 0,
+        )));
+    });
+
+    let message = actions::delete_pod(client, "prod", "api-0", Some(30))
+        .await
+        .expect("delete succeeds");
+
+    assert_eq!(message, "pod prod/api-0 deleted");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn delete_pod_without_grace_period_sends_empty_delete_params() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::DELETE);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/default/pods/cache-1");
+        assert_eq!(
+            body.get("gracePeriodSeconds"),
+            None,
+            "no grace period requested, none must be sent: {body}"
+        );
+        send.send_response(json_response(&pod_json(
+            "default", "cache-1", "Running", true, 0,
+        )));
+    });
+
+    actions::delete_pod(client, "default", "cache-1", None)
+        .await
+        .expect("delete succeeds");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn delete_pod_404_yields_typed_api_error() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (_, send) = handle.next_request().await.expect("service not called");
+        send.send_response(status_response(
+            StatusCode::NOT_FOUND,
+            "NotFound",
+            "pods \"ghost\" not found",
+        ));
+    });
+
+    let err = actions::delete_pod(client, "prod", "ghost", None)
+        .await
+        .expect_err("missing pod must fail");
+
+    assert!(
+        matches!(err, KubeError::Api(_)),
+        "expected KubeError::Api, got: {err:?}"
+    );
+    assert!(
+        err.to_string().contains("not found"),
+        "unexpected message: {err}"
+    );
+    apiserver.await.expect("apiserver task");
+}
+
+// ── Deployment / node actions ─────────────────────────────────
+
+#[tokio::test]
+async fn scale_deployment_merge_patches_replica_count() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::PATCH);
+        assert_eq!(
+            parts.uri.path(),
+            "/apis/apps/v1/namespaces/prod/deployments/web"
+        );
+        assert_eq!(
+            parts.headers[http::header::CONTENT_TYPE],
+            "application/merge-patch+json"
+        );
+        assert_eq!(body, json!({ "spec": { "replicas": 0 } }));
+        send.send_response(json_response(&json!({
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": { "name": "web", "namespace": "prod" },
+            "spec": { "replicas": 0 },
+        })));
+    });
+
+    let message = actions::scale_deployment(client, "prod", "web", 0)
+        .await
+        .expect("scale succeeds");
+
+    assert_eq!(message, "deployment prod/web scaled to 0 replicas");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn cordon_node_patches_unschedulable_true_on_cluster_scoped_path() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::PATCH);
+        assert_eq!(parts.uri.path(), "/api/v1/nodes/worker-1");
+        assert_eq!(body, json!({ "spec": { "unschedulable": true } }));
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Node",
+            "metadata": { "name": "worker-1" },
+            "spec": { "unschedulable": true },
+        })));
+    });
+
+    let message = actions::cordon_node(client, "worker-1")
+        .await
+        .expect("cordon succeeds");
+
+    assert_eq!(message, "node worker-1 cordoned");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn drain_node_cordons_lists_by_node_and_skips_daemonset_pods() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+
+        // 1. Cordon patch.
+        let (request, send) = handle.next_request().await.expect("cordon request");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::PATCH);
+        assert_eq!(parts.uri.path(), "/api/v1/nodes/worker-1");
+        assert_eq!(body, json!({ "spec": { "unschedulable": true } }));
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Node",
+            "metadata": { "name": "worker-1" },
+        })));
+
+        // 2. Cluster-wide pod list filtered to the drained node.
+        let (request, send) = handle.next_request().await.expect("list request");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(parts.uri.path(), "/api/v1/pods");
+        let query = parts.uri.query().unwrap_or_default();
+        assert!(
+            query.contains("fieldSelector=spec.nodeName%3Dworker-1"),
+            "list must filter by node: {query}"
+        );
+        let mut daemon_pod = pod_json("kube-system", "logger-abc", "Running", true, 0);
+        daemon_pod["metadata"]["ownerReferences"] = json!([{
+            "apiVersion": "apps/v1",
+            "kind": "DaemonSet",
+            "name": "logger",
+            "uid": "d81ff353-0000-0000-0000-000000000000",
+        }]);
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "PodList",
+            "metadata": {},
+            "items": [
+                daemon_pod,
+                pod_json("default", "app-a", "Running", true, 0),
+                pod_json("prod", "app-b", "Running", true, 0),
+            ],
+        })));
+
+        // 3. First eviction succeeds.
+        let (request, send) = handle.next_request().await.expect("first delete");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::DELETE);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/default/pods/app-a");
+        send.send_response(json_response(&pod_json(
+            "default", "app-a", "Running", true, 0,
+        )));
+
+        // 4. Second eviction is rejected by the apiserver.
+        let (request, send) = handle.next_request().await.expect("second delete");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::DELETE);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods/app-b");
+        send.send_response(status_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "InternalError",
+            "etcd is on fire",
+        ));
+    });
+
+    let result = actions::drain_node(client, "worker-1", None)
+        .await
+        .expect("drain returns a result even with partial failures");
+
+    assert_eq!(result.node, "worker-1");
+    assert_eq!(result.evicted, vec!["default/app-a".to_string()]);
+    assert_eq!(result.failed.len(), 1);
+    assert_eq!(result.failed[0].0, "prod/app-b");
+    assert_eq!(result.skipped_daemonsets, 1);
+    assert_eq!(
+        result.to_string(),
+        "node worker-1 drained: 1 evicted, 1 failed, 1 daemonset pods skipped"
+    );
+    apiserver.await.expect("apiserver task");
+}
+
+// ── Network-policy actions ────────────────────────────────────
+
+#[tokio::test]
+async fn apply_network_policy_server_side_applies_named_policy() {
+    let policy_json = json!({
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "NetworkPolicy",
+        "metadata": { "name": "deny-all", "namespace": "prod" },
+        "spec": { "podSelector": {}, "policyTypes": ["Ingress", "Egress"] },
+    });
+    let policy = serde_json::from_value(policy_json.clone()).expect("valid policy");
+
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::PATCH);
+        assert_eq!(
+            parts.uri.path(),
+            "/apis/networking.k8s.io/v1/namespaces/prod/networkpolicies/deny-all"
+        );
+        assert_eq!(
+            parts.headers[http::header::CONTENT_TYPE],
+            "application/apply-patch+yaml"
+        );
+        let query = parts.uri.query().unwrap_or_default();
+        assert!(
+            query.contains("fieldManager=tumult"),
+            "apply must set field manager: {query}"
+        );
+        assert_eq!(body["spec"]["policyTypes"], json!(["Ingress", "Egress"]));
+        send.send_response(json_response(&policy_json));
+    });
+
+    let message = actions::apply_network_policy(client, "prod", policy)
+        .await
+        .expect("apply succeeds");
+
+    assert_eq!(message, "network policy prod/deny-all applied");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn delete_network_policy_deletes_by_namespace_and_name() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::DELETE);
+        assert_eq!(
+            parts.uri.path(),
+            "/apis/networking.k8s.io/v1/namespaces/prod/networkpolicies/deny-all"
+        );
+        send.send_response(json_response(&json!({
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": { "name": "deny-all", "namespace": "prod" },
+        })));
+    });
+
+    let message = actions::delete_network_policy(client, "prod", "deny-all")
+        .await
+        .expect("delete succeeds");
+
+    assert_eq!(message, "network policy prod/deny-all deleted");
+    apiserver.await.expect("apiserver task");
+}
+
+// ── Probes ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn pods_by_label_sends_selector_and_parses_statuses() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods");
+        let query = parts.uri.query().unwrap_or_default();
+        assert!(
+            query.contains("labelSelector=app%3Dweb"),
+            "label selector must be forwarded: {query}"
+        );
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "PodList",
+            "metadata": {},
+            "items": [
+                pod_json("prod", "web-0", "Running", true, 2),
+                pod_json("prod", "web-1", "Pending", false, 0),
+            ],
+        })));
+    });
+
+    let statuses = probes::pods_by_label(client, "prod", "app=web")
+        .await
+        .expect("list succeeds");
+
+    assert_eq!(statuses.len(), 2);
+    assert_eq!(statuses[0].name, "web-0");
+    assert_eq!(statuses[0].namespace, "prod");
+    assert_eq!(statuses[0].phase, "Running");
+    assert!(statuses[0].ready);
+    assert_eq!(statuses[0].restarts, 2);
+    assert_eq!(statuses[0].node, "worker-1");
+    assert_eq!(statuses[1].phase, "Pending");
+    assert!(!statuses[1].ready);
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn all_pods_ready_counts_ready_versus_total() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (_, send) = handle.next_request().await.expect("service not called");
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "PodList",
+            "metadata": {},
+            "items": [
+                pod_json("prod", "web-0", "Running", true, 0),
+                pod_json("prod", "web-1", "Running", false, 1),
+                pod_json("prod", "web-2", "Running", true, 0),
+            ],
+        })));
+    });
+
+    let (total, ready) = probes::all_pods_ready(client, "prod", "app=web")
+        .await
+        .expect("probe succeeds");
+
+    assert_eq!((total, ready), (3, 2));
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn pod_is_ready_reports_false_without_ready_condition() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods/web-0");
+        // Pod with no status conditions at all (e.g. just scheduled).
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": { "name": "web-0", "namespace": "prod" },
+            "spec": { "containers": [{ "name": "app", "image": "app:1" }] },
+        })));
+    });
+
+    let ready = probes::pod_is_ready(client, "prod", "web-0")
+        .await
+        .expect("probe succeeds");
+
+    assert!(
+        !ready,
+        "pod without Ready condition must not count as ready"
+    );
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn pod_is_ready_apiserver_500_yields_typed_error() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (_, send) = handle.next_request().await.expect("service not called");
+        send.send_response(status_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "InternalError",
+            "apiserver overloaded",
+        ));
+    });
+
+    let err = probes::pod_is_ready(client, "prod", "web-0")
+        .await
+        .expect_err("500 must surface as an error");
+
+    assert!(
+        matches!(err, KubeError::Api(_)),
+        "expected KubeError::Api, got: {err:?}"
+    );
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn deployment_is_ready_parses_replica_counts() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(
+            parts.uri.path(),
+            "/apis/apps/v1/namespaces/prod/deployments/web"
+        );
+        send.send_response(json_response(&json!({
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": { "name": "web", "namespace": "prod" },
+            "spec": { "replicas": 3 },
+            "status": { "readyReplicas": 2, "availableReplicas": 2, "updatedReplicas": 3 },
+        })));
+    });
+
+    let status = probes::deployment_is_ready(client, "prod", "web")
+        .await
+        .expect("probe succeeds");
+
+    assert_eq!(status.desired, 3);
+    assert_eq!(status.ready, 2);
+    assert_eq!(status.available, 2);
+    assert_eq!(status.up_to_date, 3);
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn node_status_reports_cordoned_ready_node() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.uri.path(), "/api/v1/nodes/worker-1");
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Node",
+            "metadata": { "name": "worker-1" },
+            "spec": { "unschedulable": true },
+            "status": {
+                "conditions": [
+                    { "type": "Ready", "status": "True" },
+                    { "type": "MemoryPressure", "status": "False" },
+                ],
+            },
+        })));
+    });
+
+    let status = probes::node_status(client, "worker-1")
+        .await
+        .expect("probe succeeds");
+
+    assert!(status.ready, "Ready=True condition must map to ready");
+    assert!(
+        !status.schedulable,
+        "unschedulable=true must map to schedulable=false"
+    );
+    assert_eq!(status.conditions.len(), 2);
+    apiserver.await.expect("apiserver task");
+}

@@ -27,7 +27,7 @@ fn score_matrix_computes_weighted_resilience_and_subscores() {
 
     let score = score_matrix(&outcomes);
 
-    assert_eq!(score.overall, 0.5);
+    assert!((score.overall - 0.5).abs() < f64::EPSILON);
     assert_eq!(score.subscore(ScoreDimension::Latency), Some(1.0));
     assert_eq!(score.subscore(ScoreDimension::RetryBudget), Some(0.0));
     assert_eq!(score.subscore(ScoreDimension::Cost), Some(1.0));

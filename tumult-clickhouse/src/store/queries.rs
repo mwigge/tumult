@@ -1,6 +1,6 @@
 //! Aggregate statistics, retention purge, and schema-version queries.
 
-use tumult_analytics::duckdb_store::StoreStats;
+use tumult_analytics::backend::StoreStats;
 use tumult_analytics::error::AnalyticsError;
 use tumult_analytics::telemetry;
 

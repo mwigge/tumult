@@ -26,7 +26,9 @@
 
 pub mod actions;
 pub mod error;
+pub mod native;
 pub mod probes;
 pub(crate) mod telemetry;
 
 pub use error::KubeError;
+pub use native::KubernetesExecutor;

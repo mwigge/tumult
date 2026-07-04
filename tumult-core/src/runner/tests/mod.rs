@@ -14,6 +14,7 @@ mod exec_tests;
 mod gameday_tests;
 mod load_tests;
 mod rollback_tests;
+mod sampling_tests;
 
 // -- Mock executor
 
@@ -135,11 +136,10 @@ fn test_probe(name: &str) -> Activity {
     Activity {
         name: name.into(),
         activity_type: ActivityType::Probe,
-        provider: Provider::Http {
-            method: HttpMethod::Get,
-            url: "http://localhost/health".into(),
-            headers: HashMap::new(),
-            body: None,
+        provider: Provider::Process {
+            path: "scripts/health-check.sh".into(),
+            arguments: vec![],
+            env: HashMap::new(),
             timeout_s: Some(5.0),
         },
         tolerance: Some(Tolerance::Exact {
@@ -182,4 +182,15 @@ fn experiment_with_hypothesis() -> Experiment {
 
 fn default_config() -> RunConfig {
     RunConfig::default()
+}
+
+/// Sampling config with tight intervals and timeouts so tests that leave
+/// probes failing after the method (deviation scenarios) don't wait out the
+/// default 30s post-phase recovery window.
+fn fast_sampling() -> SamplingConfig {
+    SamplingConfig {
+        interval: std::time::Duration::from_millis(10),
+        max_during_samples: 50,
+        recovery_timeout: std::time::Duration::from_millis(80),
+    }
 }

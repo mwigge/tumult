@@ -17,11 +17,10 @@ fn baselined_hypothesis_with_range_tolerance() {
         vec![Activity {
             name: "latency-probe".into(),
             activity_type: ActivityType::Probe,
-            provider: Provider::Http {
-                method: HttpMethod::Get,
-                url: "http://localhost/metrics".into(),
-                headers: HashMap::new(),
-                body: None,
+            provider: Provider::Process {
+                path: "scripts/health-check.sh".into(),
+                arguments: vec![],
+                env: HashMap::new(),
                 timeout_s: Some(5.0),
             },
             // Simulating derived tolerance: latency between 20-80ms
@@ -59,11 +58,10 @@ fn baselined_hypothesis_fails_when_outside_range() {
         vec![Activity {
             name: "latency-probe".into(),
             activity_type: ActivityType::Probe,
-            provider: Provider::Http {
-                method: HttpMethod::Get,
-                url: "http://localhost/metrics".into(),
-                headers: HashMap::new(),
-                body: None,
+            provider: Provider::Process {
+                path: "scripts/health-check.sh".into(),
+                arguments: vec![],
+                env: HashMap::new(),
                 timeout_s: Some(5.0),
             },
             tolerance: Some(Tolerance::Range {
@@ -203,7 +201,16 @@ fn hypothesis_after_failure_causes_deviation_with_rollback() {
     });
     let controls = Arc::new(ControlRegistry::new());
 
-    let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+    // Fast sampling: probes stay unhealthy after the method, so the
+    // post-phase recovery loop would otherwise run to its default timeout.
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &controls,
+        &RunConfig::default(),
+        &fast_sampling(),
+    )
+    .unwrap();
 
     assert_eq!(journal.status, ExperimentStatus::Deviated);
     assert!(journal.steady_state_before.as_ref().unwrap().met);

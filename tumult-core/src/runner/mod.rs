@@ -11,6 +11,8 @@
 //! 8. Analysis (Phase 4)
 //! 9. Journal creation
 
+use std::time::Duration;
+
 use crate::execution::RollbackStrategy;
 use crate::types::{Activity, LoadConfig, LoadResult};
 
@@ -24,7 +26,7 @@ mod load;
 mod phases;
 mod telemetry;
 
-pub use experiment::run_experiment;
+pub use experiment::{run_experiment, run_experiment_with_sampling};
 pub use gameday::run_gameday;
 pub use telemetry::epoch_nanos_now;
 
@@ -34,6 +36,38 @@ pub(crate) const TRACER_NAME: &str = "tumult-engine";
 pub enum RunnerError {
     #[error("experiment has no method steps")]
     EmptyMethod,
+    #[error("gameday declares {declared} experiments but {provided} were provided")]
+    ExperimentCountMismatch { declared: usize, provided: usize },
+}
+
+/// Probe sampling cadence for during-phase and post-phase collection.
+///
+/// The runner samples hypothesis probes concurrently with the method
+/// (during phase) and again after it completes (post phase, to measure
+/// recovery). Defaults are conservative: experiments without hypothesis
+/// probes skip sampling entirely, and probes that are already back within
+/// tolerance finish the post phase after a single round, so simple
+/// experiments see no added latency.
+#[derive(Debug, Clone)]
+pub struct SamplingConfig {
+    /// Pause between probe sampling rounds in both phases.
+    pub interval: Duration,
+    /// Upper bound on during-phase sampling rounds, guarding against
+    /// unbounded sample growth for long-running methods.
+    pub max_during_samples: u32,
+    /// How long the post phase keeps sampling while waiting for probes to
+    /// return within tolerance (recovery) before giving up.
+    pub recovery_timeout: Duration,
+}
+
+impl Default for SamplingConfig {
+    fn default() -> Self {
+        Self {
+            interval: Duration::from_secs(1),
+            max_during_samples: 300,
+            recovery_timeout: Duration::from_secs(30),
+        }
+    }
 }
 
 /// Outcome of executing a single activity via a provider.

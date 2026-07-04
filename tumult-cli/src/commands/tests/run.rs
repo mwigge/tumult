@@ -1,4 +1,4 @@
-//! Tests for cmd_run, cmd_validate, cmd_discover, cmd_init and templates.
+//! Tests for `cmd_run`, `cmd_validate`, `cmd_discover`, `cmd_init` and templates.
 
 use super::super::*;
 use super::helpers::*;
@@ -126,6 +126,26 @@ fn validate_invalid_toon_returns_error() {
     assert!(result.is_err());
 }
 
+/// The `http` provider variant was removed; experiment files that still use
+/// it must fail parsing with a comprehensible serde unknown-variant error
+/// that names the offending provider type and lists the supported ones.
+#[test]
+fn validate_http_provider_returns_unknown_variant_error() {
+    let dir = TempDir::new().unwrap();
+    let exp_path = write_http_provider_experiment(dir.path());
+
+    let err = cmd_validate(&exp_path).unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("unknown variant `http`"),
+        "error should name the unknown provider type: {msg}"
+    );
+    assert!(
+        msg.contains("expected"),
+        "error should list the supported provider types: {msg}"
+    );
+}
+
 #[test]
 fn validate_empty_method_returns_error() {
     let dir = TempDir::new().unwrap();
@@ -148,6 +168,49 @@ fn discover_without_plugins_shows_empty() {
 fn discover_nonexistent_plugin_returns_error() {
     let result = cmd_discover(Some("nonexistent-plugin"));
     assert!(result.is_err());
+}
+
+#[test]
+fn discover_lists_native_plugins_with_kind_and_functions() {
+    let registry = tumult_plugin::registry::PluginRegistry::new();
+    let output = render_discover(None, &registry, native_registry()).unwrap();
+
+    assert!(output.contains("tumult-kubernetes (native)"));
+    assert!(output.contains("tumult-net (native)"));
+    assert!(output.contains("tumult-ssh (native)"));
+    assert!(output.contains("tumult-ssh::execute"));
+    assert!(output.contains("tumult-kubernetes::delete_pod"));
+}
+
+#[test]
+fn discover_labels_script_and_native_kinds() {
+    let mut registry = tumult_plugin::registry::PluginRegistry::new();
+    registry.register_script(tumult_plugin::manifest::ScriptPluginManifest {
+        name: "tumult-kafka".into(),
+        version: "1.0.0".into(),
+        description: "Kafka chaos".into(),
+        actions: vec![tumult_plugin::manifest::ScriptAction {
+            name: "broker-kill".into(),
+            script: "actions/broker-kill.sh".into(),
+            description: "Kill a broker".into(),
+        }],
+        probes: vec![],
+    });
+
+    let output = render_discover(None, &registry, native_registry()).unwrap();
+
+    assert!(output.contains("(1 script, 3 native)"));
+    assert!(output.contains("tumult-kafka (script)"));
+    assert!(output.contains("tumult-kafka::broker-kill"));
+}
+
+#[test]
+fn discover_filter_matches_native_plugin() {
+    let registry = tumult_plugin::registry::PluginRegistry::new();
+    let output = render_discover(Some("tumult-ssh"), &registry, native_registry()).unwrap();
+
+    assert!(output.contains("Plugin: tumult-ssh (native)"));
+    assert!(output.contains("- execute"));
 }
 
 // ── cmd_init tests ────────────────────────────────────────
