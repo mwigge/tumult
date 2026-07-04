@@ -79,18 +79,39 @@ struct Config {
 }
 
 impl Config {
+    /// Build from the environment. Every field takes a **neutral** `TUMULT_UI_*`
+    /// name first so the same binary runs against any tumult-mcp, then falls
+    /// back to the demo's `DEMO_*` / legacy names so the demo compose keeps
+    /// working unchanged. `MCP_URL` and `TUMULT_MCP_TOKEN` are already neutral.
     fn from_env() -> Self {
-        let mcp_url = env_or("MCP_URL", "http://tumult-mcp:3100");
-        let experiments_dir = trim_trailing_slash(&env_or("DEMO_EXPERIMENTS_DIR", "/demo/experiments"));
+        let mcp_url = env_chain(&["TUMULT_UI_MCP_URL", "MCP_URL"], "http://tumult-mcp:3100");
+        let experiments_dir = trim_trailing_slash(&env_chain(
+            &["TUMULT_UI_EXPERIMENTS_DIR", "DEMO_EXPERIMENTS_DIR"],
+            "/demo/experiments",
+        ));
         Self {
             mcp_url,
             experiments_dir,
-            signoz_url: trim_trailing_slash(&env_or("SIGNOZ_URL", "http://localhost:3301")),
-            demo_app_url: trim_trailing_slash(&env_or("DEMO_APP_URL", "http://localhost:8080")),
-            trace_service: env_or("TRACE_SERVICE", "demo-app"),
-            journals_dir: trim_trailing_slash(&env_or("DEMO_JOURNALS_DIR", "/journals")),
-            compliance_framework: env_or("DEMO_COMPLIANCE_FRAMEWORK", "dora"),
-            port: env_or("PORT", "8088").parse().unwrap_or(8088),
+            signoz_url: trim_trailing_slash(&env_chain(
+                &["TUMULT_UI_OBSERVABILITY_URL", "SIGNOZ_URL"],
+                "http://localhost:3301",
+            )),
+            demo_app_url: trim_trailing_slash(&env_chain(
+                &["TUMULT_UI_TARGET_URL", "DEMO_APP_URL"],
+                "http://localhost:8080",
+            )),
+            trace_service: env_chain(&["TUMULT_UI_TARGET_HINT", "TRACE_SERVICE"], "demo-app"),
+            journals_dir: trim_trailing_slash(&env_chain(
+                &["TUMULT_UI_JOURNALS_DIR", "DEMO_JOURNALS_DIR"],
+                "/journals",
+            )),
+            compliance_framework: env_chain(
+                &["TUMULT_UI_FRAMEWORK", "DEMO_COMPLIANCE_FRAMEWORK"],
+                "dora",
+            ),
+            port: env_chain(&["TUMULT_UI_PORT", "PORT"], "8088")
+                .parse()
+                .unwrap_or(8088),
         }
     }
 
@@ -127,9 +148,13 @@ async fn main() {
         .init();
 
     let cfg = Config::from_env();
-    let token = std::env::var("TUMULT_MCP_TOKEN").ok().filter(|t| !t.is_empty());
+    let token = std::env::var("TUMULT_MCP_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
     if token.is_none() {
-        tracing::warn!("TUMULT_MCP_TOKEN not set — MCP requests will be sent without a bearer token");
+        tracing::warn!(
+            "TUMULT_MCP_TOKEN not set — MCP requests will be sent without a bearer token"
+        );
     }
     let client = McpClient::new(&cfg.mcp_url, token);
 
@@ -145,6 +170,7 @@ async fn main() {
         .route("/", get(serve_index))
         .route("/healthz", get(healthz))
         .route("/api/status", get(api_status))
+        .route("/api/whoami", get(api_whoami))
         .route("/api/run/{domain}", post(api_run))
         .route("/api/loop", post(api_loop))
         .route("/api/guardrail", post(api_guardrail))
@@ -214,23 +240,23 @@ struct StatusView {
 /// and read the run-experiment annotation. Always returns 200 with a body — an
 /// offline MCP server is reported in-band so the page degrades gracefully.
 async fn api_status(State(state): State<Arc<AppState>>) -> Json<StatusView> {
-    let (mcp_online, mcp_error, tool_count, run_destructive) =
-        match state.client.list_tools().await {
-            Ok(tools) => {
-                let destructive = tools
+    let (mcp_online, mcp_error, tool_count, run_destructive) = match state.client.list_tools().await
+    {
+        Ok(tools) => {
+            let destructive = tools
                     .iter()
                     .find(|t| t.name == "tumult_run_experiment")
                     .map(|t| t.destructive)
                     // If the run tool is not advertised, be conservative.
                     .unwrap_or(true);
-                (true, None, tools.len(), destructive)
-            }
-            Err(e) => {
-                tracing::warn!("tools/list failed: {e}");
-                // Conservative default: treat runs as destructive when unknown.
-                (false, Some(e.to_string()), 0, true)
-            }
-        };
+            (true, None, tools.len(), destructive)
+        }
+        Err(e) => {
+            tracing::warn!("tools/list failed: {e}");
+            // Conservative default: treat runs as destructive when unknown.
+            (false, Some(e.to_string()), 0, true)
+        }
+    };
 
     let cfg = &state.cfg;
     let domains = DOMAINS
@@ -267,6 +293,45 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<StatusView> {
     })
 }
 
+/// The caller's role as the browser sees it. Always 200: a whoami failure
+/// degrades to least privilege (`viewer`) with `resolved: false` and a note, so
+/// the UI enforces the tighter tier rather than assuming operator.
+#[derive(Serialize)]
+struct WhoamiView {
+    /// Resolved role: `viewer` or `operator` (falls back to `viewer` on error).
+    role: String,
+    /// Whether a configured bearer token authenticated the request.
+    authenticated: bool,
+    /// True when the role came back from the server; false when it was assumed.
+    resolved: bool,
+    /// Present only when the role could not be resolved.
+    error: Option<String>,
+}
+
+/// Role-awareness endpoint: `tumult_whoami` over MCP. The UI calls this on load
+/// to render a role badge and hide operator-only actions from viewers — defense
+/// in depth over the server's RBAC, which still enforces regardless. A failure
+/// is reported in-band as `viewer` (least privilege), never a panic.
+async fn api_whoami(State(state): State<Arc<AppState>>) -> Json<WhoamiView> {
+    match state.client.whoami().await {
+        Ok(who) => Json(WhoamiView {
+            role: who.role,
+            authenticated: who.authenticated,
+            resolved: true,
+            error: None,
+        }),
+        Err(e) => {
+            tracing::warn!("whoami failed: {e}");
+            Json(WhoamiView {
+                role: "viewer".to_string(),
+                authenticated: false,
+                resolved: false,
+                error: Some(e.to_string()),
+            })
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct RunResponse {
     domain: String,
@@ -281,10 +346,7 @@ struct RunResponse {
 
 /// Run one domain's experiment via MCP. Unknown domains → 404; MCP failures →
 /// a clean JSON error with an appropriate status code (never a panic).
-async fn api_run(
-    State(state): State<Arc<AppState>>,
-    Path(domain): Path<String>,
-) -> Response {
+async fn api_run(State(state): State<Arc<AppState>>, Path(domain): Path<String>) -> Response {
     if !DOMAINS.iter().any(|(id, _)| *id == domain) {
         return error_response(
             StatusCode::NOT_FOUND,
@@ -325,7 +387,9 @@ fn error_response(code: StatusCode, message: &str) -> Response {
 fn status_for(err: &McpError) -> StatusCode {
     match err {
         McpError::Unreachable(_) => StatusCode::SERVICE_UNAVAILABLE,
-        McpError::Rpc(_) | McpError::Protocol(_) | McpError::Transport(_) => StatusCode::BAD_GATEWAY,
+        McpError::Rpc(_) | McpError::Protocol(_) | McpError::Transport(_) => {
+            StatusCode::BAD_GATEWAY
+        }
     }
 }
 
@@ -410,8 +474,14 @@ struct GraphSection<T: Serialize> {
 impl<T: Serialize> GraphSection<T> {
     fn from(result: Result<T, McpError>) -> Self {
         match result {
-            Ok(data) => Self { data: Some(data), error: None },
-            Err(e) => Self { data: None, error: Some(e.to_string()) },
+            Ok(data) => Self {
+                data: Some(data),
+                error: None,
+            },
+            Err(e) => Self {
+                data: None,
+                error: Some(e.to_string()),
+            },
         }
     }
 }
@@ -457,7 +527,13 @@ async fn api_chaosgraph(State(state): State<Arc<AppState>>) -> Response {
                 },
             ),
         },
-        Err(e) => (None, GraphSection { data: None, error: Some(e.to_string()) }),
+        Err(e) => (
+            None,
+            GraphSection {
+                data: None,
+                error: Some(e.to_string()),
+            },
+        ),
     };
 
     // 3 · Coverage gaps for the framework (untested actions + unevidenced articles).
@@ -649,7 +725,13 @@ async fn run_chaos_loop<C: ChaosLoopClient>(
             json!({ "plugins": d.plugins, "actions": d.actions }),
         )),
         Err(e) => {
-            steps.push(LoopStep::failed(1, "Discover", "tumult_discover", elapsed_ms(t), &e));
+            steps.push(LoopStep::failed(
+                1,
+                "Discover",
+                "tumult_discover",
+                elapsed_ms(t),
+                &e,
+            ));
             return (false, steps);
         }
     }
@@ -676,7 +758,13 @@ async fn run_chaos_loop<C: ChaosLoopClient>(
             }),
         )),
         Err(e) => {
-            steps.push(LoopStep::failed(2, "Validate", "tumult_validate", elapsed_ms(t), &e));
+            steps.push(LoopStep::failed(
+                2,
+                "Validate",
+                "tumult_validate",
+                elapsed_ms(t),
+                &e,
+            ));
             return (false, steps);
         }
     }
@@ -704,7 +792,13 @@ async fn run_chaos_loop<C: ChaosLoopClient>(
             ));
         }
         Err(e) => {
-            steps.push(LoopStep::failed(3, "Run", "tumult_run_experiment", elapsed_ms(t), &e));
+            steps.push(LoopStep::failed(
+                3,
+                "Run",
+                "tumult_run_experiment",
+                elapsed_ms(t),
+                &e,
+            ));
             return (false, steps);
         }
     }
@@ -730,7 +824,13 @@ async fn run_chaos_loop<C: ChaosLoopClient>(
             }),
         )),
         Err(e) => {
-            steps.push(LoopStep::failed(4, "Analyze", "tumult_analyze_store", elapsed_ms(t), &e));
+            steps.push(LoopStep::failed(
+                4,
+                "Analyze",
+                "tumult_analyze_store",
+                elapsed_ms(t),
+                &e,
+            ));
             return (false, steps);
         }
     }
@@ -745,7 +845,11 @@ async fn run_chaos_loop<C: ChaosLoopClient>(
                 format!(
                     "{} recommendation{} · top: {}",
                     rec.recommendations.len(),
-                    if rec.recommendations.len() == 1 { "" } else { "s" },
+                    if rec.recommendations.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    },
                     top.title
                 )
             } else {
@@ -764,7 +868,13 @@ async fn run_chaos_loop<C: ChaosLoopClient>(
             ));
         }
         Err(e) => {
-            steps.push(LoopStep::failed(5, "Recommend", "tumult_recommend", elapsed_ms(t), &e));
+            steps.push(LoopStep::failed(
+                5,
+                "Recommend",
+                "tumult_recommend",
+                elapsed_ms(t),
+                &e,
+            ));
             return (false, steps);
         }
     }
@@ -816,10 +926,11 @@ async fn api_loop(
 
 // ── Helpers ───────────────────────────────────────────────────
 
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key)
-        .ok()
-        .filter(|v| !v.is_empty())
+/// First non-empty value among `keys` (in order), else `default`. Lets a
+/// neutral `TUMULT_UI_*` name take precedence over a demo-specific fallback.
+fn env_chain(keys: &[&str], default: &str) -> String {
+    keys.iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
         .unwrap_or_else(|| default.to_string())
 }
 
@@ -846,9 +957,8 @@ async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]
     {
-        let mut term =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("install SIGTERM handler");
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler");
         tokio::select! {
             _ = ctrl_c => {}
             _ = term.recv() => {}
@@ -864,7 +974,7 @@ async fn shutdown_signal() {
 mod tests {
     use super::*;
     use mcp::{
-        ChaosLoopClient, DiscoverOutcome, McpError, Recommendation, RecommendOutcome, RunOutcome,
+        ChaosLoopClient, DiscoverOutcome, McpError, RecommendOutcome, Recommendation, RunOutcome,
         TableOutcome, ValidateOutcome,
     };
 
@@ -879,13 +989,25 @@ mod tests {
 
     impl MockClient {
         fn happy() -> Self {
-            Self { fail_step: 0, offline: false, run_status: "completed" }
+            Self {
+                fail_step: 0,
+                offline: false,
+                run_status: "completed",
+            }
         }
         fn failing_at(step: usize) -> Self {
-            Self { fail_step: step, offline: false, run_status: "completed" }
+            Self {
+                fail_step: step,
+                offline: false,
+                run_status: "completed",
+            }
         }
         fn offline() -> Self {
-            Self { fail_step: 1, offline: true, run_status: "completed" }
+            Self {
+                fail_step: 1,
+                offline: true,
+                run_status: "completed",
+            }
         }
         fn err(&self) -> McpError {
             if self.offline {
@@ -901,7 +1023,10 @@ mod tests {
             if self.fail_step == 1 {
                 return Err(self.err());
             }
-            Ok(DiscoverOutcome { plugins: 12, actions: 34 })
+            Ok(DiscoverOutcome {
+                plugins: 12,
+                actions: 34,
+            })
         }
         async fn validate(&self, _experiment_path: &str) -> Result<ValidateOutcome, McpError> {
             if self.fail_step == 2 {
@@ -933,7 +1058,11 @@ mod tests {
             }
             Ok(TableOutcome {
                 columns: vec!["title".into(), "status".into(), "duration_ms".into()],
-                rows: vec![vec!["Kill connections".into(), "completed".into(), "228".into()]],
+                rows: vec![vec![
+                    "Kill connections".into(),
+                    "completed".into(),
+                    "228".into(),
+                ]],
                 row_count: 1,
             })
         }

@@ -265,6 +265,17 @@ pub struct ScaffoldOutcome {
     pub validation_error: Option<String>,
 }
 
+/// Result of a `tumult_whoami` call: the caller's resolved RBAC role and
+/// whether the request was authenticated. Read from `structuredContent`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WhoamiOutcome {
+    /// Canonical role name: `viewer` (read-only tools) or `operator` (all tools).
+    pub role: String,
+    /// True when a configured bearer token validated the request; false in
+    /// loopback open mode (no auth configured — full access without a token).
+    pub authenticated: bool,
+}
+
 /// Errors surfaced to the HTTP layer. Every variant maps to a clean JSON error
 /// response — the panel never panics on a bad/absent MCP server.
 #[derive(Debug)]
@@ -452,9 +463,9 @@ pub fn parse_run_result(result: &Value) -> Result<RunOutcome, McpError> {
         )));
     }
 
-    let sc = result.get("structuredContent").ok_or_else(|| {
-        McpError::Protocol("run result missing structuredContent".to_string())
-    })?;
+    let sc = result
+        .get("structuredContent")
+        .ok_or_else(|| McpError::Protocol("run result missing structuredContent".to_string()))?;
     let journal = sc.get("journal").unwrap_or(sc);
 
     let status = journal
@@ -561,12 +572,13 @@ pub fn parse_validate_result(result: &Value) -> Result<ValidateOutcome, McpError
 /// Returns [`McpError::Protocol`] on a tool-level error or missing text.
 pub fn parse_analyze_store_result(result: &Value) -> Result<TableOutcome, McpError> {
     if result.get("isError").and_then(Value::as_bool) == Some(true) {
-        return Err(McpError::Protocol(
-            content_text(result).unwrap_or_else(|| "analyze_store tool reported an error".to_string()),
-        ));
+        return Err(McpError::Protocol(content_text(result).unwrap_or_else(
+            || "analyze_store tool reported an error".to_string(),
+        )));
     }
-    let text = content_text(result)
-        .ok_or_else(|| McpError::Protocol("analyze_store result had no text content".to_string()))?;
+    let text = content_text(result).ok_or_else(|| {
+        McpError::Protocol("analyze_store result had no text content".to_string())
+    })?;
 
     let mut lines = text.lines();
     let columns: Vec<String> = lines
@@ -655,9 +667,9 @@ pub fn parse_recommend_result(result: &Value) -> Result<RecommendOutcome, McpErr
 /// content.
 pub fn parse_compliance_result(result: &Value) -> Result<ComplianceOutcome, McpError> {
     if result.get("isError").and_then(Value::as_bool) == Some(true) {
-        return Err(McpError::Protocol(
-            content_text(result).unwrap_or_else(|| "compliance tool reported an error".to_string()),
-        ));
+        return Err(McpError::Protocol(content_text(result).unwrap_or_else(
+            || "compliance tool reported an error".to_string(),
+        )));
     }
     let sc = result.get("structuredContent").ok_or_else(|| {
         McpError::Protocol("compliance result missing structuredContent".to_string())
@@ -897,6 +909,36 @@ pub fn parse_scaffold_result(result: &Value) -> Result<ScaffoldOutcome, McpError
     })
 }
 
+/// Parse a `tumult_whoami` result into a [`WhoamiOutcome`] from its
+/// `structuredContent` (`{role, authenticated}`).
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_whoami_result(result: &Value) -> Result<WhoamiOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(
+            content_text(result).unwrap_or_else(|| "whoami tool reported an error".to_string()),
+        ));
+    }
+    let sc = result
+        .get("structuredContent")
+        .ok_or_else(|| McpError::Protocol("whoami result missing structuredContent".to_string()))?;
+    let role = sc
+        .get("role")
+        .and_then(Value::as_str)
+        .ok_or_else(|| McpError::Protocol("whoami result missing role".to_string()))?
+        .to_string();
+    let authenticated = sc
+        .get("authenticated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    Ok(WhoamiOutcome {
+        role,
+        authenticated,
+    })
+}
+
 /// Pull the `structuredContent` object from a ChaosGraph tool result, mapping a
 /// tool-level error into [`McpError::Protocol`].
 fn graph_structured<'a>(result: &'a Value, tool: &str) -> Result<&'a Value, McpError> {
@@ -906,7 +948,9 @@ fn graph_structured<'a>(result: &'a Value, tool: &str) -> Result<&'a Value, McpE
         )));
     }
     result.get("structuredContent").ok_or_else(|| {
-        McpError::Protocol(format!("chaosgraph {tool} result missing structuredContent"))
+        McpError::Protocol(format!(
+            "chaosgraph {tool} result missing structuredContent"
+        ))
     })
 }
 
@@ -1050,9 +1094,8 @@ impl McpClient {
         let (body, session) = self.post(None, &init).await?;
         // Surface any JSON-RPC error the server returned on initialize.
         rpc_result(&parse_sse_body(&body)?)?;
-        let session = session.ok_or_else(|| {
-            McpError::Transport("server did not return an mcp-session-id".into())
-        })?;
+        let session = session
+            .ok_or_else(|| McpError::Transport("server did not return an mcp-session-id".into()))?;
         // Best-effort: tell the server we're ready. Failure here is non-fatal.
         let note = build_notification("notifications/initialized", json!({}));
         let _ = self.post(Some(&session), &note).await;
@@ -1273,6 +1316,19 @@ impl McpClient {
         let result = self.call_tool("tumult_scaffold_experiment", args).await?;
         parse_scaffold_result(&result)
     }
+
+    /// Ask the server who the panel is authenticated as via `tumult_whoami` —
+    /// the caller's resolved RBAC role and whether the request carried a valid
+    /// token. Read-only and viewer-callable; the UI uses it to enforce the same
+    /// tiers the server enforces (defense in depth).
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure. The
+    /// HTTP layer degrades a failure to least privilege (viewer).
+    pub async fn whoami(&self) -> Result<WhoamiOutcome, McpError> {
+        let result = self.call_tool("tumult_whoami", json!({})).await?;
+        parse_whoami_result(&result)
+    }
 }
 
 /// The five MCP calls the chaos-loop showcase drives, abstracted so the
@@ -1280,8 +1336,9 @@ impl McpClient {
 /// `tools/call` over MCP — exactly what an autonomous agent would issue.
 pub trait ChaosLoopClient {
     /// `tumult_discover`.
-    fn discover(&self)
-        -> impl std::future::Future<Output = Result<DiscoverOutcome, McpError>> + Send;
+    fn discover(
+        &self,
+    ) -> impl std::future::Future<Output = Result<DiscoverOutcome, McpError>> + Send;
     /// `tumult_validate`.
     fn validate(
         &self,
@@ -1298,8 +1355,9 @@ pub trait ChaosLoopClient {
         query: &str,
     ) -> impl std::future::Future<Output = Result<TableOutcome, McpError>> + Send;
     /// `tumult_recommend`.
-    fn recommend(&self)
-        -> impl std::future::Future<Output = Result<RecommendOutcome, McpError>> + Send;
+    fn recommend(
+        &self,
+    ) -> impl std::future::Future<Output = Result<RecommendOutcome, McpError>> + Send;
 }
 
 impl ChaosLoopClient for McpClient {
@@ -1356,14 +1414,18 @@ mod tests {
 
     #[test]
     fn tools_call_params_shape() {
-        let p = tools_call_params("tumult_run_experiment", json!({"experiment_path": "x.toon"}));
+        let p = tools_call_params(
+            "tumult_run_experiment",
+            json!({"experiment_path": "x.toon"}),
+        );
         assert_eq!(p["name"], "tumult_run_experiment");
         assert_eq!(p["arguments"]["experiment_path"], "x.toon");
     }
 
     #[test]
     fn parses_sse_framed_payload() {
-        let body = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"ok\":true}}\n\n";
+        let body =
+            "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"ok\":true}}\n\n";
         let v = parse_sse_body(body).unwrap();
         assert_eq!(v["result"]["ok"], true);
     }
@@ -1422,14 +1484,20 @@ mod tests {
         });
         let tools = parse_tools_list(&result);
         assert_eq!(tools.len(), 3);
-        let run = tools.iter().find(|t| t.name == "tumult_run_experiment").unwrap();
+        let run = tools
+            .iter()
+            .find(|t| t.name == "tumult_run_experiment")
+            .unwrap();
         assert!(run.destructive);
         assert!(!run.read_only);
         let val = tools.iter().find(|t| t.name == "tumult_validate").unwrap();
         assert!(!val.destructive);
         assert!(val.read_only);
         // Missing annotations default to non-destructive / non-read-only.
-        let none = tools.iter().find(|t| t.name == "tumult_no_annotations").unwrap();
+        let none = tools
+            .iter()
+            .find(|t| t.name == "tumult_no_annotations")
+            .unwrap();
         assert!(!none.destructive);
         assert!(!none.read_only);
     }
@@ -1450,7 +1518,10 @@ mod tests {
         assert_eq!(out.status, "completed");
         assert_eq!(out.outcome, "passed");
         assert_eq!(out.duration_ms, Some(228));
-        assert_eq!(out.journal_path.as_deref(), Some("/demo/journals/demo-net.toon"));
+        assert_eq!(
+            out.journal_path.as_deref(),
+            Some("/demo/journals/demo-net.toon")
+        );
         assert_eq!(out.ingestion.as_deref(), Some("ingested"));
     }
 
@@ -1481,7 +1552,10 @@ mod tests {
     #[test]
     fn missing_structured_content_is_protocol_error() {
         let result = json!({ "content": [] });
-        assert!(matches!(parse_run_result(&result), Err(McpError::Protocol(_))));
+        assert!(matches!(
+            parse_run_result(&result),
+            Err(McpError::Protocol(_))
+        ));
     }
 
     // ── Halted status (auto-halt) ─────────────────────────────
@@ -1947,5 +2021,55 @@ mod tests {
             Err(McpError::Protocol(m)) => assert!(m.contains("plugin")),
             other => panic!("expected Protocol error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_whoami_operator_and_viewer() {
+        let op = json!({ "structuredContent": { "role": "operator", "authenticated": true } });
+        assert_eq!(
+            parse_whoami_result(&op).unwrap(),
+            WhoamiOutcome {
+                role: "operator".into(),
+                authenticated: true
+            }
+        );
+        let view = json!({ "structuredContent": { "role": "viewer", "authenticated": true } });
+        assert_eq!(
+            parse_whoami_result(&view).unwrap(),
+            WhoamiOutcome {
+                role: "viewer".into(),
+                authenticated: true
+            }
+        );
+        // Open mode (no auth configured): unauthenticated, defaults to false.
+        let open = json!({ "structuredContent": { "role": "operator" } });
+        assert_eq!(
+            parse_whoami_result(&open).unwrap(),
+            WhoamiOutcome {
+                role: "operator".into(),
+                authenticated: false
+            }
+        );
+    }
+
+    #[test]
+    fn whoami_missing_role_is_protocol_error() {
+        let result = json!({ "structuredContent": { "authenticated": true } });
+        assert!(matches!(
+            parse_whoami_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    #[test]
+    fn whoami_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"Unauthorized: invalid bearer token"}]
+        });
+        assert!(matches!(
+            parse_whoami_result(&result),
+            Err(McpError::Protocol(_))
+        ));
     }
 }

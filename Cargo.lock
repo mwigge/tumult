@@ -6158,7 +6158,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agent-cli"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6169,7 +6169,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agentic"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "axum",
  "opentelemetry",
@@ -6186,7 +6186,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-analytics"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "arrow",
  "chrono",
@@ -6204,7 +6204,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-authoring"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "indexmap",
  "serde",
@@ -6217,7 +6217,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-baseline"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -6228,7 +6228,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6259,7 +6259,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -6276,7 +6276,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cloud"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -6295,7 +6295,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6316,7 +6316,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-graph"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6325,7 +6325,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-intelligence"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -6340,7 +6340,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "async-trait",
  "http",
@@ -6360,7 +6360,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6393,7 +6393,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-net"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -6408,7 +6408,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -6423,7 +6423,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -6438,7 +6438,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ssh"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6456,7 +6456,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
  "indexmap",
  "serde_json",

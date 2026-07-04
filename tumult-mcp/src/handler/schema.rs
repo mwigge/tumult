@@ -263,6 +263,16 @@ fn default_trend_metric() -> String {
 #[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
 pub struct AgentsTool {}
 
+#[macros::mcp_tool(
+    name = "tumult_whoami",
+    description = "Return the caller's resolved access role. Structured content is {role: 'viewer'|'operator', authenticated: bool}: `role` is the role this request's bearer token maps to (viewer = read-only tools only, operator = every tool including fault injection/execution), and `authenticated` is true when a configured token validated the request (false in loopback open mode, where every caller has full access without a token). Read-only and viewer-callable — a client uses it to discover its own permissions and adapt its UI to them.",
+    read_only_hint = true,
+    idempotent_hint = true,
+    open_world_hint = false
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct WhoamiTool {}
+
 // ── GameDay tools ─────────────────────────────────────────────
 
 #[macros::mcp_tool(

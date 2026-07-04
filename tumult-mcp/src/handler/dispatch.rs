@@ -23,6 +23,7 @@ use super::schema::{
     FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool, GameDayListTool, GameDayRunTool,
     ListExperimentsTool, ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool,
     ReportTool, RunExperimentTool, ScaffoldExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
+    WhoamiTool,
 };
 use super::{Role, TumultHandler};
 
@@ -59,7 +60,8 @@ pub(crate) fn required_role_for_tool(name: &str) -> Role {
         | "tumult_chaosgraph_neighbors"
         | "tumult_chaosgraph_coverage_gaps"
         | "tumult_fault_catalog"
-        | "tumult_scaffold_experiment" => Role::Viewer,
+        | "tumult_scaffold_experiment"
+        | "tumult_whoami" => Role::Viewer,
         // Operator-only (read_only_hint == false), plus any unknown tool:
         // tumult_run_experiment, tumult_create_experiment, tumult_report,
         // tumult_gameday_run, tumult_gameday_create, tumult_recommend.
@@ -194,6 +196,7 @@ impl ServerHandler for TumultHandler {
             ChaosGraphCoverageGapsTool::tool(),
             FaultCatalogTool::tool(),
             ScaffoldExperimentTool::tool(),
+            WhoamiTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
         // hand-written schemas for tools that return structured content.
@@ -567,6 +570,18 @@ impl ServerHandler for TumultHandler {
                     .map(ToolOutput::from)
                 })
             }
+            "tumult_whoami" => {
+                let _args: WhoamiTool = parse_args(&params)?;
+                // Surface the role the auth layer resolved for THIS request
+                // (see `principal_role` above). In open mode there is no token:
+                // the caller has full access, reported as an unauthenticated
+                // operator so a UI still renders every control for loopback dev.
+                let (role_name, authenticated) =
+                    principal_role.map_or(("operator", false), |role| (role.as_str(), true));
+                tokio::task::block_in_place(|| {
+                    Ok(ToolOutput::from(tools::whoami(role_name, authenticated)))
+                })
+            }
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
@@ -670,8 +685,9 @@ mod tests {
             ChaosGraphCoverageGapsTool::tool(),
             FaultCatalogTool::tool(),
             ScaffoldExperimentTool::tool(),
+            WhoamiTool::tool(),
         ];
-        assert_eq!(tools.len(), 29);
+        assert_eq!(tools.len(), 30);
     }
 
     #[test]
@@ -718,6 +734,7 @@ mod tests {
             ChaosGraphCoverageGapsTool::tool(),
             FaultCatalogTool::tool(),
             ScaffoldExperimentTool::tool(),
+            WhoamiTool::tool(),
         ];
         for tool in &tools {
             assert!(
@@ -886,6 +903,7 @@ mod tests {
             "tumult_chaosgraph_coverage_gaps",
             "tumult_fault_catalog",
             "tumult_scaffold_experiment",
+            "tumult_whoami",
         ];
         let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(
@@ -976,6 +994,7 @@ mod tests {
             ChaosGraphCoverageGapsTool::tool(),
             FaultCatalogTool::tool(),
             ScaffoldExperimentTool::tool(),
+            WhoamiTool::tool(),
         ];
         for tool in &read_only {
             let a = tool
@@ -1267,6 +1286,7 @@ mod tests {
                 serde_json::json!({ "name": "conformance-gd", "experiments": ["test.toon"] }),
             ),
             ("tumult_agents", serde_json::json!({})),
+            ("tumult_whoami", serde_json::json!({})),
             (
                 "tumult_recommend",
                 serde_json::json!({ "store_path": missing_store.to_str().unwrap() }),
@@ -2228,6 +2248,7 @@ mod tests {
             ChaosGraphCoverageGapsTool::tool(),
             FaultCatalogTool::tool(),
             ScaffoldExperimentTool::tool(),
+            WhoamiTool::tool(),
         ];
         for tool in &tools {
             let read_only = tool
@@ -2406,6 +2427,64 @@ mod tests {
             .await
             .expect("legacy single token must call operator tools");
         assert!(result.is_error.is_none(), "{}", result_text(&result));
+    }
+
+    /// `tumult_whoami` reports the caller's resolved role. A viewer token sees
+    /// `viewer`, an operator token sees `operator`, and both are marked
+    /// authenticated — the role plumbing (`_meta.authorization` → auth layer →
+    /// tool handler) must carry the resolved role all the way through.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn whoami_reports_the_callers_role() {
+        let tmp = tempfile::tempdir().unwrap();
+        let handler = TumultHandler::with_auth(
+            tmp.path().to_path_buf(),
+            McpAuth::from_tokens(vec![
+                ("view-tok".into(), Role::Viewer),
+                ("op-tok".into(), Role::Operator),
+            ]),
+        );
+
+        for (token, expected_role) in [("view-tok", "viewer"), ("op-tok", "operator")] {
+            let params = call_params(
+                "tumult_whoami",
+                serde_json::json!({}),
+                Some(&format!("Bearer {token}")),
+            );
+            let result = handler
+                .handle_call_tool_request(params, stub_runtime())
+                .await
+                .expect("whoami must succeed for a valid token");
+            assert!(result.is_error.is_none(), "{}", result_text(&result));
+            let structured = result
+                .structured_content
+                .as_ref()
+                .expect("whoami must set structuredContent");
+            assert_conforms("tumult_whoami", structured);
+            assert_eq!(
+                structured["role"], expected_role,
+                "whoami must report the token's role"
+            );
+            assert_eq!(
+                structured["authenticated"], true,
+                "a validated token is authenticated"
+            );
+        }
+    }
+
+    /// In open mode (no auth configured) `tumult_whoami` reports an
+    /// unauthenticated operator: full access for loopback dev, no token.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn whoami_open_mode_is_unauthenticated_operator() {
+        let tmp = tempfile::tempdir().unwrap();
+        let handler = open_handler(tmp.path());
+        let params = call_params("tumult_whoami", serde_json::json!({}), None);
+        let result = handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .expect("whoami must succeed in open mode");
+        let structured = result.structured_content.as_ref().unwrap();
+        assert_eq!(structured["role"], "operator");
+        assert_eq!(structured["authenticated"], false);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

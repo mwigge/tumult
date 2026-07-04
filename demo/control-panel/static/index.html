@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tumult Demo · Control Panel</title>
+  <title>Tumult · Control Panel</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -55,36 +55,86 @@
     a { color: var(--run); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
-    header.bar {
-      position: sticky; top: 0; z-index: 10;
-      display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
-      padding: 14px 24px;
-      background: color-mix(in srgb, var(--surface) 88%, transparent);
-      backdrop-filter: saturate(1.4) blur(8px);
-      border-bottom: 1px solid var(--border);
+    /* ── App shell ─────────────────────────────────────────── */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 232px; flex: none; position: sticky; top: 0; align-self: flex-start;
+      height: 100vh; display: flex; flex-direction: column; gap: 18px;
+      padding: 20px 16px; border-right: 1px solid var(--border);
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
     }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; }
     .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
-    .bar .spacer { flex: 1 1 auto; }
+    .nav { display: flex; flex-direction: column; gap: 3px; }
+    .nav-item {
+      appearance: none; cursor: pointer; font: inherit; text-align: left;
+      display: flex; align-items: center; gap: 9px;
+      padding: 9px 12px; border-radius: 9px; border: 1px solid transparent;
+      background: transparent; color: var(--text); font-size: 14px; font-weight: 550;
+    }
+    .nav-item:hover { background: var(--surface-2); }
+    .nav-item.active { background: var(--accent); color: var(--accent-ink); }
+    .nav-item .ni-ico { width: 18px; text-align: center; opacity: .85; }
+    .nav-item .ni-lock { margin-left: auto; font-size: 11px; opacity: .7; display: none; }
+    body.is-viewer .nav-item[data-view="run"] .ni-lock { display: inline; }
+    .sidebar .spacer { flex: 1 1 auto; }
+    .sidebar-foot { display: flex; flex-direction: column; gap: 10px; }
+
+    .role-badge {
+      display: inline-flex; align-items: center; gap: 7px; align-self: flex-start;
+      padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 650;
+      border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+    }
+    .role-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .role-badge.op { background: var(--ok-bg); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+    .role-badge.op::before { background: var(--ok); }
+    .role-badge.viewer { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+    .role-badge.viewer::before { background: var(--warn); }
+
     .pill {
       display: inline-flex; align-items: center; gap: 7px;
       padding: 5px 11px; border-radius: 999px;
       background: var(--surface-2); border: 1px solid var(--border);
-      font-size: 13px; color: var(--muted);
+      font-size: 12.5px; color: var(--muted);
     }
     .pill .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
     .pill.online .status-dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
     .pill.offline .status-dot { background: var(--fail); box-shadow: 0 0 0 3px var(--fail-bg); }
-    .bar .links { display: flex; gap: 8px; flex-wrap: wrap; }
-    .bar .links a {
+
+    .content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+    header.topbar {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 14px 30px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    header.topbar .view-title { font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+    header.topbar .spacer { flex: 1 1 auto; }
+    .links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .links a {
       padding: 5px 11px; border-radius: 8px; border: 1px solid var(--border);
       background: var(--surface); color: var(--text); font-size: 13px;
     }
-    .bar .links a:hover { text-decoration: none; border-color: var(--accent); }
+    .links a:hover { text-decoration: none; border-color: var(--accent); }
 
-    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 64px; }
-    .intro h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.01em; }
-    .intro p { margin: 0 0 28px; color: var(--muted); max-width: 70ch; }
+    main { max-width: 1180px; width: 100%; margin: 0 auto; padding: 30px 30px 64px; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .view > h1 { margin: 0 0 6px; font-size: 23px; letter-spacing: -.01em; }
+    .view > p.lede { margin: 0 0 26px; color: var(--muted); max-width: 74ch; }
+
+    @media (max-width: 860px) {
+      .app { flex-direction: column; }
+      .sidebar { width: auto; height: auto; position: static; flex-direction: row; flex-wrap: wrap;
+        align-items: center; border-right: none; border-bottom: 1px solid var(--border); }
+      .nav { flex-direction: row; flex-wrap: wrap; }
+      .nav-item .ni-lock { display: none !important; }
+      .sidebar .spacer { display: none; }
+      .sidebar-foot { flex-direction: row; margin-left: auto; }
+      main { padding: 22px 18px 48px; }
+    }
 
     .grid {
       display: grid; gap: 18px;
@@ -105,7 +155,7 @@
     .card p.desc { margin: 0; color: var(--muted); font-size: 13.5px; flex: 1 1 auto; }
     .card .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--muted); word-break: break-all; }
 
-    .card .foot { display: flex; align-items: center; gap: 12px; }
+    .card .foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     button.run {
       appearance: none; cursor: pointer; font: inherit; font-weight: 600; font-size: 14px;
       padding: 9px 16px; border-radius: 9px; border: 1px solid transparent;
@@ -114,7 +164,7 @@
     }
     button.run:hover { filter: brightness(1.06); }
     button.run:active { transform: translateY(1px); }
-    button.run:disabled { opacity: .55; cursor: default; }
+    button.run:disabled { opacity: .5; cursor: not-allowed; }
 
     .state { display: flex; align-items: center; gap: 8px; font-size: 13px; }
     .state .lamp { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
@@ -138,13 +188,26 @@
     .confirm .row { display: flex; gap: 8px; }
     .confirm button { appearance: none; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; padding: 7px 13px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
     .confirm button.go { background: var(--fail); color: #fff; border-color: transparent; }
+
     .banner {
       display: none; margin-bottom: 22px; padding: 12px 16px; border-radius: 10px;
       background: var(--fail-bg); color: var(--fail); border: 1px solid color-mix(in srgb, var(--fail) 30%, transparent);
       font-size: 13.5px;
     }
     .banner.show { display: block; }
-    footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px; }
+
+    /* read-only / operator-gating notes */
+    .op-note {
+      display: none; margin-bottom: 20px; padding: 12px 16px; border-radius: 10px;
+      background: var(--warn-bg); color: var(--warn);
+      border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); font-size: 13.5px;
+    }
+    body.is-viewer .op-note { display: block; }
+    .op-note strong { font-weight: 700; }
+    .lock-note { font-size: 12px; color: var(--warn); display: none; }
+    body.is-viewer .lock-note { display: inline; }
+
+    footer { max-width: 1180px; margin: 0 auto; padding: 0 30px 40px; color: var(--muted); font-size: 12.5px; }
 
     /* ── Chaos loop showcase ─────────────────────────────── */
     .loop {
@@ -172,12 +235,11 @@
     }
     button.loop-run:hover { filter: brightness(1.06); }
     button.loop-run:active { transform: translateY(1px); }
-    button.loop-run:disabled { opacity: .55; cursor: default; }
+    button.loop-run:disabled { opacity: .5; cursor: not-allowed; }
 
     .timeline { display: flex; flex-direction: column; margin: 22px 0 4px; }
     .tl-step { display: grid; grid-template-columns: 30px 1fr; gap: 14px; position: relative; padding-bottom: 18px; }
     .tl-step:last-child { padding-bottom: 0; }
-    /* connector line between step lamps */
     .tl-step:not(:last-child)::before {
       content: ""; position: absolute; left: 14px; top: 26px; bottom: -4px; width: 2px;
       background: var(--border);
@@ -227,9 +289,9 @@
     .loop-verdict.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); }
     .loop-verdict.fail { background: var(--fail-bg); color: var(--fail); border: 1px solid color-mix(in srgb, var(--fail) 30%, transparent); }
 
-    /* ── Golden path + payoff ─────────────────────────────── */
+    /* ── Overview + payoff ─────────────────────────────────── */
     .goldenpath {
-      list-style: none; margin: 0 0 6px; padding: 0;
+      list-style: none; margin: 0 0 24px; padding: 0;
       display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center;
     }
     .goldenpath li {
@@ -243,8 +305,9 @@
       display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
       background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700;
     }
-    .section-title { margin: 40px 0 4px; font-size: 18px; letter-spacing: -.01em; }
+    .section-title { margin: 30px 0 4px; font-size: 18px; letter-spacing: -.01em; }
     .section-sub { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; max-width: 80ch; }
+    .section-sub:first-child { margin-top: 0; }
 
     .badge.tool {
       background: var(--surface-2); color: var(--muted);
@@ -356,167 +419,242 @@
   </style>
 </head>
 <body>
-  <header class="bar">
-    <span class="brand"><span class="dot"></span> Tumult · Demo Control Panel</span>
-    <span id="mcp-pill" class="pill"><span class="status-dot"></span><span id="mcp-text">MCP: checking…</span></span>
-    <span class="spacer"></span>
-    <nav class="links">
-      <a id="link-app" href="#" target="_blank" rel="noopener">Demo app ↗</a>
-      <a id="link-signoz" href="#" target="_blank" rel="noopener">SigNoz ↗</a>
-    </nav>
-  </header>
-
-  <main>
-    <div class="intro">
-      <h1>Tumult resilience control panel</h1>
-      <p>One cohesive path, all over the <strong>tumult-mcp</strong> server (each action is an MCP
-         <code>tools/call</code>): <strong>run a fault → observe it in SigNoz → analyze results →
-         check compliance evidence → explore the ChaosGraph</strong>. Destructive actions are badged
-         from the tools' own MCP annotations and ask for confirmation.</p>
-      <ol class="goldenpath" aria-label="golden path">
-        <li><span class="gp-n">1</span> Inject a fault</li>
-        <li><span class="gp-n">2</span> Observe traces</li>
-        <li><span class="gp-n">3</span> Analyze runs</li>
-        <li><span class="gp-n">4</span> Compliance evidence</li>
-        <li><span class="gp-n">5</span> ChaosGraph</li>
-      </ol>
-    </div>
-    <div id="banner" class="banner"></div>
-
-    <section class="authoring" id="authoring" aria-labelledby="auth-title">
-      <div class="auth-head">
-        <h2 id="auth-title">New experiment</h2>
-        <span class="badge tool" title="MCP tools">tumult_fault_catalog · tumult_scaffold_experiment</span>
-        <span class="spacer"></span>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="dot"></span> Tumult</div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-view="overview"><span class="ni-ico">◎</span> Overview</button>
+        <button class="nav-item" data-view="author"><span class="ni-ico">✎</span> Author</button>
+        <button class="nav-item" data-view="run"><span class="ni-ico">▶</span> Run <span class="ni-lock" title="operator only">🔒</span></button>
+        <button class="nav-item" data-view="analytics"><span class="ni-ico">▤</span> Analytics</button>
+        <button class="nav-item" data-view="compliance"><span class="ni-ico">✓</span> Compliance</button>
+        <button class="nav-item" data-view="chaosgraph"><span class="ni-ico">⬡</span> ChaosGraph</button>
+      </nav>
+      <span class="spacer"></span>
+      <div class="sidebar-foot">
+        <span id="role-badge" class="role-badge" title="Resolving role…">role…</span>
+        <span id="mcp-pill" class="pill"><span class="status-dot"></span><span id="mcp-text">MCP: checking…</span></span>
       </div>
-      <p class="caption">Author a runnable experiment from the live fault catalog — pick a domain and action,
-        fill its arguments and a steady-state probe, and Tumult scaffolds a validated <code>.toon</code>.
-        This is the same authoring path <code>tumult new</code> and an agent drive, over
-        <code>tools/call</code>. The demo mounts experiments read-only, so copy the generated TOON and run it
-        with <code>tumult run &lt;file&gt;</code>.</p>
-      <div id="auth-form" class="auth-form hidden">
-        <div class="field">
-          <label for="auth-domain">Domain</label>
-          <select id="auth-domain"></select>
-        </div>
-        <div class="field">
-          <label for="auth-action">Action</label>
-          <select id="auth-action"></select>
-        </div>
-        <div class="field">
-          <label for="auth-target">Target <span class="req" title="required">*</span></label>
-          <input id="auth-target" type="text" placeholder="demo-app" value="demo-app" />
-        </div>
-        <div class="field">
-          <label for="auth-probe">Steady-state probe <span class="hint">— http url or exec command</span></label>
-          <input id="auth-probe" type="text" placeholder="http://demo-app:8080/health or: pg_isready -h demo-postgres" />
-        </div>
-        <div class="auth-args" id="auth-args"></div>
-        <div class="auth-actions">
-          <button class="auth-gen" id="auth-gen">Generate experiment</button>
-          <span class="auth-desc" id="auth-action-desc"></span>
-        </div>
-        <div class="auth-err" id="auth-err"></div>
-        <div class="auth-out" id="auth-out">
-          <div class="out-head">
-            <span class="verdict-badge" id="auth-verdict"></span>
-            <span class="out-action" id="auth-out-action"></span>
-            <span class="spacer" style="flex:1"></span>
-            <button class="copy" id="auth-copy">Copy TOON</button>
+    </aside>
+
+    <div class="content">
+      <header class="topbar">
+        <span class="view-title" id="view-title">Overview</span>
+        <span class="spacer"></span>
+        <nav class="links">
+          <a id="link-app" href="#" target="_blank" rel="noopener">Target app ↗</a>
+          <a id="link-signoz" href="#" target="_blank" rel="noopener">Observability ↗</a>
+        </nav>
+      </header>
+
+      <main>
+        <div id="banner" class="banner"></div>
+
+        <!-- ── Overview ─────────────────────────────────────── -->
+        <section class="view active" data-view="overview" id="view-overview">
+          <h1>Resilience control panel</h1>
+          <p class="lede">A role-aware UI over the <strong>tumult-mcp</strong> server — every action is an MCP
+            <code>tools/call</code>. Author an experiment, run a fault, then read the results as analytics,
+            compliance evidence, and the ChaosGraph. The panel enforces the same viewer/operator tiers the
+            server does (defense in depth); the server still enforces regardless of what the UI shows.</p>
+          <ol class="goldenpath" aria-label="golden path">
+            <li><span class="gp-n">1</span> Author</li>
+            <li><span class="gp-n">2</span> Run a fault</li>
+            <li><span class="gp-n">3</span> Analyze</li>
+            <li><span class="gp-n">4</span> Compliance</li>
+            <li><span class="gp-n">5</span> ChaosGraph</li>
+          </ol>
+          <div id="ov-role" class="op-note" style="display:block">
+            <strong>Your access:</strong> <span id="ov-role-text">resolving…</span>
           </div>
-          <pre id="auth-toon"></pre>
-          <div class="run-hint" id="auth-run-hint"></div>
-        </div>
-      </div>
-    </section>
+          <div class="grid">
+            <div class="card">
+              <div class="head"><h2 style="text-transform:none">Server</h2></div>
+              <p class="desc" id="ov-server">Checking the MCP server…</p>
+              <div class="path" id="ov-target"></div>
+            </div>
+            <div class="card">
+              <div class="head"><h2 style="text-transform:none">Sections</h2></div>
+              <p class="desc"><strong>Author</strong> scaffolds a validated experiment (read-only).
+                <strong>Run</strong> injects faults and drives the full loop (operator only).
+                <strong>Analytics</strong>, <strong>Compliance</strong> and <strong>ChaosGraph</strong> read
+                accumulated history (read-only).</p>
+            </div>
+          </div>
+        </section>
 
-    <section class="loop" aria-labelledby="loop-title">
-      <div class="loop-head">
-        <h2 id="loop-title">Run the whole chaos loop via MCP</h2>
-        <span class="spacer"></span>
-        <button id="loop-run" class="loop-run">Run full loop via MCP</button>
-      </div>
-      <div class="flow">
-        <span>discover</span><span class="arrow">→</span>
-        <span>validate</span><span class="arrow">→</span>
-        <span>run</span><span class="arrow">→</span>
-        <span>analyze</span><span class="arrow">→</span>
-        <span>recommend</span>
-      </div>
-      <p class="caption">Every step here is a single MCP tool call — an autonomous agent operates Tumult
-        the same way. This panel is nothing more than an MCP client driving
-        <code>tools/call</code> end to end.</p>
-      <div id="timeline" class="timeline" aria-live="polite"></div>
-      <div id="loop-verdict" class="loop-verdict"></div>
-    </section>
+        <!-- ── Author ───────────────────────────────────────── -->
+        <section class="view" data-view="author" id="view-author">
+          <h1>Author a new experiment</h1>
+          <p class="lede">Pick a fault from the live catalog, fill its arguments and a steady-state probe, and
+            Tumult scaffolds a validated <code>.toon</code>. This is read-only — <code>tumult_scaffold_experiment</code>
+            generates and validates but never runs — so viewers can use it too.</p>
+          <section class="authoring" id="authoring" aria-labelledby="auth-title">
+            <div class="auth-head">
+              <h2 id="auth-title">New experiment</h2>
+              <span class="badge tool" title="MCP tools">tumult_fault_catalog · tumult_scaffold_experiment</span>
+              <span class="spacer"></span>
+            </div>
+            <p class="caption">The same authoring path <code>tumult new</code> and an agent drive, over
+              <code>tools/call</code>. The demo mounts experiments read-only, so copy the generated TOON and run it
+              with <code>tumult run &lt;file&gt;</code>.</p>
+            <div id="auth-form" class="auth-form hidden">
+              <div class="field">
+                <label for="auth-domain">Domain</label>
+                <select id="auth-domain"></select>
+              </div>
+              <div class="field">
+                <label for="auth-action">Action</label>
+                <select id="auth-action"></select>
+              </div>
+              <div class="field">
+                <label for="auth-target">Target <span class="req" title="required">*</span></label>
+                <input id="auth-target" type="text" placeholder="demo-app" value="demo-app" />
+              </div>
+              <div class="field">
+                <label for="auth-probe">Steady-state probe <span class="hint">— http url or exec command</span></label>
+                <input id="auth-probe" type="text" placeholder="http://demo-app:8080/health or: pg_isready -h demo-postgres" />
+              </div>
+              <div class="auth-args" id="auth-args"></div>
+              <div class="auth-actions">
+                <button class="auth-gen" id="auth-gen">Generate experiment</button>
+                <span class="auth-desc" id="auth-action-desc"></span>
+              </div>
+              <div class="auth-err" id="auth-err"></div>
+              <div class="auth-out" id="auth-out">
+                <div class="out-head">
+                  <span class="verdict-badge" id="auth-verdict"></span>
+                  <span class="out-action" id="auth-out-action"></span>
+                  <span class="spacer" style="flex:1"></span>
+                  <button class="copy" id="auth-copy">Copy TOON</button>
+                </div>
+                <pre id="auth-toon"></pre>
+                <div class="run-hint" id="auth-run-hint"></div>
+              </div>
+            </div>
+          </section>
+        </section>
 
-    <h2 class="section-title">Fault domains</h2>
-    <p class="section-sub">One experiment per domain. Each injects a real fault, then verifies recovery —
-      a passing run is a resilience result, not a smoke-test tick. Run one, then follow its trace link.</p>
-    <section id="grid" class="grid" aria-live="polite"></section>
+        <!-- ── Run (operator only) ──────────────────────────── -->
+        <section class="view" data-view="run" id="view-run">
+          <h1>Run faults</h1>
+          <p class="lede">Inject a real fault and verify recovery. These actions execute against the live stack,
+            so they require the <strong>operator</strong> role.</p>
+          <div class="op-note" id="run-readonly">
+            <strong>Read-only session.</strong> You are signed in as a <strong>viewer</strong>: running experiments
+            needs the operator role. Authoring, Analytics, Compliance and ChaosGraph stay available.
+          </div>
 
-    <h2 class="section-title">Safety guardrail</h2>
-    <p class="section-sub">Not every run should finish. This experiment arms an auto-halt guard that watches
-      demo-app during a database outage and pulls the run — running rollback — the instant it turns unhealthy.
-      Expected outcome: <strong>Halted</strong>, not Completed.</p>
-    <section id="guardrail" class="grid" aria-live="polite"></section>
+          <section class="loop" aria-labelledby="loop-title">
+            <div class="loop-head">
+              <h2 id="loop-title">Run the whole chaos loop via MCP</h2>
+              <span class="spacer"></span>
+              <button id="loop-run" class="loop-run op-only">Run full loop via MCP</button>
+            </div>
+            <div class="flow">
+              <span>discover</span><span class="arrow">→</span>
+              <span>validate</span><span class="arrow">→</span>
+              <span>run</span><span class="arrow">→</span>
+              <span>analyze</span><span class="arrow">→</span>
+              <span>recommend</span>
+            </div>
+            <p class="caption">Every step is a single MCP tool call — an autonomous agent operates Tumult the same
+              way. The loop includes <code>tumult_run_experiment</code>, so it is operator-gated.</p>
+            <div id="timeline" class="timeline" aria-live="polite"></div>
+            <div id="loop-verdict" class="loop-verdict"></div>
+          </section>
 
-    <h2 class="section-title">The enterprise payoff</h2>
-    <p class="section-sub">The same runs, read three ways over the persistent analytics store — all existing
-      read-only MCP tools. This is the regulatory + analytics story the flagship demo now surfaces directly.</p>
-    <section class="grid payoff" aria-live="polite">
-      <!-- Compliance -->
-      <div class="card payoff-card" id="card-compliance">
-        <div class="head">
-          <h2>Compliance</h2>
-          <span class="badge tool" title="MCP tool">tumult_compliance</span>
-        </div>
-        <p class="desc">Regulatory <em>evidence</em> summary over the sweep's journals: pass rate, recovery
-          proxy, an evidence verdict and sourced control citations for <span id="comp-fw">DORA</span>.</p>
-        <div class="foot">
-          <button class="run" id="btn-compliance">Check compliance</button>
-          <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
-        </div>
-        <div class="result payoff-result"></div>
-      </div>
+          <h2 class="section-title">Fault domains</h2>
+          <p class="section-sub">One experiment per domain. Each injects a real fault, then verifies recovery —
+            a passing run is a resilience result, not a smoke-test tick. Run one, then follow its trace link.</p>
+          <section id="grid" class="grid" aria-live="polite"></section>
 
-      <!-- Analytics -->
-      <div class="card payoff-card" id="card-analytics">
-        <div class="head">
-          <h2>Analytics</h2>
-          <span class="badge tool" title="MCP tool">tumult_analyze_store</span>
-        </div>
-        <p class="desc">A read-only SQL query over the persistent store — the most recent experiments with
-          their status and duration, straight from accumulated history.</p>
-        <div class="foot">
-          <button class="run" id="btn-analytics">Query analytics</button>
-          <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
-        </div>
-        <div class="result payoff-result"></div>
-      </div>
+          <h2 class="section-title">Safety guardrail</h2>
+          <p class="section-sub">Not every run should finish. This experiment arms an auto-halt guard that watches
+            the target during a database outage and pulls the run — running rollback — the instant it turns unhealthy.
+            Expected outcome: <strong>Halted</strong>, not Completed.</p>
+          <section id="guardrail" class="grid" aria-live="polite"></section>
+        </section>
 
-      <!-- ChaosGraph -->
-      <div class="card payoff-card wide" id="card-chaosgraph">
-        <div class="head">
-          <h2>ChaosGraph</h2>
-          <span class="badge tool" title="MCP tools">tumult_chaosgraph_*</span>
-        </div>
-        <p class="desc">The knowledge graph of everything tested — fault nodes, an experiment's ego sub-graph
-          (<code>query → neighbors</code>), and coverage gaps (untested actions + unevidenced
-          <span class="fw-name">DORA</span> articles).</p>
-        <div class="foot">
-          <button class="run" id="btn-chaosgraph">Query ChaosGraph</button>
-          <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
-        </div>
-        <div class="result payoff-result"></div>
-      </div>
-    </section>
-  </main>
-  <footer id="foot"></footer>
+        <!-- ── Analytics ────────────────────────────────────── -->
+        <section class="view" data-view="analytics" id="view-analytics">
+          <h1>Analytics</h1>
+          <p class="lede">Accumulated run history over the persistent analytics store — a read-only SQL query
+            (<code>tumult_analyze_store</code>). Available to every role.</p>
+          <section class="grid">
+            <div class="card payoff-card wide" id="card-analytics">
+              <div class="head">
+                <h2>Analytics</h2>
+                <span class="badge tool" title="MCP tool">tumult_analyze_store</span>
+              </div>
+              <p class="desc">The most recent experiments with their status and duration, straight from
+                accumulated history.</p>
+              <div class="foot">
+                <button class="run" id="btn-analytics">Query analytics</button>
+                <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
+              </div>
+              <div class="result payoff-result"></div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ── Compliance ───────────────────────────────────── -->
+        <section class="view" data-view="compliance" id="view-compliance">
+          <h1>Compliance evidence</h1>
+          <p class="lede">Regulatory <em>evidence</em> over the run corpus — pass rate, recovery proxy, an evidence
+            verdict and sourced citations (<code>tumult_compliance</code>). Read-only.</p>
+          <section class="grid">
+            <div class="card payoff-card wide" id="card-compliance">
+              <div class="head">
+                <h2>Compliance</h2>
+                <span class="badge tool" title="MCP tool">tumult_compliance</span>
+              </div>
+              <p class="desc">Evidence summary over the sweep's journals: pass rate, recovery proxy, an evidence
+                verdict and sourced control citations for <span id="comp-fw">DORA</span>.</p>
+              <div class="foot">
+                <button class="run" id="btn-compliance">Check compliance</button>
+                <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
+              </div>
+              <div class="result payoff-result"></div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ── ChaosGraph ───────────────────────────────────── -->
+        <section class="view" data-view="chaosgraph" id="view-chaosgraph">
+          <h1>ChaosGraph</h1>
+          <p class="lede">The knowledge graph of everything tested — fault nodes, an experiment's ego sub-graph, and
+            coverage gaps (<code>tumult_chaosgraph_*</code>). Read-only.</p>
+          <section class="grid">
+            <div class="card payoff-card wide" id="card-chaosgraph">
+              <div class="head">
+                <h2>ChaosGraph</h2>
+                <span class="badge tool" title="MCP tools">tumult_chaosgraph_*</span>
+              </div>
+              <p class="desc">Fault nodes, an experiment's ego sub-graph (<code>query → neighbors</code>), and
+                coverage gaps (untested actions + unevidenced <span class="fw-name">DORA</span> articles).</p>
+              <div class="foot">
+                <button class="run" id="btn-chaosgraph">Query ChaosGraph</button>
+                <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
+              </div>
+              <div class="result payoff-result"></div>
+            </div>
+          </section>
+        </section>
+      </main>
+      <footer id="foot"></footer>
+    </div>
+  </div>
 
   <script>
     const CONFIG = /*__CONFIG__*/null || {};
-    const state = { traceLink: CONFIG.signozTraceLink || '#', traceService: CONFIG.traceService || 'demo-app', journalsDir: CONFIG.journalsDir || '/journals' };
+    const state = {
+      traceLink: CONFIG.signozTraceLink || '#',
+      traceService: CONFIG.traceService || 'demo-app',
+      journalsDir: CONFIG.journalsDir || '/journals',
+      role: null,        // 'viewer' | 'operator' — null until whoami resolves
+      roleResolved: false,
+    };
 
     const el = (tag, props = {}, ...kids) => {
       const n = document.createElement(tag);
@@ -530,13 +668,71 @@
       return n;
     };
 
+    const isOperator = () => state.role === 'operator';
+
     function setStatus(card, cls, text) {
       const s = card.querySelector('.state');
       s.className = 'state ' + cls;
       s.querySelector('.label').textContent = text;
     }
 
-    async function runDomain(domain, card, destructive) {
+    // ── Nav / view switching ─────────────────────────────────
+    function showView(name) {
+      document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === name));
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+      const item = document.querySelector(`.nav-item[data-view="${name}"]`);
+      document.getElementById('view-title').textContent = item ? item.textContent.trim().replace(/\s*🔒$/, '') : name;
+      window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    }
+    document.getElementById('nav').addEventListener('click', e => {
+      const btn = e.target.closest('.nav-item');
+      if (btn) showView(btn.dataset.view);
+    });
+
+    // ── Role awareness (defense in depth over server RBAC) ───
+    function applyRole() {
+      const viewer = !isOperator();
+      document.body.classList.toggle('is-viewer', viewer);
+      // Disable every operator-only control; the server enforces regardless.
+      document.querySelectorAll('.op-only').forEach(b => {
+        b.disabled = viewer;
+        b.title = viewer ? 'Requires the operator role' : '';
+      });
+      // Badge.
+      const badge = document.getElementById('role-badge');
+      const role = state.role || 'viewer';
+      badge.className = 'role-badge ' + (isOperator() ? 'op' : 'viewer');
+      badge.textContent = role;
+      badge.title = state.roleResolved
+        ? `Authenticated as ${role}`
+        : 'Role could not be resolved — assuming least privilege (viewer)';
+      // Overview access line.
+      const ovText = document.getElementById('ov-role-text');
+      if (ovText) {
+        ovText.textContent = isOperator()
+          ? 'operator — every action is available, including fault injection.'
+          : (state.roleResolved
+              ? 'viewer (read-only) — Author, Analytics, Compliance and ChaosGraph are available; running faults needs the operator role.'
+              : 'viewer (assumed) — role could not be resolved, so the panel enforces the read-only tier until it can.');
+      }
+    }
+
+    async function loadWhoami() {
+      try {
+        const res = await fetch('/api/whoami');
+        const body = await res.json();
+        state.role = body.role === 'operator' ? 'operator' : 'viewer';
+        state.roleResolved = body.resolved !== false;
+      } catch (e) {
+        state.role = 'viewer';          // least privilege on error
+        state.roleResolved = false;
+      }
+      applyRole();
+    }
+
+    // ── Fault-domain run (operator only) ─────────────────────
+    async function runDomain(domain, card) {
+      if (!isOperator()) return;
       const btn = card.querySelector('button.run');
       const result = card.querySelector('.result');
       btn.disabled = true;
@@ -553,7 +749,7 @@
         const link = body.signoz_trace_link || state.traceLink;
         result.innerHTML = '';
         result.append(
-          el('a', { href: link, target: '_blank', rel: 'noopener' }, `Open SigNoz traces — filter service = ${state.traceService} ↗`),
+          el('a', { href: link, target: '_blank', rel: 'noopener' }, `Open traces — filter service = ${state.traceService} ↗`),
         );
         if (body.journal_path) {
           result.append(el('div', { class: 'path' }, `journal: ${body.journal_path}${body.ingestion ? ' · ' + body.ingestion : ''}`));
@@ -562,7 +758,7 @@
         setStatus(card, 'failed', 'error');
         result.textContent = String(err.message || err);
       } finally {
-        btn.disabled = false;
+        btn.disabled = !isOperator();
       }
     }
 
@@ -577,18 +773,20 @@
         el('div', { class: 'path' }, d.experiment_path),
         confirm,
         el('div', { class: 'foot' },
-          el('button', { class: 'run', onclick: () => {
+          el('button', { class: 'run op-only', onclick: () => {
+            if (!isOperator()) return;
             if (d.destructive) { confirm.classList.add('show'); }
-            else { runDomain(d.id, card, false); }
+            else { runDomain(d.id, card); }
           } }, 'Run'),
+          el('span', { class: 'lock-note' }, 'operator only'),
           el('div', { class: 'state idle' }, el('span', { class: 'lamp' }), el('span', { class: 'label' }, 'idle')),
         ),
         el('div', { class: 'result' }),
       );
       confirm.append(
-        el('div', {}, el('strong', {}, 'Run destructive fault injection?'), ' This experiment perturbs the live demo stack.'),
+        el('div', {}, el('strong', {}, 'Run destructive fault injection?'), ' This experiment perturbs the live stack.'),
         el('div', { class: 'row' },
-          el('button', { class: 'go', onclick: () => { confirm.classList.remove('show'); runDomain(d.id, card, true); } }, 'Yes, inject fault'),
+          el('button', { class: 'go', onclick: () => { confirm.classList.remove('show'); runDomain(d.id, card); } }, 'Yes, inject fault'),
           el('button', { onclick: () => confirm.classList.remove('show') }, 'Cancel'),
         ),
       );
@@ -603,7 +801,7 @@
         text.textContent = `MCP: online · ${s.tool_count} tools`;
       } else {
         pill.className = 'pill offline';
-        text.textContent = 'MCP: offline, retrying…';
+        text.textContent = 'MCP: offline';
       }
       document.getElementById('link-app').href = s.demo_app_url || CONFIG.demoAppUrl || '#';
       document.getElementById('link-signoz').href = s.signoz_url || CONFIG.signozUrl || '#';
@@ -613,18 +811,25 @@
       const banner = document.getElementById('banner');
       if (!s.mcp_online) {
         banner.className = 'banner show';
-        banner.textContent = `MCP server unreachable${s.mcp_error ? ': ' + s.mcp_error : ''}. Cards still load; runs will report a clean error until it comes back.`;
+        banner.textContent = `MCP server unreachable${s.mcp_error ? ': ' + s.mcp_error : ''}. Cards still load; actions report a clean error until it comes back.`;
       } else {
         banner.className = 'banner';
       }
 
+      // Overview server summary.
+      const ovServer = document.getElementById('ov-server');
+      if (ovServer) ovServer.textContent = s.mcp_online
+        ? `Online — ${s.tool_count} MCP tools advertised.`
+        : 'Offline — the panel will recover automatically when tumult-mcp is reachable.';
+      const ovTarget = document.getElementById('ov-target');
+      if (ovTarget) ovTarget.textContent = `target hint: ${s.trace_service || state.traceService} · journals: ${s.journals_dir || state.journalsDir}`;
+
       const grid = document.getElementById('grid');
-      // Build cards once; only refresh the status pill/banner on later polls.
       if (!grid.dataset.built) {
         s.domains.forEach(d => grid.append(makeCard(d)));
         grid.dataset.built = '1';
+        applyRole(); // gate freshly built op-only buttons
       } else {
-        // Update destructive badges if annotation availability changed.
         s.domains.forEach(d => {
           const card = grid.querySelector(`.card[data-domain="${d.id}"]`);
           if (!card) return;
@@ -634,20 +839,19 @@
           }
         });
       }
-      // Safety guardrail card — built once from the guard_halt descriptor.
       const grail = document.getElementById('guardrail');
       if (s.guard_halt && !grail.dataset.built) {
         grail.append(makeGuardrailCard(s.guard_halt));
         grail.dataset.built = '1';
+        applyRole();
       }
 
-      // Framework labels on the payoff cards.
       const fw = (s.compliance_framework || CONFIG.complianceFramework || 'dora').toUpperCase();
       document.querySelectorAll('#comp-fw, .fw-name').forEach(n => { n.textContent = fw; });
       if (s.journals_dir) state.journalsDir = s.journals_dir;
 
       document.getElementById('foot').textContent =
-        `Runs call MCP tumult_run_experiment with experiment_path as mounted inside the tumult-mcp container. Compliance corpus: ${state.journalsDir || CONFIG.journalsDir || '/journals'}. Trace service: ${state.traceService}.`;
+        `Runs call MCP tumult_run_experiment with experiment_path as mounted inside the tumult-mcp container. Compliance corpus: ${state.journalsDir || '/journals'}. Trace service: ${state.traceService}.`;
     }
 
     // ── Safety guardrail card (auto-halt showcase) ───────────
@@ -662,13 +866,14 @@
         el('div', { class: 'path' }, d.experiment_path),
         confirm,
         el('div', { class: 'foot' },
-          el('button', { class: 'run', onclick: () => confirm.classList.add('show') }, 'Run guardrail'),
+          el('button', { class: 'run op-only', onclick: () => { if (isOperator()) confirm.classList.add('show'); } }, 'Run guardrail'),
+          el('span', { class: 'lock-note' }, 'operator only'),
           el('div', { class: 'state idle' }, el('span', { class: 'lamp' }), el('span', { class: 'label' }, 'idle')),
         ),
         el('div', { class: 'result' }),
       );
       confirm.append(
-        el('div', {}, el('strong', {}, 'Arm the auto-halt guard?'), ' This pauses demo-postgres so the guard fires; rollback restores it.'),
+        el('div', {}, el('strong', {}, 'Arm the auto-halt guard?'), ' This pauses the database so the guard fires; rollback restores it.'),
         el('div', { class: 'row' },
           el('button', { class: 'go', onclick: () => { confirm.classList.remove('show'); runGuardrail(card); } }, 'Yes, arm guard'),
           el('button', { onclick: () => confirm.classList.remove('show') }, 'Cancel'),
@@ -678,6 +883,7 @@
     }
 
     async function runGuardrail(card) {
+      if (!isOperator()) return;
       const btn = card.querySelector('button.run');
       const result = card.querySelector('.result');
       btn.disabled = true;
@@ -693,16 +899,16 @@
         result.innerHTML = '';
         result.append(el('div', {},
           halted
-            ? 'Guard breached on the first unhealthy probe — the run was Halted and rollback restored demo-postgres. This is the expected, safe outcome.'
+            ? 'Guard breached on the first unhealthy probe — the run was Halted and rollback restored the database. This is the expected, safe outcome.'
             : `Outcome: ${body.status} (guard did not fire this run).`));
         result.append(el('a', { href: body.signoz_trace_link || state.traceLink, target: '_blank', rel: 'noopener' },
-          `Open SigNoz traces — filter service = ${state.traceService} ↗`));
+          `Open traces — filter service = ${state.traceService} ↗`));
         if (body.journal_path) result.append(el('div', { class: 'path' }, `journal: ${body.journal_path}${body.ingestion ? ' · ' + body.ingestion : ''}`));
       } catch (err) {
         setStatus(card, 'failed', 'error');
         result.textContent = String(err.message || err);
       } finally {
-        btn.disabled = false;
+        btn.disabled = !isOperator();
       }
     }
 
@@ -794,12 +1000,10 @@
     }
 
     function renderChaosGraph(root, body) {
-      // Fault nodes.
       root.append(graphBlock('Fault nodes', body.faults?.data?.count,
         sectionOr(body.faults, d => el('div', { class: 'chips' },
           ...(d.nodes || []).slice(0, 12).map(n => el('span', { class: 'chip mono' }, n.label || n.id))))));
 
-      // Ego sub-graph around a chosen experiment.
       const center = body.ego_center;
       const egoTitle = center ? `Ego sub-graph · ${center.label}` : 'Ego sub-graph';
       root.append(graphBlock(egoTitle, null,
@@ -812,7 +1016,6 @@
               ' ', labelOf(d.nodes, e.dst))));
         })));
 
-      // Coverage gaps + unevidenced articles.
       root.append(graphBlock('Coverage gaps', body.coverage_gaps?.data?.count,
         sectionOr(body.coverage_gaps, d => {
           const frag = document.createDocumentFragment();
@@ -832,7 +1035,7 @@
         })));
     }
 
-    // ── Chaos loop showcase ──────────────────────────────────
+    // ── Chaos loop showcase (operator only) ──────────────────
     const LOOP_STEPS = [
       { name: 'Discover',  tool: 'tumult_discover' },
       { name: 'Validate',  tool: 'tumult_validate' },
@@ -884,7 +1087,7 @@
       const d = step.detail || {};
       if (step.tool === 'tumult_run_experiment') {
         const frag = document.createDocumentFragment();
-        if (traceLink) frag.append(el('a', { href: traceLink, target: '_blank', rel: 'noopener' }, `Open SigNoz traces — filter service = ${state.traceService} ↗`));
+        if (traceLink) frag.append(el('a', { href: traceLink, target: '_blank', rel: 'noopener' }, `Open traces — filter service = ${state.traceService} ↗`));
         if (d.journal_path) frag.append(el('div', { class: 'tl-path' }, `journal: ${d.journal_path}${d.ingestion ? ' · ' + d.ingestion : ''}`));
         return frag;
       }
@@ -941,7 +1144,7 @@
             setStep(k, 'skipped', { summary: 'skipped — previous step failed' });
           }
           finishLoop(report);
-          document.getElementById('loop-run').disabled = false;
+          document.getElementById('loop-run').disabled = !isOperator();
           return;
         }
         const step = report.steps[i];
@@ -954,6 +1157,7 @@
     }
 
     async function runLoop() {
+      if (!isOperator()) return;
       const btn = document.getElementById('loop-run');
       const verdict = document.getElementById('loop-verdict');
       btn.disabled = true;
@@ -971,11 +1175,11 @@
         const v = document.getElementById('loop-verdict');
         v.className = 'loop-verdict show fail';
         v.textContent = 'Loop could not run — the MCP server is unreachable. It will work once tumult-mcp is back.';
-        btn.disabled = false;
+        btn.disabled = !isOperator();
       }
     }
 
-    // ── New experiment (web authoring) ───────────────────────
+    // ── New experiment (web authoring, read-only) ────────────
     const authoring = { catalog: null };
 
     function currentAction() {
@@ -1052,7 +1256,6 @@
         if (!body.domains || !body.domains.length) { authError('The fault catalog is empty.'); return; }
         renderCatalog(body);
       } catch (err) {
-        // Degrade gracefully — show the error, leave the rest of the page intact.
         authError(`Could not load the fault catalog: ${String(err.message || err)}. The picker will work once tumult-mcp is reachable.`);
       }
     }
@@ -1067,14 +1270,12 @@
       const target = document.getElementById('auth-target').value.trim();
       if (!target) { authError('Target is required.'); return; }
 
-      // Collect argument values (skip blanks so optional args are omitted).
       const args = {};
       document.querySelectorAll('#auth-args input[data-arg]').forEach(inp => {
         const v = inp.value.trim();
         if (v !== '') args[inp.getAttribute('data-arg')] = v;
       });
 
-      // A probe field starting with http(s) is a URL, otherwise an exec command.
       const probe = document.getElementById('auth-probe').value.trim();
       const payload = { plugin: action.plugin, action: action.name, args, target };
       if (probe) {
@@ -1121,7 +1322,6 @@
         btn.textContent = 'Copied ✓';
         setTimeout(() => { btn.textContent = prev; }, 1400);
       } catch {
-        // Clipboard API can be blocked (insecure context) — select the text instead.
         const pre = document.getElementById('auth-toon');
         const range = document.createRange();
         range.selectNodeContents(pre);
@@ -1131,6 +1331,7 @@
       }
     }
 
+    // ── Wiring ───────────────────────────────────────────────
     document.getElementById('auth-domain').addEventListener('change', fillActions);
     document.getElementById('auth-action').addEventListener('change', onActionChange);
     document.getElementById('auth-gen').addEventListener('click', generateExperiment);
@@ -1154,10 +1355,13 @@
       } catch (e) {
         const pill = document.getElementById('mcp-pill');
         pill.className = 'pill offline';
-        document.getElementById('mcp-text').textContent = 'MCP: offline, retrying…';
+        document.getElementById('mcp-text').textContent = 'MCP: offline';
       }
     }
 
+    // Resolve the role first (least privilege until it does), then start polling.
+    applyRole();
+    loadWhoami();
     poll();
     setInterval(poll, 5000);
   </script>

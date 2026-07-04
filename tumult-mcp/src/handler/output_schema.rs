@@ -25,6 +25,7 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_trend",
     "tumult_gameday_create",
     "tumult_agents",
+    "tumult_whoami",
     "tumult_recommend",
     "tumult_store_stats",
     "tumult_coverage",
@@ -184,6 +185,20 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                             "detail": { "type": "string" },
                         },
                     },
+                },
+            }),
+        )),
+        "tumult_whoami" => Some(schema_object(
+            &["role", "authenticated"],
+            json!({
+                "role": {
+                    "type": "string",
+                    "enum": ["viewer", "operator"],
+                    "description": "The caller's resolved access role: viewer (read-only tools) or operator (all tools).",
+                },
+                "authenticated": {
+                    "type": "boolean",
+                    "description": "True when a configured bearer token validated the request; false in loopback open mode (no auth configured).",
                 },
             }),
         )),

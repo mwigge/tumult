@@ -4,6 +4,28 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.11.0] - 2026-07-04
+
+A real, role-aware Web UI — the control panel becomes a deployable product, not a
+demo-only page, and it enforces the same RBAC tiers as the server.
+
+Added:
+- `tumult_whoami` MCP tool (read-only): returns the caller's resolved role
+  (`{role, authenticated}`), so a UI/client can adapt to its permissions. Tool
+  count 29 -> 30.
+- Web UI app shell: a left-nav layout (Overview / Author / Run / Analytics /
+  Compliance / ChaosGraph) replacing the single-scroll demo page; every existing
+  card preserved. Theme-aware, responsive.
+- Role-aware rendering: the UI calls `tumult_whoami` on load and shows a role
+  badge; a **viewer** gets the Run/inject section locked (read-only banner,
+  disabled operator controls) while keeping Author-preview/Analytics/Compliance/
+  ChaosGraph; an **operator** gets everything. Defense in depth — the JS gates
+  actions and the server enforces regardless. Whoami failure assumes least
+  privilege (viewer).
+- Product decoupling: neutral `TUMULT_UI_*` env vars (with `DEMO_*`/legacy
+  fallbacks so the demo is unchanged) let the same UI run against any tumult-mcp;
+  `demo/control-panel/README.md` documents standalone deployment (env table,
+  viewer/operator behavior, Compose + k8s snippets).
 ## [2.10.0] - 2026-07-04
 
 Role-based access control on the MCP server — the safety control that answers

@@ -16,6 +16,7 @@ mod listing;
 mod recommend;
 mod reporting;
 mod validation;
+mod whoami;
 
 pub use agentic::{agentic_list_scenarios, agentic_run_experiment, agentic_smoke};
 pub use agents::agents;
@@ -36,6 +37,7 @@ pub use reporting::{compliance, report, trend};
 pub use validation::{
     safe_resolve_output_path, safe_resolve_path, validate_action_name, validate_select_only,
 };
+pub use whoami::whoami;
 
 /// A tool result carrying both human-readable text content and the
 /// structured JSON object placed in `CallToolResult::structured_content`.
