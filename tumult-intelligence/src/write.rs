@@ -3,7 +3,7 @@
 //! Agent-proposed experiments pass a validation gate before touching disk:
 //! each `toon` block is parsed (`parse_experiment`) and validated
 //! (`validate_experiment`); only valid experiments are written, and
-//! rejections are reported honestly in the summary. Shared by the CLI's
+//! rejections are reported explicitly in the summary. Shared by the CLI's
 //! `tumult recommend --agent` flow and the MCP `tumult_recommend` tool.
 
 use std::fmt::Write as _;

@@ -2,7 +2,7 @@
 
 Thin connectors to cloud providers' **own** fault / chaos APIs.
 
-This crate does **not** reimplement cloud faults. It is a small, honest bridge
+This crate does **not** reimplement cloud faults. It is a small, thin bridge
 that drives each provider's managed fault service (where one exists) and adds a
 couple of direct high-signal faults that do not need a preconfigured template.
 The goal is not to chase AWS FIS's breadth — it is to *connect* Tumult
@@ -90,7 +90,7 @@ We use a plain `reqwest` client plus a ~120-line SigV4 signer instead of the
   single-binary ethos.
 - The surface we need is tiny and stable: three FIS REST-JSON calls, two EC2
   Query calls, and a handful of ARM / Compute bearer-token calls.
-- A hand-rolled signer stays honest because it is pinned to the canonical AWS
+- A hand-rolled signer stays correct because it is pinned to the canonical AWS
   SigV4 `get-vanilla` test-suite vector (`src/sigv4.rs` tests), so a regression
   in the signing math fails a unit test rather than silently producing bad
   signatures.

@@ -134,7 +134,7 @@ def test_token_efficiency() -> None:
         ["docker", "exec", MCP_CONTAINER, "sh", "-c", f"wc -c < {JOURNAL_DIR}/demo-net.journal.toon"],
         capture_output=True, text=True).stdout.strip() or "1920")
     ratio = one_journal / per_run_graph
-    # Honest floor: a run costs the graph one node + its edges (~200 chars) vs a
+    # Conservative floor: a run costs the graph one node + its edges (~200 chars) vs a
     # full journal (~1900). ~8x in the demo; assert a comfortable floor.
     check("per-run graph delta >= 5x smaller than a journal", ratio >= 5,
           f"+{per_run_graph} chars/run in graph vs {one_journal} chars/journal = {ratio:.0f}x")

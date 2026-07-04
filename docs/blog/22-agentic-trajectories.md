@@ -51,7 +51,7 @@ Per-step contracts (valid JSON, required citation, retry budget, fallback used) 
 - **terminates-healthy** — the final step must be healthy. Did the agent end in a good state?
 - **step-budget** — the trajectory must not exceed N steps. Did it run away?
 
-## Three packs, three honest outcomes
+## Three packs, three real outcomes
 
 2.6.0 bundles three trajectory packs. They're not all green-lights — the point is to show the machinery catching real agent-graph failure modes *and* correctly passing a resilient one.
 
@@ -134,7 +134,7 @@ The packs run against bundled deterministic fake adapters. No network, no API ke
    surfaces the pack metadata
 ```
 
-That deterministic-by-design choice is deliberate, and worth being honest about: these packs model agent-graph failure modes against fake adapters so the same fault produces the same trajectory every time — reproducible, seedable, CI-friendly. They are not pointed at your live agent. When you want to fault-test a real agent CLI, that's the `tumult-agent-cli` path, which already shipped — the adapter layer that drives Claude Code and Codex non-interactively. Trajectory packs are the *model* of how an agent graph breaks; the live-client path is where you point it at the real thing.
+That deterministic-by-design choice is deliberate, and worth spelling out: these packs model agent-graph failure modes against fake adapters so the same fault produces the same trajectory every time — reproducible, seedable, CI-friendly. They are not pointed at your live agent. When you want to fault-test a real agent CLI, that's the `tumult-agent-cli` path, which already shipped — the adapter layer that drives Claude Code and Codex non-interactively. Trajectory packs are the *model* of how an agent graph breaks; the live-client path is where you point it at the real thing.
 
 ## Try it
 

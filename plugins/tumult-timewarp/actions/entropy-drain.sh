@@ -1,14 +1,14 @@
 #!/bin/sh
 # entropy-drain — apply read pressure on the kernel RNG (/dev/random).
 #
-# Mechanism & honest limits
+# Mechanism & limits
 # --------------------------
 # Spawns N background workers that continuously read from /dev/random. On
 # kernels < 5.6 this genuinely drains the blocking pool and drops
 # entropy_avail; on modern kernels (>= 5.6, and any container on a current
 # host) the CRNG never blocks and entropy_avail is effectively a constant
 # (~256), so this becomes RNG *read/CPU* pressure rather than true depletion.
-# That is the honest state of the world — /dev/random no longer blocks — and
+# That is the actual state of the world — /dev/random no longer blocks — and
 # is documented in the plugin README. Pair with the crypto-throughput probe to
 # observe the real, measurable effect (slower crypto ops under contention).
 #

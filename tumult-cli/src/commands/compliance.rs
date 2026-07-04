@@ -121,7 +121,7 @@ pub fn cmd_compliance(
 }
 
 /// Print every registry citation for `framework` with its title, summary,
-/// evidence note, honesty grade, source URL and last-verified date.
+/// evidence note, evidence-strength grade, source URL and last-verified date.
 fn print_citations(framework: tumult_core::compliance::ComplianceFramework) {
     for c in framework.citations() {
         println!("  {} — {}", c.control_id, c.title);

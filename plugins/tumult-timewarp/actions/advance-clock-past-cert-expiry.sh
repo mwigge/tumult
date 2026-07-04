@@ -1,7 +1,7 @@
 #!/bin/sh
 # advance-clock-past-cert-expiry — prove that clock skew breaks TLS auth.
 #
-# Mechanism & honest limits
+# Mechanism & limits
 # --------------------------
 # Mints a short-lived self-signed cert, then verifies it TWICE with openssl:
 #   1. at the real current time            -> MUST succeed (steady state)
@@ -9,7 +9,7 @@
 # `openssl verify -attime <epoch>` feeds the verifier the exact wall-clock a
 # skewed client/server would see, so this reproduces a real clock-skew auth
 # failure deterministically WITHOUT changing any system clock (which in a
-# shared-kernel container we cannot safely do). This is the honest, portable
+# shared-kernel container we cannot safely do). This is the portable
 # stand-in for "the node's clock jumped past the cert's expiry".
 #
 # Writes a machine-readable marker file for a follow-up probe to assert on.

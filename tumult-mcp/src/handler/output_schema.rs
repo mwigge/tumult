@@ -104,7 +104,7 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 "journals_evaluated": { "type": "integer" },
                 "disclaimer": {
                     "type": "string",
-                    "description": "Honesty disclaimer: experiments produce evidence toward controls, not a compliance determination.",
+                    "description": "Scope disclaimer: experiments produce evidence toward controls, not a compliance determination.",
                 },
                 "source_url": {
                     "type": "string",
@@ -121,7 +121,7 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                             "title": { "type": "string" },
                             "requires": { "type": "string", "description": "What the control actually requires." },
                             "evidence_type": { "type": "string" },
-                            "strength": { "type": "string", "description": "Honesty grade: direct / supporting / indirect." },
+                            "strength": { "type": "string", "description": "Evidence-strength grade: direct / supporting / indirect." },
                             "evidence_note": { "type": "string", "description": "How a Tumult experiment provides evidence toward the control." },
                             "source_url": { "type": "string" },
                             "last_verified": { "type": "string", "description": "ISO date the citation was last checked against the official source." },

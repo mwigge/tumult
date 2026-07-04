@@ -171,7 +171,7 @@ impl EvidenceType {
 }
 
 /// How strongly a Tumult experiment can evidence a control. This is an
-/// honesty grade, not a compliance grade.
+/// evidence-strength grade, not a compliance determination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvidenceStrength {
     /// The control is directly about resilience/recovery testing; a passing
@@ -198,7 +198,7 @@ impl EvidenceStrength {
 
 /// One row of the compliance mapping registry: a single regulatory control,
 /// the official source it comes from, the date that citation was last
-/// verified against that source, and the honest evidence a Tumult experiment
+/// verified against that source, and the evidence a Tumult experiment
 /// supplies toward it.
 ///
 /// This is the single source of truth shared by the CLI `compliance` command
@@ -219,7 +219,7 @@ pub struct Citation {
     pub summary: &'static str,
     /// The evidence type a Tumult experiment supplies toward this control.
     pub evidence_type: EvidenceType,
-    /// Honesty grade of the mapping.
+    /// Evidence-strength grade of the mapping.
     pub strength: EvidenceStrength,
     /// How a Tumult experiment provides evidence — worded as EVIDENCE toward
     /// the control, never as a guarantee of compliance.

@@ -1,7 +1,7 @@
 #!/bin/sh
 # token-ttl — prove that clock skew breaks short-lived token (JWT/session) auth.
 #
-# Mechanism & honest limits
+# Mechanism & limits
 # --------------------------
 # Mints a signed bearer token of the form  "exp=<epoch>.<hmac>"  with a short
 # TTL, then validates it TWICE:

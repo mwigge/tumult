@@ -10,7 +10,7 @@ nav_order: 21
 
 Since 1.0, Tumult has had an MCP server. It worked. It also treated the agent on the other end like a tourist: 19 tools, all returning prose, no way to tell a harmless read from a fault injection, and an experiment runner that threw its journal away the moment the call returned.
 
-2.1.0 rebuilds that surface into something spec-honest. 24 tools. Annotations on every one. Structured output with advertised schemas on 16. Workspace files served as real MCP resources. And — the part that changes what an agent can actually *do* — the run→analyze→recommend loop now closes entirely over MCP.
+2.1.0 rebuilds that surface into something spec-faithful. 24 tools. Annotations on every one. Structured output with advertised schemas on 16. Workspace files served as real MCP resources. And — the part that changes what an agent can actually *do* — the run→analyze→recommend loop now closes entirely over MCP.
 
 Let's take those one at a time.
 
@@ -78,7 +78,7 @@ The split is stark, and that's the point:
 
 A well-behaved MCP client reads these hints and does the obvious thing: let the agent grep through journals, compliance verdicts, and coverage reports without ceremony — and put a human approval gate in front of the two tools that pause your Redis or kill your database connections.
 
-One honest annotation worth calling out: `tumult_recommend` is marked `openWorldHint: true`, but not because Tumult phones home. When you pass `agent: claude-code`, the tool spawns your local agent CLI, and *that* may call its model API. The annotation tells the truth about the blast radius.
+One annotation worth calling out: `tumult_recommend` is marked `openWorldHint: true`, but not because Tumult phones home. When you pass `agent: claude-code`, the tool spawns your local agent CLI, and *that* may call its model API. The annotation tells the truth about the blast radius.
 
 ## Structured output: schemas, not prose
 

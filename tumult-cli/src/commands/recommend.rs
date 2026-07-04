@@ -4,7 +4,7 @@
 //! Agent-proposed experiments pass a validation gate before touching disk
 //! (`tumult_intelligence::write_validated_experiments`): each `toon` block
 //! is parsed and validated; only valid experiments are written, and
-//! rejections are reported honestly in the summary.
+//! rejections are reported explicitly in the summary.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;

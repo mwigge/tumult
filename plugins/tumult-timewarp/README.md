@@ -10,7 +10,7 @@ Runs from any Tumult runner (in the demo, the `tumult-mcp` container). Targets
 can be the runner itself (helper processes) or sibling containers via
 `docker exec` (`TUMULT_TARGET`).
 
-## Why this is honest about mechanism
+## What this plugin actually does to the clock
 
 Containers in docker-compose **share the host kernel clock**. Two things follow
 that shape every action here:
@@ -29,7 +29,7 @@ a shared-kernel environment.
 
 ## Actions
 
-| Action | Mechanism | Honest limit |
+| Action | Mechanism | Limit |
 |---|---|---|
 | `skew-clock` | `faketime "+Ns" <cmd>` — per-process wall-clock offset via libfaketime | Affects only the wrapped process; requires `libfaketime` present (on the runner, or in `TUMULT_TARGET`). Not installed in the stock demo image — the action detects this and exits 1 with guidance. |
 | `advance-clock-past-cert-expiry` | Mints a short-lived self-signed cert, then `openssl verify -attime <now>` (valid) vs `-attime <now+skew>` (expired) | Models skew by feeding the verifier a future time — the exact input a drifted clock would give. Requires `openssl`. Writes `cert-result.txt` (`EXPIRED_UNDER_SKEW`). |
@@ -54,7 +54,7 @@ a shared-kernel environment.
   *does* work it moves the shared host clock — skewing SigNoz, the collector,
   the runner and every sibling at once. That is not a targeted fault; it is a
   self-inflicted outage of the whole stack. `skew-clock` (faketime) is the
-  honest, contained substitute.
+  contained substitute.
 - **Time-namespace wall-clock skew (`unshare --time`).** Rejected: time
   namespaces do not virtualize `CLOCK_REALTIME`, so they cannot skew wall clock
   at all — only monotonic/boottime, which cert/token/TLS logic does not use.

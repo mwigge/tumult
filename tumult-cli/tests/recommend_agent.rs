@@ -153,7 +153,7 @@ fn recommend_agent_text_end_to_end_writes_valid_and_rejects_invalid() {
     let experiment = parse_experiment(&content).expect("written experiment parses");
     validate_experiment(&experiment).expect("written experiment validates");
 
-    // Invalid experiment rejected, not written, counted honestly.
+    // Invalid experiment rejected, not written, counted accurately.
     assert!(output.contains("Rejected experiment:"), "{output}");
     assert!(
         output.contains("1 experiment(s) written, 1 rejected (validation failed)"),

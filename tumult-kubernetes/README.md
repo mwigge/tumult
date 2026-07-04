@@ -30,7 +30,7 @@ docs for full detail.
 | `pod_network_latency` | Ephemeral container running `tc qdisc add … netem delay` in the pod's shared network namespace, self-terminating after `duration_s` (then `tc qdisc del`). Requests `NET_ADMIN`. | `namespace`, `pod` **or** `label_selector`, `delay_ms`, `jitter_ms`, `duration_s`, `iface`, `image` |
 | `pod_stress` | Ephemeral container running `stress-ng` in the target container's process namespace (`targetContainerName`), self-terminating via `--timeout`. | `namespace`, `pod` **or** `label_selector`, `cpu_workers` **or** `mem_bytes`, `duration_s`, `target_container`, `image` |
 
-### Honest limitations (vanilla cluster)
+### Limitations (vanilla cluster)
 
 - **Feature gate.** Ephemeral containers are GA / on-by-default since Kubernetes
   1.25. On older clusters the subresource returns NotFound and injection fails

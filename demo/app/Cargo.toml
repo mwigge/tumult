@@ -49,7 +49,7 @@ tracing-opentelemetry = "0.33"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 
-# Keep clippy honest without denying at build time (avoids breaking the Docker
+# Keep clippy strict without denying at build time (avoids breaking the Docker
 # build on a future pedantic lint). The verify step runs `clippy -D warnings`.
 [lints.clippy]
 pedantic = "warn"

@@ -20,7 +20,7 @@ No API keys handed to Tumult. No new subscription. Your CLI, your login, your mo
 
 ## Why heuristics plateau
 
-The heuristic engine is honest about what it knows: coverage gaps, failure counts, timestamps. What it can't do is *reason*. It will tell you `tumult-kafka/kill-broker` has never been tested; it won't tell you that testing it *before* your consumer-lag experiment is pointless because the lag probe is what makes the broker kill interpretable.
+The heuristic engine reports only what it knows: coverage gaps, failure counts, timestamps. What it can't do is *reason*. It will tell you `tumult-kafka/kill-broker` has never been tested; it won't tell you that testing it *before* your consumer-lag experiment is pointless because the lag probe is what makes the broker kill interpretable.
 
 That kind of judgment is exactly what a frontier model is good at. And you probably already have one on your machine, wearing a CLI.
 
@@ -124,7 +124,7 @@ Second, we don't trust that instruction. With `--generate-experiments <dir>`, ev
   2 experiment(s) written, 1 rejected (validation failed)
 ```
 
-Rejections aren't swallowed. Each one is printed with its validation error, and the summary line counts both sides honestly. A hallucinated plugin, a method with no steps, a broken regex tolerance — none of it gets a file.
+Rejections aren't swallowed. Each one is printed with its validation error, and the summary line counts both sides. A hallucinated plugin, a method with no steps, a broken regex tolerance — none of it gets a file.
 
 (A written experiment is validated, not vetted. Read it, `tumult run --dry-run` it, *then* point it at infrastructure. We're a chaos engineering tool, not a chaos generation tool.)
 

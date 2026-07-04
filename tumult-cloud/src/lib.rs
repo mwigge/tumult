@@ -18,7 +18,7 @@
 //!   (`AZURE_ACCESS_TOKEN`).
 //! - **Google Cloud** — GCP has **no** first-party managed chaos service, so
 //!   only a direct Compute Engine instance stop is provided
-//!   (`GOOGLE_OAUTH_ACCESS_TOKEN`). See [`gcp`] for the honest scope note.
+//!   (`GOOGLE_OAUTH_ACCESS_TOKEN`). See [`gcp`] for the scope note.
 //!
 //! # Design
 //!

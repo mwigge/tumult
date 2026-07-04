@@ -24,7 +24,7 @@ It exits non-zero if any check fails.
 
 ## What it proves
 
-**ChaosGraph token efficiency (5 checks).** The honest claim is *boundedness*, not
+**ChaosGraph token efficiency (5 checks).** The actual claim is *boundedness*, not
 a flat multiplier:
 
 - a targeted `chaosgraph_neighbors` answer is small (~110 tokens) **and**

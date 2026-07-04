@@ -289,7 +289,7 @@ Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool and re
 
 An agent answering "what did this experiment touch?" does not need a whole journal. It needs a node's neighbourhood. ChaosGraph is a typed knowledge graph built from journals **as they ingest** — five node kinds (`experiment`, `fault`, `service`, `journal`, `deviation`) joined by typed edges (`injects`, `targets`, `yielded`, `observed_on`, `exhibited`) — persisted in two DuckDB tables (`graph_nodes`, `graph_edges`, analytics schema v2, additive migration; no new service, the single binary is preserved). The two read-only MCP tools above serve compact sub-graphs instead of raw JSON.
 
-The win is token cost, and it **compounds with history** — which is the honest, measurable claim (run `make demo-proof` to reproduce every number below against your own demo):
+The win is token cost, and it **compounds with history** — which is the measurable claim (run `make demo-proof` to reproduce every number below against your own demo):
 
 - A **targeted** question — "what fault does this experiment inject, what service does it hit?" — is answered by `tumult_chaosgraph_neighbors` (with a `rel` filter) in **~110 tokens**, and that answer stays the same size no matter how many times you run the experiment.
 - Reading the raw journal costs **~480 tokens** — and the corpus grows by another journal *every run*.
@@ -438,7 +438,7 @@ tumult recommend --agent claude-code --generate-experiments out/experiments
 tumult agents
 ```
 
-Every agent-proposed experiment passes a **validation gate** before touching disk: it is parsed and validated with the same engine that runs experiments (`parse_experiment` + `validate_experiment`). Valid experiments are written to `<dir>/<title-slug>.toon` (never overwriting — collisions get `-2`, `-3`, ... suffixes); invalid ones are rejected with the validation error and counted honestly in the summary.
+Every agent-proposed experiment passes a **validation gate** before touching disk: it is parsed and validated with the same engine that runs experiments (`parse_experiment` + `validate_experiment`). Valid experiments are written to `<dir>/<title-slug>.toon` (never overwriting — collisions get `-2`, `-3`, ... suffixes); invalid ones are rejected with the validation error and counted explicitly in the summary.
 
 The adapters resolve their binaries from `PATH`, overridable with `CLAUDE_CODE_BIN` / `CODEX_BIN`; API-key auth (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) is inherited from the environment. See [Agentic Recommendations](docs/guides/agentic-recommendations.md) for the adapter contract, prompt contents, and how to add a new adapter.
 

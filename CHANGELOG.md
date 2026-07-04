@@ -20,7 +20,7 @@ Changed:
   (O(1)) regardless of run history.
 - Corrected the ChaosGraph token claim across README/docs/blog: replaced the flat
   "~37x" (which was benchmarked on a large GameDay journal + a fresh graph) with
-  the honest, reproducible framing — a targeted answer stays ~110 tokens no
+  the reproducible framing — a targeted answer stays ~110 tokens no
   matter how many runs accumulate, the graph is ~8x more compact per run of
   history, and store-wide questions cost ~20x less than reading every journal.
   Every figure is reproducible via `make demo-proof`.
@@ -92,7 +92,7 @@ Added:
   - `pod_stress`: runs `stress-ng` (CPU or memory) in the target container's
     process namespace, self-terminating via `--timeout`.
   Closes the biggest capability gap vs Chaos Mesh/Litmus (control-plane-only k8s)
-  while preserving the no-control-plane, single-binary identity. Honest limits
+  while preserving the no-control-plane, single-binary identity. Limits
   documented (ephemeral containers GA since k8s 1.25, cannot be removed once
   attached, `tc` needs NET_ADMIN). Validated by hermetic fake-apiserver tests
   asserting exact apiserver traffic + a k3d validation script (scripts/k8s-demo.sh)
@@ -135,7 +135,7 @@ Added:
 Changed:
 - Compliance mappings audited against official sources and corrected. Every
   citation now lives in a single dated, sourced registry (framework, control id,
-  evidence type, honesty strength, source URL, last_verified) shared by the CLI
+  evidence type, evidence strength, source URL, last_verified) shared by the CLI
   and MCP. `tumult compliance --sources` lists them; a staleness test fails once
   any citation exceeds 18 months unverified. Wrong/outdated citations fixed
   (e.g. ISO 27001 A.17 → A.5.30; PCI pen-testing overreach removed; DORA Art. 28
@@ -172,7 +172,7 @@ Changed:
 
 ## [2.1.0] - 2026-07-04
 
-The MCP server grows from 19 to 24 tools and becomes a spec-honest,
+The MCP server grows from 19 to 24 tools and becomes a spec-faithful,
 first-class operator surface: tool annotations on every tool, structured
 content with advertised output schemas on 16, workspace files served as
 `tumult://` resources, and a run→ingest→recommend feedback loop that now

@@ -1,12 +1,12 @@
 #!/bin/sh
 # skew-clock — shift a process's perceived wall-clock forward/back by N seconds.
 #
-# Mechanism & honest limits
+# Mechanism & limits
 # --------------------------
 # Containers in docker-compose share the HOST kernel clock. Linux time
 # namespaces virtualize only CLOCK_MONOTONIC / CLOCK_BOOTTIME, NOT
 # CLOCK_REALTIME (wall clock), and `date -s` needs CAP_SYS_TIME and would
-# move the *host* clock (unsafe, usually denied). The realistic, honest lever
+# move the *host* clock (unsafe, usually denied). The realistic lever
 # for per-target wall-clock skew is therefore libfaketime (LD_PRELOAD): it
 # shifts the perceived time of the *process it wraps only*, without touching
 # the host or other processes. That is what this action does.
@@ -52,7 +52,7 @@ run() {
         if ! command -v faketime >/dev/null 2>&1; then
             echo "error: faketime (libfaketime) not found on the runner." >&2
             echo "  install with: apt-get install -y libfaketime   (Debian/Ubuntu)" >&2
-            echo "  faketime is the only honest per-process wall-clock lever in a" >&2
+            echo "  faketime is the only safe per-process wall-clock lever in a" >&2
             echo "  shared-kernel container; see the plugin README." >&2
             exit 1
         fi

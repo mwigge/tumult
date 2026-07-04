@@ -27,7 +27,7 @@
 //!   namespace so the load lands alongside the real workload. `stress-ng
 //!   --timeout` makes it self-terminating.
 //!
-//! # Honest limitations (vanilla cluster)
+//! # Limitations (vanilla cluster)
 //!
 //! - **Ephemeral containers must be enabled.** GA and on-by-default since
 //!   Kubernetes 1.25. On older clusters the `ephemeralcontainers` subresource

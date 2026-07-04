@@ -1,14 +1,14 @@
 #!/bin/sh
 # rng-pressure — sustain crypto/RNG load to stress the CRNG + crypto path.
 #
-# Mechanism & honest limits
+# Mechanism & limits
 # --------------------------
 # Spawns N background workers that hammer the userspace crypto RNG by
 # generating random bytes in a tight loop (openssl rand when available, else
 # reads of /dev/urandom). This contends for the CRNG and for CPU, which is the
 # realistic way "entropy/crypto skew" manifests today: not blocking on entropy,
 # but degraded throughput/latency for RNG-dependent crypto (TLS handshakes, key
-# generation). Measure the effect with the crypto-throughput probe. Honest
+# generation). Measure the effect with the crypto-throughput probe. Note the
 # limit: this is contention-driven slowdown, not entropy-pool depletion.
 #
 # Workers self-terminate after TUMULT_RNG_DURATION. PIDs go to a pidfile so

@@ -131,7 +131,7 @@ runs the sweep best-effort to warm the dashboards without failing the caller.
 | 18889 | collector Prometheus (host + APM metrics) |
 | 13133 | collector health   |
 
-## Honest caveats
+## Caveats
 
 This demo runs in pure `docker compose` with no extra privilege beyond the
 Docker socket. A few domains are scoped to what actually works in that

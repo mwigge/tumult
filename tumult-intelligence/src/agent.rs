@@ -248,7 +248,7 @@ pub fn enhance(
 /// Everything outside `toon`-tagged fences (including fenced blocks with other
 /// tags) stays in the recommendation text. An unterminated `toon` fence is
 /// handled gracefully: its partial content is still returned as a block so
-/// the caller's validation gate can reject it honestly instead of it
+/// the caller's validation gate can reject it explicitly instead of it
 /// vanishing silently.
 #[must_use]
 pub fn split_toon_blocks(response: &str) -> (String, Vec<String>) {

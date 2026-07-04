@@ -89,7 +89,7 @@ the two sides remain separate traces correlated by attribute
 
 ## Trace-Nesting Tiers
 
-Honesty matters here: the clients do not nest equally. There are three tiers.
+One caveat matters here: the clients do not nest equally. There are three tiers.
 
 | Tier | Behaviour | Clients |
 |---|---|---|

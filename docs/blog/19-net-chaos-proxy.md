@@ -16,7 +16,7 @@ If your process can open a socket, it can inject faults.
 
 ## Where it sits
 
-The trick is old and honest: don't touch the network — *be* the network. Point your client at the proxy instead of the real service, and every byte flows through a fault stack on its way to the upstream.
+The trick is old and simple: don't touch the network — *be* the network. Point your client at the proxy instead of the real service, and every byte flows through a fault stack on its way to the upstream.
 
 ```
                         the only privilege required:
@@ -40,7 +40,7 @@ The trick is old and honest: don't touch the network — *be* the network. Point
 
 Each accepted connection is split into its two halves, and the write side of each direction gets wrapped in `tokio-netem`'s I/O adapters. Faults are *directional* — latency is a one-way delay added to writes, which is how real asymmetric network pain actually behaves.
 
-One honest scope note: this is a **TCP** proxy. That's the layer it lives at, and that's the layer it faults.
+One scope note: this is a **TCP** proxy. That's the layer it lives at, and that's the layer it faults.
 
 ## The fault menu
 

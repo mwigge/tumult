@@ -195,7 +195,7 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         )
         .ok();
     } else if gameday.load.is_some() {
-        // Honesty over silence: the campaign declared load but no result
+        // Report the gap rather than stay silent: the campaign declared load but no result
         // came back (e.g. the k6 binary is not installed on this host).
         writeln!(
             output,

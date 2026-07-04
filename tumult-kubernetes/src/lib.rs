@@ -22,7 +22,7 @@
 //!
 //! These close the data-plane gap versus Chaos Mesh / `LitmusChaos` **without** a
 //! permanent privileged `DaemonSet`: the injected container is short-lived and
-//! self-terminating. See the [`inject`] module docs for the honest lifecycle
+//! self-terminating. See the [`inject`] module docs for the lifecycle
 //! limits (ephemeral containers are GA since 1.25 and cannot be removed once
 //! attached).
 //!

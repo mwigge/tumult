@@ -164,7 +164,7 @@ run #3        exp ──yielded──► run:…a
 
 This is validated on the live demo: three consecutive runs grew the experiment's journal count 7 → 8 → 9 → 10, and `chaosgraph_query` / `chaosgraph_neighbors` returned the correct sub-graphs after each.
 
-## Current scope (Phase 1) and honest limits
+## Current scope (Phase 1) and limits
 
 Phase 1 is deliberately narrow:
 

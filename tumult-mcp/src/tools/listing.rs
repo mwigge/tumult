@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn list_experiments_paginates_with_honest_totals() {
+    fn list_experiments_paginates_with_accurate_totals() {
         let dir = TempDir::new().unwrap();
         for i in 0..5 {
             std::fs::write(

@@ -58,7 +58,7 @@ DORA is the most prescriptive framework for resilience testing in financial serv
 
 **Requirement**: Financial entities identified as systemically important shall carry out threat-led penetration testing (TLPT) at least every 3 years on live production systems, covering critical or important functions, per the TLPT Regulatory Technical Standards and TIBER-EU.
 
-> **Honesty note (indirect mapping):** Tumult experiments are resilience tests, **not** threat-led penetration tests, and do **not** satisfy TLPT. TLPT requires a red team simulating a real adversary. Tumult can *inform* TLPT scenario design and evidence recovery under the kinds of scenarios a red team might trigger — nothing more. Do not represent Tumult runs as TLPT evidence.
+> **Scope note (indirect mapping):** Tumult experiments are resilience tests, **not** threat-led penetration tests, and do **not** satisfy TLPT. TLPT requires a red team simulating a real adversary. Tumult can *inform* TLPT scenario design and evidence recovery under the kinds of scenarios a red team might trigger — nothing more. Do not represent Tumult runs as TLPT evidence.
 
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|

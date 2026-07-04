@@ -367,7 +367,7 @@ mod tests {
         assert!(items[0].as_str().unwrap().ends_with("b.toon"));
         assert!(report.text.ends_with("b.toon"));
 
-        // Offset past the end yields an empty page but the honest total.
+        // Offset past the end yields an empty page but the true total.
         let report = list_journals(dir.path().to_str().unwrap(), 10, 10).unwrap();
         assert_eq!(report.structured["total"], 3);
         assert!(report.structured["items"].as_array().unwrap().is_empty());

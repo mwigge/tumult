@@ -43,7 +43,7 @@ The trick is which nodes are *stable*. `experiment`, `fault`, and `service` recu
 
 This is the part that matters for anyone paying for context.
 
-Here's the honest version — and every number is reproducible; `make demo-proof` measures it against your own demo. A targeted `chaosgraph_neighbors` call (with a `rel` filter) answers "what fault does this inject, what service does it hit?" in about **110 tokens**, and — this is the point — that answer *stays that size no matter how many times you run the experiment*. The raw journal is about **480 tokens**, and you get another one every single run. So the graph is roughly **8× more compact per run of history**, answers store-wide questions in about **20× less** than reading every journal, and keeps a targeted answer bounded while journal-reading grows without limit.
+Here's the precise version — and every number is reproducible; `make demo-proof` measures it against your own demo. A targeted `chaosgraph_neighbors` call (with a `rel` filter) answers "what fault does this inject, what service does it hit?" in about **110 tokens**, and — this is the point — that answer *stays that size no matter how many times you run the experiment*. The raw journal is about **480 tokens**, and you get another one every single run. So the graph is roughly **8× more compact per run of history**, answers store-wide questions in about **20× less** than reading every journal, and keeps a targeted answer bounded while journal-reading grows without limit.
 
 ```
 before:  every run adds a full journal to what you'd read
@@ -74,7 +74,7 @@ The whole surface is two MCP tools (they took the count from 24 to 26).
 
 `tumult_chaosgraph_query` lists nodes of a kind — "show me every fault", "every service" — with an optional label filter.
 
-`tumult_chaosgraph_neighbors` is the good one. Give it a node and it hands back the ego sub-graph: everything within `depth` (default 1), as `(src)-[rel]->(dst)` tuples plus labels. Here's a real, honest result — the demo's network-latency experiment, centred, depth 1:
+`tumult_chaosgraph_neighbors` is the good one. Give it a node and it hands back the ego sub-graph: everything within `depth` (default 1), as `(src)-[rel]->(dst)` tuples plus labels. Here's a real result — the demo's network-latency experiment, centred, depth 1:
 
 ```json
 {
@@ -120,7 +120,7 @@ We watched this happen on the live demo: three experiments in a row, the journal
 
 ## What it isn't yet
 
-Being honest about Phase 1: service nodes and the `targets` / `observed_on` edges only come out for experiments whose provider arguments name a target the extractor recognises (`upstream`, `target`, `host`, `service`, and a few more — scheme, path, and port stripped off). Journal-only ingests get faults but no service. There's no compliance or coverage data on the nodes yet, and no blast-radius or shortest-path queries beyond expanding a fixed depth.
+The limits of Phase 1: service nodes and the `targets` / `observed_on` edges only come out for experiments whose provider arguments name a target the extractor recognises (`upstream`, `target`, `host`, `service`, and a few more — scheme, path, and port stripped off). Journal-only ingests get faults but no service. There's no compliance or coverage data on the nodes yet, and no blast-radius or shortest-path queries beyond expanding a fixed depth.
 
 Phase 2 is where that opens up: generalised service extraction across every provider shape, a compliance/coverage overlay so an agent can ask "which services have untested faults?" straight from the graph, and real blast-radius and path traversals.
 
