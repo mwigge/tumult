@@ -126,37 +126,122 @@ fn execute_single_activity(
     result
 }
 
+/// A counting gate that caps how many background faults execute concurrently
+/// and records the peak concurrency observed.
+///
+/// This is the enforceable, in-process half of the blast-radius knob: it
+/// bounds the number of background method activities running at the same
+/// instant on this host. It does **not** — and cannot — bound faults injected
+/// by other processes, other Tumult runs, or the wider cluster; that boundary
+/// is documented on [`crate::runner::RunConfig::max_concurrent_faults`].
+struct FaultGate {
+    cap: Option<usize>,
+    state: std::sync::Mutex<GateState>,
+    available: std::sync::Condvar,
+}
+
+#[derive(Default)]
+struct GateState {
+    active: usize,
+    peak: u32,
+}
+
+impl FaultGate {
+    fn new(cap: Option<u32>) -> Self {
+        Self {
+            cap: cap.map(|c| c as usize),
+            state: std::sync::Mutex::new(GateState::default()),
+            available: std::sync::Condvar::new(),
+        }
+    }
+
+    /// Block until a slot is free (when a cap is set), then mark one fault
+    /// active, updating the observed peak.
+    fn acquire(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(cap) = self.cap {
+            while state.active >= cap {
+                state = self
+                    .available
+                    .wait(state)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        state.active += 1;
+        // Background fault counts never approach u32::MAX.
+        #[allow(clippy::cast_possible_truncation)]
+        let active = state.active as u32;
+        state.peak = state.peak.max(active);
+    }
+
+    /// Release a slot, waking one waiter.
+    fn release(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.active = state.active.saturating_sub(1);
+        drop(state);
+        self.available.notify_one();
+    }
+
+    fn peak(&self) -> u32 {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .peak
+    }
+}
+
 /// Execute a list of activities, partitioning into foreground (sequential)
-/// and background (spawned concurrently via `JoinSet`).
+/// and background (spawned concurrently via scoped threads).
 ///
 /// Foreground activities execute sequentially with pause handling.
 /// Background activities are spawned immediately and joined after all
-/// foreground work completes.
+/// foreground work completes; `max_concurrent_faults` caps how many run at
+/// once (the enforceable blast-radius limit).
 ///
 /// If a cancellation token is provided and cancelled, stops executing
 /// remaining foreground activities and returns results collected so far
 /// (background tasks are still joined).
+///
+/// Returns the activity results plus the peak number of background faults
+/// observed running concurrently.
 pub(crate) fn execute_activities(
     activities: &[Activity],
     executor: &(dyn ActivityExecutor + Sync),
     controls: &ControlRegistry,
     cancellation_token: Option<&CancellationToken>,
-) -> Vec<ActivityResult> {
+    max_concurrent_faults: Option<u32>,
+) -> (Vec<ActivityResult>, u32) {
     let (foreground, background) = partition_background(activities);
 
     // Capacity: foreground results first, then background joined at end.
     let mut fg_results = Vec::with_capacity(foreground.len());
+
+    let gate = FaultGate::new(max_concurrent_faults);
+    let gate_ref = &gate;
 
     // Spawn background activities on scoped OS threads *then* run foreground
     // sequentially inside the same scope.  `std::thread::scope` guarantees all
     // background threads are joined before the scope exits (i.e. after foreground
     // completes), giving us true concurrency without unsafe lifetime extension.
     let bg_results: Vec<std::result::Result<ActivityResult, _>> = std::thread::scope(|scope| {
-        // 1. Spawn background threads immediately.
+        // 1. Spawn background threads immediately. Each acquires a gate slot
+        //    before executing, so no more than `max_concurrent_faults` run at
+        //    the same time.
         let handles: Vec<_> = background
             .iter()
             .map(|&activity| {
-                scope.spawn(move || execute_single_activity(activity, executor, controls))
+                scope.spawn(move || {
+                    gate_ref.acquire();
+                    let result = execute_single_activity(activity, executor, controls);
+                    gate_ref.release();
+                    result
+                })
             })
             .collect();
 
@@ -249,7 +334,7 @@ pub(crate) fn execute_activities(
         }
     }
 
-    results
+    (results, gate.peak())
 }
 
 /// Run `experiment`'s rollback activities, if any, and if `strategy` calls

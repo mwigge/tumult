@@ -33,6 +33,9 @@ use super::EngineError;
 ///     secrets: IndexMap::new(),
 ///     controls: vec![],
 ///     steady_state_hypothesis: None,
+///     guards: vec![],
+///     blast_radius: None,
+///     max_concurrent_faults: None,
 ///     method: vec![Activity {
 ///         name: "action-1".into(),
 ///         activity_type: ActivityType::Action,
@@ -66,6 +69,9 @@ use super::EngineError;
 ///     secrets: IndexMap::new(),
 ///     controls: vec![],
 ///     steady_state_hypothesis: None,
+///     guards: vec![],
+///     blast_radius: None,
+///     max_concurrent_faults: None,
 ///     method: vec![],
 ///     rollbacks: vec![],
 ///     estimate: None,
@@ -94,6 +100,40 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             return Err(EngineError::EmptyHypothesisProbes {
                 title: hypothesis.title.clone(),
             });
+        }
+    }
+
+    // Validate guards: each guard's probe must carry a tolerance (the safe
+    // condition), min_breaches must be at least 1, and any regex/range
+    // tolerance must be well-formed.
+    for guard in &experiment.guards {
+        if guard.min_breaches == 0 {
+            return Err(EngineError::GuardInvalidMinBreaches {
+                guard: guard.name.clone(),
+            });
+        }
+        match &guard.probe.tolerance {
+            None => {
+                return Err(EngineError::GuardMissingTolerance {
+                    guard: guard.name.clone(),
+                });
+            }
+            Some(Tolerance::Regex { pattern }) => {
+                if regex_lite::Regex::new(pattern).is_err() {
+                    return Err(EngineError::InvalidRegex {
+                        activity: guard.name.clone(),
+                        pattern: pattern.clone(),
+                    });
+                }
+            }
+            Some(Tolerance::Range { from, to }) if from > to => {
+                return Err(EngineError::InvalidToleranceBounds {
+                    activity: guard.name.clone(),
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Some(_) => {}
         }
     }
 
@@ -187,6 +227,9 @@ mod tests {
             baseline: None,
             load: None,
             regulatory: None,
+            guards: vec![],
+            blast_radius: None,
+            max_concurrent_faults: None,
         };
         assert!(validate_experiment(&exp).is_err());
     }
@@ -224,6 +267,9 @@ mod tests {
             baseline: None,
             load: None,
             regulatory: None,
+            guards: vec![],
+            blast_radius: None,
+            max_concurrent_faults: None,
         };
         let err = validate_experiment(&exp).unwrap_err();
         assert!(err.to_string().contains("no probes"));
@@ -259,7 +305,123 @@ mod tests {
             baseline: None,
             load: None,
             regulatory: None,
+            guards: vec![],
+            blast_radius: None,
+            max_concurrent_faults: None,
         };
         assert!(validate_experiment(&exp).is_ok());
+    }
+
+    fn guard_with_tolerance(name: &str, tolerance: Option<Tolerance>, min_breaches: u32) -> Guard {
+        Guard {
+            name: name.into(),
+            probe: Activity {
+                name: format!("{name}-probe"),
+                activity_type: ActivityType::Probe,
+                tolerance,
+                ..Default::default()
+            },
+            min_breaches,
+        }
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_guard() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "guarded".into(),
+            guards: vec![guard_with_tolerance(
+                "slo",
+                Some(Tolerance::Range {
+                    from: 0.0,
+                    to: 0.05,
+                }),
+                2,
+            )],
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(validate_experiment(&exp).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_guard_without_tolerance() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "guarded".into(),
+            guards: vec![guard_with_tolerance("slo", None, 1)],
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("no tolerance"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_guard_with_zero_min_breaches() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "guarded".into(),
+            guards: vec![guard_with_tolerance(
+                "slo",
+                Some(Tolerance::Range { from: 0.0, to: 1.0 }),
+                0,
+            )],
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("min_breaches"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_guard_with_bad_regex() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "guarded".into(),
+            guards: vec![guard_with_tolerance(
+                "slo",
+                Some(Tolerance::Regex {
+                    pattern: "(unclosed".into(),
+                }),
+                1,
+            )],
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("invalid regex"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_guard_with_inverted_range() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "guarded".into(),
+            guards: vec![guard_with_tolerance(
+                "slo",
+                Some(Tolerance::Range { from: 1.0, to: 0.0 }),
+                1,
+            )],
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("invalid tolerance range"), "{err}");
     }
 }

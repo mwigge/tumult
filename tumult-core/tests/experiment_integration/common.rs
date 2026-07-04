@@ -205,5 +205,8 @@ pub(crate) fn experiment_builder() -> Experiment {
         baseline: None,
         load: None,
         regulatory: None,
+        guards: vec![],
+        blast_radius: None,
+        max_concurrent_faults: None,
     }
 }

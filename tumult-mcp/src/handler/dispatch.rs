@@ -455,7 +455,7 @@ impl ServerHandler for TumultHandler {
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };
 
-        finish_tool_call(&params.name, result)
+        Ok(finish_tool_call(&params.name, result))
     }
 
     async fn handle_list_resources_request(
@@ -484,7 +484,7 @@ impl ServerHandler for TumultHandler {
 fn finish_tool_call(
     tool_name: &str,
     result: std::result::Result<ToolOutput, crate::error::ToolError>,
-) -> std::result::Result<CallToolResult, CallToolError> {
+) -> CallToolResult {
     match result {
         Ok(output) => {
             crate::telemetry::event_tool_completed(tool_name, true);
@@ -495,7 +495,7 @@ fn finish_tool_call(
             result
                 .content
                 .extend(output.links.into_iter().map(ContentBlock::ResourceLink));
-            Ok(result)
+            result
         }
         Err(e) => {
             crate::telemetry::event_tool_error(tool_name, &e.to_string());
@@ -503,7 +503,7 @@ fn finish_tool_call(
             // result with `isError: true`, not as protocol errors.
             let mut result = CallToolResult::text_content(vec![format!("Error: {e}").into()]);
             result.is_error = Some(true);
-            Ok(result)
+            result
         }
     }
 }

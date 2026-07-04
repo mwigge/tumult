@@ -36,6 +36,9 @@ pub(crate) fn write_valid_experiment(dir: &Path) -> std::path::PathBuf {
         baseline: None,
         load: None,
         regulatory: None,
+        guards: vec![],
+        blast_radius: None,
+        max_concurrent_faults: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -83,6 +86,9 @@ pub(crate) fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
         baseline: None,
         load: None,
         regulatory: None,
+        guards: vec![],
+        blast_radius: None,
+        max_concurrent_faults: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -135,6 +141,8 @@ pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
         load_result: None,
         analysis: None,
         regulatory: None,
+        halt: None,
+        blast_radius: None,
     }
 }
 

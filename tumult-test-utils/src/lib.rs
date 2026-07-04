@@ -258,6 +258,7 @@ pub fn experiment_builder() -> Experiment {
         baseline: None,
         load: None,
         regulatory: None,
+        ..Experiment::default()
     }
 }
 
@@ -280,5 +281,6 @@ pub fn minimal_experiment(method: Vec<Activity>) -> Experiment {
         baseline: None,
         load: None,
         regulatory: None,
+        ..Experiment::default()
     }
 }

@@ -131,6 +131,9 @@ mod tests {
                     evidence: "Recovery within RTO".into(),
                 }],
             }),
+            guards: vec![],
+            blast_radius: None,
+            max_concurrent_faults: None,
         }
     }
 

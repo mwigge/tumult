@@ -80,6 +80,9 @@ async fn e2e_run_analyze_export() {
         baseline: None,
         load: None,
         regulatory: None,
+        guards: vec![],
+        blast_radius: None,
+        max_concurrent_faults: None,
     };
 
     // Run experiment

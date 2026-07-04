@@ -131,6 +131,11 @@ pub struct RunConfig {
     /// a `load` config, the runner starts the load tool in the background
     /// during method execution.
     pub load_executor: Option<std::sync::Arc<dyn LoadExecutor>>,
+    /// Optional override for the experiment's `max_concurrent_faults`
+    /// blast-radius cap. When `Some`, it takes precedence over the value
+    /// declared in the experiment; when `None`, the experiment's value (if
+    /// any) is used.
+    pub max_concurrent_faults: Option<u32>,
 }
 
 impl Default for RunConfig {
@@ -140,6 +145,7 @@ impl Default for RunConfig {
             cancellation_token: None,
             parent_context: None,
             load_executor: None,
+            max_concurrent_faults: None,
         }
     }
 }

@@ -4,6 +4,30 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.3.0] - 2026-07-04
+
+Added:
+- Auto-halt guardrails: an experiment may declare `guards` — probes evaluated
+  continuously during the fault window whose tolerance describes the SAFE
+  condition. On breach the runner cancels the method, runs rollbacks, and marks
+  the run `Halted` (a new experiment status) with a halt record (guard name,
+  observed value, time-to-halt). Optional `blast_radius` note and
+  `max_concurrent_faults` cap, surfaced in the journal. No guards = pre-2.3
+  behaviour exactly. Exposed through the CLI, the MCP run tool, and the demo
+  (`demo-guard-halt.toon` proves it end to end).
+- Demo control panel: a "Run the whole chaos loop via MCP" showcase that drives
+  discover → validate → run → analyze → recommend as pure MCP tool calls.
+
+Changed:
+- Compliance mappings audited against official sources and corrected. Every
+  citation now lives in a single dated, sourced registry (framework, control id,
+  evidence type, honesty strength, source URL, last_verified) shared by the CLI
+  and MCP. `tumult compliance --sources` lists them; a staleness test fails once
+  any citation exceeds 18 months unverified. Wrong/outdated citations fixed
+  (e.g. ISO 27001 A.17 → A.5.30; PCI pen-testing overreach removed; DORA Art. 28
+  retention claim corrected). The verdict is reframed as evidence toward a
+  control, explicitly NOT a compliance determination.
+
 ## [2.2.0] - 2026-07-04
 
 Added:

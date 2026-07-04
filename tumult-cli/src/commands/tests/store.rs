@@ -101,6 +101,8 @@ fn store_backup_creates_parquet_files() {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         })
         .unwrap();
     drop(store);
@@ -149,6 +151,8 @@ fn store_purge_removes_old_data() {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         })
         .unwrap();
 
@@ -176,6 +180,8 @@ fn store_purge_removes_old_data() {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         })
         .unwrap();
 
@@ -225,6 +231,8 @@ fn store_stats_reports_counts() {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         })
         .unwrap();
 

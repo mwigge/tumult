@@ -158,6 +158,8 @@ mod tests {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         };
         let xml = junit_report(&journal);
         assert!(xml.contains(r#"<testsuite name="Report &amp; test" tests="2" failures="1""#));

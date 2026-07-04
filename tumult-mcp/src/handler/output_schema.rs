@@ -96,9 +96,35 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 },
                 "verdict": {
                     "type": "string",
-                    "description": "COMPLIANT / PARTIAL / NON-COMPLIANT, with a '(pass-rate only)' suffix when recovery data is absent.",
+                    "description": "Evidence-strength token (COMPLIANT / PARTIAL / NON-COMPLIANT, with a '(pass-rate only)' suffix when recovery data is absent). Denotes strength of EVIDENCE toward controls, NOT a compliance attestation.",
                 },
                 "journals_evaluated": { "type": "integer" },
+                "disclaimer": {
+                    "type": "string",
+                    "description": "Honesty disclaimer: experiments produce evidence toward controls, not a compliance determination.",
+                },
+                "source_url": {
+                    "type": "string",
+                    "description": "Primary official source URL for the framework.",
+                },
+                "citations": {
+                    "type": "array",
+                    "description": "Sourced, dated control citations from the registry (single source of truth shared with the CLI).",
+                    "items": {
+                        "type": "object",
+                        "required": ["control_id", "title", "requires", "evidence_type", "strength", "evidence_note", "source_url", "last_verified"],
+                        "properties": {
+                            "control_id": { "type": "string" },
+                            "title": { "type": "string" },
+                            "requires": { "type": "string", "description": "What the control actually requires." },
+                            "evidence_type": { "type": "string" },
+                            "strength": { "type": "string", "description": "Honesty grade: direct / supporting / indirect." },
+                            "evidence_note": { "type": "string", "description": "How a Tumult experiment provides evidence toward the control." },
+                            "source_url": { "type": "string" },
+                            "last_verified": { "type": "string", "description": "ISO date the citation was last checked against the official source." },
+                        },
+                    },
+                },
             }),
         )),
         "tumult_trend" => Some(schema_object(

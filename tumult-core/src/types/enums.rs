@@ -17,6 +17,12 @@ pub enum ExperimentStatus {
     Aborted,
     Failed,
     Interrupted,
+    /// The run was pulled mid-experiment by an auto-halt guard: a guard probe
+    /// breached its safe-condition tolerance while the fault was active, so
+    /// the method was cancelled and rollbacks were run. Distinct from
+    /// `Aborted` (pre-method hypothesis failed), `Failed` (an action errored),
+    /// and `Deviated` (post-method hypothesis failed).
+    Halted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,6 +119,7 @@ impl std::fmt::Display for ExperimentStatus {
             Self::Aborted => write!(f, "aborted"),
             Self::Failed => write!(f, "failed"),
             Self::Interrupted => write!(f, "interrupted"),
+            Self::Halted => write!(f, "halted"),
         }
     }
 }
@@ -237,6 +244,7 @@ mod tests {
             ExperimentStatus::Aborted,
             ExperimentStatus::Failed,
             ExperimentStatus::Interrupted,
+            ExperimentStatus::Halted,
         ] {
             let decoded: ExperimentStatus = toon_round_trip(&status);
             assert_eq!(decoded, status);

@@ -230,6 +230,8 @@ pub(crate) fn sample_journal(
         }],
         rollback_results: vec![],
         rollback_failures: 0,
+        halt: None,
+        blast_radius: None,
         estimate: None,
         baseline_result: None,
         during_result: None,

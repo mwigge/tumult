@@ -94,6 +94,7 @@ pub fn run_gameday(
             cancellation_token: config.cancellation_token.clone(),
             parent_context: Some(opentelemetry::Context::current()),
             load_executor: None, // load is managed at GameDay level
+            max_concurrent_faults: config.max_concurrent_faults,
         };
         match run_experiment(experiment, executor, controls, &exp_config) {
             Ok(journal) => journals.push(journal),

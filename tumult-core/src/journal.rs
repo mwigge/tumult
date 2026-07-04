@@ -74,6 +74,8 @@ mod tests {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         }
     }
 

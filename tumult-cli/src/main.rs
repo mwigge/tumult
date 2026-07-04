@@ -90,8 +90,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Compliance {
             journals,
             framework,
+            sources,
         } => {
-            commands::cmd_compliance(&journals, framework)?;
+            commands::cmd_compliance(journals.as_deref(), framework, sources)?;
         }
         Commands::Trend {
             journals,

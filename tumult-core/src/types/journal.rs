@@ -29,6 +29,46 @@ pub struct HypothesisResult {
     pub probe_results: Vec<ActivityResult>,
 }
 
+/// Record of an auto-halt: which guard breached, what it observed, and the
+/// timing of the halt. Present on a [`Journal`] only when
+/// `status == ExperimentStatus::Halted`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HaltRecord {
+    /// Name of the guard whose safe-condition tolerance was breached.
+    pub guard_name: String,
+    /// The observed probe output that breached the guard (raw provider text),
+    /// omitted when the breaching probe produced no output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed: Option<String>,
+    /// Human-readable description of the safe condition that was violated
+    /// (e.g. `range [0, 0.05]`).
+    pub safe_condition: String,
+    /// Number of consecutive breaches observed before halting (>= the guard's
+    /// `min_breaches`).
+    pub breach_count: u32,
+    /// Epoch-nanosecond timestamp of the breaching sample.
+    pub breached_at_ns: i64,
+    /// Elapsed time from method start to the halt signal, in milliseconds.
+    pub time_to_halt_ms: u64,
+    /// Time spent running rollbacks after the halt, in milliseconds.
+    pub rollback_ms: u64,
+}
+
+/// Blast-radius metadata surfaced in the journal: the author's note, the
+/// enforced concurrent-fault cap, and the peak concurrency actually observed
+/// during method execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BlastRadiusRecord {
+    /// Free-form note from the experiment's `blast_radius` field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// The enforced cap on concurrent background faults, if one was set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrent_faults: Option<u32>,
+    /// Peak number of background faults observed running concurrently.
+    pub peak_concurrent_faults: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Journal {
     pub experiment_title: String,
@@ -51,6 +91,14 @@ pub struct Journal {
     pub load_result: Option<LoadResult>,
     pub analysis: Option<AnalysisResult>,
     pub regulatory: Option<RegulatoryMapping>,
+    /// Auto-halt record: set iff `status == ExperimentStatus::Halted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub halt: Option<HaltRecord>,
+    /// Blast-radius metadata: present when the experiment declared a
+    /// `blast_radius` note and/or `max_concurrent_faults`, or when any
+    /// background faults ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blast_radius: Option<BlastRadiusRecord>,
 }
 
 impl Journal {
@@ -85,6 +133,8 @@ impl Journal {
             load_result: None,
             analysis: None,
             regulatory: experiment.regulatory.clone(),
+            halt: None,
+            blast_radius: None,
         }
     }
 }
@@ -140,6 +190,8 @@ mod tests {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         };
         let decoded: Journal = toon_round_trip(&journal);
         assert_eq!(decoded, journal);
@@ -166,6 +218,63 @@ mod tests {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
+        };
+        let decoded: Journal = toon_round_trip(&journal);
+        assert_eq!(decoded, journal);
+    }
+
+    #[test]
+    fn halt_record_round_trips() {
+        let halt = HaltRecord {
+            guard_name: "error-rate-slo".into(),
+            observed: Some("0.42".into()),
+            safe_condition: "range [0, 0.05]".into(),
+            breach_count: 3,
+            breached_at_ns: 1_774_980_136_000_000_000,
+            time_to_halt_ms: 1_240,
+            rollback_ms: 87,
+        };
+        let decoded: HaltRecord = toon_round_trip(&halt);
+        assert_eq!(decoded, halt);
+    }
+
+    #[test]
+    fn blast_radius_record_round_trips() {
+        let br = BlastRadiusRecord {
+            note: Some("payments namespace only".into()),
+            max_concurrent_faults: Some(2),
+            peak_concurrent_faults: 2,
+        };
+        let decoded: BlastRadiusRecord = toon_round_trip(&br);
+        assert_eq!(decoded, br);
+    }
+
+    #[test]
+    fn halted_journal_round_trips() {
+        let journal = Journal {
+            status: ExperimentStatus::Halted,
+            halt: Some(HaltRecord {
+                guard_name: "g".into(),
+                observed: None,
+                safe_condition: "range [0, 1]".into(),
+                breach_count: 1,
+                breached_at_ns: 42,
+                time_to_halt_ms: 10,
+                rollback_ms: 5,
+            }),
+            blast_radius: Some(BlastRadiusRecord {
+                note: None,
+                max_concurrent_faults: Some(1),
+                peak_concurrent_faults: 1,
+            }),
+            ..Journal::for_experiment(
+                &Experiment::default(),
+                "id-1".into(),
+                ExperimentStatus::Halted,
+                0,
+            )
         };
         let decoded: Journal = toon_round_trip(&journal);
         assert_eq!(decoded, journal);

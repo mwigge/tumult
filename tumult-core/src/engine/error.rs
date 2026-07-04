@@ -36,6 +36,13 @@ pub enum EngineError {
     EmptyHypothesisProbes { title: String },
     #[error("unsupported experiment version '{version}' (supported: v1)")]
     UnsupportedVersion { version: String },
+    #[error(
+        "guard '{guard}' has no tolerance; a guard's tolerance defines the safe \
+         condition (breach ⇒ halt)"
+    )]
+    GuardMissingTolerance { guard: String },
+    #[error("guard '{guard}' has min_breaches = 0; it must be at least 1")]
+    GuardInvalidMinBreaches { guard: String },
     #[error("experiment template references undefined variable '${{{{ {name} }}}}'")]
     UndefinedVar { name: String },
 }

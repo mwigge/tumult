@@ -95,6 +95,7 @@ fn controls_emit_rollback_events_when_rollbacks_execute() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -118,6 +119,7 @@ fn full_lifecycle_event_order() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     run_experiment(&exp, &executor, &controls, &config).unwrap();

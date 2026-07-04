@@ -127,6 +127,7 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
         cancellation_token: None,
         parent_context: request.parent_context,
         load_executor: None,
+        max_concurrent_faults: None,
     };
 
     let journal = run(&experiment, &executor, &controls, &config)

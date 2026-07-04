@@ -8,6 +8,7 @@ use crate::tools::StructuredReport;
 
 use tumult_core::compliance::{
     compliance_verdict, ComplianceFramework, ComplianceSignals, DEFAULT_MTTR_TARGET_S,
+    EVIDENCE_DISCLAIMER,
 };
 use tumult_core::journal::read_journal;
 use tumult_core::types::Journal;
@@ -133,6 +134,25 @@ pub fn compliance(journals_path: &str, framework: &str) -> Result<StructuredRepo
     let recovery_compliance = signals.recovery_compliance(DEFAULT_MTTR_TARGET_S);
     let verdict = compliance_verdict(pass_rate, recovery_compliance);
 
+    // Citations from the single sourced, dated registry in
+    // `tumult_core::compliance` — the same source of truth the CLI renders.
+    let citations: Vec<serde_json::Value> = framework
+        .citations()
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "control_id": c.control_id,
+                "title": c.title,
+                "requires": c.summary,
+                "evidence_type": c.evidence_type.as_str(),
+                "strength": c.strength.as_str(),
+                "evidence_note": c.evidence_note,
+                "source_url": c.source_url,
+                "last_verified": c.last_verified,
+            })
+        })
+        .collect();
+
     let mut structured = serde_json::Map::new();
     structured.insert(
         "framework".into(),
@@ -145,9 +165,17 @@ pub fn compliance(journals_path: &str, framework: &str) -> Result<StructuredRepo
     );
     structured.insert("verdict".into(), serde_json::json!(verdict));
     structured.insert("journals_evaluated".into(), serde_json::json!(loaded));
+    structured.insert("disclaimer".into(), serde_json::json!(EVIDENCE_DISCLAIMER));
+    structured.insert(
+        "source_url".into(),
+        serde_json::json!(framework.source_url()),
+    );
+    structured.insert("citations".into(), serde_json::json!(citations));
 
     let mut text = String::new();
     writeln!(text, "=== {} ===", framework.full_name()).ok();
+    writeln!(text).ok();
+    writeln!(text, "{EVIDENCE_DISCLAIMER}").ok();
     writeln!(text).ok();
     writeln!(text, "Journals analyzed: {loaded}").ok();
     if skipped > 0 {
@@ -160,7 +188,7 @@ pub fn compliance(journals_path: &str, framework: &str) -> Result<StructuredRepo
     )
     .ok();
     writeln!(text).ok();
-    writeln!(text, "Compliance Status:").ok();
+    writeln!(text, "Evidence summary (NOT a compliance determination):").ok();
     writeln!(text, "  Pass rate: {:.1}%", pass_rate * 100.0).ok();
     if let Some(rc) = recovery_compliance {
         writeln!(
@@ -181,7 +209,32 @@ pub fn compliance(journals_path: &str, framework: &str) -> Result<StructuredRepo
         )
         .ok();
     }
-    writeln!(text, "  Overall: {verdict}").ok();
+    writeln!(text, "  Evidence verdict: {verdict}").ok();
+
+    writeln!(text).ok();
+    writeln!(text, "Source: {}", framework.source_url()).ok();
+    writeln!(
+        text,
+        "Mapped controls (evidence toward, not proof of, compliance):"
+    )
+    .ok();
+    for c in framework.citations() {
+        writeln!(text, "  {} — {}", c.control_id, c.title).ok();
+        writeln!(
+            text,
+            "    Evidence [{} / {}]: {}",
+            c.strength.as_str(),
+            c.evidence_type.as_str(),
+            c.evidence_note
+        )
+        .ok();
+        writeln!(
+            text,
+            "    Source: {} (last verified {})",
+            c.source_url, c.last_verified
+        )
+        .ok();
+    }
 
     Ok(StructuredReport { text, structured })
 }

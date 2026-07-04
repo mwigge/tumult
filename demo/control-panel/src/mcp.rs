@@ -37,13 +37,60 @@ pub struct ToolInfo {
 /// Normalised outcome of a `tumult_run_experiment` call.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RunOutcome {
-    /// Raw journal status: completed / deviated / aborted / failed / interrupted.
+    /// Raw journal status: completed / deviated / aborted / failed / interrupted
+    /// / halted (the auto-halt guard pulled the run mid-flight).
     pub status: String,
-    /// UI-facing verdict derived from `status`: "passed" | "failed" | "deviated".
+    /// UI-facing verdict derived from `status`:
+    /// "passed" | "failed" | "deviated" | "halted".
     pub outcome: String,
     pub duration_ms: Option<u64>,
     pub journal_path: Option<String>,
     pub ingestion: Option<String>,
+}
+
+/// Result of a `tumult_discover` call: how many plugins and actions the server
+/// can dispatch to. Parsed from the tool's text output (discover advertises no
+/// structured schema).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DiscoverOutcome {
+    pub plugins: usize,
+    pub actions: usize,
+}
+
+/// Result of a `tumult_validate` call. Parsed from the tool's text summary
+/// (`Valid: '<title>' — N method steps, M rollbacks`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ValidateOutcome {
+    pub valid: bool,
+    pub title: Option<String>,
+    pub method_steps: usize,
+    pub rollbacks: usize,
+    /// The raw one-line summary the tool returned.
+    pub summary: String,
+}
+
+/// A tabular result from `tumult_analyze_store` (tab-separated text output).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TableOutcome {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub row_count: usize,
+}
+
+/// One recommendation from `tumult_recommend`'s structured content.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Recommendation {
+    pub rank: i64,
+    pub title: String,
+    pub rationale: String,
+}
+
+/// Result of a `tumult_recommend` call. Either a `message` (no analytics store
+/// yet) or a ranked list of recommendations from the structured content.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RecommendOutcome {
+    pub message: Option<String>,
+    pub recommendations: Vec<Recommendation>,
 }
 
 /// Errors surfaced to the HTTP layer. Every variant maps to a clean JSON error
@@ -263,14 +310,189 @@ pub fn parse_run_result(result: &Value) -> Result<RunOutcome, McpError> {
     })
 }
 
-/// Map a raw journal status to the panel's three-state verdict.
+/// Map a raw journal status to the panel's verdict. `halted` (auto-halt guard)
+/// gets its own verdict so the UI can badge it distinctly from an outright
+/// failure.
 #[must_use]
 pub fn verdict_for(status: &str) -> &'static str {
     match status {
         "completed" => "passed",
         "deviated" => "deviated",
+        "halted" => "halted",
         _ => "failed",
     }
+}
+
+// ── Discover / validate / analyze_store / recommend parsers ────
+
+/// Parse a `tumult_discover` `tools/call` result into a [`DiscoverOutcome`].
+///
+/// Discover advertises no structured schema, so we read the text content and
+/// pull the `Plugins: N` / `Actions: M` header counts.
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or when the counts
+/// cannot be located.
+pub fn parse_discover_result(result: &Value) -> Result<DiscoverOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(
+            content_text(result).unwrap_or_else(|| "discover tool reported an error".to_string()),
+        ));
+    }
+    let text = content_text(result)
+        .ok_or_else(|| McpError::Protocol("discover result had no text content".to_string()))?;
+    let plugins = labeled_count(&text, "Plugins:")
+        .ok_or_else(|| McpError::Protocol("discover output missing plugin count".to_string()))?;
+    let actions = labeled_count(&text, "Actions:")
+        .ok_or_else(|| McpError::Protocol("discover output missing action count".to_string()))?;
+    Ok(DiscoverOutcome { plugins, actions })
+}
+
+/// Parse a `tumult_validate` `tools/call` result into a [`ValidateOutcome`].
+///
+/// A failed validation surfaces as `isError: true`; we lift its text into
+/// [`McpError::Protocol`] so the loop marks the step failed.
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing text.
+pub fn parse_validate_result(result: &Value) -> Result<ValidateOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(
+            content_text(result).unwrap_or_else(|| "experiment failed validation".to_string()),
+        ));
+    }
+    let text = content_text(result)
+        .ok_or_else(|| McpError::Protocol("validate result had no text content".to_string()))?;
+    let trimmed = text.trim();
+    let valid = trimmed.starts_with("Valid");
+    let title = trimmed
+        .split_once('\'')
+        .and_then(|(_, rest)| rest.split_once('\''))
+        .map(|(t, _)| t.to_string());
+    let method_steps = number_before(trimmed, "method step").unwrap_or(0);
+    let rollbacks = number_before(trimmed, "rollback").unwrap_or(0);
+    Ok(ValidateOutcome {
+        valid,
+        title,
+        method_steps,
+        rollbacks,
+        summary: trimmed.to_string(),
+    })
+}
+
+/// Parse a `tumult_analyze_store` `tools/call` result into a [`TableOutcome`].
+///
+/// The tool returns tab-separated text: a header row, one row per record, then
+/// a trailing `N row(s)` line.
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing text.
+pub fn parse_analyze_store_result(result: &Value) -> Result<TableOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(
+            content_text(result).unwrap_or_else(|| "analyze_store tool reported an error".to_string()),
+        ));
+    }
+    let text = content_text(result)
+        .ok_or_else(|| McpError::Protocol("analyze_store result had no text content".to_string()))?;
+
+    let mut lines = text.lines();
+    let columns: Vec<String> = lines
+        .next()
+        .map(|h| h.split('\t').map(str::to_string).collect())
+        .unwrap_or_default();
+    let mut rows = Vec::new();
+    for line in lines {
+        // The trailing "N row(s)" summary line is not a data row.
+        if line.trim_end().ends_with("row(s)") {
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+        rows.push(line.split('\t').map(str::to_string).collect::<Vec<_>>());
+    }
+    let row_count = rows.len();
+    Ok(TableOutcome {
+        columns,
+        rows,
+        row_count,
+    })
+}
+
+/// Parse a `tumult_recommend` `tools/call` result into a [`RecommendOutcome`].
+///
+/// Reads `structuredContent`: either a `message` (no store yet) or a
+/// `recommendations` array of `{rank, title, rationale}`. Falls back to the
+/// text content when no structured content is present.
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error.
+pub fn parse_recommend_result(result: &Value) -> Result<RecommendOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(
+            content_text(result).unwrap_or_else(|| "recommend tool reported an error".to_string()),
+        ));
+    }
+    if let Some(sc) = result.get("structuredContent") {
+        if let Some(msg) = sc.get("message").and_then(Value::as_str) {
+            return Ok(RecommendOutcome {
+                message: Some(msg.to_string()),
+                recommendations: Vec::new(),
+            });
+        }
+        let recommendations = sc
+            .get("recommendations")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .map(|r| Recommendation {
+                        rank: r.get("rank").and_then(Value::as_i64).unwrap_or_default(),
+                        title: r
+                            .get("title")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        rationale: r
+                            .get("rationale")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        return Ok(RecommendOutcome {
+            message: None,
+            recommendations,
+        });
+    }
+    // No structured content — fall back to the raw text summary.
+    Ok(RecommendOutcome {
+        message: content_text(result),
+        recommendations: Vec::new(),
+    })
+}
+
+/// Find the first line beginning with `label` and parse the remainder as a
+/// count (e.g. `Plugins: 12` with label `Plugins:` → `12`).
+fn labeled_count(text: &str, label: &str) -> Option<usize> {
+    text.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix(label)
+            .and_then(|rest| rest.trim().parse::<usize>().ok())
+    })
+}
+
+/// Parse the whitespace-delimited number immediately preceding `suffix`
+/// (e.g. `… 3 method steps …` with suffix `method step` → `3`).
+fn number_before(text: &str, suffix: &str) -> Option<usize> {
+    let idx = text.find(suffix)?;
+    text[..idx]
+        .split_whitespace()
+        .next_back()
+        .and_then(|tok| tok.parse::<usize>().ok())
 }
 
 /// First text block from a `content` array, if any.
@@ -389,20 +611,135 @@ impl McpClient {
         Ok(parse_tools_list(&result))
     }
 
+    /// Call a tool by name with the given arguments, returning the raw
+    /// `tools/call` result object. Performs a fresh handshake each call.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport or RPC-level failure.
+    async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, McpError> {
+        let session = self.handshake().await?;
+        let params = tools_call_params(name, arguments);
+        let req = build_rpc_request(3, "tools/call", params);
+        let (body, _) = self.post(Some(&session), &req).await?;
+        rpc_result(&parse_sse_body(&body)?)
+    }
+
     /// Run an experiment by path via `tumult_run_experiment`.
     ///
     /// # Errors
     /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
     pub async fn run_experiment(&self, experiment_path: &str) -> Result<RunOutcome, McpError> {
-        let session = self.handshake().await?;
-        let params = tools_call_params(
-            "tumult_run_experiment",
-            json!({ "experiment_path": experiment_path }),
-        );
-        let req = build_rpc_request(3, "tools/call", params);
-        let (body, _) = self.post(Some(&session), &req).await?;
-        let result = rpc_result(&parse_sse_body(&body)?)?;
+        let result = self
+            .call_tool(
+                "tumult_run_experiment",
+                json!({ "experiment_path": experiment_path }),
+            )
+            .await?;
         parse_run_result(&result)
+    }
+
+    /// List every plugin/action the server can dispatch via `tumult_discover`.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn discover(&self) -> Result<DiscoverOutcome, McpError> {
+        let result = self.call_tool("tumult_discover", json!({})).await?;
+        parse_discover_result(&result)
+    }
+
+    /// Validate an experiment file via `tumult_validate`.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure
+    /// (an invalid experiment surfaces as a tool-level [`McpError::Protocol`]).
+    pub async fn validate(&self, experiment_path: &str) -> Result<ValidateOutcome, McpError> {
+        let result = self
+            .call_tool(
+                "tumult_validate",
+                json!({ "experiment_path": experiment_path }),
+            )
+            .await?;
+        parse_validate_result(&result)
+    }
+
+    /// Run a read-only SQL query over the persistent analytics store via
+    /// `tumult_analyze_store` (store path defaults server-side).
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn analyze_store(&self, query: &str) -> Result<TableOutcome, McpError> {
+        let result = self
+            .call_tool("tumult_analyze_store", json!({ "query": query }))
+            .await?;
+        parse_analyze_store_result(&result)
+    }
+
+    /// Ask what to test next via `tumult_recommend` (store path defaults
+    /// server-side).
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn recommend(&self) -> Result<RecommendOutcome, McpError> {
+        let result = self.call_tool("tumult_recommend", json!({})).await?;
+        parse_recommend_result(&result)
+    }
+}
+
+/// The five MCP calls the chaos-loop showcase drives, abstracted so the
+/// orchestration can be unit-tested against a mock client. Every method is one
+/// `tools/call` over MCP — exactly what an autonomous agent would issue.
+pub trait ChaosLoopClient {
+    /// `tumult_discover`.
+    fn discover(&self)
+        -> impl std::future::Future<Output = Result<DiscoverOutcome, McpError>> + Send;
+    /// `tumult_validate`.
+    fn validate(
+        &self,
+        experiment_path: &str,
+    ) -> impl std::future::Future<Output = Result<ValidateOutcome, McpError>> + Send;
+    /// `tumult_run_experiment`.
+    fn run_experiment(
+        &self,
+        experiment_path: &str,
+    ) -> impl std::future::Future<Output = Result<RunOutcome, McpError>> + Send;
+    /// `tumult_analyze_store`.
+    fn analyze_store(
+        &self,
+        query: &str,
+    ) -> impl std::future::Future<Output = Result<TableOutcome, McpError>> + Send;
+    /// `tumult_recommend`.
+    fn recommend(&self)
+        -> impl std::future::Future<Output = Result<RecommendOutcome, McpError>> + Send;
+}
+
+impl ChaosLoopClient for McpClient {
+    fn discover(
+        &self,
+    ) -> impl std::future::Future<Output = Result<DiscoverOutcome, McpError>> + Send {
+        McpClient::discover(self)
+    }
+    fn validate(
+        &self,
+        experiment_path: &str,
+    ) -> impl std::future::Future<Output = Result<ValidateOutcome, McpError>> + Send {
+        McpClient::validate(self, experiment_path)
+    }
+    fn run_experiment(
+        &self,
+        experiment_path: &str,
+    ) -> impl std::future::Future<Output = Result<RunOutcome, McpError>> + Send {
+        McpClient::run_experiment(self, experiment_path)
+    }
+    fn analyze_store(
+        &self,
+        query: &str,
+    ) -> impl std::future::Future<Output = Result<TableOutcome, McpError>> + Send {
+        McpClient::analyze_store(self, query)
+    }
+    fn recommend(
+        &self,
+    ) -> impl std::future::Future<Output = Result<RecommendOutcome, McpError>> + Send {
+        McpClient::recommend(self)
     }
 }
 
@@ -555,5 +892,165 @@ mod tests {
     fn missing_structured_content_is_protocol_error() {
         let result = json!({ "content": [] });
         assert!(matches!(parse_run_result(&result), Err(McpError::Protocol(_))));
+    }
+
+    // ── Halted status (auto-halt) ─────────────────────────────
+
+    #[test]
+    fn halted_status_maps_to_halted_verdict() {
+        assert_eq!(verdict_for("halted"), "halted");
+        let result = json!({
+            "structuredContent": {
+                "journal": { "status": "halted", "duration_ms": 42 },
+                "journal_path": "/demo/journals/demo-postgres.toon",
+                "ingestion": "ingested"
+            }
+        });
+        let out = parse_run_result(&result).unwrap();
+        assert_eq!(out.status, "halted");
+        assert_eq!(out.outcome, "halted");
+        assert_eq!(out.duration_ms, Some(42));
+    }
+
+    // ── discover ──────────────────────────────────────────────
+
+    #[test]
+    fn parses_discover_counts() {
+        let result = json!({
+            "isError": false,
+            "content": [{
+                "type": "text",
+                "text": "Plugins: 3\n  a (native)\n  b (script)\n  c (native)\nActions: 5\n  a::x\n  a::y\n  b::z\n  c::p\n  c::q\n"
+            }]
+        });
+        let d = parse_discover_result(&result).unwrap();
+        assert_eq!(d.plugins, 3);
+        assert_eq!(d.actions, 5);
+    }
+
+    #[test]
+    fn discover_missing_counts_is_protocol_error() {
+        let result = json!({ "content": [{"type":"text","text":"nothing here"}] });
+        assert!(matches!(
+            parse_discover_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    // ── validate ──────────────────────────────────────────────
+
+    #[test]
+    fn parses_valid_experiment_summary() {
+        let result = json!({
+            "isError": false,
+            "content": [{
+                "type": "text",
+                "text": "Valid: 'Kill Postgres connections' — 3 method steps, 1 rollbacks"
+            }]
+        });
+        let v = parse_validate_result(&result).unwrap();
+        assert!(v.valid);
+        assert_eq!(v.title.as_deref(), Some("Kill Postgres connections"));
+        assert_eq!(v.method_steps, 3);
+        assert_eq!(v.rollbacks, 1);
+    }
+
+    #[test]
+    fn invalid_experiment_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"validation error: unknown provider 'nope'"}]
+        });
+        match parse_validate_result(&result) {
+            Err(McpError::Protocol(m)) => assert!(m.contains("unknown provider")),
+            other => panic!("expected Protocol error, got {other:?}"),
+        }
+    }
+
+    // ── analyze_store ─────────────────────────────────────────
+
+    #[test]
+    fn parses_analyze_store_table() {
+        let result = json!({
+            "isError": false,
+            "content": [{
+                "type": "text",
+                "text": "title\tstatus\tduration_ms\nKill connections\thalted\t42\nAdd latency\tcompleted\t228\n2 row(s)"
+            }]
+        });
+        let t = parse_analyze_store_result(&result).unwrap();
+        assert_eq!(t.columns, vec!["title", "status", "duration_ms"]);
+        assert_eq!(t.row_count, 2);
+        assert_eq!(t.rows[0], vec!["Kill connections", "halted", "42"]);
+        assert_eq!(t.rows[1], vec!["Add latency", "completed", "228"]);
+    }
+
+    #[test]
+    fn analyze_store_empty_result_has_no_rows() {
+        let result = json!({
+            "content": [{"type":"text","text":"title\tstatus\n0 row(s)"}]
+        });
+        let t = parse_analyze_store_result(&result).unwrap();
+        assert_eq!(t.columns, vec!["title", "status"]);
+        assert_eq!(t.row_count, 0);
+        assert!(t.rows.is_empty());
+    }
+
+    #[test]
+    fn analyze_store_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"store not found: /x/analytics.db"}]
+        });
+        assert!(matches!(
+            parse_analyze_store_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    // ── recommend ─────────────────────────────────────────────
+
+    #[test]
+    fn parses_recommendations_from_structured_content() {
+        let result = json!({
+            "isError": false,
+            "structuredContent": {
+                "recommendations": [
+                    { "rank": 1, "title": "Test Postgres failover", "rationale": "never exercised" },
+                    { "rank": 2, "title": "Add network latency", "rationale": "low coverage" }
+                ]
+            }
+        });
+        let r = parse_recommend_result(&result).unwrap();
+        assert!(r.message.is_none());
+        assert_eq!(r.recommendations.len(), 2);
+        assert_eq!(r.recommendations[0].rank, 1);
+        assert_eq!(r.recommendations[0].title, "Test Postgres failover");
+        assert_eq!(r.recommendations[1].rationale, "low coverage");
+    }
+
+    #[test]
+    fn recommend_message_when_no_store() {
+        let result = json!({
+            "structuredContent": { "message": "No analytics store found. Run some experiments first." }
+        });
+        let r = parse_recommend_result(&result).unwrap();
+        assert_eq!(
+            r.message.as_deref(),
+            Some("No analytics store found. Run some experiments first.")
+        );
+        assert!(r.recommendations.is_empty());
+    }
+
+    #[test]
+    fn recommend_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"intelligence backend unavailable"}]
+        });
+        assert!(matches!(
+            parse_recommend_result(&result),
+            Err(McpError::Protocol(_))
+        ));
     }
 }

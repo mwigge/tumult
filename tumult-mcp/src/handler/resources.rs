@@ -105,6 +105,9 @@ pub(crate) fn classify(path: &Path) -> ResourceKind {
 /// Parse a `tumult://{kind}/{filename}` URI. The filename tail must be a
 /// plain `.toon` file name — separators, traversal components, and unknown
 /// kinds/schemes are protocol errors.
+// Resource names are exact, lowercase identifiers we mint ourselves; a
+// case-sensitive `.toon` suffix match is the intended, correct behaviour.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn parse_resource_uri(uri: &str) -> Result<(ResourceKind, &str), RpcError> {
     let invalid =
         |message: String| RpcError::invalid_params().with_message(format!("{message}: {uri}"));

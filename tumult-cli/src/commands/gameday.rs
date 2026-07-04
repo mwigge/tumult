@@ -102,6 +102,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         cancellation_token: None,
         parent_context: None,
         load_executor,
+        max_concurrent_faults: None,
     };
 
     let executor_arc: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =

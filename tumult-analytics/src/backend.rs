@@ -179,6 +179,8 @@ mod tests {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         };
 
         assert!(backend.ingest_journal(&journal).unwrap());

@@ -79,6 +79,7 @@ fn rollbacks_skipped_with_never_strategy() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -97,6 +98,7 @@ fn rollbacks_execute_always_strategy() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -164,6 +166,7 @@ fn cancelled_token_returns_interrupted_status() {
         cancellation_token: Some(token),
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -184,6 +187,7 @@ fn none_cancellation_token_runs_normally() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();
@@ -230,6 +234,7 @@ fn failed_rollback_continues_and_counts_failures() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        ..RunConfig::default()
     };
 
     let journal = run_experiment(&exp, &executor, &controls, &config).unwrap();

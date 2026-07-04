@@ -6,7 +6,9 @@ nav_order: 3
 
 # Tumult Regulatory Mapping
 
-How Tumult experiment evidence maps to regulatory requirements for operational resilience. This document covers the six major frameworks that financial institutions, critical infrastructure operators, and technology providers must satisfy.
+How Tumult experiment evidence maps to regulatory requirements for operational resilience. This document covers the major frameworks that financial institutions, critical infrastructure operators, and technology providers must satisfy.
+
+> **Evidence, not compliance.** Tumult experiments produce technical **evidence toward** the controls below. Passing experiments do not by themselves establish regulatory compliance or constitute a legal attestation — a compliance determination requires assessment by a qualified auditor against the official source text. Each mapping is graded by how directly a chaos experiment can evidence the control (direct / supporting / indirect). The machine-readable, dated source of truth for these mappings lives in `tumult-core/src/compliance.rs` (`CITATIONS`); run `tumult compliance --framework <fw> --sources` to list every citation with its official source URL and `last_verified` date.
 
 > **Disambiguation:** DORA in this document refers exclusively to the **Digital Operational Resilience Act (EU 2022/2554)** — the EU regulation for financial sector ICT resilience. This is distinct from the DevOps Research and Assessment (DORA) programme and its "Four Keys" metrics, which are covered separately in the [Resilience Metadata Standard](resilience-metadata-standard.md) under `resilience.score.devops.*`.
 
@@ -54,14 +56,15 @@ DORA is the most prescriptive framework for resilience testing in financial serv
 
 ### Article 26 — Advanced testing (TLPT / TIBER-EU)
 
-**Requirement**: Financial entities identified as systemically important shall carry out threat-led penetration testing (TLPT) at least every 3 years, covering critical or important functions.
+**Requirement**: Financial entities identified as systemically important shall carry out threat-led penetration testing (TLPT) at least every 3 years on live production systems, covering critical or important functions, per the TLPT Regulatory Technical Standards and TIBER-EU.
+
+> **Honesty note (indirect mapping):** Tumult experiments are resilience tests, **not** threat-led penetration tests, and do **not** satisfy TLPT. TLPT requires a red team simulating a real adversary. Tumult can *inform* TLPT scenario design and evidence recovery under the kinds of scenarios a red team might trigger — nothing more. Do not represent Tumult runs as TLPT evidence.
 
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
-| Threat-led scenarios | Experiments designed from threat intelligence, tagged with threat model | `resilience.threat.model`, `resilience.threat.scenario` |
+| Scenario design input | Experiments designed from threat intelligence, tagged with threat model | `resilience.threat.model`, `resilience.threat.scenario` |
 | Cover critical functions | Criticality tagging on experiment targets | `resilience.target.criticality` |
-| Live production testing | Execution target and environment recorded | `tumult.execution.target`, `tumult.environment` |
-| Testing every 3 years minimum | Journal history with timestamps spanning the required period | `tumult.experiment.started_at` |
+| Recovery under adversarial scenarios | Recovery measurement for scenarios a red team may trigger | `resilience.post.*` |
 
 ### Article 11 — Response and recovery
 
@@ -89,6 +92,16 @@ NIS2 applies to essential and important entities across 18 sectors. It requires 
 | Crisis management tested | Multi-fault experiments, cascading failure scenarios | `tumult.experiment.title`, `tumult.action.name` |
 | Backup and recovery procedures | Data integrity verification post-fault | `resilience.post.data_integrity_verified`, `resilience.post.data_loss_detected` |
 
+### Article 21(2)(b) — Incident handling
+
+**Requirement**: Essential and important entities shall take measures for incident handling.
+
+> **Scope note:** Incident *handling* is Art. 21(2)(b). The distinct incident *reporting* obligations (24-hour early warning, 72-hour notification, one-month final report) are **Art. 23**, which is a reporting process — a chaos experiment does not evidence reporting-timeline compliance. Earlier versions of this mapping cited "Art. 23 — Incident handling and reporting"; that label conflated the two.
+
+| Requirement | Tumult Evidence | Attributes |
+|-------------|----------------|------------|
+| Incident handling procedures exercised | Controlled fault injection triggers incident-response procedures | `tumult.experiment.title`, journal evidence |
+
 ### Article 21(2)(f) — Assessment of cybersecurity measures effectiveness
 
 **Requirement**: Policies and procedures to assess the effectiveness of cybersecurity risk-management measures.
@@ -109,21 +122,7 @@ NIS2 fines reach EUR 10M or 2% of total worldwide annual turnover for essential 
 
 PCI-DSS applies to any entity that stores, processes, or transmits cardholder data. Version 4.0 strengthens testing requirements.
 
-### Requirement 11.4 — Penetration testing
-
-| Requirement | Tumult Evidence | Attributes |
-|-------------|----------------|------------|
-| 11.4.1: Penetration testing methodology defined | Experiment definitions with hypothesis, method, rollbacks | `tumult.experiment.title`, experiment TOON files |
-| 11.4.2: Internal penetration testing at least annually | Journal timestamps prove execution | `tumult.experiment.started_at` |
-| 11.4.3: External penetration testing at least annually | Remote target experiments via SSH | `tumult.execution.target`, `tumult.target.id` |
-| 11.4.4: Exploitable vulnerabilities corrected and retested | Trend analysis showing remediation | `resilience.analysis.trend_direction` |
-
-### Requirement 11.4.5 — Segmentation control testing
-
-| Requirement | Tumult Evidence | Attributes |
-|-------------|----------------|------------|
-| Segmentation controls tested at least every 6 months (service providers) | Network partition experiments with recovery verification | `tumult.action.name` (e.g., `network-partition`), `resilience.post.fully_recovered` |
-| Confirm segmentation is operational and effective | Probe results showing isolation holds during fault | `resilience.during.*`, `tumult.probe.name` |
+> **Overreach removed.** Requirement **11.4 (penetration testing)** and **11.4.5 (segmentation control testing)** are *security* tests — 11.4 finds exploitable vulnerabilities; 11.4.5 verifies that the cardholder data environment is isolated from out-of-scope networks. Chaos-engineering fault injection (e.g. `network-partition`) is **not** a penetration test and does **not** evidence that segmentation *controls* prevent unauthorised access. Prior versions of this document mapped resilience experiments to 11.4.1/11.4.2/11.4.3/11.4.5; those mappings were a category error and have been removed. The defensible PCI-DSS mapping is incident-response testing (12.10.2) below.
 
 ### Requirement 12.10 — Incident response testing
 
@@ -134,18 +133,29 @@ PCI-DSS applies to any entity that stores, processes, or transmits cardholder da
 
 ---
 
-## Basel III / BCBS 239 — Risk Data Aggregation and Risk Reporting
+## Basel Committee (BCBS) — Operational Resilience
 
-BCBS 239 principles govern how banks aggregate and report risk data. Principle 6 (Adaptability) directly relates to resilience testing.
+> **Framing correction.** Earlier versions labelled this framework "Basel III / BCBS 239". BCBS 239 is the *risk data aggregation and risk reporting* standard — it is **not** part of the Basel III capital framework, and its subject is data aggregation, not resilience testing. The correct anchor for chaos-engineering evidence is the Basel Committee's **[Principles for Operational Resilience](https://www.bis.org/bcbs/publ/d516.htm) (March 2021)**, whose **Principle 4 (Business continuity planning and testing)** directly concerns resilience exercises.
 
-### Principle 6 — Adaptability
+### Principles for Operational Resilience — Principle 4 (Business continuity planning and testing)
 
-**Requirement**: A bank should be able to generate aggregate risk data to meet a broad range of on-demand, ad hoc risk management reporting requests, including requests during stress/crisis situations.
+**Requirement**: Banks should have business continuity plans in place and conduct business continuity exercises under a range of severe but plausible scenarios in order to test their ability to deliver critical operations through disruption.
 
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
-| Systems function under stress | Experiments validating database, messaging, and compute under fault conditions | `tumult.target.type`, `resilience.during.*` |
-| Data aggregation during crisis | Probes measuring query performance and data availability during faults | `resilience.baseline.mean`, `resilience.during.peak_value` |
+| BC exercises under severe-but-plausible scenarios | Fault-injection experiments modelling plausible disruptions | `tumult.experiment.title`, `resilience.during.*` |
+| Ability to deliver critical operations through disruption | During-fault probes on critical systems | `resilience.target.criticality`, `resilience.during.*` |
+| Recovery of critical operations | Phase 3 recovery measurement | `resilience.post.recovery_duration_s`, `resilience.post.data_integrity_verified` |
+
+### BCBS 239 — Principle 6 (Adaptability) — *indirect*
+
+**Requirement**: A bank should be able to generate aggregate risk data to meet a broad range of on-demand, ad hoc risk management reporting requests, including requests during stress/crisis situations.
+
+> **Indirect mapping.** BCBS 239 concerns risk-*data* aggregation, not infrastructure resilience. Experiments that keep reporting/data systems available under fault only indirectly touch this principle. Retained for continuity; do not over-claim.
+
+| Requirement | Tumult Evidence | Attributes |
+|-------------|----------------|------------|
+| Reporting capability available under stress | Probes measuring query performance and data availability during faults | `resilience.baseline.mean`, `resilience.during.peak_value` |
 | Recovery of reporting capability | Phase 3 recovery measurement for data systems | `resilience.post.recovery_duration_s`, `resilience.post.data_integrity_verified` |
 
 ---
@@ -168,20 +178,25 @@ ISO 22301 Section 8.5 requires exercising and testing of business continuity arr
 
 ## ISO 27001 — Information Security / SOC 2
 
-### ISO 27001 — Annex A.17: IT Service Continuity
+### ISO 27001:2022 — Annex A.5.30: ICT readiness for business continuity
+
+> **Updated control numbering.** ISO/IEC 27001:2022 restructured Annex A. The old **A.17.1.3** cited in prior versions is from the **withdrawn 2013 edition**. The correct 2022 controls are **A.5.30 (ICT readiness for business continuity)** — which explicitly requires ICT continuity to be *tested* — and **A.5.29 (Information security during disruption)**.
 
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
-| A.17.1.3: Verify and review continuity controls | Experiment results proving controls function under fault | `resilience.baseline.*`, `resilience.during.*`, `resilience.post.*` |
+| A.5.30: ICT continuity planned, maintained and **tested** | Recovery-measuring experiments prove ICT continuity is tested | `resilience.baseline.*`, `resilience.during.*`, `resilience.post.*` |
+| A.5.29: Maintain information security during disruption | During-fault observations | `resilience.during.*` |
 | Regular testing and review | Journal frequency and trend data | `resilience.analysis.trend_run_count` |
 
-### SOC 2 — CC7.5: Recovery from Disruptions
+### SOC 2 — CC7.5: Recovery from identified security incidents
+
+> **Label correction.** Prior versions cited "CC7.4 — Detection and monitoring". In the 2017 Trust Services Criteria, **CC7.4 is *incident response*** (responding to identified security incidents); monitoring/detection is **CC7.1/CC7.2**. The recovery mapping is **CC7.5**.
 
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
-| Entity recovers from identified disruptions | Phase 3 recovery evidence with MTTR | `resilience.post.recovery_duration_s`, `resilience.post.mttr_s` |
-| Recovery procedures are tested | Rollback execution recorded in journal | `tumult.rollback.*` |
-| Recovery meets defined objectives | Recovery time compared against declared RTO | `resilience.post.recovery_duration_s` |
+| CC7.5: Recover from identified security incidents | Phase 3 recovery evidence with MTTR | `resilience.post.recovery_duration_s`, `resilience.post.mttr_s` |
+| CC7.4: Respond to identified security incidents | Controlled faults exercise the incident-response programme | `tumult.rollback.*` |
+| CC7.2: Monitor system components for anomalies | Observability data (OTel traces/metrics) during faults | `resilience.during.*` |
 
 ---
 
@@ -196,7 +211,7 @@ tags:
   - regulatory:dora:art24
   - regulatory:dora:art25
   - regulatory:nis2:art21-2c
-  - regulatory:pci-dss:11.4.2
+  - regulatory:pci-dss:12.10.2
   - regulatory:iso22301:8.5
 
 configuration:
@@ -282,9 +297,9 @@ Every piece of evidence traces back to the journal's `trace_id`. An auditor can 
 
 | Framework | Minimum retention | Recommended |
 |-----------|------------------|-------------|
-| DORA | 5 years (Art. 28) | 7 years |
+| DORA | Retention is not set by a single "5-year" article; keep testing records for the period competent authorities may request (commonly cited as ~5 years). **The prior "Art. 28" citation was wrong — Art. 28 governs ICT third-party risk, not record retention.** Confirm the applicable basis with your supervisor. | 7 years |
 | NIS2 | Per member state transposition | 5 years |
-| PCI-DSS | 1 year (Req. 10.7) | 3 years |
+| PCI-DSS | 1 year — audit log retention is **Req. 10.5.1** (12 months, 3 months immediately available). *(Prior "Req. 10.7" was wrong: 10.7 covers detecting failures of critical security controls.)* | 3 years |
 | ISO 22301 | Certification cycle (3 years) | 5 years |
 | SOC 2 | Audit period (typically 12 months) | 3 years |
 
@@ -294,13 +309,15 @@ Parquet export enables cost-effective long-term archival. Journals compressed as
 
 ## Cross-Framework Mapping Summary
 
-| Capability | DORA | NIS2 | PCI-DSS | Basel III | ISO 22301 | ISO 27001 / SOC 2 |
+| Capability | DORA | NIS2 | PCI-DSS | BCBS (OpRes) | ISO 22301 | ISO 27001 / SOC 2 |
 |-----------|------|------|---------|-----------|-----------|-------------------|
-| Scenario-based testing | Art. 25 | Art. 21(2)(f) | 11.4.1 | -- | 8.5 | A.17.1.3 |
-| Recovery validation | Art. 11 | Art. 21(2)(c) | 12.10.2 | Principle 6 | 8.5 | CC7.5 |
-| Testing frequency proof | Art. 24 | Art. 21(2)(f) | 11.4.2 | -- | 8.5 | CC7.5 |
-| Data integrity verification | Art. 11 | Art. 21(2)(c) | -- | Principle 6 | -- | -- |
-| Trend analysis / learning | Art. 24 | -- | 11.4.4 | -- | 8.5 | -- |
-| Threat-led testing | Art. 26 | -- | 11.4 | -- | -- | -- |
-| Segmentation testing | -- | -- | 11.4.5 | -- | -- | -- |
-| Audit trail / evidence | Art. 24 | Art. 21(2)(f) | 10.7 | BCBS 239 | 8.5 | CC7.5 |
+| Scenario-based testing | Art. 25 | Art. 21(2)(f) | -- | OpRes P4 | 8.5 | A.5.30 |
+| Recovery validation | Art. 11 | Art. 21(2)(c) | -- | OpRes P4 | 8.5 | CC7.5 |
+| Testing frequency proof | Art. 24 | Art. 21(2)(f) | 12.10.2 | OpRes P4 | 8.5 | CC7.5 |
+| Data integrity verification | Art. 11 | Art. 21(2)(c) | -- | OpRes P4 | -- | A.5.30 |
+| Trend analysis / learning | Art. 24 | -- | -- | -- | 8.5 | -- |
+| Incident-response testing | Art. 11 | Art. 21(2)(b) | 12.10.2 | -- | -- | CC7.4 |
+| Threat-led testing (TLPT) — *indirect only* | Art. 26 | -- | -- | -- | -- | -- |
+| Audit trail / evidence | Art. 24 | Art. 21(2)(f) | 10.5.1 | BCBS 239 P6 | 8.5 | CC7.5 |
+
+*Removed as overreach:* PCI 11.4/11.4.1/11.4.2/11.4.4/11.4.5 (security penetration & segmentation testing — not what chaos experiments evidence). *Corrected:* A.17.1.3 → A.5.30 (2022 numbering); "CC7.4 — Detection and monitoring" → CC7.4 is incident response, monitoring is CC7.2; PCI retention 10.7 → 10.5.1; Basel III/BCBS 239 → BCBS Principles for Operational Resilience (P4) as the primary anchor.

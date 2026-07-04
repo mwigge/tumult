@@ -106,6 +106,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         cancellation_token: Some(cancel_token),
         parent_context: None,
         load_executor,
+        max_concurrent_faults: None,
     };
 
     println!("Running experiment: {}", experiment.title);

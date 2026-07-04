@@ -1,0 +1,47 @@
+title: Demo — auto-halt guardrail pulls the plug when demo-app goes unhealthy
+description: A safety guard watches demo-app health during a DB outage and halts the run the moment it turns unhealthy, running rollback immediately.
+
+steady_state_hypothesis:
+  title: demo-app is healthy before the fault
+  probes[1]:
+    - name: app-health-before
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 3 http://demo-app:8080/health"
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+guards[1]:
+  - name: app-health-guard
+    probe:
+      name: app-health-watch
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 3 http://demo-app:8080/health"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+    min_breaches: 1
+
+method[1]:
+  - name: pause-database
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker pause demo-postgres"
+    pause_after_s: 8.0
+
+rollbacks[1]:
+  - name: restore-database
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker unpause demo-postgres || true"

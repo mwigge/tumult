@@ -82,6 +82,8 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
             load_result: None,
             analysis: None,
             regulatory: None,
+            halt: None,
+            blast_radius: None,
         };
         assert!(store.ingest_journal(&journal).expect("ingest"));
     }

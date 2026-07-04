@@ -153,12 +153,31 @@ fn parse_compliance_dora() {
     let Commands::Compliance {
         journals,
         framework,
+        sources,
     } = cli.command
     else {
         panic!("expected Compliance command");
     };
-    assert_eq!(journals, PathBuf::from("journals/"));
+    assert_eq!(journals, Some(PathBuf::from("journals/")));
     assert_eq!(framework, ComplianceFramework::Dora);
+    assert!(!sources);
+}
+
+#[test]
+fn parse_compliance_sources_without_journals() {
+    let cli =
+        Cli::try_parse_from(["tumult", "compliance", "--framework", "dora", "--sources"]).unwrap();
+    let Commands::Compliance {
+        journals,
+        framework,
+        sources,
+    } = cli.command
+    else {
+        panic!("expected Compliance command");
+    };
+    assert_eq!(journals, None);
+    assert_eq!(framework, ComplianceFramework::Dora);
+    assert!(sources);
 }
 
 #[test]

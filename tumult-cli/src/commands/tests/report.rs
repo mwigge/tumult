@@ -235,5 +235,7 @@ fn compliance_runs_over_journal_with_mttr() {
     write_journal(&journal, &journal_path).unwrap();
 
     // Exercises the MTTR-based recovery accumulation path end to end.
-    cmd_compliance(&journal_path, ComplianceFramework::Soc2).unwrap();
+    cmd_compliance(Some(&journal_path), ComplianceFramework::Soc2, false).unwrap();
+    // Exercises the --sources registry-listing path (no journals needed).
+    cmd_compliance(None, ComplianceFramework::Soc2, true).unwrap();
 }

@@ -12,6 +12,7 @@ mod background_tests;
 mod controls_tests;
 mod exec_tests;
 mod gameday_tests;
+mod halt_tests;
 mod load_tests;
 mod rollback_tests;
 mod sampling_tests;
@@ -168,6 +169,7 @@ fn minimal_experiment() -> Experiment {
         baseline: None,
         load: None,
         regulatory: None,
+        ..Experiment::default()
     }
 }
 

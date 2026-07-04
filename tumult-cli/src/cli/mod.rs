@@ -142,11 +142,18 @@ pub(crate) enum Commands {
     },
     /// Regulatory compliance report
     Compliance {
-        /// Directory containing journal files
-        journals: PathBuf,
+        /// Directory containing journal files. Optional when `--sources` is
+        /// given (which lists the sourced, dated citation registry only).
+        #[arg(required_unless_present = "sources")]
+        journals: Option<PathBuf>,
         /// Target regulatory framework
         #[arg(long, value_enum)]
         framework: ComplianceFramework,
+        /// List every mapped citation with its official source URL and
+        /// last-verified date, then exit without analysing journals. Makes
+        /// citation drift auditable.
+        #[arg(long)]
+        sources: bool,
     },
     /// Generate report from journal (HTML or PDF)
     Report {

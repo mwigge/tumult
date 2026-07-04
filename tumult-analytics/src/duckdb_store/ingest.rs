@@ -58,6 +58,8 @@ impl AnalyticsStore {
     ///     analysis: None,
     ///     regulatory: None,
     ///     rollback_failures: 0,
+    ///     halt: None,
+    ///     blast_radius: None,
     /// };
     ///
     /// store.ingest_journal(&journal).unwrap();

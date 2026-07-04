@@ -49,6 +49,7 @@ fn full_experiment_run_produces_complete_journal() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
+        max_concurrent_faults: None,
     };
 
     let journal = run_experiment(&exp, &plugin, &controls, &config).unwrap();
