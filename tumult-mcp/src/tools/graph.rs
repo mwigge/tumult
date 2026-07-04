@@ -7,7 +7,9 @@ use std::path::Path;
 use crate::error::ToolError;
 use crate::tools::StructuredReport;
 
-/// Open the analytics store at `store_path`, erroring cleanly if absent.
+/// Open the analytics store read-write at `store_path`, erroring cleanly if
+/// absent. Use only for paths that write (e.g. refreshing coverage gaps); it
+/// takes the exclusive lock and so contends with a running server.
 fn open_store(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
     let path = Path::new(store_path);
     if !path.exists() {
@@ -16,6 +18,20 @@ fn open_store(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, Tool
         )));
     }
     tumult_analytics::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
+}
+
+/// Open the analytics store read-only, erroring cleanly if absent. Read-only
+/// opens do not take the exclusive lock, so a query coexists with the running
+/// MCP server (and with a CLI `tumult chaosgraph` reading the same store).
+fn open_store_ro(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+    let path = Path::new(store_path);
+    if !path.exists() {
+        return Err(ToolError::NotFound(format!(
+            "store not found: {store_path}"
+        )));
+    }
+    tumult_analytics::AnalyticsStore::open_read_only(path)
+        .map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// `chaosgraph_query`: matching node ids + one-line summaries for a kind.
@@ -31,7 +47,7 @@ pub fn chaosgraph_query(
     kind: &str,
     filter: Option<&str>,
 ) -> Result<StructuredReport, ToolError> {
-    let store = open_store(store_path)?;
+    let store = open_store_ro(store_path)?;
     let kind = kind.trim().to_ascii_lowercase();
     let nodes = store
         .graph_query(&kind, filter)
@@ -74,7 +90,7 @@ pub fn chaosgraph_neighbors(
     rel: Option<&str>,
     depth: u32,
 ) -> Result<StructuredReport, ToolError> {
-    let store = open_store(store_path)?;
+    let store = open_store_ro(store_path)?;
     let depth = i64::from(depth.max(1));
     let ego = store
         .graph_neighbors(node_id, rel, depth)

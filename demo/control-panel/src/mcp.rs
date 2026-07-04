@@ -93,6 +93,102 @@ pub struct RecommendOutcome {
     pub recommendations: Vec<Recommendation>,
 }
 
+/// One sourced control citation from `tumult_compliance` (reduced to the
+/// fields the panel renders).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ComplianceCitation {
+    pub control_id: String,
+    pub title: String,
+    /// Evidence-strength grade: `direct` / `supporting` / `indirect`.
+    pub strength: String,
+}
+
+/// Result of a `tumult_compliance` call: an *evidence* summary toward a
+/// regulatory framework's controls — pass rate, recovery-compliance proxy, an
+/// evidence verdict, and the scope disclaimer. Read from the tool's
+/// `structuredContent`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ComplianceOutcome {
+    /// Canonical framework report id (e.g. `DORA`).
+    pub framework: String,
+    /// Fraction of journals that completed (0.0-1.0).
+    pub pass_rate: f64,
+    /// Recovery-compliance proxy (0.0-1.0); `None` for a pass-rate-only verdict.
+    pub recovery_compliance: Option<f64>,
+    /// Evidence-strength verdict (`COMPLIANT` / `PARTIAL` / `NON-COMPLIANT`,
+    /// possibly with a `(pass-rate only)` suffix). NOT a compliance attestation.
+    pub verdict: String,
+    pub journals_evaluated: u64,
+    /// Scope disclaimer the tool ships: evidence toward controls, not a
+    /// compliance determination.
+    pub disclaimer: String,
+    pub source_url: Option<String>,
+    /// A few representative control citations (capped for the panel).
+    pub citations: Vec<ComplianceCitation>,
+}
+
+/// A `ChaosGraph` node summary (`{id, kind, label}`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GraphNode {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+}
+
+/// A `ChaosGraph` directed edge (`(src)-[rel]->(dst)`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GraphEdge {
+    pub src: String,
+    pub rel: String,
+    pub dst: String,
+}
+
+/// Result of `tumult_chaosgraph_query`: node ids + labels for one kind.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GraphNodesOutcome {
+    pub kind: String,
+    pub count: usize,
+    pub nodes: Vec<GraphNode>,
+}
+
+/// Result of `tumult_chaosgraph_neighbors`: the ego sub-graph of a node.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GraphEgoOutcome {
+    pub node_id: String,
+    pub depth: u32,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+/// One untested plugin action from `tumult_chaosgraph_coverage_gaps`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CoverageGap {
+    pub id: String,
+    pub plugin: String,
+    pub action: String,
+    pub domain: String,
+}
+
+/// A framework article with no evidence edge yet (coverage-gaps, framework
+/// filter set).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct UnevidencedArticle {
+    pub id: String,
+    pub control_id: String,
+    pub strength: String,
+}
+
+/// Result of `tumult_chaosgraph_coverage_gaps`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CoverageGapsOutcome {
+    pub count: usize,
+    pub gaps: Vec<CoverageGap>,
+    /// Present only when a framework filter was given.
+    pub framework: Option<String>,
+    /// Framework articles still lacking any evidence edge (framework filter).
+    pub unevidenced_articles: Vec<UnevidencedArticle>,
+}
+
 /// Errors surfaced to the HTTP layer. Every variant maps to a clean JSON error
 /// response — the panel never panics on a bad/absent MCP server.
 #[derive(Debug)]
@@ -475,6 +571,193 @@ pub fn parse_recommend_result(result: &Value) -> Result<RecommendOutcome, McpErr
     })
 }
 
+/// Parse a `tumult_compliance` `tools/call` result into a [`ComplianceOutcome`]
+/// from its `structuredContent`.
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_compliance_result(result: &Value) -> Result<ComplianceOutcome, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(
+            content_text(result).unwrap_or_else(|| "compliance tool reported an error".to_string()),
+        ));
+    }
+    let sc = result.get("structuredContent").ok_or_else(|| {
+        McpError::Protocol("compliance result missing structuredContent".to_string())
+    })?;
+    let citations = sc
+        .get("citations")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(4)
+                .map(|c| ComplianceCitation {
+                    control_id: str_field(c, "control_id"),
+                    title: str_field(c, "title"),
+                    strength: str_field(c, "strength"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(ComplianceOutcome {
+        framework: str_field(sc, "framework"),
+        pass_rate: sc.get("pass_rate").and_then(Value::as_f64).unwrap_or(0.0),
+        recovery_compliance: sc.get("recovery_compliance").and_then(Value::as_f64),
+        verdict: str_field(sc, "verdict"),
+        journals_evaluated: sc
+            .get("journals_evaluated")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        disclaimer: str_field(sc, "disclaimer"),
+        source_url: sc
+            .get("source_url")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        citations,
+    })
+}
+
+/// Parse a `tumult_chaosgraph_query` result into a [`GraphNodesOutcome`].
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_graph_query_result(result: &Value) -> Result<GraphNodesOutcome, McpError> {
+    let sc = graph_structured(result, "query")?;
+    Ok(GraphNodesOutcome {
+        kind: str_field(sc, "kind"),
+        count: sc
+            .get("count")
+            .and_then(Value::as_u64)
+            .map_or_else(|| 0, |c| usize::try_from(c).unwrap_or(usize::MAX)),
+        nodes: parse_graph_nodes(sc.get("nodes")),
+    })
+}
+
+/// Parse a `tumult_chaosgraph_neighbors` result into a [`GraphEgoOutcome`].
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_graph_neighbors_result(result: &Value) -> Result<GraphEgoOutcome, McpError> {
+    let sc = graph_structured(result, "neighbors")?;
+    let edges = sc
+        .get("edges")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|e| GraphEdge {
+                    src: str_field(e, "src"),
+                    rel: str_field(e, "rel"),
+                    dst: str_field(e, "dst"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(GraphEgoOutcome {
+        node_id: str_field(sc, "node_id"),
+        depth: sc
+            .get("depth")
+            .and_then(Value::as_u64)
+            .and_then(|d| u32::try_from(d).ok())
+            .unwrap_or(1),
+        nodes: parse_graph_nodes(sc.get("nodes")),
+        edges,
+    })
+}
+
+/// Parse a `tumult_chaosgraph_coverage_gaps` result into a
+/// [`CoverageGapsOutcome`].
+///
+/// # Errors
+/// Returns [`McpError::Protocol`] on a tool-level error or missing structured
+/// content.
+pub fn parse_coverage_gaps_result(result: &Value) -> Result<CoverageGapsOutcome, McpError> {
+    let sc = graph_structured(result, "coverage_gaps")?;
+    let gaps = sc
+        .get("gaps")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|g| CoverageGap {
+                    id: str_field(g, "id"),
+                    plugin: str_field(g, "plugin"),
+                    action: str_field(g, "action"),
+                    domain: str_field(g, "domain"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let unevidenced_articles = sc
+        .get("unevidenced_articles")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|a| UnevidencedArticle {
+                    id: str_field(a, "id"),
+                    control_id: str_field(a, "control_id"),
+                    strength: str_field(a, "strength"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(CoverageGapsOutcome {
+        count: sc
+            .get("count")
+            .and_then(Value::as_u64)
+            .map_or_else(|| 0, |c| usize::try_from(c).unwrap_or(usize::MAX)),
+        gaps,
+        framework: sc
+            .get("framework")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        unevidenced_articles,
+    })
+}
+
+/// Pull the `structuredContent` object from a ChaosGraph tool result, mapping a
+/// tool-level error into [`McpError::Protocol`].
+fn graph_structured<'a>(result: &'a Value, tool: &str) -> Result<&'a Value, McpError> {
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(McpError::Protocol(content_text(result).unwrap_or_else(
+            || format!("chaosgraph {tool} tool reported an error"),
+        )));
+    }
+    result.get("structuredContent").ok_or_else(|| {
+        McpError::Protocol(format!("chaosgraph {tool} result missing structuredContent"))
+    })
+}
+
+/// Parse a `nodes` array of `{id, kind, label}` objects.
+fn parse_graph_nodes(nodes: Option<&Value>) -> Vec<GraphNode> {
+    nodes
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|n| GraphNode {
+                    id: str_field(n, "id"),
+                    kind: str_field(n, "kind"),
+                    label: str_field(n, "label"),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Read a string field from a JSON object, defaulting to empty.
+fn str_field(v: &Value, key: &str) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
 /// Find the first line beginning with `label` and parse the remainder as a
 /// count (e.g. `Plugins: 12` with label `Plugins:` → `12`).
 fn labeled_count(text: &str, label: &str) -> Option<usize> {
@@ -618,7 +901,14 @@ impl McpClient {
     /// Propagates [`McpError`] on any transport or RPC-level failure.
     async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, McpError> {
         let session = self.handshake().await?;
-        let params = tools_call_params(name, arguments);
+        let mut params = tools_call_params(name, arguments);
+        // The server reads the tool-call token from `_meta.authorization` (the
+        // transport Authorization header is not visible at the handler level in
+        // rust-mcp-sdk). Setting the header alone authenticates `tools/list` but
+        // not `tools/call`, so inject it into the params too.
+        if let Some(t) = &self.token {
+            params["_meta"] = json!({ "authorization": format!("Bearer {t}") });
+        }
         let req = build_rpc_request(3, "tools/call", params);
         let (body, _) = self.post(Some(&session), &req).await?;
         rpc_result(&parse_sse_body(&body)?)
@@ -682,6 +972,83 @@ impl McpClient {
     pub async fn recommend(&self) -> Result<RecommendOutcome, McpError> {
         let result = self.call_tool("tumult_recommend", json!({})).await?;
         parse_recommend_result(&result)
+    }
+
+    /// Summarise regulatory evidence over a directory of journals via
+    /// `tumult_compliance`.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn compliance(
+        &self,
+        framework: &str,
+        journals_path: &str,
+    ) -> Result<ComplianceOutcome, McpError> {
+        let result = self
+            .call_tool(
+                "tumult_compliance",
+                json!({ "framework": framework, "journals_path": journals_path }),
+            )
+            .await?;
+        parse_compliance_result(&result)
+    }
+
+    /// List ChaosGraph nodes of a `kind` via `tumult_chaosgraph_query`.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn chaosgraph_query(
+        &self,
+        kind: &str,
+        filter: Option<&str>,
+    ) -> Result<GraphNodesOutcome, McpError> {
+        let mut args = json!({ "kind": kind });
+        if let Some(f) = filter {
+            args["filter"] = json!(f);
+        }
+        let result = self.call_tool("tumult_chaosgraph_query", args).await?;
+        parse_graph_query_result(&result)
+    }
+
+    /// Fetch the ego sub-graph of a node via `tumult_chaosgraph_neighbors`.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn chaosgraph_neighbors(
+        &self,
+        node_id: &str,
+        rel: Option<&str>,
+        depth: u32,
+    ) -> Result<GraphEgoOutcome, McpError> {
+        let mut args = json!({ "node_id": node_id, "depth": depth });
+        if let Some(r) = rel {
+            args["rel"] = json!(r);
+        }
+        let result = self.call_tool("tumult_chaosgraph_neighbors", args).await?;
+        parse_graph_neighbors_result(&result)
+    }
+
+    /// List untested actions (and, with a framework, unevidenced articles) via
+    /// `tumult_chaosgraph_coverage_gaps`.
+    ///
+    /// # Errors
+    /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
+    pub async fn chaosgraph_coverage_gaps(
+        &self,
+        framework: Option<&str>,
+        domain: Option<&str>,
+    ) -> Result<CoverageGapsOutcome, McpError> {
+        let mut args = json!({});
+        if let Some(f) = framework {
+            args["framework"] = json!(f);
+        }
+        if let Some(d) = domain {
+            args["domain"] = json!(d);
+        }
+        let result = self
+            .call_tool("tumult_chaosgraph_coverage_gaps", args)
+            .await?;
+        parse_coverage_gaps_result(&result)
     }
 }
 
@@ -1050,6 +1417,158 @@ mod tests {
         });
         assert!(matches!(
             parse_recommend_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    // ── compliance ────────────────────────────────────────────
+
+    #[test]
+    fn parses_compliance_structured_content() {
+        let result = json!({
+            "isError": false,
+            "structuredContent": {
+                "framework": "DORA",
+                "pass_rate": 0.875,
+                "recovery_compliance": 0.9,
+                "verdict": "COMPLIANT",
+                "journals_evaluated": 8,
+                "disclaimer": "Evidence toward controls, not a compliance determination.",
+                "source_url": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
+                "citations": [
+                    { "control_id": "Art. 24", "title": "Testing", "requires": "x", "evidence_type": "y", "strength": "direct", "evidence_note": "z", "source_url": "u", "last_verified": "2025-01-01" },
+                    { "control_id": "Art. 25", "title": "Scenario testing", "requires": "x", "evidence_type": "y", "strength": "supporting", "evidence_note": "z", "source_url": "u", "last_verified": "2025-01-01" }
+                ]
+            }
+        });
+        let c = parse_compliance_result(&result).unwrap();
+        assert_eq!(c.framework, "DORA");
+        assert!((c.pass_rate - 0.875).abs() < 1e-9);
+        assert_eq!(c.recovery_compliance, Some(0.9));
+        assert_eq!(c.verdict, "COMPLIANT");
+        assert_eq!(c.journals_evaluated, 8);
+        assert!(c.disclaimer.contains("not a compliance determination"));
+        assert_eq!(c.citations.len(), 2);
+        assert_eq!(c.citations[0].control_id, "Art. 24");
+        assert_eq!(c.citations[1].strength, "supporting");
+    }
+
+    #[test]
+    fn compliance_pass_rate_only_has_null_recovery() {
+        let result = json!({
+            "structuredContent": {
+                "framework": "DORA",
+                "pass_rate": 1.0,
+                "recovery_compliance": null,
+                "verdict": "COMPLIANT (pass-rate only)",
+                "journals_evaluated": 1,
+                "disclaimer": "scope note"
+            }
+        });
+        let c = parse_compliance_result(&result).unwrap();
+        assert_eq!(c.recovery_compliance, None);
+        assert!(c.verdict.contains("pass-rate only"));
+        assert!(c.citations.is_empty());
+    }
+
+    #[test]
+    fn compliance_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"unknown framework 'nope'"}]
+        });
+        assert!(matches!(
+            parse_compliance_result(&result),
+            Err(McpError::Protocol(_))
+        ));
+    }
+
+    // ── chaosgraph ────────────────────────────────────────────
+
+    #[test]
+    fn parses_graph_query_nodes() {
+        let result = json!({
+            "structuredContent": {
+                "kind": "fault",
+                "count": 2,
+                "nodes": [
+                    { "id": "fault:tumult-net::inject_latency", "kind": "fault", "label": "net latency" },
+                    { "id": "fault:tumult-ssh::execute", "kind": "fault", "label": "ssh execute" }
+                ]
+            }
+        });
+        let q = parse_graph_query_result(&result).unwrap();
+        assert_eq!(q.kind, "fault");
+        assert_eq!(q.count, 2);
+        assert_eq!(q.nodes.len(), 2);
+        assert_eq!(q.nodes[0].id, "fault:tumult-net::inject_latency");
+    }
+
+    #[test]
+    fn parses_graph_neighbors_edges() {
+        let result = json!({
+            "structuredContent": {
+                "node_id": "exp:Kill Postgres connections",
+                "depth": 1,
+                "nodes": [
+                    { "id": "exp:Kill Postgres connections", "kind": "experiment", "label": "Kill Postgres connections" },
+                    { "id": "fault:tumult-db-postgres::kill", "kind": "fault", "label": "kill" }
+                ],
+                "edges": [
+                    { "src": "exp:Kill Postgres connections", "rel": "injects", "dst": "fault:tumult-db-postgres::kill" }
+                ]
+            }
+        });
+        let ego = parse_graph_neighbors_result(&result).unwrap();
+        assert_eq!(ego.node_id, "exp:Kill Postgres connections");
+        assert_eq!(ego.depth, 1);
+        assert_eq!(ego.nodes.len(), 2);
+        assert_eq!(ego.edges.len(), 1);
+        assert_eq!(ego.edges[0].rel, "injects");
+    }
+
+    #[test]
+    fn parses_coverage_gaps_with_framework() {
+        let result = json!({
+            "structuredContent": {
+                "count": 1,
+                "gaps": [
+                    { "id": "gap:tumult-net::partition", "plugin": "tumult-net", "action": "partition", "domain": "domain:tumult-net" }
+                ],
+                "framework": "DORA",
+                "unevidenced_articles": [
+                    { "id": "art:dora:11", "control_id": "Art. 11", "strength": "direct" }
+                ]
+            }
+        });
+        let g = parse_coverage_gaps_result(&result).unwrap();
+        assert_eq!(g.count, 1);
+        assert_eq!(g.gaps[0].plugin, "tumult-net");
+        assert_eq!(g.framework.as_deref(), Some("DORA"));
+        assert_eq!(g.unevidenced_articles.len(), 1);
+        assert_eq!(g.unevidenced_articles[0].control_id, "Art. 11");
+    }
+
+    #[test]
+    fn coverage_gaps_without_framework_has_no_articles() {
+        let result = json!({
+            "structuredContent": { "count": 0, "gaps": [] }
+        });
+        let g = parse_coverage_gaps_result(&result).unwrap();
+        assert_eq!(g.count, 0);
+        assert!(g.gaps.is_empty());
+        assert!(g.framework.is_none());
+        assert!(g.unevidenced_articles.is_empty());
+    }
+
+    #[test]
+    fn graph_tool_error_is_protocol_error() {
+        let result = json!({
+            "isError": true,
+            "content": [{"type":"text","text":"no analytics store found"}]
+        });
+        assert!(matches!(
+            parse_graph_query_result(&result),
             Err(McpError::Protocol(_))
         ));
     }

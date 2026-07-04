@@ -15,7 +15,7 @@
 #   5. Runs a sample experiment to verify everything works
 #
 # After install, run:
-#   tumult init              — create a new experiment interactively
+#   tumult init              — scaffold a new experiment.toon from a template
 #   tumult run experiment.toon — run an experiment
 #   tumult discover          — list available plugins and actions
 
@@ -98,9 +98,24 @@ sleep 5
 make ssh-key 2>/dev/null || warn "SSH key extraction failed — sshd container may still be starting"
 
 # ── Verify ─────────────────────────────────────────────────────
+#
+# Verify against a self-contained experiment that ships with every checkout:
+# `tumult init` scaffolds a template built only on `uname`/`sh`/`echo` (no
+# Docker, no network), so this succeeds on a clean clone with only Rust present.
+# (The old code ran `experiment.toon`, which is produced by `tumult init` and is
+# NOT committed — so a fresh clone failed here.)
 
 info "Running verification experiment..."
-"$TUMULT_BIN" run experiment.toon 2>&1 | tail -4
+VERIFY_DIR="$(mktemp -d)"
+VERIFY_OK=0
+if ( cd "$VERIFY_DIR" \
+        && "$TUMULT_BIN" init >/dev/null \
+        && "$TUMULT_BIN" run experiment.toon --no-ingest >verify.log 2>&1 ); then
+    VERIFY_OK=1
+fi
+tail -4 "$VERIFY_DIR/verify.log" 2>/dev/null || true
+rm -rf "$VERIFY_DIR"
+[ "$VERIFY_OK" -eq 1 ] || fail "Verification experiment failed"
 
 echo ""
 ok "========================================="

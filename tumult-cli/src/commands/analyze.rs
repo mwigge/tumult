@@ -151,6 +151,18 @@ fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: us
 /// Prints a store-wide aggregate summary.
 fn print_store_aggregate(store: &tumult_analytics::AnalyticsStore) -> Result<()> {
     let total = store.experiment_count()?;
+
+    // An empty store makes every aggregate NULL (e.g. `avg(duration_ms)`),
+    // which would otherwise render as `Duration: avg=NULLms`. Surface a clean
+    // message instead of a wall of NULLs.
+    if total == 0 {
+        println!("Analytics Store Summary");
+        println!("{}", "═".repeat(60));
+        println!("  No experiments recorded yet.");
+        println!("  Run an experiment (e.g. `tumult run experiment.toon`) to populate the store.");
+        return Ok(());
+    }
+
     let act_rows = store.query("SELECT count(*) FROM activity_results")?;
     let activities = act_rows
         .first()
@@ -182,7 +194,7 @@ fn print_store_aggregate(store: &tumult_analytics::AnalyticsStore) -> Result<()>
                 cast(max(duration_ms) as INTEGER) \
          FROM experiments",
     )?;
-    if !dur.is_empty() && !dur[0][0].is_empty() {
+    if !dur.is_empty() && !dur[0][0].is_empty() && dur[0][0] != "NULL" {
         println!(
             "  Duration:    avg={}ms  min={}ms  max={}ms",
             dur[0][0], dur[0][1], dur[0][2]
@@ -267,7 +279,20 @@ pub fn cmd_analyze(
                             store.ingest_journal(&journal)?;
                             count += 1;
                         }
-                        Err(e) => eprintln!("warning: skipping {}: {}", entry_path.display(), e),
+                        Err(e) => {
+                            // Experiments and journals share the `.toon` extension. A
+                            // file that parses as an experiment definition simply isn't
+                            // a journal — skip it silently instead of warning about a
+                            // "missing" journal field. Only genuinely malformed files
+                            // (neither a valid journal nor a valid experiment) warn.
+                            let is_experiment = std::fs::read_to_string(&entry_path)
+                                .ok()
+                                .and_then(|c| tumult_core::engine::parse_experiment(&c).ok())
+                                .is_some();
+                            if !is_experiment {
+                                eprintln!("warning: skipping {}: {}", entry_path.display(), e);
+                            }
+                        }
                     }
                 }
             }

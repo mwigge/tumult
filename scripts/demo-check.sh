@@ -25,8 +25,12 @@ COMPOSE="${COMPOSE_DEMO:-docker compose -f ${REPO_ROOT}/docker/docker-compose.de
 MODE="full"
 DO_WAIT=1
 
-# Domains in run order (name → experiment file basename).
-DOMAINS=(net postgres container stress process ssh agentic agentic-trajectory)
+# Domains in run order (name → experiment file basename). Each ends Completed
+# on success, so they belong in the pass/fail sweep. The auto-halt guardrail
+# (demo-guard-halt.toon) is deliberately excluded: its expected outcome is
+# Halted, not Completed, so it is exercised from the control panel's own
+# "Safety guardrail" card instead.
+DOMAINS=(net postgres container stress process ssh agentic agentic-trajectory timewarp-clock timewarp-entropy)
 
 # Containers that carry a healthcheck we wait on. demo-collector is excluded:
 # its image is distroless (no in-container probe possible), so its readiness is

@@ -72,7 +72,7 @@ pub fn store_stats(store_path: &str) -> Result<StructuredReport, ToolError> {
         )));
     }
 
-    let store = tumult_analytics::AnalyticsStore::open(&path)
+    let store = tumult_analytics::AnalyticsStore::open_read_only(&path)
         .map_err(|e| ToolError::Store(e.to_string()))?;
     let stats = store.stats().map_err(|e| ToolError::Store(e.to_string()))?;
     let version = store
@@ -123,7 +123,7 @@ pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, ToolE
         )));
     }
 
-    let store = tumult_analytics::AnalyticsStore::open(&path)
+    let store = tumult_analytics::AnalyticsStore::open_read_only(&path)
         .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let columns = store

@@ -211,6 +211,11 @@ services:
       TUMULT_MCP_TOKEN: ${TUMULT_MCP_TOKEN:-tumult-demo}
       DEMO_EXPERIMENTS_DIR: /demo/experiments
       SIGNOZ_URL: http://localhost:3301
+      # Compliance card corpus: the /journals volume the fault sweep writes into
+      # (resolved inside tumult-mcp, which runs tumult_compliance server-side).
+      DEMO_JOURNALS_DIR: /journals
+      # Framework the Compliance + ChaosGraph cards report against.
+      DEMO_COMPLIANCE_FRAMEWORK: dora
     volumes:
       - ../demo/experiments:/demo/experiments:ro
     depends_on:

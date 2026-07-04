@@ -5,11 +5,13 @@
 
 mod agentic;
 mod analyze;
+mod chaosgraph;
 mod compliance;
 mod exec;
 mod gameday;
 mod init;
 mod load;
+mod mcp;
 mod recommend;
 mod report;
 mod run;
@@ -36,8 +38,12 @@ pub use agentic::{
     cmd_agentic_run_scenario, cmd_agentic_smoke, cmd_agentic_trajectory,
 };
 pub use analyze::cmd_analyze;
+pub use chaosgraph::{
+    cmd_chaosgraph_coverage_gaps, cmd_chaosgraph_neighbors, cmd_chaosgraph_query,
+};
 pub use compliance::cmd_compliance;
 pub use init::cmd_init;
+pub use mcp::{cmd_mcp_serve, Transport as McpTransportKind};
 pub use trend::{cmd_export, cmd_trend};
 pub use types::{
     build_load_override, parse_duration_str, parse_var_args, ComplianceFramework, ExportFormat,

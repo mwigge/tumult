@@ -110,8 +110,45 @@ tumult compliance --framework dora .
 # List all 13 plugins (10 script + 3 native) and their 64 actions
 tumult discover
 
-# Create your own experiment interactively
+# Scaffold your own experiment from a template (self-contained, no Docker)
 tumult init
+```
+
+### 6. Serve Tumult as tools for AI agents (MCP)
+
+The same chaos actions are exposed over the Model Context Protocol so agents
+(Claude Code, and others) can run experiments and query results. Start the
+server straight from the CLI — no separate binary needed:
+
+```bash
+# Local agents over stdio (default)
+tumult mcp serve
+
+# Networked agents over HTTP, with a bearer token
+tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
+```
+
+`tumult mcp --help` lists the options; the server also exposes a `/health`
+endpoint (default: `port + 1`).
+
+### 7. Explore the ChaosGraph knowledge graph
+
+ChaosGraph collapses every accumulated run into a compact node/edge graph.
+Previously reachable only through MCP, it now has first-class CLI commands that
+read the analytics store (`~/.tumult/analytics.duckdb`, or `--store <path>`):
+
+```bash
+# List graph nodes of a kind (experiment, fault, service, journal, …)
+tumult chaosgraph query --kind fault
+
+# The neighbourhood of one experiment (nodes + edges within N hops)
+tumult chaosgraph neighbors --node "exp:Redis resilience — verify recovery after disruption"
+
+# Chaos actions never exercised by a tested run
+tumult chaosgraph coverage-gaps --framework dora
+
+# Any command supports --format json
+tumult chaosgraph query --kind service --format json
 ```
 
 ## Run a GameDay (full e2e)

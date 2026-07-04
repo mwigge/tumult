@@ -93,7 +93,13 @@ demo: demo-base
 	@echo "  Tumult MCP (HTTP) ......... http://localhost:3100/mcp"
 	@echo "  OTLP collector ............ grpc :14317 / http :14318"
 	@echo "------------------------------------------------------------------"
-	@echo "  try: open the control panel and click Run on any fault card"
+	@echo "  Golden path in the control panel (http://localhost:8088):"
+	@echo "    1. Run a fault card      → inject a real fault"
+	@echo "    2. Open SigNoz traces    → filter service = demo-app"
+	@echo "    3. Query analytics       → recent runs (tumult_analyze_store)"
+	@echo "    4. Check compliance      → DORA evidence (tumult_compliance)"
+	@echo "    5. Query ChaosGraph      → faults, sub-graph, coverage gaps"
+	@echo "  Also try the 'Safety guardrail' card — an auto-halt run (Halted)."
 	@echo "=================================================================="
 
 demo-check: demo-base

@@ -6,8 +6,27 @@ under continuous load — plus the full Tumult platform (MCP chaos engine, OTel
 collector, SigNoz) and a web control panel. It then injects one fault per
 domain so the dashboards are populated the moment you open them.
 
-Everything runs on a single Docker network, `tumult-demo`. The interface
-contract (names, ports, env) is pinned in [`CONTRACT.md`](./CONTRACT.md).
+Everything runs on a single Docker network, `tumult-demo`, and every action in
+the control panel is a single MCP `tools/call` against `tumult-mcp`. The
+interface contract (names, ports, env) is pinned in [`CONTRACT.md`](./CONTRACT.md).
+
+## The golden path
+
+The demo tells one cohesive story on one stack. From the control panel at
+**http://localhost:8088** you walk a single path — each step is an existing MCP
+tool:
+
+1. **Inject a fault** — click **Run** on any fault card (`tumult_run_experiment`).
+2. **Observe** — follow the trace link into SigNoz, filtered to `service = demo-app`.
+3. **Analyze** — the **Analytics** card queries recent runs (`tumult_analyze_store`).
+4. **Check compliance** — the **Compliance** card renders the DORA evidence
+   pass rate, verdict, citations and scope disclaimer (`tumult_compliance`).
+5. **Explore the ChaosGraph** — the **ChaosGraph** card shows fault nodes, an
+   experiment's ego sub-graph and coverage gaps (`tumult_chaosgraph_query` /
+   `_neighbors` / `_coverage_gaps`).
+
+A **Safety guardrail** card and a **full chaos loop** timeline
+(`discover → validate → run → analyze → recommend`) round out the same path.
 
 ## Quickstart
 
@@ -18,11 +37,12 @@ make demo-down     # tear down and remove volumes
 ```
 
 `make demo` builds the `tumult` base image (the MCP server is built from it),
-brings the stack up, waits for health, runs the seven-domain fault sweep once
-to warm the dashboards, imports the SigNoz dashboards, and prints the URLs.
+brings the stack up, waits for health, runs the fault sweep once to warm the
+dashboards (and populate the analytics store the payoff cards read), imports
+the SigNoz dashboards, and prints the URLs.
 
-Open the **control panel at http://localhost:8088** and click **Run** on any
-fault card, then follow the **View traces** link into SigNoz.
+Open the **control panel at http://localhost:8088** and walk the golden path
+above — start by clicking **Run** on any fault card.
 
 ## Architecture
 
@@ -75,6 +95,12 @@ smoke-test tick.
 | ssh        | `demo-ssh.toon`           | `tumult-ssh` native `execute` → demo-sshd       | Runs commands (incl. a stress-ng burst) over SSH on the sshd target |
 | agentic    | `demo-agentic.toon`       | `tumult agentic smoke` (bundled fake HTTP adapter) | Injects malformed model output and asserts the contract-feedback loop fires — no external API |
 | agentic-trajectory | `demo-agentic-trajectory.toon` | `tumult agentic trajectory` (bundled fake adapters) | Multi-turn agent-graph: poisons retrieval at step 0, proves the answer step loses grounding, and detects a reflection loop — whole-trajectory contracts + agentic subscores, no external API |
+| timewarp-clock | `demo-timewarp-clock.toon` | `tumult-timewarp` clock-skew (`token-ttl.sh` / `restore-clock.sh`) | Advances a validator's clock past a short-TTL HMAC token's expiry, proves the once-valid token is rejected, and confirms demo-app stays healthy |
+| timewarp-entropy | `demo-timewarp-entropy.toon` | `tumult-timewarp` RNG pressure (`rng-pressure.sh` / `crypto-throughput.sh`) | Applies sustained RNG/crypto pressure on the runner and proves crypto operations still complete and entropy stays readable |
+
+A safety-guardrail experiment, `demo-guard-halt.toon`, is **not** in the sweep
+above: it arms an auto-halt guard so its expected outcome is `Halted`, not
+`Completed`. It runs from the control panel's **Safety guardrail** card.
 
 Validate them yourself:
 
@@ -85,24 +111,55 @@ for f in demo/experiments/*.toon; do ./target/debug/tumult validate "$f"; done
 
 ## Using the control panel
 
-http://localhost:8088 shows one card per domain. Each card has a name, a
-description, and a **Run** button that calls the MCP `run_experiment` tool for
-that domain's experiment. Destructive actions are badged (a confirm step) using
-the tool's MCP annotations. Live status shows running / passed / failed and the
-run duration, and **View traces** deep-links into SigNoz filtered to
-`service = demo-app` around the run window. The MCP bearer token comes from the
-`TUMULT_MCP_TOKEN` env var (`tumult-demo` by default) — no build-time secrets.
+http://localhost:8088 is organised as the golden path, top to bottom:
+
+- **Fault domains** — one card per domain with a **Run** button that calls the
+  MCP `tumult_run_experiment` tool for that domain's experiment. Destructive
+  actions are badged (a confirm step) using the tool's MCP annotations. Live
+  status shows running / passed / failed and the run duration, and the trace
+  link opens SigNoz with an explicit `filter service = demo-app` instruction
+  (the traces-explorer page; SigNoz pre-filter query params vary by version).
+- **Safety guardrail** — runs `demo-guard-halt.toon`. The auto-halt guard pulls
+  the run the moment demo-app turns unhealthy and rollback restores Postgres, so
+  the expected, badged outcome is **Halted** (not Completed).
+- **The enterprise payoff** — three read-only cards over the persistent
+  analytics store:
+  - **Compliance** — `tumult_compliance {framework: dora, journals_path: /journals}`:
+    the evidence pass rate, recovery proxy, verdict, sourced control citations,
+    and the tool's own scope disclaimer (evidence toward controls, not an
+    attestation).
+  - **Analytics** — `tumult_analyze_store`: the most recent experiments
+    (title / status / duration) as a compact table.
+  - **ChaosGraph** — `tumult_chaosgraph_query {kind: fault}`, then
+    `tumult_chaosgraph_neighbors` on a chosen experiment (its ego sub-graph),
+    plus `tumult_chaosgraph_coverage_gaps {framework: dora}` (untested actions
+    and unevidenced framework articles).
+- **Run the whole chaos loop** — a timeline that drives
+  `discover → validate → run → analyze → recommend` as five separate MCP calls.
+
+The MCP bearer token comes from the `TUMULT_MCP_TOKEN` env var (`tumult-demo`
+by default) — no build-time secrets. The Compliance corpus directory and
+framework are configurable via `DEMO_JOURNALS_DIR` (default `/journals`) and
+`DEMO_COMPLIANCE_FRAMEWORK` (default `dora`).
+
+### `scripts/gameday-demo.sh` — the advanced / CI path
+
+`scripts/gameday-demo.sh` is a scripted, non-interactive GameDay walkthrough
+(discover → GameDay run → resilience analysis → analytics → compliance mapping)
+intended for CI and terminal demos. It exercises the same MCP surface without
+the web UI. Prefer `make demo` and the control panel for the interactive story;
+reach for `gameday-demo.sh` when you want a headless, log-driven run.
 
 ## `make demo-check` — the smoke test
 
 `make demo-check` is the headless functional smoke test used in development:
 
 ```bash
-make demo-check    # up, wait for health, run all 7 experiments, assert telemetry, exit code
+make demo-check    # up, wait for health, run the fault sweep, assert telemetry, exit code
 ```
 
-It brings the stack up, waits for every service to report healthy, runs each of
-the seven experiments via `docker compose exec tumult-mcp tumult run …`, and
+It brings the stack up, waits for every service to report healthy, runs each
+experiment in the sweep via `docker compose exec tumult-mcp tumult run …`, and
 asserts:
 
 1. **Each experiment ends `Completed`** — `tumult run` exits non-zero on any

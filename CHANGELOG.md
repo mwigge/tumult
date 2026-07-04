@@ -4,6 +4,47 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.8.0] - 2026-07-04
+
+A cohesion release: close the gaps between what Tumult ships and what a user can
+actually reach and trust. Driven by an SRE-usability + journey-cohesion audit.
+
+Added:
+- `tumult mcp serve [--transport stdio|http] [--port] [--token]` — the MCP server
+  is now reachable from the main binary (refactored into a reusable `server`
+  module); it was previously a separate, undiscoverable executable.
+- `tumult chaosgraph query|neighbors|coverage-gaps` — ChaosGraph is now usable by
+  a human from the CLI, not only by agents over MCP. Reads open the store
+  read-only so they coexist with a running server.
+- Demo: the flagship `make demo` control panel now surfaces the whole journey —
+  Analytics, DORA Compliance, and ChaosGraph cards (driving existing MCP tools),
+  plus a Safety-guardrail card showing an auto-halt run. The compliance/analytics
+  payoff no longer lives only in a separate stack.
+- `AnalyticsStore::open_read_only` — read-only opens that coexist with the writer;
+  `AnalyticsError::StoreLocked` maps the opaque DuckDB lock error to a clear,
+  actionable message.
+
+Changed:
+- MCP read tools (chaosgraph query/neighbors, analyze_store, recommend) now open
+  the store read-only, so the CLI and the running server no longer collide on the
+  single-writer DuckDB store.
+- CLI is quiet by default: telemetry INFO lines are suppressed unless an OTLP
+  endpoint (or RUST_LOG) is set.
+- `tumult analyze <dir>` skips experiment `.toon` files quietly instead of warning;
+  empty store prints a clean message instead of `avg=NULLms`.
+- Corrected stale counts across README (17 crates, 15 plugins, 82 actions, 4
+  native) to match `tumult discover`.
+- The 3 previously-unwired demo experiments (guard-halt, timewarp clock/entropy)
+  are now driven from the demo.
+
+Fixed:
+- First-run: `install.sh` verification scaffolds a self-contained experiment via
+  `tumult init` instead of running a non-existent file, so a fresh clone verifies
+  cleanly.
+- `tumult init` help/wording no longer claims to be interactive (it scaffolds a
+  template).
+- Demo SigNoz trace link points at a page that exists with an explicit filter
+  hint, instead of a guessed query that landed on an unfiltered view.
 ## [2.7.2] - 2026-07-04
 
 Added:

@@ -4,7 +4,8 @@ use tumult_cli::commands::{build_load_override, parse_var_args};
 use clap::Parser;
 
 use cli::{
-    AgenticAction, Cli, Commands, GameDayAction, OutputFormat, RollbackStrategy, StoreAction,
+    AgenticAction, ChaosGraphAction, Cli, Commands, GameDayAction, GraphFormat, McpAction,
+    McpTransport, OutputFormat, RollbackStrategy, StoreAction,
 };
 
 mod cli;
@@ -12,6 +13,18 @@ mod cli;
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
+    // Keep interactive runs quiet: without an OTLP endpoint there is nowhere for
+    // spans to go, so the INFO-level tracing/telemetry lines (`experiment.started`,
+    // `Global tracer provider is set`, …) are pure noise on the terminal. Default
+    // the log level to `warn` in that case. When an endpoint IS configured, or the
+    // operator sets `RUST_LOG` explicitly, we leave the level untouched so audit
+    // logs and span export behave exactly as before.
+    if std::env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT").is_none()
+        && std::env::var_os("RUST_LOG").is_none()
+    {
+        std::env::set_var("RUST_LOG", "warn");
+    }
+
     // Initialize OpenTelemetry from environment
     let otel_config = tumult_otel::config::TelemetryConfig::from_env();
     let telemetry = tumult_otel::telemetry::TumultTelemetry::new(otel_config);
@@ -237,6 +250,64 @@ async fn main() -> anyhow::Result<()> {
             }
             GameDayAction::Analyze { gameday } => {
                 commands::cmd_gameday_analyze(&gameday)?;
+            }
+        },
+        Commands::Mcp { action } => match action {
+            McpAction::Serve {
+                transport,
+                host,
+                port,
+                health_port,
+                token,
+            } => {
+                let transport = match transport {
+                    McpTransport::Stdio => commands::McpTransportKind::Stdio,
+                    McpTransport::Http => commands::McpTransportKind::Http,
+                };
+                commands::cmd_mcp_serve(transport, host, port, health_port, token).await?;
+            }
+        },
+        Commands::ChaosGraph { action } => match action {
+            ChaosGraphAction::Query {
+                kind,
+                filter,
+                format,
+                store,
+            } => {
+                commands::cmd_chaosgraph_query(
+                    store.as_deref(),
+                    &kind,
+                    filter.as_deref(),
+                    matches!(format, GraphFormat::Json),
+                )?;
+            }
+            ChaosGraphAction::Neighbors {
+                node,
+                rel,
+                depth,
+                format,
+                store,
+            } => {
+                commands::cmd_chaosgraph_neighbors(
+                    store.as_deref(),
+                    &node,
+                    rel.as_deref(),
+                    depth,
+                    matches!(format, GraphFormat::Json),
+                )?;
+            }
+            ChaosGraphAction::CoverageGaps {
+                framework,
+                domain,
+                format,
+                store,
+            } => {
+                commands::cmd_chaosgraph_coverage_gaps(
+                    store.as_deref(),
+                    framework.as_deref(),
+                    domain.as_deref(),
+                    matches!(format, GraphFormat::Json),
+                )?;
             }
         },
     }

@@ -27,9 +27,9 @@ pub(crate) fn init_at(path: &Path, plugin: Option<&str>) -> Result<()> {
     let template = generate_template(plugin);
     std::fs::write(path, &template)?;
 
-    println!("Created {}", path.display());
+    println!("Created {} from a template", path.display());
     if let Some(p) = plugin {
-        println!("Template includes {p} plugin actions");
+        println!("Template references the {p} plugin — edit the method steps to use its actions");
     }
     println!("Edit the file to configure your experiment, then run:");
     println!("  tumult run {}", path.display());

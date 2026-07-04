@@ -186,9 +186,9 @@ pub(crate) enum Commands {
         #[arg(long)]
         target: Option<String>,
     },
-    /// Interactive experiment creation
+    /// Scaffold a new experiment.toon from a bundled template
     Init {
-        /// Start with a specific plugin
+        /// Plugin name to reference in the generated template
         #[arg(long)]
         plugin: Option<String>,
     },
@@ -246,6 +246,113 @@ pub(crate) enum Commands {
     GameDay {
         #[command(subcommand)]
         action: GameDayAction,
+    },
+    /// Model Context Protocol server exposing Tumult as tools for AI agents
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
+    // `ChaosGraph` is a product name rendered verbatim in `--help`; backticks
+    // would leak into the help text, so silence the doc-markdown lint here.
+    #[allow(clippy::doc_markdown)]
+    /// Query the ChaosGraph knowledge graph over the analytics store
+    #[command(name = "chaosgraph")]
+    ChaosGraph {
+        #[command(subcommand)]
+        action: ChaosGraphAction,
+    },
+}
+
+/// Text vs. structured JSON rendering for `chaosgraph` output.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GraphFormat {
+    /// Readable, indented text summary (default)
+    Text,
+    /// The underlying structured object as pretty JSON
+    Json,
+}
+
+/// Transport for `tumult mcp serve`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum McpTransport {
+    /// JSON-RPC over stdin/stdout (default)
+    Stdio,
+    /// Streamable HTTP / SSE
+    Http,
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum McpAction {
+    /// Start the MCP server (stdio for local agents, HTTP for networked use)
+    Serve {
+        /// Transport mode
+        #[arg(long, default_value_t = McpTransport::Stdio, value_enum)]
+        transport: McpTransport,
+        /// Bind address for the HTTP transport and health endpoint
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+        /// Port for the HTTP transport
+        #[arg(long, default_value_t = 3100)]
+        port: u16,
+        /// Port for the /health endpoint (default: port + 1)
+        #[arg(long)]
+        health_port: Option<u16>,
+        /// Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`)
+        #[arg(long)]
+        token: Option<String>,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum ChaosGraphAction {
+    /// List graph nodes of a given kind (experiment, fault, service, journal, …)
+    Query {
+        /// Node kind to list
+        #[arg(long)]
+        kind: String,
+        /// Case-insensitive label substring filter
+        #[arg(long)]
+        filter: Option<String>,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
+        format: GraphFormat,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Show the ego sub-graph (neighbours) around a node
+    Neighbors {
+        /// Node id to center on (e.g. `exp:My experiment`)
+        #[arg(long)]
+        node: String,
+        /// Restrict to a single relation (e.g. `injects`, `targets`)
+        #[arg(long)]
+        rel: Option<String>,
+        /// Traversal depth in hops
+        #[arg(long, default_value_t = 1)]
+        depth: u32,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
+        format: GraphFormat,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Report chaos actions never exercised by a tested run
+    #[command(name = "coverage-gaps")]
+    CoverageGaps {
+        /// Annotate with this framework's still-unevidenced articles
+        #[arg(long)]
+        framework: Option<String>,
+        /// Filter gaps to a fault domain (plugin name substring)
+        #[arg(long)]
+        domain: Option<String>,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
+        format: GraphFormat,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
     },
 }
 

@@ -7,6 +7,32 @@
 //! **Thread safety:** `AnalyticsStore` wraps a single `DuckDB` `Connection` and
 //! is NOT thread-safe. For shared access, wrap in `Arc<Mutex<AnalyticsStore>>`.
 //!
+//! # Concurrency: the single-writer model
+//!
+//! `DuckDB` is **single-writer per file**. A read-write connection takes an
+//! *exclusive* lock on the database file, so at most one process may hold the
+//! store open read-write at a time. This matters because Tumult opens the same
+//! `~/.tumult/analytics.duckdb` from two places — the CLI (`tumult run` ingest,
+//! `tumult analyze`, `tumult chaosgraph`, …) and the long-running MCP server.
+//!
+//! To keep these from sabotaging each other:
+//!
+//! * **Reads open read-only.** [`AnalyticsStore::open_read_only`] opens with
+//!   `access_mode = READ_ONLY`. Read-only opens do not take the exclusive write
+//!   lock, so **multiple read-only processes coexist** — the CLI can query the
+//!   store while the MCP server also holds it open for reads. Use this for every
+//!   read path (`query`, `stats`, coverage, `graph_neighbors`, `graph_query`, …).
+//! * **Writes open read-write.** [`AnalyticsStore::open`] keeps the read-write
+//!   open used by ingest and other write paths, and it also initialises/migrates
+//!   the schema.
+//! * **Two writers still conflict.** Because a read-write open is exclusive, it
+//!   blocks *every* other opener (readers included) while it is held. If a write
+//!   (or read) open fails because another process holds the store — most often
+//!   the MCP server mid-ingest — the opaque `DuckDB` lock error is mapped to the
+//!   clear [`AnalyticsError::StoreLocked`], which tells the user to stop the
+//!   server or use a separate `--store` path. A short bounded retry absorbs the
+//!   brief window while the other process finishes a write.
+//!
 //! **Encryption limitation:** `DuckDB` does not support transparent
 //! encryption-at-rest. The database file is stored in plaintext on disk.
 //! Protect sensitive experiment data by relying on filesystem-level encryption
@@ -14,10 +40,56 @@
 //! permissions to `0o700` (which [`AnalyticsStore::open`] applies automatically).
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use duckdb::{params, Connection};
+use duckdb::{params, AccessMode, Config, Connection};
 
 use crate::error::AnalyticsError;
+
+/// Total attempts a write/read open makes before reporting the store as locked.
+/// A single retry window absorbs the brief moment another process holds the
+/// store while finishing a write; a persistent holder still fails fast.
+const OPEN_ATTEMPTS: u32 = 3;
+
+/// Backoff between open attempts when the store is momentarily locked.
+const OPEN_BACKOFF: Duration = Duration::from_millis(50);
+
+/// Whether a `DuckDB` error is the file-lock conflict raised when another
+/// process already holds the store open. The message is stable across the
+/// read-write ("Could not set lock … Conflicting lock is held") and read-only
+/// contention paths.
+fn is_lock_conflict(err: &duckdb::Error) -> bool {
+    matches!(
+        err,
+        duckdb::Error::DuckDBFailure(_, Some(msg))
+            if msg.contains("Could not set lock") || msg.contains("Conflicting lock")
+    )
+}
+
+/// Open a `DuckDB` connection with a short bounded retry, mapping a persistent
+/// lock conflict to [`AnalyticsError::StoreLocked`]. `open` supplies the actual
+/// open (read-write or read-only); any non-lock error propagates immediately.
+fn open_with_retry(
+    path: &Path,
+    open: impl Fn() -> Result<Connection, duckdb::Error>,
+) -> Result<Connection, AnalyticsError> {
+    let mut attempt = 1;
+    loop {
+        match open() {
+            Ok(conn) => return Ok(conn),
+            Err(err) if is_lock_conflict(&err) => {
+                if attempt >= OPEN_ATTEMPTS {
+                    return Err(AnalyticsError::StoreLocked {
+                        path: path.to_path_buf(),
+                    });
+                }
+                std::thread::sleep(OPEN_BACKOFF);
+                attempt += 1;
+            }
+            Err(err) => return Err(AnalyticsError::from(err)),
+        }
+    }
+}
 
 mod graph;
 mod ingest;
@@ -86,9 +158,22 @@ impl AnalyticsStore {
         Ok(store)
     }
 
+    /// Open the persistent store **read-write** (the writer path).
+    ///
+    /// This takes `DuckDB`'s exclusive write lock, creates the store directory
+    /// (mode `0o700` on Unix), and initialises/migrates the schema. Use it for
+    /// ingest and every other write path.
+    ///
+    /// Because the lock is exclusive, this fails while any other process holds
+    /// the same store open. When it does, the opaque `DuckDB` lock error is
+    /// mapped to [`AnalyticsError::StoreLocked`]. For read-only access that can
+    /// coexist with other readers, use [`AnalyticsStore::open_read_only`].
+    ///
     /// # Errors
     ///
-    /// Returns an error if the `DuckDB` file cannot be opened or schema initialisation fails.
+    /// Returns [`AnalyticsError::StoreLocked`] if another process holds the
+    /// store, or another error if the `DuckDB` file cannot be opened or schema
+    /// initialisation fails.
     #[must_use = "callers must handle file open or schema errors"]
     pub fn open(path: &Path) -> Result<Self, AnalyticsError> {
         // Ensure parent directory exists with restricted permissions
@@ -100,10 +185,39 @@ impl AnalyticsStore {
                 let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
             }
         }
-        let conn = Connection::open(path)?;
+        let conn = open_with_retry(path, || Connection::open(path))?;
         let store = Self { conn };
         store.init_schema()?;
         Ok(store)
+    }
+
+    /// Open the persistent store **read-only** (the reader path).
+    ///
+    /// A read-only connection (`access_mode = READ_ONLY`) does not take the
+    /// exclusive write lock, so multiple read-only openers coexist across
+    /// processes: the CLI can query the store while the MCP server also holds it
+    /// open. Use this for every read operation — [`AnalyticsStore::query`],
+    /// [`AnalyticsStore::stats`], [`AnalyticsStore::graph_neighbors`],
+    /// [`AnalyticsStore::graph_query`], coverage, and so on.
+    ///
+    /// The store must already exist and have been initialised by a writer;
+    /// read-only opens neither create nor migrate the schema. If the open fails
+    /// because another process holds the store read-write (an exclusive lock
+    /// blocks readers too), the error is mapped to
+    /// [`AnalyticsError::StoreLocked`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AnalyticsError::StoreLocked`] if a writer holds the store, or
+    /// another error if the `DuckDB` file cannot be opened read-only (e.g. it
+    /// does not exist yet).
+    #[must_use = "callers must handle file open errors"]
+    pub fn open_read_only(path: &Path) -> Result<Self, AnalyticsError> {
+        let conn = open_with_retry(path, || {
+            let config = Config::default().access_mode(AccessMode::ReadOnly)?;
+            Connection::open_with_flags(path, config)
+        })?;
+        Ok(Self { conn })
     }
 
     fn init_schema(&self) -> Result<(), AnalyticsError> {
@@ -313,6 +427,49 @@ mod tests {
             let rows = s.query("SELECT experiment_id FROM experiments").unwrap();
             assert_eq!(rows[0][0], "e1");
         }
+    }
+
+    #[test]
+    fn read_only_open_can_query_existing_store() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+
+        // A writer creates + populates the store, then releases the lock.
+        {
+            let s = AnalyticsStore::open(&db_path).unwrap();
+            s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+                .unwrap();
+        }
+
+        // The read-only accessor opens without the exclusive write lock and can
+        // run read operations.
+        let ro = AnalyticsStore::open_read_only(&db_path).unwrap();
+        assert_eq!(ro.experiment_count().unwrap(), 1);
+        let rows = ro.query("SELECT experiment_id FROM experiments").unwrap();
+        assert_eq!(rows[0][0], "e1");
+    }
+
+    /// The previously-failing scenario: a reader opens the store while a writer
+    /// handle is still alive. With read operations moved to `open_read_only`
+    /// this succeeds and can query, instead of colliding on the write lock.
+    #[test]
+    fn read_only_reader_coexists_with_open_writer() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("analytics.duckdb");
+
+        let writer = AnalyticsStore::open(&db_path).unwrap();
+        writer
+            .ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+            .unwrap();
+
+        // Reader opens while `writer` is still held.
+        let reader = AnalyticsStore::open_read_only(&db_path).unwrap();
+        assert_eq!(reader.experiment_count().unwrap(), 1);
+        let rows = reader
+            .query("SELECT experiment_id FROM experiments")
+            .unwrap();
+        assert_eq!(rows[0][0], "e1");
+        drop(writer);
     }
 
     #[test]

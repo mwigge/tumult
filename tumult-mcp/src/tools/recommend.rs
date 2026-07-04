@@ -175,7 +175,7 @@ pub fn coverage(store_path: &str) -> Result<StructuredReport, ToolError> {
     writeln!(output, "Plugin coverage:").ok();
 
     let store = if path.exists() {
-        tumult_analytics::AnalyticsStore::open(&path).ok()
+        tumult_analytics::AnalyticsStore::open_read_only(&path).ok()
     } else {
         None
     };

@@ -1,0 +1,5 @@
+[2m2026-07-04T16:44:21.747018Z[0m [33m WARN[0m [2mtumult_mcp::handler::auth[0m[2m:[0m TUMULT_MCP_TOKEN not set — MCP server running without authentication
+Tumult MCP server listening on http://0.0.0.0:3199/mcp
+Health endpoint listening on http://0.0.0.0:3200/health
+received SIGTERM, shutting down
+telemetry flushed, exiting

@@ -1,11 +1,11 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-2.7.2-brightgreen)
+![Version](https://img.shields.io/badge/version-2.8.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Crates](https://img.shields.io/badge/crates-15-green)
+![Crates](https://img.shields.io/badge/crates-17-green)
 ![Tests](https://img.shields.io/badge/tests-1026%20unit-brightgreen)
-![Plugins](https://img.shields.io/badge/plugins-10%20script%20%2B%203%20native%20%7C%2064%20actions-green)
+![Plugins](https://img.shields.io/badge/plugins-11%20script%20%2B%204%20native%20%7C%2082%20actions-green)
 
 ![Tumult Conceptual Banner](docs/images/tumult-banner.png)
 
@@ -156,7 +156,7 @@ tumult-plugin-kafka/
 
 ### Native Rust Plugins
 
-Native plugins (for performance-critical or SDK-heavy tasks like kube-rs or cloud provider SDKs) are compiled into the binary. Each native crate implements the `NativeExecutor` trait from `tumult-plugin` and is registered in a `NativeExecutorRegistry` — the CLI is a pure composition root that wires the registry together. Three native plugins are registered today: `tumult-ssh` (1 function), `tumult-net` (7 functions), and `tumult-kubernetes` (8 functions). Referencing an unknown plugin or function fails with a clear error listing what is available.
+Native plugins (for performance-critical or SDK-heavy tasks like kube-rs or cloud provider SDKs) are compiled into the binary. Each native crate implements the `NativeExecutor` trait from `tumult-plugin` and is registered in a `NativeExecutorRegistry` — the CLI is a pure composition root that wires the registry together. Four native plugins are registered today: `tumult-ssh` (1 function), `tumult-net` (7 functions), `tumult-kubernetes` (10 functions), and `tumult-cloud` (9 functions). Referencing an unknown plugin or function fails with a clear error listing what is available.
 
 ```toon
 provider:
@@ -617,7 +617,7 @@ docker run --rm ghcr.io/mwigge/tumult --help
 docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
 ```
 
-Both images contain the full platform: all 15 Rust crates, 10 script + 3 native plugins (64 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
+Both images contain the full platform: all 17 Rust crates, 11 script + 4 native plugins (82 actions), example experiments, and GameDay definitions. The only difference is the default entrypoint.
 
 | Image | Entrypoint | Use case |
 |-------|-----------|----------|
@@ -651,8 +651,8 @@ Tumult provides composable Docker bundles for a complete chaos engineering lab w
 │                 │                 │                │                    │
 │  Redis 7        │  OTel Collector │  26 MCP tools  │  Connects to       │
 │  :16379         │  :14317 (OTLP)  │  DuckDB store  │  tumult-mcp:3100   │
-│                 │  :18889 (prom)  │  13 plugins    │                    │
-│  Kafka 3.8      │                 │  64 actions    │                    │
+│                 │  :18889 (prom)  │  15 plugins    │                    │
+│  Kafka 3.8      │                 │  82 actions    │                    │
 │  :19092         │  ClickHouse     │                │                    │
 │                 │  (inside SigNoz)│                │                    │
 │  SSH Server     │                 │                │                    │
@@ -752,7 +752,7 @@ The OTel Collector uses the standard [Contrib image](https://github.com/open-tel
 
 Full functional validation of all platform components is documented in [docs/testprotocol.md](docs/testprotocol.md).
 
-**162 tests** across 23 categories covering CLI, experiment engine, TOON format, plugins (10 script plugins including [Pumba](https://github.com/alexei-led/pumba)), Arrow/DuckDB pipeline, OpenTelemetry observability, custom OTel Collector, SigNoz, ClickHouse, containers, SSH, baseline statistics, analytics/reporting, compliance frameworks, MCP server, and end-to-end scenarios.
+**162 tests** across 23 categories covering CLI, experiment engine, TOON format, plugins (11 script plugins including [Pumba](https://github.com/alexei-led/pumba)), Arrow/DuckDB pipeline, OpenTelemetry observability, custom OTel Collector, SigNoz, ClickHouse, containers, SSH, baseline statistics, analytics/reporting, compliance frameworks, MCP server, and end-to-end scenarios.
 
 | Category | Tests | Pass |
 |----------|-------|------|
@@ -982,7 +982,7 @@ tumult run examples/redis-chaos.toon       # break Redis, watch it recover
 tumult run examples/postgres-failover.toon  # kill PG connections
 tumult run examples/pumba-latency.toon      # inject 200ms network latency
 tumult analyze --query "SELECT title, status, duration_ms FROM experiments"
-tumult discover                             # list all 13 plugins (10 script + 3 native) and their 64 actions
+tumult discover                             # list all 15 plugins (11 script + 4 native) and their 82 actions
 tumult init                                 # create your own experiment
 ```
 

@@ -226,6 +226,74 @@
     .loop-verdict.show { display: block; }
     .loop-verdict.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); }
     .loop-verdict.fail { background: var(--fail-bg); color: var(--fail); border: 1px solid color-mix(in srgb, var(--fail) 30%, transparent); }
+
+    /* ── Golden path + payoff ─────────────────────────────── */
+    .goldenpath {
+      list-style: none; margin: 0 0 6px; padding: 0;
+      display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center;
+    }
+    .goldenpath li {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 999px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: 13px; color: var(--text); position: relative;
+    }
+    .goldenpath li:not(:last-child)::after { content: "→"; margin-left: 4px; color: var(--muted); opacity: .6; }
+    .goldenpath .gp-n {
+      display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+      background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700;
+    }
+    .section-title { margin: 40px 0 4px; font-size: 18px; letter-spacing: -.01em; }
+    .section-sub { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; max-width: 80ch; }
+
+    .badge.tool {
+      background: var(--surface-2); color: var(--muted);
+      border: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 600; font-size: 10.5px;
+    }
+    .payoff-card.wide { grid-column: 1 / -1; }
+    .payoff-result { font-size: 13px; color: var(--text); }
+    .payoff-result .muted { color: var(--muted); }
+    .verdict-badge {
+      display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+      border: 1px solid transparent;
+    }
+    .verdict-badge.ok { background: var(--ok-bg); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+    .verdict-badge.warn { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+    .verdict-badge.fail { background: var(--fail-bg); color: var(--fail); border-color: color-mix(in srgb, var(--fail) 30%, transparent); }
+    .metrics { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 2px; }
+    .metric .m-val { font-size: 20px; font-weight: 680; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .metric .m-lab { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+    .disclaimer {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 12px; line-height: 1.45;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .cites { margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .cites li { font-size: 12.5px; }
+    .cites .c-id { font-weight: 650; }
+    .cites .c-strength { font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+    .payoff-result table { border-collapse: collapse; font-size: 12.5px; width: 100%; margin-top: 8px; }
+    .payoff-result th, .payoff-result td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--border); }
+    .payoff-result th { color: var(--muted); font-weight: 600; }
+    .payoff-result td { font-variant-numeric: tabular-nums; }
+    .table-scroll { overflow-x: auto; }
+    .graph-block { margin-top: 14px; }
+    .graph-block h3 { margin: 0 0 6px; font-size: 13px; font-weight: 650; }
+    .graph-block h3 .count { color: var(--muted); font-weight: 500; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    }
+    .chip.gap { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
+    .chip.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .edges { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    .edges li { font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .edges .rel { color: var(--accent); }
+    .edges .arrow { color: var(--muted); }
+    .section-err { color: var(--fail); font-size: 12.5px; }
+    .card .state.halted .lamp { background: var(--warn); }
+    .card .state.halted { color: var(--warn); }
   </style>
 </head>
 <body>
@@ -241,11 +309,18 @@
 
   <main>
     <div class="intro">
-      <h1>Fault injection control panel</h1>
-      <p>Each card runs one Tumult chaos experiment against the live demo stack via the
-         <strong>tumult-mcp</strong> server (MCP <code>tools/call → tumult_run_experiment</code>).
-         Destructive actions are badged from the tool's own MCP annotations and ask for confirmation.
-         After a run, follow the trace link into SigNoz.</p>
+      <h1>Tumult resilience control panel</h1>
+      <p>One cohesive path, all over the <strong>tumult-mcp</strong> server (each action is an MCP
+         <code>tools/call</code>): <strong>run a fault → observe it in SigNoz → analyze results →
+         check compliance evidence → explore the ChaosGraph</strong>. Destructive actions are badged
+         from the tools' own MCP annotations and ask for confirmation.</p>
+      <ol class="goldenpath" aria-label="golden path">
+        <li><span class="gp-n">1</span> Inject a fault</li>
+        <li><span class="gp-n">2</span> Observe traces</li>
+        <li><span class="gp-n">3</span> Analyze runs</li>
+        <li><span class="gp-n">4</span> Compliance evidence</li>
+        <li><span class="gp-n">5</span> ChaosGraph</li>
+      </ol>
     </div>
     <div id="banner" class="banner"></div>
 
@@ -269,13 +344,73 @@
       <div id="loop-verdict" class="loop-verdict"></div>
     </section>
 
+    <h2 class="section-title">Fault domains</h2>
+    <p class="section-sub">One experiment per domain. Each injects a real fault, then verifies recovery —
+      a passing run is a resilience result, not a smoke-test tick. Run one, then follow its trace link.</p>
     <section id="grid" class="grid" aria-live="polite"></section>
+
+    <h2 class="section-title">Safety guardrail</h2>
+    <p class="section-sub">Not every run should finish. This experiment arms an auto-halt guard that watches
+      demo-app during a database outage and pulls the run — running rollback — the instant it turns unhealthy.
+      Expected outcome: <strong>Halted</strong>, not Completed.</p>
+    <section id="guardrail" class="grid" aria-live="polite"></section>
+
+    <h2 class="section-title">The enterprise payoff</h2>
+    <p class="section-sub">The same runs, read three ways over the persistent analytics store — all existing
+      read-only MCP tools. This is the regulatory + analytics story the flagship demo now surfaces directly.</p>
+    <section class="grid payoff" aria-live="polite">
+      <!-- Compliance -->
+      <div class="card payoff-card" id="card-compliance">
+        <div class="head">
+          <h2>Compliance</h2>
+          <span class="badge tool" title="MCP tool">tumult_compliance</span>
+        </div>
+        <p class="desc">Regulatory <em>evidence</em> summary over the sweep's journals: pass rate, recovery
+          proxy, an evidence verdict and sourced control citations for <span id="comp-fw">DORA</span>.</p>
+        <div class="foot">
+          <button class="run" id="btn-compliance">Check compliance</button>
+          <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
+        </div>
+        <div class="result payoff-result"></div>
+      </div>
+
+      <!-- Analytics -->
+      <div class="card payoff-card" id="card-analytics">
+        <div class="head">
+          <h2>Analytics</h2>
+          <span class="badge tool" title="MCP tool">tumult_analyze_store</span>
+        </div>
+        <p class="desc">A read-only SQL query over the persistent store — the most recent experiments with
+          their status and duration, straight from accumulated history.</p>
+        <div class="foot">
+          <button class="run" id="btn-analytics">Query analytics</button>
+          <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
+        </div>
+        <div class="result payoff-result"></div>
+      </div>
+
+      <!-- ChaosGraph -->
+      <div class="card payoff-card wide" id="card-chaosgraph">
+        <div class="head">
+          <h2>ChaosGraph</h2>
+          <span class="badge tool" title="MCP tools">tumult_chaosgraph_*</span>
+        </div>
+        <p class="desc">The knowledge graph of everything tested — fault nodes, an experiment's ego sub-graph
+          (<code>query → neighbors</code>), and coverage gaps (untested actions + unevidenced
+          <span class="fw-name">DORA</span> articles).</p>
+        <div class="foot">
+          <button class="run" id="btn-chaosgraph">Query ChaosGraph</button>
+          <div class="state idle"><span class="lamp"></span><span class="label">idle</span></div>
+        </div>
+        <div class="result payoff-result"></div>
+      </div>
+    </section>
   </main>
   <footer id="foot"></footer>
 
   <script>
     const CONFIG = /*__CONFIG__*/null || {};
-    const state = { traceLink: CONFIG.signozTraceLink || '#', traceService: CONFIG.traceService || 'demo-app' };
+    const state = { traceLink: CONFIG.signozTraceLink || '#', traceService: CONFIG.traceService || 'demo-app', journalsDir: CONFIG.journalsDir || '/journals' };
 
     const el = (tag, props = {}, ...kids) => {
       const n = document.createElement(tag);
@@ -312,7 +447,7 @@
         const link = body.signoz_trace_link || state.traceLink;
         result.innerHTML = '';
         result.append(
-          el('a', { href: link, target: '_blank', rel: 'noopener' }, `View traces in SigNoz (service: ${state.traceService}) ↗`),
+          el('a', { href: link, target: '_blank', rel: 'noopener' }, `Open SigNoz traces — filter service = ${state.traceService} ↗`),
         );
         if (body.journal_path) {
           result.append(el('div', { class: 'path' }, `journal: ${body.journal_path}${body.ingestion ? ' · ' + body.ingestion : ''}`));
@@ -393,8 +528,202 @@
           }
         });
       }
+      // Safety guardrail card — built once from the guard_halt descriptor.
+      const grail = document.getElementById('guardrail');
+      if (s.guard_halt && !grail.dataset.built) {
+        grail.append(makeGuardrailCard(s.guard_halt));
+        grail.dataset.built = '1';
+      }
+
+      // Framework labels on the payoff cards.
+      const fw = (s.compliance_framework || CONFIG.complianceFramework || 'dora').toUpperCase();
+      document.querySelectorAll('#comp-fw, .fw-name').forEach(n => { n.textContent = fw; });
+      if (s.journals_dir) state.journalsDir = s.journals_dir;
+
       document.getElementById('foot').textContent =
-        `Runs call MCP tumult_run_experiment with experiment_path as mounted inside the tumult-mcp container. Trace service: ${state.traceService}.`;
+        `Runs call MCP tumult_run_experiment with experiment_path as mounted inside the tumult-mcp container. Compliance corpus: ${state.journalsDir || CONFIG.journalsDir || '/journals'}. Trace service: ${state.traceService}.`;
+    }
+
+    // ── Safety guardrail card (auto-halt showcase) ───────────
+    function makeGuardrailCard(d) {
+      const confirm = el('div', { class: 'confirm' });
+      const card = el('div', { class: 'card', id: 'card-guardrail' },
+        el('div', { class: 'head' },
+          el('h2', { style: 'text-transform:none' }, 'Auto-halt guardrail'),
+          el('span', { class: 'badge', title: 'tumult_run_experiment is annotated destructiveHint=true' }, '⚠ fault injection'),
+        ),
+        el('p', { class: 'desc' }, d.description),
+        el('div', { class: 'path' }, d.experiment_path),
+        confirm,
+        el('div', { class: 'foot' },
+          el('button', { class: 'run', onclick: () => confirm.classList.add('show') }, 'Run guardrail'),
+          el('div', { class: 'state idle' }, el('span', { class: 'lamp' }), el('span', { class: 'label' }, 'idle')),
+        ),
+        el('div', { class: 'result' }),
+      );
+      confirm.append(
+        el('div', {}, el('strong', {}, 'Arm the auto-halt guard?'), ' This pauses demo-postgres so the guard fires; rollback restores it.'),
+        el('div', { class: 'row' },
+          el('button', { class: 'go', onclick: () => { confirm.classList.remove('show'); runGuardrail(card); } }, 'Yes, arm guard'),
+          el('button', { onclick: () => confirm.classList.remove('show') }, 'Cancel'),
+        ),
+      );
+      return card;
+    }
+
+    async function runGuardrail(card) {
+      const btn = card.querySelector('button.run');
+      const result = card.querySelector('.result');
+      btn.disabled = true;
+      setStatus(card, 'running', 'running…');
+      result.textContent = '';
+      try {
+        const res = await fetch('/api/guardrail', { method: 'POST' });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        const halted = body.outcome === 'halted';
+        setStatus(card, halted ? 'halted' : (body.outcome === 'passed' ? 'passed' : 'failed'),
+          `${body.status}${body.duration_ms != null ? ' · ' + body.duration_ms + ' ms' : ''}`);
+        result.innerHTML = '';
+        result.append(el('div', {},
+          halted
+            ? 'Guard breached on the first unhealthy probe — the run was Halted and rollback restored demo-postgres. This is the expected, safe outcome.'
+            : `Outcome: ${body.status} (guard did not fire this run).`));
+        result.append(el('a', { href: body.signoz_trace_link || state.traceLink, target: '_blank', rel: 'noopener' },
+          `Open SigNoz traces — filter service = ${state.traceService} ↗`));
+        if (body.journal_path) result.append(el('div', { class: 'path' }, `journal: ${body.journal_path}${body.ingestion ? ' · ' + body.ingestion : ''}`));
+      } catch (err) {
+        setStatus(card, 'failed', 'error');
+        result.textContent = String(err.message || err);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── Payoff cards: compliance · analytics · chaosgraph ────
+    function pct(x) { return `${(Number(x) * 100).toFixed(1)}%`; }
+    function verdictClass(v) {
+      const u = (v || '').toUpperCase();
+      if (u.startsWith('NON-COMPLIANT')) return 'fail';
+      if (u.startsWith('COMPLIANT')) return 'ok';
+      return 'warn';
+    }
+
+    async function loadCard(cardId, url, render) {
+      const card = document.getElementById(cardId);
+      const btn = card.querySelector('button.run');
+      const result = card.querySelector('.payoff-result');
+      btn.disabled = true;
+      setStatus(card, 'running', 'loading…');
+      result.innerHTML = '';
+      try {
+        const res = await fetch(url);
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        setStatus(card, 'passed', 'loaded');
+        result.innerHTML = '';
+        render(result, body);
+      } catch (err) {
+        setStatus(card, 'failed', 'error');
+        result.innerHTML = '';
+        result.append(el('div', { class: 'section-err' }, String(err.message || err)));
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderCompliance(root, body) {
+      const c = body.compliance || {};
+      root.append(
+        el('div', {},
+          el('span', { class: 'verdict-badge ' + verdictClass(c.verdict) }, c.verdict || '—'),
+          el('span', { class: 'muted', style: 'margin-left:8px' }, `${c.framework || ''} · ${c.journals_evaluated ?? 0} journals`),
+        ),
+      );
+      const metrics = el('div', { class: 'metrics' },
+        el('div', { class: 'metric' }, el('div', { class: 'm-val' }, pct(c.pass_rate || 0)), el('div', { class: 'm-lab' }, 'Pass rate')),
+        el('div', { class: 'metric' },
+          el('div', { class: 'm-val' }, c.recovery_compliance == null ? '—' : pct(c.recovery_compliance)),
+          el('div', { class: 'm-lab' }, 'Recovery')),
+      );
+      root.append(metrics);
+      if (Array.isArray(c.citations) && c.citations.length) {
+        root.append(el('ul', { class: 'cites' }, ...c.citations.map(ci =>
+          el('li', {},
+            el('span', { class: 'c-id' }, ci.control_id || ''), ' — ', ci.title || '',
+            ci.strength ? el('span', { class: 'c-strength' }, ci.strength) : '',
+          ))));
+      }
+      if (c.disclaimer) root.append(el('div', { class: 'disclaimer' }, c.disclaimer));
+      if (c.source_url) root.append(el('div', { style: 'margin-top:8px' },
+        el('a', { href: c.source_url, target: '_blank', rel: 'noopener' }, 'Framework source ↗')));
+      root.append(el('div', { class: 'path', style: 'margin-top:8px' }, `journals_path: ${body.journals_path || ''}`));
+    }
+
+    function renderAnalytics(root, body) {
+      const cols = body.columns || [];
+      if (!cols.length) { root.append(el('div', { class: 'muted' }, 'No rows yet — run a fault first.')); return; }
+      const thead = el('tr', {}, ...cols.map(c => el('th', {}, c)));
+      const rows = (body.rows || []).map(r => el('tr', {}, ...r.map(cell => el('td', {}, cell))));
+      root.append(el('div', { class: 'table-scroll' },
+        el('table', {}, el('thead', {}, thead), el('tbody', {}, ...rows))));
+      root.append(el('div', { class: 'path', style: 'margin-top:8px' }, body.sql || ''));
+    }
+
+    function labelOf(nodes, id) {
+      const n = (nodes || []).find(x => x.id === id);
+      return n ? n.label : id;
+    }
+
+    function graphBlock(title, count, node) {
+      const h = el('h3', {}, title);
+      if (count != null) h.append(el('span', { class: 'count' }, ` · ${count}`));
+      return el('div', { class: 'graph-block' }, h, node);
+    }
+
+    function sectionOr(section, renderData) {
+      if (section && section.error) return el('div', { class: 'section-err' }, section.error);
+      if (section && section.data) return renderData(section.data);
+      return el('div', { class: 'muted' }, 'none');
+    }
+
+    function renderChaosGraph(root, body) {
+      // Fault nodes.
+      root.append(graphBlock('Fault nodes', body.faults?.data?.count,
+        sectionOr(body.faults, d => el('div', { class: 'chips' },
+          ...(d.nodes || []).slice(0, 12).map(n => el('span', { class: 'chip mono' }, n.label || n.id))))));
+
+      // Ego sub-graph around a chosen experiment.
+      const center = body.ego_center;
+      const egoTitle = center ? `Ego sub-graph · ${center.label}` : 'Ego sub-graph';
+      root.append(graphBlock(egoTitle, null,
+        sectionOr(body.ego, d => {
+          if (!(d.edges || []).length) return el('div', { class: 'muted' }, 'no edges');
+          return el('ul', { class: 'edges' }, ...d.edges.slice(0, 14).map(e =>
+            el('li', {},
+              labelOf(d.nodes, e.src), ' ',
+              el('span', { class: 'arrow' }, '─['), el('span', { class: 'rel' }, e.rel), el('span', { class: 'arrow' }, ']→'),
+              ' ', labelOf(d.nodes, e.dst))));
+        })));
+
+      // Coverage gaps + unevidenced articles.
+      root.append(graphBlock('Coverage gaps', body.coverage_gaps?.data?.count,
+        sectionOr(body.coverage_gaps, d => {
+          const frag = document.createDocumentFragment();
+          if ((d.gaps || []).length) {
+            frag.append(el('div', { class: 'chips' },
+              ...d.gaps.slice(0, 12).map(g => el('span', { class: 'chip gap mono' }, `${g.plugin}::${g.action}`))));
+          } else {
+            frag.append(el('div', { class: 'muted' }, 'every catalogued action has been exercised'));
+          }
+          const arts = d.unevidenced_articles || [];
+          if (arts.length) {
+            frag.append(el('div', { style: 'margin-top:8px' },
+              el('div', { class: 'muted', style: 'font-size:11.5px;margin-bottom:4px' }, `Unevidenced ${d.framework || ''} articles`),
+              el('div', { class: 'chips' }, ...arts.slice(0, 10).map(a => el('span', { class: 'chip' }, a.control_id)))));
+          }
+          return frag;
+        })));
     }
 
     // ── Chaos loop showcase ──────────────────────────────────
@@ -449,7 +778,7 @@
       const d = step.detail || {};
       if (step.tool === 'tumult_run_experiment') {
         const frag = document.createDocumentFragment();
-        if (traceLink) frag.append(el('a', { href: traceLink, target: '_blank', rel: 'noopener' }, `View traces in SigNoz (service: ${state.traceService}) ↗`));
+        if (traceLink) frag.append(el('a', { href: traceLink, target: '_blank', rel: 'noopener' }, `Open SigNoz traces — filter service = ${state.traceService} ↗`));
         if (d.journal_path) frag.append(el('div', { class: 'tl-path' }, `journal: ${d.journal_path}${d.ingestion ? ' · ' + d.ingestion : ''}`));
         return frag;
       }
@@ -542,6 +871,13 @@
 
     buildTimeline();
     document.getElementById('loop-run').addEventListener('click', runLoop);
+
+    document.getElementById('btn-compliance').addEventListener('click',
+      () => loadCard('card-compliance', '/api/compliance', renderCompliance));
+    document.getElementById('btn-analytics').addEventListener('click',
+      () => loadCard('card-analytics', '/api/analytics', renderAnalytics));
+    document.getElementById('btn-chaosgraph').addEventListener('click',
+      () => loadCard('card-chaosgraph', '/api/chaosgraph', renderChaosGraph));
 
     async function poll() {
       try {

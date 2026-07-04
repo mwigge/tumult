@@ -182,9 +182,9 @@ tumult init [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--plugin <name>` | Pre-fill template with a specific plugin's actions |
+| `--plugin <name>` | Reference a specific plugin name in the generated template |
 
-Creates `experiment.toon` in the current directory with a working template including steady-state hypothesis, method, and rollbacks.
+Scaffolds `experiment.toon` in the current directory from a bundled, self-contained template (steady-state hypothesis, method, and rollbacks built only on `uname`/`sh`/`echo` — no Docker or network needed). This writes a static template; it does not prompt interactively.
 
 ### Example
 
@@ -371,9 +371,29 @@ codex          no         -          Codex CLI not found on PATH. Install with: 
 
 Binary resolution honors the `CLAUDE_CODE_BIN` / `CODEX_BIN` env overrides.
 
+## tumult mcp serve
+
+Start the MCP (Model Context Protocol) server from the main `tumult` binary. This is the recommended way to launch the server — it runs in-process, so no separate `tumult-mcp` executable needs to be installed alongside the CLI. (The standalone `tumult-mcp` binary below remains available and behaves identically.)
+
+```
+tumult mcp serve                                    # stdio (IDE integration)
+tumult mcp serve --transport http --port 3100       # HTTP/SSE (containers, CI/CD)
+tumult mcp serve --transport http --token my-secret # require bearer auth
+```
+
+| Option | Description |
+|--------|-------------|
+| `--transport <stdio\|http>` | Transport mode (default: `stdio`) |
+| `--host <addr>` | Bind address for HTTP transport and health endpoint (default: `0.0.0.0`) |
+| `--port <port>` | Port for the HTTP transport (default: `3100`) |
+| `--health-port <port>` | Port for the `/health` endpoint (default: `port + 1`) |
+| `--token <token>` | Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`) |
+
+The exposed tools, authentication, and data model are identical to the standalone binary documented next.
+
 ## tumult-mcp
 
-Start the MCP (Model Context Protocol) server — a separate binary, on stdio transport by default or HTTP/SSE.
+Start the MCP (Model Context Protocol) server — a separate binary, on stdio transport by default or HTTP/SSE. Equivalent to `tumult mcp serve`.
 
 ```
 tumult-mcp                                # stdio (IDE integration)
@@ -423,6 +443,46 @@ TUMULT_MCP_TOKEN=my-secret tumult-mcp
 
 Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.
 
+## tumult chaosgraph
+
+Query the ChaosGraph knowledge graph — the typed node/edge model over accumulated chaos data that also backs the `chaosgraph_*` MCP tools. These commands read the analytics store directly, so an operator can explore the graph without an MCP client.
+
+```
+tumult chaosgraph query --kind <kind> [--filter <substr>]
+tumult chaosgraph neighbors --node <id> [--rel <rel>] [--depth <n>]
+tumult chaosgraph coverage-gaps [--framework <fw>] [--domain <plugin>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--kind <kind>` | Node kind to list: `experiment`, `fault`, `service`, `journal`, … |
+| `--filter <substr>` | Case-insensitive label substring filter (query) |
+| `--node <id>` | Node id to center on, e.g. `exp:My experiment` (neighbors) |
+| `--rel <rel>` | Restrict traversal to one relation, e.g. `injects`, `targets` (neighbors) |
+| `--depth <n>` | Traversal depth in hops (neighbors, default `1`) |
+| `--framework <fw>` | Annotate gaps with a framework's still-unevidenced articles (coverage-gaps) |
+| `--domain <plugin>` | Filter gaps to a fault domain / plugin (coverage-gaps) |
+| `--format <text\|json>` | Output format (all; default `text`) |
+| `--store <path>` | Analytics store path (all; default `~/.tumult/analytics.duckdb`) |
+
+### Examples
+
+```bash
+# Every fault primitive that has appeared in a run
+tumult chaosgraph query --kind fault
+
+# What one experiment touched — nodes and edges within 1 hop
+tumult chaosgraph neighbors --node "exp:Redis resilience — verify recovery after disruption"
+
+# Untested actions, with DORA articles still lacking evidence
+tumult chaosgraph coverage-gaps --framework dora
+
+# Structured output for scripting
+tumult chaosgraph query --kind service --format json
+```
+
+The store must exist (run at least one experiment first); a missing store yields a clean `store not found` error.
+
 ## Environment Variables
 
 | Variable | Description |
@@ -430,6 +490,7 @@ Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.
 | `TUMULT_PLUGIN_PATH` | Additional plugin search paths (colon-separated) |
 | `TUMULT_OTEL_ENABLED` | Enable/disable OTel (default: `true`) |
 | `TUMULT_OTEL_CONSOLE` | Print spans to console (default: `false`) |
+| `RUST_LOG` | Tracing filter. When unset **and** no OTLP endpoint is configured, the CLI defaults it to `warn` to keep interactive output clean; set it explicitly (e.g. `info`) to see audit/telemetry logs |
 | `TUMULT_MCP_TOKEN` | Bearer token for MCP server authentication |
 | `CLAUDE_CODE_BIN` | Explicit path to the Claude Code binary for `recommend --agent` / `agents` |
 | `CODEX_BIN` | Explicit path to the Codex binary for `recommend --agent` / `agents` |

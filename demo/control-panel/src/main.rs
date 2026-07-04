@@ -28,10 +28,22 @@ use mcp::{ChaosLoopClient, McpClient, McpError};
 const LOOP_ANALYZE_SQL: &str =
     "SELECT title, status, duration_ms FROM experiments ORDER BY started_at_ns DESC LIMIT 5";
 
+/// SQL the Analytics card runs over the persistent store: the most recent
+/// experiments with title, status and duration.
+const ANALYTICS_SQL: &str =
+    "SELECT title, status, duration_ms FROM experiments ORDER BY started_at_ns DESC LIMIT 8";
+
 /// Default fault domain the chaos loop validates and runs when none is given.
 const DEFAULT_LOOP_DOMAIN: &str = "postgres";
 
-/// The seven demo fault domains from CONTRACT.md, in display order.
+/// The auto-halt guardrail experiment. Kept out of the pass/fail sweep: its
+/// expected outcome is `Halted` (the guard pulls the run mid-flight), not
+/// `Completed`, so it has its own "Safety guardrail" card.
+const GUARD_HALT_DOMAIN: &str = "guard-halt";
+
+/// The demo fault domains from CONTRACT.md (plus the two timewarp domains), in
+/// display order. Each runs `demo-<id>.toon` and completes on success, so they
+/// double as the fault sweep and the per-domain cards.
 const DOMAINS: &[(&str, &str)] = &[
     ("net", "Injects latency on the network path between demo-app and demo-postgres (tumult-net userspace proxy)."),
     ("postgres", "Kills active Postgres connections mid-flight (tumult-db-postgres script plugin)."),
@@ -40,6 +52,8 @@ const DOMAINS: &[(&str, &str)] = &[
     ("process", "Injects a process fault against demo-app."),
     ("ssh", "Runs a native fault against the demo-sshd target over SSH (tumult-ssh)."),
     ("agentic", "Runs a bundled agentic resilience scenario — no external API (fake adapter)."),
+    ("timewarp-clock", "Advances a validator's perceived clock past a short-TTL token's expiry and proves the once-valid token is rejected, while demo-app stays healthy (tumult-timewarp)."),
+    ("timewarp-entropy", "Applies sustained RNG/crypto pressure on the runner and proves crypto still completes and entropy stays readable (tumult-timewarp)."),
 ];
 
 /// Runtime configuration, all from environment with demo-friendly defaults.
@@ -55,6 +69,11 @@ struct Config {
     demo_app_url: String,
     /// Service name to filter traces by in SigNoz.
     trace_service: String,
+    /// Directory (inside the tumult-mcp container) the fault sweep writes its
+    /// journals into — the corpus the Compliance card evaluates.
+    journals_dir: String,
+    /// Regulatory framework the Compliance / ChaosGraph cards report against.
+    compliance_framework: String,
     /// Bind port.
     port: u16,
 }
@@ -69,6 +88,8 @@ impl Config {
             signoz_url: trim_trailing_slash(&env_or("SIGNOZ_URL", "http://localhost:3301")),
             demo_app_url: trim_trailing_slash(&env_or("DEMO_APP_URL", "http://localhost:8080")),
             trace_service: env_or("TRACE_SERVICE", "demo-app"),
+            journals_dir: trim_trailing_slash(&env_or("DEMO_JOURNALS_DIR", "/journals")),
+            compliance_framework: env_or("DEMO_COMPLIANCE_FRAMEWORK", "dora"),
             port: env_or("PORT", "8088").parse().unwrap_or(8088),
         }
     }
@@ -78,16 +99,13 @@ impl Config {
         format!("{}/demo-{}.toon", self.experiments_dir, domain)
     }
 
-    /// Best-effort SigNoz deep link to the traces explorer, hinting the service
-    /// to filter by. SigNoz's exact filter query params vary across versions,
-    /// so we link to the traces explorer page; the UI also shows the service
-    /// name (`demo-app`) to filter on.
+    /// SigNoz deep link to the traces explorer. SigNoz's exact pre-filter query
+    /// params vary across versions, so we link to the traces-explorer page
+    /// (which always exists on the standalone build) and the UI states the
+    /// service to filter on (`demo-app`) explicitly — a working link and a
+    /// clear filter instruction rather than a fragile pre-filter that may 404.
     fn signoz_trace_link(&self) -> String {
-        format!(
-            "{}/traces-explorer?selected={}",
-            self.signoz_url,
-            urlencode(&format!("{{\"service.name\":\"{}\"}}", self.trace_service))
-        )
+        format!("{}/traces-explorer", self.signoz_url)
     }
 }
 
@@ -129,6 +147,10 @@ async fn main() {
         .route("/api/status", get(api_status))
         .route("/api/run/{domain}", post(api_run))
         .route("/api/loop", post(api_loop))
+        .route("/api/guardrail", post(api_guardrail))
+        .route("/api/compliance", get(api_compliance))
+        .route("/api/analytics", get(api_analytics))
+        .route("/api/chaosgraph", get(api_chaosgraph))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -178,6 +200,12 @@ struct StatusView {
     demo_app_url: String,
     trace_service: String,
     domains: Vec<DomainView>,
+    /// The auto-halt guardrail experiment (own card; expected outcome Halted).
+    guard_halt: DomainView,
+    /// Directory the sweep's journals live in (Compliance card corpus).
+    journals_dir: String,
+    /// Framework the Compliance / ChaosGraph cards report against.
+    compliance_framework: String,
 }
 
 /// Top-status-bar + per-domain state. Calls `tools/list` to check reachability
@@ -223,6 +251,17 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<StatusView> {
         demo_app_url: cfg.demo_app_url.clone(),
         trace_service: cfg.trace_service.clone(),
         domains,
+        guard_halt: DomainView {
+            id: GUARD_HALT_DOMAIN.to_string(),
+            description:
+                "A safety guard watches demo-app health during a DB outage and halts the run the \
+                 moment it turns unhealthy, running rollback immediately. Expected outcome: Halted."
+                    .to_string(),
+            experiment_path: cfg.experiment_path(GUARD_HALT_DOMAIN),
+            destructive: run_destructive,
+        },
+        journals_dir: cfg.journals_dir.clone(),
+        compliance_framework: cfg.compliance_framework.clone(),
     })
 }
 
@@ -278,6 +317,160 @@ async fn api_run(
 
 fn error_response(code: StatusCode, message: &str) -> Response {
     (code, Json(json!({ "error": message }))).into_response()
+}
+
+/// Map an [`McpError`] to the HTTP status the panel reports it under.
+fn status_for(err: &McpError) -> StatusCode {
+    match err {
+        McpError::Unreachable(_) => StatusCode::SERVICE_UNAVAILABLE,
+        McpError::Rpc(_) | McpError::Protocol(_) | McpError::Transport(_) => StatusCode::BAD_GATEWAY,
+    }
+}
+
+// ── Golden-path payoff cards ──────────────────────────────────
+// Compliance, Analytics, and ChaosGraph each drive one (or a few) EXISTING
+// read-only MCP tools, surfacing the enterprise payoff a viewer would
+// otherwise only see in scripts/gameday-demo.sh.
+
+/// Run the auto-halt guardrail experiment (`demo-guard-halt.toon`) via MCP.
+/// Expected outcome is `Halted` — the guard pulls the run when demo-app turns
+/// unhealthy and rollback restores the database. MCP failures → a clean JSON
+/// error, never a panic.
+async fn api_guardrail(State(state): State<Arc<AppState>>) -> Response {
+    let path = state.cfg.experiment_path(GUARD_HALT_DOMAIN);
+    match state.client.run_experiment(&path).await {
+        Ok(out) => Json(RunResponse {
+            domain: GUARD_HALT_DOMAIN.to_string(),
+            status: out.status,
+            outcome: out.outcome,
+            duration_ms: out.duration_ms,
+            journal_path: out.journal_path,
+            ingestion: out.ingestion,
+            experiment_path: path,
+            signoz_trace_link: state.cfg.signoz_trace_link(),
+        })
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("guardrail run failed: {e}");
+            error_response(status_for(&e), &e.to_string())
+        }
+    }
+}
+
+/// Compliance card: `tumult_compliance {framework, journals_path}` over the
+/// sweep's journal corpus. Returns the evidence pass rate / verdict / citations
+/// and the tool's own scope disclaimer.
+async fn api_compliance(State(state): State<Arc<AppState>>) -> Response {
+    let cfg = &state.cfg;
+    match state
+        .client
+        .compliance(&cfg.compliance_framework, &cfg.journals_dir)
+        .await
+    {
+        Ok(out) => Json(json!({
+            "journals_path": cfg.journals_dir,
+            "compliance": out,
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("compliance failed: {e}");
+            error_response(status_for(&e), &e.to_string())
+        }
+    }
+}
+
+/// Analytics card: `tumult_analyze_store` over the persistent store — the most
+/// recent experiments (title / status / duration) as a compact table.
+async fn api_analytics(State(state): State<Arc<AppState>>) -> Response {
+    match state.client.analyze_store(ANALYTICS_SQL).await {
+        Ok(table) => Json(json!({
+            "sql": ANALYTICS_SQL,
+            "columns": table.columns,
+            "rows": table.rows,
+            "row_count": table.row_count,
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("analytics failed: {e}");
+            error_response(status_for(&e), &e.to_string())
+        }
+    }
+}
+
+/// One section of the ChaosGraph card: its data, or the reason it was empty.
+/// Sections degrade independently so a partial graph still renders.
+#[derive(Serialize)]
+struct GraphSection<T: Serialize> {
+    data: Option<T>,
+    error: Option<String>,
+}
+
+impl<T: Serialize> GraphSection<T> {
+    fn from(result: Result<T, McpError>) -> Self {
+        match result {
+            Ok(data) => Self { data: Some(data), error: None },
+            Err(e) => Self { data: None, error: Some(e.to_string()) },
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ChaosGraphView {
+    framework: String,
+    /// Fault nodes recorded in the store (`tumult_chaosgraph_query kind=fault`).
+    faults: GraphSection<mcp::GraphNodesOutcome>,
+    /// The centre experiment the ego sub-graph is drawn around, if one exists.
+    ego_center: Option<mcp::GraphNode>,
+    /// The chosen experiment's ego sub-graph (`tumult_chaosgraph_neighbors`).
+    ego: GraphSection<mcp::GraphEgoOutcome>,
+    /// Untested actions + unevidenced articles (`..._coverage_gaps`).
+    coverage_gaps: GraphSection<mcp::CoverageGapsOutcome>,
+}
+
+/// ChaosGraph card: makes the flagship graph visible to a human. Drives three
+/// EXISTING read-only tools — `tumult_chaosgraph_query` (fault nodes), then
+/// `..._neighbors` on a chosen experiment node (its sub-graph), and
+/// `..._coverage_gaps` (untested actions + unevidenced framework articles).
+/// Always 200: each section reports its own error in-band so an empty store or
+/// a mid-call failure still renders the rest of the graph.
+async fn api_chaosgraph(State(state): State<Arc<AppState>>) -> Response {
+    let client = &state.client;
+    let framework = state.cfg.compliance_framework.clone();
+
+    // 1 · Fault nodes.
+    let faults = client.chaosgraph_query("fault", None).await;
+
+    // 2 · Pick an experiment node to centre the ego sub-graph on, then fetch it.
+    let (ego_center, ego) = match client.chaosgraph_query("experiment", None).await {
+        Ok(exps) => match exps.nodes.into_iter().next() {
+            Some(center) => {
+                let ego = client.chaosgraph_neighbors(&center.id, None, 1).await;
+                (Some(center), GraphSection::from(ego))
+            }
+            None => (
+                None,
+                GraphSection {
+                    data: None,
+                    error: Some("no experiment nodes in the store yet".to_string()),
+                },
+            ),
+        },
+        Err(e) => (None, GraphSection { data: None, error: Some(e.to_string()) }),
+    };
+
+    // 3 · Coverage gaps for the framework (untested actions + unevidenced articles).
+    let coverage_gaps = client
+        .chaosgraph_coverage_gaps(Some(&framework), None)
+        .await;
+
+    Json(ChaosGraphView {
+        framework,
+        faults: GraphSection::from(faults),
+        ego_center,
+        ego,
+        coverage_gaps: GraphSection::from(coverage_gaps),
+    })
+    .into_response()
 }
 
 // ── Chaos loop showcase ───────────────────────────────────────
@@ -551,21 +744,6 @@ fn trim_trailing_slash(s: &str) -> String {
     s.trim_end_matches('/').to_string()
 }
 
-/// Minimal percent-encoding for the handful of characters we embed in the
-/// SigNoz query string. Avoids pulling in a URL-encoding crate.
-fn urlencode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 3);
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
 /// Inject the runtime config into the static HTML as a JSON blob the page's JS
 /// reads on load, then hand back the full document.
 fn render_index(cfg: &Config) -> String {
@@ -574,6 +752,8 @@ fn render_index(cfg: &Config) -> String {
         "signozTraceLink": cfg.signoz_trace_link(),
         "demoAppUrl": cfg.demo_app_url,
         "traceService": cfg.trace_service,
+        "journalsDir": cfg.journals_dir,
+        "complianceFramework": cfg.compliance_framework,
     })
     .to_string();
     include_str!("../static/index.html").replace("/*__CONFIG__*/null", &bootstrap)
