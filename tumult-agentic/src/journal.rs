@@ -181,6 +181,101 @@ pub fn write_metadata_journal_file(
     })
 }
 
+/// Project a multi-turn [`crate::trajectory::TrajectoryRunResult`] into the
+/// metadata-only journal evidence shape.
+///
+/// Each step becomes a journaled scenario, each injected step-fault a journaled
+/// fault, and both the per-step and trajectory-level contract outcomes are
+/// journaled as contracts. This reuses the tested metadata-only encoding so
+/// trajectory runs produce the same audit-grade TOON evidence as single-call
+/// runs.
+#[must_use]
+pub fn metadata_evidence_from_trajectory(
+    experiment_id: impl Into<String>,
+    run_id: impl Into<String>,
+    result: &crate::trajectory::TrajectoryRunResult,
+    injected: &[crate::smoke::InjectedStepFault],
+) -> AgenticJournalEvidence {
+    let run_id = run_id.into();
+    let trace_id = format!("trace-{run_id}");
+
+    let mut contracts: Vec<AgenticJournalContract> = result
+        .steps
+        .iter()
+        .flat_map(|step| {
+            step.contracts
+                .iter()
+                .map(|contract| AgenticJournalContract {
+                    contract_type: contract.contract_type.clone(),
+                    scenario: step.label.clone(),
+                    passed: contract.passed,
+                    reason: contract.reason.clone(),
+                    severity: contract.severity,
+                })
+        })
+        .collect();
+    contracts.extend(
+        result
+            .trajectory_contracts
+            .iter()
+            .map(|contract| AgenticJournalContract {
+                contract_type: contract.contract_type.clone(),
+                scenario: result.pack.clone(),
+                passed: contract.passed,
+                reason: contract.reason.clone(),
+                severity: contract.severity,
+            }),
+    );
+
+    let passed = contracts.iter().filter(|contract| contract.passed).count();
+    let contract_pass_rate = if contracts.is_empty() {
+        1.0
+    } else {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            passed as f64 / contracts.len() as f64
+        }
+    };
+
+    let faults = injected
+        .iter()
+        .map(|fault| AgenticJournalFault {
+            fault_type: fault.fault_type.clone(),
+            scenario: result
+                .steps
+                .get(fault.step_index)
+                .map_or_else(|| result.pack.clone(), |step| step.label.clone()),
+            applied: true,
+            latency_ms: None,
+        })
+        .collect();
+
+    AgenticJournalEvidence {
+        experiment_id: experiment_id.into(),
+        run_id,
+        capture_policy: "metadata_only".to_string(),
+        trace: JournalTraceCorrelation {
+            trace_id,
+            span_id: "span-agentic-trajectory".to_string(),
+            parent_span_id: None,
+        },
+        scenarios: result
+            .steps
+            .iter()
+            .map(|step| AgenticJournalScenario {
+                name: step.label.clone(),
+                input_sha256: metadata_hash(&step.label),
+                expected_behavior_sha256: None,
+            })
+            .collect(),
+        faults,
+        contracts,
+        tool_calls: Vec::new(),
+        contract_pass_rate,
+        resilience_score: result.score.overall,
+    }
+}
+
 #[must_use]
 fn metadata_hash(value: &str) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;

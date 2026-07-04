@@ -51,6 +51,28 @@ fn parse_agentic_run() {
 }
 
 #[test]
+fn parse_agentic_trajectory() {
+    let cli = Cli::try_parse_from([
+        "tumult",
+        "agentic",
+        "trajectory",
+        "--pack",
+        "rag-grounding-failure",
+        "--journal",
+        "target/agentic/traj.toon",
+    ])
+    .unwrap();
+    let Commands::Agentic { action } = cli.command else {
+        panic!("expected Agentic command");
+    };
+    let AgenticAction::Trajectory { pack, journal } = action else {
+        panic!("expected Agentic trajectory action");
+    };
+    assert_eq!(pack, "rag-grounding-failure");
+    assert_eq!(journal, PathBuf::from("target/agentic/traj.toon"));
+}
+
+#[test]
 fn parse_agentic_replay() {
     let cli = Cli::try_parse_from([
         "tumult",

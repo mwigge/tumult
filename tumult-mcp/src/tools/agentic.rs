@@ -35,10 +35,30 @@ pub fn agentic_list_scenarios() -> Result<StructuredReport, ToolError> {
         })
         .collect::<Vec<_>>();
 
+    let trajectory_packs = tumult_agentic::trajectory::bundled_trajectory_packs()
+        .into_iter()
+        .map(|pack| {
+            serde_json::json!({
+                "name": pack.name,
+                "description": pack.description,
+                "steps": pack.steps.len(),
+                "injected": pack.faults.iter().map(|fault| serde_json::json!({
+                    "fault": fault.fault.fault_type(),
+                    "step_index": fault.step_index,
+                })).collect::<Vec<_>>(),
+                "trajectory_contracts": pack.contracts.iter()
+                    .map(tumult_agentic::trajectory::TrajectoryContractSpec::contract_type)
+                    .collect::<Vec<_>>(),
+                "headline_contract": pack.headline_contract,
+            })
+        })
+        .collect::<Vec<_>>();
+
     let data = serde_json::json!({
         "capture_policy": "metadata_only",
         "raw_payloads_captured": false,
         "packs": packs,
+        "trajectory_packs": trajectory_packs,
     });
     let serde_json::Value::Object(structured) = data else {
         unreachable!("scenario list is built as a JSON object");
@@ -171,6 +191,33 @@ mod tests {
         assert!(!output.contains("prompt"));
         assert!(!output.contains("customer secret"));
         assert!(!output.contains("\"input\""));
+    }
+
+    #[test]
+    fn agentic_list_scenarios_surfaces_multi_turn_trajectory_packs() {
+        let output = agentic_list_scenarios().unwrap().text;
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        let packs = value["trajectory_packs"].as_array().expect("array");
+        assert_eq!(packs.len(), 3);
+        let names: Vec<&str> = packs
+            .iter()
+            .filter_map(|pack| pack["name"].as_str())
+            .collect();
+        assert!(names.contains(&"rag-grounding-failure"));
+        assert!(names.contains(&"reflection-loop"));
+        assert!(names.contains(&"multi-tool-cascade"));
+
+        let rag = packs
+            .iter()
+            .find(|pack| pack["name"] == "rag-grounding-failure")
+            .expect("rag pack present");
+        assert_eq!(rag["injected"][0]["fault"], "retrieval_poisoning");
+        assert_eq!(rag["injected"][0]["step_index"], 0);
+        assert_eq!(rag["headline_contract"], "terminates_healthy");
+        // Metadata only: still no prompt/input leakage.
+        assert!(!output.contains("\"input\""));
+        assert!(!output.contains("prompt"));
     }
 
     #[test]

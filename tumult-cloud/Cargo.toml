@@ -1,0 +1,29 @@
+[package]
+name = "tumult-cloud"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Thin connectors to cloud providers' own fault/chaos APIs (AWS FIS, Azure Chaos Studio) for the Tumult platform"
+
+[dependencies]
+tumult-plugin = { path = "../tumult-plugin" }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+# Minimal, pure-Rust crypto for AWS Signature Version 4. Chosen over the
+# aws-sdk-* / aws-sigv4 crates to keep the single-binary footprint small — see
+# README "SDK vs thin HTTP" for the rationale.
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+
+[dev-dependencies]
+# Hermetic mocked-HTTP tests: a local axum server records the signed request
+# and returns canned provider responses. No real cloud account is touched.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+axum = { workspace = true }

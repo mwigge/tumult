@@ -1,0 +1,63 @@
+title: Drive an Azure Chaos Studio experiment via the native tumult-cloud connector
+description: Start an Azure Chaos Studio experiment, poll its provisioning state, then cancel it — Tumult drives Chaos Studio over the ARM API, it does not reimplement the fault
+
+tags[3]: azure, cloud, resilience
+
+steady_state_hypothesis:
+  title: Toolchain is reachable before we touch the cloud
+  probes[1]:
+    - name: system-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: echo
+        arguments[1]: "ready"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ready"
+
+method[3]:
+  - name: start-chaos-experiment
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: azure_chaos_start
+      arguments:
+        subscription: 00000000-0000-0000-0000-000000000000
+        resource_group: rg-chaos
+        experiment_id: exp-vm-shutdown
+    pause_after_s: 5.0
+  - name: check-chaos-status
+    activity_type: probe
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: azure_chaos_status
+      arguments:
+        subscription: 00000000-0000-0000-0000-000000000000
+        resource_group: rg-chaos
+        experiment_id: exp-vm-shutdown
+  - name: cancel-chaos-experiment
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: azure_chaos_cancel
+      arguments:
+        subscription: 00000000-0000-0000-0000-000000000000
+        resource_group: rg-chaos
+        experiment_id: exp-vm-shutdown
+
+rollbacks[1]:
+  - name: ensure-chaos-cancelled
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: azure_chaos_cancel
+      arguments:
+        subscription: 00000000-0000-0000-0000-000000000000
+        resource_group: rg-chaos
+        experiment_id: exp-vm-shutdown

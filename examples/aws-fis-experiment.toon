@@ -1,0 +1,59 @@
+title: Drive an AWS FIS experiment via the native tumult-cloud connector
+description: Start a preconfigured AWS Fault Injection Service experiment template, poll its status, then stop it — Tumult drives FIS, it does not reimplement the fault
+
+tags[3]: aws, cloud, resilience
+
+steady_state_hypothesis:
+  title: Toolchain is reachable before we touch the cloud
+  probes[1]:
+    - name: system-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: echo
+        arguments[1]: "ready"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ready"
+
+method[3]:
+  - name: start-fis-experiment
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: aws_fis_start_experiment
+      arguments:
+        experiment_template_id: EXTabc123EXAMPLE
+        region: us-east-1
+    pause_after_s: 5.0
+  - name: check-fis-status
+    activity_type: probe
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: aws_fis_experiment_status
+      arguments:
+        experiment_id: EXP0123456789abcdef
+        region: us-east-1
+  - name: stop-fis-experiment
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: aws_fis_stop_experiment
+      arguments:
+        experiment_id: EXP0123456789abcdef
+        region: us-east-1
+
+rollbacks[1]:
+  - name: ensure-fis-stopped
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-cloud
+      function: aws_fis_stop_experiment
+      arguments:
+        experiment_id: EXP0123456789abcdef
+        region: us-east-1

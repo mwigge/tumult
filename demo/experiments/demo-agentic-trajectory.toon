@@ -1,0 +1,50 @@
+title: Demo — multi-turn agent-graph fault injection (RAG grounding failure)
+description: Run the bundled rag-grounding-failure trajectory pack (fake adapters, no external API), injecting retrieval poisoning at step 0 and proving the answer step 2 loses its grounding — whole-trajectory contracts and agentic subscores fire
+
+tags[4]: demo, agentic, trajectory, resilience
+
+steady_state_hypothesis:
+  title: demo-app is healthy before the agentic trajectory scenario
+  probes[1]:
+    - name: app-health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 5 http://demo-app:8080/health"
+        timeout_s: 8.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[3]:
+  - name: rag-grounding-failure-trajectory
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "tumult agentic trajectory --pack rag-grounding-failure --journal /journals/agentic-trajectory.toon | grep -q 'result: pass'"
+      timeout_s: 30.0
+    pause_after_s: 1.0
+  - name: observe-grounding-contract-failed
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "tumult agentic trajectory --pack rag-grounding-failure --journal /journals/agentic-trajectory.toon"
+      timeout_s: 30.0
+    tolerance:
+      type: regex
+      pattern: "actual: trajectory_contract_failed:final_step_unhealthy"
+  - name: observe-reflection-loop-detected
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "tumult agentic trajectory --pack reflection-loop --journal /journals/agentic-trajectory-loop.toon"
+      timeout_s: 30.0
+    tolerance:
+      type: regex
+      pattern: "actual: trajectory_contract_failed:loop_detected"
+
+rollbacks[0]:

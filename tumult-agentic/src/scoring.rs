@@ -140,3 +140,122 @@ fn insert_dimension(
         subscores.insert(dimension, resilience_score(&matching));
     }
 }
+
+/// A per-dimension agentic resilience subscore for a *multi-turn* trajectory.
+///
+/// Where [`ScoreDimension`] scores a single call's operational envelope, these
+/// dimensions score how an agent trajectory behaves under a fault: does it
+/// recover, keep its cost/step budget, stay correct, and avoid loops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AgenticDimension {
+    /// Recovery after a bad step and healthy termination.
+    Recovery,
+    /// Bounded trajectory length / step budget.
+    CostControl,
+    /// Per-step contract correctness under the injected fault.
+    CorrectnessUnderFault,
+    /// Absence of repeated/looping steps.
+    LoopAvoidance,
+}
+
+impl AgenticDimension {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Recovery => "recovery",
+            Self::CostControl => "cost_control",
+            Self::CorrectnessUnderFault => "correctness_under_fault",
+            Self::LoopAvoidance => "loop_avoidance",
+        }
+    }
+}
+
+/// Rolled-up agentic resilience score for a trajectory run: an overall figure
+/// plus the per-dimension subscores that explain it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgenticScore {
+    pub overall: f64,
+    subscores: BTreeMap<AgenticDimension, f64>,
+}
+
+impl AgenticScore {
+    #[must_use]
+    pub fn subscore(&self, dimension: AgenticDimension) -> Option<f64> {
+        self.subscores.get(&dimension).copied()
+    }
+
+    /// The populated dimensions in a stable order.
+    #[must_use]
+    pub fn dimensions(&self) -> Vec<(AgenticDimension, f64)> {
+        self.subscores
+            .iter()
+            .map(|(dimension, score)| (*dimension, *score))
+            .collect()
+    }
+}
+
+/// Compute agentic subscores from a trajectory's per-step and trajectory-level
+/// contract outcomes.
+///
+/// The overall score is the severity-weighted pass rate across *all* outcomes
+/// (mirroring [`resilience_score`]), while each subscore isolates the outcomes
+/// that speak to one dimension: `CorrectnessUnderFault` from the per-step
+/// contracts, `Recovery`/`CostControl`/`LoopAvoidance` from the matching
+/// trajectory contracts.
+#[must_use]
+pub fn agentic_score(
+    step_contracts: &[ContractOutcome],
+    trajectory_contracts: &[ContractOutcome],
+) -> AgenticScore {
+    let mut subscores = BTreeMap::new();
+
+    if !step_contracts.is_empty() {
+        subscores.insert(
+            AgenticDimension::CorrectnessUnderFault,
+            resilience_score(step_contracts),
+        );
+    }
+    insert_agentic_dimension(
+        trajectory_contracts,
+        &mut subscores,
+        AgenticDimension::Recovery,
+        &["recovers_within", "terminates_healthy"],
+    );
+    insert_agentic_dimension(
+        trajectory_contracts,
+        &mut subscores,
+        AgenticDimension::CostControl,
+        &["step_budget"],
+    );
+    insert_agentic_dimension(
+        trajectory_contracts,
+        &mut subscores,
+        AgenticDimension::LoopAvoidance,
+        &["no_repeated_step"],
+    );
+
+    let mut combined = Vec::with_capacity(step_contracts.len() + trajectory_contracts.len());
+    combined.extend(step_contracts.iter().cloned());
+    combined.extend(trajectory_contracts.iter().cloned());
+
+    AgenticScore {
+        overall: resilience_score(&combined),
+        subscores,
+    }
+}
+
+fn insert_agentic_dimension(
+    outcomes: &[ContractOutcome],
+    subscores: &mut BTreeMap<AgenticDimension, f64>,
+    dimension: AgenticDimension,
+    contract_types: &[&str],
+) {
+    let matching = outcomes
+        .iter()
+        .filter(|outcome| contract_types.contains(&outcome.contract_type.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !matching.is_empty() {
+        subscores.insert(dimension, resilience_score(&matching));
+    }
+}

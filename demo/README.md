@@ -74,6 +74,7 @@ smoke-test tick.
 | process    | `demo-process.toon`       | `docker kill -s SIGSTOP/SIGCONT demo-app`       | Suspends then resumes the app's main process, verifies recovery |
 | ssh        | `demo-ssh.toon`           | `tumult-ssh` native `execute` → demo-sshd       | Runs commands (incl. a stress-ng burst) over SSH on the sshd target |
 | agentic    | `demo-agentic.toon`       | `tumult agentic smoke` (bundled fake HTTP adapter) | Injects malformed model output and asserts the contract-feedback loop fires — no external API |
+| agentic-trajectory | `demo-agentic-trajectory.toon` | `tumult agentic trajectory` (bundled fake adapters) | Multi-turn agent-graph: poisons retrieval at step 0, proves the answer step loses grounding, and detects a reflection loop — whole-trajectory contracts + agentic subscores, no external API |
 
 Validate them yourself:
 

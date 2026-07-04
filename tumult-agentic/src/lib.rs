@@ -14,6 +14,7 @@ pub mod scenarios;
 pub mod scoring;
 pub mod smoke;
 pub mod telemetry;
+pub mod trajectory;
 
 pub use model::{
     AgenticExperiment, AgenticRunResult, AgenticScenario, AgenticTarget, CapturePolicy,

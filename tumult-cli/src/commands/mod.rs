@@ -33,7 +33,7 @@ pub use store::{
 // resolve exactly as before.
 pub use agentic::{
     cmd_agentic_list_scenario_packs, cmd_agentic_proxy, cmd_agentic_replay, cmd_agentic_run_live,
-    cmd_agentic_run_scenario, cmd_agentic_smoke,
+    cmd_agentic_run_scenario, cmd_agentic_smoke, cmd_agentic_trajectory,
 };
 pub use analyze::cmd_analyze;
 pub use compliance::cmd_compliance;

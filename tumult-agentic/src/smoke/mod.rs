@@ -2,6 +2,7 @@ mod cases;
 mod helpers;
 mod packs;
 mod report;
+mod trajectory;
 
 pub use cases::{
     fake_http_malformed_json_smoke, fake_mcp_tool_failure_smoke, malformed_json_smoke_result,
@@ -9,3 +10,4 @@ pub use cases::{
 };
 pub use packs::run_scenario_pack_smoke;
 pub use report::{smoke_failure_output, SmokeReport};
+pub use trajectory::{run_trajectory_pack_smoke, InjectedStepFault, TrajectorySmokeReport};

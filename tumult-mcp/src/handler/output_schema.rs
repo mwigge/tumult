@@ -276,7 +276,12 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
             }),
         )),
         "tumult_agentic_list_scenarios" => Some(schema_object(
-            &["capture_policy", "raw_payloads_captured", "packs"],
+            &[
+                "capture_policy",
+                "raw_payloads_captured",
+                "packs",
+                "trajectory_packs",
+            ],
             json!({
                 "capture_policy": { "type": "string" },
                 "raw_payloads_captured": { "type": "boolean" },
@@ -290,6 +295,41 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                             "adapters": { "type": "array", "items": { "type": "string" } },
                             "faults": { "type": "array", "items": { "type": "string" } },
                             "contracts": { "type": "array", "items": { "type": "string" } },
+                        },
+                    },
+                },
+                "trajectory_packs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "name",
+                            "description",
+                            "steps",
+                            "injected",
+                            "trajectory_contracts",
+                            "headline_contract",
+                        ],
+                        "properties": {
+                            "name": { "type": "string" },
+                            "description": { "type": "string" },
+                            "steps": { "type": "integer" },
+                            "injected": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["fault", "step_index"],
+                                    "properties": {
+                                        "fault": { "type": "string" },
+                                        "step_index": { "type": "integer" },
+                                    },
+                                },
+                            },
+                            "trajectory_contracts": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                            },
+                            "headline_contract": { "type": "string" },
                         },
                     },
                 },

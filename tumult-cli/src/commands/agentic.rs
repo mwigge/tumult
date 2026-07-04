@@ -41,7 +41,119 @@ pub fn cmd_agentic_list_scenario_packs() -> Result<String> {
         writeln!(output, "  contracts: {contracts}")?;
     }
 
+    let trajectory_packs = tumult_agentic::trajectory::bundled_trajectory_packs();
+    writeln!(output)?;
+    writeln!(output, "Agentic trajectory packs (multi-turn)")?;
+    writeln!(output, "count: {}", trajectory_packs.len())?;
+    for pack in trajectory_packs {
+        let faults = pack
+            .faults
+            .iter()
+            .map(|fault| format!("{}@step{}", fault.fault.fault_type(), fault.step_index))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let contracts = pack
+            .contracts
+            .iter()
+            .map(tumult_agentic::trajectory::TrajectoryContractSpec::contract_type)
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(output)?;
+        writeln!(output, "- {}", pack.name)?;
+        writeln!(output, "  steps: {}", pack.steps.len())?;
+        writeln!(output, "  injected: {faults}")?;
+        writeln!(output, "  trajectory_contracts: {contracts}")?;
+    }
+
     Ok(output)
+}
+
+/// Runs a bundled multi-turn agentic trajectory pack with deterministic local
+/// fixtures (no network), evaluating whole-trajectory contracts and agentic
+/// resilience subscores.
+///
+/// # Errors
+///
+/// Returns an error if the trajectory pack is unknown, the journal cannot be
+/// written, or the pack does not reach its documented headline outcome.
+pub fn cmd_agentic_trajectory(pack: &str, journal_path: &Path) -> Result<String> {
+    let report = tumult_agentic::smoke::run_trajectory_pack_smoke(pack)?;
+    let result = &report.result;
+
+    let run_id = format!("agentic-trajectory-{pack}");
+    let evidence = tumult_agentic::journal::metadata_evidence_from_trajectory(
+        run_id.clone(),
+        &run_id,
+        result,
+        &report.injected,
+    );
+    let journal = tumult_agentic::journal::write_metadata_journal_file(journal_path, &evidence)?;
+
+    let mut output = String::new();
+    writeln!(output, "Agentic trajectory: {pack}")?;
+    writeln!(output, "adapter: {}", report.adapter)?;
+    writeln!(output, "description: {}", report.description)?;
+    writeln!(output, "steps: {}", result.steps.len())?;
+    for injected in &report.injected {
+        writeln!(
+            output,
+            "injected: {} @ step {}",
+            injected.fault_type, injected.step_index
+        )?;
+    }
+    for step in &result.steps {
+        let fault = step.injected_fault.as_deref().unwrap_or("none");
+        writeln!(
+            output,
+            "step[{}] {} ({}) fault={} healthy={}",
+            step.index, step.label, step.kind, fault, step.healthy
+        )?;
+    }
+    for contract in &result.trajectory_contracts {
+        writeln!(
+            output,
+            "trajectory_contract: {} = {} ({})",
+            contract.contract_type,
+            if contract.passed { "pass" } else { "fail" },
+            contract.reason.as_deref().unwrap_or("ok")
+        )?;
+    }
+    writeln!(output, "headline_contract: {}", report.headline_contract)?;
+    writeln!(output, "expected: {}", report.expected)?;
+    writeln!(output, "actual: {}", report.actual)?;
+    for (dimension, score) in result.score.dimensions() {
+        let score = if score.abs() < f64::EPSILON {
+            0.0
+        } else {
+            score
+        };
+        writeln!(output, "subscore.{}: {score:.3}", dimension.as_str())?;
+    }
+    let overall = if result.score.overall.abs() < f64::EPSILON {
+        0.0
+    } else {
+        result.score.overall
+    };
+    writeln!(output, "resilience_score: {overall:.3}")?;
+    writeln!(output, "journal: {}", journal.path)?;
+    writeln!(output, "trace_id: {}", journal.trace_id)?;
+    writeln!(
+        output,
+        "trace_assertions: trace_id_present=true capture_policy=metadata_only"
+    )?;
+    writeln!(output, "network: not required")?;
+    writeln!(output, "next: {}", report.next_diagnostic_command)?;
+
+    if report.passed {
+        writeln!(
+            output,
+            "result: pass (trajectory contracts observed and subscores captured)"
+        )?;
+        Ok(output)
+    } else {
+        writeln!(output, "result: fail")?;
+        bail!("{output}");
+    }
 }
 
 /// Runs the deterministic local agentic smoke path.

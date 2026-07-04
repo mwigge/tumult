@@ -18,6 +18,7 @@ pub(crate) fn registry() -> &'static NativeExecutorRegistry {
         registry.register(Box::new(tumult_kubernetes::KubernetesExecutor));
         registry.register(Box::new(tumult_ssh::SshExecutor));
         registry.register(Box::new(tumult_net::NetExecutor));
+        registry.register(Box::new(tumult_cloud::CloudExecutor));
         registry
     })
 }

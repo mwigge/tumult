@@ -16,6 +16,7 @@ members = [
     "tumult-analytics",
     "tumult-graph",
     "tumult-kubernetes",
+    "tumult-cloud",
     # "tumult-db",
     # "tumult-kafka",
     # "tumult-http",
@@ -35,7 +36,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.5.0"
+version = "2.6.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"

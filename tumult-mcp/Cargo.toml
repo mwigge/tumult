@@ -25,6 +25,7 @@ tumult-intelligence = { path = "../tumult-intelligence" }
 tumult-kubernetes = { path = "../tumult-kubernetes" }
 tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }
+tumult-cloud = { path = "../tumult-cloud" }
 rust-mcp-sdk = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

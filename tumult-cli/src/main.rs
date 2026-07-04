@@ -171,6 +171,9 @@ async fn main() -> anyhow::Result<()> {
                     commands::cmd_agentic_run_scenario(&scenario, &journal)?
                 );
             }
+            AgenticAction::Trajectory { pack, journal } => {
+                print!("{}", commands::cmd_agentic_trajectory(&pack, &journal)?);
+            }
             AgenticAction::Replay { fixture, journal } => {
                 print!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
             }

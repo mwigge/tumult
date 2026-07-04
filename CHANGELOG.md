@@ -4,6 +4,28 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.6.0] - 2026-07-04
+
+Added:
+- Deepened agentic resilience testing (the differentiator no other chaos tool
+  has): multi-turn agent-graph fault modeling. Model an ordered model+tool
+  trajectory and inject a fault at a specific step, with retrieval context
+  propagating forward so grounding failures cascade like a real RAG agent.
+  Whole-trajectory contracts (recovers-within, no-repeated-step,
+  terminates-healthy, step-budget) and per-dimension agentic subscores
+  (recovery, cost-control, correctness-under-fault, loop-avoidance). Three
+  trajectory packs — rag-grounding-failure, reflection-loop, multi-tool-cascade
+  — with meaningful pass/fail cases. New `tumult agentic trajectory --pack`;
+  metadata surfaced in the MCP list-scenarios tool. Validated on the live demo
+  (demo-agentic-trajectory, in the standard sweep).
+- Cloud fault connectors (`tumult-cloud`): thin connectors to providers' own
+  fault services — AWS FIS (start/stop/status experiments) + direct EC2
+  stop/terminate, Azure Chaos Studio (start/cancel/status), and GCP Compute
+  instance-stop (GCP has no managed chaos service — documented, not faked).
+  A hand-rolled SigV4 signer (pinned to the AWS get-vanilla test vector) instead
+  of the heavy AWS SDK, preserving the single-binary ethos. Credentials from the
+  standard provider chains, fail-fast, never logged. Validated by 36 hermetic
+  mocked-HTTP tests; real-cloud paths documented (exempt from the docker demo).
 ## [2.5.0] - 2026-07-04
 
 Added:

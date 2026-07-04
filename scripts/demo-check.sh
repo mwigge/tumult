@@ -26,7 +26,7 @@ MODE="full"
 DO_WAIT=1
 
 # Domains in run order (name → experiment file basename).
-DOMAINS=(net postgres container stress process ssh agentic)
+DOMAINS=(net postgres container stress process ssh agentic agentic-trajectory)
 
 # Containers that carry a healthcheck we wait on. demo-collector is excluded:
 # its image is distroless (no in-container probe possible), so its readiness is

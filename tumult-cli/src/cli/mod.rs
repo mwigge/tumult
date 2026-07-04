@@ -269,6 +269,20 @@ pub(crate) enum AgenticAction {
         #[arg(long, default_value = "target/agentic/run-journal.toon")]
         journal: PathBuf,
     },
+    /// Run a bundled multi-turn trajectory pack (agent-graph fault modeling)
+    ///
+    /// Injects a fault at a specific step of an ordered model+tool trajectory and
+    /// evaluates whole-trajectory contracts (recovery, loop-avoidance,
+    /// termination, step budget) plus per-dimension agentic subscores. Runs
+    /// entirely against in-process metadata baselines — no network.
+    Trajectory {
+        /// Bundled trajectory pack name
+        #[arg(long, default_value = "rag-grounding-failure")]
+        pack: String,
+        /// Metadata-only journal output path
+        #[arg(long, default_value = "target/agentic/trajectory-journal.toon")]
+        journal: PathBuf,
+    },
     /// Run deterministic replay fixture validation
     Replay {
         /// Replay fixture path
