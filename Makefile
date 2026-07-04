@@ -101,6 +101,10 @@ demo-check: demo-base
 	$(COMPOSE_DEMO) up -d
 	@COMPOSE_DEMO="$(COMPOSE_DEMO)" bash scripts/demo-check.sh --mode full
 
+demo-proof:
+	@echo "Validating Tumult's claims against the live demo (no mocks)..."
+	@python3 demo/proof/validate.py
+
 demo-down:
 	$(COMPOSE_DEMO) down -v 2>/dev/null || true
 

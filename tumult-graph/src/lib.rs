@@ -32,13 +32,14 @@
 //!   "method_results": [ { "name": "inject-latency", "output": "proxy ...", ... },
 //!                       { "name": "health-through-delayed-proxy", ... } ],
 //!   "steady_state_before": { ... }, "steady_state_after": { ... },
-//!   "analysis": { ... }, ...                      // ~2600 tokens total
+//!   "analysis": { ... }, ...                      // ~480 tokens, per run
 //! }
 //! ```
 //!
 //! **After** — the same question answered by a single `chaosgraph_neighbors`
-//! call on the experiment node. The compact ego sub-graph is about **70
-//! tokens**:
+//! call on the experiment node. A targeted (`rel`-filtered) sub-graph is about
+//! **110 tokens**, and — the point — it stays that size no matter how many
+//! runs accumulate, whereas the journal corpus grows by ~480 tokens per run:
 //!
 //! ```text
 //! center: exp:Demo — network latency via the tumult-net userspace proxy
@@ -52,8 +53,10 @@
 //!   (fault:tumult-net::inject_latency)-[observed_on]->(svc:demo-app)
 //! ```
 //!
-//! ~2 600 → ~70 tokens (≈37× smaller) for the same "what did this experiment
-//! touch?" question.
+//! Per run of history: the graph grows by one small node (~a few hundred
+//! bytes) while the raw journal corpus grows by a full ~480-token journal —
+//! roughly 8x more compact per run, ~20x on store-wide queries, and bounded
+//! for targeted questions. All reproducible via `make demo-proof`.
 
 pub mod compliance;
 pub mod coverage;

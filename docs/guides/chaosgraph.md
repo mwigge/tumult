@@ -14,12 +14,12 @@ It shipped in **2.4.0** and is validated end to end on the live demo.
 
 Agents burn context on the wrong thing. When an assistant wants to know which fault an experiment injects and which service it lands on, it does not need the steady-state hypothesis, the per-activity method results, the trace/span ids, or the analysis block. It needs a handful of relationships.
 
-A representative journal serialises to roughly **2,600 tokens** of JSON. The same question answered by a single `tumult_chaosgraph_neighbors` call is about **70 tokens** — roughly **37× smaller** — for identical information.
+The win is token cost, and it compounds with history. A **targeted** `tumult_chaosgraph_neighbors` call (with a `rel` filter) answers "what fault does this experiment inject, what service does it hit?" in about **110 tokens**, and that answer stays the same size however many times the experiment runs. The raw journal is about **480 tokens** — and the corpus grows by another journal every run. So the graph is roughly **8× more compact per run**, answers store-wide questions in about **20× less** than reading all journals, and keeps a targeted answer **bounded (O(1))** where journal reading is **O(runs)**. Every number here is reproducible against the live demo with `make demo-proof`.
 
 ```
-before:  agent ──► read_journal ──► ~2,600 tokens of JSON ──► "what did it touch?"
+per run of history:   journals ──► +~480 tokens each   (unbounded)
 
-after:   agent ──► chaosgraph_neighbors ──► ~70 tokens of tuples ──► same answer
+                      chaosgraph ─► +~one small node    (targeted answer stays ~110 tokens)
 ```
 
 The graph collapses each run to a small set of `(src)-[rel]->(dst)` tuples, so the agent reads relationships instead of records.

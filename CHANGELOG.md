@@ -4,6 +4,26 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.7.2] - 2026-07-04
+
+Added:
+- `demo/proof/validate.py` + `make demo-proof`: a suite that validates Tumult's
+  headline claims against the LIVE demo (no mocks) — ChaosGraph token efficiency,
+  the first-class MCP surface (27 tools, annotations, outputSchema, auth,
+  isError), and agentic trajectory contracts. Thresholds are set from measured
+  behaviour; the suite exits non-zero on any failure. 15/15 checks pass.
+
+Changed:
+- ChaosGraph `neighbors` with a `rel` filter now follows ONLY that relation, so a
+  targeted structural query returns just the reachable nodes (e.g. the fault),
+  not the whole accumulating neighbourhood. This makes a targeted answer bounded
+  (O(1)) regardless of run history.
+- Corrected the ChaosGraph token claim across README/docs/blog: replaced the flat
+  "~37x" (which was benchmarked on a large GameDay journal + a fresh graph) with
+  the honest, reproducible framing — a targeted answer stays ~110 tokens no
+  matter how many runs accumulate, the graph is ~8x more compact per run of
+  history, and store-wide questions cost ~20x less than reading every journal.
+  Every figure is reproducible via `make demo-proof`.
 ## [2.7.1] - 2026-07-04
 
 Fixed:

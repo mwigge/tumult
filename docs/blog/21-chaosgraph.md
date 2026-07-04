@@ -43,25 +43,22 @@ The trick is which nodes are *stable*. `experiment`, `fault`, and `service` recu
 
 This is the part that matters for anyone paying for context.
 
-A representative journal serialises to about **2,600 tokens** of JSON. The same "what did this experiment touch?" question, answered by one `chaosgraph_neighbors` call, is about **70 tokens**. Roughly **37× smaller**, for the same answer.
+Here's the honest version — and every number is reproducible; `make demo-proof` measures it against your own demo. A targeted `chaosgraph_neighbors` call (with a `rel` filter) answers "what fault does this inject, what service does it hit?" in about **110 tokens**, and — this is the point — that answer *stays that size no matter how many times you run the experiment*. The raw journal is about **480 tokens**, and you get another one every single run. So the graph is roughly **8× more compact per run of history**, answers store-wide questions in about **20× less** than reading every journal, and keeps a targeted answer bounded while journal-reading grows without limit.
 
 ```
-before:
+before:  every run adds a full journal to what you'd read
 
-  agent ──► read_journal ──► ┌───────────────────────────────┐
-                             │ ~2,600 tokens of JSON:         │
-                             │  hypothesis, method_results,   │
-                             │  provider output, trace/span   │
-                             │  ids, steady-state, analysis…  │
-                             └───────────────────────────────┘
-                                          │
-                                          ▼
-                             agent skims it all for 4 facts
+  agent ──► read_journal (xN) ──► ┌───────────────────────────────┐
+                                  │ ~480 tokens EACH, and it grows │
+                                  │  by one more every run:        │
+                                  │  hypothesis, method_results,   │
+                                  │  provider output, trace/span…  │
+                                  └───────────────────────────────┘
 
-after:
+after:  a targeted query stays the same size forever
 
   agent ──► chaosgraph_neighbors ──► ┌────────────────────────┐
-                                     │ ~70 tokens of tuples:  │
+                                     │ ~110 tokens, bounded:  │
                                      │  (exp)-[injects]->(…)  │
                                      │  (exp)-[targets]->(…)  │
                                      │  (exp)-[yielded]->(…)  │

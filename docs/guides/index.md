@@ -18,7 +18,7 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Observability Setup](observability-setup.md) | OTel env vars, collector configs, Jaeger, Grafana, SigNoz |
 | [Load Testing Guide](load-testing-guide.md) | k6 and JMeter integration with chaos experiments |
 | [MCP Guide](mcp-guide.md) | The 26-tool MCP server: annotations, structured output, `tumult://` resources, and the closed run→ingest→recommend loop |
-| [ChaosGraph](chaosgraph.md) | The typed chaos knowledge graph served to agents over MCP: node/edge model, the two query tools, and ~37× token savings over raw journals |
+| [ChaosGraph](chaosgraph.md) | The typed chaos knowledge graph served to agents over MCP: node/edge model, the two query tools, and bounded, token-efficient agent context (reproducible via make demo-proof) |
 | [Agentic Quickstart](agentic-quickstart.md) | Fault injection for AI agents: scenario packs, contracts, replay |
 | [Agentic Live Clients](agentic-live-clients.md) | Inject faults into Claude Code, Codex, OpenCode, and Copilot traffic |
 | [Agentic Cross-Client Observability](agentic-cross-client-observability.md) | Normalize agent telemetry onto one schema; two-sided spans and trace-nesting tiers per client |

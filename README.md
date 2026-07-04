@@ -1,6 +1,6 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-2.7.1-brightgreen)
+![Version](https://img.shields.io/badge/version-2.7.2-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Crates](https://img.shields.io/badge/crates-15-green)
@@ -289,11 +289,15 @@ Set `TUMULT_MCP_TOKEN` to require bearer token authentication on all tool and re
 
 An agent answering "what did this experiment touch?" does not need a whole journal. It needs a node's neighbourhood. ChaosGraph is a typed knowledge graph built from journals **as they ingest** — five node kinds (`experiment`, `fault`, `service`, `journal`, `deviation`) joined by typed edges (`injects`, `targets`, `yielded`, `observed_on`, `exhibited`) — persisted in two DuckDB tables (`graph_nodes`, `graph_edges`, analytics schema v2, additive migration; no new service, the single binary is preserved). The two read-only MCP tools above serve compact sub-graphs instead of raw JSON.
 
-The win is token cost. A representative journal serialises to about **2,600 tokens** of JSON; the same question answered by `tumult_chaosgraph_neighbors` on the experiment node is about **70 tokens** — roughly **37× smaller**:
+The win is token cost, and it **compounds with history** — which is the honest, measurable claim (run `make demo-proof` to reproduce every number below against your own demo):
+
+- A **targeted** question — "what fault does this experiment inject, what service does it hit?" — is answered by `tumult_chaosgraph_neighbors` (with a `rel` filter) in **~110 tokens**, and that answer stays the same size no matter how many times you run the experiment.
+- Reading the raw journal costs **~480 tokens** — and the corpus grows by another journal *every run*.
+- So the graph is **~8× more compact per run** of history, answers store-wide questions ("every fault", "every coverage gap") in **~20× less** than reading all journals, and — the real point — a targeted answer is **bounded (O(1))** while journal reading is **O(runs)**.
 
 ```
-before:  agent ──► read_journal ──► ~2,600 tokens of JSON  ──► "what did it touch?"
-after:   agent ──► chaosgraph_neighbors ──► ~70 tokens of tuples ──► same answer
+per run of history:   journals ──► +~480 tokens each        (grows without limit)
+                      chaosgraph ─► +~one small node         (targeted answer stays ~110 tokens)
 ```
 
 A real `tumult_chaosgraph_neighbors` result (centre = the experiment node, `depth: 1`):

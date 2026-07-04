@@ -208,18 +208,28 @@ impl AnalyticsStore {
         }
         let depth = depth.max(1);
 
-        let nodes_sql = sql::ego_nodes();
+        // A rel-filtered query follows only that relation, so the returned node
+        // set is just what's reachable through it (e.g. the fault), not the
+        // whole accumulating neighbourhood. Param order matches the SQL:
+        // nodes  with_rel -> [center, rel, depth];  without -> [center, depth].
+        let nodes_sql = sql::ego_nodes(rel.is_some());
         let mut stmt = self.conn.prepare(&nodes_sql)?;
-        let nodes = stmt
-            .query_map(params![node_id, depth], |row| {
-                Ok(NodeSummary {
-                    id: row.get(0)?,
-                    kind: row.get(1)?,
-                    label: row.get(2)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+        let map_node = |row: &duckdb::Row<'_>| {
+            Ok(NodeSummary {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                label: row.get(2)?,
+            })
+        };
+        let nodes = if let Some(rel) = rel {
+            stmt.query_map(params![node_id, rel, depth], map_node)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_map(params![node_id, depth], map_node)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
 
+        // edges  with_rel -> [center, rel, depth, rel];  without -> [center, depth].
         let edges_sql = sql::ego_edges(rel.is_some());
         let mut stmt = self.conn.prepare(&edges_sql)?;
         let map_edge = |row: &duckdb::Row<'_>| {
@@ -230,7 +240,7 @@ impl AnalyticsStore {
             })
         };
         let edges = if let Some(rel) = rel {
-            stmt.query_map(params![node_id, depth, rel], map_edge)?
+            stmt.query_map(params![node_id, rel, depth, rel], map_edge)?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             stmt.query_map(params![node_id, depth], map_edge)?

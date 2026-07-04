@@ -82,44 +82,58 @@ pub fn nodes_by_kind(with_filter: bool) -> String {
     sql
 }
 
-/// Common recursive-CTE prefix expanding the neighbourhood of a centre node up
-/// to a depth, following edges in both directions. Parameters bound by the
-/// caller, in order: `center` (node id), `depth`.
-const REACH_CTE: &str = "\
+/// Reachability CTE. When `with_rel`, the traversal follows ONLY edges of the
+/// given relation, so a targeted query (e.g. `injects`) returns just the nodes
+/// reachable through that relation — not the whole neighbourhood. This keeps a
+/// structural question ("what fault does this experiment inject?") a fixed,
+/// tiny answer regardless of how much run history has accumulated.
+///
+/// Parameter order: `center`; then (if `with_rel`) `rel`; then `depth`.
+fn reach_cte(with_rel: bool) -> String {
+    let rel_filter = if with_rel { " AND e.rel = ?" } else { "" };
+    format!(
+        "\
 WITH RECURSIVE reach(node, d) AS (
     SELECT CAST(? AS VARCHAR), 0
     UNION
     SELECT CASE WHEN e.src = r.node THEN e.dst ELSE e.src END, r.d + 1
     FROM reach r
-    JOIN graph_edges e ON e.src = r.node OR e.dst = r.node
+    JOIN graph_edges e ON (e.src = r.node OR e.dst = r.node){rel_filter}
     WHERE r.d < ?
-)";
+)"
+    )
+}
 
-/// Node summaries for every node in the neighbourhood (including the centre).
-/// Parameters, in order: `center`, `depth`.
+/// Node summaries for the neighbourhood (including the centre), optionally
+/// restricted to the nodes reachable via a single relation.
+///
+/// * `with_rel == false` — parameters: `center`, `depth`.
+/// * `with_rel == true` — parameters: `center`, `rel`, `depth`.
 #[must_use]
-pub fn ego_nodes() -> String {
+pub fn ego_nodes(with_rel: bool) -> String {
     format!(
-        "{REACH_CTE}
+        "{}
 SELECT n.id, n.kind, n.label
 FROM graph_nodes n
 WHERE n.id IN (SELECT node FROM reach)
-ORDER BY n.id"
+ORDER BY n.id",
+        reach_cte(with_rel)
     )
 }
 
 /// The `(src, rel, dst)` tuples among the neighbourhood's nodes, optionally
 /// filtered to a single relation.
 ///
-/// * `with_rel == false` — parameters, in order: `center`, `depth`.
-/// * `with_rel == true` — parameters, in order: `center`, `depth`, `rel`.
+/// * `with_rel == false` — parameters: `center`, `depth`.
+/// * `with_rel == true` — parameters: `center`, `rel`, `depth`, `rel`.
 #[must_use]
 pub fn ego_edges(with_rel: bool) -> String {
     let mut sql = format!(
-        "{REACH_CTE}
+        "{}
 SELECT DISTINCT e.src, e.rel, e.dst
 FROM graph_edges e
-WHERE e.src IN (SELECT node FROM reach) AND e.dst IN (SELECT node FROM reach)"
+WHERE e.src IN (SELECT node FROM reach) AND e.dst IN (SELECT node FROM reach)",
+        reach_cte(with_rel)
     );
     if with_rel {
         sql.push_str(" AND e.rel = ?");
@@ -147,7 +161,7 @@ mod tests {
 
     #[test]
     fn ego_nodes_selects_from_reach() {
-        assert!(ego_nodes().contains("reach"));
-        assert!(ego_nodes().contains("graph_nodes"));
+        assert!(ego_nodes(false).contains("reach"));
+        assert!(ego_nodes(false).contains("graph_nodes"));
     }
 }

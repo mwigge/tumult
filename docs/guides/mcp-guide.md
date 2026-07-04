@@ -107,7 +107,7 @@ An agent can run an experiment and immediately see the result reflected in recom
 | `tumult_chaosgraph_query` | Node ids + one-line summaries for a `kind` (`experiment`, `fault`, `service`, `journal`, `deviation`), optional case-insensitive label `filter`. Structured: `{kind, count, nodes:[{id,kind,label}]}` |
 | `tumult_chaosgraph_neighbors` | A node's ego sub-graph as compact `(src)-[rel]->(dst)` tuples plus labels, within `depth` (default 1), optional `rel` filter. Structured: `{node_id, depth, nodes, edges}` |
 
-These serve compact sub-graphs instead of whole journals — roughly **37× fewer tokens** for "what did this experiment touch?". See the [ChaosGraph guide](chaosgraph.md) for the node/edge model, request/response examples, and the roadmap.
+These serve compact sub-graphs instead of whole journals: a targeted answer stays bounded (~110 tokens) while reading journals grows ~480 tokens per run — ~8× more compact per run, ~20× on store-wide queries (reproducible via `make demo-proof`). See the [ChaosGraph guide](chaosgraph.md) for the node/edge model, request/response examples, and the roadmap.
 
 ## Tool annotations
 
