@@ -1,6 +1,6 @@
 # <img src="docs/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Tumult — Rust-Native Chaos Engineering Platform
 
-![Version](https://img.shields.io/badge/version-2.12.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.12.1-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Crates](https://img.shields.io/badge/crates-19-green)
