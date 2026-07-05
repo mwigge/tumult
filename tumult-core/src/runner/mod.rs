@@ -22,9 +22,11 @@ use tokio_util::sync::CancellationToken;
 mod activity;
 mod experiment;
 mod gameday;
+mod guard;
 pub mod k6;
 mod load;
 mod phases;
+mod sampler;
 mod telemetry;
 
 pub use experiment::{run_experiment, run_experiment_with_sampling};

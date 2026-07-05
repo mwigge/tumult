@@ -1,6 +1,6 @@
 //! `run_experiment` — the five-phase experiment orchestrator.
 
-use std::sync::{mpsc, Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::time::Instant;
 
 use tokio_util::sync::CancellationToken;
@@ -9,18 +9,16 @@ use crate::controls::{ControlRegistry, LifecycleEvent};
 use crate::engine::determine_status;
 use crate::execution::all_succeeded;
 use crate::types::{
-    ActivityStatus, BlastRadiusRecord, DuringResult, Experiment, ExperimentStatus, Guard,
-    HaltRecord, HypothesisResult, Journal, Tolerance,
+    ActivityStatus, BlastRadiusRecord, Experiment, ExperimentStatus, HypothesisResult, Journal,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 
-use super::activity::{evaluate_hypothesis, execute_activities, probe_outcome_ok, run_rollbacks};
-use super::phases::{
-    build_during_result, build_post_result, collect_during_samples, collect_post_samples,
-    compute_analysis, ProbeSampleMap,
-};
+use super::activity::{evaluate_hypothesis, execute_activities, run_rollbacks};
+use super::guard::{finish_guard_monitor, spawn_guard_monitor};
+use super::phases::{build_post_result, collect_post_samples, compute_analysis};
+use super::sampler::{finish_during_sampler, spawn_during_sampler};
 use super::telemetry::{epoch_nanos_now, make_interrupted_journal};
 use super::{load, ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
 
@@ -447,223 +445,6 @@ fn run_hypothesis_phase(
     let result = evaluate_hypothesis(hypothesis, executor, controls);
     controls.emit(&LifecycleEvent::AfterHypothesis);
     Some(result)
-}
-
-/// Handle to the background thread that samples hypothesis probes while the
-/// method runs.
-struct DuringSampler {
-    /// Dropped to signal the sampler thread to stop.
-    stop_tx: mpsc::Sender<()>,
-    /// Joins to the sampling end timestamp (epoch nanoseconds).
-    handle: std::thread::JoinHandle<i64>,
-    /// Shared sample sink; written incrementally so samples collected before
-    /// a sampler panic are not lost.
-    samples: Arc<Mutex<ProbeSampleMap>>,
-    started_at_ns: i64,
-}
-
-/// Spawn the during-phase sampler thread, if the experiment has hypothesis
-/// probes to sample. Probes are sampled on `sampling.interval` (up to
-/// `sampling.max_during_samples` rounds) while the method executes, so the
-/// during-phase result reflects behavior while the fault is active.
-fn spawn_during_sampler(
-    experiment: &Experiment,
-    executor: &Arc<dyn ActivityExecutor>,
-    sampling: &SamplingConfig,
-) -> Option<DuringSampler> {
-    let hypothesis = experiment
-        .steady_state_hypothesis
-        .as_ref()
-        .filter(|hypothesis| !hypothesis.probes.is_empty())?
-        .clone();
-
-    let executor = Arc::clone(executor);
-    let samples = Arc::new(Mutex::new(ProbeSampleMap::new()));
-    let sink = Arc::clone(&samples);
-    let interval = sampling.interval;
-    let max_samples = sampling.max_during_samples;
-    let (stop_tx, stop_rx) = mpsc::channel();
-    let started_at_ns = epoch_nanos_now();
-
-    let handle = std::thread::spawn(move || {
-        collect_during_samples(
-            &hypothesis,
-            executor.as_ref(),
-            interval,
-            max_samples,
-            &stop_rx,
-            &sink,
-        );
-        epoch_nanos_now()
-    });
-
-    Some(DuringSampler {
-        stop_tx,
-        handle,
-        samples,
-        started_at_ns,
-    })
-}
-
-/// Stop the during-phase sampler and build its result. A panicked sampler
-/// thread is logged and downgraded to "use whatever samples were collected"
-/// rather than propagating the panic into the runner.
-fn finish_during_sampler(sampler: DuringSampler, sample_interval_s: f64) -> Option<DuringResult> {
-    let DuringSampler {
-        stop_tx,
-        handle,
-        samples,
-        started_at_ns,
-    } = sampler;
-
-    // Dropping the sender disconnects the sampler's receiver, waking it
-    // immediately from its inter-sample wait.
-    drop(stop_tx);
-
-    let ended_at_ns = match handle.join() {
-        Ok(ns) => ns,
-        Err(_panic) => {
-            tracing::warn!(
-                "during-phase probe sampling thread panicked; \
-                 continuing with samples collected so far"
-            );
-            epoch_nanos_now()
-        }
-    };
-
-    let collected: Vec<_> = samples
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .drain()
-        .collect();
-
-    build_during_result(started_at_ns, ended_at_ns, sample_interval_s, &collected)
-}
-
-/// Handle to the background thread that evaluates auto-halt guards while the
-/// method runs.
-struct GuardMonitor {
-    /// Dropped to signal the monitor thread to stop (no breach occurred).
-    stop_tx: mpsc::Sender<()>,
-    /// Joins to the halt record if a guard breached, or `None` otherwise.
-    handle: std::thread::JoinHandle<Option<HaltRecord>>,
-}
-
-/// Spawn the auto-halt guard monitor thread, if the experiment declares any
-/// guards. The monitor evaluates every guard on `sampling.interval`; the
-/// moment a guard's safe-condition tolerance is breached `min_breaches` times
-/// in a row it records the breach, cancels `method_token` (stopping the
-/// method), and exits.
-fn spawn_guard_monitor(
-    experiment: &Experiment,
-    executor: &Arc<dyn ActivityExecutor>,
-    sampling: &SamplingConfig,
-    method_token: &CancellationToken,
-    method_started: Instant,
-) -> Option<GuardMonitor> {
-    if experiment.guards.is_empty() {
-        return None;
-    }
-
-    let guards: Vec<Guard> = experiment.guards.clone();
-    let executor = Arc::clone(executor);
-    let interval = sampling.interval;
-    let token = method_token.clone();
-    let (stop_tx, stop_rx) = mpsc::channel::<()>();
-
-    let handle = std::thread::spawn(move || {
-        run_guard_monitor(
-            &guards,
-            executor.as_ref(),
-            interval,
-            &token,
-            method_started,
-            &stop_rx,
-        )
-    });
-
-    Some(GuardMonitor { stop_tx, handle })
-}
-
-/// Guard evaluation loop. Returns `Some(HaltRecord)` on the first guard that
-/// breaches its safe condition `min_breaches` times consecutively, or `None`
-/// when the method finishes first (the runner drops `stop_tx`).
-fn run_guard_monitor(
-    guards: &[Guard],
-    executor: &dyn ActivityExecutor,
-    interval: std::time::Duration,
-    method_token: &CancellationToken,
-    method_started: Instant,
-    stop_rx: &mpsc::Receiver<()>,
-) -> Option<HaltRecord> {
-    let mut consecutive = vec![0u32; guards.len()];
-    loop {
-        for (idx, guard) in guards.iter().enumerate() {
-            let outcome = executor.execute(&guard.probe);
-            let safe = probe_outcome_ok(&guard.probe, outcome.success, outcome.output.as_deref());
-            if safe {
-                consecutive[idx] = 0;
-                continue;
-            }
-            consecutive[idx] += 1;
-            if consecutive[idx] >= guard.min_breaches {
-                // Method durations never exceed u64::MAX milliseconds.
-                #[allow(clippy::cast_possible_truncation)]
-                let time_to_halt_ms = method_started.elapsed().as_millis() as u64;
-                let record = HaltRecord {
-                    guard_name: guard.name.clone(),
-                    observed: outcome.output,
-                    safe_condition: describe_safe_condition(guard.probe.tolerance.as_ref()),
-                    breach_count: consecutive[idx],
-                    breached_at_ns: epoch_nanos_now(),
-                    time_to_halt_ms,
-                    // Filled in by the runner after rollbacks complete.
-                    rollback_ms: 0,
-                };
-                // Pull the plug: cancel the method so remaining activities are
-                // skipped.
-                method_token.cancel();
-                return Some(record);
-            }
-        }
-
-        // The receive timeout doubles as the inter-sample pause: it returns
-        // early (`Disconnected`) the instant the runner drops the stop sender
-        // when the method completes, so no guard latency is added.
-        match stop_rx.recv_timeout(interval) {
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return None,
-        }
-    }
-}
-
-/// Stop the guard monitor and return its halt record (if any). A panicked
-/// monitor thread is logged and treated as "no halt".
-fn finish_guard_monitor(monitor: GuardMonitor) -> Option<HaltRecord> {
-    let GuardMonitor { stop_tx, handle } = monitor;
-    // Dropping the sender disconnects the monitor's receiver, waking it from
-    // its inter-sample wait so it exits promptly when no guard breached.
-    drop(stop_tx);
-    match handle.join() {
-        Ok(record) => record,
-        Err(_panic) => {
-            tracing::warn!("auto-halt guard monitor thread panicked; treating as no halt");
-            None
-        }
-    }
-}
-
-/// Human-readable description of a guard's *safe* condition, for the journal
-/// and CLI output (e.g. `range [0, 0.05]`).
-fn describe_safe_condition(tolerance: Option<&Tolerance>) -> String {
-    match tolerance {
-        Some(Tolerance::Range { from, to }) => format!("range [{from}, {to}]"),
-        Some(Tolerance::Exact { value }) => format!("exact {value}"),
-        Some(Tolerance::Regex { pattern }) => format!("regex /{pattern}/"),
-        // Guards are validated to carry a tolerance; this is a defensive
-        // fallback only.
-        None => "probe success".to_string(),
-    }
 }
 
 /// Build the blast-radius journal record, or `None` when there is nothing to

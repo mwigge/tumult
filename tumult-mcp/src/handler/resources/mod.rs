@@ -14,6 +14,10 @@
 //! scheme's filename-only addressing) and paginates with an opaque base64
 //! cursor over the sorted entry offset.
 
+mod cursor;
+mod links;
+mod uri;
+
 use std::path::Path;
 
 use rust_mcp_sdk::schema::{
@@ -23,6 +27,11 @@ use rust_mcp_sdk::schema::{
 use crate::tools;
 
 use super::TumultHandler;
+use cursor::{decode_cursor, encode_cursor};
+use uri::{parse_resource_uri, URI_PREFIX};
+
+pub(crate) use links::{file_resource_link, workspace_resource_link};
+pub(crate) use uri::{classify, ResourceKind};
 
 /// Page size for `resources/list`.
 pub(crate) const RESOURCES_PAGE_SIZE: usize = 100;
@@ -30,242 +39,6 @@ pub(crate) const RESOURCES_PAGE_SIZE: usize = 100;
 /// Maximum number of `resource_link` content items attached to a single
 /// `tumult_list_journals` result.
 pub(crate) const RESOURCE_LINKS_MAX: usize = 50;
-
-/// URI prefix shared by every Tumult resource.
-const URI_PREFIX: &str = "tumult://";
-
-/// Kind of a workspace resource, deciding its URI scheme tail and MIME type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ResourceKind {
-    /// Experiment journal — served as JSON (`tumult://journal/…`).
-    Journal,
-    /// Experiment definition — served as raw TOON (`tumult://experiment/…`).
-    Experiment,
-    /// `GameDay` campaign — served as raw TOON (`tumult://gameday/…`).
-    Gameday,
-}
-
-impl ResourceKind {
-    /// URI path segment between `tumult://` and the file name.
-    fn uri_kind(self) -> &'static str {
-        match self {
-            Self::Journal => "journal",
-            Self::Experiment => "experiment",
-            Self::Gameday => "gameday",
-        }
-    }
-
-    /// MIME type of the content `resources/read` returns for this kind:
-    /// journals are rendered as JSON, everything else is raw TOON text.
-    fn mime_type(self) -> &'static str {
-        match self {
-            Self::Journal => "application/json",
-            Self::Experiment | Self::Gameday => "application/toon",
-        }
-    }
-
-    fn description(self) -> &'static str {
-        match self {
-            Self::Journal => "Tumult experiment journal (read as JSON: {summary, journal}).",
-            Self::Experiment => "Tumult chaos experiment definition (raw TOON).",
-            Self::Gameday => "Tumult GameDay campaign definition (raw TOON).",
-        }
-    }
-}
-
-/// Classify a workspace `.toon` file. `.gameday.toon` wins on the file
-/// name; otherwise journals are recognized by their `experiment_title:`
-/// field before experiments are recognized by `title:` (a journal may embed
-/// nested hypothesis `title:` lines), and unreadable/ambiguous files fall
-/// back to journal — mirroring `tumult_list_journals`, which lists every
-/// `.toon` file.
-pub(crate) fn classify(path: &Path) -> ResourceKind {
-    if path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .is_some_and(|s| s.ends_with(".gameday"))
-    {
-        return ResourceKind::Gameday;
-    }
-    let Ok(content) = std::fs::read_to_string(path) else {
-        return ResourceKind::Journal;
-    };
-    if content
-        .lines()
-        .any(|line| line.trim_start().starts_with("experiment_title:"))
-    {
-        return ResourceKind::Journal;
-    }
-    if tools::extract_title(&content).is_some() {
-        return ResourceKind::Experiment;
-    }
-    ResourceKind::Journal
-}
-
-/// Parse a `tumult://{kind}/{filename}` URI. The filename tail must be a
-/// plain `.toon` file name — separators, traversal components, and unknown
-/// kinds/schemes are protocol errors.
-// Resource names are exact, lowercase identifiers we mint ourselves; a
-// case-sensitive `.toon` suffix match is the intended, correct behaviour.
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
-fn parse_resource_uri(uri: &str) -> Result<(ResourceKind, &str), RpcError> {
-    let invalid =
-        |message: String| RpcError::invalid_params().with_message(format!("{message}: {uri}"));
-    let rest = uri
-        .strip_prefix(URI_PREFIX)
-        .ok_or_else(|| invalid("unsupported resource URI scheme".into()))?;
-    let (kind, name) = rest
-        .split_once('/')
-        .ok_or_else(|| invalid("malformed resource URI".into()))?;
-    let kind = match kind {
-        "journal" => ResourceKind::Journal,
-        "experiment" => ResourceKind::Experiment,
-        "gameday" => ResourceKind::Gameday,
-        other => return Err(invalid(format!("unknown resource kind '{other}'"))),
-    };
-    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
-        return Err(invalid(
-            "resource name must be a plain file name (no path separators or traversal)".into(),
-        ));
-    }
-    match kind {
-        ResourceKind::Gameday if !name.ends_with(".gameday.toon") => Err(invalid(
-            "gameday resource names must end with .gameday.toon".into(),
-        )),
-        ResourceKind::Journal | ResourceKind::Experiment if !name.ends_with(".toon") => {
-            Err(invalid("resource names must end with .toon".into()))
-        }
-        _ => Ok((kind, name)),
-    }
-}
-
-// ── Pagination cursor (opaque base64 of the offset) ───────────
-
-const BASE64_ALPHABET: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// Encode a `resources/list` offset as an opaque base64 cursor.
-fn encode_cursor(offset: usize) -> String {
-    let digits = offset.to_string().into_bytes();
-    let mut out = String::with_capacity(digits.len().div_ceil(3) * 4);
-    for chunk in digits.chunks(3) {
-        let b1 = chunk.get(1).copied().map(usize::from);
-        let b2 = chunk.get(2).copied().map(usize::from);
-        let group = (usize::from(chunk[0]) << 16) | (b1.unwrap_or(0) << 8) | b2.unwrap_or(0);
-        out.push(char::from(BASE64_ALPHABET[(group >> 18) & 63]));
-        out.push(char::from(BASE64_ALPHABET[(group >> 12) & 63]));
-        out.push(if b1.is_some() {
-            char::from(BASE64_ALPHABET[(group >> 6) & 63])
-        } else {
-            '='
-        });
-        out.push(if b2.is_some() {
-            char::from(BASE64_ALPHABET[group & 63])
-        } else {
-            '='
-        });
-    }
-    out
-}
-
-/// Decode an opaque cursor back to an offset.
-///
-/// # Errors
-///
-/// Returns an invalid-params [`RpcError`] for anything that is not the
-/// base64 encoding of a decimal offset (per the MCP spec, invalid cursors
-/// are protocol errors).
-fn decode_cursor(cursor: &str) -> Result<usize, RpcError> {
-    let invalid =
-        || RpcError::invalid_params().with_message(format!("invalid pagination cursor: {cursor}"));
-    if cursor.is_empty() || !cursor.len().is_multiple_of(4) {
-        return Err(invalid());
-    }
-    let trimmed = cursor.trim_end_matches('=');
-    if cursor.len() - trimmed.len() > 2 {
-        return Err(invalid());
-    }
-    let mut bits: usize = 0;
-    let mut bit_count: u32 = 0;
-    let mut digits: Vec<u8> = Vec::with_capacity(cursor.len() / 4 * 3);
-    for byte in trimmed.bytes() {
-        let value = BASE64_ALPHABET
-            .iter()
-            .position(|&b| b == byte)
-            .ok_or_else(invalid)?;
-        bits = (bits << 6) | value;
-        bit_count += 6;
-        if bit_count >= 8 {
-            bit_count -= 8;
-            let out = u8::try_from((bits >> bit_count) & 0xFF).map_err(|_| invalid())?;
-            digits.push(out);
-            bits &= (1 << bit_count) - 1;
-        }
-    }
-    if bits != 0 {
-        // Non-canonical padding bits.
-        return Err(invalid());
-    }
-    let text = String::from_utf8(digits).map_err(|_| invalid())?;
-    text.parse::<usize>().map_err(|_| invalid())
-}
-
-// ── Resource link builders (tool results) ─────────────────────
-
-/// Build a `resource_link` for a workspace file. Files directly in the
-/// workspace root get a readable `tumult://` URI; anything else (e.g. a
-/// journal written into a subdirectory) falls back to a `file://` link.
-pub(crate) fn workspace_resource_link(
-    workspace_root: &Path,
-    kind: ResourceKind,
-    path: &Path,
-) -> ResourceLink {
-    let in_root = path
-        .parent()
-        .and_then(|parent| parent.canonicalize().ok())
-        .zip(workspace_root.canonicalize().ok())
-        .is_some_and(|(parent, root)| parent == root);
-    let name = path.file_name().and_then(|n| n.to_str());
-    match (in_root, name) {
-        (true, Some(name)) => ResourceLink::new(
-            vec![],
-            name.to_string(),
-            format!("{URI_PREFIX}{}/{name}", kind.uri_kind()),
-            None,
-            Some(kind.description().to_string()),
-            None,
-            Some(kind.mime_type().to_string()),
-            None,
-            None,
-        ),
-        _ => file_resource_link(path),
-    }
-}
-
-/// Build a `file://` `resource_link` for a written file that has no
-/// `tumult://` scheme (e.g. reports) or lives outside the workspace root.
-pub(crate) fn file_resource_link(path: &Path) -> ResourceLink {
-    let mime = match path.extension().and_then(|e| e.to_str()) {
-        Some("json") => "application/json",
-        Some("xml") => "application/xml",
-        Some("toon") => "application/toon",
-        _ => "text/plain",
-    };
-    ResourceLink::new(
-        vec![],
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("resource")
-            .to_string(),
-        format!("file://{}", path.display()),
-        None,
-        None,
-        None,
-        Some(mime.to_string()),
-        None,
-        None,
-    )
-}
 
 // ── Handler logic (called from the ServerHandler impl) ────────
 
@@ -455,54 +228,6 @@ mod tests {
                 (text.text.as_str(), text.mime_type.as_deref())
             }
             ReadResourceContent::BlobResourceContents(_) => panic!("expected text contents"),
-        }
-    }
-
-    // ── cursor codec ──────────────────────────────────────────
-
-    #[test]
-    fn cursor_round_trips_offsets() {
-        for offset in [0usize, 1, 99, 100, 12345, usize::MAX / 2] {
-            let cursor = encode_cursor(offset);
-            assert_eq!(decode_cursor(&cursor).unwrap(), offset, "cursor {cursor}");
-        }
-    }
-
-    #[test]
-    fn cursor_rejects_invalid_input() {
-        for bad in ["", "!!!!", "AAAA", "abc", "MTAw=", "====", "not base64"] {
-            assert!(
-                decode_cursor(bad).is_err(),
-                "cursor {bad:?} must be rejected"
-            );
-        }
-    }
-
-    // ── URI parsing ───────────────────────────────────────────
-
-    #[test]
-    fn parse_uri_accepts_plain_names_and_rejects_everything_else() {
-        assert_eq!(
-            parse_resource_uri("tumult://journal/a.toon").unwrap(),
-            (ResourceKind::Journal, "a.toon")
-        );
-        assert_eq!(
-            parse_resource_uri("tumult://gameday/x.gameday.toon").unwrap(),
-            (ResourceKind::Gameday, "x.gameday.toon")
-        );
-        for bad in [
-            "file:///etc/passwd",
-            "tumult://journal",
-            "tumult://journal/",
-            "tumult://journal/..",
-            "tumult://journal/../escape",
-            "tumult://journal/sub/a.toon",
-            "tumult://journal/a\\b.toon",
-            "tumult://journal/passwd",
-            "tumult://gameday/plain.toon",
-            "tumult://prompt/a.toon",
-        ] {
-            assert!(parse_resource_uri(bad).is_err(), "{bad} must be rejected");
         }
     }
 
@@ -835,38 +560,5 @@ mod tests {
             )
             .await
             .expect("authorized read must succeed");
-    }
-
-    // ── resource links ────────────────────────────────────────
-
-    #[test]
-    fn workspace_resource_link_uses_tumult_uri_in_root_and_file_uri_elsewhere() {
-        let tmp = tempfile::tempdir().unwrap();
-        let in_root = tmp.path().join("j.toon");
-        std::fs::write(&in_root, "x").unwrap();
-        let link = workspace_resource_link(tmp.path(), ResourceKind::Journal, &in_root);
-        assert_eq!(link.uri, "tumult://journal/j.toon");
-        assert_eq!(link.mime_type.as_deref(), Some("application/json"));
-
-        let sub = tmp.path().join("sub");
-        std::fs::create_dir(&sub).unwrap();
-        let nested = sub.join("j.toon");
-        std::fs::write(&nested, "x").unwrap();
-        let link = workspace_resource_link(tmp.path(), ResourceKind::Journal, &nested);
-        assert!(
-            link.uri.starts_with("file://"),
-            "nested files fall back to file://: {}",
-            link.uri
-        );
-    }
-
-    #[test]
-    fn file_resource_link_maps_extension_to_mime() {
-        let link = file_resource_link(Path::new("/tmp/report.xml"));
-        assert_eq!(link.uri, "file:///tmp/report.xml");
-        assert_eq!(link.mime_type.as_deref(), Some("application/xml"));
-        assert_eq!(link.name, "report.xml");
-        let link = file_resource_link(Path::new("/tmp/report.json"));
-        assert_eq!(link.mime_type.as_deref(), Some("application/json"));
     }
 }
