@@ -23,3 +23,4 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Agentic Live Clients](agentic-live-clients.md) | Inject faults into Claude Code, Codex, OpenCode, and Copilot traffic |
 | [Agentic Cross-Client Observability](agentic-cross-client-observability.md) | Normalize agent telemetry onto one schema; two-sided spans and trace-nesting tiers per client |
 | [Agentic Recommendations](agentic-recommendations.md) | Enhance `tumult recommend` with a local agent CLI (Claude Code, Codex); generate validated experiments |
+| [Windows Faults](windows-faults.md) | `tumult-windows`: native process-kill, CPU-stress, and firewall-blackhole faults, validated live against a Windows 11 guest |

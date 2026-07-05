@@ -158,6 +158,8 @@ tumult-plugin-kafka/
 
 Native plugins (for performance-critical or SDK-heavy tasks like kube-rs or cloud provider SDKs) are compiled into the binary. Each native crate implements the `NativeExecutor` trait from `tumult-plugin` and is registered in a `NativeExecutorRegistry` — the CLI is a pure composition root that wires the registry together. Five native plugins are registered today: `tumult-ssh` (1 function), `tumult-net` (7 functions), `tumult-kubernetes` (10 functions), `tumult-cloud` (9 functions), and `tumult-windows` (3 functions). Referencing an unknown plugin or function fails with a clear error listing what is available.
 
+**Windows-native faults** — `tumult-windows` injects `process_kill`, `cpu_stress`, and `network_blackhole` on Windows hosts, the fault domain the Kubernetes-centric OSS tools (Chaos Mesh, LitmusChaos) don't cover. Validated live against a real Windows 11 guest. See the [Windows Faults guide](docs/guides/windows-faults.md).
+
 ```toon
 provider:
   type: native
