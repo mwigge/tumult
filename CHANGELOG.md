@@ -4,6 +4,14 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.13.1] — 2026-07-05
+
+### Changed
+- Internal refactor: split the largest modules into cohesive submodules for
+  maintainability (MCP tool dispatch by tool family, compliance by concern,
+  resource/schema handlers, the demo control-panel). Behavior-preserving — no
+  functional change; all tests + clippy green.
+
 ## [2.13.0] — 2026-07-05
 
 ### Added
