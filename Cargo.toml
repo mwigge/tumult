@@ -16,6 +16,7 @@ members = [
     # Phase 2
     "tumult-analytics",
     "tumult-graph",
+    "tumult-tui",
     "tumult-kubernetes",
     "tumult-cloud",
     "tumult-windows",
@@ -38,7 +39,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.12.1"
+version = "2.13.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -130,6 +131,11 @@ clickhouse = { version = "0.15", features = ["time", "uuid"] }
 
 # SSH known-hosts path resolution (used in tumult-analytics, tumult-ssh)
 dirs-next = "2"
+
+# Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend; both
+# stay pinned to the versions already resolved in the workspace lockfile.
+ratatui = "0.29"
+crossterm = "0.28"
 
 # Temporary file/directory creation (dev-dependency across all crates)
 tempfile = "3"

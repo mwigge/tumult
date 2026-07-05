@@ -4,6 +4,20 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.13.0] — 2026-07-05
+
+### Added
+- **`tumult tui` (alias `dashboard`) — an interactive analytics TUI** over the
+  embedded DuckDB store, opened **read-only** so it coexists with a running MCP
+  server / concurrent ingest. Keyboard-driven, tabbed (Experiments / Analytics /
+  ChaosGraph / Compliance). The headline is **historical browsing**: the full
+  experiment history in chronological order — sortable, filterable, drill into any
+  run's activity-duration waterfall + deviations, mark-and-compare runs, and trend
+  sparklines (success-rate / duration / resilience over the sequence). A
+  **live/paused** auto-refresh surfaces newly-completed experiments in real time.
+  New `tumult-tui` crate; ratatui/crossterm. `tumult tui [--store <path>]
+  [--refresh-secs <n>]`.
+
 ## [2.12.1] - 2026-07-05
 
 Docs: Windows fault injection writeup — blog post ("Windows Chaos, For Real")

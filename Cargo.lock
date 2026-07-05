@@ -6255,6 +6255,7 @@ dependencies = [
  "tumult-otel",
  "tumult-plugin",
  "tumult-ssh",
+ "tumult-tui",
  "tumult-windows",
 ]
 
@@ -6461,6 +6462,19 @@ version = "2.12.1"
 dependencies = [
  "indexmap",
  "serde_json",
+ "tumult-core",
+]
+
+[[package]]
+name = "tumult-tui"
+version = "2.12.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "ratatui",
+ "tempfile",
+ "tumult-analytics",
  "tumult-core",
 ]
 

@@ -279,6 +279,16 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: ChaosGraphAction,
     },
+    /// Open the interactive analytics TUI over the store (read-only dashboard)
+    #[command(alias = "dashboard")]
+    Tui {
+        /// Analytics store path (defaults to ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+        /// Live-refresh interval in seconds (minimum 1)
+        #[arg(long, default_value_t = 2)]
+        refresh_secs: u64,
+    },
 }
 
 /// Text vs. structured JSON rendering for `chaosgraph` output.

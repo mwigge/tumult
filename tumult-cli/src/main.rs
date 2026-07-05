@@ -320,6 +320,14 @@ async fn main() -> anyhow::Result<()> {
                 )?;
             }
         },
+        Commands::Tui {
+            store,
+            refresh_secs,
+        } => {
+            // The TUI drives crossterm on a blocking terminal loop; keep it off
+            // the async reactor so the runtime stays responsive.
+            tokio::task::spawn_blocking(move || tumult_tui::run(store, refresh_secs)).await??;
+        }
     }
 
     // Flush OTel spans before exit

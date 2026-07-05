@@ -30,6 +30,7 @@ tumult-agent-cli = { path = "../tumult-agent-cli" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-intelligence = { path = "../tumult-intelligence" }
 tumult-mcp = { path = "../tumult-mcp" }
+tumult-tui = { path = "../tumult-tui" }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
