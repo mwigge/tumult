@@ -17,6 +17,7 @@ mod recommend;
 mod report;
 mod run;
 mod store;
+mod topology;
 mod trend;
 mod types;
 mod validate;
@@ -46,6 +47,9 @@ pub use compliance::cmd_compliance;
 pub use init::cmd_init;
 pub use mcp::{cmd_mcp_serve, Transport as McpTransportKind};
 pub use new::{cmd_new, cmd_templates};
+pub use topology::{
+    cmd_topology_import, cmd_topology_lineage, cmd_topology_map, cmd_topology_recommend,
+};
 pub use trend::{cmd_export, cmd_trend};
 pub use types::{
     build_load_override, parse_duration_str, parse_var_args, ComplianceFramework, ExportFormat,

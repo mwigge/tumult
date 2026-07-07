@@ -1,0 +1,25 @@
+# Declared service topology for the tumult demo stack (docker-compose.demo.yml).
+# Imported by `tumult topology import` — names match what the demo
+# experiments' provider args and docker commands yield as svc: nodes.
+
+[[service]]
+name = "demo-traffic"
+depends_on = ["demo-app"]
+tier = "edge"
+owner = "demo"
+
+[[service]]
+name = "demo-app"
+depends_on = ["demo-postgres"]
+tier = "service"
+owner = "demo"
+
+[[service]]
+name = "demo-postgres"
+tier = "data"
+owner = "demo"
+
+[[service]]
+name = "demo-sshd"
+tier = "infra"
+owner = "demo"

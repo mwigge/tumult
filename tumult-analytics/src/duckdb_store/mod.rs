@@ -93,6 +93,7 @@ fn open_with_retry(
 
 mod graph;
 mod ingest;
+pub mod topology;
 mod maintenance;
 mod query;
 mod types;
@@ -143,6 +144,13 @@ impl AnalyticsStore {
     /// Panics if the home directory cannot be determined.
     #[must_use]
     pub fn default_path() -> PathBuf {
+        // Explicit override first — lets scripts and demos isolate a store
+        // without threading a flag through every command.
+        if let Ok(path) = std::env::var("TUMULT_ANALYTICS_PATH") {
+            if !path.is_empty() {
+                return PathBuf::from(path);
+            }
+        }
         let home = dirs_next::home_dir().expect("cannot determine home directory");
         home.join(".tumult").join("analytics.duckdb")
     }

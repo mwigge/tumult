@@ -16,7 +16,8 @@ use anyhow::{anyhow, Result};
 use tumult_mcp::tools::StructuredReport;
 
 /// Resolve the analytics store path, defaulting to the persistent store.
-fn resolve_store(store: Option<&Path>) -> PathBuf {
+/// Shared with the `topology` commands.
+pub(crate) fn resolve_store(store: Option<&Path>) -> PathBuf {
     store.map_or_else(
         tumult_analytics::AnalyticsStore::default_path,
         Path::to_path_buf,
@@ -24,7 +25,8 @@ fn resolve_store(store: Option<&Path>) -> PathBuf {
 }
 
 /// Render a tool report either as its readable text or as structured JSON.
-fn emit(report: &StructuredReport, json: bool) -> Result<()> {
+/// Shared with the `topology` commands.
+pub(crate) fn emit(report: &StructuredReport, json: bool) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(&report.structured)?);
     } else {

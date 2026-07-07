@@ -8,6 +8,7 @@ mod agentic;
 mod agents;
 mod analysis;
 mod authoring;
+mod cypher;
 mod experiment;
 mod gameday;
 mod graph;
@@ -15,6 +16,7 @@ mod journals;
 mod listing;
 mod recommend;
 mod reporting;
+mod topology;
 mod validation;
 mod whoami;
 
@@ -22,6 +24,7 @@ pub use agentic::{agentic_list_scenarios, agentic_run_experiment, agentic_smoke}
 pub use agents::agents;
 pub use analysis::{analyze, analyze_persistent, store_stats};
 pub use authoring::{fault_catalog, scaffold_experiment, ScaffoldArgs};
+pub use cypher::chaosgraph_cypher;
 pub use experiment::{
     create_experiment, run_experiment, validate_experiment, RunExperimentRequest,
 };
@@ -34,6 +37,7 @@ pub(crate) use listing::extract_title;
 pub use listing::list_experiments;
 pub use recommend::{coverage, recommend, RecommendRequest};
 pub use reporting::{compliance, report, trend};
+pub use topology::{compliance_lineage, recommend_injection, topology_import, topology_map};
 pub use validation::{
     safe_resolve_output_path, safe_resolve_path, validate_action_name, validate_select_only,
 };

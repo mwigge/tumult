@@ -1,6 +1,13 @@
 title: Demo — auto-halt guardrail pulls the plug when demo-app goes unhealthy
 description: A safety guard watches demo-app health during a DB outage and halts the run the moment it turns unhealthy, running rollback immediately.
 
+regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: Art. 11
+      description: Response and recovery capability
+      evidence: Safety guard halts the run and rollback restores demo-postgres when demo-app health breaches tolerance
+
 steady_state_hypothesis:
   title: demo-app is healthy before the fault
   probes[1]:

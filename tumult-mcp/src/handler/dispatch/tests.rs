@@ -31,11 +31,16 @@ fn all_tools_listed() {
         ChaosGraphQueryTool::tool(),
         ChaosGraphNeighborsTool::tool(),
         ChaosGraphCoverageGapsTool::tool(),
+        ChaosGraphCypherTool::tool(),
         FaultCatalogTool::tool(),
         ScaffoldExperimentTool::tool(),
+        TopologyImportTool::tool(),
+        TopologyMapTool::tool(),
+        ComplianceLineageTool::tool(),
+        RecommendInjectionTool::tool(),
         WhoamiTool::tool(),
     ];
-    assert_eq!(tools.len(), 30);
+    assert_eq!(tools.len(), 35);
 }
 
 #[test]
@@ -80,8 +85,13 @@ fn tool_names_follow_convention() {
         ChaosGraphQueryTool::tool(),
         ChaosGraphNeighborsTool::tool(),
         ChaosGraphCoverageGapsTool::tool(),
+        ChaosGraphCypherTool::tool(),
         FaultCatalogTool::tool(),
         ScaffoldExperimentTool::tool(),
+        TopologyImportTool::tool(),
+        TopologyMapTool::tool(),
+        ComplianceLineageTool::tool(),
+        RecommendInjectionTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -251,6 +261,11 @@ async fn list_tools_round_trip_returns_all_registered_tools() {
         "tumult_chaosgraph_coverage_gaps",
         "tumult_fault_catalog",
         "tumult_scaffold_experiment",
+        "tumult_chaosgraph_cypher",
+        "tumult_topology_import",
+        "tumult_topology_map",
+        "tumult_compliance_lineage",
+        "tumult_recommend_injection",
         "tumult_whoami",
     ];
     let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
@@ -340,8 +355,12 @@ fn tool_annotations_reflect_tool_behavior() {
         ChaosGraphQueryTool::tool(),
         ChaosGraphNeighborsTool::tool(),
         ChaosGraphCoverageGapsTool::tool(),
+        ChaosGraphCypherTool::tool(),
         FaultCatalogTool::tool(),
         ScaffoldExperimentTool::tool(),
+        TopologyMapTool::tool(),
+        ComplianceLineageTool::tool(),
+        RecommendInjectionTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &read_only {
@@ -383,6 +402,16 @@ fn tool_annotations_reflect_tool_behavior() {
         assert_eq!(a.idempotent_hint, Some(false), "idempotent: {}", tool.name);
         assert_eq!(a.open_world_hint, Some(false), "open_world: {}", tool.name);
     }
+
+    // topology_import writes the declared-topology sub-graph into the
+    // store: not read-only, but idempotent (re-import converges) and
+    // closed-world.
+    let import = TopologyImportTool::tool();
+    let a = import.annotations.as_ref().expect("import annotations");
+    assert_eq!(a.destructive_hint, Some(false));
+    assert_eq!(a.read_only_hint, Some(false));
+    assert_eq!(a.idempotent_hint, Some(true));
+    assert_eq!(a.open_world_hint, Some(false));
 
     // report may write a file (output_path) but re-rendering the same
     // journal is idempotent and closed-world. Annotations are static, so
@@ -682,6 +711,29 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
                 "args": { "delay_ms": 100 },
                 "target": "demo-target",
             }),
+        ),
+        (
+            // Import first so the topology tools below see declared services.
+            "tumult_topology_import",
+            serde_json::json!({
+                "toml_content": "[[service]]\nname = \"api\"\ndepends_on = [\"db\"]\n\n[[service]]\nname = \"db\"\n",
+                "store_path": store_path.to_str().unwrap(),
+            }),
+        ),
+        (
+            "tumult_topology_map",
+            serde_json::json!({ "store_path": store_path.to_str().unwrap() }),
+        ),
+        (
+            "tumult_compliance_lineage",
+            serde_json::json!({
+                "framework": "dora",
+                "store_path": store_path.to_str().unwrap(),
+            }),
+        ),
+        (
+            "tumult_recommend_injection",
+            serde_json::json!({ "store_path": store_path.to_str().unwrap() }),
         ),
     ];
 
@@ -1593,8 +1645,13 @@ fn required_roles_match_annotations() {
         ChaosGraphQueryTool::tool(),
         ChaosGraphNeighborsTool::tool(),
         ChaosGraphCoverageGapsTool::tool(),
+        ChaosGraphCypherTool::tool(),
         FaultCatalogTool::tool(),
         ScaffoldExperimentTool::tool(),
+        TopologyImportTool::tool(),
+        TopologyMapTool::tool(),
+        ComplianceLineageTool::tool(),
+        RecommendInjectionTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -1680,6 +1737,45 @@ async fn viewer_rejected_on_operator_tools() {
             "run_experiment must not execute for a viewer"
         );
     }
+}
+
+/// A viewer token is rejected on `tumult_topology_import` (the one topology
+/// tool that writes to the store) without the write being attempted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn viewer_rejected_on_topology_import() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("analytics.duckdb");
+    drop(tumult_analytics::AnalyticsStore::open(&store).unwrap());
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![
+            ("view-tok".into(), Role::Viewer),
+            ("op-tok".into(), Role::Operator),
+        ]),
+    );
+
+    let args = serde_json::json!({
+        "toml_content": "[[service]]\nname = \"db\"\n",
+        "store_path": store.to_str().unwrap(),
+    });
+    let params = call_params("tumult_topology_import", args.clone(), Some("Bearer view-tok"));
+    let err = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect_err("viewer must be rejected on topology import");
+    let msg = err.to_string();
+    assert!(msg.contains("Unauthorized"), "got: {msg}");
+    assert!(msg.contains("requires the 'operator' role"), "got: {msg}");
+    assert!(msg.contains("token has 'viewer'"), "got: {msg}");
+
+    // The same call succeeds for an operator token.
+    let params = call_params("tumult_topology_import", args, Some("Bearer op-tok"));
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("operator must reach topology import");
+    assert!(result.is_error.is_none(), "{}", result_text(&result));
+    assert!(result_text(&result).contains("imported 1 services"));
 }
 
 /// An operator token may call both read-only and operator-only tools.

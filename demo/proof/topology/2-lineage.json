@@ -1,0 +1,147 @@
+{
+  "cells": [
+    {
+      "article_id": "compliance:DORA/Art.11",
+      "service_id": "svc:demo-app",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.11",
+      "service_id": "svc:demo-postgres",
+      "status": "broken",
+      "evidence_strength": null,
+      "cause": {
+        "deviation_id": "dev:11dca8bd-2416-4d8b-a2ae-8b6d75320857",
+        "fault_id": "fault:pause-database",
+        "guard_name": "app-health-guard",
+        "failing_actions": [],
+        "run_id": "11dca8bd-2416-4d8b-a2ae-8b6d75320857"
+      },
+      "experiments": [
+        "exp:Demo — auto-halt guardrail pulls the plug when demo-app goes unhealthy"
+      ]
+    },
+    {
+      "article_id": "compliance:DORA/Art.11",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.11",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.24",
+      "service_id": "svc:demo-app",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.24",
+      "service_id": "svc:demo-postgres",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.24",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.24",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.25",
+      "service_id": "svc:demo-app",
+      "status": "evidenced",
+      "evidence_strength": "direct",
+      "cause": null,
+      "experiments": [
+        "exp:Demo — network latency via the tumult-net userspace proxy"
+      ]
+    },
+    {
+      "article_id": "compliance:DORA/Art.25",
+      "service_id": "svc:demo-postgres",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.25",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.25",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.26",
+      "service_id": "svc:demo-app",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.26",
+      "service_id": "svc:demo-postgres",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.26",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:DORA/Art.26",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    }
+  ],
+  "counts": {
+    "evidenced": 1,
+    "broken": 1,
+    "untested": 14
+  }
+}

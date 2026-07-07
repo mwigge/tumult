@@ -1,7 +1,14 @@
 title: Demo — network latency via the tumult-net userspace proxy
 description: Stand a native tokio-netem proxy in front of demo-app and prove requests still succeed through the delayed path
 
-tags[3]: demo, network, resilience
+tags[4]: demo, network, resilience, compliance
+
+regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: Art. 25
+      description: Scenario-based testing of ICT tools and systems
+      evidence: Latency injection on the demo-app request path with health verified through the delayed proxy
 
 steady_state_hypothesis:
   title: demo-app is healthy on the direct path

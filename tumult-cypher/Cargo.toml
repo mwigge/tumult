@@ -1,0 +1,23 @@
+[package]
+name = "tumult-cypher"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "openCypher query surface over ChaosGraph snapshots via a disposable embedded GrafeoDB"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+# Embedded graph engine used purely as a throwaway query executor: the graph is
+# rebuilt from a snapshot on every call, so DuckDB remains the single source of
+# truth. Feature choice: the default `embedded` profile drags in vector/text
+# indexes, graph algorithms, parallel execution and file storage — none of
+# which a one-query in-memory graph needs. `edge` is grafeo's minimal profile
+# (labeled-property-graph store + regex-lite); `cypher` adds the openCypher 9
+# frontend on top. `gql` comes along with `edge` but is unused here.
+grafeo = { version = "0.5", default-features = false, features = ["edge", "cypher"] }
+
+[lints]
+workspace = true

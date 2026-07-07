@@ -47,6 +47,21 @@ ON CONFLICT (id) DO UPDATE SET
     label = excluded.label,
     attrs = excluded.attrs";
 
+/// Upsert a node, merging `attrs` instead of replacing them. Parameters, in
+/// order: `id`, `kind`, `label`, `attrs` (JSON text).
+///
+/// Used by run ingestion so a run's (usually empty) service attrs never
+/// clobber richer attrs imported from a declared topology (`owner`, `tier`,
+/// `declared`). Plain [`UPSERT_NODE`] stays in use where full replacement is
+/// the point (compliance articles, coverage gaps, topology import itself).
+pub const UPSERT_NODE_MERGE_ATTRS: &str = "\
+INSERT INTO graph_nodes (id, kind, label, attrs)
+VALUES (?, ?, ?, CAST(? AS JSON))
+ON CONFLICT (id) DO UPDATE SET
+    kind = excluded.kind,
+    label = excluded.label,
+    attrs = json_merge_patch(graph_nodes.attrs, excluded.attrs)";
+
 /// Delete every edge previously recorded for a run. Parameter: `run_id`.
 ///
 /// Run before re-inserting a run's edges so re-ingesting the same run never
@@ -81,6 +96,22 @@ pub fn nodes_by_kind(with_filter: bool) -> String {
     sql.push_str(" ORDER BY id");
     sql
 }
+
+/// Full edge rows for a set of relations, oldest first. Bind one relation
+/// token per `?`. Returns `src, rel, dst, run_id, ts, attrs` with `attrs`
+/// normalized to `'{}'` when NULL (pre-attrs rows).
+#[must_use]
+pub fn edges_by_rels(rel_count: usize) -> String {
+    let placeholders = vec!["?"; rel_count.max(1)].join(", ");
+    format!(
+        "SELECT src, rel, dst, run_id, ts, COALESCE(CAST(attrs AS VARCHAR), '{{}}')
+         FROM graph_edges WHERE rel IN ({placeholders}) ORDER BY ts, rowid"
+    )
+}
+
+/// Node id + attrs JSON for every node of a kind. Parameter: `kind`.
+pub const NODE_ATTRS_BY_KIND: &str =
+    "SELECT id, label, COALESCE(CAST(attrs AS VARCHAR), '{}') FROM graph_nodes WHERE kind = ? ORDER BY id";
 
 /// Reachability CTE. When `with_rel`, the traversal follows ONLY edges of the
 /// given relation, so a targeted query (e.g. `injects`) returns just the nodes

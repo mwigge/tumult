@@ -1,0 +1,30 @@
+legend: [OK] evidenced | [BROKEN] control broken | [UNTESTED] no evidence yet | [UNKNOWN] no articles in scope
+
+[UNTESTED] svc:demo-traffic (edge, demo)
+  compliance:DORA/Art.11 untested
+  compliance:DORA/Art.24 untested
+  compliance:DORA/Art.25 untested
+  compliance:DORA/Art.26 untested
+
+[UNTESTED] svc:demo-app (service, demo)
+  compliance:DORA/Art.11 untested
+  compliance:DORA/Art.24 untested
+  compliance:DORA/Art.26 untested
+  compliance:DORA/Art.25 evidenced
+  <- demo-traffic depends on this
+
+[BROKEN] svc:demo-postgres (data, demo)
+  compliance:DORA/Art.11 broken — fault:pause-database (guard: app-health-guard)
+  compliance:DORA/Art.24 untested
+  compliance:DORA/Art.25 untested
+  compliance:DORA/Art.26 untested
+  <- demo-app depends on this
+  >> RECOMMENDED: tumult-containers::kill-container for compliance:DORA/Art.11 (score 2.50) — compliance:DORA/Art.11 is broken on svc:demo-postgres; citation strength for compliance:DORA/Art.11 is direct; 1 service depend on svc:demo-postgres; svc:demo-postgres itself has a broken control; action tumult-containers::kill-container never tested
+  >> RECOMMENDED: tumult-containers::kill-container for compliance:DORA/Art.25 (score 1.50) — compliance:DORA/Art.25 is untested on svc:demo-postgres; citation strength for compliance:DORA/Art.25 is direct; 1 service depend on svc:demo-postgres; svc:demo-postgres itself has a broken control; action tumult-containers::kill-container never tested
+  >> RECOMMENDED: tumult-containers::kill-container for compliance:DORA/Art.24 (score 1.05) — compliance:DORA/Art.24 is untested on svc:demo-postgres; citation strength for compliance:DORA/Art.24 is supporting; 1 service depend on svc:demo-postgres; svc:demo-postgres itself has a broken control; action tumult-containers::kill-container never tested
+
+[UNTESTED] svc:demo-sshd (infra, demo)
+  compliance:DORA/Art.11 untested
+  compliance:DORA/Art.24 untested
+  compliance:DORA/Art.25 untested
+  compliance:DORA/Art.26 untested

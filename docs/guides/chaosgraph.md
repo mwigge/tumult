@@ -26,7 +26,7 @@ The graph collapses each run to a small set of `(src)-[rel]->(dst)` tuples, so t
 
 ## The model
 
-ChaosGraph is intentionally small. Five node kinds, five edge relations.
+ChaosGraph is intentionally small: eight node kinds, ten edge relations — including the declared service topology (`depends_on`) and deviation cause attribution (`caused_by`) that power the [compliance lineage map](topology.md).
 
 ```
                  injects
@@ -67,10 +67,29 @@ ChaosGraph is intentionally small. Five node kinds, five edge relations.
 | `yielded` | experiment → journal | this run of the experiment produced this journal |
 | `observed_on` | fault → service | this fault was injected on this service |
 | `exhibited` | journal → deviation | this run exhibited this deviation |
+| `evidences` | experiment → compliance_article | a passing run supplies evidence toward this control (edge attrs carry citation strength) |
+| `maps_to_compliance` | experiment → compliance_article | the experiment declares a mapping to this control (intent, not run-produced evidence) |
+| `gap_in` | coverage_gap → fault_domain | an untested action is a gap in this plugin's fault domain |
+| `depends_on` | service → service | declared runtime dependency, imported from a topology document — never derived from runs |
+| `caused_by` | deviation → fault | the fault attributed as the cause of this deviation (only when attribution is unambiguous; see the [topology guide](topology.md)) |
 
 `experiment`, `fault`, and `service` are stable identities that recur across runs; `journal` and `deviation` are per-run. That is what makes the graph accumulate history without duplicating structure: a hundred runs of the same experiment share one `exp:` node and one `fault:` node, and hang a hundred `run:` nodes off it.
 
-## The two MCP tools
+## Arbitrary queries: `tumult_chaosgraph_cypher`
+
+Beyond the fixed query shapes below, agents can run arbitrary **read-only
+openCypher** over the whole graph. The graph is snapshotted from DuckDB (the
+only source of truth) into an in-memory engine per call — disposable by
+design. Mutating clauses are rejected before execution; rows are capped
+(default 500).
+
+```
+MATCH (e:experiment)-[:injects]->(f:fault)-[:observed_on]->(s:service)
+WHERE (other:service)-[:depends_on]->(s)
+RETURN e.id, f.id, s.id
+```
+
+## The fixed-shape MCP tools
 
 Both tools are read-only, idempotent, and return `structuredContent` with an advertised `outputSchema`. They read the persistent analytics store (`~/.tumult/analytics.duckdb` by default; override with `store_path`).
 

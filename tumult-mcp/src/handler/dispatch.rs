@@ -18,12 +18,13 @@ use crate::tools;
 use super::output_schema::output_schema_for;
 use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
-    AnalyzeStoreTool, AnalyzeTool, ChaosGraphCoverageGapsTool, ChaosGraphNeighborsTool,
-    ChaosGraphQueryTool, ComplianceTool, CoverageTool, CreateExperimentTool, DiscoverTool,
-    FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool, GameDayListTool, GameDayRunTool,
-    ListExperimentsTool, ListJournalsTool, QueryTracesTool, ReadJournalTool, RecommendTool,
-    ReportTool, RunExperimentTool, ScaffoldExperimentTool, StoreStatsTool, TrendTool, ValidateTool,
-    WhoamiTool,
+    AnalyzeStoreTool, AnalyzeTool, ChaosGraphCoverageGapsTool, ChaosGraphCypherTool, ChaosGraphNeighborsTool,
+    ChaosGraphQueryTool, ComplianceLineageTool, ComplianceTool, CoverageTool,
+    CreateExperimentTool, DiscoverTool, FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool,
+    GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool, QueryTracesTool,
+    ReadJournalTool, RecommendInjectionTool, RecommendTool, ReportTool, RunExperimentTool,
+    ScaffoldExperimentTool, StoreStatsTool, TopologyImportTool, TopologyMapTool, TrendTool,
+    ValidateTool, WhoamiTool,
 };
 use super::{Role, TumultHandler};
 
@@ -36,6 +37,7 @@ mod gameday;
 mod graph;
 mod journal;
 mod meta;
+mod topology;
 
 /// Minimum [`Role`] required to invoke a tool.
 ///
@@ -69,12 +71,17 @@ pub(crate) fn required_role_for_tool(name: &str) -> Role {
         | "tumult_chaosgraph_query"
         | "tumult_chaosgraph_neighbors"
         | "tumult_chaosgraph_coverage_gaps"
+        | "tumult_chaosgraph_cypher"
         | "tumult_fault_catalog"
         | "tumult_scaffold_experiment"
+        | "tumult_topology_map"
+        | "tumult_compliance_lineage"
+        | "tumult_recommend_injection"
         | "tumult_whoami" => Role::Viewer,
         // Operator-only (read_only_hint == false), plus any unknown tool:
         // tumult_run_experiment, tumult_create_experiment, tumult_report,
-        // tumult_gameday_run, tumult_gameday_create, tumult_recommend.
+        // tumult_gameday_run, tumult_gameday_create, tumult_recommend,
+        // tumult_topology_import.
         _ => Role::Operator,
     }
 }
@@ -211,8 +218,13 @@ impl ServerHandler for TumultHandler {
             ChaosGraphQueryTool::tool(),
             ChaosGraphNeighborsTool::tool(),
             ChaosGraphCoverageGapsTool::tool(),
+            ChaosGraphCypherTool::tool(),
             FaultCatalogTool::tool(),
             ScaffoldExperimentTool::tool(),
+            TopologyImportTool::tool(),
+            TopologyMapTool::tool(),
+            ComplianceLineageTool::tool(),
+            RecommendInjectionTool::tool(),
             WhoamiTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
@@ -299,8 +311,13 @@ impl ServerHandler for TumultHandler {
             "tumult_chaosgraph_query" => graph::chaosgraph_query(&params)?,
             "tumult_chaosgraph_neighbors" => graph::chaosgraph_neighbors(&params)?,
             "tumult_chaosgraph_coverage_gaps" => graph::chaosgraph_coverage_gaps(&params)?,
+            "tumult_chaosgraph_cypher" => graph::chaosgraph_cypher(&params)?,
             "tumult_fault_catalog" => meta::fault_catalog(&params)?,
             "tumult_scaffold_experiment" => experiment::scaffold_experiment(&params)?,
+            "tumult_topology_import" => topology::topology_import(&params)?,
+            "tumult_topology_map" => topology::topology_map(&params)?,
+            "tumult_compliance_lineage" => topology::compliance_lineage(&params)?,
+            "tumult_recommend_injection" => topology::recommend_injection(&params)?,
             "tumult_whoami" => meta::whoami(&params, principal_role)?,
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };

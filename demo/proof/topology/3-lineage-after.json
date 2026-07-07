@@ -1,0 +1,107 @@
+{
+  "cells": [
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(b)",
+      "service_id": "svc:demo-app",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(b)",
+      "service_id": "svc:demo-postgres",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(b)",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(b)",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(c)",
+      "service_id": "svc:demo-app",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(c)",
+      "service_id": "svc:demo-postgres",
+      "status": "evidenced",
+      "evidence_strength": "direct",
+      "cause": null,
+      "experiments": [
+        "exp:Demo — recovery validation on demo-postgres (recommended by sluss-style topology gap)"
+      ]
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(c)",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(c)",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(f)",
+      "service_id": "svc:demo-app",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(f)",
+      "service_id": "svc:demo-postgres",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(f)",
+      "service_id": "svc:demo-sshd",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    },
+    {
+      "article_id": "compliance:NIS2/Art.21(2)(f)",
+      "service_id": "svc:demo-traffic",
+      "status": "untested",
+      "evidence_strength": null,
+      "cause": null,
+      "experiments": []
+    }
+  ],
+  "counts": {
+    "evidenced": 1,
+    "broken": 0,
+    "untested": 11
+  }
+}

@@ -5,7 +5,7 @@ use clap::Parser;
 
 use cli::{
     AgenticAction, ChaosGraphAction, Cli, Commands, GameDayAction, GraphFormat, McpAction,
-    McpTransport, OutputFormat, RollbackStrategy, StoreAction,
+    McpTransport, OutputFormat, RollbackStrategy, StoreAction, TopologyAction,
 };
 
 mod cli;
@@ -316,6 +316,56 @@ async fn main() -> anyhow::Result<()> {
                     framework.as_deref(),
                     domain.as_deref(),
                     refresh,
+                    matches!(format, GraphFormat::Json),
+                )?;
+            }
+        },
+        Commands::Topology { action } => match action {
+            TopologyAction::Import { path, store } => {
+                commands::cmd_topology_import(store.as_deref(), &path, false)?;
+            }
+            TopologyAction::Map {
+                framework,
+                control,
+                format,
+                no_recommend,
+                limit,
+                store,
+            } => {
+                commands::cmd_topology_map(
+                    store.as_deref(),
+                    framework.as_deref(),
+                    control.as_deref(),
+                    format.as_str(),
+                    !no_recommend,
+                    limit,
+                )?;
+            }
+            TopologyAction::Lineage {
+                framework,
+                control,
+                service,
+                format,
+                store,
+            } => {
+                commands::cmd_topology_lineage(
+                    store.as_deref(),
+                    framework.as_deref(),
+                    control.as_deref(),
+                    service.as_deref(),
+                    matches!(format, GraphFormat::Json),
+                )?;
+            }
+            TopologyAction::Recommend {
+                framework,
+                limit,
+                format,
+                store,
+            } => {
+                commands::cmd_topology_recommend(
+                    store.as_deref(),
+                    framework.as_deref(),
+                    limit,
                     matches!(format, GraphFormat::Json),
                 )?;
             }

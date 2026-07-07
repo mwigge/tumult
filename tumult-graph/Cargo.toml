@@ -10,6 +10,7 @@ description = "Token-efficient knowledge graph over Tumult chaos data (nodes/edg
 tumult-core = { path = "../tumult-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 [dev-dependencies]
 tumult-core = { path = "../tumult-core" }

@@ -210,6 +210,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arcstr"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03918c3dbd7701a85c6b9887732e2921175f26c350b4563841d0958c21d57e6d"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "argon2"
 version = "0.6.0-rc.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -656,6 +665,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "bincode"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "bincode_derive",
+ "serde",
+ "unty",
+]
+
+[[package]]
+name = "bincode_derive"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
+dependencies = [
+ "virtue",
 ]
 
 [[package]]
@@ -1493,6 +1522,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2178,6 +2221,100 @@ dependencies = [
 ]
 
 [[package]]
+name = "grafeo"
+version = "0.5.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6ef2cdd865e5588ec212696aa3481dcdd33fe6a9dc7618d18d061e7ff5a6938"
+dependencies = [
+ "grafeo-adapters",
+ "grafeo-common",
+ "grafeo-core",
+ "grafeo-engine",
+]
+
+[[package]]
+name = "grafeo-adapters"
+version = "0.5.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38cf1373a739aeaa070430588c4026b3c1aa11cd0ad6e6673bda22a390aacda4"
+dependencies = [
+ "bincode 2.0.1",
+ "grafeo-common",
+ "grafeo-core",
+ "hashbrown 0.17.1",
+ "parking_lot",
+ "serde",
+ "smallvec",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "grafeo-common"
+version = "0.5.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5f446c25eeedab9cccaabc85060dfa08dac2d1041974244864f36436b81ca5a"
+dependencies = [
+ "arcstr",
+ "bincode 2.0.1",
+ "bumpalo",
+ "byteorder",
+ "bytes",
+ "dashmap",
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
+ "indexmap",
+ "parking_lot",
+ "serde",
+ "smallvec",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "grafeo-core"
+version = "0.5.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e185dd750843637a2d99e56100c08ef4cc34ce4a7b5f9cb9566f873bbf54c90"
+dependencies = [
+ "arcstr",
+ "bincode 2.0.1",
+ "byteorder",
+ "bytes",
+ "crc32fast",
+ "dashmap",
+ "foldhash 0.2.0",
+ "grafeo-common",
+ "hashbrown 0.17.1",
+ "indexmap",
+ "parking_lot",
+ "regex-lite",
+ "serde",
+ "smallvec",
+ "thiserror 2.0.18",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "grafeo-engine"
+version = "0.5.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ede967e6b0a16396c91752febdf037ab04ca69b851f6fb43565ee5f30586ee0d"
+dependencies = [
+ "arcstr",
+ "bincode 2.0.1",
+ "bytes",
+ "grafeo-adapters",
+ "grafeo-common",
+ "grafeo-core",
+ "hashbrown 0.17.1",
+ "indexmap",
+ "parking_lot",
+ "regex-lite",
+ "serde",
+ "smallvec",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "group"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2230,6 +2367,12 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+
+[[package]]
+name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
@@ -2248,6 +2391,19 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.2.0",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -5559,7 +5715,7 @@ version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "flate2",
  "fnv",
  "once_cell",
@@ -6158,7 +6314,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agent-cli"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -6169,7 +6325,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agentic"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "axum",
  "opentelemetry",
@@ -6186,7 +6342,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-analytics"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "arrow",
  "chrono",
@@ -6204,7 +6360,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-authoring"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "indexmap",
  "serde",
@@ -6217,7 +6373,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-baseline"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -6228,7 +6384,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6261,7 +6417,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -6278,7 +6434,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cloud"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -6297,7 +6453,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6317,17 +6473,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "tumult-cypher"
+version = "2.14.0"
+dependencies = [
+ "grafeo",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "tumult-graph"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "serde",
  "serde_json",
+ "toml",
  "tumult-core",
 ]
 
 [[package]]
 name = "tumult-intelligence"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -6342,7 +6509,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "http",
@@ -6362,7 +6529,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6384,6 +6551,7 @@ dependencies = [
  "tumult-authoring",
  "tumult-cloud",
  "tumult-core",
+ "tumult-cypher",
  "tumult-graph",
  "tumult-intelligence",
  "tumult-kubernetes",
@@ -6395,7 +6563,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-net"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -6410,7 +6578,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -6425,7 +6593,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -6440,7 +6608,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ssh"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -6458,7 +6626,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -6467,7 +6635,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-tui"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6480,7 +6648,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-windows"
-version = "2.13.1"
+version = "2.14.0"
 dependencies = [
  "async-trait",
  "serde_json",
@@ -6524,6 +6692,15 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "unicode-segmentation"
@@ -6589,6 +6766,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6642,6 +6825,12 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "virtue"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "wait-timeout"

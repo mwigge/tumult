@@ -53,15 +53,21 @@ pub fn journal_to_graph(journal: &Journal, experiment: Option<&Experiment>) -> G
     builder.push_edge(&exp_id, EdgeRel::Yielded, &run_id);
 
     // ── Deviation node when the run did not complete cleanly ─────
+    // Enriched with halt detail and failing actions; where attribution is
+    // unambiguous, `caused_by` edges point at the responsible fault(s).
     if journal.status != ExperimentStatus::Completed {
+        let detail = crate::attribution::deviation_detail(journal, experiment);
         let dev_id = format!("dev:{}", journal.experiment_id);
         builder.push_node(Node {
             id: dev_id.clone(),
             kind: NodeKind::Deviation,
             label: journal.status.to_string(),
-            attrs: serde_json::json!({ "status": journal.status.to_string() }),
+            attrs: detail.attrs,
         });
         builder.push_edge(&run_id, EdgeRel::Exhibited, &dev_id);
+        for fault_id in &detail.caused_by_fault_ids {
+            builder.push_edge(&dev_id, EdgeRel::CausedBy, fault_id);
+        }
     }
 
     // ── Faults + services ────────────────────────────────────────

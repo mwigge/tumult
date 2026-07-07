@@ -1,0 +1,27 @@
+graph TD
+  svc_demo_traffic["demo-traffic UNTESTED"]
+  svc_demo_app["demo-app UNTESTED"]
+  svc_demo_postgres["demo-postgres BROKEN"]
+  svc_demo_sshd["demo-sshd UNTESTED"]
+  svc_demo_app --> svc_demo_postgres
+  svc_demo_traffic --> svc_demo_app
+  cause_svc_demo_postgres_0["fault: fault:pause-database<br/>guard: app-health-guard"]
+  cause_svc_demo_postgres_0 -.-> svc_demo_postgres
+  rec_0["⚡ tumult-containers::kill-container<br/>for compliance:DORA/Art.11"]
+  rec_0 -.-> svc_demo_postgres
+  rec_1["⚡ tumult-containers::kill-container<br/>for compliance:DORA/Art.25"]
+  rec_1 -.-> svc_demo_postgres
+  rec_2["⚡ tumult-containers::kill-container<br/>for compliance:DORA/Art.24"]
+  rec_2 -.-> svc_demo_postgres
+  classDef evidenced fill:#2e7d32,color:#fff
+  classDef broken fill:#c62828,color:#fff
+  classDef untested fill:#f9a825
+  classDef unknown fill:#546e7a,color:#fff
+  classDef recommended fill:#6a1b9a,color:#fff
+  class svc_demo_traffic untested
+  class svc_demo_app untested
+  class svc_demo_postgres broken
+  class svc_demo_sshd untested
+  class rec_0 recommended
+  class rec_1 recommended
+  class rec_2 recommended

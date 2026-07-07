@@ -30,9 +30,11 @@ impl AnalyticsStore {
 
         for node in &delta.nodes {
             // `serde_json::Value`'s Display impl emits compact JSON text.
+            // Merge attrs rather than replace: a run's (usually empty)
+            // service attrs must never clobber declared-topology metadata.
             let attrs = node.attrs.to_string();
             self.conn.execute(
-                sql::UPSERT_NODE,
+                sql::UPSERT_NODE_MERGE_ATTRS,
                 params![node.id, node.kind.as_str(), node.label, attrs],
             )?;
         }

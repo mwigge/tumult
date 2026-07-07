@@ -99,6 +99,12 @@ pub enum EdgeRel {
     /// `CoverageGap -> FaultDomain`: this untested action is a gap in the
     /// plugin/fault-domain.
     GapIn,
+    /// `Service -> Service`: declared runtime dependency (src depends on
+    /// dst), imported from a topology document — never derived from runs.
+    DependsOn,
+    /// `Deviation -> Fault`: the injected fault attributed as the cause of
+    /// this deviation (only emitted when attribution is unambiguous).
+    CausedBy,
 }
 
 impl EdgeRel {
@@ -114,6 +120,8 @@ impl EdgeRel {
             Self::Evidences => "evidences",
             Self::MapsToCompliance => "maps_to_compliance",
             Self::GapIn => "gap_in",
+            Self::DependsOn => "depends_on",
+            Self::CausedBy => "caused_by",
         }
     }
 
@@ -129,6 +137,8 @@ impl EdgeRel {
             "evidences" => Some(Self::Evidences),
             "maps_to_compliance" => Some(Self::MapsToCompliance),
             "gap_in" => Some(Self::GapIn),
+            "depends_on" => Some(Self::DependsOn),
+            "caused_by" => Some(Self::CausedBy),
             _ => None,
         }
     }
@@ -214,6 +224,19 @@ pub struct EgoGraph {
     pub edges: Vec<EgoTuple>,
 }
 
+/// One full edge row read back from storage — the raw material for lineage
+/// and recommendation computation (which stay pure by consuming these).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EdgeRecord {
+    pub src: String,
+    pub rel: String,
+    pub dst: String,
+    pub run_id: String,
+    pub ts: i64,
+    /// Edge attrs as JSON text (`{}` when absent).
+    pub attrs: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,6 +270,8 @@ mod tests {
             EdgeRel::Evidences,
             EdgeRel::MapsToCompliance,
             EdgeRel::GapIn,
+            EdgeRel::DependsOn,
+            EdgeRel::CausedBy,
         ] {
             assert_eq!(EdgeRel::parse(rel.as_str()), Some(rel));
         }

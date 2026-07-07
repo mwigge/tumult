@@ -13,7 +13,10 @@ mod schemas;
 use rust_mcp_sdk::schema::ToolOutputSchema;
 use serde_json::json;
 
-use schemas::{graph_node_summary_schema, journal_schema, journal_summary_schema, schema_object};
+use schemas::{
+    graph_node_summary_schema, journal_schema, journal_summary_schema, lineage_cell_schema,
+    recommendation_schema, schema_object,
+};
 
 /// Names of every tool that sets `structured_content` on its results and
 /// therefore advertises an output schema. Test-only: the runtime source of
@@ -42,6 +45,10 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_chaosgraph_coverage_gaps",
     "tumult_fault_catalog",
     "tumult_scaffold_experiment",
+    "tumult_topology_import",
+    "tumult_topology_map",
+    "tumult_compliance_lineage",
+    "tumult_recommend_injection",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -467,7 +474,7 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                             "src": { "type": "string" },
                             "rel": {
                                 "type": "string",
-                                "enum": ["targets", "injects", "yielded", "observed_on", "exhibited", "evidences", "maps_to_compliance", "gap_in"],
+                                "enum": ["targets", "injects", "yielded", "observed_on", "exhibited", "evidences", "maps_to_compliance", "gap_in", "depends_on", "caused_by"],
                             },
                             "dst": { "type": "string" },
                         },
@@ -564,6 +571,101 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 "validation_error": {
                     "type": "string",
                     "description": "Validation failure detail; present only when valid is false.",
+                },
+            }),
+        )),
+        "tumult_topology_import" => Some(schema_object(
+            &["services", "dependencies", "service_ids"],
+            json!({
+                "services": { "type": "integer", "description": "Number of declared services imported." },
+                "dependencies": { "type": "integer", "description": "Number of depends_on edges imported." },
+                "service_ids": {
+                    "type": "array",
+                    "description": "Imported service node ids (svc:<name>), sorted.",
+                    "items": { "type": "string" },
+                },
+            }),
+        )),
+        "tumult_topology_map" => Some(schema_object(
+            &["format", "map"],
+            json!({
+                "format": { "type": "string", "enum": ["text", "mermaid", "json"] },
+                "map": {
+                    "type": "object",
+                    "description": "The full topology map view, regardless of the text rendering chosen.",
+                    "required": ["services", "depends_on", "recommendations"],
+                    "properties": {
+                        "services": {
+                            "type": "array",
+                            "description": "Services in render order with rolled-up compliance verdicts.",
+                            "items": {
+                                "type": "object",
+                                "required": ["id", "label", "state", "evidenced", "untested", "broken"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "label": { "type": "string" },
+                                    "tier": { "type": ["string", "null"] },
+                                    "owner": { "type": ["string", "null"] },
+                                    "state": { "type": "string", "enum": ["evidenced", "broken", "untested", "unknown"] },
+                                    "evidenced": { "type": "array", "items": { "type": "string" } },
+                                    "untested": { "type": "array", "items": { "type": "string" } },
+                                    "broken": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["article_id"],
+                                            "properties": {
+                                                "article_id": { "type": "string" },
+                                                "deviation_id": { "type": ["string", "null"] },
+                                                "fault_id": { "type": ["string", "null"] },
+                                                "guard_name": { "type": ["string", "null"] },
+                                                "run_id": { "type": ["string", "null"] },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        "depends_on": {
+                            "type": "array",
+                            "description": "Declared (src, dst) dependency edges, sorted.",
+                            "items": { "type": "array", "items": { "type": "string" } },
+                        },
+                        "recommendations": {
+                            "type": "array",
+                            "description": "Ranked injection recommendations (empty when recommend=false).",
+                            "items": recommendation_schema(),
+                        },
+                    },
+                },
+            }),
+        )),
+        "tumult_compliance_lineage" => Some(schema_object(
+            &["cells", "counts"],
+            json!({
+                "cells": {
+                    "type": "array",
+                    "description": "Lineage cells, sorted by (article_id, service_id).",
+                    "items": lineage_cell_schema(),
+                },
+                "counts": {
+                    "type": "object",
+                    "required": ["evidenced", "broken", "untested"],
+                    "properties": {
+                        "evidenced": { "type": "integer" },
+                        "broken": { "type": "integer" },
+                        "untested": { "type": "integer" },
+                    },
+                },
+            }),
+        )),
+        "tumult_recommend_injection" => Some(schema_object(
+            &["recommendations"],
+            json!({
+                "recommendations": {
+                    "type": "array",
+                    "description": "Ranked, explained injection recommendations.",
+                    "items": recommendation_schema(),
                 },
             }),
         )),

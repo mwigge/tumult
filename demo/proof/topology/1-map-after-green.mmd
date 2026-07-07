@@ -1,0 +1,25 @@
+graph TD
+  svc_demo_traffic["demo-traffic UNTESTED"]
+  svc_demo_app["demo-app OK"]
+  svc_demo_postgres["demo-postgres UNTESTED"]
+  svc_demo_sshd["demo-sshd UNTESTED"]
+  svc_demo_app --> svc_demo_postgres
+  svc_demo_traffic --> svc_demo_app
+  rec_0["⚡ tumult-containers::kill-container<br/>for compliance:DORA/Art.25"]
+  rec_0 -.-> svc_demo_postgres
+  rec_1["⚡ tumult-containers::kill-container<br/>for compliance:DORA/Art.25"]
+  rec_1 -.-> svc_demo_sshd
+  rec_2["⚡ tumult-containers::kill-container<br/>for compliance:DORA/Art.25"]
+  rec_2 -.-> svc_demo_traffic
+  classDef evidenced fill:#2e7d32,color:#fff
+  classDef broken fill:#c62828,color:#fff
+  classDef untested fill:#f9a825
+  classDef unknown fill:#546e7a,color:#fff
+  classDef recommended fill:#6a1b9a,color:#fff
+  class svc_demo_traffic untested
+  class svc_demo_app evidenced
+  class svc_demo_postgres untested
+  class svc_demo_sshd untested
+  class rec_0 recommended
+  class rec_1 recommended
+  class rec_2 recommended

@@ -27,6 +27,7 @@ members = [
     "tumult-mcp",
     # Phase 4
     "tumult-clickhouse",
+    "tumult-cypher",
     "tumult-agentic",
     "tumult-intelligence",
     "tumult-test-utils",
@@ -39,7 +40,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.13.1"
+version = "2.14.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"

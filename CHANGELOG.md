@@ -4,6 +4,42 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.14.0] — 2026-07-07
+
+### Added
+- **Service topology & compliance lineage.** Declare your service topology in
+  TOML (`tumult topology import`); ChaosGraph gains `depends_on` (service →
+  service) and `caused_by` (deviation → fault) relations. The lineage matrix
+  computes evidenced / broken / untested per (compliance article, service),
+  with conservative fault attribution (failed action → its fault; guard halt
+  with a single injected fault → that fault; ambiguity stays unattributed).
+- **Topology map** (`tumult topology map`): text, Mermaid and JSON renderings
+  with break causes and injection recommendations marked on the map.
+- **Injection recommender** (`tumult topology recommend`): deterministic,
+  explainable ranking of (service, action, control) — compliance state ×
+  citation strength × topology criticality × break proximity × novelty, one
+  human-readable reason per factor.
+- **Five new MCP tools** (30 → 35): `tumult_topology_import` (Operator),
+  `tumult_topology_map`, `tumult_compliance_lineage`,
+  `tumult_recommend_injection`, and `tumult_chaosgraph_cypher` — arbitrary
+  read-only openCypher over the whole graph via a per-call in-memory engine
+  (new `tumult-cypher` crate on GrafeoDB; DuckDB remains the only source of
+  truth).
+- Deviation nodes now carry halt detail (guard, observed value, safe
+  condition) and failing action names.
+- Demo: topology document, DORA/NIS2 regulatory mappings on the demo
+  experiments, a recommended-run experiment, and `make demo-topology` — three
+  scripted proof runs (green lineage / break + attribution / recommend →
+  close the gap) captured under `demo/proof/topology/`.
+
+### Changed
+- CLI `tumult run` auto-ingest now passes the experiment definition through,
+  so CLI runs produce full-fidelity graph rows (services, plugin-keyed
+  faults) — previously journal-only.
+- Run ingestion merges service-node attrs instead of replacing them, so
+  declared topology metadata survives experiment runs.
+- `AnalyticsStore::default_path()` honors `TUMULT_ANALYTICS_PATH`.
+
 ## [2.13.1] — 2026-07-05
 
 ### Changed

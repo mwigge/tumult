@@ -279,6 +279,13 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: ChaosGraphAction,
     },
+    /// Declared service topology, compliance lineage, and injection
+    /// recommendations over the analytics store
+    #[command(name = "topology")]
+    Topology {
+        #[command(subcommand)]
+        action: TopologyAction,
+    },
     /// Open the interactive analytics TUI over the store (read-only dashboard)
     #[command(alias = "dashboard")]
     Tui {
@@ -386,6 +393,94 @@ pub(crate) enum ChaosGraphAction {
         /// it conflicts with a running MCP server on the same store.
         #[arg(long)]
         refresh: bool,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
+        format: GraphFormat,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+}
+
+/// Rendering for `topology map` output.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TopologyMapFormat {
+    /// Readable text map (default)
+    Text,
+    /// Mermaid `graph TD` diagram
+    Mermaid,
+    /// The full map view as pretty JSON
+    Json,
+}
+
+impl TopologyMapFormat {
+    /// The format token the shared tool implementation expects.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Mermaid => "mermaid",
+            Self::Json => "json",
+        }
+    }
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub(crate) enum TopologyAction {
+    /// Import a declared topology TOML (services + depends_on) into the store
+    Import {
+        /// Path to the topology TOML file (e.g. ~/.tumult/topology.toml)
+        path: PathBuf,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Render the compliance-aware service map (text, Mermaid, or JSON)
+    Map {
+        /// Scope to one framework (dora, nis2, pci-dss, …)
+        #[arg(long)]
+        framework: Option<String>,
+        /// Scope to one control id (e.g. `Art.25`)
+        #[arg(long)]
+        control: Option<String>,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = TopologyMapFormat::Text)]
+        format: TopologyMapFormat,
+        /// Skip injection recommendations
+        #[arg(long)]
+        no_recommend: bool,
+        /// Maximum number of recommendations
+        #[arg(long, default_value_t = 3)]
+        limit: u32,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Show the (article × service) compliance lineage matrix
+    Lineage {
+        /// Scope to one framework (dora, nis2, pci-dss, …)
+        #[arg(long)]
+        framework: Option<String>,
+        /// Scope to one control id (e.g. `Art.25`)
+        #[arg(long)]
+        control: Option<String>,
+        /// Filter to one service (bare name or `svc:` id)
+        #[arg(long)]
+        service: Option<String>,
+        /// Output format
+        #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
+        format: GraphFormat,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Rank the next most valuable fault injections, with reasons
+    Recommend {
+        /// Scope to one framework (dora, nis2, pci-dss, …)
+        #[arg(long)]
+        framework: Option<String>,
+        /// Maximum number of recommendations
+        #[arg(long, default_value_t = 3)]
+        limit: u32,
         /// Output format
         #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
         format: GraphFormat,

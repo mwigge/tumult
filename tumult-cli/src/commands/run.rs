@@ -9,7 +9,7 @@ use tumult_core::engine::{
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::journal::write_journal;
 use tumult_core::runner::{run_experiment, RunConfig};
-use tumult_core::types::{ExperimentStatus, Journal};
+use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
 use super::exec::ProviderExecutor;
 use super::load::K6LoadExecutor;
@@ -128,7 +128,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
 
     // Auto-ingest into persistent analytics store
     if auto_ingest {
-        match auto_ingest_journal(&journal).await {
+        match auto_ingest_journal(&journal, &experiment).await {
             Ok(true) => println!("Ingested into persistent analytics store"),
             Ok(false) => println!("Already in analytics store (duplicate)"),
             Err(e) => eprintln!("warning: auto-ingest failed: {e}"),
@@ -143,7 +143,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     Ok(())
 }
 
-async fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
+async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Result<bool> {
     use tumult_analytics::AnalyticsBackend;
 
     // Dual-mode: ClickHouse if configured, DuckDB otherwise
@@ -160,7 +160,7 @@ async fn auto_ingest_journal(journal: &Journal) -> Result<bool> {
     let db_path = tumult_analytics::AnalyticsStore::default_path();
     let store = tumult_analytics::AnalyticsStore::open(&db_path)
         .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
-    let ingested = store.ingest_journal(journal)?;
+    let ingested = store.ingest_journal_with_experiment(journal, Some(experiment))?;
 
     emit_store_metrics(&db_path, &store);
 

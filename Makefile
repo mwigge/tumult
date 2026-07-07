@@ -169,3 +169,10 @@ build:
 clean:
 	cargo clean
 	$(COMPOSE_FULL) --profile classic down -v 2>/dev/null || true
+
+# ── topology / compliance-lineage demo proofs (single demo env) ──
+demo-topology: ## Run all 3 topology/compliance proof runs against the demo stack
+	bash scripts/demo-topology.sh all
+
+demo-topology-%: ## Run one topology proof (1=green, 2=break, 3=recommend loop)
+	bash scripts/demo-topology.sh $*

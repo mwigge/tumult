@@ -21,6 +21,62 @@ pub(super) fn graph_node_summary_schema() -> Value {
     })
 }
 
+/// Schema for one ranked injection recommendation
+/// (`tumult_graph::recommend::Recommendation`), shared by the topology
+/// map and `tumult_recommend_injection` schemas.
+pub(super) fn recommendation_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["service_id", "plugin", "action", "article_id", "strength", "score", "reasons"],
+        "properties": {
+            "service_id": { "type": "string", "description": "Service node id to inject on (svc:<name>)." },
+            "plugin": { "type": "string", "description": "Plugin owning the recommended action." },
+            "action": { "type": "string", "description": "Recommended fault action." },
+            "article_id": { "type": "string", "description": "Compliance article the injection informs." },
+            "strength": { "type": "string", "description": "Citation strength used in scoring (direct / supporting / indirect)." },
+            "score": { "type": "number", "description": "Composite score (product of the documented factors)." },
+            "reasons": {
+                "type": "array",
+                "description": "One human-readable reason per scoring factor.",
+                "items": { "type": "string" },
+            },
+        },
+    })
+}
+
+/// Schema for one lineage cell (`tumult_graph::lineage::LineageCell`).
+pub(super) fn lineage_cell_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["article_id", "service_id", "status", "experiments"],
+        "properties": {
+            "article_id": { "type": "string", "description": "Compliance article node id (compliance:<FW>/<control>)." },
+            "service_id": { "type": "string", "description": "Service node id (svc:<name>)." },
+            "status": { "type": "string", "enum": ["evidenced", "broken", "untested"] },
+            "evidence_strength": {
+                "type": ["string", "null"],
+                "description": "Citation strength of the winning evidences edge; null unless evidenced.",
+            },
+            "cause": {
+                "type": ["object", "null"],
+                "description": "Break attribution; null unless broken.",
+                "properties": {
+                    "deviation_id": { "type": "string" },
+                    "fault_id": { "type": ["string", "null"] },
+                    "guard_name": { "type": ["string", "null"] },
+                    "failing_actions": { "type": "array", "items": { "type": "string" } },
+                    "run_id": { "type": "string" },
+                },
+            },
+            "experiments": {
+                "type": "array",
+                "description": "Experiment node ids contributing to this cell.",
+                "items": { "type": "string" },
+            },
+        },
+    })
+}
+
 /// Compact schema for `tumult_core::types::Journal` (`snake_case` serde
 /// serialization). Nested result payloads that are not stable API surface
 /// are documented as opaque nullable objects.
