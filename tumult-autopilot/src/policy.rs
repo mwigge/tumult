@@ -29,6 +29,11 @@ struct PolicyDoc {
 
 /// The `[autopilot]` policy table. Limits are *enforced* by
 /// [`crate::gate::evaluate`]; this type only carries them.
+///
+/// The bools are independent operator switches mirroring the TOML file
+/// one-to-one, not entangled state — hence the `struct_excessive_bools`
+/// allow.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutopilotPolicy {
@@ -57,6 +62,16 @@ pub struct AutopilotPolicy {
     /// decides what those are — the gate never reads a clock.
     #[serde(default)]
     pub business_hours_only: bool,
+    /// Azure-style structural consent: when `true`, any target not listed in
+    /// `enrolled_services` is vetoed outright. `false` (the default) keeps
+    /// every service in scope, matching pre-enrollment behaviour.
+    #[serde(default)]
+    pub require_enrollment: bool,
+    /// Services the operator enrolled for autopilot faults. Entries may be
+    /// bare names or `svc:`-prefixed ids — [`AutopilotPolicy::is_enrolled`]
+    /// normalises the prefix away, so both spellings name the same service.
+    #[serde(default)]
+    pub enrolled_services: Vec<String>,
     /// Precision a fault class needs to graduate to enact.
     #[serde(default = "default_autonomy_threshold")]
     pub autonomy_threshold: f64,
@@ -118,6 +133,8 @@ impl Default for AutopilotPolicy {
             enact_tiers: Vec::new(),
             require_guard: default_true(),
             business_hours_only: false,
+            require_enrollment: false,
+            enrolled_services: Vec::new(),
             autonomy_threshold: default_autonomy_threshold(),
             autonomy_min_samples: default_autonomy_min_samples(),
             pretrusted: Vec::new(),
@@ -140,6 +157,21 @@ impl AutopilotPolicy {
                 .iter()
                 .any(|p| p.plugin == plugin && p.action == action && p.tier == t)
         })
+    }
+
+    /// Whether `service_id` may be targeted at all. Always `true` when
+    /// `require_enrollment` is off; otherwise the service must appear in
+    /// `enrolled_services`. Comparison strips an optional `svc:` prefix from
+    /// both sides, so `demo-app` and `svc:demo-app` are the same service.
+    #[must_use]
+    pub fn is_enrolled(&self, service_id: &str) -> bool {
+        if !self.require_enrollment {
+            return true;
+        }
+        let wanted = strip_svc(service_id);
+        self.enrolled_services
+            .iter()
+            .any(|entry| strip_svc(entry) == wanted)
     }
 
     /// Whether `tier` is one where enact is ever allowed. A candidate with
@@ -185,6 +217,11 @@ impl AutopilotPolicy {
             .copied()
             .unwrap_or(self.evidence_ttl_days)
     }
+}
+
+/// Normalise a service reference by stripping an optional `svc:` prefix.
+fn strip_svc(service: &str) -> &str {
+    service.strip_prefix("svc:").unwrap_or(service)
 }
 
 /// A parsed policy together with the exact text and hash that produced it,

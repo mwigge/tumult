@@ -22,7 +22,7 @@ mod validation;
 mod whoami;
 
 pub use agentic::{agentic_list_scenarios, agentic_run_experiment, agentic_smoke};
-pub use autopilot::{autopilot_export, autopilot_once, autopilot_respond, autopilot_status};
+pub use autopilot::{autopilot_export, autopilot_notify_change, autopilot_once, autopilot_respond, autopilot_status};
 pub use agents::agents;
 pub use analysis::{analyze, analyze_persistent, store_stats};
 pub use authoring::{fault_catalog, scaffold_experiment, ScaffoldArgs};

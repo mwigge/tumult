@@ -82,3 +82,23 @@ pub struct AutopilotExportTool {
     #[serde(default = "default_store_path")]
     pub store_path: String,
 }
+
+#[macros::mcp_tool(
+    name = "tumult_autopilot_notify",
+    description = "Autopilot: record an external change event (deploy, config change) against a service. The next autopilot pass treats the service's evidence as invalidated and proposes revalidation via its playbook — change-triggered evidence invalidation, not just time-triggered. Insert-only; nothing runs from this call.",
+    destructive_hint = false,
+    read_only_hint = false,
+    idempotent_hint = false,
+    open_world_hint = false
+)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+pub struct AutopilotNotifyTool {
+    /// Service name (bare or `svc:` id) whose evidence the change invalidates.
+    pub service: String,
+    /// What reported the change (e.g. `deploy-webhook`, `config-watcher`).
+    pub source: String,
+    /// Optional human-readable detail about what changed.
+    pub detail: Option<String>,
+    #[serde(default = "default_store_path")]
+    pub store_path: String,
+}

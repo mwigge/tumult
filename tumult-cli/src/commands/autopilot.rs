@@ -100,6 +100,25 @@ pub fn cmd_autopilot_export(store: Option<&Path>, dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Record a change event against a service.
+pub fn cmd_autopilot_notify_change(
+    store: Option<&Path>,
+    service: &str,
+    source: &str,
+    detail: Option<&str>,
+) -> Result<()> {
+    let store = resolve_store(store);
+    let report = tumult_mcp::tools::autopilot_notify_change(
+        &store.to_string_lossy(),
+        service,
+        source,
+        detail,
+    )
+    .map_err(|e| anyhow!(e.to_string()))?;
+    println!("{}", report.text);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

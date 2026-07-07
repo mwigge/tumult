@@ -18,7 +18,8 @@ use crate::tools;
 use super::output_schema::output_schema_for;
 use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
-    AnalyzeStoreTool, AnalyzeTool, AutopilotExportTool, AutopilotRespondTool, AutopilotRunTool,
+    AnalyzeStoreTool, AnalyzeTool, AutopilotExportTool, AutopilotNotifyTool, AutopilotRespondTool,
+    AutopilotRunTool,
     AutopilotStatusTool, ChaosGraphCoverageGapsTool, ChaosGraphCypherTool, ChaosGraphNeighborsTool,
     ChaosGraphQueryTool, ComplianceLineageTool, ComplianceTool, CoverageTool,
     CreateExperimentTool, DiscoverTool, FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool,
@@ -233,6 +234,7 @@ impl ServerHandler for TumultHandler {
             AutopilotStatusTool::tool(),
             AutopilotRespondTool::tool(),
             AutopilotExportTool::tool(),
+            AutopilotNotifyTool::tool(),
             WhoamiTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
@@ -330,6 +332,7 @@ impl ServerHandler for TumultHandler {
             "tumult_autopilot_status" => autopilot::autopilot_status(&params)?,
             "tumult_autopilot_respond" => autopilot::autopilot_respond(&params)?,
             "tumult_autopilot_export" => autopilot::autopilot_export(&params)?,
+            "tumult_autopilot_notify" => autopilot::autopilot_notify(&params)?,
             "tumult_whoami" => meta::whoami(&params, principal_role)?,
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };

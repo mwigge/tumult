@@ -1,0 +1,69 @@
+title: Demo — recovery validation with a BLIND guard (pre-flight must catch this)
+description: The topology/compliance recommender flags NIS2 BC/DR as unevidenced on the data tier; this run validates demo-postgres connection recovery to close that gap.
+
+tags[4]: demo, postgres, recovery, compliance
+
+regulatory:
+  frameworks[1]: NIS2
+  requirements[1]:
+    - id: Art. 21(2)(c)
+      description: Business continuity and disaster recovery
+      evidence: Backend connections terminated on demo-postgres; recovery to accepting-connections state verified
+
+guards[1]:
+  - name: app-health-guard
+    probe:
+      name: app-health-watch
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 2 http://demo-app:9999/nope"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+    min_breaches: 3
+
+steady_state_hypothesis:
+  title: demo-postgres is accepting connections
+  probes[1]:
+    - name: pg-ready
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "docker exec demo-postgres pg_isready -U demo -d orders"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "accepting connections"
+
+method[2]:
+  - name: kill-connections
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec demo-postgres psql -U demo -d orders -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='orders' AND pid <> pg_backend_pid()\""
+      timeout_s: 15.0
+    pause_after_s: 2.0
+  - name: recovery-check
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec demo-postgres pg_isready -U demo -d orders"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "accepting connections"
+
+rollbacks[1]:
+  - name: ensure-pg-accessible
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker exec demo-postgres psql -U demo -d orders -c 'SELECT 1' || docker restart demo-postgres"
+      timeout_s: 20.0

@@ -129,8 +129,43 @@ PY
   test -f "$PROOF/parquet/autopilot_decisions.parquet" && echo "PROOF 4 OK: parquet archive written"
 }
 
+demo5() {
+  step "demo 5: pre-flight, enrollment, change events, OTel criticality"
+  # 5a. Dynamic guard-telemetry pre-flight: the blind-guard playbook's probe
+  # hits a dead endpoint; the pre-flight actually RUNS the probe and the
+  # gate refuses autonomy for a blast it cannot see.
+  "$BIN" autopilot once --policy demo/topology/autopilot-blind.toml --limit 1 --store "$STORE" \
+    | tee "$PROOF/5-blind-guard.txt"
+  grep -qE "guard.telemetry|telemetry" "$PROOF/5-blind-guard.txt" && echo "PROOF 5 OK: blind guard caught by dynamic pre-flight"
+
+  # 5b. Enrollment (structural consent): demo-postgres is not enrolled in
+  # this policy variant — injection is structurally impossible, verdict veto.
+  "$BIN" autopilot once --policy demo/topology/autopilot-unenrolled.toml --limit 1 --store "$STORE" \
+    | tee "$PROOF/5-unenrolled.txt"
+  grep -q "target.enrolled" "$PROOF/5-unenrolled.txt" && echo "PROOF 5 OK: unenrolled target vetoed"
+
+  # 5c. Change-event trigger: a deploy notification invalidates demo-app's
+  # evidence; the next pass carries a change_event-triggered decision.
+  "$BIN" autopilot notify-change --service demo-app --source deploy-webhook \
+    --detail "demo: image tag bumped" --store "$STORE"
+  "$BIN" autopilot once --policy demo/topology/autopilot.toml --limit 4 --store "$STORE" \
+    | tee "$PROOF/5-change-event-pass.txt"
+  "$BIN" autopilot status --store "$STORE" --format json > "$PROOF/5-status.json"
+  grep -q "change_event" "$PROOF/5-status.json" && echo "PROOF 5 OK: change event produced a decision"
+
+  # 5d. OTel-derived criticality: real span counts from the demo's SigNoz
+  # ClickHouse, handed to the recommender as a reviewable artifact.
+  docker exec demo-signoz clickhouse client -q \
+    "SELECT serviceName, count() FROM signoz_traces.distributed_signoz_index_v3 WHERE timestamp > now() - INTERVAL 60 MINUTE GROUP BY serviceName FORMAT JSON" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({r['serviceName']: float(r['count()']) for r in d['data']}))" \
+    > "$PROOF/5-criticality.json"
+  TUMULT_CRITICALITY_FILE="$PROOF/5-criticality.json" \
+    "$BIN" topology recommend --limit 6 --format json --store "$STORE" > "$PROOF/5-recommend-critical.json"
+  grep -q "observed traffic" "$PROOF/5-recommend-critical.json" && echo "PROOF 5 OK: OTel span rates weighted the recommendation"
+}
+
 case "${1:-all}" in
-  1) demo1;; 2) demo2;; 3) demo3;; 4) demo4;;
-  all) rm -f "$STORE"; demo1; demo2; demo3; demo4;;
-  *) echo "usage: $0 [1|2|3|4|all]"; exit 2;;
+  1) demo1;; 2) demo2;; 3) demo3;; 4) demo4;; 5) demo5;;
+  all) rm -f "$STORE"; demo1; demo2; demo3; demo4; demo5;;
+  *) echo "usage: $0 [1|2|3|4|5|all]"; exit 2;;
 esac

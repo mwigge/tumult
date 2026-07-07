@@ -4,6 +4,35 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.16.0] — 2026-07-07
+
+### Added
+- **Dynamic guard-telemetry pre-flight**: before enacting, the autopilot
+  executes the playbook's guard probe once and evaluates its tolerance — a
+  guard that cannot observe the blast downgrades the decision (previously a
+  static has-guard check). Addresses the top reported failure mode of
+  autonomous chaos: stop conditions bound to dead telemetry.
+- **Target enrollment** (structural consent): `require_enrollment` +
+  `enrolled_services` in the autopilot policy; un-enrolled targets are
+  vetoed by the new hard rule `target.enrolled` (gate is now 14 rules).
+- **Change-event triggers**: `tumult autopilot notify-change` (+ MCP
+  `tumult_autopilot_notify`, tools now 40) records deploy/config changes in
+  an insert-only table; the next pass carries `change_event`-triggered
+  revalidation candidates for affected services (change-triggered evidence
+  invalidation, not just time-triggered).
+- **OTel-derived criticality**: the recommender weighs services by observed
+  span rates from `TUMULT_CRITICALITY_FILE` (unit-agnostic relative rates;
+  absent data is neutral). The demo extracts real rates from its SigNoz
+  ClickHouse in one documented command.
+- **Kubernetes service discovery**: `tumult topology discover-k8s` lists
+  cluster Services (tier/owner from labels) and emits a *proposed* topology
+  TOML for human review — `depends_on` intentionally left empty; discovery
+  feeds the reviewed file, never the graph. Unit-tested against a fake
+  apiserver (not runnable in the docker demo, by design).
+- Demo proof 5 (blind-guard downgrade, enrollment veto, change-event
+  decision, criticality-weighted recommendation); release gate: three
+  consecutive clean 16-proof suite runs.
+
 ## [2.15.0] — 2026-07-07
 
 ### Added

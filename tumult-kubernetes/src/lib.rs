@@ -26,6 +26,12 @@
 //! limits (ephemeral containers are GA since 1.25 and cannot be removed once
 //! attached).
 //!
+//! # Topology discovery ([`discovery`])
+//!
+//! Lists Services and renders a *proposed* topology TOML for human review —
+//! discovery never writes the graph directly (topology is declared, not
+//! guessed).
+//!
 //! # Probes
 //!
 //! - Pod readiness and phase checks
@@ -40,6 +46,7 @@
 //! needed when running inside a cluster.
 
 pub mod actions;
+pub mod discovery;
 pub mod error;
 pub mod inject;
 pub mod native;

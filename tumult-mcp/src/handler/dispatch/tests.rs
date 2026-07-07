@@ -42,9 +42,10 @@ fn all_tools_listed() {
         AutopilotStatusTool::tool(),
         AutopilotRespondTool::tool(),
         AutopilotExportTool::tool(),
+        AutopilotNotifyTool::tool(),
         WhoamiTool::tool(),
     ];
-    assert_eq!(tools.len(), 39);
+    assert_eq!(tools.len(), 40);
 }
 
 #[test]
@@ -100,6 +101,7 @@ fn tool_names_follow_convention() {
         AutopilotStatusTool::tool(),
         AutopilotRespondTool::tool(),
         AutopilotExportTool::tool(),
+        AutopilotNotifyTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -278,6 +280,7 @@ async fn list_tools_round_trip_returns_all_registered_tools() {
         "tumult_autopilot_status",
         "tumult_autopilot_respond",
         "tumult_autopilot_export",
+        "tumult_autopilot_notify",
         "tumult_whoami",
     ];
     let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
@@ -1769,6 +1772,7 @@ fn required_roles_match_annotations() {
         AutopilotStatusTool::tool(),
         AutopilotRespondTool::tool(),
         AutopilotExportTool::tool(),
+        AutopilotNotifyTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {

@@ -51,3 +51,16 @@ pub(super) fn autopilot_export(params: &CallToolRequestParams) -> Dispatched {
     })
     .map(ToolOutput::from))
 }
+
+pub(super) fn autopilot_notify(params: &CallToolRequestParams) -> Dispatched {
+    let args: crate::handler::schema::AutopilotNotifyTool = parse_args(params)?;
+    Ok(tokio::task::block_in_place(|| {
+        tools::autopilot_notify_change(
+            &args.store_path,
+            &args.service,
+            &args.source,
+            args.detail.as_deref(),
+        )
+    })
+    .map(ToolOutput::from))
+}

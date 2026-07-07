@@ -1,0 +1,2 @@
+autopilot pass: 1 decision(s), 0 enacted (policy 2d9eadfad7b4487a4c9bac36d1ecd4dbaf334c905d6a831768516de3630d8104)
+[downgrade] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11 (score 2.50) — guard telemetry pre-flight failed — the guard cannot observe the blast; cooldown active: 0.0h since the last autopilot run on svc:demo-postgres, policy requires 12h

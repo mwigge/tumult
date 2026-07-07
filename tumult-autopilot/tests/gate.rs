@@ -3,7 +3,7 @@
 
 use tumult_autopilot::gate::{
     RULE_AUTONOMY, RULE_BUSINESS_HOURS, RULE_COOLDOWN, RULE_DAILY_BUDGET, RULE_ENABLED,
-    RULE_GUARD_PRESENT, RULE_TELEMETRY,
+    RULE_ENROLLED, RULE_GUARD_PRESENT, RULE_TELEMETRY,
 };
 use tumult_autopilot::{
     evaluate, validate, AmbientContext, AutonomyRecord, Candidate, ConfidenceTier, LoadedPolicy,
@@ -251,6 +251,61 @@ fn earned_record_substitutes_for_pretrust() {
         .rules_evaluated
         .iter()
         .any(|(id, passed)| id == RULE_AUTONOMY && *passed));
+}
+
+/// The gate-test policy plus enrollment, with `enrolled` spliced into an
+/// `enrolled_services` list verbatim.
+fn enrollment_policy(enrolled: &str) -> tumult_autopilot::AutopilotPolicy {
+    let text = format!(
+        "[autopilot]\nenabled = true\nrequire_enrollment = true\n\
+         enrolled_services = [{enrolled}]\nenact_tiers = [\"service\"]\n\n\
+         [[autopilot.pretrusted]]\nplugin = \"tumult-net\"\naction = \"inject_latency\"\n\
+         tier = \"service\"\n"
+    );
+    LoadedPolicy::parse(&text).unwrap().policy
+}
+
+#[test]
+fn unenrolled_target_is_a_veto_when_enrollment_is_required() {
+    let strict = enrollment_policy("\"svc:other-app\"");
+    let c = candidate();
+    let report = validate(&c);
+    let decision = evaluate(&strict, &c, &ambient(), None, &report);
+    assert_eq!(
+        decision.verdict,
+        Verdict::Veto {
+            rule: RULE_ENROLLED.to_string()
+        }
+    );
+    assert!(decision
+        .rules_evaluated
+        .iter()
+        .any(|(id, passed)| id == RULE_ENROLLED && !passed));
+}
+
+#[test]
+fn enrollment_is_not_checked_when_policy_does_not_require_it() {
+    // The default policy lists no enrolled services at all — with
+    // require_enrollment off that must change nothing.
+    let decision = decide(&candidate(), &ambient());
+    assert_eq!(decision.verdict, Verdict::Enact);
+    assert!(decision
+        .rules_evaluated
+        .iter()
+        .any(|(id, passed)| id == RULE_ENROLLED && *passed));
+}
+
+#[test]
+fn enrolled_target_enacts_and_the_svc_prefix_is_normalised() {
+    // Candidate service_id is "svc:demo-app"; a bare "demo-app" entry and a
+    // prefixed "svc:demo-app" entry must both count as enrolled.
+    for enrolled in ["\"demo-app\"", "\"svc:demo-app\""] {
+        let strict = enrollment_policy(enrolled);
+        let c = candidate();
+        let report = validate(&c);
+        let decision = evaluate(&strict, &c, &ambient(), None, &report);
+        assert_eq!(decision.verdict, Verdict::Enact, "entry {enrolled}");
+    }
 }
 
 #[test]

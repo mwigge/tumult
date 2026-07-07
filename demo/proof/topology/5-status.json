@@ -1,0 +1,135 @@
+{
+  "decisions": [
+    {
+      "id": "54f09e25-4f43-4443-9212-715c2885f964",
+      "verdict": "downgrade",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415143474454486
+    },
+    {
+      "id": "0230a5a7-7dfc-4b9e-9956-e831abdcd332",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:ISO-22301/Clause8.5",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415143474454486
+    },
+    {
+      "id": "e49369c6-0425-4396-9a68-032657f47ab2",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:Basel-III/OpResPrinciple4",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415143474454486
+    },
+    {
+      "id": "e75c3c3e-ba5d-4689-b890-529514e0099e",
+      "verdict": "propose",
+      "service": "svc:demo-app",
+      "article": "compliance:DORA/Art.25",
+      "trigger": "change_event",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415143474454486
+    },
+    {
+      "id": "c6e2dbc8-c10d-4866-a8b1-5436e22e82c9",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.25",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415143474454486
+    },
+    {
+      "id": "c5b6c280-0ad7-44b4-b061-e6a75882ccff",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "b2a2ba6236ae14647f479ada0c8764749d7affedbcb32c62faf6e420dceff6af",
+      "last_event": null,
+      "decided_at_ns": 1783415142238365549
+    },
+    {
+      "id": "acb4e89c-db38-4e54-bbe3-1861525afbdb",
+      "verdict": "downgrade",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "2d9eadfad7b4487a4c9bac36d1ecd4dbaf334c905d6a831768516de3630d8104",
+      "last_event": null,
+      "decided_at_ns": 1783415140114086798
+    },
+    {
+      "id": "b4b4d78f-6afd-40df-a283-3a17fa167a74",
+      "verdict": "downgrade",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": "human_denied",
+      "decided_at_ns": 1783415137692038115
+    },
+    {
+      "id": "0e0c7ee1-4ea2-4107-a453-f15f80be7c9e",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:Basel-III/OpResPrinciple4",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415137692038115
+    },
+    {
+      "id": "669cc1f2-692e-4b8f-97a6-b88a194d4882",
+      "verdict": "enact",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": "run_completed",
+      "decided_at_ns": 1783415131144386880
+    },
+    {
+      "id": "3b60f0d2-a853-45b6-80e3-cbf9dfbdfe84",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.25",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415131144386880
+    },
+    {
+      "id": "3c11f6c9-ff06-453c-9ab0-a17a845e6d7b",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:Basel-III/OpResPrinciple4",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415131144386880
+    },
+    {
+      "id": "1e0c9f49-8e51-44b4-905b-de86a83b4ef1",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:ISO-22301/Clause8.5",
+      "trigger": "staleness",
+      "policy_hash": "0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf",
+      "last_event": null,
+      "decided_at_ns": 1783415131144386880
+    }
+  ],
+  "count": 13
+}

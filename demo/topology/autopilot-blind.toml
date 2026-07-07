@@ -32,7 +32,7 @@ tier = "data"
 plugin = "tumult-containers"
 action = "kill-container"
 service = "demo-postgres"
-experiment = "demo/experiments/demo-topo-recommended.toon"
+experiment = "demo/experiments/demo-topo-blind.toon"
 
 # Change-event revalidation playbook for the app tier.
 [[autopilot.playbook]]

@@ -275,6 +275,28 @@ pub fn autopilot_respond(
     Ok(StructuredReport { text, structured })
 }
 
+/// Record an external change event (deploy, config change) against a
+/// service. The next autopilot pass treats the service's evidence as
+/// invalidated (change-triggered revalidation, not just time-triggered).
+pub fn autopilot_notify_change(
+    store_path: &str,
+    service: &str,
+    source: &str,
+    detail: Option<&str>,
+) -> Result<StructuredReport, ToolError> {
+    let store = open_store(store_path)?;
+    store
+        .record_change_event(service, now_ns(), source, detail)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let mut structured = serde_json::Map::new();
+    structured.insert("service".into(), serde_json::json!(service));
+    structured.insert("source".into(), serde_json::json!(source));
+    Ok(StructuredReport {
+        text: format!("change event recorded: {service} (source: {source})"),
+        structured,
+    })
+}
+
 /// Status/log: decisions with their latest lifecycle event. Opens the
 /// store read-only — this is the one Viewer-gated autopilot tool.
 pub fn autopilot_status(

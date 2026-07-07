@@ -11,7 +11,7 @@ evidence_ttl_days = 90
 enact_tiers = ["service", "edge", "data"]
 require_guard = true
 require_enrollment = true
-enrolled_services = ["demo-app", "demo-postgres", "demo-traffic", "demo-sshd"]
+enrolled_services = ["demo-app", "demo-traffic"]
 autonomy_threshold = 0.8
 autonomy_min_samples = 3
 

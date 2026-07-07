@@ -1,0 +1,6 @@
+autopilot pass: 5 decision(s), 0 enacted (policy 0a50d6f5a56673e41ac8c66c8a6100ac03054d51084927b3ed7bc61193c863bf)
+[downgrade] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11 (score 2.50) — cooldown active: 0.0h since the last autopilot run on svc:demo-postgres, policy requires 12h
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:Basel-III/OpResPrinciple4 (score 1.50) — ambient.no_open_deviation
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.25 (score 1.50) — ambient.no_open_deviation
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:ISO-22301/Clause8.5 (score 1.50) — ambient.no_open_deviation
+[propose] svc:demo-app tumult-net::inject_latency for compliance:DORA/Art.25 (score 1.00) — no rollback declared — worst-case impact unbounded

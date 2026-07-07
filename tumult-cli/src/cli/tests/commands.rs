@@ -432,3 +432,42 @@ fn parse_agents_subcommand() {
     let cli = Cli::try_parse_from(["tumult", "agents"]).unwrap();
     assert!(matches!(cli.command, Commands::Agents));
 }
+
+// ── Topology discover-k8s ─────────────────────────────────
+
+#[test]
+fn parse_topology_discover_k8s_defaults_to_all_namespaces_and_stdout() {
+    let cli = Cli::try_parse_from(["tumult", "topology", "discover-k8s"]).unwrap();
+    let Commands::Topology {
+        action: TopologyAction::DiscoverK8s { namespace, output },
+    } = cli.command
+    else {
+        panic!("expected topology discover-k8s");
+    };
+    assert!(namespace.is_empty(), "no --namespace means all namespaces");
+    assert!(output.is_none(), "default output is stdout");
+}
+
+#[test]
+fn parse_topology_discover_k8s_repeatable_namespace_and_output() {
+    let cli = Cli::try_parse_from([
+        "tumult",
+        "topology",
+        "discover-k8s",
+        "--namespace",
+        "prod",
+        "--namespace",
+        "staging",
+        "--output",
+        "proposed.toml",
+    ])
+    .unwrap();
+    let Commands::Topology {
+        action: TopologyAction::DiscoverK8s { namespace, output },
+    } = cli.command
+    else {
+        panic!("expected topology discover-k8s");
+    };
+    assert_eq!(namespace, vec!["prod".to_string(), "staging".to_string()]);
+    assert_eq!(output, Some(PathBuf::from("proposed.toml")));
+}

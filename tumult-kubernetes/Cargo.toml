@@ -20,6 +20,9 @@ opentelemetry = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+# Round-trip check only: the proposed topology TOML rendered by `discovery`
+# must parse with the same parser `tumult topology import` uses.
+tumult-graph = { path = "../tumult-graph" }
 # Fake-apiserver harness: kube::Client::new over a tower-test mock service.
 tower-test = "0.4"
 http = "1"

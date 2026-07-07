@@ -56,6 +56,35 @@ fn inspect_experiment(path: &str) -> (bool, bool, bool, usize) {
     (has_steady, has_rollback && has_guard, has_guard, faults)
 }
 
+/// Dynamic guard-telemetry pre-flight: run the playbook's guard probe ONCE
+/// and evaluate its tolerance — "can I actually see the blast I'm about to
+/// cause?" A guard whose probe fails or errors here would be blind during
+/// the run, which is the #1 reported failure mode of autonomous chaos
+/// (stop conditions bound to dead telemetry). Returns:
+/// - `Some(true)`  — probe executed and met its tolerance
+/// - `Some(false)` — probe failed, errored, or tolerance unmet
+/// - `None`        — no guard/probe to verify (gate downgrades on None)
+fn preflight_guard_telemetry(playbook_path: &str) -> Option<bool> {
+    use tumult_core::engine::evaluate_tolerance;
+    use tumult_core::runner::ActivityExecutor;
+
+    let content = std::fs::read_to_string(playbook_path).ok()?;
+    let experiment = tumult_core::engine::parse_experiment(&content).ok()?;
+    let guard = experiment.guards.first()?;
+
+    let outcome = crate::handler::ProcessExecutor.execute(&guard.probe);
+    if !outcome.success {
+        return Some(false);
+    }
+    let Some(tolerance) = guard.probe.tolerance.as_ref() else {
+        // Validated experiments always carry guard tolerances; a missing one
+        // means we cannot judge the signal — treat as unverified.
+        return Some(false);
+    };
+    let actual = serde_json::Value::String(outcome.output.unwrap_or_default());
+    Some(evaluate_tolerance(&actual, tolerance))
+}
+
 /// Latest `evidences` timestamp (ns) for any of a cell's experiments toward
 /// its article — the freshness the staleness trigger measures.
 fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64> {
@@ -171,9 +200,17 @@ pub(super) fn assemble_candidates(
             hours_since_last_run_on_service: hours_since_last,
             within_business_hours,
             concurrent_experiments: 0,
-            // v1: static verification — the guard and its probe exist in the
-            // spec. Dynamic "can I see the blast" pre-flight is 2.15.x.
-            guard_telemetry_ok: Some(has_guard),
+            // Dynamic pre-flight: actually run the guard probe once. Only
+            // attempted when a guard exists — probing hopeless candidates
+            // would waste probe timeouts.
+            guard_telemetry_ok: if has_guard {
+                candidate
+                    .playbook_experiment
+                    .as_deref()
+                    .and_then(preflight_guard_telemetry)
+            } else {
+                None
+            },
         };
 
         let key = class_key(&candidate.plugin, &candidate.action, tier.as_deref());
@@ -196,7 +233,128 @@ pub(super) fn assemble_candidates(
             autonomy_score,
         });
     }
+
+    // ── Change-event candidates ─────────────────────────────────────────
+    // A recorded deploy/config change invalidates a service's evidence even
+    // when the lineage still looks fresh (Azure mission-critical guidance:
+    // change-triggered invalidation, not just time-triggered). For each
+    // service with a change event in the last 7 days and a matching
+    // playbook, propose revalidating the article the playbook evidences —
+    // unless a recommendation-based candidate for that service already ran
+    // this pass.
+    let seen_services: std::collections::HashSet<String> =
+        out.iter().map(|a| a.candidate.service_id.clone()).collect();
+    let week_ago = now_ns - 7 * 24 * 3_600_000_000_000;
+    let mut seen_change: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for event in store
+        .change_events_since(week_ago)
+        .map_err(|e| ToolError::Store(e.to_string()))?
+    {
+        let service_id = if event.service_id.starts_with("svc:") {
+            event.service_id.clone()
+        } else {
+            format!("svc:{}", event.service_id)
+        };
+        if seen_services.contains(&service_id) || !seen_change.insert(service_id.clone()) {
+            continue;
+        }
+        let service_name = service_id.strip_prefix("svc:").unwrap_or(&service_id);
+        for pb in &policy.policy.playbook {
+            if pb.service.as_deref() != Some(service_name) {
+                continue;
+            }
+            let Some(article_id) = playbook_article(&pb.experiment) else {
+                continue;
+            };
+            let (has_steady, has_rollback, has_guard, fault_count) =
+                inspect_experiment(&pb.experiment);
+            let candidate = Candidate {
+                id: uuid::Uuid::new_v4().to_string(),
+                service_id: service_id.clone(),
+                tier: tier_of(&service_id),
+                plugin: pb.plugin.clone(),
+                action: pb.action.clone(),
+                article_id,
+                score: 1.0,
+                reasons: vec![format!(
+                    "change event from '{}' invalidates evidence for {service_id}",
+                    event.source
+                )],
+                confidence: ConfidenceTier::High,
+                playbook_experiment: Some(pb.experiment.clone()),
+                experiment_has_guard: has_guard,
+                experiment_has_rollback: has_rollback,
+                experiment_has_steady_state: has_steady,
+                experiment_fault_count: fault_count,
+                trigger: Trigger::ChangeEvent {
+                    source: event.source.clone(),
+                    detail: event.detail.clone(),
+                },
+            };
+            let hours_since_last = store
+                .autopilot_last_enacted_on(&candidate.service_id)
+                .map_err(|e| ToolError::Store(e.to_string()))?
+                .map(|ts| ((now_ns - ts) as f64 / 3_600_000_000_000.0).max(0.0));
+            let open_deviation = lineage.iter().any(|c| {
+                c.service_id == candidate.service_id
+                    && c.status == ControlServiceStatus::Broken
+            });
+            let ambient = AmbientContext {
+                open_deviation_for_target: open_deviation,
+                runs_today,
+                hours_since_last_run_on_service: hours_since_last,
+                within_business_hours,
+                concurrent_experiments: 0,
+                guard_telemetry_ok: if has_guard {
+                    preflight_guard_telemetry(&pb.experiment)
+                } else {
+                    None
+                },
+            };
+            let key = class_key(&candidate.plugin, &candidate.action, candidate.tier.as_deref());
+            let record = class_history
+                .iter()
+                .find(|h| h.class_key == key)
+                .map(|h| AutonomyRecord {
+                    enacted_total: h.enacted_total,
+                    enacted_clean: h.enacted_clean,
+                });
+            let autonomy_score = record.as_ref().and_then(|r| {
+                (r.enacted_total > 0)
+                    .then(|| f64::from(r.enacted_clean) / f64::from(r.enacted_total))
+            });
+            let validator = validate(&candidate);
+            let decision =
+                evaluate(&policy.policy, &candidate, &ambient, record.as_ref(), &validator);
+            out.push(Assembled {
+                candidate,
+                decision,
+                autonomy_score,
+            });
+            break; // one candidate per changed service
+        }
+    }
     Ok(out)
+}
+
+/// The compliance article a playbook experiment evidences (its first
+/// resolvable regulatory requirement) — what a change-event revalidation
+/// re-proves.
+fn playbook_article(experiment_path: &str) -> Option<String> {
+    let content = std::fs::read_to_string(experiment_path).ok()?;
+    let exp = tumult_core::engine::parse_experiment(&content).ok()?;
+    let regulatory = exp.regulatory.as_ref()?;
+    for framework in &regulatory.frameworks {
+        for req in &regulatory.requirements {
+            if let Some(citation) = tumult_graph::resolve_citation(framework, &req.id) {
+                return Some(tumult_graph::compliance_article_id(
+                    citation.framework,
+                    citation.control_id,
+                ));
+            }
+        }
+    }
+    None
 }
 
 /// Persist one decision (audit-before-act) and mirror it into the graph.
@@ -229,6 +387,7 @@ pub(super) fn persist_decision(
             Trigger::Staleness { .. } => "staleness".into(),
             Trigger::BrokenControl { .. } => "broken_control".into(),
             Trigger::Manual => "manual".into(),
+            Trigger::ChangeEvent { .. } => "change_event".into(),
         },
         service_id: c.service_id.clone(),
         tier: c.tier.clone(),

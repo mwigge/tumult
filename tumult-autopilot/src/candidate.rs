@@ -65,6 +65,13 @@ pub enum Trigger {
     },
     /// An operator asked for revalidation.
     Manual,
+    /// A deploy/config change invalidated the target's evidence.
+    ChangeEvent {
+        /// What reported the change (a deploy webhook, a config watcher, …).
+        source: String,
+        /// Optional human-readable detail about what changed.
+        detail: Option<String>,
+    },
 }
 
 /// Recommendation confidence, gate-relevant only in two buckets: `High` is
@@ -129,6 +136,31 @@ mod tests {
         );
         let manual: Trigger = serde_json::from_str(r#"{"type":"manual"}"#).unwrap();
         assert_eq!(manual, Trigger::Manual);
+    }
+
+    #[test]
+    fn change_event_trigger_round_trips() {
+        let event = Trigger::ChangeEvent {
+            source: "deploy-webhook".to_string(),
+            detail: Some("image tag changed".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"change_event","source":"deploy-webhook","detail":"image tag changed"}"#
+        );
+        assert_eq!(serde_json::from_str::<Trigger>(&json).unwrap(), event);
+
+        let bare = Trigger::ChangeEvent {
+            source: "config-watcher".to_string(),
+            detail: None,
+        };
+        let json = serde_json::to_string(&bare).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"change_event","source":"config-watcher","detail":null}"#
+        );
+        assert_eq!(serde_json::from_str::<Trigger>(&json).unwrap(), bare);
     }
 
     #[test]

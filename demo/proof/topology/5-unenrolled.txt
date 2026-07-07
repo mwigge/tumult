@@ -1,0 +1,2 @@
+autopilot pass: 1 decision(s), 0 enacted (policy b2a2ba6236ae14647f479ada0c8764749d7affedbcb32c62faf6e420dceff6af)
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11 (score 2.50) — target.enrolled

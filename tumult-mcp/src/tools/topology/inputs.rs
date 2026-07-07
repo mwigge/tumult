@@ -201,6 +201,7 @@ pub(crate) fn recommendations_for(
     let strength = article_strength();
     Ok(recommend(
         &RecommendationInput {
+            criticality: &criticality_from_env(),
             lineage,
             depends_on: &inputs.depends_on,
             available_actions: &available,
@@ -209,4 +210,29 @@ pub(crate) fn recommendations_for(
         },
         limit,
     ))
+}
+
+
+/// Observed-traffic criticality per service, from `TUMULT_CRITICALITY_FILE`
+/// (a JSON object: bare service name or `svc:` id → relative rate, e.g.
+/// spans/min extracted from an OTel backend). Absent/invalid = empty map =
+/// neutral factor. File-based on purpose: the derivation from OTel happens
+/// in whatever pipeline owns your telemetry (see the autopilot guide for
+/// the SigNoz/ClickHouse one-liner); tumult consumes a reviewable artifact.
+pub(crate) fn criticality_from_env() -> std::collections::HashMap<String, f64> {
+    let Ok(path) = std::env::var("TUMULT_CRITICALITY_FILE") else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(map) = serde_json::from_str::<std::collections::HashMap<String, f64>>(&text) else {
+        return std::collections::HashMap::new();
+    };
+    map.into_iter()
+        .map(|(k, v)| {
+            let id = if k.starts_with("svc:") { k } else { format!("svc:{k}") };
+            (id, v)
+        })
+        .collect()
 }

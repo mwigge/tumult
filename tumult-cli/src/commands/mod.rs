@@ -42,7 +42,7 @@ pub use agentic::{
 };
 pub use analyze::cmd_analyze;
 pub use autopilot::{
-    cmd_autopilot_export, cmd_autopilot_once, cmd_autopilot_respond, cmd_autopilot_status,
+    cmd_autopilot_export, cmd_autopilot_notify_change, cmd_autopilot_once, cmd_autopilot_respond, cmd_autopilot_status,
 };
 pub use chaosgraph::{
     cmd_chaosgraph_coverage_gaps, cmd_chaosgraph_neighbors, cmd_chaosgraph_query,
@@ -52,7 +52,8 @@ pub use init::cmd_init;
 pub use mcp::{cmd_mcp_serve, Transport as McpTransportKind};
 pub use new::{cmd_new, cmd_templates};
 pub use topology::{
-    cmd_topology_import, cmd_topology_lineage, cmd_topology_map, cmd_topology_recommend,
+    cmd_topology_discover_k8s, cmd_topology_import, cmd_topology_lineage, cmd_topology_map,
+    cmd_topology_recommend,
 };
 pub use trend::{cmd_export, cmd_trend};
 pub use types::{

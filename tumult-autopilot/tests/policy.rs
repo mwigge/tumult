@@ -12,6 +12,8 @@ evidence_ttl_days = 90
 enact_tiers = ["service", "edge"]
 require_guard = true
 business_hours_only = false
+require_enrollment = true
+enrolled_services = ["demo-app", "svc:billing"]
 autonomy_threshold = 0.8
 autonomy_min_samples = 3
 
@@ -47,6 +49,8 @@ fn full_policy_parses_with_every_field() {
     assert_eq!(p.enact_tiers, vec!["service", "edge"]);
     assert!(p.require_guard);
     assert!(!p.business_hours_only);
+    assert!(p.require_enrollment);
+    assert_eq!(p.enrolled_services, vec!["demo-app", "svc:billing"]);
     assert!((p.autonomy_threshold - 0.8).abs() < 1e-12);
     assert_eq!(p.autonomy_min_samples, 3);
     assert_eq!(p.pretrusted.len(), 1);
@@ -67,7 +71,28 @@ fn empty_document_parses_to_the_disabled_conservative_default() {
     assert!(p.enact_tiers.is_empty()); // no tier may ever enact
     assert!(p.require_guard);
     assert!(!p.business_hours_only);
+    assert!(!p.require_enrollment); // enrollment is opt-in
+    assert!(p.enrolled_services.is_empty());
     assert_eq!(p.autonomy_min_samples, 3);
+}
+
+#[test]
+fn enrollment_matches_with_or_without_the_svc_prefix() {
+    let loaded = LoadedPolicy::parse(FULL_POLICY).unwrap();
+    let p = &loaded.policy;
+    // Bare entry, both spellings of the query.
+    assert!(p.is_enrolled("demo-app"));
+    assert!(p.is_enrolled("svc:demo-app"));
+    // Prefixed entry, both spellings of the query.
+    assert!(p.is_enrolled("billing"));
+    assert!(p.is_enrolled("svc:billing"));
+    assert!(!p.is_enrolled("svc:unlisted"));
+}
+
+#[test]
+fn every_service_counts_as_enrolled_when_enrollment_is_not_required() {
+    let loaded = LoadedPolicy::parse("").unwrap();
+    assert!(loaded.policy.is_enrolled("svc:anything"));
 }
 
 #[test]

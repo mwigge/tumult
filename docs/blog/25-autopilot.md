@@ -20,7 +20,7 @@ the recommender proposes. the gate disposes. nothing else gets to touch your sys
 flowchart LR
     t[trigger:\nstale evidence,\nbroken control] --> r[recommender\ndeterministic scoring]
     r --> v[validator\ncan this experiment\nfalsify anything?]
-    v --> g{safety gate\n13 rules, fixed order}
+    v --> g{safety gate\n14 rules, fixed order}
     g -->|enact| run[run playbook\nguards + rollback]
     g -->|downgrade / propose| q[human queue]
     g -->|veto| x[recorded, not run]
@@ -29,14 +29,14 @@ flowchart LR
     run --> j[journal + evidence]
 ```
 
-no model in the loop. the recommender is arithmetic — compliance state × citation strength × how many services depend on this one × proximity to known breaks × novelty — and every factor writes a human-readable reason. the gate is thirteen rules evaluated in a fixed order, every one recorded with its outcome. same store, same policy file, same verdict, every time. the policy file's sha256 is stamped on every decision, so "why did this run?" has a reproducible answer years later.
+no model in the loop. the recommender is arithmetic — compliance state × citation strength × how many services depend on this one × proximity to known breaks × novelty — and every factor writes a human-readable reason. the gate is fourteen rules evaluated in a fixed order, every one recorded with its outcome. same store, same policy file, same verdict, every time. the policy file's sha256 is stamped on every decision, so "why did this run?" has a reproducible answer years later.
 
 ## what the gate actually said
 
 this is real output from the demo stack — one `make demo`, nothing mocked. the recommender found the broken DORA Art. 11 control on demo-postgres and three more candidates. watch what the gate did with them:
 
 ```
-autopilot pass: 4 decision(s), 1 enacted (policy 3d3b9a71…)
+autopilot pass: 4 decision(s), 1 enacted (policy 0a50d6f5…)
 [enact] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11 (score 2.50)
         ran demo/experiments/demo-topo-recommended.toon -> completed
 [veto]  svc:demo-postgres … for compliance:Basel-III/OpResPrinciple4 — ambient.no_open_deviation
@@ -95,6 +95,38 @@ decisions and their lifecycle events (run started, completed, human approved/den
 ## proved, not promised
 
 the release gate for 2.15.0 was three consecutive clean runs of the full demo proof suite — twelve asserted proofs each: the green lineage, the guard-halt break with cause attribution, the recommendation loop closing a NIS2 gap, and the whole autopilot story above (enact, ambient vetoes, cooldown downgrade, human denial, graph lineage, parquet archive). `make demo-topology` reproduces all of it on your machine; the captures live in `demo/proof/topology/`.
+
+
+## update: the gate grew four more senses
+
+*(2026-07-07, later the same day — all transcripts below are from the demo proofs, run three consecutive clean times before release, same as everything else on this page.)*
+
+**the pre-flight is dynamic now.** v1 checked that a guard *exists*; now the autopilot actually *runs the guard's probe once* before enacting — "can i see the blast i'm about to cause?" here's a playbook whose guard points at a dead endpoint. the probe runs, fails, and the gate refuses autonomy for a blast it would be blind to:
+
+```
+[downgrade] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11
+            — guard telemetry pre-flight failed — the guard cannot observe the blast
+```
+
+misconfigured stop-condition telemetry is the #1 reported failure mode of autonomous chaos in the wild. this rule exists because of those war stories.
+
+**enrollment: structural consent.** borrowed from the azure chaos studio model — a target that isn't explicitly enrolled cannot be injected into, policy or no policy. it's a veto, not a preference:
+
+```
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11 — target.enrolled
+```
+
+**change events invalidate evidence.** compliance evidence doesn't just age out — it dies the moment you deploy. `tumult autopilot notify-change --service demo-app --source deploy-webhook` records the change, and the next pass carries a `change_event`-triggered decision to revalidate what the deploy may have broken. time-triggered *and* change-triggered staleness, both in the lineage.
+
+**criticality comes from real traffic now.** the recommender weighs services by observed OTel span rates — extracted from whatever backend owns your telemetry into a reviewable json artifact (the demo pulls real counts from its SigNoz ClickHouse in one command):
+
+```
+svc:demo-app — "observed traffic rate 31312 (100% of busiest service)"
+```
+
+silence is neutral by design: a service with no telemetry doesn't look important, it looks unmeasured.
+
+**and k8s discovery — with the philosophy intact.** `tumult topology discover-k8s` lists your cluster's services and writes a *proposed* topology TOML — tier and owner from labels, `depends_on` deliberately empty with a comment telling you to fill it in, because kubernetes doesn't know your dependencies and tumult refuses to guess. discovery feeds the reviewed file; the reviewed file feeds the graph. nothing gets to skip the human.
 
 ## try it
 

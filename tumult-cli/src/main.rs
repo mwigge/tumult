@@ -324,6 +324,9 @@ async fn main() -> anyhow::Result<()> {
             TopologyAction::Import { path, store } => {
                 commands::cmd_topology_import(store.as_deref(), &path, false)?;
             }
+            TopologyAction::DiscoverK8s { namespace, output } => {
+                commands::cmd_topology_discover_k8s(&namespace, output.as_deref()).await?;
+            }
             TopologyAction::Map {
                 framework,
                 control,
@@ -397,6 +400,10 @@ async fn main() -> anyhow::Result<()> {
             }
             AutopilotAction::Deny { id, reason, store } => {
                 commands::cmd_autopilot_respond(store.as_deref(), &id, false, reason.as_deref())?;
+            }
+            AutopilotAction::NotifyChange { service, source, detail, store } => {
+                commands::cmd_autopilot_notify_change(
+                    store.as_deref(), &service, &source, detail.as_deref())?;
             }
             AutopilotAction::Export { dir, store } => {
                 commands::cmd_autopilot_export(store.as_deref(), &dir)?;

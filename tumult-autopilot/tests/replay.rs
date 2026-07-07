@@ -68,7 +68,7 @@ fn corpus_paths() -> Vec<PathBuf> {
 fn every_corpus_scenario_replays_to_its_expected_verdict() {
     let paths = corpus_paths();
     assert!(
-        paths.len() >= 10,
+        paths.len() >= 12,
         "corpus shrank to {} files — the harness would silently weaken",
         paths.len()
     );

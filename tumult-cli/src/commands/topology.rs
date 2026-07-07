@@ -5,7 +5,9 @@
 //! `import` loads a reviewed topology TOML (services + `depends_on` edges)
 //! into the store; `map`, `lineage`, and `recommend` are read-only views
 //! over the same store the MCP server exposes, so operator and agent always
-//! see the same picture.
+//! see the same picture. `discover-k8s` drafts a *proposed* topology TOML
+//! from a live cluster's Services — it never writes the store or graph;
+//! its output is input to human review and then `import`.
 
 use std::path::Path;
 
@@ -29,6 +31,53 @@ pub fn cmd_topology_import(store: Option<&Path>, path: &Path, json: bool) -> Res
     )
     .map_err(|e| anyhow!(e.to_string()))?;
     emit(&report, json)
+}
+
+/// `topology discover-k8s`: list Services from the live cluster and render a
+/// PROPOSED topology TOML for human review — to stdout or `--output`.
+///
+/// Never touches the store or the graph: Tumult topology is declared, not
+/// guessed, so discovery only drafts the file a human reviews, fills
+/// `depends_on` into (Kubernetes does not know dependencies), and then feeds
+/// to `topology import`.
+///
+/// Not runnable in the docker demo — it needs reachable cluster credentials.
+/// The discovery and rendering logic is unit-tested in `tumult-kubernetes`
+/// against constructed objects and a fake apiserver instead.
+///
+/// # Errors
+///
+/// Returns an error if no kubernetes credentials are found, the cluster is
+/// unreachable, or the `--output` file cannot be written.
+pub async fn cmd_topology_discover_k8s(namespaces: &[String], output: Option<&Path>) -> Result<()> {
+    let client = tumult_kubernetes::discovery::default_client()
+        .await
+        .map_err(|e| {
+            anyhow!("no kubernetes credentials found — this command needs a reachable cluster ({e})")
+        })?;
+    let services = tumult_kubernetes::discovery::discover_services(client, namespaces)
+        .await
+        .map_err(|e| anyhow!("kubernetes service discovery failed: {e}"))?;
+    let toml = tumult_kubernetes::discovery::proposed_topology_toml(&services);
+    emit_proposed(&toml, services.len(), output)
+}
+
+/// Write the proposed TOML to `output`, or print it to stdout. Split from
+/// [`cmd_topology_discover_k8s`] so the output path is testable without a
+/// cluster.
+fn emit_proposed(toml: &str, service_count: usize, output: Option<&Path>) -> Result<()> {
+    match output {
+        Some(path) => {
+            std::fs::write(path, toml)
+                .map_err(|e| anyhow!("cannot write proposed topology to {}: {e}", path.display()))?;
+            println!(
+                "proposed topology with {service_count} service(s) written to {} — review, fill in depends_on, then `tumult topology import`",
+                path.display()
+            );
+        }
+        None => print!("{toml}"),
+    }
+    Ok(())
 }
 
 /// `topology map`: the compliance-aware service map as text, Mermaid, or
@@ -144,6 +193,26 @@ mod tests {
             .unwrap_err();
         assert!(
             err.to_string().contains("cannot read topology file"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn emit_proposed_writes_output_file_verbatim() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let out = dir.path().join("proposed-topology.toml");
+        let toml = "# proposed by tumult topology discover-k8s — REVIEW before import\n\n[[service]]\nname = \"api\"\ndepends_on = []\n";
+
+        emit_proposed(toml, 1, Some(&out)).unwrap();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), toml);
+    }
+
+    #[test]
+    fn emit_proposed_unwritable_output_is_a_clean_error() {
+        let err = emit_proposed("# x\n", 0, Some(Path::new("/nonexistent/dir/topology.toml")))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("cannot write proposed topology"),
             "{err}"
         );
     }

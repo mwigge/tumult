@@ -4,10 +4,11 @@
 //!
 //! # Verdict semantics
 //!
-//! * [`Verdict::Veto`] — a hard safety violation: autopilot disabled, open
-//!   deviation on the target, another experiment already running, daily
-//!   budget exhausted, or a hollow candidate (cannot falsify anything).
-//!   Nothing downstream may run; the fired rule is named.
+//! * [`Verdict::Veto`] — a hard safety violation: autopilot disabled, target
+//!   not enrolled when enrollment is required, open deviation on the target,
+//!   another experiment already running, daily budget exhausted, or a hollow
+//!   candidate (cannot falsify anything). Nothing downstream may run; the
+//!   fired rule is named.
 //! * [`Verdict::Propose`] — the candidate was never enact-eligible: the
 //!   validator found enactability blockers (no playbook, no rollback,
 //!   multi-fault). It joins the human approval queue as-is.
@@ -39,6 +40,9 @@ use crate::validator::ValidatorReport;
 
 /// Rule ids, veto class (any failure is a hard no).
 pub const RULE_ENABLED: &str = "policy.enabled";
+/// Structural consent: when enrollment is required, the target service must
+/// be enrolled.
+pub const RULE_ENROLLED: &str = "target.enrolled";
 /// Never inject into an already-degraded target or its dependents.
 pub const RULE_NO_OPEN_DEVIATION: &str = "ambient.no_open_deviation";
 /// Global impact ledger: autopilot holds one fault at a time.
@@ -64,12 +68,13 @@ pub const RULE_CONFIDENCE: &str = "confidence.high";
 /// Enact requires earned (or pretrusted) autonomy for the fault class.
 pub const RULE_AUTONOMY: &str = "autonomy.earned";
 
-/// Every rule the gate checks, in evaluation order. The first five are the
-/// veto class, the sixth is enactability (propose class), the rest are the
+/// Every rule the gate checks, in evaluation order. The first six are the
+/// veto class, the seventh is enactability (propose class), the rest are the
 /// bounded (downgrade) class. This order is part of the audit contract:
 /// `rules_evaluated` always matches it exactly.
-pub const RULE_ORDER: [&str; 13] = [
+pub const RULE_ORDER: [&str; 14] = [
     RULE_ENABLED,
+    RULE_ENROLLED,
     RULE_NO_OPEN_DEVIATION,
     RULE_NO_CONCURRENT,
     RULE_DAILY_BUDGET,
@@ -163,7 +168,7 @@ pub fn evaluate(
     autonomy: Option<&AutonomyRecord>,
     validator: &ValidatorReport,
 ) -> GateDecision {
-    let veto = veto_rules(policy, ambient, validator);
+    let veto = veto_rules(policy, candidate, ambient, validator);
     let enactability = enactability_rule(validator);
     let bounded = bounded_rules(policy, candidate, ambient, autonomy);
 
@@ -205,6 +210,7 @@ pub fn evaluate(
 /// the fired rule.
 fn veto_rules(
     policy: &AutopilotPolicy,
+    candidate: &Candidate,
     ambient: &AmbientContext,
     validator: &ValidatorReport,
 ) -> Vec<Rule> {
@@ -212,6 +218,16 @@ fn veto_rules(
         Rule::check(RULE_ENABLED, policy.enabled, || {
             "autopilot is disabled by policy".to_string()
         }),
+        Rule::check(
+            RULE_ENROLLED,
+            policy.is_enrolled(&candidate.service_id),
+            || {
+                format!(
+                    "policy requires enrollment and {} is not enrolled",
+                    candidate.service_id
+                )
+            },
+        ),
         Rule::check(
             RULE_NO_OPEN_DEVIATION,
             !ambient.open_deviation_for_target,

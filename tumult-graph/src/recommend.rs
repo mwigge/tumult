@@ -50,6 +50,10 @@ pub struct RecommendationInput<'a> {
     pub tested_action_names: &'a HashSet<String>,
     /// Article id → citation strength (`direct`/`supporting`/`indirect`).
     pub article_strength: &'a HashMap<String, String>,
+    /// Observed traffic criticality per service id (e.g. OTel span rate).
+    /// Empty map = factor neutral. Values are relative; only the ratio to
+    /// the maximum matters.
+    pub criticality: &'a HashMap<String, f64>,
 }
 
 /// One ranked, explained injection recommendation.
@@ -174,6 +178,25 @@ pub fn recommend(input: &RecommendationInput<'_>, limit: usize) -> Vec<Recommend
                 "action {}::{} never tested",
                 action.plugin, action.action
             ));
+        }
+
+        // Observed-traffic criticality (OTel-derived): services carrying
+        // more real traffic score higher, up to 2x for the busiest. Absent
+        // data is neutral — silence must not look like importance.
+        let max_criticality = input
+            .criticality
+            .values()
+            .fold(0.0_f64, |acc, v| acc.max(*v));
+        if max_criticality > 0.0 {
+            if let Some(rate) = input.criticality.get(service) {
+                if *rate > 0.0 {
+                    score *= 1.0 + rate / max_criticality;
+                    reasons.push(format!(
+                        "observed traffic rate {rate:.0} ({:.0}% of busiest service)",
+                        100.0 * rate / max_criticality
+                    ));
+                }
+            }
         }
 
         out.push(Recommendation {

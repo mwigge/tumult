@@ -441,6 +441,18 @@ pub(crate) enum TopologyAction {
         #[arg(long)]
         store: Option<PathBuf>,
     },
+    /// Propose a topology TOML from a live cluster's Services, for human
+    /// review before `topology import` (never writes the store or graph)
+    #[command(name = "discover-k8s")]
+    DiscoverK8s {
+        /// Namespace to scan; repeatable. Default: all namespaces except
+        /// kube-system (pass `--namespace kube-system` to include it)
+        #[arg(long = "namespace")]
+        namespace: Vec<String>,
+        /// Write the proposed TOML to this file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Render the compliance-aware service map (text, Mermaid, or JSON)
     Map {
         /// Scope to one framework (dora, nis2, pci-dss, …)
@@ -548,6 +560,23 @@ pub(crate) enum AutopilotAction {
         /// Reason for the denial, persisted with the response event
         #[arg(long)]
         reason: Option<String>,
+        /// Analytics store path (default: ~/.tumult/analytics.duckdb)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Record a deploy/config change event against a service — the next
+    /// autopilot pass treats its evidence as invalidated
+    #[command(name = "notify-change")]
+    NotifyChange {
+        /// Service name (bare or svc: id)
+        #[arg(long)]
+        service: String,
+        /// What reported the change (e.g. deploy-webhook)
+        #[arg(long, default_value = "manual")]
+        source: String,
+        /// Optional detail about what changed
+        #[arg(long)]
+        detail: Option<String>,
         /// Analytics store path (default: ~/.tumult/analytics.duckdb)
         #[arg(long)]
         store: Option<PathBuf>,

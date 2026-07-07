@@ -151,6 +151,16 @@ pub(crate) fn begin_deployment_probe(namespace: &str, name: &str) -> SpanGuard {
     )
 }
 
+pub(crate) fn begin_discover_services(namespace_count: usize) -> SpanGuard {
+    k8s_span(
+        "k8s.services.discover",
+        vec![KeyValue::new(
+            "k8s.namespaces.requested",
+            i64::try_from(namespace_count).unwrap_or(i64::MAX),
+        )],
+    )
+}
+
 pub(crate) fn begin_node_status(name: &str) -> SpanGuard {
     k8s_span(
         "k8s.node.status",
@@ -223,6 +233,7 @@ mod tests {
         event_pods_counted(3);
         let _g = begin_deployment_probe("default", "my-deploy");
         let _g = begin_node_status("node-1");
+        let _g = begin_discover_services(2);
     }
 
     #[test]

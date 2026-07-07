@@ -2,7 +2,7 @@
 
 Autopilot closes the loop the topology/compliance work opened: triggers
 (stale evidence, broken controls) feed the deterministic recommender, a
-validator rejects experiments that cannot falsify anything, a 13-rule
+validator rejects experiments that cannot falsify anything, a 14-rule
 safety gate decides enact / downgrade / propose / veto, and every decision
 is persisted — with the full rule trace and the policy hash — *before*
 anything runs.
@@ -18,8 +18,24 @@ tumult autopilot deny <decision-id> --reason "..."           # veto = ladder fee
 tumult autopilot export <dir>                                # parquet cold archive
 ```
 
+```
+tumult autopilot notify-change --service X --source deploy-webhook   # change-triggered revalidation
+tumult topology discover-k8s [--namespace ns]...                     # proposed topology TOML (review, then import)
+```
+
 MCP: `tumult_autopilot_run` (Operator), `tumult_autopilot_status` (Viewer),
-`tumult_autopilot_respond` (Operator), `tumult_autopilot_export` (Operator).
+`tumult_autopilot_respond` (Operator), `tumult_autopilot_export` (Operator),
+`tumult_autopilot_notify` (Operator).
+
+Additional gate inputs: **dynamic guard-telemetry pre-flight** (the guard's
+probe is executed once pre-enact; a failing probe downgrades — the gate will
+not authorize a blast it cannot observe), **target enrollment**
+(`require_enrollment` + `enrolled_services`: un-enrolled targets are vetoed
+structurally), **change events** (recorded via `notify-change`; produce
+`change_event`-triggered revalidation candidates for up to 7 days), and
+**OTel-derived criticality** (`TUMULT_CRITICALITY_FILE` JSON of service →
+observed span rate; demo one-liner:
+`docker exec demo-signoz clickhouse client -q "SELECT serviceName, count() FROM signoz_traces.distributed_signoz_index_v3 WHERE timestamp > now() - INTERVAL 60 MINUTE GROUP BY serviceName FORMAT JSON"`).
 
 ## The policy file
 
@@ -56,7 +72,7 @@ reproducible from `(policy hash, recorded inputs)`, forever.
 
 ## Verdicts
 
-- **enact** — all 13 rules pass: enabled, validator clean, playbook
+- **enact** — all 14 rules pass: enabled, validator clean, playbook
   resolved, tier allowed, guard present and observable, no open deviation
   on the target, no concurrent experiment, budget and cooldown clear,
   confidence high, autonomy earned or pretrusted. With `--execute` the
@@ -100,4 +116,4 @@ both to Parquet for the immutable long-horizon archive.
 environment — proof 4 is the autopilot story: pretrusted enact, ambient
 vetoes protecting a broken service, cooldown downgrade on the repeat pass,
 human denial recorded, graph lineage, parquet archive. The 2.15.0 release
-gate was three consecutive clean 12-proof runs.
+gate was three consecutive clean 16-proof runs (2.16.0).

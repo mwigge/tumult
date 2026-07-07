@@ -1,0 +1,99 @@
+{
+  "recommendations": [
+    {
+      "service_id": "svc:demo-postgres",
+      "plugin": "tumult-containers",
+      "action": "kill-container",
+      "article_id": "compliance:DORA/Art.11",
+      "strength": "direct",
+      "score": 2.5,
+      "reasons": [
+        "compliance:DORA/Art.11 is broken on svc:demo-postgres",
+        "citation strength for compliance:DORA/Art.11 is direct",
+        "1 service depend on svc:demo-postgres",
+        "svc:demo-postgres itself has a broken control",
+        "action tumult-containers::kill-container never tested"
+      ]
+    },
+    {
+      "service_id": "svc:demo-app",
+      "plugin": "tumult-containers",
+      "action": "kill-container",
+      "article_id": "compliance:Basel-III/OpResPrinciple4",
+      "strength": "direct",
+      "score": 1.5,
+      "reasons": [
+        "compliance:Basel-III/OpResPrinciple4 is untested on svc:demo-app",
+        "citation strength for compliance:Basel-III/OpResPrinciple4 is direct",
+        "1 service depend on svc:demo-app",
+        "1 hop(s) from the nearest broken service",
+        "action tumult-containers::kill-container never tested",
+        "observed traffic rate 31280 (100% of busiest service)"
+      ]
+    },
+    {
+      "service_id": "svc:demo-app",
+      "plugin": "tumult-containers",
+      "action": "kill-container",
+      "article_id": "compliance:DORA/Art.11",
+      "strength": "direct",
+      "score": 1.5,
+      "reasons": [
+        "compliance:DORA/Art.11 is untested on svc:demo-app",
+        "citation strength for compliance:DORA/Art.11 is direct",
+        "1 service depend on svc:demo-app",
+        "1 hop(s) from the nearest broken service",
+        "action tumult-containers::kill-container never tested",
+        "observed traffic rate 31280 (100% of busiest service)"
+      ]
+    },
+    {
+      "service_id": "svc:demo-app",
+      "plugin": "tumult-containers",
+      "action": "kill-container",
+      "article_id": "compliance:ISO-22301/Clause8.5",
+      "strength": "direct",
+      "score": 1.5,
+      "reasons": [
+        "compliance:ISO-22301/Clause8.5 is untested on svc:demo-app",
+        "citation strength for compliance:ISO-22301/Clause8.5 is direct",
+        "1 service depend on svc:demo-app",
+        "1 hop(s) from the nearest broken service",
+        "action tumult-containers::kill-container never tested",
+        "observed traffic rate 31280 (100% of busiest service)"
+      ]
+    },
+    {
+      "service_id": "svc:demo-app",
+      "plugin": "tumult-containers",
+      "action": "kill-container",
+      "article_id": "compliance:ISO-27001/A.5.30",
+      "strength": "direct",
+      "score": 1.5,
+      "reasons": [
+        "compliance:ISO-27001/A.5.30 is untested on svc:demo-app",
+        "citation strength for compliance:ISO-27001/A.5.30 is direct",
+        "1 service depend on svc:demo-app",
+        "1 hop(s) from the nearest broken service",
+        "action tumult-containers::kill-container never tested",
+        "observed traffic rate 31280 (100% of busiest service)"
+      ]
+    },
+    {
+      "service_id": "svc:demo-app",
+      "plugin": "tumult-containers",
+      "action": "kill-container",
+      "article_id": "compliance:NIS2/Art.21(2)(c)",
+      "strength": "direct",
+      "score": 1.5,
+      "reasons": [
+        "compliance:NIS2/Art.21(2)(c) is untested on svc:demo-app",
+        "citation strength for compliance:NIS2/Art.21(2)(c) is direct",
+        "1 service depend on svc:demo-app",
+        "1 hop(s) from the nearest broken service",
+        "action tumult-containers::kill-container never tested",
+        "observed traffic rate 31280 (100% of busiest service)"
+      ]
+    }
+  ]
+}

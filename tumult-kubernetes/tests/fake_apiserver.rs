@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use tower_test::mock::{self, Handle};
 
 use tumult_kubernetes::inject::{self, StressKind};
-use tumult_kubernetes::{actions, probes, KubeError};
+use tumult_kubernetes::{actions, discovery, probes, KubeError};
 
 type MockHandle = Handle<Request<Body>, Response<Body>>;
 
@@ -673,6 +673,120 @@ async fn resolve_target_pod_empty_selector_match_is_typed_error() {
         ),
         "expected InvalidConfig(label_selector), got: {err:?}"
     );
+    apiserver.await.expect("apiserver task");
+}
+
+// ── Topology discovery ────────────────────────────────────────
+
+/// Minimal Service object with optional labels and selector.
+fn service_json(namespace: &str, name: &str, labels: Value, selector: Value) -> Value {
+    let mut svc = json!({
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": { "name": name, "namespace": namespace },
+        "spec": { "ports": [{ "port": 80 }] },
+    });
+    if !labels.is_null() {
+        svc["metadata"]["labels"] = labels;
+    }
+    if !selector.is_null() {
+        svc["spec"]["selector"] = selector;
+    }
+    svc
+}
+
+fn service_list(items: &[Value]) -> Value {
+    json!({
+        "apiVersion": "v1",
+        "kind": "ServiceList",
+        "metadata": {},
+        "items": items,
+    })
+}
+
+#[tokio::test]
+async fn discover_services_lists_each_requested_namespace_and_sorts_output() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+
+        // One list per requested namespace, in argument order.
+        let (request, send) = handle.next_request().await.expect("prod list");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/services");
+        send.send_response(json_response(&service_list(&[
+            // Unsorted on purpose: output order must not depend on apiserver order.
+            service_json("prod", "web", Value::Null, json!({ "app": "web-app" })),
+            service_json(
+                "prod",
+                "api",
+                json!({ "tumult.io/tier": "service", "tumult.io/owner": "team-core" }),
+                json!({ "app.kubernetes.io/name": "api-chart" }),
+            ),
+        ])));
+
+        let (request, send) = handle.next_request().await.expect("staging list");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/staging/services");
+        send.send_response(json_response(&service_list(&[service_json(
+            "staging",
+            "cache",
+            json!({ "app.kubernetes.io/component": "cache" }),
+            Value::Null,
+        )])));
+    });
+
+    let services = discovery::discover_services(
+        client,
+        &["prod".to_string(), "staging".to_string()],
+    )
+    .await
+    .expect("discovery succeeds");
+
+    let names: Vec<(&str, &str)> = services
+        .iter()
+        .map(|s| (s.namespace.as_str(), s.name.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        vec![("prod", "api"), ("prod", "web"), ("staging", "cache")],
+        "deterministic (namespace, name) order"
+    );
+    assert_eq!(services[0].tier.as_deref(), Some("service"));
+    assert_eq!(services[0].owner.as_deref(), Some("team-core"));
+    assert_eq!(services[0].selector_apps, vec!["api-chart"]);
+    assert_eq!(services[2].tier.as_deref(), Some("cache"));
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn discover_services_all_namespaces_skips_kube_system_and_apiserver_service() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("cluster-wide list");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/services",
+            "empty namespace list must scan the whole cluster"
+        );
+        send.send_response(json_response(&service_list(&[
+            service_json("default", "kubernetes", Value::Null, Value::Null),
+            service_json("kube-system", "kube-dns", Value::Null, Value::Null),
+            service_json("default", "shop", Value::Null, json!({ "app": "shop" })),
+        ])));
+    });
+
+    let services = discovery::discover_services(client, &[])
+        .await
+        .expect("discovery succeeds");
+
+    assert_eq!(services.len(), 1, "plumbing services are skipped: {services:?}");
+    assert_eq!(services[0].name, "shop");
+    assert_eq!(services[0].namespace, "default");
     apiserver.await.expect("apiserver task");
 }
 

@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS autopilot_events (
 );
 CREATE INDEX IF NOT EXISTS autopilot_events_by_decision
     ON autopilot_events (decision_id, at_ns);
+CREATE TABLE IF NOT EXISTS autopilot_change_events (
+    service_id      VARCHAR NOT NULL,
+    at_ns           BIGINT NOT NULL,
+    source          VARCHAR NOT NULL,
+    detail          VARCHAR
+);
 ";
 
 /// One decision, as persisted. Field meanings mirror `tumult-autopilot`'s
@@ -83,6 +89,15 @@ pub struct DecisionStatus {
     /// `human_approved`, `human_denied`), or None when nothing happened yet.
     pub last_event: Option<String>,
     pub last_event_detail: Option<String>,
+}
+
+/// One recorded change event.
+#[derive(Debug, Clone)]
+pub struct ChangeEventRecord {
+    pub service_id: String,
+    pub at_ns: i64,
+    pub source: String,
+    pub detail: Option<String>,
 }
 
 /// Aggregated per-fault-class autonomy history: how often enacted runs of
@@ -261,6 +276,44 @@ impl AnalyticsStore {
             )
             .unwrap_or(None);
         Ok(ts)
+    }
+
+    /// Record an external change event (deploy, config change) against a
+    /// service — the change-event trigger's insert-only input.
+    pub fn record_change_event(
+        &self,
+        service_id: &str,
+        at_ns: i64,
+        source: &str,
+        detail: Option<&str>,
+    ) -> Result<(), AnalyticsError> {
+        self.conn.execute(
+            "INSERT INTO autopilot_change_events VALUES (?, ?, ?, ?)",
+            params![service_id, at_ns, source, detail],
+        )?;
+        Ok(())
+    }
+
+    /// Change events newer than `since_ns`, newest first per service.
+    pub fn change_events_since(
+        &self,
+        since_ns: i64,
+    ) -> Result<Vec<ChangeEventRecord>, AnalyticsError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT service_id, at_ns, source, detail FROM autopilot_change_events
+             WHERE at_ns >= ? ORDER BY service_id, at_ns DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![since_ns], |row| {
+                Ok(ChangeEventRecord {
+                    service_id: row.get(0)?,
+                    at_ns: row.get(1)?,
+                    source: row.get(2)?,
+                    detail: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Record the decision's graph lineage node (`rec:<id>`,

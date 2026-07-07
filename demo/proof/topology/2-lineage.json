@@ -14,11 +14,11 @@
       "status": "broken",
       "evidence_strength": null,
       "cause": {
-        "deviation_id": "dev:efec1073-9e4e-49f6-85b5-804fe64afee6",
+        "deviation_id": "dev:039017f7-d361-44a8-b77d-aa33347431d0",
         "fault_id": "fault:pause-database",
         "guard_name": "app-health-guard",
         "failing_actions": [],
-        "run_id": "efec1073-9e4e-49f6-85b5-804fe64afee6"
+        "run_id": "039017f7-d361-44a8-b77d-aa33347431d0"
       },
       "experiments": [
         "exp:Demo — auto-halt guardrail pulls the plug when demo-app goes unhealthy"
