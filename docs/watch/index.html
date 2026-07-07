@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tumult — live demo</title>
+<meta property="og:title" content="tumult — watch the autopilot decide">
+<meta property="og:description" content="Real terminal recording: topology, compliance lineage, and policy-gated autonomous fault injection. Every frame from a real run.">
+<meta property="og:url" content="https://tumult.rs/watch/">
+<link rel="stylesheet" type="text/css" href="/demo/asciinema-player.css" />
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0d1117; color: #c9d1d9;
+         font-family: -apple-system, 'Segoe UI', sans-serif;
+         display: flex; flex-direction: column; align-items: center;
+         min-height: 100vh; justify-content: center; padding: 2rem 1rem; box-sizing: border-box; }
+  h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 1rem; color: #e6edf3; }
+  h1 .copper { color: #c9784a; }
+  #player { width: min(1000px, 96vw); border-radius: 10px; overflow: hidden;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+  p.caption { color: #8b949e; font-size: 0.85rem; max-width: 700px; text-align: center; margin-top: 1.2rem; }
+  a { color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+<h1><span class="copper">tumult</span> — topology · compliance lineage · autopilot</h1>
+<div id="player"></div>
+<p class="caption">
+  a real recording, not a mockup: the map finds where compliance breaks and why,
+  the autopilot enacts one revalidation, vetoes everything unsafe, and every
+  decision lands in the audit graph. regenerate it yourself:
+  <code>scripts/record-demo-cast.sh</code> ·
+  <a href="/">tumult.rs</a> · <a href="https://github.com/mwigge/tumult">github</a>
+</p>
+<script src="/demo/asciinema-player.min.js"></script>
+<script>
+  AsciinemaPlayer.create('/demo/tumult-demo.cast', document.getElementById('player'), {
+    theme: 'monokai', cols: 110, rows: 35, autoPlay: true, loop: true,
+    speed: 1.2, fit: 'width', idleTimeLimit: 2,
+    terminalFontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+    terminalFontSize: '13px'
+  });
+</script>
+</body>
+</html>
