@@ -38,9 +38,13 @@ fn all_tools_listed() {
         TopologyMapTool::tool(),
         ComplianceLineageTool::tool(),
         RecommendInjectionTool::tool(),
+        AutopilotRunTool::tool(),
+        AutopilotStatusTool::tool(),
+        AutopilotRespondTool::tool(),
+        AutopilotExportTool::tool(),
         WhoamiTool::tool(),
     ];
-    assert_eq!(tools.len(), 35);
+    assert_eq!(tools.len(), 39);
 }
 
 #[test]
@@ -92,6 +96,10 @@ fn tool_names_follow_convention() {
         TopologyMapTool::tool(),
         ComplianceLineageTool::tool(),
         RecommendInjectionTool::tool(),
+        AutopilotRunTool::tool(),
+        AutopilotStatusTool::tool(),
+        AutopilotRespondTool::tool(),
+        AutopilotExportTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -266,6 +274,10 @@ async fn list_tools_round_trip_returns_all_registered_tools() {
         "tumult_topology_map",
         "tumult_compliance_lineage",
         "tumult_recommend_injection",
+        "tumult_autopilot_run",
+        "tumult_autopilot_status",
+        "tumult_autopilot_respond",
+        "tumult_autopilot_export",
         "tumult_whoami",
     ];
     let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
@@ -361,6 +373,7 @@ fn tool_annotations_reflect_tool_behavior() {
         TopologyMapTool::tool(),
         ComplianceLineageTool::tool(),
         RecommendInjectionTool::tool(),
+        AutopilotStatusTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &read_only {
@@ -434,6 +447,42 @@ fn tool_annotations_reflect_tool_behavior() {
     assert_eq!(a.read_only_hint, Some(false));
     assert_eq!(a.idempotent_hint, Some(false));
     assert_eq!(a.open_world_hint, Some(true));
+
+    // autopilot_run persists new decision records on every pass (not
+    // idempotent) and, with execute=true, runs playbook experiments
+    // against real targets (open-world). Recording decisions is
+    // additive, not destructive.
+    let run = AutopilotRunTool::tool();
+    let a = run.annotations.as_ref().expect("autopilot run annotations");
+    assert_eq!(a.destructive_hint, Some(false));
+    assert_eq!(a.read_only_hint, Some(false));
+    assert_eq!(a.idempotent_hint, Some(false));
+    assert_eq!(a.open_world_hint, Some(true));
+
+    // autopilot_respond appends exactly one human event per decision (a
+    // second response errors — not idempotent); approval runs the
+    // playbook experiment (open-world).
+    let respond = AutopilotRespondTool::tool();
+    let a = respond
+        .annotations
+        .as_ref()
+        .expect("autopilot respond annotations");
+    assert_eq!(a.destructive_hint, Some(false));
+    assert_eq!(a.read_only_hint, Some(false));
+    assert_eq!(a.idempotent_hint, Some(false));
+    assert_eq!(a.open_world_hint, Some(true));
+
+    // autopilot_export re-writes the same Parquet files into the target
+    // directory: a converging local file write.
+    let export = AutopilotExportTool::tool();
+    let a = export
+        .annotations
+        .as_ref()
+        .expect("autopilot export annotations");
+    assert_eq!(a.destructive_hint, Some(false));
+    assert_eq!(a.read_only_hint, Some(false));
+    assert_eq!(a.idempotent_hint, Some(true));
+    assert_eq!(a.open_world_hint, Some(false));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -632,6 +681,39 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
     let missing_store = tmp.path().join("missing.duckdb");
     drop(tumult_analytics::AnalyticsStore::open(&store_path).unwrap());
 
+    // Autopilot fixtures: an enabled policy with no playbooks (a pass over
+    // this store yields no candidates — an empty decisions array conforms),
+    // an export directory, and a seeded `propose` decision so the respond
+    // tool's deny path succeeds deterministically.
+    let policy_path = tmp.path().join("autopilot.toml");
+    std::fs::write(&policy_path, "[autopilot]\nenabled = true\n").unwrap();
+    let export_dir = tmp.path().join("autopilot-export");
+    {
+        let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
+        store
+            .insert_autopilot_decision(&tumult_analytics::DecisionRecord {
+                id: "conf-propose-1".into(),
+                decided_at_ns: 1_000,
+                trigger: "staleness".into(),
+                service_id: "svc:db".into(),
+                tier: Some("data".into()),
+                plugin: "tumult-db".into(),
+                action: "kill-primary".into(),
+                article_id: "compliance:DORA/Art. 25".into(),
+                score: 1.0,
+                reasons: serde_json::json!(["seeded for respond conformance"]),
+                confidence: "high".into(),
+                playbook: None,
+                validator: serde_json::json!({}),
+                verdict: "propose".into(),
+                gate_rules: serde_json::json!([]),
+                gate_detail: serde_json::json!({}),
+                policy_hash: "conf-hash".into(),
+                autonomy_score: None,
+            })
+            .unwrap();
+    }
+
     // Ordered so the run writes journal.toon before read_journal uses it.
     let calls: Vec<(&str, serde_json::Value)> = vec![
         (
@@ -734,6 +816,37 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
         (
             "tumult_recommend_injection",
             serde_json::json!({ "store_path": store_path.to_str().unwrap() }),
+        ),
+        (
+            // Enabled policy without playbooks: decide-and-record only,
+            // empty decisions is a conforming outcome.
+            "tumult_autopilot_run",
+            serde_json::json!({
+                "policy_path": policy_path.to_str().unwrap(),
+                "store_path": store_path.to_str().unwrap(),
+            }),
+        ),
+        (
+            "tumult_autopilot_status",
+            serde_json::json!({ "store_path": store_path.to_str().unwrap() }),
+        ),
+        (
+            // Deny the seeded propose decision — the approve path would need
+            // a runnable playbook; the deny path is the deterministic one.
+            "tumult_autopilot_respond",
+            serde_json::json!({
+                "decision_id": "conf-propose-1",
+                "approve": false,
+                "reason": "conformance deny",
+                "store_path": store_path.to_str().unwrap(),
+            }),
+        ),
+        (
+            "tumult_autopilot_export",
+            serde_json::json!({
+                "dir": export_dir.to_str().unwrap(),
+                "store_path": store_path.to_str().unwrap(),
+            }),
         ),
     ];
 
@@ -1652,6 +1765,10 @@ fn required_roles_match_annotations() {
         TopologyMapTool::tool(),
         ComplianceLineageTool::tool(),
         RecommendInjectionTool::tool(),
+        AutopilotRunTool::tool(),
+        AutopilotStatusTool::tool(),
+        AutopilotRespondTool::tool(),
+        AutopilotExportTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -1776,6 +1893,60 @@ async fn viewer_rejected_on_topology_import() {
         .expect("operator must reach topology import");
     assert!(result.is_error.is_none(), "{}", result_text(&result));
     assert!(result_text(&result).contains("imported 1 services"));
+}
+
+/// A viewer token is rejected on `tumult_autopilot_run` (every pass writes
+/// decision records, and execute=true injects faults) without the pass
+/// being attempted; the same call succeeds for an operator token.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn viewer_rejected_on_autopilot_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("analytics.duckdb");
+    drop(tumult_analytics::AnalyticsStore::open(&store).unwrap());
+    let policy = tmp.path().join("autopilot.toml");
+    std::fs::write(&policy, "[autopilot]\nenabled = true\n").unwrap();
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![
+            ("view-tok".into(), Role::Viewer),
+            ("op-tok".into(), Role::Operator),
+        ]),
+    );
+
+    let args = serde_json::json!({
+        "policy_path": policy.to_str().unwrap(),
+        "store_path": store.to_str().unwrap(),
+    });
+    let params = call_params("tumult_autopilot_run", args.clone(), Some("Bearer view-tok"));
+    let err = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect_err("viewer must be rejected on autopilot run");
+    let msg = err.to_string();
+    assert!(msg.contains("Unauthorized"), "got: {msg}");
+    assert!(msg.contains("requires the 'operator' role"), "got: {msg}");
+    assert!(msg.contains("token has 'viewer'"), "got: {msg}");
+
+    // The same call succeeds for an operator token (empty pass — no
+    // candidates on a fresh store).
+    let params = call_params("tumult_autopilot_run", args, Some("Bearer op-tok"));
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("operator must reach autopilot run");
+    assert!(result.is_error.is_none(), "{}", result_text(&result));
+
+    // The Viewer-gated status readback works for the viewer token.
+    let params = call_params(
+        "tumult_autopilot_status",
+        serde_json::json!({ "store_path": store.to_str().unwrap() }),
+        Some("Bearer view-tok"),
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("viewer must reach autopilot status");
+    assert!(result.is_error.is_none(), "{}", result_text(&result));
 }
 
 /// An operator token may call both read-only and operator-only tools.

@@ -1,0 +1,33 @@
+# Autopilot policy for the tumult demo stack. Deliberately demo-permissive
+# in exactly one place: the operator pretrusts the recovery-validation
+# class on the data tier (an explicit, auditable consent) — production
+# defaults keep data tiers propose-only until trust is earned.
+
+[autopilot]
+enabled = true
+max_runs_per_day = 6
+cooldown_hours = 12
+evidence_ttl_days = 90
+enact_tiers = ["service", "edge", "data"]
+require_guard = true
+autonomy_threshold = 0.8
+autonomy_min_samples = 3
+
+[autopilot.evidence_ttl_days_by_framework]
+DORA = 90
+NIS2 = 120
+
+# Operator-granted initial trust: connection-kill recovery validation on
+# the demo data tier. Everything else must earn autonomy or be approved.
+[[autopilot.pretrusted]]
+plugin = "tumult-containers"
+action = "kill-container"
+tier = "data"
+
+# Curated playbooks: what actually runs when the recommender asks for a
+# fault class. The experiment is reviewed; autopilot only selects it.
+[[autopilot.playbook]]
+plugin = "tumult-containers"
+action = "kill-container"
+service = "demo-postgres"
+experiment = "demo/experiments/demo-topo-recommended.toon"

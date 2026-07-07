@@ -18,7 +18,8 @@ use crate::tools;
 use super::output_schema::output_schema_for;
 use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
-    AnalyzeStoreTool, AnalyzeTool, ChaosGraphCoverageGapsTool, ChaosGraphCypherTool, ChaosGraphNeighborsTool,
+    AnalyzeStoreTool, AnalyzeTool, AutopilotExportTool, AutopilotRespondTool, AutopilotRunTool,
+    AutopilotStatusTool, ChaosGraphCoverageGapsTool, ChaosGraphCypherTool, ChaosGraphNeighborsTool,
     ChaosGraphQueryTool, ComplianceLineageTool, ComplianceTool, CoverageTool,
     CreateExperimentTool, DiscoverTool, FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool,
     GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool, QueryTracesTool,
@@ -32,6 +33,7 @@ use super::{Role, TumultHandler};
 // `TumultHandler`; `handle_call_tool_request` below routes to them.
 mod agentic;
 mod analytics;
+mod autopilot;
 mod experiment;
 mod gameday;
 mod graph;
@@ -77,11 +79,13 @@ pub(crate) fn required_role_for_tool(name: &str) -> Role {
         | "tumult_topology_map"
         | "tumult_compliance_lineage"
         | "tumult_recommend_injection"
+        | "tumult_autopilot_status"
         | "tumult_whoami" => Role::Viewer,
         // Operator-only (read_only_hint == false), plus any unknown tool:
         // tumult_run_experiment, tumult_create_experiment, tumult_report,
         // tumult_gameday_run, tumult_gameday_create, tumult_recommend,
-        // tumult_topology_import.
+        // tumult_topology_import, tumult_autopilot_run,
+        // tumult_autopilot_respond, tumult_autopilot_export.
         _ => Role::Operator,
     }
 }
@@ -225,6 +229,10 @@ impl ServerHandler for TumultHandler {
             TopologyMapTool::tool(),
             ComplianceLineageTool::tool(),
             RecommendInjectionTool::tool(),
+            AutopilotRunTool::tool(),
+            AutopilotStatusTool::tool(),
+            AutopilotRespondTool::tool(),
+            AutopilotExportTool::tool(),
             WhoamiTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
@@ -318,6 +326,10 @@ impl ServerHandler for TumultHandler {
             "tumult_topology_map" => topology::topology_map(&params)?,
             "tumult_compliance_lineage" => topology::compliance_lineage(&params)?,
             "tumult_recommend_injection" => topology::recommend_injection(&params)?,
+            "tumult_autopilot_run" => autopilot::autopilot_run(&params)?,
+            "tumult_autopilot_status" => autopilot::autopilot_status(&params)?,
+            "tumult_autopilot_respond" => autopilot::autopilot_respond(&params)?,
+            "tumult_autopilot_export" => autopilot::autopilot_export(&params)?,
             "tumult_whoami" => meta::whoami(&params, principal_role)?,
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };

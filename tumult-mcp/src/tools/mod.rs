@@ -5,6 +5,7 @@
 //! submodules and re-exported here to preserve the flat `tools::*` API.
 
 mod agentic;
+pub mod autopilot;
 mod agents;
 mod analysis;
 mod authoring;
@@ -16,11 +17,12 @@ mod journals;
 mod listing;
 mod recommend;
 mod reporting;
-mod topology;
+pub(crate) mod topology;
 mod validation;
 mod whoami;
 
 pub use agentic::{agentic_list_scenarios, agentic_run_experiment, agentic_smoke};
+pub use autopilot::{autopilot_export, autopilot_once, autopilot_respond, autopilot_status};
 pub use agents::agents;
 pub use analysis::{analyze, analyze_persistent, store_stats};
 pub use authoring::{fault_catalog, scaffold_experiment, ScaffoldArgs};

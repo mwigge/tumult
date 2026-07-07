@@ -58,20 +58,20 @@ pub(super) fn open_store_ro(
 }
 
 /// Everything the lineage/map/recommend tools read back from the store.
-pub(super) struct TopologyInputs {
-    pub(super) edges: Vec<EdgeRecord>,
-    pub(super) services: Vec<NodeSummary>,
+pub(crate) struct TopologyInputs {
+    pub(crate) edges: Vec<EdgeRecord>,
+    pub(crate) services: Vec<NodeSummary>,
     /// Services paired with their parsed attrs (`tier`/`owner`), for the map.
-    pub(super) services_with_attrs: Vec<(NodeSummary, serde_json::Value)>,
-    pub(super) articles: Vec<NodeSummary>,
-    pub(super) deviation_attrs: HashMap<String, serde_json::Value>,
+    pub(crate) services_with_attrs: Vec<(NodeSummary, serde_json::Value)>,
+    pub(crate) articles: Vec<NodeSummary>,
+    pub(crate) deviation_attrs: HashMap<String, serde_json::Value>,
     /// Declared `(src, dst)` pairs from `depends_on` edges.
-    pub(super) depends_on: Vec<(String, String)>,
+    pub(crate) depends_on: Vec<(String, String)>,
 }
 
 impl TopologyInputs {
     /// The borrowed view `compute_lineage` consumes.
-    pub(super) fn lineage_input(&self) -> LineageInput<'_> {
+    pub(crate) fn lineage_input(&self) -> LineageInput<'_> {
         LineageInput {
             edges: &self.edges,
             services: &self.services,
@@ -82,7 +82,7 @@ impl TopologyInputs {
 }
 
 /// Read every lineage/map input from the store in one pass.
-pub(super) fn gather_inputs(
+pub(crate) fn gather_inputs(
     store: &tumult_analytics::AnalyticsStore,
 ) -> Result<TopologyInputs, ToolError> {
     let edges = store
@@ -188,7 +188,7 @@ fn available_actions() -> Vec<AvailableAction> {
 }
 
 /// Compute ranked recommendations for a lineage matrix.
-pub(super) fn recommendations_for(
+pub(crate) fn recommendations_for(
     store: &tumult_analytics::AnalyticsStore,
     inputs: &TopologyInputs,
     lineage: &[LineageCell],

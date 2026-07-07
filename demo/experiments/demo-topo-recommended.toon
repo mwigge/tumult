@@ -10,6 +10,21 @@ regulatory:
       description: Business continuity and disaster recovery
       evidence: Backend connections terminated on demo-postgres; recovery to accepting-connections state verified
 
+guards[1]:
+  - name: app-health-guard
+    probe:
+      name: app-health-watch
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -sf -m 3 http://demo-app:8080/health"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+    min_breaches: 3
+
 steady_state_hypothesis:
   title: demo-postgres is accepting connections
   probes[1]:

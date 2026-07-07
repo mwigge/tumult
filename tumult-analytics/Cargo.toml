@@ -30,6 +30,7 @@ arrow = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 duckdb = { workspace = true, optional = true }
 thiserror = { workspace = true }
+serde_json = { workspace = true }
 chrono = { workspace = true, optional = true }
 dirs-next = { workspace = true, optional = true }
 opentelemetry = { workspace = true }

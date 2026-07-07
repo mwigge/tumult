@@ -4,6 +4,32 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.15.0] — 2026-07-07
+
+### Added
+- **Autopilot: policy-gated autonomous fault injection.** The deterministic
+  recommender proposes, a validator rejects experiments that cannot falsify
+  anything, and a 13-rule safety gate (fixed evaluation order, full rule
+  trace recorded) decides enact / downgrade / propose / veto. Decisions are
+  persisted — with the sha256 of the policy that produced them — *before*
+  anything runs. New crate `tumult-autopilot` (pure decision logic + a
+  10-scenario replay corpus as gate regression tests).
+- **Earned autonomy**: fault classes start propose-only and graduate to
+  auto-enact on a clean-run track record (policy thresholds); vetoes and
+  failed recoveries reset the ladder. Explicit `[[autopilot.pretrusted]]`
+  is the only shortcut.
+- **Decision store**: two insert-only DuckDB tables
+  (`autopilot_decisions`, `autopilot_events`, schema v4) with no
+  update/delete surface, Parquet export (`tumult autopilot export`), and
+  ChaosGraph lineage (`recommendation` nodes, `enacted` edges) — "why did
+  this run?" is one graph or Cypher query, for vetoed decisions too.
+- CLI `tumult autopilot once|status|approve|deny|export`; four new MCP
+  tools (35 → 39): `tumult_autopilot_run`, `_status`, `_respond`, `_export`.
+- Demo proof 4: pretrusted enact, `ambient.no_open_deviation` vetoes,
+  cooldown downgrade, human denial as feedback, lineage + Parquet — all
+  asserted. Release gate: three consecutive clean 12-proof suite runs.
+- Docs: autopilot guide + blog post with the real gate transcripts.
+
 ## [2.14.1] — 2026-07-07
 
 ### Fixed

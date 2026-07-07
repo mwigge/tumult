@@ -44,6 +44,39 @@ pub(super) fn recommendation_schema() -> Value {
     })
 }
 
+/// Schema for one autopilot decision summary, shared by the
+/// `tumult_autopilot_run` and `tumult_autopilot_status` output schemas.
+/// Required keys are the common subset both tools emit; run additionally
+/// carries plugin/action/score/detail/run_status and status carries
+/// trigger/policy_hash/last_event/decided_at_ns.
+pub(super) fn autopilot_decision_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["id", "verdict", "service", "article"],
+        "properties": {
+            "id": { "type": "string", "description": "Decision id (UUID); use with tumult_autopilot_respond." },
+            "verdict": { "type": "string", "enum": ["enact", "downgrade", "propose", "veto"] },
+            "service": { "type": "string", "description": "Target service node id (svc:<name>)." },
+            "article": { "type": "string", "description": "Compliance article the injection informs." },
+            "plugin": { "type": "string", "description": "Plugin of the candidate fault (run only)." },
+            "action": { "type": "string", "description": "Action of the candidate fault (run only)." },
+            "score": { "type": "number", "description": "Composite recommendation score (run only)." },
+            "detail": { "type": "string", "description": "Gate reasons / veto rule; empty for enact (run only)." },
+            "run_status": {
+                "type": ["string", "null"],
+                "description": "Playbook journal status when the decision was enacted this pass; null otherwise (run only).",
+            },
+            "trigger": { "type": "string", "description": "staleness | broken_control | manual (status only)." },
+            "policy_hash": { "type": "string", "description": "sha256 of the policy text that produced the decision (status only)." },
+            "last_event": {
+                "type": ["string", "null"],
+                "description": "Latest lifecycle event (run_started / run_completed / run_failed / human_approved / human_denied); null when none (status only).",
+            },
+            "decided_at_ns": { "type": "integer", "description": "Decision timestamp in ns (status only)." },
+        },
+    })
+}
+
 /// Schema for one lineage cell (`tumult_graph::lineage::LineageCell`).
 pub(super) fn lineage_cell_schema() -> Value {
     json!({

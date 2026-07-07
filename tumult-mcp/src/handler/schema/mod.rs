@@ -2,6 +2,7 @@
 
 mod agentic;
 mod authoring;
+mod autopilot;
 mod chaosgraph;
 mod core_tools;
 mod gameday;
@@ -10,6 +11,7 @@ mod topology;
 
 pub use agentic::*;
 pub use authoring::*;
+pub use autopilot::*;
 pub use chaosgraph::*;
 pub use core_tools::*;
 pub use gameday::*;

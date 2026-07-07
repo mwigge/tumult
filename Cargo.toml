@@ -37,10 +37,12 @@ members = [
     # "tumult-report",
     # Phase 5
     "tumult-agent-cli",
+    # 2.15 — autopilot (pure decision logic: policy, validator, gate, ladder)
+    "tumult-autopilot",
 ]
 
 [workspace.package]
-version = "2.14.1"
+version = "2.15.0"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0"

@@ -14,8 +14,8 @@ use rust_mcp_sdk::schema::ToolOutputSchema;
 use serde_json::json;
 
 use schemas::{
-    graph_node_summary_schema, journal_schema, journal_summary_schema, lineage_cell_schema,
-    recommendation_schema, schema_object,
+    autopilot_decision_schema, graph_node_summary_schema, journal_schema, journal_summary_schema,
+    lineage_cell_schema, recommendation_schema, schema_object,
 };
 
 /// Names of every tool that sets `structured_content` on its results and
@@ -49,6 +49,10 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_topology_map",
     "tumult_compliance_lineage",
     "tumult_recommend_injection",
+    "tumult_autopilot_run",
+    "tumult_autopilot_status",
+    "tumult_autopilot_respond",
+    "tumult_autopilot_export",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -667,6 +671,47 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                     "description": "Ranked, explained injection recommendations.",
                     "items": recommendation_schema(),
                 },
+            }),
+        )),
+        "tumult_autopilot_run" => Some(schema_object(
+            &["decisions", "enacted", "policy_hash", "executed"],
+            json!({
+                "decisions": {
+                    "type": "array",
+                    "description": "Every decision gated and persisted this pass, in gate order.",
+                    "items": autopilot_decision_schema(),
+                },
+                "enacted": { "type": "integer", "description": "Number of playbooks actually run (always 0 when execute=false)." },
+                "policy_hash": { "type": "string", "description": "sha256 of the policy text this pass was gated by." },
+                "executed": { "type": "boolean", "description": "Whether execute=true was in effect (enact verdicts ran playbooks)." },
+            }),
+        )),
+        "tumult_autopilot_status" => Some(schema_object(
+            &["decisions", "count"],
+            json!({
+                "decisions": {
+                    "type": "array",
+                    "description": "Recorded decisions, newest first, with their latest lifecycle event.",
+                    "items": autopilot_decision_schema(),
+                },
+                "count": { "type": "integer", "description": "Number of decisions returned (after verdict filter and limit)." },
+            }),
+        )),
+        "tumult_autopilot_respond" => Some(schema_object(
+            &["decision_id", "action"],
+            json!({
+                "decision_id": { "type": "string", "description": "The decision responded to." },
+                "action": {
+                    "type": "string",
+                    "enum": ["human_approved", "human_denied"],
+                    "description": "The lifecycle event appended by this response.",
+                },
+            }),
+        )),
+        "tumult_autopilot_export" => Some(schema_object(
+            &["dir"],
+            json!({
+                "dir": { "type": "string", "description": "Directory the Parquet files were written to." },
             }),
         )),
         _ => None,

@@ -1,0 +1,65 @@
+{
+  "decisions": [
+    {
+      "id": "ade0b0f1-b08a-4331-a520-8257bfd9c75b",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:Basel-III/OpResPrinciple4",
+      "trigger": "staleness",
+      "policy_hash": "3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80",
+      "last_event": null,
+      "decided_at_ns": 1783409909676309252
+    },
+    {
+      "id": "c44679cc-e403-4a7f-8ae6-083117173e5a",
+      "verdict": "downgrade",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80",
+      "last_event": null,
+      "decided_at_ns": 1783409909676309252
+    },
+    {
+      "id": "eaadceb6-ab23-4499-9013-c0c91e44c57d",
+      "verdict": "enact",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.11",
+      "trigger": "broken_control",
+      "policy_hash": "3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80",
+      "last_event": "run_completed",
+      "decided_at_ns": 1783409906863601701
+    },
+    {
+      "id": "dc8bb7fb-735d-4e55-a2f1-b3bef6952efa",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:Basel-III/OpResPrinciple4",
+      "trigger": "staleness",
+      "policy_hash": "3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80",
+      "last_event": null,
+      "decided_at_ns": 1783409906863601701
+    },
+    {
+      "id": "9a4fc60a-0fc4-411f-aa07-b8cc0cd39643",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:ISO-22301/Clause8.5",
+      "trigger": "staleness",
+      "policy_hash": "3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80",
+      "last_event": null,
+      "decided_at_ns": 1783409906863601701
+    },
+    {
+      "id": "d9d547c9-815c-44af-bcd6-d65b0fdf39e6",
+      "verdict": "veto",
+      "service": "svc:demo-postgres",
+      "article": "compliance:DORA/Art.25",
+      "trigger": "staleness",
+      "policy_hash": "3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80",
+      "last_event": null,
+      "decided_at_ns": 1783409906863601701
+    }
+  ],
+  "count": 6
+}

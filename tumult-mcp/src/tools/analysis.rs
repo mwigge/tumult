@@ -181,15 +181,20 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let db_path = dir.path().join("analytics.duckdb");
         let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
+        // Read the schema version back from the store itself so this test
+        // tracks migrations instead of hardcoding the current number.
+        let schema_version = store.schema_version().unwrap();
         drop(store);
 
         let result = store_stats(db_path.to_str().unwrap());
         assert!(result.is_ok());
         let report = result.unwrap();
         assert!(report.text.contains("experiments: 0"));
-        assert!(report.text.contains("schema_version: 3"));
+        assert!(report
+            .text
+            .contains(&format!("schema_version: {schema_version}")));
         assert_eq!(report.structured["experiments"], 0);
-        assert_eq!(report.structured["schema_version"], 3);
+        assert_eq!(report.structured["schema_version"], schema_version);
         assert!(report.structured.contains_key("store"));
         assert!(report.structured.contains_key("activities"));
     }

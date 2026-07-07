@@ -91,6 +91,7 @@ fn open_with_retry(
     }
 }
 
+pub mod autopilot;
 mod graph;
 mod ingest;
 pub mod topology;
@@ -105,7 +106,7 @@ pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnaly
 /// * v2 — `ChaosGraph` `graph_nodes` / `graph_edges` (additive, no data loss).
 /// * v3 — `ChaosGraph` Phase 2: `graph_edges.attrs` column plus static
 ///   `ComplianceArticle` nodes seeded from the citation registry (additive).
-const CURRENT_SCHEMA_VERSION: i64 = 3;
+const CURRENT_SCHEMA_VERSION: i64 = 4;
 
 /// Embedded `DuckDB` analytics store for experiment journals.
 ///
@@ -300,6 +301,7 @@ impl AnalyticsStore {
         // both the fresh-install DDL and the additive v1 → v2 migration: an
         // existing store simply gains the two tables, keeping all prior data.
         self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
+        self.conn.execute_batch(autopilot::CREATE_AUTOPILOT_TABLES)?;
         // ChaosGraph Phase 2 (schema v3): add the edges `attrs` column to a
         // pre-existing v2 `graph_edges` table. `ADD COLUMN IF NOT EXISTS` makes
         // this a no-op on fresh v3 tables and idempotent on every open.

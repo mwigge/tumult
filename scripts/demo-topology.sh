@@ -86,8 +86,51 @@ print("PROOF 3 OK: NIS2 21(2)(c) on demo-postgres flipped untested -> evidenced"
 PY
 }
 
+demo4() {
+  step "demo 4: autopilot — gated autonomous injection with lineage"
+  POLICY=demo/topology/autopilot.toml
+  # Pass 1: the broken DORA/Art.11 on demo-postgres is the top candidate and
+  # its class is operator-pretrusted -> the gate enacts and the recovery
+  # playbook runs. Every OTHER candidate targeting demo-postgres is vetoed:
+  # the service has an open break, and the only injection allowed into a
+  # broken service is the revalidation of the break itself.
+  "$BIN" autopilot once --policy "$POLICY" --execute --limit 4 --store "$STORE" \
+    | tee "$PROOF/4-autopilot-pass1.txt"
+  grep -q "\[enact\]" "$PROOF/4-autopilot-pass1.txt" && echo "PROOF 4 OK: gate enacted the pretrusted class"
+  grep -qiE "run_completed|-> completed" "$PROOF/4-autopilot-pass1.txt" && echo "PROOF 4 OK: enacted run completed"
+  grep -q "ambient.no_open_deviation" "$PROOF/4-autopilot-pass1.txt" && echo "PROOF 4 OK: gate vetoed new faults into the broken service"
+
+  # Pass 2, same policy, minutes later: the same top candidate now hits the
+  # per-service cooldown -> downgraded to the human queue with the exact
+  # rule recorded. A human denies it with a reason; the denial is feedback.
+  "$BIN" autopilot once --policy "$POLICY" --execute --limit 2 --store "$STORE" \
+    | tee "$PROOF/4-autopilot-pass2.txt"
+  grep -qE "\[(downgrade|propose)\].*cooldown" "$PROOF/4-autopilot-pass2.txt" && echo "PROOF 4 OK: cooldown downgraded the repeat to the human queue"
+
+  "$BIN" autopilot status --store "$STORE" --format json > "$PROOF/4-status.json"
+  DENY_ID=$(python3 - "$PROOF/4-status.json" << 'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+rows = rows.get("decisions", rows)
+for r in rows:
+    if r["verdict"] in ("propose", "downgrade") and not r.get("last_event"):
+        print(r["id"]); break
+PY
+)
+  test -n "$DENY_ID"
+  "$BIN" autopilot deny "$DENY_ID" --reason "demo: not this quarter" --store "$STORE"
+  "$BIN" autopilot status --store "$STORE" --format json > "$PROOF/4-status-after-deny.json"
+  grep -q "human_denied" "$PROOF/4-status-after-deny.json" && echo "PROOF 4 OK: human veto recorded as feedback"
+
+  # Lineage: decisions are graph citizens; archive: parquet cold store.
+  "$BIN" chaosgraph query --kind recommendation --store "$STORE" > "$PROOF/4-graph-recommendations.txt"
+  grep -q "rec:" "$PROOF/4-graph-recommendations.txt" && echo "PROOF 4 OK: decisions are graph nodes"
+  "$BIN" autopilot export "$PROOF/parquet" --store "$STORE"
+  test -f "$PROOF/parquet/autopilot_decisions.parquet" && echo "PROOF 4 OK: parquet archive written"
+}
+
 case "${1:-all}" in
-  1) demo1;; 2) demo2;; 3) demo3;;
-  all) rm -f "$STORE"; demo1; demo2; demo3;;
-  *) echo "usage: $0 [1|2|3|all]"; exit 2;;
+  1) demo1;; 2) demo2;; 3) demo3;; 4) demo4;;
+  all) rm -f "$STORE"; demo1; demo2; demo3; demo4;;
+  *) echo "usage: $0 [1|2|3|4|all]"; exit 2;;
 esac

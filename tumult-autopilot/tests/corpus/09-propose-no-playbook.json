@@ -1,0 +1,38 @@
+{
+  "name": "propose: no playbook binds the recommendation to an experiment",
+  "policy_toml": "[autopilot]\nenabled = true\nmax_runs_per_day = 6\ncooldown_hours = 12\nenact_tiers = [\"service\", \"edge\"]\n\n[[autopilot.pretrusted]]\nplugin = \"tumult-net\"\naction = \"inject_latency\"\ntier = \"service\"\n",
+  "candidate": {
+    "id": "c-corpus",
+    "service_id": "svc:demo-app",
+    "tier": "service",
+    "plugin": "tumult-net",
+    "action": "inject_latency",
+    "article_id": "compliance:DORA/Art.25",
+    "score": 1.52,
+    "reasons": [
+      "compliance:DORA/Art.25 evidence is stale on svc:demo-app"
+    ],
+    "confidence": "high",
+    "playbook_experiment": null,
+    "experiment_has_guard": false,
+    "experiment_has_rollback": false,
+    "experiment_has_steady_state": false,
+    "experiment_fault_count": 0,
+    "trigger": {
+      "type": "staleness",
+      "article_id": "compliance:DORA/Art.25",
+      "age_days": 120
+    }
+  },
+  "ambient": {
+    "open_deviation_for_target": false,
+    "runs_today": 0,
+    "hours_since_last_run_on_service": null,
+    "within_business_hours": true,
+    "concurrent_experiments": 0,
+    "guard_telemetry_ok": true
+  },
+  "autonomy": null,
+  "expected_verdict": "propose",
+  "expected_rule": "validator.enactable"
+}

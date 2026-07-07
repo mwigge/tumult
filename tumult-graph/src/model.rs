@@ -35,6 +35,11 @@ pub enum NodeKind {
     CoverageGap,
     /// A plugin grouping (`domain:<plugin>`) that coverage gaps belong to.
     FaultDomain,
+    /// An autopilot decision record (`rec:<uuid>`): why an autonomous run
+    /// was — or was not — enacted. The full decision detail lives in the
+    /// decision store; the node carries verdict/score/policy-hash attrs so
+    /// lineage is queryable in-graph.
+    Recommendation,
 }
 
 impl NodeKind {
@@ -50,6 +55,7 @@ impl NodeKind {
             Self::ComplianceArticle => "compliance_article",
             Self::CoverageGap => "coverage_gap",
             Self::FaultDomain => "fault_domain",
+            Self::Recommendation => "recommendation",
         }
     }
 
@@ -65,6 +71,7 @@ impl NodeKind {
             "compliance_article" => Some(Self::ComplianceArticle),
             "coverage_gap" => Some(Self::CoverageGap),
             "fault_domain" => Some(Self::FaultDomain),
+            "recommendation" => Some(Self::Recommendation),
             _ => None,
         }
     }
@@ -105,6 +112,11 @@ pub enum EdgeRel {
     /// `Deviation -> Fault`: the injected fault attributed as the cause of
     /// this deviation (only emitted when attribution is unambiguous).
     CausedBy,
+    /// `Recommendation -> Journal`: the autopilot decision that enacted
+    /// this run. Proposed/vetoed decisions have no run to point at — their
+    /// full record lives on the recommendation node and in the decision
+    /// store.
+    Enacted,
 }
 
 impl EdgeRel {
@@ -122,6 +134,7 @@ impl EdgeRel {
             Self::GapIn => "gap_in",
             Self::DependsOn => "depends_on",
             Self::CausedBy => "caused_by",
+            Self::Enacted => "enacted",
         }
     }
 
@@ -139,6 +152,7 @@ impl EdgeRel {
             "gap_in" => Some(Self::GapIn),
             "depends_on" => Some(Self::DependsOn),
             "caused_by" => Some(Self::CausedBy),
+            "enacted" => Some(Self::Enacted),
             _ => None,
         }
     }
@@ -252,6 +266,7 @@ mod tests {
             NodeKind::ComplianceArticle,
             NodeKind::CoverageGap,
             NodeKind::FaultDomain,
+            NodeKind::Recommendation,
         ] {
             assert_eq!(NodeKind::parse(kind.as_str()), Some(kind));
             assert_eq!(NodeKind::parse(&kind.as_str().to_uppercase()), Some(kind));
@@ -272,6 +287,7 @@ mod tests {
             EdgeRel::GapIn,
             EdgeRel::DependsOn,
             EdgeRel::CausedBy,
+            EdgeRel::Enacted,
         ] {
             assert_eq!(EdgeRel::parse(rel.as_str()), Some(rel));
         }

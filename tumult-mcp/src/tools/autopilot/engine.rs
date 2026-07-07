@@ -1,0 +1,272 @@
+//! The autopilot engine: assemble candidates from the lineage, gather
+//! ambient context, gate, persist (audit-before-act), and — only for an
+//! `enact` verdict with `execute` — run the playbook experiment.
+//!
+//! Reproducibility: everything the gate saw (candidate, ambient, autonomy,
+//! policy hash) is persisted with the verdict, so any decision can be
+//! replayed bit-for-bit against the corresponding policy text.
+
+
+use tumult_autopilot::{
+    class_key, evaluate, validate, AmbientContext, AutonomyRecord, Candidate, ConfidenceTier,
+    GateDecision, LoadedPolicy, Trigger, Verdict,
+};
+use tumult_graph::lineage::{compute_lineage, ControlServiceStatus, LineageCell};
+
+use crate::error::ToolError;
+
+use crate::tools::topology::inputs::{gather_inputs, recommendations_for, TopologyInputs};
+
+/// A fully assembled decision, ready to persist and (maybe) enact.
+pub(super) struct Assembled {
+    pub candidate: Candidate,
+    pub decision: GateDecision,
+    pub autonomy_score: Option<f64>,
+}
+
+/// Confidence is derived from the deterministic score: a broken control or
+/// a score at/above 1.0 is High; anything weaker is Directional.
+fn confidence_for(score: f64, broken: bool) -> ConfidenceTier {
+    if broken || score >= 1.0 {
+        ConfidenceTier::High
+    } else {
+        ConfidenceTier::Directional
+    }
+}
+
+/// Inspect a playbook experiment file for the validator's structural facts.
+fn inspect_experiment(path: &str) -> (bool, bool, bool, usize) {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return (false, false, false, 0);
+    };
+    let Ok(exp) = tumult_core::engine::parse_experiment(&content) else {
+        return (false, false, false, 0);
+    };
+    let has_steady = exp
+        .steady_state_hypothesis
+        .as_ref()
+        .is_some_and(|h| !h.probes.is_empty());
+    let has_rollback = !exp.rollbacks.is_empty();
+    let has_guard = !exp.guards.is_empty();
+    let faults = exp
+        .method
+        .iter()
+        .filter(|a| a.activity_type == tumult_core::types::ActivityType::Action)
+        .count();
+    (has_steady, has_rollback && has_guard, has_guard, faults)
+}
+
+/// Latest `evidences` timestamp (ns) for any of a cell's experiments toward
+/// its article — the freshness the staleness trigger measures.
+fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64> {
+    inputs
+        .edges
+        .iter()
+        .filter(|e| {
+            e.rel == "evidences"
+                && e.dst == cell.article_id
+                && cell.experiments.contains(&e.src)
+        })
+        .map(|e| e.ts)
+        .max()
+}
+
+/// Assemble gate-ready candidates from the store. Pure with respect to the
+/// clock: `now_ns` and ambient facts are passed in.
+#[allow(clippy::too_many_lines)]
+pub(super) fn assemble_candidates(
+    store: &tumult_analytics::AnalyticsStore,
+    policy: &LoadedPolicy,
+    now_ns: i64,
+    within_business_hours: bool,
+    limit: usize,
+) -> Result<Vec<Assembled>, ToolError> {
+    let inputs = gather_inputs(store)?;
+    let lineage = compute_lineage(&inputs.lineage_input(), None, None);
+    let recommendations = recommendations_for(store, &inputs, &lineage, limit)?;
+
+    let class_history = store
+        .autopilot_class_history()
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let runs_today = store
+        .autopilot_decisions_since(now_ns - 24 * 3_600_000_000_000)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+
+    let tier_of = |service_id: &str| -> Option<String> {
+        inputs
+            .services_with_attrs
+            .iter()
+            .find(|(n, _)| n.id == service_id)
+            .and_then(|(_, attrs)| attrs.get("tier").and_then(|t| t.as_str()).map(String::from))
+    };
+
+    let mut out = Vec::new();
+    for rec in recommendations {
+        let cell = lineage.iter().find(|c| {
+            c.article_id == rec.article_id && c.service_id == rec.service_id
+        });
+        let broken = cell.is_some_and(|c| c.status == ControlServiceStatus::Broken);
+        let trigger = if broken {
+            Trigger::BrokenControl {
+                article_id: rec.article_id.clone(),
+            }
+        } else {
+            // No evidence at all reads as "stale since forever" — u32::MAX
+            // is the documented sentinel for never-evidenced.
+            let age_days = cell
+                .and_then(|c| latest_evidence_ns(&inputs, c))
+                .map_or(u32::MAX, |ts| {
+                    let days = (now_ns - ts) as f64 / 86_400_000_000_000.0;
+                    if days <= 0.0 { 0 } else { days as u32 }
+                });
+            Trigger::Staleness {
+                article_id: rec.article_id.clone(),
+                age_days,
+            }
+        };
+
+        let service_name = rec.service_id.strip_prefix("svc:").unwrap_or(&rec.service_id);
+        let playbook = policy
+            .policy
+            .playbook_for(&rec.plugin, &rec.action, Some(service_name))
+            .map(|p| p.experiment.clone());
+        let (has_steady, has_rollback, has_guard, fault_count) = playbook
+            .as_deref()
+            .map(inspect_experiment)
+            .unwrap_or((false, false, false, 0));
+
+        let tier = tier_of(&rec.service_id);
+        let candidate = Candidate {
+            id: uuid::Uuid::new_v4().to_string(),
+            service_id: rec.service_id.clone(),
+            tier: tier.clone(),
+            plugin: rec.plugin.clone(),
+            action: rec.action.clone(),
+            article_id: rec.article_id.clone(),
+            score: rec.score,
+            reasons: rec.reasons.clone(),
+            confidence: confidence_for(rec.score, broken),
+            playbook_experiment: playbook,
+            experiment_has_guard: has_guard,
+            experiment_has_rollback: has_rollback,
+            experiment_has_steady_state: has_steady,
+            experiment_fault_count: fault_count,
+            trigger,
+        };
+
+        // Ambient: the target has an "open deviation" when its most recent
+        // relevant lineage state is Broken and nothing clean ran since.
+        let hours_since_last = store
+            .autopilot_last_enacted_on(&candidate.service_id)
+            .map_err(|e| ToolError::Store(e.to_string()))?
+            .map(|ts| ((now_ns - ts) as f64 / 3_600_000_000_000.0).max(0.0));
+        let open_deviation = lineage.iter().any(|c| {
+            c.service_id == candidate.service_id
+                && c.status == ControlServiceStatus::Broken
+                && !broken // revalidating the broken control itself is the point
+        });
+        let ambient = AmbientContext {
+            open_deviation_for_target: open_deviation,
+            runs_today,
+            hours_since_last_run_on_service: hours_since_last,
+            within_business_hours,
+            concurrent_experiments: 0,
+            // v1: static verification — the guard and its probe exist in the
+            // spec. Dynamic "can I see the blast" pre-flight is 2.15.x.
+            guard_telemetry_ok: Some(has_guard),
+        };
+
+        let key = class_key(&candidate.plugin, &candidate.action, tier.as_deref());
+        let record = class_history
+            .iter()
+            .find(|h| h.class_key == key)
+            .map(|h| AutonomyRecord {
+                enacted_total: h.enacted_total,
+                enacted_clean: h.enacted_clean,
+            });
+        let autonomy_score = record.as_ref().and_then(|r| {
+            (r.enacted_total > 0).then(|| f64::from(r.enacted_clean) / f64::from(r.enacted_total))
+        });
+
+        let validator = validate(&candidate);
+        let decision = evaluate(&policy.policy, &candidate, &ambient, record.as_ref(), &validator);
+        out.push(Assembled {
+            candidate,
+            decision,
+            autonomy_score,
+        });
+    }
+    Ok(out)
+}
+
+/// Persist one decision (audit-before-act) and mirror it into the graph.
+pub(super) fn persist_decision(
+    store: &tumult_analytics::AnalyticsStore,
+    policy: &LoadedPolicy,
+    assembled: &Assembled,
+    now_ns: i64,
+) -> Result<(), ToolError> {
+    let c = &assembled.candidate;
+    let verdict_token = match &assembled.decision.verdict {
+        Verdict::Enact => "enact",
+        Verdict::Downgrade { .. } => "downgrade",
+        Verdict::Propose { .. } => "propose",
+        Verdict::Veto { .. } => "veto",
+    };
+    let gate_detail = match &assembled.decision.verdict {
+        Verdict::Enact => serde_json::json!({}),
+        Verdict::Downgrade { reasons } | Verdict::Propose { reasons } => {
+            serde_json::json!({ "reasons": reasons })
+        }
+        Verdict::Veto { rule } => serde_json::json!({ "rule": rule }),
+    };
+    let validator = validate(c);
+
+    let record = tumult_analytics::DecisionRecord {
+        id: c.id.clone(),
+        decided_at_ns: now_ns,
+        trigger: match &c.trigger {
+            Trigger::Staleness { .. } => "staleness".into(),
+            Trigger::BrokenControl { .. } => "broken_control".into(),
+            Trigger::Manual => "manual".into(),
+        },
+        service_id: c.service_id.clone(),
+        tier: c.tier.clone(),
+        plugin: c.plugin.clone(),
+        action: c.action.clone(),
+        article_id: c.article_id.clone(),
+        score: c.score,
+        reasons: serde_json::json!(c.reasons),
+        confidence: format!("{:?}", c.confidence).to_lowercase(),
+        playbook: c.playbook_experiment.clone(),
+        validator: serde_json::json!({
+            "hollow": validator.hollow,
+            "blockers": validator.blockers,
+            "enactable": validator.enactable,
+        }),
+        verdict: verdict_token.into(),
+        gate_rules: serde_json::json!(assembled.decision.rules_evaluated),
+        gate_detail,
+        policy_hash: policy.policy_hash().to_string(),
+        autonomy_score: assembled.autonomy_score,
+    };
+    store
+        .insert_autopilot_decision(&record)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    store
+        .record_recommendation_node(
+            &c.id,
+            verdict_token,
+            &serde_json::json!({
+                "verdict": verdict_token,
+                "service": c.service_id,
+                "article": c.article_id,
+                "plugin": c.plugin,
+                "action": c.action,
+                "score": c.score,
+                "policy_hash": policy.policy_hash(),
+            }),
+        )
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    Ok(())
+}

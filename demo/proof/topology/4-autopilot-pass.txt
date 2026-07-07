@@ -1,0 +1,6 @@
+autopilot pass: 4 decision(s), 1 enacted (policy 3d3b9a71389c204421bc499662441b1c0e46ac848da8be1db52e5c5482a46c80)
+[enact] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.11 (score 2.50)
+        ran demo/experiments/demo-topo-recommended.toon -> completed
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:Basel-III/OpResPrinciple4 (score 1.50) — ambient.no_open_deviation
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:DORA/Art.25 (score 1.50) — ambient.no_open_deviation
+[veto] svc:demo-postgres tumult-containers::kill-container for compliance:ISO-22301/Clause8.5 (score 1.50) — ambient.no_open_deviation

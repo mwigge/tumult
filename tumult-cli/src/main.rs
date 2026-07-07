@@ -4,8 +4,8 @@ use tumult_cli::commands::{build_load_override, parse_var_args};
 use clap::Parser;
 
 use cli::{
-    AgenticAction, ChaosGraphAction, Cli, Commands, GameDayAction, GraphFormat, McpAction,
-    McpTransport, OutputFormat, RollbackStrategy, StoreAction, TopologyAction,
+    AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GraphFormat,
+    McpAction, McpTransport, OutputFormat, RollbackStrategy, StoreAction, TopologyAction,
 };
 
 mod cli;
@@ -368,6 +368,38 @@ async fn main() -> anyhow::Result<()> {
                     limit,
                     matches!(format, GraphFormat::Json),
                 )?;
+            }
+        },
+        Commands::Autopilot { action } => match action {
+            AutopilotAction::Once {
+                policy,
+                execute,
+                limit,
+                store,
+            } => {
+                commands::cmd_autopilot_once(store.as_deref(), &policy, execute, limit)?;
+            }
+            AutopilotAction::Status {
+                verdict,
+                limit,
+                format,
+                store,
+            } => {
+                commands::cmd_autopilot_status(
+                    store.as_deref(),
+                    verdict.as_deref(),
+                    limit,
+                    matches!(format, GraphFormat::Json),
+                )?;
+            }
+            AutopilotAction::Approve { id, store } => {
+                commands::cmd_autopilot_respond(store.as_deref(), &id, true, None)?;
+            }
+            AutopilotAction::Deny { id, reason, store } => {
+                commands::cmd_autopilot_respond(store.as_deref(), &id, false, reason.as_deref())?;
+            }
+            AutopilotAction::Export { dir, store } => {
+                commands::cmd_autopilot_export(store.as_deref(), &dir)?;
             }
         },
         Commands::Tui {

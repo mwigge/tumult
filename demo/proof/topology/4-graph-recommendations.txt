@@ -1,0 +1,7 @@
+kind: recommendation  (6 node(s))
+  rec:9a4fc60a-0fc4-411f-aa07-b8cc0cd39643  veto
+  rec:ade0b0f1-b08a-4331-a520-8257bfd9c75b  veto
+  rec:c44679cc-e403-4a7f-8ae6-083117173e5a  downgrade
+  rec:d9d547c9-815c-44af-bcd6-d65b0fdf39e6  veto
+  rec:dc8bb7fb-735d-4e55-a2f1-b3bef6952efa  veto
+  rec:eaadceb6-ab23-4499-9013-c0c91e44c57d  enact

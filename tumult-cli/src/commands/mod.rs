@@ -5,6 +5,7 @@
 
 mod agentic;
 mod analyze;
+mod autopilot;
 mod chaosgraph;
 mod compliance;
 mod exec;
@@ -40,6 +41,9 @@ pub use agentic::{
     cmd_agentic_run_scenario, cmd_agentic_smoke, cmd_agentic_trajectory,
 };
 pub use analyze::cmd_analyze;
+pub use autopilot::{
+    cmd_autopilot_export, cmd_autopilot_once, cmd_autopilot_respond, cmd_autopilot_status,
+};
 pub use chaosgraph::{
     cmd_chaosgraph_coverage_gaps, cmd_chaosgraph_neighbors, cmd_chaosgraph_query,
 };
