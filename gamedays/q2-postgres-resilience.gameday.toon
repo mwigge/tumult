@@ -6,13 +6,13 @@ tags[3]: gameday, postgres, dora
 regulatory:
   frameworks[2]: DORA, NIS2
   requirements[3]:
-    - id: DORA-Art24
+    - id: Art. 24
       description: ICT resilience testing programme
       evidence: Quarterly GameDay with 4 fault scenarios under shared load
-    - id: DORA-Art25
+    - id: Art. 25
       description: Scenario-based testing of ICT tools and systems
       evidence: Connection kill, container pause, CPU stress, memory stress
-    - id: DORA-Art11
+    - id: Art. 11
       description: Response and recovery
       evidence: MTTR measured across all experiments
 
@@ -24,13 +24,13 @@ load:
 
 experiments[4]:
   - path: pg-connection-kill.toon
-    compliance_maps[1]: DORA-Art25
+    compliance_maps[1]: Art. 25
   - path: pg-container-pause.toon
-    compliance_maps[2]: DORA-Art25, DORA-Art11
+    compliance_maps[2]: Art. 25, Art. 11
   - path: pg-cpu-stress.toon
-    compliance_maps[1]: DORA-Art25
+    compliance_maps[1]: Art. 25
   - path: pg-mem-stress.toon
-    compliance_maps[1]: DORA-Art25
+    compliance_maps[1]: Art. 25
 
 scoring:
   pass_threshold: 0.75

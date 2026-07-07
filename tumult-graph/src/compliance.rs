@@ -51,13 +51,28 @@ fn article_node(citation: &Citation) -> Node {
 /// Resolve a declared `(framework, requirement_id)` pair to its registry
 /// citation, if one exists. The framework accepts either the CLI name
 /// (`dora`, `pci-dss`) or the report identifier (`DORA`, `PCI-DSS`),
-/// case-insensitively; the control id is matched ignoring whitespace and case
-/// (`Art. 25` == `art.25`). Returns `None` when nothing matches — callers must
-/// not guess.
+/// case-insensitively. The control id is matched on its alphanumeric
+/// skeleton (case, whitespace, dots and dashes ignored; parentheses kept so
+/// `Art. 21(2)(b)` and `(c)` stay distinct), and a redundant leading
+/// framework prefix is tolerated — `Art. 25`, `art25` and `DORA-Art25` all
+/// resolve. Users write these ids by hand in experiment and gameday files;
+/// a silently dropped compliance mapping is a worse failure than a lenient
+/// match over an id space this small and distinctive. Returns `None` when
+/// nothing matches — callers must not guess.
 #[must_use]
 pub fn resolve_citation(framework: &str, requirement_id: &str) -> Option<&'static Citation> {
     let fw = parse_framework(framework)?;
-    let want = normalize_control(requirement_id);
+    let mut want = normalize_control(requirement_id);
+    // Strip a redundant framework prefix ("DORA-Art25" declared under DORA).
+    for label in [fw.name(), fw.as_report_str()] {
+        let prefix = normalize_control(label);
+        if let Some(rest) = want.strip_prefix(&prefix) {
+            if !rest.is_empty() {
+                want = rest.to_string();
+            }
+            break;
+        }
+    }
     CITATIONS
         .iter()
         .find(|c| c.framework == fw && normalize_control(c.control_id) == want)
@@ -71,10 +86,13 @@ fn parse_framework(label: &str) -> Option<ComplianceFramework> {
     })
 }
 
-/// Normalise a control identifier for comparison: drop whitespace, lowercase.
+/// Normalise a control identifier to its comparison skeleton: lowercase,
+/// keeping only alphanumerics and parentheses. `Art. 25`, `art25` and
+/// `Art-25` collapse to `art25`; `Art. 21(2)(b)` keeps its parens and stays
+/// distinct from `(c)`.
 fn normalize_control(id: &str) -> String {
     id.chars()
-        .filter(|c| !c.is_whitespace())
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '(' || *c == ')')
         .collect::<String>()
         .to_ascii_lowercase()
 }
@@ -116,6 +134,22 @@ mod tests {
     fn resolve_matches_by_name_or_report_id_and_normalised_control() {
         // Report id + spaced control.
         let c = resolve_citation("DORA", "Art. 25").expect("DORA Art. 25 resolves");
+        // Hand-written variants users actually produce must resolve too.
+        for variant in ["art25", "Art.25", "DORA-Art25", "dora-art-25", "Art 25"] {
+            assert_eq!(
+                resolve_citation("DORA", variant).map(|c| c.control_id),
+                Some("Art. 25"),
+                "variant '{variant}' must resolve"
+            );
+        }
+        // Parenthesised NIS2 sub-controls stay distinct.
+        assert_ne!(
+            resolve_citation("NIS2", "Art. 21(2)(b)").map(|c| c.control_id),
+            resolve_citation("NIS2", "NIS2-Art21(2)(c)").map(|c| c.control_id),
+        );
+        assert!(resolve_citation("NIS2", "NIS2-Art21(2)(c)").is_some());
+        // A bare framework prefix with no control does not match anything.
+        assert!(resolve_citation("DORA", "DORA").is_none());
         assert_eq!(c.control_id, "Art. 25");
         // CLI name + de-spaced control, different case.
         let c = resolve_citation("dora", "art.25").expect("normalised match");
