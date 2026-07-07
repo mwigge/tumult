@@ -4,6 +4,18 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.14.1] — 2026-07-07
+
+### Fixed
+- `resolve_citation` now matches control ids on their alphanumeric skeleton
+  (case, whitespace, dots and dashes ignored; parentheses preserved so NIS2
+  `Art. 21(2)(b)` and `(c)` stay distinct) and tolerates a redundant
+  framework prefix — hand-written ids like `DORA-Art25` or `art25` resolve
+  instead of silently producing zero compliance edges.
+- Gameday requirement ids canonicalized to citation style (`Art. 24`); the
+  committed gameday journal artifact is left untouched as a historical
+  record.
+
 ## [2.14.0] — 2026-07-07
 
 ### Added
