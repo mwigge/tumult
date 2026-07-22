@@ -15,7 +15,7 @@ pub(crate) use native::registry as native_registry;
 ///
 /// Supports Process and Native (Rust) providers. Native plugins dispatch
 /// through the `tumult_plugin::native::NativeExecutorRegistry` composition
-/// root in [`native`], via async execution on the Tokio runtime.
+/// root in the native executor, via async execution on the Tokio runtime.
 pub struct ProviderExecutor;
 
 impl ActivityExecutor for ProviderExecutor {

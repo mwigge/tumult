@@ -5,7 +5,7 @@
 //! `X-Amz-Date`, and (for temporary credentials) `X-Amz-Security-Token`
 //! headers to attach to an otherwise plain `reqwest` request.
 //!
-//! Correctness is pinned by [`tests`] against the canonical `get-vanilla`
+//! Correctness is pinned by the module tests against the canonical `get-vanilla`
 //! vector from the AWS `SigV4` test suite.
 //!
 //! [SigV4 signing process]: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv4-signing-elements.html

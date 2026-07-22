@@ -199,6 +199,6 @@ Phase 1 is deliberately narrow:
 
 ## See also
 
-- [MCP Guide](mcp-guide.md) — the full 26-tool MCP surface, annotations, structured output, and resources.
+- [MCP Guide](mcp-guide.md) — the current MCP surface, annotations, structured output, and resources.
 - [Token Efficiency](token-efficiency.md) — why Tumult's data formats are cheap to feed to an LLM.
 - [Analytics Guide](analytics-guide.md) — the DuckDB store the graph tables live in.

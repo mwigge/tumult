@@ -2,11 +2,10 @@
 title: "The Full Span Waterfall: Tumult Traces in SigNoz"
 parent: Blog
 nav_order: 12
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Full Span Waterfall: Tumult Traces in SigNoz
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 12 of the Tumult series. [← Part 10: Chaos Under Load](./10-chaos-under-load.md)*
 
@@ -23,7 +22,7 @@ Today we can show you what that looks like in practice.
 Here is a Redis resilience experiment running against a live Docker infrastructure. The experiment checks that Redis responds to ping, executes a SET/GET/DEL sequence to verify data operations, and confirms Redis is still healthy afterward.
 
 ```toon
-title: Redis resilience — verify recovery after disruption
+title: Redis resilience; verify recovery after disruption
 description: Check Redis is alive, inject a disruption, confirm it recovers
 
 steady_state_hypothesis:
@@ -48,7 +47,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 tumult run examples/redis-chao
 
 Open SigNoz. Navigate to Traces. Click on the `tumult` service. Here is what you see:
 
-![SigNoz Traces — Tumult experiment span waterfall](/images/signoz-traces.png)
+![SigNoz Traces; Tumult experiment span waterfall](/images/signoz-traces.png)
 
 ---
 
@@ -56,21 +55,21 @@ Open SigNoz. Navigate to Traces. Click on the `tumult` service. Here is what you
 
 The trace tells the complete story of the experiment, left to right in time:
 
-**`resilience.experiment`** — the root span wrapping the entire lifecycle. It carries the experiment ID, title, and final status. Duration: 443ms.
+**`resilience.experiment`**; the root span wrapping the entire lifecycle. It carries the experiment ID, title, and final status. Duration: 443ms.
 
-**`resilience.hypothesis.before`** — the steady-state check before fault injection. This is where Tumult verifies the system is healthy before doing anything destructive. Inside it, a `resilience.probe` runs `redis-cli ping` and gets `PONG`.
+**`resilience.hypothesis.before`**; the steady-state check before fault injection. This is where Tumult verifies the system is healthy before doing anything destructive. Inside it, a `resilience.probe` runs `redis-cli ping` and gets `PONG`.
 
-**`resilience.action`** — the chaos method steps. In this experiment, three actions execute sequentially: SET a key, GET the key, DEL the key. Each gets its own span with timing.
+**`resilience.action`**; the chaos method steps. In this experiment, three actions execute sequentially: SET a key, GET the key, DEL the key. Each gets its own span with timing.
 
-**`resilience.probe`** — individual probe executions within the method, each timed independently.
+**`resilience.probe`**; individual probe executions within the method, each timed independently.
 
-**`resilience.hypothesis.after`** — the steady-state re-check after the method completes. Same probe, same tolerance. If Redis survived the method, this passes. If it didn't, the experiment status becomes `deviated`.
+**`resilience.hypothesis.after`**; the steady-state re-check after the method completes. Same probe, same tolerance. If Redis survived the method, this passes. If it didn't, the experiment status becomes `deviated`.
 
 Every span in the waterfall is a real OpenTelemetry span with structured attributes in the `resilience.*` namespace:
 
 ```
 resilience.experiment.id:    41196791-bc81-4f60-83c0-a09fb41d349c
-resilience.experiment.title: Redis resilience — verify recovery after disruption
+resilience.experiment.title: Redis resilience; verify recovery after disruption
 resilience.action.name:      redis-set-key
 resilience.activity.type:    Action
 resilience.fault.type:       injection
@@ -85,13 +84,13 @@ telemetry.sdk.name:          opentelemetry
 
 ## What Makes This Different
 
-Most chaos engineering tools generate logs. Some emit metrics. Very few produce traces — and almost none produce traces that span the entire experiment lifecycle with structured attributes on every span.
+Most chaos engineering tools generate logs. Some emit metrics. Very few produce traces; and almost none produce traces that span the entire experiment lifecycle with structured attributes on every span.
 
 Here is why that matters.
 
 ### Timing is precise
 
-The waterfall shows exactly when each phase started and how long it took. The hypothesis-before check took 123ms. The SET action took 37ms. The hypothesis-after took 33ms. These are not log timestamps parsed after the fact — they are span durations measured by the same clock that produced the trace.
+The waterfall shows exactly when each phase started and how long it took. The hypothesis-before check took 123ms. The SET action took 37ms. The hypothesis-after took 33ms. These are not log timestamps parsed after the fact; they are span durations measured by the same clock that produced the trace.
 
 ### Causation is visible
 
@@ -103,7 +102,7 @@ The trace does not stop at the experiment runner. When Tumult executes a script 
 
 ### Context propagates to scripts
 
-Every script plugin receives `TRACEPARENT` and `TRACESTATE` environment variables — the W3C trace context standard. If your chaos script calls an HTTP service that also participates in distributed tracing, the experiment trace and the service trace are automatically linked. The experiment becomes part of your distributed trace, not a separate silo.
+Every script plugin receives `TRACEPARENT` and `TRACESTATE` environment variables; the W3C trace context standard. If your chaos script calls an HTTP service that also participates in distributed tracing, the experiment trace and the service trace are automatically linked. The experiment becomes part of your distributed trace, not a separate silo.
 
 ---
 
@@ -140,17 +139,17 @@ tumult compliance --framework dora .
 ```
 
 ```
-=== DORA — Digital Operational Resilience Act (EU 2022/2554) ===
+=== DORA; Digital Operational Resilience Act (EU 2022/2554) ===
 
 Source: https://eur-lex.europa.eu/eli/reg/2022/2554/oj
 Applies to EU financial entities.
 
 Requirements:
-  Art. 24 — General requirements for ICT resilience testing
+  Art. 24; General requirements for ICT resilience testing
     Testing programme: 47 experiment(s) executed
-  Art. 25 — Testing of ICT tools and systems
+  Art. 25; Testing of ICT tools and systems
     Scenario-based tests with documented results
-  Art. 11 — Response and recovery
+  Art. 11; Response and recovery
     Recovery procedures tested with measured recovery times
 
 Compliance Status: COMPLIANT
@@ -173,4 +172,4 @@ The trace is automatic. Open SigNoz at `http://localhost:3301`, navigate to Trac
 
 *Try Tumult at [tumult.rs](https://tumult.rs)*
 
-*Next in the series: [Part 13 — Load During Chaos →](./13-load-during-chaos.md)*
+*Next in the series: [Part 13; Load During Chaos →](./13-load-during-chaos.md)*

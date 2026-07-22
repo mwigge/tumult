@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 1.0.x   | :white_check_mark: |
-| < 1.0.0 | :x:                |
+| 2.16.x  | :white_check_mark: |
+| < 2.16  | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -31,14 +31,18 @@ Please use [GitHub's private vulnerability reporting](https://github.com/mwigge/
 
 ## Security Practices
 
-- **Zero unsafe code** in all Tumult crates
-- **cargo-audit** runs on every commit via pre-commit hook and CI
+- Workspace crates forbid unsafe code unless a narrowly scoped module documents
+  and reviews the required invariant.
+- **cargo-audit** and **cargo-deny** run in CI.
 - **Clippy pedantic** enforced with `-D warnings`
-- **No `.unwrap()` in production code** — enforced by code review
+- Production fallible paths return typed errors; panics are reserved for
+  invariant violations and tests.
 - **Null-byte validation** on all script plugin arguments
 - **No hardcoded credentials** — secrets resolved from environment at runtime
 - Full security assessment: [docs/security-assessment.md](docs/security-assessment.md)
 
 ## Dependency Management
 
-Tumult tracks the [RustSec Advisory Database](https://rustsec.org/) via `cargo-audit`. The CI pipeline fails on any HIGH or CRITICAL advisory. Unmaintained crate warnings are tracked and documented in the security assessment.
+Tumult tracks the [RustSec Advisory Database](https://rustsec.org/) via
+`cargo-audit`. CI fails on known vulnerabilities. Unmaintained crate warnings
+are reviewed and documented in the security assessment.

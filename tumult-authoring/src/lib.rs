@@ -6,7 +6,7 @@
 //! `tumult_scaffold_experiment`) so there is a single source of truth:
 //!
 //! - [`catalog`] — a fault catalog derived live from the shipped plugins via
-//!   [`tumult_plugin::discovery`], grouped into fault [`Domain`](catalog::Domain)s.
+//!   [`tumult_plugin::discovery`], grouped into fault [`Domain`]s.
 //! - [`builder`] — the experiment builder: given an action, argument values, a
 //!   target, and a steady-state probe, construct a validated
 //!   [`Experiment`](tumult_core::types::Experiment) and serialize it to TOON.

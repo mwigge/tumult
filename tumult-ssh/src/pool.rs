@@ -52,7 +52,7 @@ struct PoolEntry {
 
 /// Pool of reusable SSH sessions.
 ///
-/// Acquire a session with [`SshPool::acquire`]. The pool probes the cached
+/// Execute through a pooled session with [`SshPool::execute`]. The pool probes the cached
 /// session before returning it and reconnects transparently if stale.
 ///
 /// # Examples

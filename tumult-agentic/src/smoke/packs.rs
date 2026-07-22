@@ -23,7 +23,7 @@ struct PackHeadline {
 /// and applied via [`crate::faults::apply_fault`] against a per-pack baseline
 /// response; every contract in the pack is then evaluated against the resulting
 /// response. The returned [`SmokeReport`] surfaces the pack's headline
-/// fault/contract pair while the embedded [`AgenticRunResult`] carries the full
+/// fault/contract pair while the embedded [`crate::model::AgenticRunResult`] carries the full
 /// fault and contract evidence.
 ///
 /// # Errors

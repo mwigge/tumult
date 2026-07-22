@@ -4,9 +4,9 @@
 //! autopilot ever made — verdict, every gate rule evaluated, the policy
 //! hash it is reproducible from. `autopilot_events` records what happened
 //! afterwards (run started/completed, human approved/denied) as separate
-//! appended rows, so a decision row is NEVER updated. DuckDB has no
+//! appended rows, so a decision row is NEVER updated. `DuckDB` has no
 //! triggers to enforce this at the schema level (the reason sluss-style
-//! SQLite triggers don't transfer), so immutability is enforced here: this
+//! `SQLite` triggers don't transfer), so immutability is enforced here: this
 //! module exposes no update or delete surface, and none may be added.
 //!
 //! Ordering contract (audit-before-act): callers MUST persist the decision
@@ -109,6 +109,10 @@ pub struct ClassHistory {
     pub enacted_clean: u32,
 }
 
+// Every method below delegates fallible storage operations to DuckDB and
+// returns `AnalyticsError`; documenting that same condition on each small
+// store accessor would obscure their behavioral contract.
+#[allow(clippy::missing_errors_doc)]
 impl AnalyticsStore {
     /// Append one decision. INSERT only — a decision is immutable once
     /// written; later developments are `append_autopilot_event` rows.
@@ -177,7 +181,11 @@ impl AnalyticsStore {
                  FROM autopilot_events) e
                ON e.decision_id = d.id AND e.rn = 1
              {} ORDER BY d.decided_at_ns DESC LIMIT ?",
-            if verdict.is_some() { "WHERE d.verdict = ?" } else { "" }
+            if verdict.is_some() {
+                "WHERE d.verdict = ?"
+            } else {
+                ""
+            }
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let map_row = |row: &duckdb::Row<'_>| {
@@ -244,10 +252,24 @@ impl AnalyticsStore {
         )?;
         let rows = stmt
             .query_map([], |row| {
+                let enacted_total = u32::try_from(row.get::<_, i64>(1)?).map_err(|error| {
+                    duckdb::Error::FromSqlConversionFailure(
+                        1,
+                        duckdb::types::Type::BigInt,
+                        Box::new(error),
+                    )
+                })?;
+                let enacted_clean = u32::try_from(row.get::<_, i64>(2)?).map_err(|error| {
+                    duckdb::Error::FromSqlConversionFailure(
+                        2,
+                        duckdb::types::Type::BigInt,
+                        Box::new(error),
+                    )
+                })?;
                 Ok(ClassHistory {
                     class_key: row.get(0)?,
-                    enacted_total: row.get::<_, i64>(1)? as u32,
-                    enacted_clean: row.get::<_, i64>(2)? as u32,
+                    enacted_total,
+                    enacted_clean,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -261,20 +283,22 @@ impl AnalyticsStore {
             params![since_ns],
             |r| r.get(0),
         )?;
-        Ok(n as u32)
+        u32::try_from(n).map_err(|error| {
+            AnalyticsError::Internal(format!("autopilot decision count is outside u32: {error}"))
+        })
     }
 
     /// Most recent enacted decision timestamp for a service, for cooldowns.
-    pub fn autopilot_last_enacted_on(&self, service_id: &str) -> Result<Option<i64>, AnalyticsError> {
-        let ts = self
-            .conn
-            .query_row(
-                "SELECT MAX(decided_at_ns) FROM autopilot_decisions
+    pub fn autopilot_last_enacted_on(
+        &self,
+        service_id: &str,
+    ) -> Result<Option<i64>, AnalyticsError> {
+        let ts = self.conn.query_row(
+            "SELECT MAX(decided_at_ns) FROM autopilot_decisions
                  WHERE service_id = ? AND verdict = 'enact'",
-                params![service_id],
-                |r| r.get::<_, Option<i64>>(0),
-            )
-            .unwrap_or(None);
+            params![service_id],
+            |r| r.get::<_, Option<i64>>(0),
+        )?;
         Ok(ts)
     }
 
@@ -363,8 +387,7 @@ impl AnalyticsStore {
     /// (`autopilot_decisions.parquet`, `autopilot_events.parquet`) — the
     /// immutable cold archive any analytics tool can read.
     pub fn export_autopilot_parquet(&self, dir: &std::path::Path) -> Result<(), AnalyticsError> {
-        std::fs::create_dir_all(dir)
-            .map_err(AnalyticsError::Io)?;
+        std::fs::create_dir_all(dir).map_err(AnalyticsError::Io)?;
         for table in ["autopilot_decisions", "autopilot_events"] {
             let out = dir.join(format!("{table}.parquet"));
             let sql = format!(
@@ -407,9 +430,17 @@ mod tests {
     #[test]
     fn decision_lifecycle_is_append_only_events() {
         let s = AnalyticsStore::in_memory().unwrap();
-        s.insert_autopilot_decision(&decision("d1", "enact", "svc:db")).unwrap();
-        s.append_autopilot_event("d1", 1_100, "run_started", &serde_json::json!({})).unwrap();
-        s.append_autopilot_event("d1", 1_200, "run_completed", &serde_json::json!({"experiment_id": "x"})).unwrap();
+        s.insert_autopilot_decision(&decision("d1", "enact", "svc:db"))
+            .unwrap();
+        s.append_autopilot_event("d1", 1_100, "run_started", &serde_json::json!({}))
+            .unwrap();
+        s.append_autopilot_event(
+            "d1",
+            1_200,
+            "run_completed",
+            &serde_json::json!({"experiment_id": "x"}),
+        )
+        .unwrap();
 
         let rows = s.autopilot_decisions(None, 10).unwrap();
         assert_eq!(rows.len(), 1);
@@ -419,14 +450,19 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].enacted_total, 1);
         assert_eq!(history[0].enacted_clean, 1);
-        assert_eq!(history[0].class_key, "tumult-postgres::kill-connections@data");
+        assert_eq!(
+            history[0].class_key,
+            "tumult-postgres::kill-connections@data"
+        );
     }
 
     #[test]
     fn queue_filter_budget_and_cooldown_queries() {
         let s = AnalyticsStore::in_memory().unwrap();
-        s.insert_autopilot_decision(&decision("d1", "propose", "svc:db")).unwrap();
-        s.insert_autopilot_decision(&decision("d2", "enact", "svc:db")).unwrap();
+        s.insert_autopilot_decision(&decision("d1", "propose", "svc:db"))
+            .unwrap();
+        s.insert_autopilot_decision(&decision("d2", "enact", "svc:db"))
+            .unwrap();
 
         assert_eq!(s.autopilot_decisions(Some("propose"), 10).unwrap().len(), 1);
         assert_eq!(s.autopilot_decisions_since(0).unwrap(), 1);
@@ -440,7 +476,8 @@ mod tests {
     fn parquet_export_writes_both_tables() {
         let tmp = tempfile::tempdir().unwrap();
         let s = AnalyticsStore::in_memory().unwrap();
-        s.insert_autopilot_decision(&decision("d1", "enact", "svc:db")).unwrap();
+        s.insert_autopilot_decision(&decision("d1", "enact", "svc:db"))
+            .unwrap();
         s.export_autopilot_parquet(tmp.path()).unwrap();
         assert!(tmp.path().join("autopilot_decisions.parquet").exists());
         assert!(tmp.path().join("autopilot_events.parquet").exists());

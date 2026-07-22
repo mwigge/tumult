@@ -192,7 +192,10 @@ mod tests {
         let nodes = s.graph_nodes_with_attrs("service").unwrap();
         let api = nodes.iter().find(|n| n.id == "svc:api").unwrap();
         let attrs: serde_json::Value = serde_json::from_str(&api.attrs).unwrap();
-        assert_eq!(attrs["owner"], "team-core", "topology attrs must survive run ingest");
+        assert_eq!(
+            attrs["owner"], "team-core",
+            "topology attrs must survive run ingest"
+        );
         assert_eq!(attrs["declared"], true);
     }
 

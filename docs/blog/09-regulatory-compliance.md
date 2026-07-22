@@ -2,17 +2,16 @@
 title: "Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult"
 parent: Blog
 nav_order: 9
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 9 of the Tumult series. [← Part 8: Statistical Baselines](./08-statistical-baselines.md)*
 
 ---
 
-Regulatory compliance and chaos engineering have more in common than most engineering teams realize. DORA, NIS2, PCI-DSS, ISO 22301 — every major operational resilience regulation requires the same thing: **evidence that you tested your systems under failure conditions and that those systems behaved as expected**.
+Regulatory compliance and chaos engineering have more in common than most engineering teams realize. DORA, NIS2, PCI-DSS, ISO 22301; every major operational resilience regulation requires the same thing: **evidence that you tested your systems under failure conditions and that those systems behaved as expected**.
 
 The typical approach is to run chaos experiments, write a report manually, and submit it to compliance teams. This works, but it is fragile: the mapping between experiment results and regulatory requirements is done by a person, with all the inconsistency and gaps that entails.
 
@@ -54,15 +53,15 @@ regulatory:
   frameworks[2]: DORA, NIS2
   requirements[3]:
     - id: DORA-Art25
-      description: ICT resilience testing — scenario-based tests
+      description: ICT resilience testing; scenario-based tests
       evidence: Database failover recovery within declared RTO
 
     - id: DORA-Art11
-      description: Response and recovery — recovery time validation
+      description: Response and recovery; recovery time validation
       evidence: MTTR measured and compared against RTO target of 30s
 
     - id: NIS2-Art21-2c
-      description: Business continuity — backup and recovery procedures
+      description: Business continuity; backup and recovery procedures
       evidence: Automatic reconnection and data integrity verified
 ```
 
@@ -88,10 +87,10 @@ TOON journals are the primary audit artefact. Every journal contains structured 
 The evidence chain is complete and verifiable:
 
 ```
-Experiment definition (.toon) — what was planned
+Experiment definition (.toon); what was planned
     │
     ▼
-Journal (.toon) — what actually happened (all 5 phases)
+Journal (.toon); what actually happened (all 5 phases)
     │
     ├──▶ trace_id → OTel backend (distributed trace, nanosecond precision)
     ├──▶ experiment_id → DuckDB (queryable analytics)
@@ -107,7 +106,7 @@ An auditor starts from the HTML report, drills into the journal for raw data, an
 
 DORA is the most prescriptive framework for financial services. Three articles are directly relevant to chaos engineering:
 
-### Article 24 — General requirements for ICT resilience testing
+### Article 24; General requirements for ICT resilience testing
 
 Requires financial entities to have a testing programme that covers ICT systems supporting critical functions. The programme must be proportionate to risk and undertaken regularly.
 
@@ -117,7 +116,7 @@ Requires financial entities to have a testing programme that covers ICT systems 
 - `resilience.target.criticality` attribute for risk-based prioritisation
 - Trend analysis showing programme regularity and improvement over time
 
-### Article 25 — Testing of ICT tools and systems
+### Article 25; Testing of ICT tools and systems
 
 Requires scenario-based tests, performance testing, end-to-end testing, and penetration testing.
 
@@ -127,13 +126,13 @@ Requires scenario-based tests, performance testing, end-to-end testing, and pene
 - Multi-target experiments covering full transaction paths
 - `resilience.fault.type` and `resilience.fault.subtype` taxonomy for scenario classification
 
-### Article 11 — Response and recovery
+### Article 11; Response and recovery
 
 Requires that recovery time objectives (RTOs) are tested and documented.
 
 **Tumult provides:**
-- Phase 3 `recovery_time_s` — the measured MTTR
-- Phase 0 `expected_recovery_s` — the declared RTO
+- Phase 3 `recovery_time_s`; the measured MTTR
+- Phase 0 `expected_recovery_s`; the declared RTO
 - Analysis phase comparison: did the actual MTTR meet the declared RTO?
 - Rollback execution evidence: the rollback was run, and it succeeded
 
@@ -156,7 +155,7 @@ GROUP BY title
 ORDER BY last_tested ASC;
 ```
 
-The systems sorted to the top — those with the oldest last test date — are the coverage gaps.
+The systems sorted to the top; those with the oldest last test date; are the coverage gaps.
 
 ### DORA Article 11: RTO compliance evidence
 
@@ -278,7 +277,7 @@ ORDER BY started_at_ns;
 | ISO 22301 | 3-year certification cycle | Evidence for next audit |
 | SOC 2 | 12-month audit period | Annual attestation |
 
-Parquet export makes long-term retention practical. Journals compressed as Parquet are typically 10-20x smaller than equivalent JSON. A compliance archive of 5 years of daily experiment runs is tens of gigabytes in Parquet — trivial to store in S3 or cold storage.
+Parquet export makes long-term retention practical. Journals compressed as Parquet are typically 10-20x smaller than equivalent JSON. A compliance archive of 5 years of daily experiment runs is tens of gigabytes in Parquet; trivial to store in S3 or cold storage.
 
 ```bash
 # Archive journals as Parquet for long-term retention
@@ -295,16 +294,16 @@ tumult analyze 's3://your-bucket/archives/2025/*.parquet' \
 
 Chaos engineering is often positioned as an engineering discipline. For many organizations, the regulatory compliance angle is what actually gets it funded.
 
-The argument is straightforward: you are required by law to test your ICT resilience, document the results, and retain the evidence. Manual testing and report-writing is slow, expensive, and inconsistent. Tumult automates the evidence generation — every experiment run produces structured, queryable, auditable evidence that maps directly to regulatory requirements.
+The argument is straightforward: you are required by law to test your ICT resilience, document the results, and retain the evidence. Manual testing and report-writing is slow, expensive, and inconsistent. Tumult automates the evidence generation; every experiment run produces structured, queryable, auditable evidence that maps directly to regulatory requirements.
 
 The cost of maintaining a structured testing programme with Tumult is significantly lower than the alternative: manual testing, manual documentation, and the penalty exposure of inadequate evidence (EUR 10M or 2% of global revenue for NIS2 non-compliance; substantial fines for DORA; loss of payment processing rights for PCI-DSS).
 
 For platform teams, this is the conversation that turns chaos engineering from "interesting engineering practice" to "critical business requirement."
 
-**Update:** All 7 compliance frameworks now output official source URLs and article-level detail. DORA (EU 2022/2554) is clearly disambiguated from DevOps DORA metrics. GameDay orchestration maps entire testing programmes to compliance articles with aggregate resilience scoring. See [Part 14 — GameDay Is Here](./14-gameday-is-here.md).
+**Update:** All 7 compliance frameworks now output official source URLs and article-level detail. DORA (EU 2022/2554) is clearly disambiguated from DevOps DORA metrics. GameDay orchestration maps entire testing programmes to compliance articles with aggregate resilience scoring. See [Part 14; GameDay Is Here](./14-gameday-is-here.md).
 
 ---
 
 *Try Tumult at [tumult.rs](https://tumult.rs)*
 
-*Next in the series: [Part 10 — Chaos Under Load →](./10-chaos-under-load.md)*
+*Next in the series: [Part 10; Chaos Under Load →](./10-chaos-under-load.md)*

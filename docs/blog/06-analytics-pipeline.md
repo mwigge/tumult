@@ -2,11 +2,10 @@
 title: "Data-Driven Chaos: SQL Analytics Over Experiment Journals"
 parent: Blog
 nav_order: 6
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Data-Driven Chaos: SQL Analytics Over Experiment Journals
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 6 of the Tumult series. [← Part 5: Writing Your First Experiment](./05-experiment-format.md)*
 
@@ -16,10 +15,10 @@ Most chaos engineering tools answer one question: did this experiment pass or fa
 
 - Is our payment service getting more or less resilient over time?
 - Which systems are consistently exceeding their recovery time objectives?
-- Where are our predictions furthest from reality — and what does that tell us about our mental models?
+- Where are our predictions furthest from reality; and what does that tell us about our mental models?
 - Which experiments have never run against production?
 
-Answering these questions requires treating chaos experiment data as data — not as logs to scroll through, but as structured records to query, aggregate, and visualize. Tumult's analytics pipeline is built on this premise.
+Answering these questions requires treating chaos experiment data as data; not as logs to scroll through, but as structured records to query, aggregate, and visualize. Tumult's analytics pipeline is built on this premise.
 
 ---
 
@@ -33,11 +32,11 @@ Experiment → TOON Journal → Apache Arrow (columnar) → DuckDB (embedded SQL
 
 The key properties of this pipeline:
 
-**Arrow**: experiments are parsed into Apache Arrow `RecordBatch` format — columnar, memory-mapped, and interoperable with the entire Arrow ecosystem (Polars, pandas, Spark, BigQuery).
+**Arrow**: experiments are parsed into Apache Arrow `RecordBatch` format; columnar, memory-mapped, and interoperable with the entire Arrow ecosystem (Polars, pandas, Spark, BigQuery).
 
 **DuckDB**: an embedded analytical database. No server, no setup, no network. DuckDB runs in-process alongside Tumult, meaning you can run SQL queries against thousands of journals without any infrastructure.
 
-**Parquet**: the export format. Parquet is the standard for portable, compressed columnar data. A Parquet file from Tumult can be opened in Jupyter, loaded into Spark, queried in BigQuery, or archived to S3 — by any tool in the data ecosystem.
+**Parquet**: the export format. Parquet is the standard for portable, compressed columnar data. A Parquet file from Tumult can be opened in Jupyter, loaded into Spark, queried in BigQuery, or archived to S3; by any tool in the data ecosystem.
 
 ---
 
@@ -176,7 +175,7 @@ HAVING failures > 0
 ORDER BY failure_pct DESC;
 ```
 
-If a probe is failing 30% of the time in the `hypothesis_before` phase, it means the system is regularly not healthy before chaos is even injected — a signal worth investigating independently of the chaos experiments.
+If a probe is failing 30% of the time in the `hypothesis_before` phase, it means the system is regularly not healthy before chaos is even injected; a signal worth investigating independently of the chaos experiments.
 
 ### Estimate accuracy analysis
 
@@ -211,7 +210,7 @@ GROUP BY hypothesis_result
 ORDER BY count DESC;
 ```
 
-A high "Failed before fault" rate indicates systemic instability — your systems are frequently unhealthy before the experiment even starts. This is valuable data that pure uptime monitoring would not surface.
+A high "Failed before fault" rate indicates systemic instability; your systems are frequently unhealthy before the experiment even starts. This is valuable data that pure uptime monitoring would not surface.
 
 ---
 
@@ -270,11 +269,11 @@ The choice to embed DuckDB rather than require an external database is deliberat
 
 **No infrastructure.** The analytics capability is part of the `tumult` binary. There is no separate database process, no network connection, no credentials to manage. It works the same on a developer laptop and in a CI container.
 
-**Columnar performance.** DuckDB is an analytical database — optimized for aggregation queries over many rows. The query patterns in chaos analytics (group by experiment name, aggregate over time, compute percentiles) are exactly what columnar databases excel at.
+**Columnar performance.** DuckDB is an analytical database; optimized for aggregation queries over many rows. The query patterns in chaos analytics (group by experiment name, aggregate over time, compute percentiles) are exactly what columnar databases excel at.
 
 **Parquet-native.** DuckDB reads Parquet files directly. Your Tumult journals stored as Parquet in S3 are immediately queryable with `read_parquet('s3://your-bucket/journals/*.parquet')` without importing or transforming data.
 
-**Arrow interoperability.** Tumult's internal analytics builds on Apache Arrow RecordBatches. The Arrow ecosystem — including Polars, pandas, PyArrow, DataFusion, and dozens of other tools — can all consume this data format without conversion.
+**Arrow interoperability.** Tumult's internal analytics builds on Apache Arrow RecordBatches. The Arrow ecosystem; including Polars, pandas, PyArrow, DataFusion, and dozens of other tools; can all consume this data format without conversion.
 
 ---
 
@@ -286,7 +285,7 @@ The Parquet pipeline is the foundation for this. Every experiment produces a str
 
 That data asset is what enables the shift from chaos engineering as occasional practice to chaos engineering as continuous discipline. Instead of "we ran some experiments last quarter," you have "here is the resilience trend for every critical service over the past year, with statistical baselines for each."
 
-The trend query — is recovery time improving, stable, or degrading? — is the one that matters most:
+The trend query; is recovery time improving, stable, or degrading?; is the one that matters most:
 
 ```sql
 WITH ranked AS (
@@ -317,4 +316,4 @@ Services trending `DEGRADING` need attention. Services trending `IMPROVING` are 
 
 ---
 
-*Next in the series: [Part 7 — Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes →](./07-kubernetes-chaos.md)*
+*Next in the series: [Part 7; Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes →](./07-kubernetes-chaos.md)*

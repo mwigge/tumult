@@ -2,11 +2,10 @@
 title: "Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes"
 parent: Blog
 nav_order: 7
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Kubernetes Chaos: Deep Fault Injection with tumult-kubernetes
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 7 of the Tumult series. [← Part 6: Data-Driven Chaos: Analytics Pipeline](./06-analytics-pipeline.md)*
 
@@ -14,7 +13,7 @@ nav_order: 7
 
 Kubernetes has become the dominant platform for running production workloads, and chaos engineering for Kubernetes-native systems requires first-class Kubernetes API access. Shell scripts wrapping `kubectl` work up to a point, but they introduce fragility: dependency on the `kubectl` binary version, error handling through text parsing, and no access to the Kubernetes watch API for precise timing.
 
-`tumult-kubernetes` is a native Rust plugin using `kube-rs` — a full async Kubernetes client — for deep, typed fault injection without the `kubectl` dependency.
+`tumult-kubernetes` is a native Rust plugin using `kube-rs`; a full async Kubernetes client; for deep, typed fault injection without the `kubectl` dependency.
 
 ---
 
@@ -58,9 +57,9 @@ No `kubectl` required. The Kubernetes API calls happen directly from the Tumult 
 
 ---
 
-## Scenario 1: Pod Deletion — The Most Common Kubernetes Chaos Test
+## Scenario 1: Pod Deletion; The Most Common Kubernetes Chaos Test
 
-Pod deletion is the "hello world" of Kubernetes chaos testing. Every Kubernetes workload should survive the deletion of individual pods — that is the entire premise of ReplicaSets and Deployments. But many teams discover edge cases only when they run the test: slow readiness probes, missing pod disruption budgets, sticky sessions that break on pod replacement.
+Pod deletion is the "hello world" of Kubernetes chaos testing. Every Kubernetes workload should survive the deletion of individual pods; that is the entire premise of ReplicaSets and Deployments. But many teams discover edge cases only when they run the test: slow readiness probes, missing pod disruption budgets, sticky sessions that break on pod replacement.
 
 ```toon
 title: API deployment survives pod deletion
@@ -137,7 +136,7 @@ rollbacks[1]:
 
 ---
 
-## Scenario 2: Deployment Scale-to-Zero — Validating Health Check Propagation
+## Scenario 2: Deployment Scale-to-Zero; Validating Health Check Propagation
 
 Scale-to-zero chaos tests a different failure mode: not a sudden pod death, but a graceful drain. This validates that your load balancer (or Kubernetes service endpoint controller) correctly removes the service from rotation as pods go down.
 
@@ -225,7 +224,7 @@ regulatory:
 
 ---
 
-## Scenario 3: Node Drain — Testing Cluster-Level Resilience
+## Scenario 3: Node Drain; Testing Cluster-Level Resilience
 
 Node drain is a higher blast radius than pod deletion. Draining a node evicts all non-DaemonSet pods on that node, which may include pods from multiple deployments. This tests whether the cluster has sufficient capacity to accommodate all evicted workloads on remaining nodes.
 
@@ -319,9 +318,9 @@ rollbacks[1]:
 
 ---
 
-## Scenario 4: Network Policy — Simulating Network Partitions
+## Scenario 4: Network Policy; Simulating Network Partitions
 
-Network chaos at the Kubernetes level uses NetworkPolicy resources to create selective network partitions between services. This tests whether your services degrade gracefully when a dependency becomes unreachable — rather than cascading failures.
+Network chaos at the Kubernetes level uses NetworkPolicy resources to create selective network partitions between services. This tests whether your services degrade gracefully when a dependency becomes unreachable; rather than cascading failures.
 
 ```toon
 title: Checkout service degrades gracefully when inventory unreachable
@@ -389,7 +388,7 @@ Rather than targeting specific pod names (which change on every deployment), `tu
       # Deletes the first matching pod; use with care for multi-pod selections
 ```
 
-This makes experiments stable across deployments. The experiment targets `app=api-server` — whatever pod has that label today.
+This makes experiments stable across deployments. The experiment targets `app=api-server`; whatever pod has that label today.
 
 ---
 
@@ -409,7 +408,7 @@ CHAOS_NAMESPACE=production \
   tumult run node-drain.toon --rollback-strategy always
 ```
 
-The `--rollback-strategy always` flag ensures rollbacks execute regardless of outcome — essential for production chaos experiments where leaving the system in a modified state is unacceptable.
+The `--rollback-strategy always` flag ensures rollbacks execute regardless of outcome; essential for production chaos experiments where leaving the system in a modified state is unacceptable.
 
 ---
 
@@ -439,12 +438,12 @@ hypothesis_after_results[2]:
     output: "true"
 ```
 
-The duration of the `hypothesis_after` probes tells you the actual recovery time — the time from the probe check starting until the deployment fully recovered. This is the real MTTR: not the time until the replacement pod was scheduled, but the time until it was ready to serve traffic.
+The duration of the `hypothesis_after` probes tells you the actual recovery time; the time from the probe check starting until the deployment fully recovered. This is the real MTTR: not the time until the replacement pod was scheduled, but the time until it was ready to serve traffic.
 
 **Update:** Kubernetes chaos is now fully validated on kind (K8s v1.35.0) with the native `tumult-kubernetes` plugin wired via kube-rs. Pod deletion, deployment scaling, readiness probes, and node cordon/uncordon all tested through `tumult run`. See the [test protocol](../testprotocol.md) for results.
 
 ---
 
-*Try Tumult at [tumult.rs](https://tumult.rs) — or `curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh`*
+*Try Tumult at [tumult.rs](https://tumult.rs); or `curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh`*
 
-*Next in the series: [Part 8 — Statistical Baselines →](./08-statistical-baselines.md)*
+*Next in the series: [Part 8; Statistical Baselines →](./08-statistical-baselines.md)*

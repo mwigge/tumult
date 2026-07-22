@@ -61,17 +61,21 @@
 pub mod attribution;
 pub mod compliance;
 pub mod coverage;
+pub mod lineage;
 mod map;
 mod model;
-mod service;
-pub mod lineage;
 pub mod recommend;
 pub mod render;
+mod service;
 pub mod sql;
 pub mod topology;
 
 pub use compliance::{compliance_article_id, compliance_article_nodes, resolve_citation};
 pub use coverage::{coverage_gap_delta, AvailableAction, COVERAGE_GAP_RUN_ID};
 pub use map::journal_to_graph;
-pub use topology::{parse_topology, topology_delta, TopologyDoc, TopologyError, TopologyService, TOPOLOGY_RUN_ID};
-pub use model::{Edge, EdgeRecord, EdgeRel, EgoGraph, EgoTuple, GraphDelta, Node, NodeKind, NodeSummary};
+pub use model::{
+    Edge, EdgeRecord, EdgeRel, EgoGraph, EgoTuple, GraphDelta, Node, NodeKind, NodeSummary,
+};
+pub use topology::{
+    parse_topology, topology_delta, TopologyDoc, TopologyError, TopologyService, TOPOLOGY_RUN_ID,
+};

@@ -212,11 +212,10 @@ pub(crate) fn recommendations_for(
     ))
 }
 
-
 /// Observed-traffic criticality per service, from `TUMULT_CRITICALITY_FILE`
 /// (a JSON object: bare service name or `svc:` id → relative rate, e.g.
-/// spans/min extracted from an OTel backend). Absent/invalid = empty map =
-/// neutral factor. File-based on purpose: the derivation from OTel happens
+/// spans/min extracted from an `OTel` backend). Absent/invalid = empty map =
+/// neutral factor. File-based on purpose: the derivation from `OTel` happens
 /// in whatever pipeline owns your telemetry (see the autopilot guide for
 /// the SigNoz/ClickHouse one-liner); tumult consumes a reviewable artifact.
 pub(crate) fn criticality_from_env() -> std::collections::HashMap<String, f64> {
@@ -231,7 +230,11 @@ pub(crate) fn criticality_from_env() -> std::collections::HashMap<String, f64> {
     };
     map.into_iter()
         .map(|(k, v)| {
-            let id = if k.starts_with("svc:") { k } else { format!("svc:{k}") };
+            let id = if k.starts_with("svc:") {
+                k
+            } else {
+                format!("svc:{k}")
+            };
             (id, v)
         })
         .collect()

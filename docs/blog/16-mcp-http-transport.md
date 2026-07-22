@@ -1,32 +1,39 @@
+---
+title: "MCP over HTTP"
+parent: Blog
+nav_order: 17
+updated: 2026-07-21
+---
+
 # MCP over HTTP: Tumult as a Service
 
-*2026-04-01*
+*Originally published 2026-04-01; reviewed for Tumult 2.16.1 on 2026-07-21.*
 
-Tumult's MCP server now supports HTTP/SSE transport, enabling any MCP-compatible
+Tumult's MCP server now supports Streamable HTTP transport, enabling any MCP-compatible
 agent to connect over the network. This unlocks container-to-container
 communication, multi-agent orchestration, and fleet-wide chaos engineering.
 
 ## Why HTTP?
 
-The original stdio transport works for local use — MCP-compatible IDEs and agents connect directly. But for production agent fleets, containers,
+The original stdio transport works for local use; MCP-compatible IDEs and agents connect directly. But for production agent fleets, containers,
 and CI/CD pipelines, you need network transport.
 
-The MCP 2025-11-25 specification defines **Streamable HTTP** — a protocol where
+The MCP 2025-11-25 specification defines **Streamable HTTP**; a protocol where
 clients POST JSON-RPC requests and receive responses as Server-Sent Events (SSE).
 This gives us:
 
-- **Stateful sessions** — each client gets a session ID, enabling concurrent users
-- **Streaming results** — long-running experiments can stream progress
-- **Standard HTTP** — works through proxies, load balancers, firewalls
-- **Session resumability** — clients can reconnect and resume
+- **Stateful sessions**; each client gets a session ID, enabling concurrent users
+- **Streaming results**; long-running experiments can stream progress
+- **Standard HTTP**; works through proxies, load balancers, firewalls
+- **Session resumability**; clients can reconnect and resume
 
 ## Usage
 
 ```bash
-# Local — stdio (default, for IDE integration)
+# Local; stdio (default, for IDE integration)
 tumult-mcp
 
-# Network — HTTP/SSE (for containers and agent fleets)
+# Network; Streamable HTTP (for containers and agent fleets)
 tumult-mcp --transport http --port 3100
 
 # Docker
@@ -91,7 +98,7 @@ size_mb: 2.51
 ## Architecture
 
 ```
-┌──────────────────────┐     HTTP/SSE      ┌─────────────────┐
+┌──────────────────────┐  Streamable HTTP  ┌─────────────────┐
 │  Coding Agent        │◄─────────────────►│  tumult-mcp     │
 │  (AQE, IDEs,         │   :3100/mcp       │  --transport http│
 │   Cursor, etc.)      │                   │                 │
@@ -125,9 +132,9 @@ Any agent on the same Docker network can connect to `http://tumult-mcp:3100/mcp`
 
 ## What This Enables
 
-- **Agentic QE Fleet** — quality engineering agents run chaos experiments through Tumult
-- **CI/CD chaos gates** — pipeline steps can call Tumult MCP to validate resilience
-- **Multi-tenant** — multiple agents can share one Tumult instance via sessions
-- **Remote chaos** — run experiments against production from a central control plane
+- **Agentic QE Fleet**; quality engineering agents run chaos experiments through Tumult
+- **CI/CD chaos gates**; pipeline steps can call Tumult MCP to validate resilience
+- **Multi-tenant**; multiple agents can share one Tumult instance via sessions
+- **Remote chaos**; run experiments against production from a central control plane
 
 Next: connecting the Agentic QE Fleet to Tumult for autonomous chaos engineering.

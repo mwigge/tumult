@@ -19,9 +19,16 @@ journal.toon
 
 # Local documentation (not tracked)
 docs_local/
+/docs/verification-*.md
+/docs/style-guide.md
 
 # Local AI rules (not tracked)
 CLAUDE.md
+AGENTS.md
+GEMINI.md
+.agents/
+.codex/
+.github/copilot-instructions.md
 
 # Local OpenSpec change proposals / specs (not tracked)
 openspec/

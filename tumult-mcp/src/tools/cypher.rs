@@ -1,11 +1,13 @@
 //! `tumult_chaosgraph_cypher` — arbitrary read-only openCypher over the
-//! whole ChaosGraph.
+//! whole `ChaosGraph`.
 //!
-//! Architecture: no second store. The graph is snapshotted out of DuckDB
-//! (the only source of truth) and rebuilt inside an in-memory GrafeoDB
-//! engine per call — at ChaosGraph volumes that is milliseconds, and it
+//! Architecture: no second store. The graph is snapshotted out of `DuckDB`
+//! (the only source of truth) and rebuilt inside an in-memory `GrafeoDB`
+//! engine per call — at `ChaosGraph` volumes that is milliseconds, and it
 //! makes the Cypher engine fully disposable. Mutating clauses are rejected
 //! before execution; results are row-capped.
+
+#![allow(clippy::missing_errors_doc)]
 
 use tumult_cypher::{GraphSnapshot, SnapshotEdge, SnapshotNode};
 
@@ -49,7 +51,7 @@ fn open_store_ro(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, T
         .map_err(|e| ToolError::Store(e.to_string()))
 }
 
-/// Snapshot the entire ChaosGraph from the analytics store.
+/// Snapshot the entire `ChaosGraph` from the analytics store.
 fn snapshot(store: &tumult_analytics::AnalyticsStore) -> Result<GraphSnapshot, ToolError> {
     let mut nodes = Vec::new();
     for kind in NODE_KINDS {
@@ -169,7 +171,10 @@ mod tests {
         let store_path = seeded_store(tmp.path());
         let err = chaosgraph_cypher(&store_path, "CREATE (n:service {id: 'x'})", None)
             .expect_err("mutating cypher must be rejected");
-        assert!(err.to_string().to_lowercase().contains("mutat"), "got: {err}");
+        assert!(
+            err.to_string().to_lowercase().contains("mutat"),
+            "got: {err}"
+        );
     }
 
     #[test]

@@ -101,6 +101,11 @@ pub fn cmd_autopilot_export(store: Option<&Path>, dir: &Path) -> Result<()> {
 }
 
 /// Record a change event against a service.
+///
+/// # Errors
+///
+/// Returns an error if the analytics store cannot be opened or the event
+/// cannot be persisted.
 pub fn cmd_autopilot_notify_change(
     store: Option<&Path>,
     service: &str,

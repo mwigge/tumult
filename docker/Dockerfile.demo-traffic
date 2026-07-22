@@ -5,7 +5,7 @@
 #   docker build -f docker/Dockerfile.demo-traffic -t demo-traffic .
 
 # ---- Stage 1: build ----
-FROM rust:1.89-bookworm AS builder
+FROM rust:1.91.1-bookworm AS builder
 WORKDIR /build
 
 COPY demo/traffic/Cargo.toml demo/traffic/Cargo.lock* ./

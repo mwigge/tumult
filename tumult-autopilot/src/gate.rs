@@ -25,7 +25,7 @@
 //!
 //! The gate reads no clocks and holds no handles: every time- or
 //! environment-shaped fact arrives pre-computed in
-//! [`AmbientContext`](crate::candidate::AmbientContext). All rules are
+//! [`AmbientContext`]. All rules are
 //! evaluated in one fixed order ([`RULE_ORDER`]) with *no* short-circuiting,
 //! so [`GateDecision::rules_evaluated`] always lists every rule with its
 //! outcome — that vector is the audit record, and verdicts are

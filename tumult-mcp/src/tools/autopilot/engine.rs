@@ -6,7 +6,6 @@
 //! policy hash) is persisted with the verdict, so any decision can be
 //! replayed bit-for-bit against the corresponding policy text.
 
-
 use tumult_autopilot::{
     class_key, evaluate, validate, AmbientContext, AutonomyRecord, Candidate, ConfidenceTier,
     GateDecision, LoadedPolicy, Trigger, Verdict,
@@ -14,6 +13,18 @@ use tumult_autopilot::{
 use tumult_graph::lineage::{compute_lineage, ControlServiceStatus, LineageCell};
 
 use crate::error::ToolError;
+
+const NANOS_PER_DAY: i64 = 86_400_000_000_000;
+
+fn elapsed_days(now_ns: i64, then_ns: i64) -> u32 {
+    let days = now_ns.saturating_sub(then_ns).div_euclid(NANOS_PER_DAY);
+    u32::try_from(days).unwrap_or(u32::MAX)
+}
+
+fn elapsed_hours(now_ns: i64, then_ns: i64) -> f64 {
+    let nanos = u64::try_from(now_ns.saturating_sub(then_ns)).unwrap_or(0);
+    std::time::Duration::from_nanos(nanos).as_secs_f64() / 3_600.0
+}
 
 use crate::tools::topology::inputs::{gather_inputs, recommendations_for, TopologyInputs};
 
@@ -92,9 +103,7 @@ fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64
         .edges
         .iter()
         .filter(|e| {
-            e.rel == "evidences"
-                && e.dst == cell.article_id
-                && cell.experiments.contains(&e.src)
+            e.rel == "evidences" && e.dst == cell.article_id && cell.experiments.contains(&e.src)
         })
         .map(|e| e.ts)
         .max()
@@ -131,9 +140,9 @@ pub(super) fn assemble_candidates(
 
     let mut out = Vec::new();
     for rec in recommendations {
-        let cell = lineage.iter().find(|c| {
-            c.article_id == rec.article_id && c.service_id == rec.service_id
-        });
+        let cell = lineage
+            .iter()
+            .find(|c| c.article_id == rec.article_id && c.service_id == rec.service_id);
         let broken = cell.is_some_and(|c| c.status == ControlServiceStatus::Broken);
         let trigger = if broken {
             Trigger::BrokenControl {
@@ -144,25 +153,24 @@ pub(super) fn assemble_candidates(
             // is the documented sentinel for never-evidenced.
             let age_days = cell
                 .and_then(|c| latest_evidence_ns(&inputs, c))
-                .map_or(u32::MAX, |ts| {
-                    let days = (now_ns - ts) as f64 / 86_400_000_000_000.0;
-                    if days <= 0.0 { 0 } else { days as u32 }
-                });
+                .map_or(u32::MAX, |ts| elapsed_days(now_ns, ts));
             Trigger::Staleness {
                 article_id: rec.article_id.clone(),
                 age_days,
             }
         };
 
-        let service_name = rec.service_id.strip_prefix("svc:").unwrap_or(&rec.service_id);
+        let service_name = rec
+            .service_id
+            .strip_prefix("svc:")
+            .unwrap_or(&rec.service_id);
         let playbook = policy
             .policy
             .playbook_for(&rec.plugin, &rec.action, Some(service_name))
             .map(|p| p.experiment.clone());
         let (has_steady, has_rollback, has_guard, fault_count) = playbook
             .as_deref()
-            .map(inspect_experiment)
-            .unwrap_or((false, false, false, 0));
+            .map_or((false, false, false, 0), inspect_experiment);
 
         let tier = tier_of(&rec.service_id);
         let candidate = Candidate {
@@ -188,7 +196,7 @@ pub(super) fn assemble_candidates(
         let hours_since_last = store
             .autopilot_last_enacted_on(&candidate.service_id)
             .map_err(|e| ToolError::Store(e.to_string()))?
-            .map(|ts| ((now_ns - ts) as f64 / 3_600_000_000_000.0).max(0.0));
+            .map(|ts| elapsed_hours(now_ns, ts));
         let open_deviation = lineage.iter().any(|c| {
             c.service_id == candidate.service_id
                 && c.status == ControlServiceStatus::Broken
@@ -226,7 +234,13 @@ pub(super) fn assemble_candidates(
         });
 
         let validator = validate(&candidate);
-        let decision = evaluate(&policy.policy, &candidate, &ambient, record.as_ref(), &validator);
+        let decision = evaluate(
+            &policy.policy,
+            &candidate,
+            &ambient,
+            record.as_ref(),
+            &validator,
+        );
         out.push(Assembled {
             candidate,
             decision,
@@ -294,10 +308,9 @@ pub(super) fn assemble_candidates(
             let hours_since_last = store
                 .autopilot_last_enacted_on(&candidate.service_id)
                 .map_err(|e| ToolError::Store(e.to_string()))?
-                .map(|ts| ((now_ns - ts) as f64 / 3_600_000_000_000.0).max(0.0));
+                .map(|ts| elapsed_hours(now_ns, ts));
             let open_deviation = lineage.iter().any(|c| {
-                c.service_id == candidate.service_id
-                    && c.status == ControlServiceStatus::Broken
+                c.service_id == candidate.service_id && c.status == ControlServiceStatus::Broken
             });
             let ambient = AmbientContext {
                 open_deviation_for_target: open_deviation,
@@ -311,21 +324,31 @@ pub(super) fn assemble_candidates(
                     None
                 },
             };
-            let key = class_key(&candidate.plugin, &candidate.action, candidate.tier.as_deref());
-            let record = class_history
-                .iter()
-                .find(|h| h.class_key == key)
-                .map(|h| AutonomyRecord {
-                    enacted_total: h.enacted_total,
-                    enacted_clean: h.enacted_clean,
-                });
+            let key = class_key(
+                &candidate.plugin,
+                &candidate.action,
+                candidate.tier.as_deref(),
+            );
+            let record =
+                class_history
+                    .iter()
+                    .find(|h| h.class_key == key)
+                    .map(|h| AutonomyRecord {
+                        enacted_total: h.enacted_total,
+                        enacted_clean: h.enacted_clean,
+                    });
             let autonomy_score = record.as_ref().and_then(|r| {
                 (r.enacted_total > 0)
                     .then(|| f64::from(r.enacted_clean) / f64::from(r.enacted_total))
             });
             let validator = validate(&candidate);
-            let decision =
-                evaluate(&policy.policy, &candidate, &ambient, record.as_ref(), &validator);
+            let decision = evaluate(
+                &policy.policy,
+                &candidate,
+                &ambient,
+                record.as_ref(),
+                &validator,
+            );
             out.push(Assembled {
                 candidate,
                 decision,

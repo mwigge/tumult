@@ -8,7 +8,7 @@
 name = "demo-traffic"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.89"
+rust-version = "1.91.1"
 publish = false
 description = "Continuous traffic generator that drives demo-app so there is load to disrupt"
 license = "Apache-2.0"

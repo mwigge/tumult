@@ -19,14 +19,13 @@ use super::output_schema::output_schema_for;
 use super::schema::{
     AgenticListScenariosTool, AgenticRunExperimentTool, AgenticSmokeTool, AgentsTool,
     AnalyzeStoreTool, AnalyzeTool, AutopilotExportTool, AutopilotNotifyTool, AutopilotRespondTool,
-    AutopilotRunTool,
-    AutopilotStatusTool, ChaosGraphCoverageGapsTool, ChaosGraphCypherTool, ChaosGraphNeighborsTool,
-    ChaosGraphQueryTool, ComplianceLineageTool, ComplianceTool, CoverageTool,
-    CreateExperimentTool, DiscoverTool, FaultCatalogTool, GameDayAnalyzeTool, GameDayCreateTool,
-    GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool, QueryTracesTool,
-    ReadJournalTool, RecommendInjectionTool, RecommendTool, ReportTool, RunExperimentTool,
-    ScaffoldExperimentTool, StoreStatsTool, TopologyImportTool, TopologyMapTool, TrendTool,
-    ValidateTool, WhoamiTool,
+    AutopilotRunTool, AutopilotStatusTool, ChaosGraphCoverageGapsTool, ChaosGraphCypherTool,
+    ChaosGraphNeighborsTool, ChaosGraphQueryTool, ComplianceLineageTool, ComplianceTool,
+    CoverageTool, CreateExperimentTool, DiscoverTool, FaultCatalogTool, GameDayAnalyzeTool,
+    GameDayCreateTool, GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool,
+    QueryTracesTool, ReadJournalTool, RecommendInjectionTool, RecommendTool, ReportTool,
+    RunExperimentTool, ScaffoldExperimentTool, StoreStatsTool, TopologyImportTool, TopologyMapTool,
+    TrendTool, ValidateTool, WhoamiTool,
 };
 use super::{Role, TumultHandler};
 

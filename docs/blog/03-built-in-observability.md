@@ -2,11 +2,15 @@
 title: "Built-In Proof: Native Observability with OpenTelemetry"
 parent: Blog
 nav_order: 3
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Built-In Proof: Native Observability with OpenTelemetry
 
-![Tumult Banner](/images/tumult-banner.png)
+Tumult follows OpenTelemetry's
+[trace model](https://opentelemetry.io/docs/concepts/signals/traces/): a trace is
+composed of causally related spans, with context propagated across process
+boundaries where the target supports it.
 
 *Part 3 of the Tumult series. [← Part 2: The AI Advantage](./02-ai-advantage.md)*
 
@@ -14,7 +18,7 @@ nav_order: 3
 
 There is a moment every chaos engineering practitioner knows. The experiment runs. The steady-state hypothesis fails. And then comes the question that the tool cannot answer: **what actually happened?**
 
-With most chaos tools, answering that question requires correlating the experiment log with your APM traces, your application metrics, your infrastructure dashboards — each in a different system, each with its own time format and naming convention. You are doing forensic archaeology on your own infrastructure, after the fact.
+With most chaos tools, answering that question requires correlating the experiment log with your APM traces, your application metrics, your infrastructure dashboards; each in a different system, each with its own time format and naming convention. You are doing forensic archaeology on your own infrastructure, after the fact.
 
 Tumult takes a different position: **the experiment itself is the trace**. Every action, every probe, every hypothesis evaluation is a span. The fault injection and the system's response are correlated by trace ID from the moment the experiment starts. By the time you open Jaeger or Datadog, the full causal chain is already assembled.
 
@@ -28,7 +32,7 @@ This creates two problems.
 
 **First, the timing problem.** Your chaos tool records "action started at 14:23:11.234". Your APM system records "latency spike at 14:23:11.891". Are these the same event? Which clock is authoritative? Did the network latency between the chaos tool and the monitoring backend skew the timestamps? Without a shared trace context, you cannot be certain.
 
-**Second, the causation problem.** Observability tools are excellent at showing you that something went wrong. They are poor at telling you what caused it. When your error rate spikes in production, you scroll through dashboards trying to find the correlated event. In a chaos experiment, the cause is known — you injected it — but without native trace context, that knowledge is trapped in the chaos tool's log.
+**Second, the causation problem.** Observability tools are excellent at showing you that something went wrong. They are poor at telling you what caused it. When your error rate spikes in production, you scroll through dashboards trying to find the correlated event. In a chaos experiment, the cause is known; you injected it; but without native trace context, that knowledge is trapped in the chaos tool's log.
 
 Tumult solves both problems by generating the trace context itself.
 
@@ -44,7 +48,7 @@ tumult.experiment (root span)
 │  experiment_name: "PostgreSQL failover recovery"
 │  status: deviated
 │
-├── tumult.hypothesis.before
+├── resilience.hypothesis.before
 │   │  hypothesis_met: true
 │   │  duration_ms: 234
 │   │
@@ -68,7 +72,7 @@ tumult.experiment (root span)
 │          duration_ms: 31
 │          output: "0"
 │
-├── tumult.hypothesis.after
+├── resilience.hypothesis.after
 │   │  hypothesis_met: false
 │   │  duration_ms: 189
 │   │
@@ -145,7 +149,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
   tumult run experiment.toon
 ```
 
-Open `http://localhost:16686`, search for service `tumult`, and you will see the full trace for the experiment run. Every phase, every probe, every action — with timing and attributes.
+Open `http://localhost:16686`, search for service `tumult`, and you will see the full trace for the experiment run. Every phase, every probe, every action; with timing and attributes.
 
 ---
 
@@ -163,7 +167,7 @@ Tumult ──OTLP──▶ OTel Collector ──▶ Your Backend
                        └──▶ SigNoz / Datadog / New Relic / etc.
 ```
 
-The collector configuration determines where telemetry goes. Switching from Jaeger to Grafana Tempo is a collector config change — zero Tumult code changes required. The `collector/` directory in the repository ships with reference configurations for common backends:
+The collector configuration determines where telemetry goes. Switching from Jaeger to Grafana Tempo is a collector config change; zero Tumult code changes required. The `collector/` directory in the repository ships with reference configurations for common backends:
 
 | Config file | Backend |
 |-------------|---------|
@@ -188,15 +192,15 @@ Beyond traces, Tumult emits OTel metrics for experiment-level aggregation:
 
 These metrics feed directly into Prometheus (or any OTLP-compatible metrics backend). You can build dashboards showing:
 
-- Deviation rate by system over time — is your service getting more or less resilient?
-- Action execution time trends — are your chaos actions slower in certain environments?
-- Hypothesis failure heatmaps — which experiments are consistently failing pre-conditions?
+- Deviation rate by system over time; is your service getting more or less resilient?
+- Action execution time trends; are your chaos actions slower in certain environments?
+- Hypothesis failure heatmaps; which experiments are consistently failing pre-conditions?
 
 ---
 
 ## What Correlated Traces Change About Post-Incident Reviews
 
-Here is a scenario that illustrates why this matters.
+Consider a database connection-limit experiment.
 
 Your team runs a weekly chaos experiment on the payment service: kill the database primary connection and verify automatic reconnection within 15 seconds. This week, the hypothesis fails. Recovery takes 47 seconds instead of 15.
 
@@ -211,9 +215,9 @@ You spend the review matching timestamps across four systems, with different clo
 **With Tumult traces**, the review looks like this:
 - Open the experiment trace
 - See the root span: `status: deviated`, `resilience.post.recovery_time_s: 47.3`
-- Drill into the `tumult.hypothesis.after` span: probe timeout at 5003ms
-- See the `resilience.during.shape: catastrophic` attribute — the connection count didn't degrade gracefully, it went to zero immediately
-- See `resilience.analysis.estimate_accuracy: 0.0` — the prediction of 15-second recovery was significantly wrong
+- Drill into the `resilience.hypothesis.after` span: probe timeout at 5003ms
+- See the `resilience.during.shape: catastrophic` attribute; the connection count didn't degrade gracefully, it went to zero immediately
+- See `resilience.analysis.estimate_accuracy: 0.0`; the prediction of 15-second recovery was significantly wrong
 
 The trace is the review artifact. Everything needed to understand the outcome is in the same view, with the same timestamps, correlated by trace ID.
 
@@ -234,7 +238,7 @@ TUMULT_OTEL_CONSOLE=true tumult run experiment.toon
 OTEL_SERVICE_NAME=chaos-pipeline tumult run experiment.toon
 ```
 
-Note: when `TUMULT_OTEL_ENABLED=false`, telemetry is still collected internally for the journal — it is only the OTLP export that is disabled. The journal always contains full timing and result data regardless of the OTel configuration.
+Note: when `TUMULT_OTEL_ENABLED=false`, telemetry is still collected internally for the journal; it is only the OTLP export that is disabled. The journal always contains full timing and result data regardless of the OTel configuration.
 
 ---
 
@@ -256,8 +260,8 @@ journal.toon (results, all 5 phases)
     └──▶ HTML report (human-readable summary)
 ```
 
-An auditor can start from the HTML report, drill into the journal for raw data, and follow the `trace_id` into the observability stack for the full distributed trace with nanosecond precision timing. This chain is the foundation for regulatory compliance evidence — covered in depth in Part 9 of this series.
+An auditor can start from the HTML report, drill into the journal for raw data, and follow the `trace_id` into the observability stack for the full distributed trace with nanosecond precision timing. This chain is the foundation for regulatory compliance evidence; covered in depth in Part 9 of this series.
 
 ---
 
-*Next in the series: [Part 4 — The Plugin System: From Script to Binary →](./04-plugin-system.md)*
+*Next in the series: [Part 4; The Plugin System: From Script to Binary →](./04-plugin-system.md)*

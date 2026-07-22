@@ -11,9 +11,9 @@
 #   --build-arg BASE=ghcr.io/mwigge/tumult:1.0.0
 #
 # Run:
-#   docker run --network tumult-e2e -p 3100:3100 tumult-mcp
+#   docker run -e TUMULT_MCP_TOKEN=... -p 3100:3100 tumult-mcp
 
 ARG BASE=tumult
 FROM ${BASE}
 
-ENTRYPOINT ["tumult-mcp", "--transport", "http"]
+ENTRYPOINT ["tumult-mcp", "--transport", "http", "--host", "0.0.0.0"]

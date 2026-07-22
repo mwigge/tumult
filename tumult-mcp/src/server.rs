@@ -23,7 +23,7 @@ use rust_mcp_sdk::{
 pub enum Transport {
     /// Newline-delimited JSON-RPC over stdin/stdout (default).
     Stdio,
-    /// Streamable HTTP / SSE transport.
+    /// MCP Streamable HTTP transport.
     Http,
 }
 
@@ -84,6 +84,17 @@ fn server_details() -> InitializeResult {
         ),
         meta: None,
     }
+}
+
+fn allowed_http_origins(host: &str, port: u16) -> Vec<String> {
+    let mut origins = vec![format!("http://{host}:{port}")];
+    if crate::handler::host_is_loopback(host) || matches!(host, "0.0.0.0" | "::" | "[::]") {
+        origins.push(format!("http://127.0.0.1:{port}"));
+        origins.push(format!("http://localhost:{port}"));
+        origins.sort();
+        origins.dedup();
+    }
+    origins
 }
 
 /// Minimal HTTP health check server using raw TCP.
@@ -238,6 +249,7 @@ pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
                 "Tumult MCP server listening on http://{}:{}/mcp",
                 opts.host, opts.port
             );
+            let allowed_origins = allowed_http_origins(&opts.host, opts.port);
             let server = hyper_server::create_server(
                 details,
                 handler,
@@ -247,6 +259,11 @@ pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
                     event_store: Some(Arc::new(InMemoryEventStore::default())),
                     task_store: Some(Arc::new(InMemoryTaskStore::new(None))),
                     client_task_store: Some(Arc::new(InMemoryTaskStore::new(None))),
+                    // MCP requires Origin validation for Streamable HTTP to
+                    // prevent DNS-rebinding attacks. Non-browser clients that
+                    // omit Origin remain supported by the SDK middleware.
+                    allowed_origins: Some(allowed_origins),
+                    dns_rebinding_protection: true,
                     ..Default::default()
                 },
             );
@@ -273,4 +290,24 @@ fn flush_telemetry() {
         opentelemetry::trace::noop::NoopTracerProvider::new(),
     );
     eprintln!("telemetry flushed, exiting");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allowed_http_origins;
+
+    #[test]
+    fn wildcard_http_bind_accepts_local_browser_origins() {
+        let origins = allowed_http_origins("0.0.0.0", 3100);
+        assert!(origins.contains(&"http://127.0.0.1:3100".to_string()));
+        assert!(origins.contains(&"http://localhost:3100".to_string()));
+    }
+
+    #[test]
+    fn named_http_bind_only_accepts_its_origin() {
+        assert_eq!(
+            allowed_http_origins("tumult.internal", 3100),
+            vec!["http://tumult.internal:3100"]
+        );
+    }
 }

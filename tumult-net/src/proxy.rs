@@ -4,7 +4,7 @@
 //! connection, and forwards both directions concurrently. Because the
 //! `tokio-netem` adapters are directional, each socket is split with
 //! [`TcpStream::into_split`] and the egress (write) half of each direction is
-//! wrapped with the fault stack from [`crate::faults::wrap_writer`]. This is the
+//! wrapped with the internal fault stack. This is the
 //! `copy_bidirectional` pattern expanded into two independently faulted
 //! `tokio::io::copy` pipes driven under [`tokio::try_join`].
 

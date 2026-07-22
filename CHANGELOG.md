@@ -4,6 +4,34 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.16.1] — 2026-07-22
+
+### Changed
+- Raised the minimum supported Rust version to 1.91.1 and aligned local,
+  container, CI, and release builds on that requirement.
+- Reworked the README, guides, and blog index around the current 2.16 feature
+  set and replaced unsupported readiness and competitor claims with scoped,
+  verifiable language.
+- Release publication now requires successful binary builds, both container
+  images, and image smoke tests before a GitHub Release is created.
+
+### Fixed
+- Restored clean rustfmt, Clippy, rustdoc, and unused-dependency gates on the
+  main branch.
+- Fixed the 2.16.0 container build failure caused by Rust 1.89 being older than
+  the resolved Grafeo dependency's Rust 1.91.1 requirement.
+- Corrected stale README counts, the incomplete 40-tool MCP reference, blog
+  index gaps, and the 2.16 autopilot gate count.
+
+### Security
+- Updated the dependency lockfile to patched releases for the `quick-xml`,
+  `quinn-proto`, `crossbeam-epoch`, `anyhow`, and `rand` advisories reported by
+  the 2.16.0 security audit.
+- Documented temporary `cargo-deny` exceptions for unmaintained transitive
+  crates and the `lru::IterMut` advisory; Tumult does not call the affected
+  iterator API.
+- Removed unused dependencies from the demo control panel and cloud executor.
+
 ## [2.16.0] — 2026-07-07
 
 ### Added

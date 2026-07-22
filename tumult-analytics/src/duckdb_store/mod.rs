@@ -94,9 +94,9 @@ fn open_with_retry(
 pub mod autopilot;
 mod graph;
 mod ingest;
-pub mod topology;
 mod maintenance;
 mod query;
+pub mod topology;
 mod types;
 
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
@@ -301,7 +301,8 @@ impl AnalyticsStore {
         // both the fresh-install DDL and the additive v1 → v2 migration: an
         // existing store simply gains the two tables, keeping all prior data.
         self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
-        self.conn.execute_batch(autopilot::CREATE_AUTOPILOT_TABLES)?;
+        self.conn
+            .execute_batch(autopilot::CREATE_AUTOPILOT_TABLES)?;
         // ChaosGraph Phase 2 (schema v3): add the edges `attrs` column to a
         // pre-existing v2 `graph_edges` table. `ADD COLUMN IF NOT EXISTS` makes
         // this a no-op on fresh v3 tables and idempotent on every open.

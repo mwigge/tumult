@@ -6,12 +6,12 @@ use super::types::{AcquisitionConfig, AcquisitionError, AcquisitionResult, Probe
 /// Streaming baseline acquisition builder.
 ///
 /// Accepts probe samples incrementally — one value at a time — and
-/// derives the final baseline when [`finish`] is called.
+/// derives the final baseline when [`Self::finish`] is called.
 ///
 /// This is a synchronous, allocation-friendly alternative to building a
 /// complete [`ProbeSamples`] vector before calling [`derive_baseline`].
 /// The async probe loop pushes each result here as it arrives; the runner
-/// calls [`finish`] at the end of the warmup window.
+/// calls [`Self::finish`] at the end of the warmup window.
 ///
 /// # Examples
 ///

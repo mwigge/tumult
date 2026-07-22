@@ -140,9 +140,7 @@ pub fn proposed_topology_toml(services: &[DiscoveredService]) -> String {
         out.push('\n');
         let prefix = if duplicate { "# " } else { "" };
         if duplicate {
-            out.push_str(
-                "# DUPLICATE NAME: a service with this name was already proposed from\n",
-            );
+            out.push_str("# DUPLICATE NAME: a service with this name was already proposed from\n");
             out.push_str("# another namespace — resolve manually before importing.\n");
         }
         // Writing into a String is infallible.
@@ -270,7 +268,10 @@ mod tests {
         assert_eq!(discovered.namespace, "prod");
         assert_eq!(discovered.tier.as_deref(), Some("edge"));
         assert_eq!(discovered.owner.as_deref(), Some("team-payments"));
-        assert_eq!(discovered.selector_apps, vec!["checkout-app", "checkout-chart"]);
+        assert_eq!(
+            discovered.selector_apps,
+            vec!["checkout-app", "checkout-chart"]
+        );
     }
 
     #[test]
@@ -282,14 +283,16 @@ mod tests {
 
         let discovered = reduce(service).unwrap();
         assert_eq!(discovered.tier.as_deref(), Some("database"));
-        assert_eq!(discovered.owner, None, "owner comes from tumult.io/owner only");
+        assert_eq!(
+            discovered.owner, None,
+            "owner comes from tumult.io/owner only"
+        );
     }
 
     #[test]
     fn reduce_never_takes_owner_from_managed_by() {
         let mut value = service_json("prod", "web");
-        value["metadata"]["labels"] =
-            serde_json::json!({ "app.kubernetes.io/managed-by": "helm" });
+        value["metadata"]["labels"] = serde_json::json!({ "app.kubernetes.io/managed-by": "helm" });
         let service: Service = serde_json::from_value(value).unwrap();
         assert_eq!(reduce(service).unwrap().owner, None);
     }
@@ -388,9 +391,9 @@ mod tests {
     #[test]
     fn proposed_toml_carries_review_header_and_context_comments() {
         let toml = proposed_topology_toml(&[labeled("prod", "api", "service", "team-core")]);
-        assert!(toml.starts_with(
-            "# proposed by tumult topology discover-k8s — REVIEW before import\n"
-        ));
+        assert!(
+            toml.starts_with("# proposed by tumult topology discover-k8s — REVIEW before import\n")
+        );
         assert!(toml.contains("# namespace: prod — selects app(s): api-app\n"));
         assert!(
             toml.contains("depends_on = [] # not discoverable from Kubernetes"),
@@ -404,7 +407,10 @@ mod tests {
         let toml = proposed_topology_toml(&services);
 
         assert!(toml.contains("# DUPLICATE NAME"), "toml:\n{toml}");
-        assert!(toml.contains("# [[service]]\n# name = \"web\""), "toml:\n{toml}");
+        assert!(
+            toml.contains("# [[service]]\n# name = \"web\""),
+            "toml:\n{toml}"
+        );
         let doc = tumult_graph::topology::parse_topology(&toml).expect("still valid");
         assert_eq!(doc.services.len(), 1, "only the first web is active");
     }
@@ -418,7 +424,10 @@ mod tests {
 
     #[test]
     fn rendering_is_deterministic() {
-        let services = vec![labeled("prod", "api", "service", "team-core"), svc("prod", "db")];
+        let services = vec![
+            labeled("prod", "api", "service", "team-core"),
+            svc("prod", "db"),
+        ];
         assert_eq!(
             proposed_topology_toml(&services),
             proposed_topology_toml(&services)
@@ -449,8 +458,7 @@ mod tests {
         };
         let discovered = reduce(service).unwrap();
         let doc =
-            tumult_graph::topology::parse_topology(&proposed_topology_toml(&[discovered]))
-                .unwrap();
+            tumult_graph::topology::parse_topology(&proposed_topology_toml(&[discovered])).unwrap();
         assert_eq!(doc.services[0].tier.as_deref(), Some("data"));
         assert_eq!(doc.services[0].owner.as_deref(), Some("team-db"));
     }

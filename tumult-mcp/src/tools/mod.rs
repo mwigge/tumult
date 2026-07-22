@@ -5,10 +5,10 @@
 //! submodules and re-exported here to preserve the flat `tools::*` API.
 
 mod agentic;
-pub mod autopilot;
 mod agents;
 mod analysis;
 mod authoring;
+pub mod autopilot;
 mod cypher;
 mod experiment;
 mod gameday;
@@ -22,10 +22,12 @@ mod validation;
 mod whoami;
 
 pub use agentic::{agentic_list_scenarios, agentic_run_experiment, agentic_smoke};
-pub use autopilot::{autopilot_export, autopilot_notify_change, autopilot_once, autopilot_respond, autopilot_status};
 pub use agents::agents;
 pub use analysis::{analyze, analyze_persistent, store_stats};
 pub use authoring::{fault_catalog, scaffold_experiment, ScaffoldArgs};
+pub use autopilot::{
+    autopilot_export, autopilot_notify_change, autopilot_once, autopilot_respond, autopilot_status,
+};
 pub use cypher::chaosgraph_cypher;
 pub use experiment::{
     create_experiment, run_experiment, validate_experiment, RunExperimentRequest,
@@ -49,7 +51,7 @@ pub use whoami::whoami;
 /// structured JSON object placed in `CallToolResult::structured_content`.
 ///
 /// The structured map is the source of truth; `text` is a rendering of it
-/// (or a raw/TOON rendering) and may be truncated to [`MAX_TEXT_BYTES`].
+/// (or a raw/TOON rendering) and may be truncated to the server's text limit.
 #[derive(Debug)]
 pub struct StructuredReport {
     /// Text content returned to the client (possibly truncated).

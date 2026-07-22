@@ -2,21 +2,20 @@
 title: "Chaos Under Load: Network Faults and Load Testing"
 parent: Blog
 nav_order: 10
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Chaos Under Load: Network Faults and Load Testing with tumult-network and tumult-loadtest
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 10 of the Tumult series. [← Part 9: Compliance as Code](./09-regulatory-compliance.md)*
 
 ---
 
-Most chaos engineering tooling treats faults and load as separate concerns. You inject a fault, observe what breaks, roll back, and write up the results. Load tests are a different discipline — they live in a different tool, run on a different schedule, and produce data that never meets your fault injection data.
+Most chaos engineering tooling treats faults and load as separate concerns. You inject a fault, observe what breaks, roll back, and write up the results. Load tests are a different discipline; they live in a different tool, run on a different schedule, and produce data that never meets your fault injection data.
 
 This separation creates a blind spot. Production failures rarely happen to idle systems. The database that falls over under a failover was serving 3,000 requests per second when it went. The network partition that cascaded into an outage hit during peak traffic. Testing faults in isolation tells you what breaks; testing faults under realistic load tells you whether your system actually survives.
 
-`tumult-network` and `tumult-loadtest` close that gap. Together, they let you inject realistic network faults while real traffic is running — and capture both streams of data in the same TOON journal, correlated through the same OTel trace.
+`tumult-network` and `tumult-loadtest` close that gap. Together, they let you inject realistic network faults while real traffic is running; and capture both streams of data in the same TOON journal, correlated through the same OTel trace.
 
 ---
 
@@ -24,8 +23,8 @@ This separation creates a blind spot. Production failures rarely happen to idle 
 
 `tumult-network` is a script-based plugin that operates at the OS networking layer. It uses two standard Linux tools:
 
-- **`tc netem`** — the kernel's built-in network emulation subsystem, available via iproute2. Adds latency, packet loss, and corruption directly on the interface.
-- **`iptables`** — kernel-level packet filtering. Used for DNS blocking and host partitioning.
+- **`tc netem`**; the kernel's built-in network emulation subsystem, available via iproute2. Adds latency, packet loss, and corruption directly on the interface.
+- **`iptables`**; kernel-level packet filtering. Used for DNS blocking and host partitioning.
 
 Because the faults are applied at the OS level, they affect all traffic on the interface regardless of protocol or application. The plugin does not require application modifications, sidecar proxies, or service mesh configuration.
 
@@ -42,7 +41,7 @@ Because the faults are applied at the OS level, they affect all traffic on the i
 | `add-latency` | `tc netem delay` | Cross-region links, degraded WAN, satellite, throttled CDN |
 | `add-packet-loss` | `tc netem loss` | Intermittent connectivity, wireless interference, congested uplinks |
 | `add-corruption` | `tc netem corrupt` | Faulty cables, bad NICs, hardware-level bit errors |
-| `reset-tc` | `tc qdisc del` | Rollback — removes all netem rules from the interface |
+| `reset-tc` | `tc qdisc del` | Rollback; removes all netem rules from the interface |
 | `block-dns` | `iptables DROP` on UDP/TCP 53 | DNS outage, split-horizon failure, resolver unavailability |
 | `partition-host` | `iptables DROP` by destination IP | Network split, firewall misconfiguration, VPC route failure |
 
@@ -80,7 +79,7 @@ rollbacks[1]:
         TUMULT_INTERFACE: eth0
 ```
 
-`TUMULT_TARGET_IP` is optional — omit it to apply latency to all traffic on the interface. Include it to target a specific peer (a database, a downstream service, a specific pod IP).
+`TUMULT_TARGET_IP` is optional; omit it to apply latency to all traffic on the interface. Include it to target a specific peer (a database, a downstream service, a specific pod IP).
 
 The rollback calls `reset-tc.sh`, which removes all netem rules from the interface. Always register this as a rollback; `tc netem` rules are persistent across the experiment unless explicitly cleared.
 
@@ -99,7 +98,7 @@ method[1]:
         TUMULT_CORRELATION: 25
 ```
 
-`TUMULT_CORRELATION` (0–100) controls temporal correlation between dropped packets — a value of 25 means each drop is 25% correlated with the previous one, simulating burst loss rather than uniform random loss. This matters: TCP behaves differently under burst loss than under uniform loss, and burst loss is what you see in practice on congested links.
+`TUMULT_CORRELATION` (0–100) controls temporal correlation between dropped packets; a value of 25 means each drop is 25% correlated with the previous one, simulating burst loss rather than uniform random loss. This matters: TCP behaves differently under burst loss than under uniform loss, and burst loss is what you see in practice on congested links.
 
 ### Partitioning a Host
 
@@ -154,7 +153,7 @@ Both probes run in `steady-state` (BASELINE phase) before the fault is injected,
 
 ## tumult-loadtest: Sustained Traffic During Fault Injection
 
-`tumult-loadtest` integrates k6 and JMeter with the Tumult experiment lifecycle. The key design detail is `background: true` — load generators run as background processes while the rest of the experiment proceeds through fault injection, probing, and rollback. When the experiment completes, the rollback phase stops the load generator and collects its output metrics.
+`tumult-loadtest` integrates k6 and JMeter with the Tumult experiment lifecycle. The key design detail is `background: true`; load generators run as background processes while the rest of the experiment proceeds through fault injection, probing, and rollback. When the experiment completes, the rollback phase stops the load generator and collects its output metrics.
 
 ### k6 Integration
 
@@ -174,7 +173,7 @@ method[1]:
     background: true
 ```
 
-`TUMULT_K6_VUS` sets virtual users (concurrent connections). `TUMULT_K6_DURATION` sets how long k6 runs — this should be longer than the full experiment duration so load continues through the fault window.
+`TUMULT_K6_VUS` sets virtual users (concurrent connections). `TUMULT_K6_DURATION` sets how long k6 runs; this should be longer than the full experiment duration so load continues through the fault window.
 
 Stopping and collecting metrics in rollbacks:
 
@@ -193,7 +192,7 @@ rollbacks[2]:
       path: plugins/tumult-loadtest/drivers/k6-metrics.sh
 ```
 
-`k6-stop.sh` sends a signal to terminate the k6 process. `k6-metrics.sh` reads k6's output and returns the summary — p95 latency, error rate, throughput — as probe output recorded in the journal.
+`k6-stop.sh` sends a signal to terminate the k6 process. `k6-metrics.sh` reads k6's output and returns the summary; p95 latency, error rate, throughput; as probe output recorded in the journal.
 
 ### JMeter Integration
 
@@ -381,7 +380,7 @@ When this experiment runs, the TOON journal records:
 - POST/rollback: k6 summary metrics (p50/p95/p99 latency, error rate, throughput), network restored, API health restored
 - AFTER: network latency back to baseline, DNS still resolving, DB connection count recovering
 
-The `collect-metrics` probe output — k6's summary JSON — is embedded in the journal and queryable through the analytics pipeline:
+The `collect-metrics` probe output; k6's summary JSON; is embedded in the journal and queryable through the analytics pipeline:
 
 ```sql
 SELECT
@@ -398,7 +397,7 @@ ORDER BY j.started_at DESC;
 
 ## Sequencing Matters
 
-The 30-second warm-up (`sleep 30`) before fault injection is deliberate. k6 needs time to ramp its virtual users to full load before the fault lands. Without it, you might be injecting faults during the ramp-up phase, before traffic is at steady state — and the results will not be representative.
+The 30-second warm-up (`sleep 30`) before fault injection is deliberate. k6 needs time to ramp its virtual users to full load before the fault lands. Without it, you might be injecting faults during the ramp-up phase, before traffic is at steady state; and the results will not be representative.
 
 The ordering in `method` is:
 
@@ -408,7 +407,7 @@ The ordering in `method` is:
 4. Wait briefly for degradation to establish
 5. Inject database fault
 
-Layering faults this way — network first, then database — gives you data about each fault in isolation before you combine them. The phase markers in the OTel trace show exactly when each fault was applied, so you can see which degradation in the k6 metrics corresponds to which fault.
+Layering faults this way; network first, then database; gives you data about each fault in isolation before you combine them. The phase markers in the OTel trace show exactly when each fault was applied, so you can see which degradation in the k6 metrics corresponds to which fault.
 
 ---
 
@@ -443,7 +442,7 @@ WHERE name IN ('baseline-network-latency', 'post-network-latency')
 ORDER BY phase;
 ```
 
-If `post-network-latency` matches `baseline-network-latency`, `reset-tc` cleaned up completely. If it does not, there is a residual netem rule that was not removed — a signal to investigate the rollback.
+If `post-network-latency` matches `baseline-network-latency`, `reset-tc` cleaned up completely. If it does not, there is a residual netem rule that was not removed; a signal to investigate the rollback.
 
 ---
 
@@ -458,28 +457,28 @@ If `post-network-latency` matches `baseline-network-latency`, `reset-tc` cleaned
 | Pod deletion + 200ms network jitter + k6 at 500 VUS | tumult-kubernetes + tumult-network + tumult-loadtest | Does your K8s deployment recover within SLA while traffic continues? |
 | DNS block + JMeter at steady load | tumult-network + tumult-loadtest | Does your service discovery fall back correctly when DNS is unavailable? |
 
-The TOON format makes these compositions straightforward — each plugin contributes its action and probe steps independently, and `method`, `rollbacks`, and `after` sections compose cleanly across plugins within a single experiment file.
+The TOON format makes these compositions straightforward; each plugin contributes its action and probe steps independently, and `method`, `rollbacks`, and `after` sections compose cleanly across plugins within a single experiment file.
 
 ---
 
 ## Linux-Only Limitation
 
-The network fault actions require Linux — `tc netem` and `iptables` are not available on macOS or Windows. The probes (`ping-latency`, `dns-resolve`) work cross-platform.
+The network fault actions require Linux; `tc netem` and `iptables` are not available on macOS or Windows. The probes (`ping-latency`, `dns-resolve`) work cross-platform.
 
 For teams developing on macOS, the typical pattern is to run experiments against a Linux target via SSH using `tumult-ssh`, rather than running the network fault actions locally. The experiment file is identical; only the execution host changes.
 
 ---
 
-Chaos engineering at the level of individual fault injection is a starting point. The real question — the one production failures actually ask — is: does your system hold together under realistic conditions, with real traffic, on a degraded network, while multiple things are failing at the same time?
+Chaos engineering at the level of individual fault injection is a starting point. The real question; the one production failures actually ask; is: does your system hold together under realistic conditions, with real traffic, on a degraded network, while multiple things are failing at the same time?
 
 `tumult-network` and `tumult-loadtest` are the plugins that let you ask that question and get a structured, queryable, OTel-correlated answer.
 
 ---
 
-**Update:** The load testing integration described in this post is now fully implemented. Tumult runs k6 concurrently with chaos injection via the `--load` CLI flag or the `load:` experiment config section. Load results (latency percentiles, throughput, error rates) flow into the TOON journal, DuckDB analytics, and OTel traces. Container-scoped network chaos is also available via the [tumult-pumba plugin](./12-traces-in-production.md), which works cross-platform without Linux kernel access. See [Part 13 — Proving Disruption in Numbers](./13-load-during-chaos.md) for real evidence of measured disruption under load.
+**Update:** The load testing integration described in this post is now fully implemented. Tumult runs k6 concurrently with chaos injection via the `--load` CLI flag or the `load:` experiment config section. Load results (latency percentiles, throughput, error rates) flow into the TOON journal, DuckDB analytics, and OTel traces. Container-scoped network chaos is also available via the [tumult-pumba plugin](./12-traces-in-production.md), which works cross-platform without Linux kernel access. See [Part 13; Proving Disruption in Numbers](./13-load-during-chaos.md) for real evidence of measured disruption under load.
 
 ---
 
 *Try Tumult at [tumult.rs](https://tumult.rs)*
 
-*Next in the series: [Part 12 — The Full Span Waterfall →](./12-traces-in-production.md)*
+*Next in the series: [Part 12; The Full Span Waterfall →](./12-traces-in-production.md)*

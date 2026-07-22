@@ -2,17 +2,16 @@
 title: "Statistical Baselines: From Magic Numbers to Data-Derived Tolerances"
 parent: Blog
 nav_order: 8
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Statistical Baselines: From Magic Numbers to Data-Derived Tolerances
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 8 of the Tumult series. [← Part 7: Kubernetes Chaos](./07-kubernetes-chaos.md)*
 
 ---
 
-Every chaos experiment has a steady-state hypothesis: a set of probes that define what "healthy" looks like, with tolerances that define the acceptable range. Get the tolerances wrong — too tight and experiments fail spuriously; too loose and real degradation goes undetected.
+Every chaos experiment has a steady-state hypothesis: a set of probes that define what "healthy" looks like, with tolerances that define the acceptable range. Get the tolerances wrong; too tight and experiments fail spuriously; too loose and real degradation goes undetected.
 
 Most chaos tools require you to set these tolerances manually. You guess. You pick "response time under 500ms" because it sounds reasonable, or because it is what the SLA says. But the SLA latency target and the actual baseline latency of the system are two different things. If your service normally runs at 45ms, a 500ms tolerance will not catch the moment when it spikes to 300ms after a database connection kill.
 
@@ -33,7 +32,7 @@ tolerance:
 
 They work until they do not. Problems:
 
-1. **They are coupled to the SLA, not the system.** Your SLA says 500ms. Your system runs at 45ms. The tolerance is not testing whether the system degraded — it is testing whether it crossed the SLA boundary. Those are different questions.
+1. **They are coupled to the SLA, not the system.** Your SLA says 500ms. Your system runs at 45ms. The tolerance is not testing whether the system degraded; it is testing whether it crossed the SLA boundary. Those are different questions.
 
 2. **They are environment-specific in ways that are hard to manage.** The staging environment runs at 120ms (more load, less hardware). The production environment runs at 45ms. A static tolerance valid for one is wrong for the other.
 
@@ -49,8 +48,8 @@ When a Tumult experiment has a `baseline` section configured, the engine runs Ph
 
 ```
 1. Connect to all probe targets
-2. Warmup — collect and discard initial samples (settling time)
-3. Sample — collect values at configured interval for configured duration
+2. Warmup; collect and discard initial samples (settling time)
+3. Sample; collect values at configured interval for configured duration
 4. Compute statistics: mean, stddev, p50, p90, p95, p99, min, max
 5. Detect anomalies in the baseline itself
 6. Derive tolerance bounds using the configured method
@@ -95,7 +94,7 @@ baseline:
 
 **What this gives you**: if your service normally runs at 45ms with a stddev of 5ms, the derived tolerance is `45 ± 2×5 = [35ms, 55ms]`. Any post-fault measurement outside that range is a deviation.
 
-**When to use**: throughput metrics (requests/second), connection counts, error rates — metrics that are approximately normally distributed.
+**When to use**: throughput metrics (requests/second), connection counts, error rates; metrics that are approximately normally distributed.
 
 **σ selection guide**:
 - σ=1.5 → 86% of normal values in bounds (tighter, more sensitive)
@@ -122,7 +121,7 @@ baseline:
 
 **When to use**: latency (p50, p95, p99), response time distributions, any right-skewed metric where mean ± stddev does not capture the tail behavior.
 
-**Why not use mean for latency**: latency distributions are notoriously right-skewed. A mean-based tolerance will miss latency spikes that only affect the tail. The p95 represents "what 95% of real users experience" — a much more meaningful basis for a tolerance.
+**Why not use mean for latency**: latency distributions are notoriously right-skewed. A mean-based tolerance will miss latency spikes that only affect the tail. The p95 represents "what 95% of real users experience"; a much more meaningful basis for a tolerance.
 
 ---
 
@@ -153,7 +152,7 @@ baseline:
 | Database connections | Mean ± Nσ | Count, approximately normal |
 | Kafka consumer lag | Percentile | Skewed; spikes are meaningful |
 | CPU utilization | IQR | Noisy; resistant to outliers |
-| Binary health check | Static (exact) | Not a distribution — it's 0 or 1 |
+| Binary health check | Static (exact) | Not a distribution; it's 0 or 1 |
 | Cold-start metrics | Percentile + warmup | Discard settling period |
 
 ---
@@ -277,11 +276,11 @@ steady_state_hypothesis:
         env:
           TUMULT_DB_HOST: "{{ configuration.db_host }}"
           TUMULT_QUERY: "SELECT 1"
-      # No static tolerance — will be replaced by derived bounds from baseline
+      # No static tolerance; will be replaced by derived bounds from baseline
       tolerance:
         type: range
         from: 0
-        to: 9999     # placeholder — overridden by baseline engine
+        to: 9999     # placeholder; overridden by baseline engine
 
 method[1]:
   - name: kill-primary-connections
@@ -305,10 +304,10 @@ rollbacks[1]:
 
 After this experiment runs, the journal contains:
 - The baseline-derived tolerance for `query-latency` (e.g., `[38ms, 53ms]`)
-- The during-fault peak value (e.g., `2847ms` — the timeout period during reconnection)
+- The during-fault peak value (e.g., `2847ms`; the timeout period during reconnection)
 - The post-fault recovery time (how long until query latency returned within the derived bounds)
 
-These are meaningful, reproducible results. The tolerance is not a guess — it is derived from the system's actual behavior on the day the experiment ran.
+These are meaningful, reproducible results. The tolerance is not a guess; it is derived from the system's actual behavior on the day the experiment ran.
 
 ---
 
@@ -317,13 +316,13 @@ These are meaningful, reproducible results. The tolerance is not a guess — it 
 When running experiments, you can control baseline behavior:
 
 ```bash
-# Full pipeline — acquire baseline, inject fault, measure recovery
+# Full pipeline; acquire baseline, inject fault, measure recovery
 tumult run experiment.toon --baseline-mode full
 
-# Skip baseline — use static tolerances from the experiment definition
+# Skip baseline; use static tolerances from the experiment definition
 tumult run experiment.toon --baseline-mode skip
 
-# Baseline only — measure and report without injecting faults
+# Baseline only; measure and report without injecting faults
 tumult run experiment.toon --baseline-mode only
 ```
 
@@ -335,4 +334,4 @@ tumult run experiment.toon --baseline-mode only
 
 *Try Tumult at [tumult.rs](https://tumult.rs)*
 
-*Next in the series: [Part 9 — Compliance as Code →](./09-regulatory-compliance.md)*
+*Next in the series: [Part 9; Compliance as Code →](./09-regulatory-compliance.md)*

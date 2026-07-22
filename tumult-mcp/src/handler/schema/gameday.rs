@@ -1,4 +1,4 @@
-//! GameDay tool schemas.
+//! `GameDay` tool schemas.
 
 use rust_mcp_sdk::macros;
 

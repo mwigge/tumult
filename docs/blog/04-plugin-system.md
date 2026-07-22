@@ -2,17 +2,16 @@
 title: "The Plugin System: Chaos Engineering Without a Rust Toolchain"
 parent: Blog
 nav_order: 4
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Plugin System: Chaos Engineering Without a Rust Toolchain
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 4 of the Tumult series. [← Part 3: Built-In Proof: Native Observability](./03-built-in-observability.md)*
 
 ---
 
-Extensibility is where chaos engineering platforms have historically been most limiting. You want to inject a fault specific to your infrastructure — say, a Kafka broker partition or a Redis cache flush — and you find yourself either writing a complex Python extension, relying on a community plugin that is two years out of date, or resorting to shell scripts bolted to the side of your experiment definition.
+Extensibility is where chaos engineering platforms have historically been most limiting. You want to inject a fault specific to your infrastructure; say, a Kafka broker partition or a Redis cache flush; and you find yourself either writing a complex Python extension, relying on a community plugin that is two years out of date, or resorting to shell scripts bolted to the side of your experiment definition.
 
 Tumult approaches this differently. The plugin system has two layers: **script plugins** that anyone can write, and **native Rust plugins** that integrate deeply with SDKs. You choose the right layer for your use case, and the engine handles the rest.
 
@@ -105,8 +104,8 @@ Scripts communicate with the engine through a simple, consistent interface:
 **Input**: Arguments are passed as environment variables with the `TUMULT_` prefix, uppercased. An argument `worker_pid` in the experiment becomes `TUMULT_WORKER_PID` in the script.
 
 **Output**: 
-- `stdout` — the result (captured by the engine, stored in the journal)
-- `stderr` — diagnostic messages (captured, logged, not stored as result)
+- `stdout`; the result (captured by the engine, stored in the journal)
+- `stderr`; diagnostic messages (captured, logged, not stored as result)
 - Exit code `0` = success, non-zero = failure
 
 **Example action script** (kill an nginx worker):
@@ -189,7 +188,7 @@ If you can express it in a script, it is a Tumult plugin.
 
 ## A Complete Script Plugin Example: HAProxy Backend Removal
 
-Here is a realistic custom plugin that removes a backend server from HAProxy's active pool — simulating a graceful backend removal — and verifies the remaining backends are healthy.
+Here is a realistic custom plugin that removes a backend server from HAProxy's active pool; simulating a graceful backend removal; and verifies the remaining backends are healthy.
 
 **Directory structure:**
 ```
@@ -320,7 +319,7 @@ cargo install tumult --features kubernetes,ssh
 cargo install tumult --features kubernetes,ssh,analytics
 ```
 
-The native plugin interface is the `ChaosPlugin` trait in `tumult-plugin`. A native plugin implements actions and probes as async Rust functions with typed arguments. The `tumult-kubernetes` plugin, for example, uses `kube-rs` — a full async Kubernetes client — for operations that would be difficult to express reliably in bash:
+The native plugin interface is the `ChaosPlugin` trait in `tumult-plugin`. A native plugin implements actions and probes as async Rust functions with typed arguments. The `tumult-kubernetes` plugin, for example, uses `kube-rs`; a full async Kubernetes client; for operations that would be difficult to express reliably in bash:
 
 - Pod deletion with configurable grace periods
 - Deployment scaling with wait-for-convergence
@@ -334,9 +333,9 @@ The native plugin interface is the `ChaosPlugin` trait in `tumult-plugin`. A nat
 Tumult discovers plugins from three locations, in order:
 
 ```
-1. ./plugins/           — local to the experiment directory
-2. ~/.tumult/plugins/   — user-global (persistent across projects)
-3. $TUMULT_PLUGIN_PATH  — colon-separated custom paths
+1. ./plugins/          ; local to the experiment directory
+2. ~/.tumult/plugins/  ; user-global (persistent across projects)
+3. $TUMULT_PLUGIN_PATH ; colon-separated custom paths
 ```
 
 First-found-wins. If the same plugin name appears in multiple paths, the first-discovered version is used.
@@ -371,10 +370,10 @@ tumult-haproxy v0.1.0
 
 The design principle here is worth stating directly: **anyone who can write a bash script can write a Tumult plugin**. There is no Rust toolchain requirement, no build step, no compilation. You write scripts, write a manifest, and the plugin works.
 
-This is the same philosophy that made Chaos Toolkit's Python extension model successful — lower the barrier to contribution and the ecosystem grows. But Tumult's script model goes further: because the engine is a single Rust binary with no runtime dependencies, plugins run in pristine environments without Python path conflicts or dependency collisions. The script executes, the engine captures the result, and the journal records it.
+This is the same philosophy that made Chaos Toolkit's Python extension model successful; lower the barrier to contribution and the ecosystem grows. But Tumult's script model goes further: because the engine is a single Rust binary with no runtime dependencies, plugins run in pristine environments without Python path conflicts or dependency collisions. The script executes, the engine captures the result, and the journal records it.
 
 For platform teams building shared plugin libraries for their engineering organization, this model means plugins can live in a git repository alongside the experiments that use them, with no build infrastructure required for contributors.
 
 ---
 
-*Next in the series: [Part 5 — Writing Your First Experiment: The TOON Format in Depth →](./05-experiment-format.md)*
+*Next in the series: [Part 5; Writing Your First Experiment: The TOON Format in Depth →](./05-experiment-format.md)*

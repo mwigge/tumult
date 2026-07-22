@@ -37,12 +37,14 @@ pub mod telemetry;
 #[cfg(feature = "duckdb")]
 pub use arrow_convert::journal_to_record_batch;
 pub use backend::{AnalyticsBackend, StoreStats};
+pub use duckdb_store::autopilot::{
+    ChangeEventRecord, ClassHistory, DecisionRecord, DecisionStatus,
+};
+pub use duckdb_store::topology::NodeAttrs;
 #[cfg(feature = "duckdb")]
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
 };
-pub use duckdb_store::topology::NodeAttrs;
-pub use duckdb_store::autopilot::{ChangeEventRecord, ClassHistory, DecisionRecord, DecisionStatus};
 // ChaosGraph query result types, re-exported for MCP/CLI consumers so they can
 // build responses without depending on tumult-graph directly.
 pub use error::AnalyticsError;

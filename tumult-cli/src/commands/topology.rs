@@ -53,7 +53,9 @@ pub async fn cmd_topology_discover_k8s(namespaces: &[String], output: Option<&Pa
     let client = tumult_kubernetes::discovery::default_client()
         .await
         .map_err(|e| {
-            anyhow!("no kubernetes credentials found — this command needs a reachable cluster ({e})")
+            anyhow!(
+                "no kubernetes credentials found — this command needs a reachable cluster ({e})"
+            )
         })?;
     let services = tumult_kubernetes::discovery::discover_services(client, namespaces)
         .await
@@ -68,8 +70,9 @@ pub async fn cmd_topology_discover_k8s(namespaces: &[String], output: Option<&Pa
 fn emit_proposed(toml: &str, service_count: usize, output: Option<&Path>) -> Result<()> {
     match output {
         Some(path) => {
-            std::fs::write(path, toml)
-                .map_err(|e| anyhow!("cannot write proposed topology to {}: {e}", path.display()))?;
+            std::fs::write(path, toml).map_err(|e| {
+                anyhow!("cannot write proposed topology to {}: {e}", path.display())
+            })?;
             println!(
                 "proposed topology with {service_count} service(s) written to {} — review, fill in depends_on, then `tumult topology import`",
                 path.display()
@@ -149,12 +152,9 @@ pub fn cmd_topology_recommend(
     json: bool,
 ) -> Result<()> {
     let store = resolve_store(store);
-    let report = tumult_mcp::tools::recommend_injection(
-        &store.to_string_lossy(),
-        framework,
-        Some(limit),
-    )
-    .map_err(|e| anyhow!(e.to_string()))?;
+    let report =
+        tumult_mcp::tools::recommend_injection(&store.to_string_lossy(), framework, Some(limit))
+            .map_err(|e| anyhow!(e.to_string()))?;
     emit(&report, json)
 }
 
@@ -209,8 +209,12 @@ mod tests {
 
     #[test]
     fn emit_proposed_unwritable_output_is_a_clean_error() {
-        let err = emit_proposed("# x\n", 0, Some(Path::new("/nonexistent/dir/topology.toml")))
-            .unwrap_err();
+        let err = emit_proposed(
+            "# x\n",
+            0,
+            Some(Path::new("/nonexistent/dir/topology.toml")),
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("cannot write proposed topology"),
             "{err}"

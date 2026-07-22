@@ -69,7 +69,7 @@ impl McpClient {
         let base = base_url.trim_end_matches('/');
         let endpoint = format!("{base}{MCP_PATH}");
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_mins(2))
             .connect_timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();

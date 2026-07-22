@@ -2,22 +2,14 @@
 # Run with: cargo deny check
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
-
-# RUSTSEC-2023-0071: Marvin Attack timing side-channel in the `rsa` crate.
-# Pulled in transitively via `internal-russh-forked-ssh-key` (a vendored fork inside
-# russh 0.59). No fixed version exists. Mitigated by disabling the `rsa` feature on
-# our direct `russh` dependency — tumult-ssh uses only Ed25519/ECDSA via aws-lc-rs,
-# so the vulnerable RSA code path is unreachable at runtime.
-# Re-evaluate when russh ships a version that removes or patches the rsa dep.
-[[advisories.ignore]]
-id = "RUSTSEC-2023-0071"
+ignore = [
+    { id = "RUSTSEC-2024-0320", reason = "transitive through syntect/toon-format; no direct replacement is currently exposed" },
+    { id = "RUSTSEC-2024-0436", reason = "transitive through maintained dependencies including parquet and ratatui" },
+    { id = "RUSTSEC-2025-0134", reason = "transitive through axum-server/rust-mcp-sdk" },
+    { id = "RUSTSEC-2025-0141", reason = "both versions are transitive through syntect and grafeo; no safe compatible upgrade is available" },
+]
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "Apache-2.0",
     "MIT",
@@ -29,11 +21,14 @@ allow = [
     "MPL-2.0",
     "Unicode-3.0",
     "OpenSSL",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 
 [[licenses.clarify]]
-name = "ring"
+crate = "ring"
 expression = "MIT AND ISC AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 

@@ -1,4 +1,4 @@
-//! Tumult MCP Server binary — stdio and HTTP/SSE transport.
+//! Tumult MCP Server binary: stdio and Streamable HTTP transports.
 //!
 //! Thin argument-parsing wrapper around [`tumult_mcp::server::serve`], which
 //! owns the actual server wiring so `tumult-cli`'s `tumult mcp serve` and this
@@ -63,7 +63,7 @@ fn parse_args() -> ServeOptions {
                 eprintln!();
                 eprintln!("Options:");
                 eprintln!("  --transport <stdio|http>  Transport mode (default: stdio)");
-                eprintln!("  --host <addr>             Bind address for HTTP (default: 0.0.0.0)");
+                eprintln!("  --host <addr>             Bind address for HTTP (default: 127.0.0.1)");
                 eprintln!("  --port <port>             Port for HTTP (default: 3100)");
                 eprintln!(
                     "  --health-port <port>      Port for /health endpoint (default: port+1)"

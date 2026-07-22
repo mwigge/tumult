@@ -1,7 +1,7 @@
 # Tumult — chaos engineering platform (CLI + MCP server)
 #
-# Single image with both binaries. Contains all 13 crates, 10 plugins,
-# example experiments, and GameDay definitions.
+# Single image with both binaries, bundled providers, example experiments,
+# and GameDay definitions. Use `tumult discover` for the runtime inventory.
 #
 # Build:
 #   docker build -f docker/Dockerfile.tumult -t tumult .
@@ -13,11 +13,10 @@
 #   docker run tumult discover
 #   docker run tumult --help
 #
-# Usage (MCP server):
-#   docker run -p 3100:3100 tumult tumult-mcp --transport http
-#   docker run -p 3100:3100 -e TUMULT_MCP_TOKEN=secret tumult tumult-mcp --transport http
+# The companion Dockerfile.tumult-mcp image selects the MCP binary and binds
+# its authenticated Streamable HTTP endpoint for container use.
 
-FROM rust:1.89-bookworm AS builder
+FROM rust:1.91.1-bookworm AS builder
 
 WORKDIR /build
 # Copy the whole build context (heavy dirs are excluded via .dockerignore) so
@@ -38,7 +37,7 @@ RUN cargo build --release -p tumult-cli -p tumult-mcp -p tumult-net && \
 # CI builds can use a multi-stage with debian:bookworm-slim for
 # smaller images; this approach prioritizes build reliability.
 
-FROM rust:1.89-bookworm AS runtime
+FROM rust:1.91.1-bookworm AS runtime
 
 # Install Docker CLI + tools needed by script plugins (docker exec, curl, ssh)
 # The bookworm repos are already cached in this image — no network fetch needed

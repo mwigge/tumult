@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::error::AgentCliError;
 
 /// Default invocation timeout when the caller does not override it.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// A single prompt to run through an agent CLI in one-shot batch mode.
 #[derive(Debug, Clone)]

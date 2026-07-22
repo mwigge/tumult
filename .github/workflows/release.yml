@@ -45,7 +45,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
         with:
-          toolchain: stable
+          toolchain: 1.91.1
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
@@ -167,16 +167,13 @@ jobs:
 
       - name: Smoke test
         run: |
-          # The tumult-mcp image has ENTRYPOINT [tumult-mcp, --transport, http],
+          # The tumult-mcp image selects the authenticated HTTP server,
           # so we override to run the tumult CLI binary that's also in the image.
           docker run --rm --entrypoint tumult ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} --version
 
   release:
     name: Create Release
     needs: [build, docker, docker-mcp]
-    # Binaries must never be held hostage by image publishing: run as long as
-    # the builds succeeded, even if the docker jobs failed or were skipped.
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -213,12 +210,14 @@ jobs:
           body: |
             ## Docker Images
 
-            Both images contain the full Tumult platform: CLI + MCP server, all 13 plugins (64 actions), examples, and GameDay definitions.
+            Both images contain the Tumult CLI, MCP server, bundled plugins,
+            examples, and GameDay definitions. Run `tumult discover` in the
+            image for the authoritative plugin and action catalog.
 
             | Image | Description | Pull |
             |-------|-------------|------|
             | `tumult` | CLI tool (default entrypoint) | `docker pull ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }}` |
-            | `tumult-mcp` | MCP server (HTTP/SSE mode) | `docker pull ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}` |
+            | `tumult-mcp` | MCP server (Streamable HTTP mode) | `docker pull ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}` |
 
             ```bash
             # Run CLI commands
@@ -226,10 +225,10 @@ jobs:
             docker run ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} --help
 
             # Start MCP server
-            docker run -p 3100:3100 ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}
+            docker run -e TUMULT_MCP_TOKEN=replace-with-a-secret -p 3100:3100 ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}
 
             # Or use the CLI image with MCP entrypoint override
-            docker run -p 3100:3100 ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} tumult-mcp --transport http
+            docker run -e TUMULT_MCP_TOKEN=replace-with-a-secret -p 3100:3100 --entrypoint tumult-mcp ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} --transport http --host 0.0.0.0
             ```
 
             ## Binary Downloads

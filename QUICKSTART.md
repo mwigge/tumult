@@ -2,6 +2,16 @@
 
 Get Tumult running in 5 minutes.
 
+```mermaid
+flowchart LR
+    accTitle: Tumult quickstart path
+    accDescr: Install Tumult, start isolated targets, validate and run an experiment, then inspect the journal and analytics results.
+    install[Install] --> targets[Start isolated targets]
+    targets --> validate[Validate experiment]
+    validate --> run[Run experiment]
+    run --> inspect[Inspect journal and analytics]
+```
+
 ## Install
 
 ### Option A: From source
@@ -19,7 +29,9 @@ docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
 docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
 ```
 
-Both images contain the full platform: 14 crates, 10 script + 3 native plugins, 64 actions, examples, GameDays.
+Both images contain the CLI, MCP server, bundled providers, examples, and
+GameDay support. Run `tumult discover` against the installed image for the
+authoritative provider and action inventory.
 
 ```bash
 # Run CLI commands
@@ -107,7 +119,7 @@ tumult compliance --framework dora .
 ### 5. See what's available
 
 ```bash
-# List all 13 plugins (10 script + 3 native) and their 64 actions
+# List the providers and actions in this build
 tumult discover
 
 # Scaffold your own experiment from a template (self-contained, no Docker)
@@ -257,5 +269,5 @@ make down
 - [Full documentation](https://mwigge.github.io/tumult/)
 - [Plugin reference](docs/plugins/)
 - [Experiment format](docs/reference/)
-- [Test protocol](docs/testprotocol.md) — 162 platform tests
+- [Test protocol](docs/testprotocol.md)
 - [Security assessment](docs/security-assessment.md)

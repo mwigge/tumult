@@ -3,7 +3,7 @@
 //! Each template is a parameterized TOON experiment (with `${param}`
 //! placeholders) plus a set of documented parameters and their defaults.
 //! Instantiation substitutes the parameters (defaults overlaid with caller
-//! overrides) via the core [`apply_vars`](tumult_core::engine::apply_vars)
+//! overrides) via the core [`apply_vars`]
 //! machinery, then validates the result — so every template, with its
 //! defaults or any override, produces an experiment that passes
 //! `tumult validate`.

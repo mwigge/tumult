@@ -56,7 +56,10 @@ impl std::fmt::Display for TopologyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Parse(err) => write!(f, "topology TOML parse error: {err}"),
-            Self::UnknownDependency { service, dependency } => write!(
+            Self::UnknownDependency {
+                service,
+                dependency,
+            } => write!(
                 f,
                 "service '{service}' depends on '{dependency}', which is not declared"
             ),
@@ -72,6 +75,12 @@ impl std::error::Error for TopologyError {}
 ///
 /// Cycles in `depends_on` are allowed — real systems have them; consumers
 /// must traverse with a visited set.
+///
+/// # Errors
+///
+/// Returns [`TopologyError`] when the document is invalid TOML, contains no
+/// services, repeats a normalized service name, or references an undeclared
+/// dependency.
 pub fn parse_topology(toml_text: &str) -> Result<TopologyDoc, TopologyError> {
     let mut doc: TopologyDoc =
         toml::from_str(toml_text).map_err(|err| TopologyError::Parse(err.to_string()))?;
@@ -199,7 +208,10 @@ mod tests {
     #[test]
     fn duplicates_and_empty_rejected() {
         let dup = "[[service]]\nname = \"a\"\n[[service]]\nname = \"a:9090\"\n";
-        assert!(matches!(parse_topology(dup), Err(TopologyError::Duplicate(_))));
+        assert!(matches!(
+            parse_topology(dup),
+            Err(TopologyError::Duplicate(_))
+        ));
         assert!(matches!(parse_topology(""), Err(TopologyError::Empty)));
     }
 

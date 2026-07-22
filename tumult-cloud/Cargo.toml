@@ -13,7 +13,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 chrono = { workspace = true }
 # Minimal, pure-Rust crypto for AWS Signature Version 4. Chosen over the
 # aws-sdk-* / aws-sigv4 crates to keep the single-binary footprint small — see

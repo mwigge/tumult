@@ -14,9 +14,7 @@ use crate::tools::StructuredReport;
 
 pub(crate) mod inputs;
 
-use inputs::{
-    canonical_framework, gather_inputs, open_store, open_store_ro, recommendations_for,
-};
+use inputs::{canonical_framework, gather_inputs, open_store, open_store_ro, recommendations_for};
 
 /// `topology_import`: parse a declared topology TOML (inline or from a file)
 /// and replace the store's declared-topology sub-graph with it.
@@ -41,9 +39,8 @@ pub fn topology_import(
 ) -> Result<StructuredReport, ToolError> {
     let content = match (toml_content, path) {
         (Some(content), None) => content.to_string(),
-        (None, Some(path)) => std::fs::read_to_string(path).map_err(|e| {
-            ToolError::NotFound(format!("cannot read topology file {path}: {e}"))
-        })?,
+        (None, Some(path)) => std::fs::read_to_string(path)
+            .map_err(|e| ToolError::NotFound(format!("cannot read topology file {path}: {e}")))?,
         _ => {
             return Err(ToolError::InvalidInput(
                 "provide exactly one of toml_content (inline TOML) or path (a topology TOML file)"
@@ -109,7 +106,12 @@ pub fn topology_map(
     } else {
         Vec::new()
     };
-    let view = build_view(&inputs.services_with_attrs, &inputs.depends_on, &lineage, &recs);
+    let view = build_view(
+        &inputs.services_with_attrs,
+        &inputs.depends_on,
+        &lineage,
+        &recs,
+    );
 
     let text = match format {
         "mermaid" => view.to_mermaid(),

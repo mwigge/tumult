@@ -2,19 +2,20 @@
 title: "Agentic Trajectories: Chaos Engineering for Agents That Think in Steps"
 parent: Blog
 nav_order: 23
+updated: 2026-07-21
 ---
 
 # Agentic Trajectories: Chaos Engineering for Agents That Think in Steps
 
 *2026-07-04*
 
-Here's a failure mode that never shows up in a single call. An agent retrieves some context at step 0. The retrieval is quietly poisoned — not empty, not an error, just wrong. Two steps later the agent writes an answer built on that context. The answer looks fine. It's valid JSON, it's confident, it even cites a doc. It's also ungrounded, and nothing between step 0 and step 2 flagged it.
+Here's a failure mode that never shows up in a single call. An agent retrieves some context at step 0. The retrieval is quietly poisoned; not empty, not an error, just wrong. Two steps later the agent writes an answer built on that context. The answer looks fine. It's valid JSON, it's confident, it even cites a doc. It's also ungrounded, and nothing between step 0 and step 2 flagged it.
 
-If you fault-test that agent one call at a time, you'll never catch this. The retrieve call succeeded. The answer call succeeded. The bug lives in the *space between them* — in the trajectory.
+If you fault-test that agent one call at a time, you'll never catch this. The retrieve call succeeded. The answer call succeeded. The bug lives in the *space between them*; in the trajectory.
 
 2.6.0 ships multi-turn agent-graph fault modeling to test exactly that. You model an ordered sequence of model and tool calls, inject a fault at a specific step, and let the consequences propagate forward the way they do in a real agent. Then you assert over the *whole* sequence: did it recover, did it loop, did it terminate healthy, did it stay in budget.
 
-This is the thing the rest of the chaos market doesn't do. Fault injection for agents, where it exists at all, injects into a single call — a slow model, a timed-out tool, a garbled response. That's useful, and Tumult does it too. But agents don't fail one call at a time. They fail across graphs.
+Single-call faults such as a slow model, a timed-out tool, or a malformed response are useful, but they do not model failures that propagate through a multi-step agent graph.
 
 ## A trajectory is a graph, and faults cascade through it
 
@@ -38,22 +39,22 @@ The per-call engine answers "what does one model or tool call do under a fault?"
                                      → terminates_healthy FAILS
 ```
 
-The key move is that retrieval context *propagates forward*. Documents retrieved (or poisoned) at an early step flow into any later step that consumes retrieval. So a grounding failure doesn't stay local to the call where you injected it — it cascades downstream and surfaces as a broken answer two turns later, exactly like a real RAG agent. The fault is at step 0; the contract that fails is at step 2.
+The key move is that retrieval context *propagates forward*. Documents retrieved (or poisoned) at an early step flow into any later step that consumes retrieval. So a grounding failure doesn't stay local to the call where you injected it; it cascades downstream and surfaces as a broken answer two turns later, exactly like a real RAG agent. The fault is at step 0; the contract that fails is at step 2.
 
-That's the whole reason single-call testing misses this class of bug. The damage and the symptom are in different places.
+This is why single-call testing misses this class of bug. The damage and the symptom are in different places.
 
 ## Contracts that only make sense across turns
 
-Per-step contracts (valid JSON, required citation, retry budget, fallback used) still run on each step. On top of them sit **whole-trajectory contracts** — assertions you simply can't express against one call:
+Per-step contracts (valid JSON, required citation, retry budget, fallback used) still run on each step. On top of them sit **whole-trajectory contracts**; assertions you simply can't express against one call:
 
-- **recovers-within** — after the first unhealthy step, a healthy step must follow within N turns. Does the agent bounce back, or stay broken?
-- **no-repeated-step** — no two steps may share the same signature. A repeat is a loop / infinite-reflection signal.
-- **terminates-healthy** — the final step must be healthy. Did the agent end in a good state?
-- **step-budget** — the trajectory must not exceed N steps. Did it run away?
+- **recovers-within**; after the first unhealthy step, a healthy step must follow within N turns. Does the agent bounce back, or stay broken?
+- **no-repeated-step**; no two steps may share the same signature. A repeat is a loop / infinite-reflection signal.
+- **terminates-healthy**; the final step must be healthy. Did the agent end in a good state?
+- **step-budget**; the trajectory must not exceed N steps. Did it run away?
 
 ## Three packs, three real outcomes
 
-2.6.0 bundles three trajectory packs. They're not all green-lights — the point is to show the machinery catching real agent-graph failure modes *and* correctly passing a resilient one.
+2.6.0 bundles three trajectory packs. They're not all green-lights; the point is to show the machinery catching real agent-graph failure modes *and* correctly passing a resilient one.
 
 ```
   PACK                    FAULT              →  HEADLINE CONTRACT     OUTCOME
@@ -69,7 +70,7 @@ Per-step contracts (valid JSON, required citation, retry budget, fallback used) 
                           by fallback
 ```
 
-The RAG pack poisons retrieval at step 0 and watches the answer at step 2 lose its grounding — `terminates_healthy` fails with `final_step_unhealthy`. The reflection pack applies retry pressure that sends the agent into an identical-step loop — `no_repeated_step` catches it with `loop_detected`. And the cascade pack fails a tool at step 1, but the synthesize step at index 2 falls back to a cached result and terminates healthy — so `recovers_within` correctly *passes*. A resilient agent should pass, and this one does.
+The RAG pack poisons retrieval at step 0 and watches the answer at step 2 lose its grounding; `terminates_healthy` fails with `final_step_unhealthy`. The reflection pack applies retry pressure that sends the agent into an identical-step loop; `no_repeated_step` catches it with `loop_detected`. And the cascade pack fails a tool at step 1, but the synthesize step at index 2 falls back to a cached result and terminates healthy; so `recovers_within` correctly *passes*. A resilient agent should pass, and this one does.
 
 ## Four subscores, one number
 
@@ -86,11 +87,11 @@ Where a single call gets scored on its operational envelope (latency, retries, c
   no_repeated_step ───────► loop_avoidance ──────────┘
 ```
 
-You get the headline number *and* the breakdown that explains it. A 0.556 with recovery pinned at 0.000 tells you the agent didn't fail randomly — it failed to recover.
+You get the headline number *and* the breakdown that explains it. A 0.556 with recovery pinned at 0.000 tells you the agent didn't fail randomly; it failed to recover.
 
 ## The real thing, verbatim
 
-This is authentic output from `tumult agentic trajectory --pack rag-grounding-failure` — no editing:
+This is authentic output from `tumult agentic trajectory --pack rag-grounding-failure`; no editing:
 
 ```
 injected: retrieval_poisoning @ step 0
@@ -105,11 +106,11 @@ subscore.recovery: 0.000  subscore.loop_avoidance: 1.000
 subscore.correctness_under_fault: 0.600  resilience_score: 0.556
 ```
 
-Read it top to bottom and the cascade is right there. The fault went in at step 0. Step 2 — the answer — comes out unhealthy even though *no fault was injected at step 2* (`fault=none`). The poison rode the retrieval context forward. `terminates_healthy` fails, `no_repeated_step` and `step_budget` pass, and the subscores explain why the overall landed at 0.556: recovery cratered, loop avoidance held.
+The fault enters at step 0, while the answer at step 2 is unhealthy even though that step has `fault=none`. The retrieval context carried the poisoned value forward. `terminates_healthy` fails, `no_repeated_step` and `step_budget` pass, and the subscores show why the overall result is 0.556: recovery failed while loop avoidance held.
 
 ## Where this sits in Tumult
 
-The packs run against bundled deterministic fake adapters. No network, no API keys, no provider account — the whole scenario executes in-process against metadata baselines.
+The packs run against bundled deterministic fake adapters. No network, no API keys, no provider account; the whole scenario executes in-process against metadata baselines.
 
 ```
    ┌──────────────────────────────────────────────────┐
@@ -134,7 +135,7 @@ The packs run against bundled deterministic fake adapters. No network, no API ke
    surfaces the pack metadata
 ```
 
-That deterministic-by-design choice is deliberate, and worth spelling out: these packs model agent-graph failure modes against fake adapters so the same fault produces the same trajectory every time — reproducible, seedable, CI-friendly. They are not pointed at your live agent. When you want to fault-test a real agent CLI, that's the `tumult-agent-cli` path, which already shipped — the adapter layer that drives Claude Code and Codex non-interactively. Trajectory packs are the *model* of how an agent graph breaks; the live-client path is where you point it at the real thing.
+That deterministic-by-design choice is deliberate, and worth spelling out: these packs model agent-graph failure modes against fake adapters so the same fault produces the same trajectory every time; reproducible, seedable, CI-friendly. They are not pointed at your live agent. When you want to fault-test a real agent CLI, that's the `tumult-agent-cli` path, which already shipped; the adapter layer that drives Claude Code and Codex non-interactively. Trajectory packs are the *model* of how an agent graph breaks; the live-client path is where you point it at the real thing.
 
 ## Try it
 
@@ -144,7 +145,7 @@ tumult agentic trajectory --pack reflection-loop
 tumult agentic trajectory --pack multi-tool-cascade
 ```
 
-Three packs, three failure modes, no setup. Watch a poisoned retrieval at step 0 quietly break an answer at step 2 — and watch Tumult catch it across the trajectory, where single-call testing can't look.
+Three packs, three failure modes, no setup. Watch a poisoned retrieval at step 0 quietly break an answer at step 2; and watch Tumult catch it across the trajectory, where single-call testing can't look.
 
 ---
 

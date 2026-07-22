@@ -401,9 +401,18 @@ async fn main() -> anyhow::Result<()> {
             AutopilotAction::Deny { id, reason, store } => {
                 commands::cmd_autopilot_respond(store.as_deref(), &id, false, reason.as_deref())?;
             }
-            AutopilotAction::NotifyChange { service, source, detail, store } => {
+            AutopilotAction::NotifyChange {
+                service,
+                source,
+                detail,
+                store,
+            } => {
                 commands::cmd_autopilot_notify_change(
-                    store.as_deref(), &service, &source, detail.as_deref())?;
+                    store.as_deref(),
+                    &service,
+                    &source,
+                    detail.as_deref(),
+                )?;
             }
             AutopilotAction::Export { dir, store } => {
                 commands::cmd_autopilot_export(store.as_deref(), &dir)?;

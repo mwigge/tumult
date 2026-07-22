@@ -737,12 +737,10 @@ async fn discover_services_lists_each_requested_namespace_and_sorts_output() {
         )])));
     });
 
-    let services = discovery::discover_services(
-        client,
-        &["prod".to_string(), "staging".to_string()],
-    )
-    .await
-    .expect("discovery succeeds");
+    let services =
+        discovery::discover_services(client, &["prod".to_string(), "staging".to_string()])
+            .await
+            .expect("discovery succeeds");
 
     let names: Vec<(&str, &str)> = services
         .iter()
@@ -784,7 +782,11 @@ async fn discover_services_all_namespaces_skips_kube_system_and_apiserver_servic
         .await
         .expect("discovery succeeds");
 
-    assert_eq!(services.len(), 1, "plumbing services are skipped: {services:?}");
+    assert_eq!(
+        services.len(),
+        1,
+        "plumbing services are skipped: {services:?}"
+    );
     assert_eq!(services[0].name, "shop");
     assert_eq!(services[0].namespace, "default");
     apiserver.await.expect("apiserver task");

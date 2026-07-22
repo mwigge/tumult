@@ -377,7 +377,7 @@ Start the MCP (Model Context Protocol) server from the main `tumult` binary. Thi
 
 ```
 tumult mcp serve                                    # stdio (IDE integration)
-tumult mcp serve --transport http --port 3100       # HTTP/SSE (containers, CI/CD)
+tumult mcp serve --transport http --port 3100       # Streamable HTTP (containers, CI/CD)
 tumult mcp serve --transport http --token my-secret # require bearer auth
 ```
 
@@ -393,11 +393,11 @@ The exposed tools, authentication, and data model are identical to the standalon
 
 ## tumult-mcp
 
-Start the MCP (Model Context Protocol) server — a separate binary, on stdio transport by default or HTTP/SSE. Equivalent to `tumult mcp serve`.
+Start the MCP (Model Context Protocol) server: a separate binary using stdio by default or Streamable HTTP. Equivalent to `tumult mcp serve`.
 
 ```
 tumult-mcp                                # stdio (IDE integration)
-tumult-mcp --transport http --port 3100   # HTTP/SSE (containers, CI/CD)
+tumult-mcp --transport http --port 3100   # Streamable HTTP (containers, CI/CD)
 ```
 
 Exposes 24 tools to AI assistants:

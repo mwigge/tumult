@@ -228,8 +228,12 @@ fn status_filters_by_verdict_and_honors_limit() {
     let db = empty_store(dir.path());
     {
         let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-        store.insert_autopilot_decision(&decision("d-prop", "propose")).unwrap();
-        store.insert_autopilot_decision(&decision("d-veto", "veto")).unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-prop", "propose"))
+            .unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-veto", "veto"))
+            .unwrap();
     }
 
     let all = autopilot_status(db.to_str().unwrap(), None, None).unwrap();
@@ -252,7 +256,9 @@ fn respond_deny_appends_the_veto_feedback_event() {
     let db = empty_store(dir.path());
     {
         let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-        store.insert_autopilot_decision(&decision("d-prop", "propose")).unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-prop", "propose"))
+            .unwrap();
     }
 
     let report =
@@ -266,8 +272,7 @@ fn respond_deny_appends_the_veto_feedback_event() {
     drop(store);
 
     // A decision takes exactly one human response.
-    let err =
-        autopilot_respond(db.to_str().unwrap(), "d-prop", false, None).unwrap_err();
+    let err = autopilot_respond(db.to_str().unwrap(), "d-prop", false, None).unwrap_err();
     assert!(err.to_string().contains("already resolved"), "{err}");
 }
 
@@ -285,7 +290,9 @@ fn export_writes_both_parquet_tables() {
     let db = empty_store(dir.path());
     {
         let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-        store.insert_autopilot_decision(&decision("d-exp", "enact")).unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-exp", "enact"))
+            .unwrap();
     }
 
     let out = dir.path().join("archive");

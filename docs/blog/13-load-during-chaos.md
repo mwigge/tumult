@@ -2,19 +2,18 @@
 title: "Proving Disruption in Numbers: Load Testing During Chaos Injection"
 parent: Blog
 nav_order: 13
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Proving Disruption in Numbers: Load Testing During Chaos Injection
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 13 of the Tumult series. [← Part 12: The Full Span Waterfall](./12-traces-in-production.md)*
 
 ---
 
-Chaos engineering without load is a rehearsal without an audience. You can kill a database connection, pause a container, inject latency — but if nothing is using the system when the fault hits, you have no evidence of impact. The experiment passes, the journal says "completed," and you have learned nothing about how your system behaves under real conditions.
+Chaos engineering without load is a rehearsal without an audience. You can kill a database connection, pause a container, inject latency; but if nothing is using the system when the fault hits, you have no evidence of impact. The experiment passes, the journal says "completed," and you have learned nothing about how your system behaves under real conditions.
 
-Tumult now runs load tests concurrently with chaos injection. The load generator hammers your system while faults are active. The disruption is measured in numbers — latency spikes, error rates, throughput drops — captured in the same journal, queryable in the same DuckDB store, visible in the same OTel trace.
+Tumult now runs load tests concurrently with chaos injection. The load generator hammers your system while faults are active. The disruption is measured in numbers; latency spikes, error rates, throughput drops; captured in the same journal, queryable in the same DuckDB store, visible in the same OTel trace.
 
 ---
 
@@ -23,7 +22,7 @@ Tumult now runs load tests concurrently with chaos injection. The load generator
 ```
 resilience.experiment (root trace)
 ├── resilience.hypothesis.before
-├── resilience.load (background — k6 running continuously)
+├── resilience.load (background; k6 running continuously)
 │   └── TRACEPARENT propagated to k6 for trace correlation
 ├── resilience.action: pause-postgres (foreground chaos)
 ├── resilience.hypothesis.after
@@ -39,7 +38,7 @@ The load test runs as a background process. The chaos method runs in the foregro
 Here is a PostgreSQL experiment. k6 hammers the database with real INSERT and SELECT queries using the xk6-sql driver. While k6 is running, Pumba pauses the PG container for 5 seconds.
 
 ```toon
-title: PostgreSQL under k6 load — container pause disruption
+title: PostgreSQL under k6 load; container pause disruption
 
 load:
   tool: k6
@@ -97,7 +96,7 @@ Compare this to a baseline run without chaos:
 | Max latency | 151ms | 5,130ms | 34x |
 | Avg query time | 18ms | 47ms | 2.6x |
 | Error rate | 0% | 0.3% | Disrupted |
-| Recovery | — | 100% | Full |
+| Recovery |; | 100% | Full |
 
 The max latency of 5,130ms is the direct fingerprint of the 5-second container pause. That number exists because k6 was running real queries against PostgreSQL when the container froze. Without load, the experiment would have reported "completed" with no evidence of impact.
 
@@ -123,7 +122,7 @@ tumult analyze
 ```
 
 ```
-Experiment: PostgreSQL under k6 load — container pause disruption
+Experiment: PostgreSQL under k6 load; container pause disruption
 Status:     PASS (10687ms)
 
 Timeline:
@@ -158,7 +157,7 @@ resilience.load.thresholds_met:  true
 resilience.load.duration_s:      10.5
 ```
 
-These flow to SigNoz, Jaeger, or any OTLP backend — queryable alongside the experiment trace.
+These flow to SigNoz, Jaeger, or any OTLP backend; queryable alongside the experiment trace.
 
 ---
 
@@ -166,16 +165,16 @@ These flow to SigNoz, Jaeger, or any OTLP backend — queryable alongside the ex
 
 Some experiments need load to produce meaningful results:
 
-- **Connection pool exhaustion** — killing idle connections has no effect without active traffic
-- **Network latency injection** — p95 impact is only measurable with concurrent requests
-- **CPU/memory stress** — degradation manifests as increased response times under load
-- **Failover testing** — client-side impact (retries, timeouts) only visible with active sessions
+- **Connection pool exhaustion**; killing idle connections has no effect without active traffic
+- **Network latency injection**; p95 impact is only measurable with concurrent requests
+- **CPU/memory stress**; degradation manifests as increased response times under load
+- **Failover testing**; client-side impact (retries, timeouts) only visible with active sessions
 
 Other experiments are meaningful without load:
 
-- **Pod deletion** — Kubernetes scheduler behavior is independent of traffic
-- **Node drain** — pod rescheduling happens regardless of load
-- **Data integrity checks** — corruption detection doesn't need concurrent writes
+- **Pod deletion**; Kubernetes scheduler behavior is independent of traffic
+- **Node drain**; pod rescheduling happens regardless of load
+- **Data integrity checks**; corruption detection doesn't need concurrent writes
 
 Tumult makes load optional. Add it when the experiment question is "how does this affect users?" Leave it off when the question is "does the infrastructure mechanism work?"
 
@@ -194,6 +193,6 @@ The numbers tell the story.
 
 *Try Tumult at [tumult.rs](https://tumult.rs)*
 
-*Next in the series: [Part 14 — GameDay Is Here →](./14-gameday-is-here.md)*
+*Next in the series: [Part 14; GameDay Is Here →](./14-gameday-is-here.md)*
 
 ---

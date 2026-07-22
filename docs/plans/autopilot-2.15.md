@@ -1,32 +1,17 @@
-# Autopilot — tumult 2.15 plan
+# Autopilot 2.15 historical design plan
 
-*2026-07-07 · planning document · informed by market research (agentic-QE/AI-SRE
-and chaos-automation landscape, mid-2026) and by the decision-pipeline
-architecture proven in the sluss PR-gate project.*
+*Written 2026-07-07. This is a historical planning record, not current product
+documentation. See the [Autopilot guide](../guides/autopilot.md) for implemented
+behavior.*
 
-## Positioning: the empty lane
+## Problem statement
 
-The market bifurcates cleanly. AI-SRE agents (Datadog Bits, Resolve, Cleric,
-Traversal, both OpenSREs) are *reactive* — they diagnose incidents and never
-inject. Proactive chaos platforms either recommend without enacting (Gremlin
-Reliability Intelligence, Steadybit Advice, Harness AI Reliability Agent) or
-run autonomously only pre-production with no gating concept (Antithesis).
-Compliance offerings (Gremlin for DORA, AWS FIS DORA guidance) are templates
-and after-the-fact evidence reports.
-
-**Nobody selects the next experiment from a compliance obligation.** Nobody
-records recommendation → gate verdict → run → outcome → evidence as a
-queryable lineage. Nobody treats human vetoes as first-class recommender
-feedback. Nobody's gate emits *downgrade* — the industry is binary
-allow/deny. All four are exactly what ChaosGraph + the 2.14 lineage work give
-us nearly for free. DORA (in force, supervisory testing expectations rising)
-is the demand driver to name.
-
-**The headline property:** every autopilot decision is reproducible from
-`(policy version, inputs)` — a deterministic gate over a deterministic
-recommender, with the whole decision chain in the graph. Harness gestures at
-this (AI proposes, ChaosGuard restricts) but guarantees neither determinism
-nor lineage.
+Tumult already recorded experiment, topology, compliance, and recommendation
+data, but it did not connect those records into a controlled execution loop.
+Autopilot was designed to select a recommendation, apply a deterministic
+safety policy, record the verdict, and only then enact an approved experiment.
+Every decision should be reproducible from its policy version and inputs, with
+the complete chain available for later inspection.
 
 ## Architecture: propose → gate → enact, all audited
 
@@ -48,16 +33,15 @@ trigger ──> recommender ──> validator ──> safety gate ──> runner
 - **Safety gate**: deterministic policy evaluation, deny by default,
   verdicts: `enact` / `downgrade` / `propose` (human approval queue) /
   `veto` (with the rule that fired). *Downgrade* — auto-shrinking scope,
-  duration, or target tier to fit policy — is novel in the market.
+  duration, or target tier to fit policy.
 - **Audit-before-act**: decision row + graph delta written and flushed
   before the runner fires. A crashed autopilot must leave "decided, gate
   said yes, policy v3" even if no journal ever arrives.
 
 ## The gate policy (`~/.tumult/autopilot.toml`)
 
-Speak ChaosGuard's canonical vocabulary — subject × fault-type × target ×
-time-window — plus the six patterns the industry converges on and three it
-doesn't have:
+The planned policy vocabulary was subject × fault-type × target × time-window,
+plus the following safety controls:
 
 Industry-canonical (all six, table stakes):
 1. steady-state assertion required on the spec, evaluated during the run,
@@ -70,7 +54,7 @@ Industry-canonical (all six, table stakes):
 6. ambient-health precondition: never inject into an already-degraded system
    (check open deviations + steady-state of the *target's dependents*)
 
-Tumult-novel:
+Additional Tumult controls:
 7. **global impact ledger** (from ChAP's 5%-budget lesson): concurrent
    experiments budgeted *together*; autopilot holds one fault at a time in
    v2.15
@@ -85,10 +69,9 @@ Tumult-novel:
 
 ## Recommender upgrades
 
-- **Evidence TTL + decay** (Gremlin's is the industry's clearest: 1-week
-  freshness, expiry states): per-article TTL in policy (DORA quarterly,
-  etc.); staleness becomes a scoring factor and a trigger. "Which resilience
-  claim expires soonest" is the compliance-driven selection nobody does.
+- **Evidence TTL + decay**: per-article TTL in policy; staleness becomes a
+  scoring factor and a trigger so expiring resilience claims are selected for
+  revalidation.
 - **Criticality scoring** (Monocle): weight by dependents-in-degree (have),
   plus traffic/RPS when OTel-derived signals land (later).
 - **Coverage-guided steering** (Antithesis): bias toward unexplored

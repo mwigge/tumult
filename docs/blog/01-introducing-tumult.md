@@ -2,15 +2,14 @@
 title: "Introducing Tumult: Rust-Native Chaos Engineering for the Age of AI"
 parent: Blog
 nav_order: 1
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Introducing Tumult: Rust-Native Chaos Engineering for the Age of AI
 
-![Tumult Banner](/images/tumult-banner.png)
+**Today, we are launching Tumult; a modern, modular chaos engineering platform built entirely in Rust.**
 
-**Today, we are launching Tumult — a modern, modular chaos engineering platform built entirely in Rust.**
-
-Chaos engineering has a problem. Not the discipline itself — the discipline is sound. The problem is the tooling. The tools we have were built for a different era: verbose JSON experiment definitions, Python runtime dependencies, observability as an opt-in afterthought, and outputs designed for humans to squint at in a terminal.
+Chaos engineering has a problem. Not the discipline itself; the discipline is sound. The problem is the tooling. The tools we have were built for a different era: verbose JSON experiment definitions, Python runtime dependencies, observability as an opt-in afterthought, and outputs designed for humans to squint at in a terminal.
 
 The world has changed. Systems are distributed. Deployments are containerized and orchestrated. AI agents are beginning to take on quality engineering roles. And yet, the dominant chaos tools haven't kept pace. We built Tumult to fix that.
 
@@ -18,7 +17,7 @@ The world has changed. Systems are distributed. Deployments are containerized an
 
 ## What is Tumult?
 
-Tumult is a chaos engineering platform that lets you define, run, and analyze experiments that test how your systems behave under real-world failure conditions. It follows the battle-tested conceptual model of Chaos Toolkit — steady-state hypotheses, fault injection methods, probes, actions, rollbacks — but rebuilds it from the ground up in Rust with three non-negotiable requirements:
+Tumult is a chaos engineering platform that lets you define, run, and analyze experiments that test how your systems behave under real-world failure conditions. It follows the battle-tested conceptual model of Chaos Toolkit; steady-state hypotheses, fault injection methods, probes, actions, rollbacks; but rebuilds it from the ground up in Rust with three non-negotiable requirements:
 
 1. **Speed and portability**: a single, statically-linked binary, no runtime dependencies
 2. **Observability by default**: every experiment emits OpenTelemetry spans without any configuration
@@ -34,7 +33,7 @@ The shift to Rust wasn't about hype. It was about solving real friction points f
 
 **Single binary deployment changes the operational model entirely.** The `tumult` binary is approximately 1.8MB stripped. It runs on macOS (Intel and Apple Silicon), Linux (x86_64 and aarch64), and Windows. There is nothing to install beyond the binary. Copy it to `/usr/local/bin`, and you are running experiments.
 
-**Async-native execution matters.** Tumult runs on Tokio, Rust's async runtime. Background actions — concurrent fault injection while probes observe the system — are first-class citizens, not hacks. Long-running chaos scenarios with multiple simultaneous faults execute without blocking.
+**Async-native execution matters.** Tumult runs on Tokio, Rust's async runtime. Background actions; concurrent fault injection while probes observe the system; are first-class citizens, not hacks. Long-running chaos scenarios with multiple simultaneous faults execute without blocking.
 
 ---
 
@@ -75,7 +74,7 @@ Here is the same steady-state probe in JSON versus TOON:
 
 *(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
 
-The structural difference is modest. But at scale — experiment definitions with dozens of steps, journals capturing hundreds of runs — TOON produces approximately **40-50% fewer tokens** than equivalent JSON. That is not a cosmetic improvement. It directly reduces the cost and latency of feeding experiment results to LLMs for automated analysis, and it makes journals readable by engineers without a JSON formatter.
+The structural difference is modest. But at scale; experiment definitions with dozens of steps, journals capturing hundreds of runs; TOON produces approximately **40-50% fewer tokens** than equivalent JSON. That is not a cosmetic improvement. It directly reduces the cost and latency of feeding experiment results to LLMs for automated analysis, and it makes journals readable by engineers without a JSON formatter.
 
 ---
 
@@ -85,12 +84,12 @@ Run an experiment with Tumult and point it at an OpenTelemetry Collector. You ge
 
 ```
 tumult.experiment (root span)
-├── tumult.hypothesis.before
+├── resilience.hypothesis.before
 │   └── tumult.probe: health-check
 ├── tumult.method
 │   ├── tumult.action: kill-db-connections
 │   └── tumult.probe: connection-count
-├── tumult.hypothesis.after
+├── resilience.hypothesis.after
 │   └── tumult.probe: health-check
 └── tumult.rollback
     └── tumult.action: restore-connections
@@ -187,7 +186,7 @@ Tumult ships today with a growing set of plugins:
 | `tumult-db-postgres` | Script | Kill connections, lock tables, inject latency |
 | `tumult-kafka` | Script | Kill broker, partition broker, consumer lag probes |
 
-The split between native and script plugins is intentional. Native plugins (like `tumult-kubernetes`) use Rust SDKs for deep, typed integration. Script plugins allow community contributors to add capabilities **without knowing Rust** — just write bash scripts and a TOON manifest.
+The split between native and script plugins is intentional. Native plugins (like `tumult-kubernetes`) use Rust SDKs for deep, typed integration. Script plugins allow community contributors to add capabilities **without knowing Rust**; just write bash scripts and a TOON manifest.
 
 ---
 
@@ -198,11 +197,11 @@ Tumult is being built in public, in phases:
 - **Phase 0 (Done):** Core engine, CLI, OTel integration
 - **Phase 1 (Done):** SSH, stress, containers, process plugins
 - **Phase 2 (In Progress):** Kubernetes, databases, Kafka, network, analytics
-- **Phase 3 (Planned):** MCP server — AI agents orchestrate chaos experiments directly
+- **Phase 3 (Planned):** MCP server; AI agents orchestrate chaos experiments directly
 - **Phase 4 (Planned):** DuckDB persistence, cross-run trends, Parquet export
 - **Phase 5 (Planned):** DORA, NIS2, PCI-DSS regulatory compliance reporting
 
-The MCP integration in Phase 3 is particularly significant. When complete, any AI agent that speaks Model Context Protocol can discover available plugins, compose experiments, run them, and interpret the results — without human intervention. Tumult becomes infrastructure for autonomous resilience validation.
+The MCP integration in Phase 3 is particularly significant. When complete, any AI agent that speaks Model Context Protocol can discover available plugins, compose experiments, run them, and interpret the results; without human intervention. Tumult becomes infrastructure for autonomous resilience validation.
 
 ---
 
@@ -220,7 +219,7 @@ tumult init
 # Validate it
 tumult validate experiment.toon
 
-# Run a dry run — see the plan without executing
+# Run a dry run; see the plan without executing
 tumult run experiment.toon --dry-run
 
 # Run it

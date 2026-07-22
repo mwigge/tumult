@@ -1,4 +1,4 @@
-//! ChaosGraph tool schemas.
+//! `ChaosGraph` tool schemas.
 
 use rust_mcp_sdk::macros;
 

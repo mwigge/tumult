@@ -12,15 +12,18 @@ Five-phase data lifecycle for resilience testing experiments. Every experiment p
 
 ## Phase Overview
 
+```mermaid
+flowchart LR
+    accTitle: Five-phase Tumult data lifecycle
+    accDescr: An estimate is followed by baseline measurement, observation during fault injection, post-fault recovery measurement, and cross-run analysis.
+    estimate[0 Estimate<br/>prediction] --> baseline[1 Baseline<br/>measure normal]
+    baseline --> during[2 During<br/>inject and sample]
+    during --> post[3 Post<br/>measure recovery]
+    post --> analysis[4 Analysis<br/>compare runs]
 ```
-Phase,Name,Action,Data Output
-0,ESTIMATE,Pre-run prediction (Human or AI-agent),resilience.estimate.*
-1,BASELINE,"Connect, sample, and derive thresholds",resilience.baseline.*
-2,DURING,Fault injection + load + continuous sampling,resilience.during.*
-3,POST,Fault removal + recovery measurement,resilience.post.*
-4,ANALYSIS,SQL-based trend/compliance reporting,resilience.analysis.*
-5,VERIFY,Continuous background steady-state checks,resilience.verify.*
-```
+
+Continuous steady-state verification is a separate operating mode. It emits
+`resilience.verify.*` data but is not a sixth phase of one experiment run.
 
 ---
 

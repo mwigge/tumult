@@ -62,7 +62,7 @@ fn handler_has_semaphore_with_correct_limit() {
 
 #[test]
 fn tool_names_follow_convention() {
-    let tools = [
+    let tools = vec![
         RunExperimentTool::tool(),
         ValidateTool::tool(),
         AnalyzeTool::tool(),
@@ -676,6 +676,7 @@ async fn call_tool_read_journal_structured_round_trip() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[allow(clippy::too_many_lines)]
 async fn structured_content_conforms_to_advertised_schema_for_all_structured_tools() {
     let tmp = tempfile::tempdir().unwrap();
     crate::tools::test_support::write_valid_experiment(tmp.path());
@@ -1733,7 +1734,7 @@ async fn call_tool_accepts_correct_bearer_token() {
 /// against a hint change silently drifting from the enforced role.
 #[test]
 fn required_roles_match_annotations() {
-    let tools = [
+    let tools = vec![
         RunExperimentTool::tool(),
         ValidateTool::tool(),
         AnalyzeTool::tool(),
@@ -1879,7 +1880,11 @@ async fn viewer_rejected_on_topology_import() {
         "toml_content": "[[service]]\nname = \"db\"\n",
         "store_path": store.to_str().unwrap(),
     });
-    let params = call_params("tumult_topology_import", args.clone(), Some("Bearer view-tok"));
+    let params = call_params(
+        "tumult_topology_import",
+        args.clone(),
+        Some("Bearer view-tok"),
+    );
     let err = handler
         .handle_call_tool_request(params, stub_runtime())
         .await
@@ -1921,7 +1926,11 @@ async fn viewer_rejected_on_autopilot_run() {
         "policy_path": policy.to_str().unwrap(),
         "store_path": store.to_str().unwrap(),
     });
-    let params = call_params("tumult_autopilot_run", args.clone(), Some("Bearer view-tok"));
+    let params = call_params(
+        "tumult_autopilot_run",
+        args.clone(),
+        Some("Bearer view-tok"),
+    );
     let err = handler
         .handle_call_tool_request(params, stub_runtime())
         .await

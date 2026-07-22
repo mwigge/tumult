@@ -2,17 +2,16 @@
 title: "GameDay Is Here: From Individual Tests to Compliance Programmes"
 parent: Blog
 nav_order: 14
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> GameDay Is Here: From Individual Tests to Compliance Programmes
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 14 of the Tumult series. [← Part 13: Load During Chaos](./13-load-during-chaos.md)*
 
 ---
 
-Running a single chaos experiment proves a single point of resilience. Your database recovers from a connection kill. Good. But an auditor asking about DORA Article 24 compliance doesn't want to see one test — they want to see a **testing programme**: multiple scenarios, measured outcomes, recovery validation, and evidence that you do this regularly.
+Running a single chaos experiment proves a single point of resilience. Your database recovers from a connection kill. Good. But an auditor asking about DORA Article 24 compliance doesn't want to see one test; they want to see a **testing programme**: multiple scenarios, measured outcomes, recovery validation, and evidence that you do this regularly.
 
 That's what GameDay delivers.
 
@@ -126,7 +125,7 @@ This isn't an arbitrary number. Each component maps to something an auditor can 
 
 ---
 
-## Why This Matters for DORA
+## DORA evidence implications
 
 The Digital Operational Resilience Act (EU 2022/2554) entered into force on 17 January 2025. It requires financial entities to:
 
@@ -139,9 +138,9 @@ A GameDay maps directly to these requirements:
 
 | DORA Article | GameDay Evidence |
 |-------------|-----------------|
-| Art. 24 — Testing programme | The GameDay itself — structured, repeatable, documented |
-| Art. 25 — Scenario testing | Each experiment is a fault scenario with measured outcome |
-| Art. 11 — Response & recovery | MTTR measured per experiment, aggregate recovery score |
+| Art. 24; Testing programme | The GameDay itself; structured, repeatable, documented |
+| Art. 25; Scenario testing | Each experiment is a fault scenario with measured outcome |
+| Art. 11; Response & recovery | MTTR measured per experiment, aggregate recovery score |
 
 The journal is the audit artifact. The resilience score is the compliance metric. The OTel trace is the forensic evidence.
 
@@ -153,8 +152,8 @@ The same GameDay also covers NIS2 (EU 2022/2555):
 
 | NIS2 Article | GameDay Evidence |
 |-------------|-----------------|
-| Art. 21(2)(c) — Business continuity | Recovery validated after each fault |
-| Art. 21(2)(f) — Effectiveness assessment | Baseline vs chaos comparison via load metrics |
+| Art. 21(2)(c); Business continuity | Recovery validated after each fault |
+| Art. 21(2)(f); Effectiveness assessment | Baseline vs chaos comparison via load metrics |
 
 One GameDay, two regulations, documented in a single journal.
 
@@ -162,7 +161,7 @@ One GameDay, two regulations, documented in a single journal.
 
 ## Real Results
 
-The Q2 PostgreSQL Resilience Programme ran against live Docker infrastructure via the MCP HTTP/SSE transport — the same way an external agent or CI pipeline would run it:
+The Q2 PostgreSQL Resilience Programme ran against live Docker infrastructure via MCP Streamable HTTP, the same transport an external agent or CI pipeline would use:
 
 ```
 GameDay: Q2 PostgreSQL Resilience Programme
@@ -171,9 +170,9 @@ Duration: 29.2s
 Resilience Score: 1.00
 
   #1 [PASS] PostgreSQL connection kill under load (2197ms)
-  #2 [PASS] PostgreSQL container pause — total unavailability (7402ms)
-  #3 [PASS] PostgreSQL CPU stress — resource pressure (9331ms)
-  #4 [PASS] PostgreSQL memory stress — resource pressure (9305ms)
+  #2 [PASS] PostgreSQL container pause; total unavailability (7402ms)
+  #3 [PASS] PostgreSQL CPU stress; resource pressure (9331ms)
+  #4 [PASS] PostgreSQL memory stress; resource pressure (9305ms)
 
 Score breakdown:
   Pass rate:    1.00
@@ -182,7 +181,7 @@ Score breakdown:
   Compliance:   1.00
 ```
 
-Four fault scenarios. 29 seconds. Full compliance evidence. The analytics store accumulates all results across runs — 67 experiments, 244 activities queryable via SQL.
+Four fault scenarios. 29 seconds. Full compliance evidence. The analytics store accumulates all results across runs; 67 experiments, 244 activities queryable via SQL.
 
 ### Pipeline
 
@@ -205,7 +204,7 @@ tumult-core (5-phase lifecycle, GameDay orchestrator)
 
 ## Try It
 
-One command runs the entire demo — starts infrastructure, connects via MCP, runs the GameDay, analyzes results, shows compliance mapping:
+One command runs the entire demo; starts infrastructure, connects via MCP, runs the GameDay, analyzes results, shows compliance mapping:
 
 ```bash
 ./scripts/gameday-demo.sh
@@ -243,4 +242,4 @@ The resilience score tells the story. The journal is the evidence. The complianc
 
 *Try Tumult at [tumult.rs](https://tumult.rs)*
 
-*Next in the series: [Part 15 — The Road Ahead →](./15-road-ahead.md)*
+*Next in the series: [Part 15; The Road Ahead →](./15-road-ahead.md)*

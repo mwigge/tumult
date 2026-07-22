@@ -9,7 +9,6 @@ use tumult_graph::AvailableAction;
 const DORA: &str = "compliance:DORA/Art.25";
 const NIS2: &str = "compliance:NIS2/Art.21(2)(b)";
 
-
 fn empty_criticality() -> &'static std::collections::HashMap<String, f64> {
     use std::sync::OnceLock;
     static EMPTY: OnceLock<std::collections::HashMap<String, f64>> = OnceLock::new();

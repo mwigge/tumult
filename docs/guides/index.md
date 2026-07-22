@@ -17,7 +17,7 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Analytics Guide](analytics-guide.md) | DuckDB SQL queries over experiment journals, Parquet export |
 | [Observability Setup](observability-setup.md) | OTel env vars, collector configs, Jaeger, Grafana, SigNoz |
 | [Load Testing Guide](load-testing-guide.md) | k6 and JMeter integration with chaos experiments |
-| [MCP Guide](mcp-guide.md) | The 26-tool MCP server: annotations, structured output, `tumult://` resources, and the closed run→ingest→recommend loop |
+| [MCP Guide](mcp-guide.md) | The MCP server: annotations, structured output, `tumult://` resources, and the closed run-to-ingest-to-recommend loop |
 | [ChaosGraph](chaosgraph.md) | The typed chaos knowledge graph served to agents over MCP: node/edge model, the two query tools, and bounded, token-efficient agent context (reproducible via make demo-proof) |
 | [Agentic Quickstart](agentic-quickstart.md) | Fault injection for AI agents: scenario packs, contracts, replay |
 | [Agentic Live Clients](agentic-live-clients.md) | Inject faults into Claude Code, Codex, OpenCode, and Copilot traffic |

@@ -2,6 +2,7 @@
 title: "Your Agent Is Now a First-Class Tumult Operator"
 parent: Blog
 nav_order: 21
+updated: 2026-07-21
 ---
 
 # Your Agent Is Now a First-Class Tumult Operator
@@ -10,13 +11,13 @@ nav_order: 21
 
 Since 1.0, Tumult has had an MCP server. It worked. It also treated the agent on the other end like a tourist: 19 tools, all returning prose, no way to tell a harmless read from a fault injection, and an experiment runner that threw its journal away the moment the call returned.
 
-2.1.0 rebuilds that surface into something spec-faithful. 24 tools. Annotations on every one. Structured output with advertised schemas on 16. Workspace files served as real MCP resources. And — the part that changes what an agent can actually *do* — the run→analyze→recommend loop now closes entirely over MCP.
+Version 2.1.0 rebuilt that surface around the MCP specification. It shipped 24 tools, annotations on every tool, advertised structured-output schemas on 16, workspace files as MCP resources, and a complete run-to-analyze-to-recommend loop.
 
 Let's take those one at a time.
 
 ## The loop is closed
 
-Here's the embarrassing part of the old behavior. `tumult_run_experiment` executed your experiment, rendered the journal into the response... and that was it. Nothing written to disk. Nothing ingested. The analytics store — the thing that powers `recommend`, `coverage`, and `trend` — never heard about the run.
+The previous behavior had a concrete gap. `tumult_run_experiment` executed an experiment and rendered the journal into the response, but wrote and ingested nothing. The analytics store that powers `recommend`, `coverage`, and `trend` never received the run.
 
 ```
 before 2.1.0:
@@ -29,7 +30,7 @@ before 2.1.0:
 
 The tool was a dead-end executor. An agent could run chaos all afternoon and the intelligence tools would keep recommending the experiments it had just finished.
 
-Now `tumult_run_experiment` does what `tumult run` has always done: it persists the journal (`journal_path`, default `journal.toon`) and auto-ingests it into the analytics store. Skip with `no_ingest`, redirect with `store_path` — CLI parity, parameter for parameter.
+Now `tumult_run_experiment` does what `tumult run` has always done: it persists the journal (`journal_path`, default `journal.toon`) and auto-ingests it into the analytics store. Skip with `no_ingest`, redirect with `store_path`; CLI parity, parameter for parameter.
 
 ```
 2.1.0:
@@ -48,7 +49,7 @@ Now `tumult_run_experiment` does what `tumult run` has always done: it persists 
 
 Run, learn, decide, run again. That's chaos engineering. Now it's chaos engineering an agent can do alone in a room.
 
-The result even tells you how the ingestion went — `ingested`, `duplicate`, `skipped`, or `failed: <reason>`. Ingestion trouble is a warning in the result, never a failed run.
+The result even tells you how the ingestion went; `ingested`, `duplicate`, `skipped`, or `failed: <reason>`. Ingestion trouble is a warning in the result, never a failed run.
 
 ## Annotations: reads are free, chaos is gated
 
@@ -76,7 +77,7 @@ The split is stark, and that's the point:
   auto-approve ✓    ASK THE HUMAN ⚠    approve writes ✎
 ```
 
-A well-behaved MCP client reads these hints and does the obvious thing: let the agent grep through journals, compliance verdicts, and coverage reports without ceremony — and put a human approval gate in front of the two tools that pause your Redis or kill your database connections.
+A well-behaved MCP client reads these hints and does the obvious thing: let the agent grep through journals, compliance verdicts, and coverage reports without ceremony; and put a human approval gate in front of the two tools that pause your Redis or kill your database connections.
 
 One annotation worth calling out: `tumult_recommend` is marked `openWorldHint: true`, but not because Tumult phones home. When you pass `agent: claude-code`, the tool spawns your local agent CLI, and *that* may call its model API. The annotation tells the truth about the blast radius.
 
@@ -100,12 +101,12 @@ before:                              after:
                                in tools/list ✓
 ```
 
-16 of the 24 tools now return `structuredContent` and advertise a matching `outputSchema`. Here's a real one — the shape `tumult_run_experiment` declares, filled in by the Redis experiment from the README:
+16 of the 24 tools now return `structuredContent` and advertise a matching `outputSchema`. Here's a real one; the shape `tumult_run_experiment` declares, filled in by the Redis experiment from the README:
 
 ```json
 {
   "journal": {
-    "experiment_title": "Redis resilience — verify recovery after disruption",
+    "experiment_title": "Redis resilience; verify recovery after disruption",
     "experiment_id": "d2f8...",
     "status": "completed",
     "started_at_ns": 1782043200000000000,
@@ -130,7 +131,7 @@ before:                              after:
 
 The `status` field is an enum in the schema (`completed` / `deviated` / `aborted` / `failed` / `interrupted`), the activity statuses are enums, the trace IDs are right there for your observability stack. No prose archaeology.
 
-The same strictness applies on the way in: enum-ish parameters (`format`, `rollback_strategy`, `framework`, `metric`, `load_tool`) reject unknown values with the list of valid ones. And every inline text payload is capped at 512 KiB with an explicit truncation notice — your context window will thank us.
+The same strictness applies on the way in: enum-ish parameters (`format`, `rollback_strategy`, `framework`, `metric`, `load_tool`) reject unknown values with the list of valid ones. And every inline text payload is capped at 512 KiB with an explicit truncation notice; your context window will thank us.
 
 ## Resources: the workspace has URIs now
 
@@ -154,9 +155,9 @@ tumult://
   list_journals ─────► one resource_link per journal (first 50)
 ```
 
-So the flow an MCP client sees: call a tool, get the text, get the structured content, *and* get a link to the artifact the tool just produced. Follow the link with `resources/read` whenever you want the file — no second tool call, no path guessing. `resources/list` paginates with opaque cursors (pages of 100), and the three list tools grew `limit` / `offset` / `total` for the same reason: nobody wants 4,000 journal paths in one response.
+An MCP client receives text, structured content, and a link to any artifact the tool produced. It can follow that link with `resources/read` without guessing a path. `resources/list` paginates with opaque cursors in pages of 100, and the three list tools accept `limit`, `offset`, and `total` so a response remains bounded.
 
-Filenames only, by the way — path separators and traversal attempts in a resource URI are rejected with the same containment checks the tools use. And if you've set `TUMULT_MCP_TOKEN`, resource requests pass the same bearer gate as tool calls.
+Filenames only, by the way; path separators and traversal attempts in a resource URI are rejected with the same containment checks the tools use. And if you've set `TUMULT_MCP_TOKEN`, resource requests pass the same bearer gate as tool calls.
 
 ## The full map
 
@@ -181,7 +182,7 @@ Five of the 24 are new in 2.1.0 (`report`, `compliance`, `trend`, `agents`, `gam
           smoke, run_experiment                                gate it
 ```
 
-Everything an operator does at the terminal, an agent can now do over MCP — with the same shared code underneath. `tumult_compliance` runs the same `tumult_core::compliance` scoring as `tumult compliance`. `tumult_recommend` runs the same `tumult-intelligence` engine as the CLI, agent enhancement and validation gate included. `tumult_gameday_run` even fixed a real bug on the way in: it used to silently skip the campaign's declared load; it now drives the same k6 executor as the CLI.
+Everything an operator does at the terminal, an agent can now do over MCP; with the same shared code underneath. `tumult_compliance` runs the same `tumult_core::compliance` scoring as `tumult compliance`. `tumult_recommend` runs the same `tumult-intelligence` engine as the CLI, agent enhancement and validation gate included. `tumult_gameday_run` even fixed a real bug on the way in: it used to silently skip the campaign's declared load; it now drives the same k6 executor as the CLI.
 
 One implementation, two front doors.
 
@@ -191,8 +192,8 @@ One implementation, two front doors.
 tumult-mcp --transport http --port 3100
 ```
 
-Point any MCP client at it, list the tools, and watch it read the annotations before it touches anything. Then let it run an experiment and ask for a recommendation — the answer will already know about the run.
+Point any MCP client at it, list the tools, and watch it read the annotations before it touches anything. Then let it run an experiment and ask for a recommendation; the answer will already know about the run.
 
 ---
 
-*The MCP server negotiates protocol revision `2025-11-25` and ships in 2.1.0. The [MCP Guide](../guides/mcp-guide.md) has the full data model — annotations, schemas, resources, pagination, and auth.*
+*The MCP server negotiates protocol revision `2025-11-25` and ships in 2.1.0. The [MCP Guide](../guides/mcp-guide.md) has the full data model; annotations, schemas, resources, pagination, and auth.*

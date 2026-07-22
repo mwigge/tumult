@@ -214,10 +214,10 @@ mod tests {
         let config = SshConfig::with_agent("host", "user")
             .port(2222)
             .connect_timeout(Duration::from_secs(30))
-            .command_timeout(Duration::from_secs(60));
+            .command_timeout(Duration::from_mins(1));
         assert_eq!(config.port, 2222);
         assert_eq!(config.connect_timeout, Duration::from_secs(30));
-        assert_eq!(config.command_timeout, Some(Duration::from_secs(60)));
+        assert_eq!(config.command_timeout, Some(Duration::from_mins(1)));
     }
 
     #[test]

@@ -50,7 +50,7 @@ pub struct RecommendationInput<'a> {
     pub tested_action_names: &'a HashSet<String>,
     /// Article id → citation strength (`direct`/`supporting`/`indirect`).
     pub article_strength: &'a HashMap<String, String>,
-    /// Observed traffic criticality per service id (e.g. OTel span rate).
+    /// Observed traffic criticality per service id (e.g. `OTel` span rate).
     /// Empty map = factor neutral. Values are relative; only the ratio to
     /// the maximum matters.
     pub criticality: &'a HashMap<String, f64>,

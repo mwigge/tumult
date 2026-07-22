@@ -47,8 +47,8 @@ pub(super) fn recommendation_schema() -> Value {
 /// Schema for one autopilot decision summary, shared by the
 /// `tumult_autopilot_run` and `tumult_autopilot_status` output schemas.
 /// Required keys are the common subset both tools emit; run additionally
-/// carries plugin/action/score/detail/run_status and status carries
-/// trigger/policy_hash/last_event/decided_at_ns.
+/// carries `plugin/action/score/detail/run_status` and status carries
+/// `trigger/policy_hash/last_event/decided_at_ns`.
 pub(super) fn autopilot_decision_schema() -> Value {
     json!({
         "type": "object",

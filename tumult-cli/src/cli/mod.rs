@@ -204,7 +204,7 @@ pub(crate) enum Commands {
         /// Parameter override for `--from`: KEY=VALUE (may be repeated)
         #[arg(long = "set", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
         set: Vec<String>,
-        /// Output path for the generated `.toon` (default: <name>.toon)
+        /// Output path for the generated `.toon` (default: `<name>.toon`)
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -433,7 +433,7 @@ impl TopologyMapFormat {
 
 #[derive(clap::Subcommand, Debug)]
 pub(crate) enum TopologyAction {
-    /// Import a declared topology TOML (services + depends_on) into the store
+    /// Import a declared topology TOML (services + `depends_on`) into the store
     Import {
         /// Path to the topology TOML file (e.g. ~/.tumult/topology.toml)
         path: PathBuf,

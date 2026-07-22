@@ -2,11 +2,10 @@
 title: "Writing Your First Experiment: The TOON Format in Depth"
 parent: Blog
 nav_order: 5
+updated: 2026-07-21
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Writing Your First Experiment: The TOON Format in Depth
-
-![Tumult Banner](/images/tumult-banner.png)
 
 *Part 5 of the Tumult series. [← Part 4: The Plugin System](./04-plugin-system.md)*
 
@@ -48,8 +47,8 @@ Every Tumult experiment has the same sections. Some are required; most are optio
 ┌─────────────────────────────────────────────────────┐
 │  Identity          title, description, tags         │
 │  Configuration     env vars, secrets                │
-│  Estimate          Phase 0 — prediction             │
-│  Baseline          Phase 1 — statistical config     │
+│  Estimate          Phase 0; prediction             │
+│  Baseline          Phase 1; statistical config     │
 │  Steady State      probes that define "healthy"     │
 │  Method            fault injection steps            │
 │  Rollbacks         restoration steps               │
@@ -221,7 +220,7 @@ method[3]:
 
 ### Provider Types
 
-**HTTP provider** — direct HTTP call:
+**HTTP provider**; direct HTTP call:
 ```toon
 provider:
   type: http
@@ -234,7 +233,7 @@ provider:
 
 *(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
 
-**Process provider** — run a script or binary:
+**Process provider**; run a script or binary:
 ```toon
 provider:
   type: process
@@ -245,7 +244,7 @@ provider:
   timeout_s: 30.0
 ```
 
-**Native provider** — call a compiled Rust plugin:
+**Native provider**; call a compiled Rust plugin:
 ```toon
 provider:
   type: native
@@ -324,7 +323,7 @@ This mapping appears in the journal and enables SQL queries that filter experime
 
 ## A Complete Production-Grade Experiment
 
-Putting it all together — a real experiment for validating Kafka consumer resilience when a broker is killed:
+Putting it all together; a real experiment for validating Kafka consumer resilience when a broker is killed:
 
 ```toon
 title: Kafka consumer survives broker kill
@@ -348,7 +347,7 @@ estimate:
   expected_degradation: moderate
   expected_data_loss: false
   confidence: medium
-  rationale: 3-broker cluster with replication factor 3 — single broker loss should trigger consumer rebalance
+  rationale: 3-broker cluster with replication factor 3; single broker loss should trigger consumer rebalance
   prior_runs: 3
 
 baseline:
@@ -428,12 +427,12 @@ Dry run: PostgreSQL failover recovery validation
 Configuration:
   db_host → DATABASE_HOST = "db-primary.staging.internal"
 
-Phase 0 — Estimate:
+Phase 0; Estimate:
   expected_outcome: recovered
   expected_recovery_s: 15.0
   confidence: high
 
-Phase 1 — Baseline:
+Phase 1; Baseline:
   method: mean_stddev, σ=2.0
   duration: 120s, interval: 2s, warmup: 15s
 
@@ -457,4 +456,4 @@ The dry run resolves configuration values, validates plugin references, and show
 
 ---
 
-*Next in the series: [Part 6 — Data-Driven Chaos: SQL Analytics Over Experiment Journals →](./06-analytics-pipeline.md)*
+*Next in the series: [Part 6; Data-Driven Chaos: SQL Analytics Over Experiment Journals →](./06-analytics-pipeline.md)*

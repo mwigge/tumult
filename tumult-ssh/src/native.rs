@@ -97,7 +97,7 @@ fn build_config(args: &NativeArgs) -> Result<SshConfig, NativeError> {
         auth,
         host_key_policy: parse_host_key_policy(args)?,
         connect_timeout: Duration::from_secs(30),
-        command_timeout: Some(Duration::from_secs(60)),
+        command_timeout: Some(Duration::from_mins(1)),
         known_hosts_path: None,
     })
 }

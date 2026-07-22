@@ -29,7 +29,7 @@ fn empty_store(dir: &std::path::Path) -> std::path::PathBuf {
 
 /// Seed a store with a guard-halted (broken) run: a DORA-mapped experiment
 /// targeting `svc:db` that deviated, so the control is Broken on that
-/// service (maps_to_compliance + targets, but no evidences edge).
+/// service (`maps_to_compliance` + targets, but no evidences edge).
 fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
     let db = dir.join("analytics.duckdb");
     let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
@@ -144,7 +144,13 @@ fn map_text_lists_imported_services() {
     }
     assert!(report.text.starts_with("legend:"));
     assert_eq!(report.structured["format"], "text");
-    assert_eq!(report.structured["map"]["services"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        report.structured["map"]["services"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
 }
 
 #[test]
@@ -152,8 +158,15 @@ fn map_mermaid_contains_classdefs_and_edges() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
     topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
-    let report =
-        topology_map(db.to_str().unwrap(), None, None, Some("mermaid"), None, None).unwrap();
+    let report = topology_map(
+        db.to_str().unwrap(),
+        None,
+        None,
+        Some("mermaid"),
+        None,
+        None,
+    )
+    .unwrap();
     assert!(report.text.starts_with("graph TD"));
     assert!(report.text.contains("classDef"));
     assert!(report.text.contains("svc_gateway --> svc_api"));
@@ -185,7 +198,11 @@ fn lineage_on_broken_run_reports_broken_with_cause() {
 
     let report = compliance_lineage(db.to_str().unwrap(), Some("dora"), None, None).unwrap();
     assert!(report.text.contains("BROKEN"), "{}", report.text);
-    assert!(report.text.contains("guard: p95_latency"), "{}", report.text);
+    assert!(
+        report.text.contains("guard: p95_latency"),
+        "{}",
+        report.text
+    );
     assert!(report.structured["counts"]["broken"].as_u64().unwrap() >= 1);
 
     // Service filter narrows to the broken service's cells only.
@@ -218,8 +235,12 @@ fn recommend_returns_ranked_explained_recommendations() {
 fn import_via_nonexistent_path_errors_cleanly() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
-    let err =
-        topology_import(db.to_str().unwrap(), None, Some("/nonexistent/topology.toml")).unwrap_err();
+    let err = topology_import(
+        db.to_str().unwrap(),
+        None,
+        Some("/nonexistent/topology.toml"),
+    )
+    .unwrap_err();
     assert!(
         err.to_string().contains("cannot read topology file"),
         "{err}"
@@ -243,12 +264,11 @@ fn invalid_toml_and_unknown_scopes_are_rejected() {
     let err = topology_import(db.to_str().unwrap(), Some("not toml {{{"), None).unwrap_err();
     assert!(err.to_string().contains("parse"), "{err}");
 
-    let err = topology_map(db.to_str().unwrap(), Some("hipaa"), None, None, None, None)
-        .unwrap_err();
+    let err =
+        topology_map(db.to_str().unwrap(), Some("hipaa"), None, None, None, None).unwrap_err();
     assert!(err.to_string().contains("hipaa"), "{err}");
 
-    let err = topology_map(db.to_str().unwrap(), None, None, Some("dot"), None, None)
-        .unwrap_err();
+    let err = topology_map(db.to_str().unwrap(), None, None, Some("dot"), None, None).unwrap_err();
     assert!(err.to_string().contains("mermaid"), "{err}");
 }
 
@@ -259,7 +279,10 @@ fn missing_store_is_a_clean_error_on_every_tool() {
     // fresh deployment performs) but still rejects a missing *directory* —
     // the typo guard.
     let err = topology_import(missing, Some(TOPOLOGY_TOML), None).unwrap_err();
-    assert!(err.to_string().contains("store directory not found"), "{err}");
+    assert!(
+        err.to_string().contains("store directory not found"),
+        "{err}"
+    );
     for err in [
         topology_map(missing, None, None, None, None, None).unwrap_err(),
         compliance_lineage(missing, None, None, None).unwrap_err(),

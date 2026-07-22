@@ -46,10 +46,10 @@ pub(super) fn autopilot_respond(params: &CallToolRequestParams) -> Dispatched {
 
 pub(super) fn autopilot_export(params: &CallToolRequestParams) -> Dispatched {
     let args: AutopilotExportTool = parse_args(params)?;
-    Ok(tokio::task::block_in_place(|| {
-        tools::autopilot_export(&args.store_path, &args.dir)
-    })
-    .map(ToolOutput::from))
+    Ok(
+        tokio::task::block_in_place(|| tools::autopilot_export(&args.store_path, &args.dir))
+            .map(ToolOutput::from),
+    )
 }
 
 pub(super) fn autopilot_notify(params: &CallToolRequestParams) -> Dispatched {

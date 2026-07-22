@@ -5,7 +5,7 @@
 //! "what does a *trajectory* — an ordered sequence of model and tool calls — do
 //! when a fault is injected at a specific step?".
 //!
-//! A [`Trajectory`] is a list of [`TrajectoryStep`]s. Each step carries a
+//! A trajectory is a list of [`TrajectoryStep`]s. Each step carries a
 //! baseline metadata response and its own per-step [`ContractSpec`]s. Faults are
 //! attached to a specific step index via [`StepFault`], so a run can, e.g.,
 //! poison retrieval at step 0 and observe the answer step at index 2 lose its

@@ -5,12 +5,14 @@
 //! is persisted BEFORE the experiment runs. A crash mid-loop leaves the
 //! truthful partial record.
 
+#![allow(clippy::missing_errors_doc)]
+
 mod engine;
 
 #[cfg(test)]
 mod tests;
 
-use std::path::Path;
+use std::{fmt::Write as _, path::Path};
 
 use tumult_autopilot::{LoadedPolicy, Verdict};
 
@@ -174,7 +176,11 @@ pub fn autopilot_once(
             c.action,
             c.article_id,
             c.score,
-            if detail.is_empty() { String::new() } else { format!(" — {detail}") }
+            if detail.is_empty() {
+                String::new()
+            } else {
+                format!(" — {detail}")
+            }
         ));
 
         let mut run_status = None;
@@ -212,7 +218,10 @@ pub fn autopilot_once(
     let mut structured = serde_json::Map::new();
     structured.insert("decisions".into(), serde_json::json!(decisions));
     structured.insert("enacted".into(), serde_json::json!(enacted));
-    structured.insert("policy_hash".into(), serde_json::json!(policy.policy_hash()));
+    structured.insert(
+        "policy_hash".into(),
+        serde_json::json!(policy.policy_hash()),
+    );
     structured.insert("executed".into(), serde_json::json!(execute));
     Ok(StructuredReport { text, structured })
 }
@@ -239,14 +248,21 @@ pub fn autopilot_respond(
             status.record.verdict
         )));
     }
-    if matches!(status.last_event.as_deref(), Some("human_approved" | "human_denied")) {
+    if matches!(
+        status.last_event.as_deref(),
+        Some("human_approved" | "human_denied")
+    ) {
         return Err(ToolError::InvalidInput(format!(
             "decision {decision_id} already resolved ({})",
             status.last_event.unwrap_or_default()
         )));
     }
 
-    let kind = if approve { "human_approved" } else { "human_denied" };
+    let kind = if approve {
+        "human_approved"
+    } else {
+        "human_denied"
+    };
     store
         .append_autopilot_event(
             decision_id,
@@ -258,15 +274,17 @@ pub fn autopilot_respond(
 
     let mut text = format!("{kind}: {decision_id}");
     if approve {
-        let playbook = status.record.playbook.clone().ok_or_else(|| {
-            ToolError::InvalidInput("decision has no playbook to run".into())
-        })?;
+        let playbook = status
+            .record
+            .playbook
+            .clone()
+            .ok_or_else(|| ToolError::InvalidInput("decision has no playbook to run".into()))?;
         let journal_dir = Path::new(store_path)
             .parent()
             .unwrap_or(Path::new("."))
             .join("autopilot-journals");
         let run = run_playbook(&store, store_path, decision_id, &playbook, &journal_dir)?;
-        text.push_str(&format!("\nran {playbook} -> {run}"));
+        let _ = write!(text, "\nran {playbook} -> {run}");
     }
 
     let mut structured = serde_json::Map::new();
