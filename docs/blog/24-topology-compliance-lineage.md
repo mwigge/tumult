@@ -1,7 +1,7 @@
 ---
 title: "Where Compliance Breaks: Lineage on the Service Map"
 parent: Blog
-nav_order: 25
+nav_order: 24
 updated: 2026-07-21
 ---
 

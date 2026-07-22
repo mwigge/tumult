@@ -133,6 +133,16 @@ fn parse_export_json_format() {
 }
 
 #[test]
+fn parse_export_arrow_format() {
+    let cli =
+        Cli::try_parse_from(["tumult", "export", "journal.toon", "--format", "arrow"]).unwrap();
+    let Commands::Export { format, .. } = cli.command else {
+        panic!("expected Export command");
+    };
+    assert_eq!(format, ExportFormat::Arrow);
+}
+
+#[test]
 fn parse_export_invalid_format_is_error() {
     let result = Cli::try_parse_from(["tumult", "export", "journal.toon", "--format", "xml"]);
     assert!(result.is_err());

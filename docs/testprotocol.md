@@ -1,15 +1,20 @@
 # Tumult Platform Test Protocol
 
-**Version:** 1.1  
-**Date:** 2026-06-08  
-**Platform version:** tumult 1.3.0 · Rust 1.89  
+**Version:** 1.2  
+**Date:** 2026-07-22  
+**Platform version:** tumult 2.16.1 · Rust 1.96  
 **Scope:** Full platform functional validation — CLI, crates, plugins, data pipelines, observability, containers, analytics, reporting, and **agentic fault injection** (cross-client proxy, contracts, two-sided observability, orchestrator).  
 **Methodology:** Output-driven verification. We verify that each component produces the correct output, not that the code is correct internally.
 
-> **Note (1.1):** the full end-to-end results tables in this protocol were last
-> executed against an earlier build and are pending a fresh full re-run for
-> 1.3.0. The unit-test summary (TP-UNIT) and the agentic procedures (TP-AGENTIC)
-> below reflect the current 1.3.0 codebase.
+> **Note (1.2):** the inventory and command references in this protocol were
+> corrected against tumult 2.16.1 (`tumult discover`: 16 plugins — 11 script
+> + 5 native — and 91 actions; 22 workspace crates; 40 MCP tools). The
+> **Test Results Log** at the end is a *historical* execution record from the
+> 0.1.0-era build (2026-04-01): its PASS rows, counts, and version strings
+> describe that build, not the current one, and are preserved as an audit
+> trail rather than re-executed. Procedures marked "covered by unit tests"
+> refer to the current workspace suite (`cargo test --workspace`, 1,500+
+> tests).
 
 ---
 
@@ -74,7 +79,7 @@ export TUMULT_CLICKHOUSE_URL=http://localhost:8123  # only for TP-CLICKHOUSE
 cargo build --workspace --release
 ```
 
-**Expected output:** All 13 crates compile without errors. Binary at `target/release/tumult`.
+**Expected output:** All 22 workspace crates compile without errors. Binary at `target/release/tumult`.
 
 ### TP-ENV-02: Start chaos target containers
 
@@ -131,7 +136,7 @@ tumult --version
 tumult --help
 ```
 
-**Expected:** Lists all subcommands: `run`, `validate`, `discover`, `analyze`, `export`, `compliance`, `report`, `trend`, `init`, `import`, `store`, `backup`, `purge`.
+**Expected:** Lists all subcommands: `run`, `validate`, `discover`, `analyze`, `export`, `compliance`, `report`, `trend`, `init`, `new`, `templates`, `import`, `store`, `recommend`, `agents`, `agentic`, `gameday`, `mcp`, `chaosgraph`, `topology`, `autopilot`, `tui`.
 
 ### TP-CLI-03: Validate experiment
 
@@ -156,7 +161,7 @@ tumult validate /tmp/bad.toon
 tumult discover
 ```
 
-**Expected:** Lists all 9 script plugins (tumult-containers, tumult-db-postgres, tumult-db-mysql, tumult-db-redis, tumult-kafka, tumult-loadtest, tumult-network, tumult-process, tumult-stress) with their actions and probes.
+**Expected:** Lists all 16 plugins — 11 script (tumult-containers, tumult-db-mysql, tumult-db-postgres, tumult-db-redis, tumult-kafka, tumult-loadtest, tumult-network, tumult-process, tumult-pumba, tumult-stress, tumult-timewarp) plus 5 native (tumult-cloud, tumult-kubernetes, tumult-net, tumult-ssh, tumult-windows) — with 91 actions total (`Actions: 91`).
 
 ### TP-CLI-06: Run experiment (process provider)
 
@@ -173,7 +178,7 @@ tumult run experiment.toon
 ### TP-CLI-07: Run with JSON output
 
 ```bash
-tumult run experiment.toon --output json
+tumult run experiment.toon --output-format json
 ```
 
 **Expected:** Outputs valid JSON journal to stdout. Parseable with `jq`.
@@ -181,9 +186,9 @@ tumult run experiment.toon --output json
 ### TP-CLI-08: Run with rollback strategy
 
 ```bash
-tumult run experiment.toon --rollback always
-tumult run experiment.toon --rollback on-deviation
-tumult run experiment.toon --rollback never
+tumult run experiment.toon --rollback-strategy always
+tumult run experiment.toon --rollback-strategy on-deviation
+tumult run experiment.toon --rollback-strategy never
 ```
 
 **Expected:** Each completes successfully. With `always`, `rollback_results` is populated. With `never`, it is empty.
@@ -191,10 +196,11 @@ tumult run experiment.toon --rollback never
 ### TP-CLI-09: Init creates experiment scaffold
 
 ```bash
-tumult init --name test-scaffold /tmp/test-init.toon
+tumult init                  # writes ./experiment.toon
+tumult init --plugin tumult-db-postgres
 ```
 
-**Expected:** Creates a valid `.toon` file that passes `tumult validate`.
+**Expected:** Creates a valid `experiment.toon` that passes `tumult validate`.
 
 ### TP-CLI-10: Store subcommand
 
@@ -322,16 +328,20 @@ TOON arrays use `field[N]` notation. Verify:
 
 ### TP-TOON-05: Plugin manifest TOON parsing
 
-Each plugin `plugin.toon` must parse correctly:
+Each script plugin's `plugin.toon` must parse correctly. `tumult discover`
+parses every manifest on every run, so a malformed manifest surfaces as a
+discovery error:
 
 ```bash
-for plugin in plugins/tumult-*/plugin.toon; do
-  echo "--- $plugin ---"
-  tumult validate --plugin "$plugin" 2>&1 || echo "FAIL: $plugin"
+tumult discover
+for plugin in tumult-containers tumult-db-mysql tumult-db-postgres tumult-db-redis \
+              tumult-kafka tumult-loadtest tumult-network tumult-process \
+              tumult-pumba tumult-stress tumult-timewarp; do
+  tumult discover --plugin "$plugin" >/dev/null || echo "FAIL: $plugin"
 done
 ```
 
-**Expected:** All 9 plugin manifests parse successfully.
+**Expected:** All 11 script plugin manifests parse successfully (no `FAIL` lines).
 
 ---
 
@@ -343,19 +353,29 @@ done
 tumult discover
 ```
 
-**Expected output includes:** All 9 plugins with their registered actions and probes:
+**Expected output includes:** All 16 plugins (91 actions total) with their registered actions and probes:
 
-| Plugin | Actions | Probes |
+| Plugin (script) | Actions | Probes |
 |--------|---------|--------|
-| tumult-process | kill, suspend, resume | process-exists, process-resources |
-| tumult-containers | stop, kill, pause, unpause, remove | container-running, container-health, cpu-utilization, memory-utilization |
-| tumult-db-postgres | kill-connections, exhaust-connections, lock-table | connection-count, replication-lag, pool-utilization |
-| tumult-db-mysql | kill-connections, exhaust-connections, lock-table | connection-count, replication-lag |
-| tumult-db-redis | flush-all, client-kill, debug-sleep | redis-ping, redis-info |
-| tumult-kafka | broker-shutdown, partition-reassign | topic-list, consumer-lag |
-| tumult-network | add-latency, add-packet-loss, add-corruption, dns-disrupt, partition | interface-stats |
-| tumult-stress | cpu-stress, memory-stress, io-stress | cpu-utilization, memory-utilization |
-| tumult-loadtest | k6-run, jmeter-run | k6-status |
+| tumult-containers | kill-container, stop-container, pause-container, unpause-container, limit-cpu, limit-memory | container-status, container-health |
+| tumult-db-mysql | kill-connections, lock-table | connection-count |
+| tumult-db-postgres | kill-connections, lock-table, inject-latency, exhaust-connections | connection-count, replication-lag, pool-utilization |
+| tumult-db-redis | flush-all, block-clients, simulate-failover | redis-ping, redis-info |
+| tumult-kafka | kill-broker, partition-broker, partition-broker-rollback, add-broker-latency | consumer-lag, under-replicated, broker-count |
+| tumult-loadtest | k6-start, k6-stop | k6-metrics |
+| tumult-network | add-latency, add-packet-loss, add-corruption, reset-tc, block-dns, delay-dns, redirect-dns, block-dns-rollback, redirect-dns-rollback, partition-host, partition-host-rollback | ping-latency, dns-resolve, dns-latency |
+| tumult-process | kill-process, suspend-process, resume-process | process-exists, process-resources |
+| tumult-pumba | netem-delay, netem-loss, netem-duplicate, netem-corrupt, netem-rate, iptables-loss, kill-container, pause-container, stop-container, stress-container | container-running, container-latency, container-packet-stats |
+| tumult-stress | cpu-stress, memory-stress, io-stress, combined-stress | cpu-utilization, memory-utilization, io-utilization |
+| tumult-timewarp | skew-clock, advance-clock-past-cert-expiry, token-ttl, entropy-drain, rng-pressure, stop-entropy-drain, restore-clock | entropy-available, crypto-throughput, clock-offset |
+
+| Plugin (native) | Functions |
+|--------|-----------|
+| tumult-cloud | aws_ec2_stop_instance, aws_ec2_terminate_instance, aws_fis_start_experiment, aws_fis_stop_experiment, aws_fis_experiment_status, azure_chaos_start, azure_chaos_cancel, azure_chaos_status, gcp_compute_stop_instance |
+| tumult-kubernetes | delete_pod, scale_deployment, cordon_node, uncordon_node, drain_node, apply_network_policy, delete_network_policy, pod_network_latency, pod_stress, pod_is_ready, deployment_is_ready, all_pods_ready, node_status, service_has_endpoints, count_pods_in_phase |
+| tumult-net | start_proxy, stop_proxy, inject_latency, throttle_bandwidth, terminate_connections, corrupt_bytes, fragment_stream |
+| tumult-ssh | execute |
+| tumult-windows | cpu_stress, network_blackhole, process_kill |
 
 ### TP-PLUGIN-02: Plugin registry lookup
 
@@ -375,7 +395,7 @@ done
 
 ## 7. TP-SCRIPT: Script Plugin Tests
 
-### TP-SCRIPT-01: tumult-process — kill action
+### TP-SCRIPT-01: tumult-process — kill-process action
 
 ```bash
 # Start a background process
@@ -493,13 +513,13 @@ tumult run <network-latency.toon with interface and delay>
 
 **Expected:** Latency injected via `tc`. Rollback removes the rule.
 
-### TP-SCRIPT-15: tumult-loadtest — k6-run action
+### TP-SCRIPT-15: tumult-loadtest — k6-start action
 
 ```bash
 tumult run <k6-loadtest.toon with script>
 ```
 
-**Expected:** k6 executes the load script. Output contains request metrics.
+**Expected:** k6 executes the load script (`k6-start`); `k6-stop` ends it and the `k6-metrics` probe captures the end-of-test summary. Output contains request metrics.
 
 ---
 
@@ -510,32 +530,39 @@ tumult run <k6-loadtest.toon with script>
 ```bash
 # Run experiment first
 tumult run experiment.toon
-tumult analyze "SELECT * FROM experiments" --journal journal.toon
+tumult analyze journal.toon --query "SELECT * FROM experiments"
 ```
 
 **Expected:** Journal is converted to Arrow record batches and queryable. The SELECT returns one row with experiment fields.
 
-### TP-ARROW-02: Arrow schema validation
+### TP-ARROW-02: Store schema validation
 
 ```bash
-tumult analyze "DESCRIBE experiments" --journal journal.toon
-tumult analyze "DESCRIBE activity_results" --journal journal.toon
+tumult analyze journal.toon --query "SELECT * FROM experiments LIMIT 1"
+tumult analyze journal.toon --query "SELECT * FROM activity_results LIMIT 1"
 ```
 
-**Expected output — `experiments` table schema:**
+(`--query` is deliberately SELECT/WITH-only — `DESCRIBE` is rejected — so
+schema verification reads a row and checks the columns.)
+
+**Expected — `experiments` table columns:**
 
 | Column | Type |
 |--------|------|
 | experiment_id | VARCHAR |
-| experiment_title | VARCHAR |
+| title | VARCHAR |
 | status | VARCHAR |
 | started_at_ns | BIGINT |
 | ended_at_ns | BIGINT |
-| duration_ms | BIGINT |
-| steady_state_before_met | BOOLEAN |
-| steady_state_after_met | BOOLEAN |
+| duration_ms | UBIGINT |
+| method_step_count | BIGINT |
+| rollback_count | BIGINT |
+| hypothesis_before_met | BOOLEAN |
+| hypothesis_after_met | BOOLEAN |
+| estimate_accuracy | DOUBLE |
+| resilience_score | DOUBLE |
 
-**Expected output — `activity_results` table schema:**
+**Expected — `activity_results` table columns:**
 
 | Column | Type |
 |--------|------|
@@ -544,15 +571,16 @@ tumult analyze "DESCRIBE activity_results" --journal journal.toon
 | activity_type | VARCHAR |
 | status | VARCHAR |
 | started_at_ns | BIGINT |
-| duration_ms | BIGINT |
+| duration_ms | UBIGINT |
 | output | VARCHAR |
 | error | VARCHAR |
+| phase | VARCHAR |
 
 ### TP-ARROW-03: Record batch row counts
 
 ```bash
-tumult analyze "SELECT COUNT(*) FROM experiments" --journal journal.toon
-tumult analyze "SELECT COUNT(*) FROM activity_results" --journal journal.toon
+tumult analyze journal.toon --query "SELECT COUNT(*) FROM experiments"
+tumult analyze journal.toon --query "SELECT COUNT(*) FROM activity_results"
 ```
 
 **Expected:** Experiments count matches number of ingested journals. Activity results count matches total activities across all phases.
@@ -560,10 +588,10 @@ tumult analyze "SELECT COUNT(*) FROM activity_results" --journal journal.toon
 ### TP-ARROW-04: Arrow IPC export
 
 ```bash
-tumult export journal.toon --format json --output /tmp/test-export.json
+tumult export journal.toon --format arrow
 ```
 
-**Expected:** Produces valid file. Content matches journal data.
+**Expected:** Produces `journal.arrow` in the current directory (export writes `<journal-stem>.<ext>` next to where you run it). Content matches journal data.
 
 ---
 
@@ -581,7 +609,7 @@ tumult store stats
 
 ```bash
 tumult run experiment.toon
-tumult analyze "SELECT experiment_id, status FROM experiments ORDER BY started_at_ns DESC LIMIT 1"
+tumult analyze --query "SELECT experiment_id, status FROM experiments ORDER BY started_at_ns DESC LIMIT 1"
 ```
 
 **Expected:** Returns the most recent experiment with `status = completed`.
@@ -589,7 +617,7 @@ tumult analyze "SELECT experiment_id, status FROM experiments ORDER BY started_a
 ### TP-DUCK-03: SQL query — aggregate
 
 ```bash
-tumult analyze "SELECT status, COUNT(*) as cnt FROM experiments GROUP BY status"
+tumult analyze --query "SELECT status, COUNT(*) as cnt FROM experiments GROUP BY status"
 ```
 
 **Expected:** Returns grouped counts. No SQL errors.
@@ -597,7 +625,7 @@ tumult analyze "SELECT status, COUNT(*) as cnt FROM experiments GROUP BY status"
 ### TP-DUCK-04: SQL query — activity drill-down
 
 ```bash
-tumult analyze "SELECT name, activity_type, status, duration_ms FROM activity_results WHERE experiment_id = '<id>'"
+tumult analyze --query "SELECT name, activity_type, status, duration_ms FROM activity_results WHERE experiment_id = '<id>'"
 ```
 
 **Expected:** Returns all activities for the given experiment with correct types and durations.
@@ -606,8 +634,8 @@ tumult analyze "SELECT name, activity_type, status, duration_ms FROM activity_re
 
 ```bash
 # Run experiment 3 times
-for i in 1 2 3; do tumult run experiment.toon; done
-tumult analyze "SELECT experiment_title, AVG(duration_ms) as avg_ms FROM experiments GROUP BY experiment_title"
+for i in 1 2 3; do tumult run experiment.toon --force; done
+tumult analyze --query "SELECT title, AVG(duration_ms) as avg_ms FROM experiments GROUP BY title"
 ```
 
 **Expected:** Returns average duration. Value is reasonable (> 0, < 60000).
@@ -625,21 +653,21 @@ tumult store stats          # count should increment by 1
 ### TP-DUCK-07: Import from Parquet
 
 ```bash
-tumult export journal.toon --format parquet --output /tmp/test.parquet
-tumult import /tmp/test.parquet
+tumult store backup --output /tmp/tumult-backup   # writes Parquet files into the directory
+tumult import /tmp/tumult-backup                  # import takes the backup directory
 tumult store stats
 ```
 
-**Expected:** Parquet imported successfully. Store count increments.
+**Expected:** Parquet imported successfully. Store count reflects the imported rows.
 
 ### TP-DUCK-08: Purge store
 
 ```bash
-tumult purge --confirm
+tumult store purge --older-than-days 0
 tumult store stats
 ```
 
-**Expected:** Experiment count drops to 0. Store file remains but is empty.
+**Expected:** Experiments older than the retention window are removed (0 days = all). Store file remains but is empty.
 
 ---
 
@@ -907,15 +935,18 @@ ssh -p 12222 -o StrictHostKeyChecking=no test@localhost echo "hello from ssh"
 
 ### TP-SSH-02: SSH provider experiment execution
 
-Create experiment with SSH provider targeting `localhost:12222`:
+Create experiment using the native `tumult-ssh` plugin targeting `localhost:12222`:
 
 ```toon
 provider:
-  type: ssh
-  host: localhost
-  port: 12222
-  user: test
-  command: uname -a
+  type: native
+  plugin: tumult-ssh
+  function: execute
+  arguments:
+    host: localhost
+    port: 12222
+    user: test
+    command: uname -a
 ```
 
 **Expected:** Probe succeeds. Output contains Linux kernel info from the container.
@@ -957,7 +988,7 @@ Feed highly variable baseline samples (CV > threshold).
 ### TP-BASELINE-05: Baseline skip mode
 
 ```bash
-tumult run experiment.toon --baseline skip
+tumult run experiment.toon --baseline-mode skip
 ```
 
 **Expected:** No baseline phase executed. Static tolerances used directly.
@@ -965,7 +996,7 @@ tumult run experiment.toon --baseline skip
 ### TP-BASELINE-06: Baseline only mode
 
 ```bash
-tumult run experiment.toon --baseline only
+tumult run experiment.toon --baseline-mode only
 ```
 
 **Expected:** Baseline collected. No fault injection. No method execution. Journal has baseline data only.
@@ -977,17 +1008,17 @@ tumult run experiment.toon --baseline only
 ### TP-ANALYTICS-01: Export to Parquet
 
 ```bash
-tumult export journal.toon --format parquet --output /tmp/test.parquet
-file /tmp/test.parquet
+tumult export journal.toon --format parquet
+file journal.parquet
 ```
 
-**Expected:** File is Apache Parquet format. Size > 0.
+**Expected:** File is Apache Parquet format (export writes `journal.parquet` in the current directory). Size > 0.
 
 ### TP-ANALYTICS-02: Export to CSV
 
 ```bash
-tumult export journal.toon --format csv --output /tmp/test.csv
-head -1 /tmp/test.csv
+tumult export journal.toon --format csv
+head -1 journal.csv
 ```
 
 **Expected:** CSV with header row matching schema columns.
@@ -995,8 +1026,8 @@ head -1 /tmp/test.csv
 ### TP-ANALYTICS-03: Export to JSON
 
 ```bash
-tumult export journal.toon --format json --output /tmp/test.json
-jq type /tmp/test.json
+tumult export journal.toon --format json
+jq type journal.json
 ```
 
 **Expected:** Valid JSON. `jq` reports `"object"` or `"array"`.
@@ -1040,18 +1071,18 @@ done
 
 ```bash
 # Run experiment 5 times
-for i in $(seq 1 5); do tumult run experiment.toon; done
-tumult trend --metric duration_ms
+for i in $(seq 1 5); do tumult run experiment.toon --force; done
+tumult trend . --metric duration_ms
 ```
 
-**Expected:** Shows duration trend across runs. Identifies regressions if any.
+**Expected:** Shows duration trend across runs (journals directory is the positional argument). Identifies regressions if any.
 
 ### TP-ANALYTICS-09: Backup and restore
 
 ```bash
-tumult backup --output /tmp/tumult-backup.parquet
-tumult purge --confirm
-tumult import /tmp/tumult-backup.parquet
+tumult store backup --output /tmp/tumult-backup
+tumult store purge --older-than-days 0
+tumult import /tmp/tumult-backup
 tumult store stats
 ```
 
@@ -1110,18 +1141,16 @@ docker exec <clickhouse> clickhouse-client \
 
 Invoke MCP server and list available tools.
 
-**Expected tools:**
-- `tumult_run_experiment`
-- `tumult_validate`
-- `tumult_discover`
-- `tumult_analyze`
-- `tumult_read_journal`
-- `tumult_list_journals`
-- `tumult_create_experiment`
-- `tumult_query_traces`
-- `tumult_analyze_store`
-- `tumult_store_stats`
-- `tumult_list_experiments`
+**Expected:** 40 tools, grouped by surface:
+
+- Experiments: `tumult_run_experiment`, `tumult_validate`, `tumult_discover`, `tumult_create_experiment`, `tumult_scaffold_experiment`, `tumult_list_experiments`, `tumult_fault_catalog`
+- Journals & analytics: `tumult_read_journal`, `tumult_list_journals`, `tumult_analyze`, `tumult_analyze_store`, `tumult_store_stats`, `tumult_report`, `tumult_trend`, `tumult_query_traces`
+- Compliance: `tumult_compliance`, `tumult_coverage`, `tumult_compliance_lineage`
+- GameDay: `tumult_gameday_create`, `tumult_gameday_run`, `tumult_gameday_analyze`, `tumult_gameday_list`
+- ChaosGraph & topology: `tumult_chaosgraph_query`, `tumult_chaosgraph_neighbors`, `tumult_chaosgraph_coverage_gaps`, `tumult_chaosgraph_cypher`, `tumult_topology_import`, `tumult_topology_map`
+- Recommendation & agentic: `tumult_recommend`, `tumult_recommend_injection`, `tumult_agents`, `tumult_agentic_list_scenarios`, `tumult_agentic_smoke`, `tumult_agentic_run_experiment`
+- Autopilot: `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify`
+- Server: `tumult_whoami`
 
 ### TP-MCP-02: Run experiment via MCP
 
@@ -1192,11 +1221,11 @@ tumult run <k8s-drain-node.toon>
 ### TP-E2E-01: Full pipeline — init, run, analyze, export
 
 ```bash
-tumult init --name e2e-test /tmp/e2e-test.toon
-tumult validate /tmp/e2e-test.toon
-tumult run /tmp/e2e-test.toon --journal /tmp/e2e-journal.toon
-tumult analyze "SELECT * FROM experiments" --journal /tmp/e2e-journal.toon
-tumult export /tmp/e2e-journal.toon --format parquet --output /tmp/e2e.parquet
+cd /tmp && tumult init        # writes ./experiment.toon
+tumult validate experiment.toon
+tumult run experiment.toon --journal-path e2e-journal.toon
+tumult analyze e2e-journal.toon --query "SELECT * FROM experiments"
+tumult export e2e-journal.toon --format parquet
 ```
 
 **Expected:** Each step succeeds. Data flows through the entire pipeline.
@@ -1310,10 +1339,10 @@ tumult discover | grep tumult-pumba
 ### TP-PUMBA-02: Manifest parsing
 
 ```bash
-tumult validate --plugin plugins/tumult-pumba/plugin.toon
+tumult discover --plugin tumult-pumba
 ```
 
-**Expected:** plugin.toon parses without errors.
+**Expected:** plugin.toon parses and lists without errors (`tumult discover` parses the manifest on every run).
 
 ### TP-PUMBA-03: Script permissions
 
@@ -1603,7 +1632,7 @@ agent call is behind the `AgentRunner` trait and unit-tested with a stub runner
 cargo test --workspace 2>&1
 ```
 
-**Expected:** All 580+ tests pass. Exit code 0.
+**Expected:** All 1,500+ tests pass (1,533 at 2.16.1). Exit code 0.
 
 ### TP-UNIT-02: Test summary by crate
 
@@ -1611,26 +1640,36 @@ cargo test --workspace 2>&1
 cargo test --workspace 2>&1 | grep "test result:"
 ```
 
-**Expected output structure:**
+**Expected output structure** (approximate per-crate totals at 2.16.1, unit +
+integration suites combined; 89 test suites in all):
 
 | Crate | Tests | Status |
 |-------|-------|--------|
-| tumult-core | ~150+ | All pass |
-| tumult-analytics | ~50+ | All pass |
-| tumult-agentic | 58 | All pass |
-| tumult-otel | 28 | All pass |
-| tumult-mcp | 75 | All pass |
-| tumult-plugin | ~40+ | All pass |
-| tumult-cli | ~60+ | All pass |
-| tumult-baseline | ~30+ | All pass |
-| tumult-ssh | ~20+ | All pass |
-| tumult-clickhouse | ~10+ | All pass |
-| tumult-kubernetes | ~10+ | All pass |
-| tumult-intelligence | small | All pass |
+| tumult-core | ~255 | All pass |
+| tumult-mcp | ~270 | All pass |
+| tumult-cli | ~190 | All pass |
+| tumult-analytics | ~80 | All pass |
+| tumult-baseline | ~75 | All pass |
+| tumult-ssh | ~75 | All pass |
+| tumult-plugin | ~65 | All pass |
+| tumult-graph | ~65 | All pass |
+| tumult-agentic | ~65 | All pass |
+| tumult-kubernetes | ~60 | All pass |
+| tumult-autopilot | ~45 | All pass |
+| tumult-otel | ~38 | All pass |
+| tumult-cloud | ~37 | All pass |
+| tumult-intelligence | ~30 | All pass |
+| tumult-net | ~30 | All pass |
+| tumult-agent-cli | ~25 | All pass |
+| tumult-tui | ~25 | All pass |
+| tumult-windows | ~25 | All pass |
+| tumult-cypher | ~25 | All pass |
+| tumult-authoring | ~22 | All pass |
+| tumult-clickhouse | ~18 | All pass |
 | tumult-test-utils | small | All pass |
 
 > `tumult-agentic` / `tumult-otel` counts cover the cross-client observability
-> work (1.3.0): fault engine, scenario packs, proxy trace propagation,
+> work: fault engine, scenario packs, proxy trace propagation,
 > experiment-side instrumentation, client profiles, and orchestrator mode.
 
 ### TP-UNIT-03: Property-based tests (proptest)

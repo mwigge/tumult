@@ -26,12 +26,16 @@ pub fn cmd_autopilot_once(
     execute: bool,
     limit: Option<u32>,
 ) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
+    // A CLI process is the only enactment it can observe: with --execute it
+    // IS the one allowed enactment (gate reads concurrent_experiments = 0),
+    // matching the MCP handler once it holds the server-wide enactment slot.
     let report = tumult_mcp::tools::autopilot_once(
         &store.to_string_lossy(),
         &policy.to_string_lossy(),
         execute,
         limit,
+        0,
     )
     .map_err(|e| anyhow!(e.to_string()))?;
     println!("{}", report.text);
@@ -50,7 +54,7 @@ pub fn cmd_autopilot_status(
     limit: Option<u32>,
     json: bool,
 ) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report = tumult_mcp::tools::autopilot_status(&store.to_string_lossy(), verdict, limit)
         .map_err(|e| anyhow!(e.to_string()))?;
     if json {
@@ -63,23 +67,35 @@ pub fn cmd_autopilot_status(
 }
 
 /// `autopilot approve` / `autopilot deny`: record the human response to a
-/// proposed decision. Approval runs the playbook experiment; denial records
-/// the veto feedback the autonomy ladder consumes.
+/// proposed decision. Approval runs the playbook experiment — after a full
+/// re-gate against CURRENT state, which requires the same `policy` the
+/// decision was gated under; denial records the veto feedback the autonomy
+/// ladder consumes.
 ///
 /// # Errors
 ///
 /// Returns an error if the store is missing, the decision does not exist or
-/// was already resolved, or an approved playbook run fails.
+/// was already resolved, the re-gate refuses an approval, or an approved
+/// playbook run fails.
 pub fn cmd_autopilot_respond(
     store: Option<&Path>,
     id: &str,
     approve: bool,
     reason: Option<&str>,
+    policy: Option<&Path>,
 ) -> Result<()> {
-    let store = resolve_store(store);
-    let report =
-        tumult_mcp::tools::autopilot_respond(&store.to_string_lossy(), id, approve, reason)
-            .map_err(|e| anyhow!(e.to_string()))?;
+    let store = resolve_store(store)?;
+    // Same ledger note as `cmd_autopilot_once`: this process is the only
+    // enactment it can observe, so an approving re-gate reads 0.
+    let report = tumult_mcp::tools::autopilot_respond(
+        &store.to_string_lossy(),
+        id,
+        approve,
+        reason,
+        policy.map(|p| p.to_string_lossy()).as_deref(),
+        0,
+    )
+    .map_err(|e| anyhow!(e.to_string()))?;
     println!("{}", report.text);
     Ok(())
 }
@@ -92,7 +108,7 @@ pub fn cmd_autopilot_respond(
 /// Returns an error if the store is missing or the directory cannot be
 /// written.
 pub fn cmd_autopilot_export(store: Option<&Path>, dir: &Path) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report =
         tumult_mcp::tools::autopilot_export(&store.to_string_lossy(), &dir.to_string_lossy())
             .map_err(|e| anyhow!(e.to_string()))?;
@@ -112,7 +128,7 @@ pub fn cmd_autopilot_notify_change(
     source: &str,
     detail: Option<&str>,
 ) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report = tumult_mcp::tools::autopilot_notify_change(
         &store.to_string_lossy(),
         service,
@@ -165,7 +181,7 @@ mod tests {
     fn respond_on_unknown_decision_is_a_clean_error() {
         let dir = tempfile::TempDir::new().unwrap();
         let db = seeded_store(dir.path());
-        let err = cmd_autopilot_respond(Some(&db), "no-such-id", false, None).unwrap_err();
+        let err = cmd_autopilot_respond(Some(&db), "no-such-id", false, None, None).unwrap_err();
         assert!(err.to_string().contains("not found"), "{err}");
     }
 

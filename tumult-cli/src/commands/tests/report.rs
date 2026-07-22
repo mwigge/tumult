@@ -17,6 +17,7 @@ async fn report_generates_html_file() {
         &exp_path,
         &journal_path,
         false,
+        false,
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
@@ -46,6 +47,7 @@ async fn report_default_output_uses_journal_stem() {
         &exp_path,
         &journal_path,
         false,
+        false,
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
@@ -72,6 +74,7 @@ async fn report_html_contains_trace_ids() {
     cmd_run(
         &exp_path,
         &journal_path,
+        false,
         false,
         RollbackStrategy::OnDeviation,
         false,

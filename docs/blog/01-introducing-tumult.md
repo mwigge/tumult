@@ -31,7 +31,7 @@ The shift to Rust wasn't about hype. It was about solving real friction points f
 
 **Python tooling carries hidden costs.** Every team running chaos experiments in Python knows the dance: set up a virtualenv, manage dependency conflicts between the framework and its extensions, debug cryptic import errors in CI. And when you get to production, you're deploying a Python runtime alongside your experiment runner. For a tool whose entire purpose is to test your infrastructure, that runtime is itself an infrastructure concern.
 
-**Single binary deployment changes the operational model entirely.** The `tumult` binary is approximately 1.8MB stripped. It runs on macOS (Intel and Apple Silicon), Linux (x86_64 and aarch64), and Windows. There is nothing to install beyond the binary. Copy it to `/usr/local/bin`, and you are running experiments.
+**Single binary deployment changes the operational model entirely.** The `tumult` binary is a single static executable. It runs on macOS (Intel and Apple Silicon), Linux (x86_64 and aarch64), and Windows. There is nothing to install beyond the binary. Copy it to `/usr/local/bin`, and you are running experiments.
 
 **Async-native execution matters.** Tumult runs on Tokio, Rust's async runtime. Background actions; concurrent fault injection while probes observe the system; are first-class citizens, not hacks. Long-running chaos scenarios with multiple simultaneous faults execute without blocking.
 
@@ -83,16 +83,14 @@ The structural difference is modest. But at scale; experiment definitions with d
 Run an experiment with Tumult and point it at an OpenTelemetry Collector. You get this, automatically:
 
 ```
-tumult.experiment (root span)
+resilience.experiment (root span)
 ├── resilience.hypothesis.before
-│   └── tumult.probe: health-check
-├── tumult.method
-│   ├── tumult.action: kill-db-connections
-│   └── tumult.probe: connection-count
+│   └── resilience.probe: health-check
+├── resilience.action: kill-db-connections
+├── resilience.probe: connection-count
 ├── resilience.hypothesis.after
-│   └── tumult.probe: health-check
-└── tumult.rollback
-    └── tumult.action: restore-connections
+│   └── resilience.probe: health-check
+└── resilience.rollback: wait-for-reconnect
 ```
 
 Every span carries structured attributes in the `resilience.*` namespace: experiment ID, probe name, plugin name, duration, outcome, hypothesis status. There is no plugin to install, no control to write, no environment variable to set (beyond the collector endpoint). This is the default behavior.
@@ -131,32 +129,33 @@ steady_state_hypothesis:
     - name: health-check
       activity_type: probe
       provider:
-        type: http
-        method: GET
-        url: http://localhost:8080/health
-        timeout_s: 5.0
+        type: process
+        path: curl
+        arguments[8]: "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", "http://localhost:8080/health"
+        timeout_s: 10.0
       tolerance:
-        type: exact
-        value: 200
+        type: regex
+        pattern: "200"
 
 method[1]:
   - name: kill-db-connections
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-db
-      function: terminate_connections
+      type: script
+      plugin: tumult-db-postgres
+      function: kill-connections
       arguments:
-        database: myapp
+        pg_database: myapp
     pause_after_s: 5.0
 
 rollbacks[1]:
-  - name: restore-connections
+  - name: wait-for-reconnect
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-db
-      function: reset_connection_pool
+      type: process
+      path: pg_isready
+      arguments[2]: "-h", "localhost"
+      timeout_s: 10.0
 ```
 
 *(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
@@ -192,16 +191,18 @@ The split between native and script plugins is intentional. Native plugins (like
 
 ## What's Next
 
-Tumult is being built in public, in phases:
+*(Update 2026-07: everything on the original roadmap below has since shipped — the MCP server, the DuckDB analytics pipeline, regulatory compliance reporting, and the policy-gated autopilot are all in the current release. See the [blog index](index.md) for the posts that cover each of them, and [The Road Ahead](15-road-ahead.md) for what comes next.)*
 
-- **Phase 0 (Done):** Core engine, CLI, OTel integration
-- **Phase 1 (Done):** SSH, stress, containers, process plugins
-- **Phase 2 (In Progress):** Kubernetes, databases, Kafka, network, analytics
-- **Phase 3 (Planned):** MCP server; AI agents orchestrate chaos experiments directly
-- **Phase 4 (Planned):** DuckDB persistence, cross-run trends, Parquet export
-- **Phase 5 (Planned):** DORA, NIS2, PCI-DSS regulatory compliance reporting
+Tumult was built in public, in phases:
 
-The MCP integration in Phase 3 is particularly significant. When complete, any AI agent that speaks Model Context Protocol can discover available plugins, compose experiments, run them, and interpret the results; without human intervention. Tumult becomes infrastructure for autonomous resilience validation.
+- **Phase 0:** Core engine, CLI, OTel integration
+- **Phase 1:** SSH, stress, containers, process plugins
+- **Phase 2:** Kubernetes, databases, Kafka, network, analytics
+- **Phase 3:** MCP server; AI agents orchestrate chaos experiments directly
+- **Phase 4:** DuckDB persistence, cross-run trends, Parquet export
+- **Phase 5:** DORA, NIS2, PCI-DSS regulatory compliance reporting
+
+The MCP integration turned out to be particularly significant. Any AI agent that speaks Model Context Protocol can discover available plugins, compose experiments, run them, and interpret the results; without human intervention. Tumult has become infrastructure for autonomous resilience validation.
 
 ---
 

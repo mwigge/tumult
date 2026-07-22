@@ -47,6 +47,18 @@ pub enum Provider {
         #[serde(default)]
         arguments: HashMap<String, serde_json::Value>,
     },
+    /// Dispatch a script plugin action (or probe) discovered from the plugin
+    /// search paths. `function` names an entry in the plugin manifest's
+    /// `actions`/`probes`; `arguments` reach the script as `TUMULT_*`
+    /// environment variables (`dns_domain` → `TUMULT_DNS_DOMAIN`).
+    Script {
+        plugin: String,
+        function: String,
+        #[serde(default)]
+        arguments: HashMap<String, serde_json::Value>,
+        #[serde(default)]
+        timeout_s: Option<f64>,
+    },
     Process {
         path: String,
         #[serde(default)]
@@ -156,6 +168,38 @@ mod tests {
         };
         let decoded: Provider = toon_round_trip(&provider);
         assert_eq!(decoded, provider);
+    }
+
+    #[test]
+    fn provider_script_round_trips() {
+        let provider = Provider::Script {
+            plugin: "tumult-network".into(),
+            function: "redirect-dns".into(),
+            arguments: HashMap::from([(
+                "dns_domain".into(),
+                serde_json::Value::String("example.com".into()),
+            )]),
+            timeout_s: Some(10.0),
+        };
+        let decoded: Provider = toon_round_trip(&provider);
+        assert_eq!(decoded, provider);
+    }
+
+    #[test]
+    fn provider_script_defaults_arguments_and_timeout() {
+        let provider: Provider = serde_json::from_str(
+            r#"{"type": "script", "plugin": "tumult-network", "function": "reset-tc"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            provider,
+            Provider::Script {
+                plugin: "tumult-network".into(),
+                function: "reset-tc".into(),
+                arguments: HashMap::new(),
+                timeout_s: None,
+            }
+        );
     }
 
     #[test]

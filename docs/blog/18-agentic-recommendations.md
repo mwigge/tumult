@@ -1,7 +1,7 @@
 ---
 title: "Bring Your Own Agent: Agentic Recommendations"
 parent: Blog
-nav_order: 19
+nav_order: 18
 updated: 2026-07-21
 ---
 

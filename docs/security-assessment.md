@@ -249,7 +249,8 @@ that session's credentials and traffic.
 `tumult agentic run-live` spawns `claude -p` with a constructed environment
 (`TRACEPARENT`, `CLAUDE_CODE_*` telemetry flags, `ANTHROPIC_BASE_URL`,
 `OTEL_EXPORTER_OTLP_ENDPOINT`). It sets only these well-known variables, inherits
-the operator's environment, and passes the prompt as an argument — no shell
+the operator's environment, and passes the prompt via stdin — never as an
+argument, since argv is visible in `ps` to other local users — with no shell
 interpolation. The agent binary itself (`claude`) is trusted operator-installed
 tooling, run with the operator's own credentials.
 
@@ -270,7 +271,67 @@ wrapping added in 1.3.0 does not change MCP authentication.
 
 ---
 
-## 11. Recommendations
+## 11. Prompt injection and agent-driven operation
+
+The recommendation and autopilot features close a loop that deserves its own
+threat model: content from experiment journals influences a prompt, the prompt
+drives a model, and the model's output can become an executable experiment.
+
+### 11.1 The indirect-injection chain
+
+1. **Journals become prompt material.** `tumult_recommend --agent` assembles
+   its prompt from analytics-store content: journal titles, experiment
+   metadata, failure reasons, and coverage gaps. Anything that previously ran
+   — including an experiment whose definition contained attacker-influenced
+   strings — contributes to that prompt.
+2. **The prompt drives an external agent.** The configured agent CLI
+   (`claude`, `codex`) answers with an experiment definition. Model output is
+   not trustworthy by construction: a crafted journal entry can steer the
+   generated target, plugin action, or arguments (classic indirect prompt
+   injection).
+3. **The output is executable.** A generated experiment file can be run by
+   `tumult_run_experiment` directly, or enter the autopilot queue and later
+   be enacted by `tumult_autopilot_run` / approved via
+   `tumult_autopilot_respond`.
+
+### 11.2 What validation does and does not cover
+
+Generated experiments pass **structural validation only**: the TOON parser,
+the experiment validator (steady-state hypothesis present, exactly one
+fault, rollback declared), and — on the autopilot path — the deterministic
+policy gate (enrollment, blast-radius bounds, concurrency, cooldown, guard
+telemetry pre-flight). These checks establish that an experiment is
+well-formed and within the operator's declared policy. They do **not**
+establish that its target or arguments are semantically appropriate: a
+well-formed experiment can still be the wrong experiment.
+
+### 11.3 Required operational controls
+
+- **Review before execution.** An operator must read any agent-generated
+  experiment before it runs. Generation and execution are separate tools
+  precisely so this review has a place to happen.
+- **Human-in-the-loop by name, not by annotation.** MCP clients must gate
+  the destructive tools on explicit human approval, matching on tool name:
+  `tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run`
+  (when `execute=true`), and `tumult_autopilot_respond` (when
+  `approve=true`). Annotations are advisory metadata for the client UI; they
+  are not an enforcement mechanism, and a compromised or confused client
+  cannot be assumed to honor them.
+- **Server-side backstops.** Independent of client behavior, the server
+  requires the operator role for every destructive tool, re-evaluates the
+  full autopilot gate against current state before any approval executes
+  (a stale approval is refused and the refusal is recorded), and holds a
+  server-wide enactment lock so at most one fault-injection enactment runs
+  at a time.
+
+None of this removes the prompt-injection risk at the model boundary; it
+bounds what a successful injection can reach. Treat journal content as
+untrusted input to the model, and model output as untrusted input to the
+runner.
+
+---
+
+## 12. Recommendations
 
 ### Immediate (P0)
 

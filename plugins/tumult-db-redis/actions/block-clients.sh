@@ -8,9 +8,15 @@
 #   TUMULT_DURATION   - Pause duration in milliseconds (default: 5000)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 HOST="${TUMULT_REDIS_HOST:-localhost}"
 PORT="${TUMULT_REDIS_PORT:-6379}"
 DURATION="${TUMULT_DURATION:-5000}"
+
+# CLIENT PAUSE takes an integer millisecond count — reject anything else
+# before it reaches redis-cli.
+validate_integer "TUMULT_DURATION" "${DURATION}"
 
 if ! command -v redis-cli >/dev/null 2>&1; then
     echo "error: redis-cli not found" >&2

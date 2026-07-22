@@ -140,20 +140,26 @@ pub struct AnalyticsStore {
 impl AnalyticsStore {
     /// Returns the default persistent store path: `~/.tumult/analytics.duckdb`
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the home directory cannot be determined.
-    #[must_use]
-    pub fn default_path() -> PathBuf {
+    /// Returns [`AnalyticsError::Internal`] if the home directory cannot be
+    /// determined and the `TUMULT_ANALYTICS_PATH` override is not set.
+    pub fn default_path() -> Result<PathBuf, AnalyticsError> {
         // Explicit override first — lets scripts and demos isolate a store
         // without threading a flag through every command.
         if let Ok(path) = std::env::var("TUMULT_ANALYTICS_PATH") {
             if !path.is_empty() {
-                return PathBuf::from(path);
+                return Ok(PathBuf::from(path));
             }
         }
-        let home = dirs_next::home_dir().expect("cannot determine home directory");
-        home.join(".tumult").join("analytics.duckdb")
+        let home = dirs_next::home_dir().ok_or_else(|| {
+            AnalyticsError::Internal(
+                "cannot determine home directory; set TUMULT_ANALYTICS_PATH to an explicit \
+                 analytics store path"
+                    .to_string(),
+            )
+        })?;
+        Ok(home.join(".tumult").join("analytics.duckdb"))
     }
 
     /// # Errors
@@ -485,7 +491,7 @@ mod tests {
 
     #[test]
     fn default_path_returns_valid_path() {
-        let path = AnalyticsStore::default_path();
+        let path = AnalyticsStore::default_path().unwrap();
         assert!(path.ends_with("analytics.duckdb"));
         assert!(path.to_str().unwrap().contains(".tumult"));
     }

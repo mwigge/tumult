@@ -6,7 +6,8 @@ use super::EngineError;
 
 /// Validate an experiment definition before execution.
 ///
-/// Checks: method is non-empty, regex patterns compile, hypothesis probes exist.
+/// Checks: method is non-empty, regex patterns compile, hypothesis probes exist,
+/// script providers name well-formed plugins/functions.
 ///
 /// # Errors
 ///
@@ -15,6 +16,9 @@ use super::EngineError;
 /// Returns [`EngineError::EmptyHypothesisProbes`] if the hypothesis has no probes.
 /// Returns [`EngineError::InvalidRegex`] if a regex tolerance pattern fails to compile.
 /// Returns [`EngineError::InvalidToleranceBounds`] if a range tolerance has lower > upper.
+/// Returns [`EngineError::InvalidMaxConcurrentFaults`] if `max_concurrent_faults` is 0.
+/// Returns [`EngineError::InvalidScriptProvider`] if a script provider's plugin or
+/// function is empty or contains path separators, `..`, null bytes, or whitespace.
 ///
 /// # Examples
 ///
@@ -94,6 +98,12 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
         return Err(EngineError::EmptyMethod);
     }
 
+    // A cap of 0 would make every background activity wait on the fault gate
+    // forever; a set value must be at least 1.
+    if experiment.max_concurrent_faults == Some(0) {
+        return Err(EngineError::InvalidMaxConcurrentFaults);
+    }
+
     // Validate hypothesis has probes if defined
     if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
         if hypothesis.probes.is_empty() {
@@ -137,7 +147,8 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
         }
     }
 
-    // Validate all regex tolerance patterns compile
+    // Validate all regex tolerance patterns compile, and every script
+    // provider names a well-formed plugin and function.
     let all_activities = experiment
         .method
         .iter()
@@ -169,8 +180,46 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             }
             _ => {}
         }
+
+        if let crate::types::Provider::Script {
+            plugin, function, ..
+        } = &activity.provider
+        {
+            validate_script_name(&activity.name, "plugin", plugin)?;
+            validate_script_name(&activity.name, "function", function)?;
+        }
     }
 
+    Ok(())
+}
+
+/// A script provider's `plugin`/`function` fields name a plugin directory
+/// entry and a manifest action: they must be non-empty and carry no path
+/// separators, `..` traversal, null bytes, or whitespace — anything else
+/// could steer manifest lookup outside the plugin search paths.
+fn validate_script_name(activity: &str, field: &str, value: &str) -> Result<(), EngineError> {
+    let reject = |reason: &str| EngineError::InvalidScriptProvider {
+        activity: activity.to_string(),
+        reason: format!("{field} '{value}' {reason}"),
+    };
+    if value.is_empty() {
+        return Err(EngineError::InvalidScriptProvider {
+            activity: activity.to_string(),
+            reason: format!("{field} must not be empty"),
+        });
+    }
+    if value.contains('/') || value.contains('\\') {
+        return Err(reject("must not contain path separators"));
+    }
+    if value.contains("..") {
+        return Err(reject("must not contain '..'"));
+    }
+    if value.contains('\0') {
+        return Err(reject("must not contain null bytes"));
+    }
+    if value.chars().any(char::is_whitespace) {
+        return Err(reject("must not contain whitespace"));
+    }
     Ok(())
 }
 
@@ -423,5 +472,128 @@ mod tests {
         };
         let err = validate_experiment(&exp).unwrap_err();
         assert!(err.to_string().contains("invalid tolerance range"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_zero_max_concurrent_faults() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "zero-cap".into(),
+            max_concurrent_faults: Some(0),
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("max_concurrent_faults"), "{err}");
+    }
+
+    #[test]
+    fn validate_accepts_nonzero_max_concurrent_faults() {
+        let exp = Experiment {
+            version: "v1".into(),
+            title: "capped".into(),
+            max_concurrent_faults: Some(2),
+            method: vec![Activity {
+                name: "inject".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(validate_experiment(&exp).is_ok());
+    }
+
+    fn script_experiment(plugin: &str, function: &str) -> Experiment {
+        Experiment {
+            version: "v1".into(),
+            title: "script-provider".into(),
+            method: vec![Activity {
+                name: "inject".into(),
+                provider: Provider::Script {
+                    plugin: plugin.into(),
+                    function: function.into(),
+                    arguments: HashMap::new(),
+                    timeout_s: None,
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_script_provider() {
+        assert!(validate_experiment(&script_experiment("tumult-network", "redirect-dns")).is_ok());
+        assert!(validate_experiment(&script_experiment("tumult-kafka", "kill_broker-2")).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_script_provider_bad_names() {
+        let cases = [
+            ("", "redirect-dns"),
+            ("tumult network", "redirect-dns"),
+            ("tumult/network", "redirect-dns"),
+            ("tumult\\network", "redirect-dns"),
+            ("..", "redirect-dns"),
+            ("tumult-..-network", "redirect-dns"),
+            ("tumult-network", ""),
+            ("tumult-network", "redirect dns"),
+            ("tumult-network", "../redirect-dns"),
+            ("tumult-network", "redirect/dns"),
+        ];
+        for (plugin, function) in cases {
+            let err = validate_experiment(&script_experiment(plugin, function)).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid script provider"),
+                "plugin={plugin:?} function={function:?} should be rejected, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_script_provider_null_bytes() {
+        let err =
+            validate_experiment(&script_experiment("tumult\0network", "redirect-dns")).unwrap_err();
+        assert!(err.to_string().contains("null bytes"), "{err}");
+        let err =
+            validate_experiment(&script_experiment("tumult-network", "redirect\0dns")).unwrap_err();
+        assert!(err.to_string().contains("null bytes"), "{err}");
+    }
+
+    #[test]
+    fn validate_checks_script_provider_in_rollbacks_and_hypothesis() {
+        let mut exp = script_experiment("tumult-network", "redirect-dns");
+        exp.rollbacks.push(Activity {
+            name: "cleanup".into(),
+            provider: Provider::Script {
+                plugin: "bad plugin".into(),
+                function: "reset-tc".into(),
+                arguments: HashMap::new(),
+                timeout_s: None,
+            },
+            ..Default::default()
+        });
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("invalid script provider"), "{err}");
+
+        let mut exp = script_experiment("tumult-network", "redirect-dns");
+        exp.steady_state_hypothesis = Some(Hypothesis {
+            title: "dns resolves".into(),
+            probes: vec![Activity {
+                name: "probe".into(),
+                activity_type: ActivityType::Probe,
+                provider: Provider::Script {
+                    plugin: "tumult-network".into(),
+                    function: String::new(),
+                    arguments: HashMap::new(),
+                    timeout_s: None,
+                },
+                ..Default::default()
+            }],
+        });
+        let err = validate_experiment(&exp).unwrap_err();
+        assert!(err.to_string().contains("must not be empty"), "{err}");
     }
 }

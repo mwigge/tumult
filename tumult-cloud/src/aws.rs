@@ -49,7 +49,7 @@ struct Signer {
 impl Signer {
     fn new(endpoint: String, region: String, creds: AwsCredentials) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http::client(),
             endpoint,
             region,
             creds,

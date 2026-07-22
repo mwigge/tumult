@@ -123,7 +123,9 @@ impl MockServer {
 fn fake_aws_creds() -> AwsCredentials {
     AwsCredentials {
         access_key_id: "AKIDEXAMPLE".to_string(),
-        secret_access_key: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY".to_string(),
+        secret_access_key: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+            .to_string()
+            .into(),
         session_token: None,
     }
 }

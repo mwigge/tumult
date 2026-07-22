@@ -29,6 +29,66 @@ struct K6Handle {
     summary_file: tempfile::NamedTempFile,
 }
 
+/// Upper bound on how long `stop()` waits for k6 to exit before killing it —
+/// a hung k6 must not hang the whole run forever.
+const K6_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Wait for `child` to exit, collecting its piped output, but give up after
+/// `timeout`: the child is killed and reaped, and an error is returned.
+///
+/// The piped streams are drained on reader threads while waiting so a chatty
+/// child can't block on a full pipe and stall the wait.
+fn wait_with_timeout(
+    mut child: std::process::Child,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
+    fn drain<R: std::io::Read + Send + 'static>(reader: R) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut reader = reader;
+            let _ = reader.read_to_end(&mut buf);
+            buf
+        })
+    }
+
+    let stdout_thread = child.stdout.take().map(drain);
+    let stderr_thread = child.stderr.take().map(drain);
+
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    // Hung child — kill and reap so it doesn't outlive the run.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(format!(
+                        "process did not exit within {}s; killed",
+                        timeout.as_secs()
+                    ));
+                }
+                std::thread::sleep(
+                    POLL_INTERVAL
+                        .min(deadline.saturating_duration_since(std::time::Instant::now())),
+                );
+            }
+            Err(e) => break Err(format!("k6 wait failed: {e}")),
+        }
+    };
+
+    let stdout = stdout_thread.map_or_else(Vec::new, |t| t.join().unwrap_or_default());
+    let stderr = stderr_thread.map_or_else(Vec::new, |t| t.join().unwrap_or_default());
+
+    status.map(|status| std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
 impl LoadExecutor for K6LoadExecutor {
     fn start(&self, config: &LoadConfig) -> Result<LoadHandle, String> {
         let vus = config.vus.unwrap_or(10);
@@ -84,10 +144,7 @@ impl LoadExecutor for K6LoadExecutor {
             .downcast::<K6Handle>()
             .map_err(|_| "invalid load handle")?;
 
-        let output = k6
-            .child
-            .wait_with_output()
-            .map_err(|e| format!("k6 wait failed: {e}"))?;
+        let output = wait_with_timeout(k6.child, K6_STOP_TIMEOUT)?;
 
         let ended_at_ns = super::epoch_nanos_now();
         let duration_ns = ended_at_ns - k6.started_at_ns;
@@ -285,4 +342,56 @@ pub fn parse_k6_rate(output: &str, counter_name: &str) -> Option<f64> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spawn_piped(program: &str, args: &[&str]) -> std::process::Child {
+        std::process::Command::new(program)
+            .args(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn test child")
+    }
+
+    #[test]
+    fn wait_with_timeout_collects_output_of_fast_child() {
+        let child = spawn_piped("echo", &["hello"]);
+        let output = wait_with_timeout(child, std::time::Duration::from_secs(5))
+            .expect("fast child must succeed");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("hello"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wait_with_timeout_kills_hung_child() {
+        let child = spawn_piped("sleep", &["300"]);
+        let pid = child.id();
+
+        let started = std::time::Instant::now();
+        let result = wait_with_timeout(child, std::time::Duration::from_millis(200));
+        let elapsed = started.elapsed();
+
+        let err = result.expect_err("a hung child must error after the timeout");
+        assert!(err.contains("killed"), "unexpected error: {err}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "the wait must be bounded; took {elapsed:?}"
+        );
+
+        // kill + wait must have reaped the child: `kill -0` fails for a
+        // non-existent process.
+        let probe = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .expect("run kill -0");
+        assert!(
+            !probe.success(),
+            "hung child survived the bounded wait (pid {pid})"
+        );
+    }
 }

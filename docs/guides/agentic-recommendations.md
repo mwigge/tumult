@@ -1,7 +1,7 @@
 ---
 title: Agentic Recommendations
 parent: Guides
-nav_order: 11
+nav_order: 14
 ---
 
 # Agentic Recommendations

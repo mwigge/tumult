@@ -190,6 +190,18 @@ pub fn default_workers() -> usize {
     thread::available_parallelism().map_or(2, std::num::NonZeroUsize::get)
 }
 
+/// Hard ceiling on [`cpu_stress`] worker threads, whatever the host size.
+const WORKERS_HARD_CAP: usize = 256;
+
+/// Maximum worker count [`cpu_stress`] will ever spawn: four times the host's
+/// logical CPUs, hard-capped at [`WORKERS_HARD_CAP`]. `workers` arrives as an
+/// experiment argument, so an absurd value (a `u32` can name ~4 billion
+/// threads) must never reach the spawn loop.
+#[must_use]
+pub fn max_workers() -> usize {
+    default_workers().saturating_mul(4).min(WORKERS_HARD_CAP)
+}
+
 /// Drive CPU load by spinning `workers` CPU-bound threads for `duration`.
 ///
 /// This is self-contained: it needs no external stress tool, and because it is

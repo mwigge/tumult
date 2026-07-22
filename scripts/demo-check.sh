@@ -103,7 +103,7 @@ run_experiment() {
   # -T: no TTY (safe under make / CI). Redirect run output to a temp log.
   local log; log="$(mktemp)"
   if $COMPOSE exec -T tumult-mcp \
-        tumult run "$exp" --journal-path "$journal" >"$log" 2>&1; then
+        tumult run "$exp" --journal-path "$journal" --force >"$log" 2>&1; then
     local status; status="$(grep -E '^Status:' "$log" | head -1 | sed 's/Status: //')"
     pass "demo-${domain}  (${status:-Completed})"
     rm -f "$log"

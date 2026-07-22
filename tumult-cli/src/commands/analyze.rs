@@ -4,6 +4,77 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
+// ── Select-only query validation ──────────────────────────────
+//
+// Ported from `tumult-mcp/src/tools/validation.rs` (the MCP cypher/graph
+// query guard) — a deliberate small duplication: the CLI must not depend on
+// the MCP crate for this, and the two implementations must be kept in sync
+// manually. The token scan is deliberately quote-insensitive: a forbidden
+// token inside a string literal also rejects the query, trading a rare
+// false positive for never missing a smuggled call.
+
+/// Keywords that introduce a write or schema/configuration change. Rejected
+/// as standalone tokens anywhere in the query, since `DuckDB` allows DML/DDL
+/// after a leading `WITH` CTE (e.g. `WITH x AS (SELECT 1) INSERT INTO ...`).
+const FORBIDDEN_SQL_KEYWORDS: &[&str] = &[
+    "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "ATTACH", "DETACH", "COPY", "EXPORT",
+    "IMPORT", "INSTALL", "LOAD", "PRAGMA", "SET", "CALL", "VACUUM", "TRUNCATE",
+];
+
+/// `DuckDB` table functions and extension entry points that reach the host
+/// filesystem, the network, or another database. A plain `SELECT` stays
+/// read-only against the store, but `SELECT * FROM read_text('/etc/passwd')`
+/// reads arbitrary host files and `INSTALL httpfs` loads remote extensions —
+/// so these tokens are rejected exactly like the DML/DDL keywords above.
+const FORBIDDEN_SQL_FUNCTIONS: &[&str] = &[
+    "READ_TEXT",
+    "READ_CSV",
+    "READ_PARQUET",
+    "READ_JSON",
+    "READ_BLOB",
+    "GLOB",
+    "SQLITE_SCAN",
+    "PARQUET_SCAN",
+    "CSV_SCAN",
+    "JSON_SCAN",
+    "HTTPFS",
+    "EXPORT_DATABASE",
+    "IMPORT_DATABASE",
+];
+
+/// Validate that a `--query` SQL string is read-only (SELECT or WITH only,
+/// single statement, no write keywords or filesystem table functions).
+///
+/// # Errors
+///
+/// Returns an error if the query does not start with `SELECT` or `WITH`,
+/// contains more than one statement, or contains a forbidden keyword or
+/// table function.
+fn validate_select_only(query: &str) -> Result<()> {
+    let trimmed = query.trim();
+    let normalized = trimmed.to_uppercase();
+    if !(normalized.starts_with("SELECT") || normalized.starts_with("WITH")) {
+        bail!(
+            "only SELECT/WITH queries are allowed, got: {}",
+            normalized.split_whitespace().next().unwrap_or("(empty)")
+        );
+    }
+
+    let without_trailing_semicolons =
+        trimmed.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+    if without_trailing_semicolons.contains(';') {
+        bail!("only a single statement is allowed (no `;`-separated statements)");
+    }
+
+    for token in normalized.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+        if FORBIDDEN_SQL_KEYWORDS.contains(&token) || FORBIDDEN_SQL_FUNCTIONS.contains(&token) {
+            bail!("query contains a forbidden keyword: {token}");
+        }
+    }
+
+    Ok(())
+}
+
 // ── Analyze command ───────────────────────────────────────────
 
 /// # Errors
@@ -47,13 +118,15 @@ fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: us
         println!("Experiment: {title}");
         println!("Status:     {status_marker} ({duration_ms}ms)");
 
-        // Method timeline
-        let activities = store.query(&format!(
+        // Method timeline — the experiment id comes from the store itself,
+        // but bind it as a parameter rather than interpolating it into SQL.
+        let activities = store.query_with_param(
             "SELECT name, activity_type, status, duration_ms, output, phase \
              FROM activity_results \
-             WHERE experiment_id = '{exp_id}' \
-             ORDER BY started_at_ns"
-        ))?;
+             WHERE experiment_id = ? \
+             ORDER BY started_at_ns",
+            exp_id,
+        )?;
 
         if !activities.is_empty() {
             println!("\nTimeline:");
@@ -105,11 +178,12 @@ fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: us
         }
 
         // Load result
-        let load = store.query(&format!(
+        let load = store.query_with_param(
             "SELECT tool, vus, throughput_rps, latency_p50_ms, latency_p95_ms, \
                     latency_p99_ms, error_rate, total_requests, thresholds_met, duration_s \
-             FROM load_results WHERE experiment_id = '{exp_id}'"
-        ))?;
+             FROM load_results WHERE experiment_id = ?",
+            exp_id,
+        )?;
 
         if !load.is_empty() {
             let lr = &load[0];
@@ -302,14 +376,19 @@ pub fn cmd_analyze(
         (store, count)
     } else {
         // Use persistent store
-        let db_path = AnalyticsStore::default_path();
+        let db_path =
+            AnalyticsStore::default_path().context("failed to determine analytics store path")?;
         if !db_path.exists() {
             bail!(
                 "no persistent store found at {}. Run experiments first or specify a journals path.",
                 db_path.display()
             );
         }
-        let store = AnalyticsStore::open(&db_path)?;
+        // Every subpath of this command (`--query`, `--all`, the default
+        // summary) only reads: open the store read-only so a raw `--query`
+        // can never write to the store, and so the command can coexist with
+        // another process (e.g. the MCP server) holding the write lock.
+        let store = AnalyticsStore::open_read_only(&db_path)?;
         let count = store.experiment_count()?;
         (store, count)
     };
@@ -317,6 +396,7 @@ pub fn cmd_analyze(
     println!("Loaded {count} journal(s) into analytics store\n");
 
     if let Some(sql) = query {
+        validate_select_only(sql)?;
         let columns = store.query_columns(sql)?;
         let rows = store.query(sql)?;
         println!("{}", columns.join("\t"));
@@ -338,4 +418,154 @@ pub fn cmd_analyze(
         print_experiment_summary(&store, last.unwrap_or(1))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── validate_select_only ──────────────────────────────────
+
+    #[test]
+    fn select_only_allows_plain_select() {
+        validate_select_only("SELECT experiment_id, title FROM experiments").unwrap();
+        validate_select_only("  select count(*) from activity_results").unwrap();
+        validate_select_only("WITH cte AS (SELECT 1) SELECT * FROM cte").unwrap();
+        // A single trailing semicolon is tolerated.
+        validate_select_only("SELECT * FROM experiments;").unwrap();
+        // Identifiers merely containing a forbidden token stay allowed.
+        validate_select_only("SELECT alter_ego, globe_count, loader FROM experiments").unwrap();
+    }
+
+    #[test]
+    fn select_only_rejects_write_statements() {
+        for sql in [
+            "DELETE FROM experiments",
+            "INSERT INTO experiments VALUES (1)",
+            "UPDATE experiments SET title = 'x'",
+            "DROP TABLE experiments",
+            "CREATE TABLE foo (id int)",
+            "TRUNCATE TABLE experiments",
+        ] {
+            let err = validate_select_only(sql).unwrap_err();
+            assert!(
+                err.to_string().contains("only SELECT/WITH")
+                    || err.to_string().contains("forbidden keyword"),
+                "{sql} must be rejected, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn select_only_rejects_stacked_statements() {
+        let err = validate_select_only("SELECT 1; DROP TABLE experiments").unwrap_err();
+        assert!(err.to_string().contains("single statement"), "{err}");
+    }
+
+    #[test]
+    fn select_only_rejects_dml_after_cte() {
+        let err = validate_select_only("WITH x AS (SELECT 1) DELETE FROM experiments").unwrap_err();
+        assert!(err.to_string().contains("forbidden keyword"), "{err}");
+    }
+
+    #[test]
+    fn select_only_rejects_filesystem_table_functions() {
+        for sql in [
+            "SELECT * FROM read_text('/etc/passwd')",
+            "SELECT * FROM read_csv('data.csv')",
+            "SELECT * FROM read_parquet('s3://bucket/x.parquet')",
+            "SELECT * FROM read_json('/var/log/app.json')",
+            "SELECT * FROM read_blob('/etc/shadow')",
+            "SELECT * FROM glob('/home/*/.ssh/*')",
+            "SELECT * FROM parquet_scan('x.parquet')",
+            "SELECT * FROM csv_scan('x.csv')",
+            "SELECT * FROM json_scan('x.json')",
+            "SELECT * FROM sqlite_scan('/tmp/other.db', 'users')",
+            "SELECT export_database('/tmp/out')",
+            "SELECT import_database('/tmp/in')",
+            "SELECT * FROM t ATTACH 'evil.db'",
+            "SELECT 1 FROM t COPY TO '/tmp/out.csv'",
+            "SELECT * FROM (INSTALL httpfs)",
+            "WITH x AS (LOAD httpfs) SELECT 1",
+        ] {
+            let err = validate_select_only(sql).unwrap_err();
+            assert!(
+                err.to_string().contains("forbidden keyword"),
+                "{sql} must be rejected, got: {err}"
+            );
+        }
+    }
+
+    // ── cmd_analyze --query against an in-memory journal store ──
+
+    /// Write `journal` as `name.toon` into a fresh tempdir.
+    fn journal_dir(journal: &tumult_core::types::Journal) -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("run-1.toon");
+        tumult_core::journal::write_journal(journal, &path).unwrap();
+        dir
+    }
+
+    fn sample_journal() -> tumult_core::types::Journal {
+        tumult_core::types::Journal {
+            experiment_title: "analyze test".into(),
+            experiment_id: "exp-analyze-1".into(),
+            status: tumult_core::types::ExperimentStatus::Completed,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_ms: 1,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: None,
+            halt: None,
+            blast_radius: None,
+        }
+    }
+
+    #[test]
+    fn query_runs_normal_select() {
+        let dir = journal_dir(&sample_journal());
+        cmd_analyze(
+            Some(dir.path()),
+            Some("SELECT experiment_id, title FROM experiments"),
+            None,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn query_rejects_delete() {
+        let dir = journal_dir(&sample_journal());
+        let err = cmd_analyze(
+            Some(dir.path()),
+            Some("DELETE FROM experiments"),
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("only SELECT/WITH"), "{err}");
+    }
+
+    #[test]
+    fn query_rejects_read_text() {
+        let dir = journal_dir(&sample_journal());
+        let err = cmd_analyze(
+            Some(dir.path()),
+            Some("SELECT * FROM read_text('/etc/passwd')"),
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("forbidden keyword"), "{err}");
+    }
 }

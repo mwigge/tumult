@@ -1,7 +1,7 @@
 ---
 title: "Chaos Without Root: The tumult-net Proxy"
 parent: Blog
-nav_order: 20
+nav_order: 19
 updated: 2026-07-21
 ---
 

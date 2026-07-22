@@ -41,9 +41,12 @@ serde_json = { workspace = true }
 opentelemetry = { workspace = true }
 tokio-util = { workspace = true }
 indexmap = { workspace = true }
+libc = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }
 # The k6 executor's tempfile use moved to tumult-core; the CLI now only
 # needs tempfile in tests.
 tempfile = { workspace = true }
+# Reads back Arrow IPC files written by `cmd_export --format arrow` tests.
+arrow = { workspace = true }

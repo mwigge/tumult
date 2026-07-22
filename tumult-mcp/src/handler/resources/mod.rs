@@ -44,14 +44,9 @@ pub(crate) const RESOURCE_LINKS_MAX: usize = 50;
 
 impl TumultHandler {
     /// Enforce the same bearer-token gate as tool calls for resource
-    /// requests; the token travels in the request `_meta` extra fields.
-    pub(crate) fn check_resource_auth(
-        &self,
-        extra: Option<&serde_json::Map<String, serde_json::Value>>,
-    ) -> Result<(), RpcError> {
-        let authorization = extra
-            .and_then(|extra| extra.get("authorization"))
-            .and_then(serde_json::Value::as_str);
+    /// requests; the token travels in the request `_meta` extra fields or,
+    /// on the HTTP transport, in the `Authorization` header.
+    pub(crate) fn check_resource_auth(&self, authorization: Option<&str>) -> Result<(), RpcError> {
         self.auth
             .check(authorization)
             .map_err(|e| RpcError::invalid_request().with_message(format!("Unauthorized: {e}")))

@@ -12,19 +12,47 @@ const FORBIDDEN_SQL_KEYWORDS: &[&str] = &[
     "IMPORT", "INSTALL", "LOAD", "PRAGMA", "SET", "CALL", "VACUUM", "TRUNCATE",
 ];
 
+/// `DuckDB` table functions and extension entry points that reach the host
+/// filesystem, the network, or another database. A plain `SELECT` stays
+/// read-only against the store, but `SELECT * FROM read_text('/etc/passwd')`
+/// reads arbitrary host files and `INSTALL httpfs` loads remote extensions —
+/// so these tokens are rejected exactly like the DML/DDL keywords above.
+const FORBIDDEN_SQL_FUNCTIONS: &[&str] = &[
+    "READ_TEXT",
+    "READ_CSV",
+    "READ_PARQUET",
+    "READ_JSON",
+    "READ_BLOB",
+    "GLOB",
+    "SQLITE_SCAN",
+    "PARQUET_SCAN",
+    "CSV_SCAN",
+    "JSON_SCAN",
+    "HTTPFS",
+    "EXPORT_DATABASE",
+    "IMPORT_DATABASE",
+];
+
 /// Validate that a SQL query is read-only (SELECT or WITH only).
 ///
 /// Prevents SQL injection by rejecting any query that does not start
 /// with SELECT or WITH (e.g., DROP, INSERT, UPDATE, DELETE, CREATE), any
 /// query containing more than one statement (stacked statements via `;`),
-/// and any query containing a write/DDL keyword as a standalone token (to
-/// catch DML smuggled in after a `WITH` CTE).
+/// any query containing a write/DDL keyword as a standalone token (to
+/// catch DML smuggled in after a `WITH` CTE), and any query naming a
+/// filesystem/extension table function (e.g. `read_text`, `glob`,
+/// `parquet_scan`, `httpfs`) that would escape the store onto the host.
+///
+/// The token scan is deliberately quote-insensitive: a forbidden token
+/// inside a string literal also rejects the query. That trades a rare
+/// false positive (a literal naming such a function) for never missing a
+/// smuggled call — the safe direction for a viewer-facing query tool.
 ///
 /// # Errors
 ///
 /// Returns [`ToolError::InvalidInput`] if the query does not start with
 /// `SELECT` or `WITH`, contains more than one statement, or contains a
-/// forbidden keyword.
+/// forbidden keyword or table function.
 pub fn validate_select_only(query: &str) -> Result<(), ToolError> {
     let trimmed = query.trim();
     let normalized = trimmed.to_uppercase();
@@ -44,7 +72,7 @@ pub fn validate_select_only(query: &str) -> Result<(), ToolError> {
     }
 
     for token in normalized.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
-        if FORBIDDEN_SQL_KEYWORDS.contains(&token) {
+        if FORBIDDEN_SQL_KEYWORDS.contains(&token) || FORBIDDEN_SQL_FUNCTIONS.contains(&token) {
             return Err(ToolError::InvalidInput(format!(
                 "query contains a forbidden keyword: {token}"
             )));
@@ -259,6 +287,56 @@ mod tests {
     #[test]
     fn validate_select_only_allows_identifiers_containing_keyword_substrings() {
         assert!(validate_select_only("SELECT alter_ego, settings FROM experiments").is_ok());
+    }
+
+    // ── filesystem / extension table functions ───────────────
+
+    #[test]
+    fn validate_select_only_rejects_read_text_of_host_file() {
+        let result = validate_select_only("select * from read_text('/etc/passwd')");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("forbidden keyword"));
+    }
+
+    #[test]
+    fn validate_select_only_rejects_filesystem_table_functions() {
+        for query in [
+            "SELECT * FROM read_csv('data.csv')",
+            "SELECT * FROM read_parquet('s3://bucket/x.parquet')",
+            "SELECT * FROM read_json('/var/log/app.json')",
+            "SELECT * FROM read_blob('/etc/shadow')",
+            "SELECT * FROM glob('/home/*/.ssh/*')",
+            "SELECT * FROM sqlite_scan('/tmp/other.db', 'users')",
+            "SELECT * FROM parquet_scan('x.parquet')",
+            "SELECT * FROM csv_scan('x.csv')",
+            "SELECT * FROM json_scan('x.json')",
+            "SELECT * FROM httpfs('https://evil.example/x')",
+            "SELECT export_database('/tmp/out')",
+            "SELECT import_database('/tmp/in')",
+        ] {
+            assert!(validate_select_only(query).is_err(), "must reject: {query}");
+        }
+    }
+
+    #[test]
+    fn validate_select_only_rejects_extension_management_in_select() {
+        // INSTALL/LOAD/ATTACH/COPY are keyword-class tokens; they must be
+        // caught even when wrapped in an otherwise plain SELECT.
+        assert!(validate_select_only("SELECT * FROM (INSTALL httpfs)").is_err());
+        assert!(validate_select_only("WITH x AS (LOAD httpfs) SELECT 1").is_err());
+        assert!(validate_select_only("SELECT * FROM t ATTACH 'evil.db'").is_err());
+        assert!(validate_select_only("SELECT 1 FROM t COPY TO '/tmp/out.csv'").is_err());
+    }
+
+    #[test]
+    fn validate_select_only_allows_plain_select_and_function_name_substrings() {
+        assert!(validate_select_only("select title from experiments").is_ok());
+        // Identifiers that merely *contain* a forbidden token stay allowed:
+        // the scan is word-boundary aware (tokens split on non-ident chars).
+        assert!(validate_select_only("SELECT globe_count, loader FROM experiments").is_ok());
     }
 
     // ── validate_action_name ─────────────────────────────────

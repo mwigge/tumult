@@ -1,7 +1,7 @@
 ---
 title: "Autopilot: Decisions With an Audit Trail"
 parent: Blog
-nav_order: 26
+nav_order: 25
 updated: 2026-07-21
 ---
 

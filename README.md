@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.16.1-brightgreen)
+![Version](https://img.shields.io/badge/version-2.17.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.91.1%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
@@ -105,8 +105,9 @@ TUMULT_MCP_TOKEN='replace-with-a-secret' tumult-mcp --transport http --port 3100
 
 Thirty tools return structured content with an advertised output schema. Every
 tool declares MCP safety annotations. Read-only tools require the `viewer` role;
-writers and fault executors require `operator`. The two destructive tools are
-`tumult_run_experiment` and `tumult_gameday_run`.
+writers and fault executors require `operator`. The destructive tools are four:
+`tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run` (when
+`execute=true`), and `tumult_autopilot_respond` (when `approve=true`).
 
 See the [MCP guide](docs/guides/mcp-guide.md) for configuration, resource URIs,
 authentication, pagination, schemas, and client examples.

@@ -669,11 +669,11 @@ ORDER BY avg_mttr DESC
 
 ## Appendix B: resilience.load.* (Optional Load Integration)
 
-Attributes for correlating experiments with load testing tools (k6, JMeter).
+Attributes for correlating experiments with load testing tools (k6).
 
 | Attribute | Type | Requirement | Description |
 |---|---|---|---|
-| `resilience.load.tool` | `string` | Optional | Load testing tool. Values: `k6`, `jmeter`. |
+| `resilience.load.tool` | `string` | Optional | Load testing tool. Values: `k6`. |
 | `resilience.load.vus` | `int` | Optional | Virtual users / threads. |
 | `resilience.load.duration_s` | `float` | Optional | Load test duration in seconds. |
 | `resilience.load.throughput_rps` | `float` | Optional | Observed requests per second. |

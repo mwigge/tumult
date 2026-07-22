@@ -6,9 +6,10 @@ use rust_mcp_sdk::schema::CallToolRequestParams;
 use crate::handler::schema::{
     ChaosGraphCoverageGapsTool, ChaosGraphNeighborsTool, ChaosGraphQueryTool,
 };
+use crate::handler::Role;
 use crate::tools;
 
-use super::{parse_args, Dispatched, ToolOutput};
+use super::{parse_args, store_path_for, Dispatched, ToolOutput};
 
 pub(super) fn chaosgraph_query(params: &CallToolRequestParams) -> Dispatched {
     let args: ChaosGraphQueryTool = parse_args(params)?;
@@ -47,10 +48,11 @@ pub(super) fn chaosgraph_coverage_gaps(params: &CallToolRequestParams) -> Dispat
     .map(ToolOutput::from))
 }
 
-pub(super) fn chaosgraph_cypher(params: &CallToolRequestParams) -> Dispatched {
+pub(super) fn chaosgraph_cypher(params: &CallToolRequestParams, role: Option<Role>) -> Dispatched {
     let args: crate::handler::schema::ChaosGraphCypherTool = parse_args(params)?;
+    let store_path = store_path_for(role, &args.store_path);
     Ok(tokio::task::block_in_place(|| {
-        tools::chaosgraph_cypher(&args.store_path, &args.query, args.row_cap)
+        tools::chaosgraph_cypher(&store_path, &args.query, args.row_cap)
     })
     .map(ToolOutput::from))
 }

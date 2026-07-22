@@ -48,12 +48,35 @@ impl CommandAgentRunner {
 
 impl AgentRunner for CommandAgentRunner {
     fn run(&self, env: &[(String, String)], prompt: &str) -> Result<String, AgenticError> {
-        let output = std::process::Command::new(&self.program)
+        use std::io::Write as _;
+
+        let mut child = std::process::Command::new(&self.program)
             .args(&self.args)
-            .arg(prompt)
             .envs(env.iter().map(|(key, value)| (key.clone(), value.clone())))
-            .output()
+            // The prompt goes via stdin, never argv: command lines are
+            // visible in `ps` to every local user, stdin is not. The agent
+            // CLIs (`claude -p`, `codex`) read the prompt from stdin when no
+            // positional prompt argument is given.
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|err| AgenticError::Adapter(format!("spawn {}: {err}", self.program)))?;
+
+        // Feed stdin from a separate thread so a child that never reads it
+        // (or a prompt larger than the pipe buffer) cannot deadlock us.
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            AgenticError::Adapter(format!("{}: stdin pipe unavailable", self.program))
+        })?;
+        let prompt = prompt.to_string();
+        let feeder = std::thread::spawn(move || stdin.write_all(prompt.as_bytes()));
+
+        let output = child
+            .wait_with_output()
+            .map_err(|err| AgenticError::Adapter(format!("wait on {}: {err}", self.program)))?;
+        // A broken pipe just means the child exited before reading; the exit
+        // status below carries the real outcome.
+        let _ = feeder.join();
         if !output.status.success() {
             return Err(AgenticError::Adapter(format!(
                 "{} exited with {}",
@@ -237,6 +260,26 @@ mod tests {
         let outcomes = evaluate_response("s", &valid_json_contract(), "{not json");
         assert!(!outcomes[0].passed);
         assert_eq!(outcomes[0].reason.as_deref(), Some("invalid_json"));
+    }
+
+    /// The prompt must travel via stdin: an argv element is visible in `ps`
+    /// to other local users. With `sh -c SCRIPT`, a positional prompt would
+    /// land in `$0`; the fixed code leaves `$0` as the shell name and pipes
+    /// the prompt instead.
+    #[cfg(unix)]
+    #[test]
+    fn command_runner_passes_prompt_via_stdin_not_argv() {
+        let runner = CommandAgentRunner {
+            program: "sh".to_string(),
+            args: vec![
+                "-c".to_string(),
+                "if [ \"$0\" = secret-prompt ]; then exit 3; fi; cat".to_string(),
+            ],
+        };
+        let out = runner
+            .run(&[], "secret-prompt")
+            .expect("prompt on stdin must be read and echoed");
+        assert_eq!(out, "secret-prompt");
     }
 
     #[test]

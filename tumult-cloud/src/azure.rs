@@ -7,6 +7,7 @@
 //! for the hermetic mocked-HTTP tests.
 
 use serde::Deserialize;
+use zeroize::Zeroizing;
 
 use crate::error::CloudError;
 
@@ -39,29 +40,30 @@ struct ExperimentProperties {
 pub struct ChaosClient {
     http: reqwest::Client,
     endpoint: String,
-    token: String,
+    /// Bearer token, held zeroized so it is scrubbed from memory on drop.
+    token: Zeroizing<String>,
 }
 
 impl ChaosClient {
     /// Build a client against the public ARM endpoint
     /// (`https://management.azure.com`).
     #[must_use]
-    pub fn new(token: String) -> Self {
+    pub fn new(token: impl Into<Zeroizing<String>>) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http::client(),
             endpoint: "https://management.azure.com".to_string(),
-            token,
+            token: token.into(),
         }
     }
 
     /// Build a client against an explicit ARM `endpoint` (mock server in
     /// tests, or a sovereign cloud).
     #[must_use]
-    pub fn with_endpoint(endpoint: String, token: String) -> Self {
+    pub fn with_endpoint(endpoint: String, token: impl Into<Zeroizing<String>>) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: crate::http::client(),
             endpoint,
-            token,
+            token: token.into(),
         }
     }
 
@@ -79,7 +81,7 @@ impl ChaosClient {
         let response = self
             .http
             .request(method(verb), url)
-            .bearer_auth(&self.token)
+            .bearer_auth(self.token.as_str())
             .header("content-length", "0")
             .send()
             .await

@@ -7,7 +7,7 @@ remote_theme: just-the-docs/just-the-docs@v0.10.1
 
 # Site settings
 logo: "/images/tumult.png"
-favicon_ico: "/images/favicon.ico"
+favicon_ico: "/images/tumult-banner.png"
 
 # Navigation
 nav_sort: case_insensitive
@@ -51,6 +51,7 @@ callouts:
 exclude:
   - "*.drawio"
   - "architecture/"
+  - "plans/"
 
 # Plugins
 plugins:

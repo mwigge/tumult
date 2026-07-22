@@ -16,11 +16,18 @@ use anyhow::{anyhow, Result};
 use tumult_mcp::tools::StructuredReport;
 
 /// Resolve the analytics store path, defaulting to the persistent store.
-/// Shared with the `topology` commands.
-pub(crate) fn resolve_store(store: Option<&Path>) -> PathBuf {
+/// Shared with the `topology` and `autopilot` commands.
+///
+/// # Errors
+///
+/// Returns an error if the default store path cannot be determined.
+pub(crate) fn resolve_store(store: Option<&Path>) -> Result<PathBuf> {
     store.map_or_else(
-        tumult_analytics::AnalyticsStore::default_path,
-        Path::to_path_buf,
+        || {
+            tumult_analytics::AnalyticsStore::default_path()
+                .map_err(|e| anyhow!("failed to determine analytics store path: {e}"))
+        },
+        |path| Ok(path.to_path_buf()),
     )
 }
 
@@ -48,7 +55,7 @@ pub fn cmd_chaosgraph_query(
     filter: Option<&str>,
     json: bool,
 ) -> Result<()> {
-    let path = resolve_store(store);
+    let path = resolve_store(store)?;
     let report = tumult_mcp::tools::chaosgraph_query(&path.to_string_lossy(), kind, filter)
         .map_err(|e| anyhow!(e.to_string()))?;
     emit(&report, json)
@@ -69,7 +76,7 @@ pub fn cmd_chaosgraph_neighbors(
     depth: u32,
     json: bool,
 ) -> Result<()> {
-    let path = resolve_store(store);
+    let path = resolve_store(store)?;
     let report = tumult_mcp::tools::chaosgraph_neighbors(&path.to_string_lossy(), node, rel, depth)
         .map_err(|e| anyhow!(e.to_string()))?;
     emit(&report, json)
@@ -90,7 +97,7 @@ pub fn cmd_chaosgraph_coverage_gaps(
     refresh: bool,
     json: bool,
 ) -> Result<()> {
-    let path = resolve_store(store);
+    let path = resolve_store(store)?;
     let report = tumult_mcp::tools::chaosgraph_coverage_gaps(
         &path.to_string_lossy(),
         framework,

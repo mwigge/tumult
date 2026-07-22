@@ -68,7 +68,7 @@ impl ProbeSpec {
     #[must_use]
     pub fn default_for(target: &str) -> Self {
         Self::Exec {
-            command: format!("echo \"{target} steady-state ok\""),
+            command: format!("echo {} steady-state ok", shell_quote(target)),
             expect: "steady-state ok".to_string(),
         }
     }
@@ -78,7 +78,7 @@ impl ProbeSpec {
         match self {
             Self::Exec { command, expect } => (command.clone(), expect.clone()),
             Self::Http { url, expect } => (
-                format!("curl -fsS {url}"),
+                format!("curl -fsS {}", shell_quote(url)),
                 if expect.is_empty() {
                     ".".to_string()
                 } else {
@@ -126,11 +126,54 @@ pub struct ScaffoldRequest {
     pub probe: ProbeSpec,
 }
 
+/// Single-quote a value for safe interpolation into a `sh -c` command line:
+/// wrapped in single quotes, with embedded quotes escaped as `'\''`.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Native (compiled-in Rust) plugin names — mirrors the CLI's composition-root
+/// registry (`tumult-cli`'s `exec::native`). Every other plugin name is a
+/// script plugin, dispatched through the discovery search paths at runtime.
+const NATIVE_PLUGINS: [&str; 5] = [
+    "tumult-kubernetes",
+    "tumult-ssh",
+    "tumult-net",
+    "tumult-cloud",
+    "tumult-windows",
+];
+
+/// The provider for a scaffolded step: `native` for the compiled-in plugins,
+/// `script` for everything else. Emitting `native` for a script plugin
+/// produces an experiment that passes validation but fails at runtime with
+/// `unknown native plugin` — the native registry holds no script plugins.
+fn provider_for(
+    plugin: &str,
+    function: &str,
+    arguments: HashMap<String, serde_json::Value>,
+) -> Provider {
+    if NATIVE_PLUGINS.contains(&plugin) {
+        Provider::Native {
+            plugin: plugin.to_string(),
+            function: function.to_string(),
+            arguments,
+        }
+    } else {
+        Provider::Script {
+            plugin: plugin.to_string(),
+            function: function.to_string(),
+            arguments,
+            timeout_s: None,
+        }
+    }
+}
+
 /// Build a validated [`Experiment`] from a scaffold request.
 ///
 /// The result always contains a steady-state hypothesis with one probe, a
-/// single method step referencing `plugin::action` as a native provider, and
-/// a rollback step when [`rollback_action`] knows the plugin's undo action.
+/// single method step referencing `plugin::action` through the matching
+/// provider (native or script), and a rollback step when [`rollback_action`]
+/// knows the plugin's undo action.
 ///
 /// # Errors
 ///
@@ -143,6 +186,10 @@ pub fn build_experiment(request: &ScaffoldRequest) -> Result<Experiment, Authori
 }
 
 /// Build an [`Experiment`] from a scaffold request without validating it.
+///
+/// The method step references `plugin::action` through the provider matching
+/// the plugin: `native` for the compiled-in plugins, `script` for the
+/// discovered script plugins (and any custom plugin on the search paths).
 ///
 /// Callers that want to report validity themselves (e.g. the
 /// `tumult_scaffold_experiment` MCP tool, which returns the TOON alongside a
@@ -164,11 +211,7 @@ pub fn build_experiment_unvalidated(request: &ScaffoldRequest) -> Experiment {
     let method_step = Activity {
         name: request.action.clone(),
         activity_type: ActivityType::Action,
-        provider: Provider::Native {
-            plugin: request.plugin.clone(),
-            function: request.action.clone(),
-            arguments,
-        },
+        provider: provider_for(&request.plugin, &request.action, arguments),
         tolerance: None,
         pause_before_s: None,
         pause_after_s: Some(3.0),
@@ -186,11 +229,7 @@ pub fn build_experiment_unvalidated(request: &ScaffoldRequest) -> Experiment {
             vec![Activity {
                 name: undo.to_string(),
                 activity_type: ActivityType::Action,
-                provider: Provider::Native {
-                    plugin: request.plugin.clone(),
-                    function: undo.to_string(),
-                    arguments: undo_args,
-                },
+                provider: provider_for(&request.plugin, undo, undo_args),
                 tolerance: None,
                 pause_before_s: None,
                 pause_after_s: None,
@@ -306,11 +345,56 @@ mod tests {
     #[test]
     fn numeric_args_are_coerced() {
         let exp = build_experiment(&sample_request()).unwrap();
-        let Provider::Native { arguments, .. } = &exp.method[0].provider else {
-            panic!("expected native provider");
+        let Provider::Script { arguments, .. } = &exp.method[0].provider else {
+            panic!("expected script provider");
         };
         assert_eq!(arguments["delay_ms"], serde_json::json!(100));
         assert_eq!(arguments["target"], serde_json::json!("checkout-api"));
+    }
+
+    #[test]
+    fn script_plugins_get_script_providers() {
+        let exp = build_experiment(&sample_request()).unwrap();
+        let Provider::Script {
+            plugin, function, ..
+        } = &exp.method[0].provider
+        else {
+            panic!("expected script provider, got {:?}", exp.method[0].provider);
+        };
+        assert_eq!(plugin, "tumult-network");
+        assert_eq!(function, "add-latency");
+        // The curated rollback dispatches through the same provider kind.
+        let Provider::Script { function, .. } = &exp.rollbacks[0].provider else {
+            panic!(
+                "expected script rollback, got {:?}",
+                exp.rollbacks[0].provider
+            );
+        };
+        assert_eq!(function, "reset-tc");
+    }
+
+    #[test]
+    fn native_plugins_keep_native_providers() {
+        let mut req = sample_request();
+        req.plugin = "tumult-kubernetes".to_string();
+        req.action = "delete_pod".to_string();
+        let exp = build_experiment(&req).unwrap();
+        let Provider::Native {
+            plugin, function, ..
+        } = &exp.method[0].provider
+        else {
+            panic!("expected native provider, got {:?}", exp.method[0].provider);
+        };
+        assert_eq!(plugin, "tumult-kubernetes");
+        assert_eq!(function, "delete_pod");
+    }
+
+    #[test]
+    fn scaffolded_toon_uses_script_provider_tag() {
+        let toon = build_experiment_toon(&sample_request()).unwrap();
+        assert!(toon.contains("type: script"), "{toon}");
+        let parsed = tumult_core::engine::parse_experiment(&toon).unwrap();
+        assert!(matches!(parsed.method[0].provider, Provider::Script { .. }));
     }
 
     #[test]
@@ -342,6 +426,47 @@ mod tests {
         let Provider::Process { arguments, .. } = &probe.provider else {
             panic!("expected process provider");
         };
-        assert!(arguments[1].contains("curl -fsS http://localhost:8080/health"));
+        assert!(arguments[1].contains("curl -fsS 'http://localhost:8080/health'"));
+    }
+
+    #[test]
+    fn interpolated_probe_values_are_shell_quoted() {
+        // A URL carrying shell metacharacters must not break out of its
+        // single-quoted slot in the generated `sh -c` command.
+        let mut req = sample_request();
+        req.probe = ProbeSpec::Http {
+            url: "http://x/'; rm -rf / #".to_string(),
+            expect: "ok".to_string(),
+        };
+        let exp = build_experiment(&req).unwrap();
+        let probe = &exp.steady_state_hypothesis.unwrap().probes[0];
+        let Provider::Process { arguments, .. } = &probe.provider else {
+            panic!("expected process provider");
+        };
+        assert_eq!(
+            arguments[1], "curl -fsS 'http://x/'\\''; rm -rf / #'",
+            "url must be single-quoted with embedded quotes escaped: {}",
+            arguments[1]
+        );
+    }
+
+    #[test]
+    fn default_probe_quotes_target() {
+        // Double quotes pass through verbatim inside single quotes; an
+        // embedded single quote is escaped as '\''.
+        let probe = ProbeSpec::default_for("web'; rm -rf /; '");
+        let ProbeSpec::Exec { command, .. } = probe else {
+            panic!("expected exec probe");
+        };
+        assert_eq!(command, "echo 'web'\\''; rm -rf /; '\\''' steady-state ok");
+
+        let probe = ProbeSpec::default_for("web\"; touch /tmp/pwned; \"");
+        let ProbeSpec::Exec { command, .. } = probe else {
+            panic!("expected exec probe");
+        };
+        assert_eq!(
+            command,
+            "echo 'web\"; touch /tmp/pwned; \"' steady-state ok"
+        );
     }
 }

@@ -37,9 +37,11 @@ pub mod telemetry;
 #[cfg(feature = "duckdb")]
 pub use arrow_convert::journal_to_record_batch;
 pub use backend::{AnalyticsBackend, StoreStats};
+#[cfg(feature = "duckdb")]
 pub use duckdb_store::autopilot::{
     ChangeEventRecord, ClassHistory, DecisionRecord, DecisionStatus,
 };
+#[cfg(feature = "duckdb")]
 pub use duckdb_store::topology::NodeAttrs;
 #[cfg(feature = "duckdb")]
 pub use duckdb_store::{

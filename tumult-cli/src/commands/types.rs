@@ -11,6 +11,8 @@ pub enum ExportFormat {
     Csv,
     /// JSON
     Json,
+    /// Apache Arrow IPC stream format
+    Arrow,
 }
 
 /// Report output format.
@@ -79,8 +81,6 @@ impl ComplianceFramework {
 pub enum LoadToolArg {
     /// k6 load testing tool
     K6,
-    /// Apache `JMeter` load testing tool
-    Jmeter,
     /// Explicitly disable load testing even if the experiment defines it
     None,
 }
@@ -88,18 +88,29 @@ pub enum LoadToolArg {
 // ── CLI helper functions ──────────────────────────────────────
 
 /// Parses a human duration like "30s", "5m", "1h" to seconds.
-#[must_use]
-pub fn parse_duration_str(s: &str) -> f64 {
+///
+/// # Errors
+///
+/// Returns an error if the value is not a number with an optional `s`, `m`,
+/// or `h` suffix — a typo must surface, not silently become a 30-second
+/// default.
+pub fn parse_duration_str(s: &str) -> anyhow::Result<f64> {
     let s = s.trim();
-    if let Some(num) = s.strip_suffix('s') {
-        num.parse().unwrap_or(30.0)
+    let (num, multiplier) = if let Some(num) = s.strip_suffix('s') {
+        (num, 1.0)
     } else if let Some(num) = s.strip_suffix('m') {
-        num.parse::<f64>().unwrap_or(1.0) * 60.0
+        (num, 60.0)
     } else if let Some(num) = s.strip_suffix('h') {
-        num.parse::<f64>().unwrap_or(1.0) * 3600.0
+        (num, 3600.0)
     } else {
-        s.parse().unwrap_or(30.0)
-    }
+        (s, 1.0)
+    };
+    let value = num.parse::<f64>().map_err(|_| {
+        anyhow::anyhow!(
+            "invalid duration {s:?} — expected a number with an optional s/m/h suffix (e.g. 30s, 5m, 1h)"
+        )
+    })?;
+    Ok(value * multiplier)
 }
 
 /// Parses `--var KEY=VALUE` arguments into a `HashMap`.
@@ -125,33 +136,38 @@ pub fn parse_var_args(
 /// Returns `None` if `--load none` was specified (explicitly disable load).
 /// Returns `None` if no `--load` flag was given at all (use experiment default).
 /// Returns `Some(config)` if a real load tool was specified (override experiment).
-#[must_use]
+///
+/// # Errors
+///
+/// Returns an error if the duration value is not a valid duration string.
 pub fn build_load_override(
     tool: Option<LoadToolArg>,
     script: Option<std::path::PathBuf>,
     vus: Option<u32>,
     duration: Option<String>,
-) -> Option<tumult_core::types::LoadConfig> {
+) -> anyhow::Result<Option<tumult_core::types::LoadConfig>> {
     // --load none explicitly disables
     if matches!(tool, Some(LoadToolArg::None)) {
-        return None;
+        return Ok(None);
     }
 
-    let tool = tool?; // No --load flag at all → no override
+    // No --load flag at all → no override
+    let Some(tool) = tool else {
+        return Ok(None);
+    };
     let script = script.unwrap_or_else(|| std::path::PathBuf::from("load.js"));
-    let duration_s = duration.map(|d| parse_duration_str(&d));
+    let duration_s = duration.map(|d| parse_duration_str(&d)).transpose()?;
 
     let load_tool = match tool {
         LoadToolArg::K6 => tumult_core::types::LoadTool::K6,
-        LoadToolArg::Jmeter => tumult_core::types::LoadTool::Jmeter,
         LoadToolArg::None => unreachable!(),
     };
 
-    Some(tumult_core::types::LoadConfig {
+    Ok(Some(tumult_core::types::LoadConfig {
         tool: load_tool,
         script,
         vus: Some(vus.unwrap_or(10)),
         duration_s: duration_s.or(Some(30.0)),
         thresholds: std::collections::HashMap::new(),
-    })
+    }))
 }

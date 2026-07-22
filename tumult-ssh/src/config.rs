@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 /// Controls how `tumult-ssh` handles host key verification during connection
 /// establishment. The default policy is [`HostKeyPolicy::Verify`].
 #[non_exhaustive]
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HostKeyPolicy {
     /// Verify the server key against the `known_hosts` file. Rejects connections
     /// for unknown or mismatched keys.

@@ -30,17 +30,17 @@ method[2]:
     provider:
       type: script
       plugin: tumult-network
-      action: redirect-dns
-      env:
-        TUMULT_DNS_DOMAIN: "test-redirect.tumult.local"
-        TUMULT_DNS_REDIRECT: "127.0.0.1"
+      function: redirect-dns
+      arguments:
+        dns_domain: "test-redirect.tumult.local"
+        dns_redirect: "127.0.0.1"
       timeout_s: 10.0
 
 rollbacks[1]:
   - name: restore-dns
     activity_type: action
     provider:
-      type: script
-      plugin: tumult-network
-      action: redirect-dns-rollback
+      type: process
+      path: sh
+      arguments[2]: "-c", "sed -i.bak '/tumult-dns-redirect/d' /etc/hosts && rm -f /etc/hosts.bak"
       timeout_s: 10.0

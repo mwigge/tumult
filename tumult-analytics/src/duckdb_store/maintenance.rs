@@ -16,11 +16,8 @@ impl AnalyticsStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if any `DuckDB` operation fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `days * 86_400_000_000_000` overflows an `i64`.
+    /// Returns an error if any `DuckDB` operation fails, or if the retention
+    /// period overflows `i64` nanoseconds (requires `days > 106_751`).
     #[must_use = "callers must check the count of purged experiments"]
     pub fn purge_older_than_days(&self, days: u32) -> Result<usize, AnalyticsError> {
         let _span = telemetry::begin_purge(days);
@@ -28,7 +25,11 @@ impl AnalyticsStore {
         let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX);
         let retention_ns = i64::from(days)
             .checked_mul(86_400_000_000_000)
-            .expect("retention period overflow");
+            .ok_or_else(|| {
+                AnalyticsError::Internal(format!(
+                    "retention period of {days} days overflows i64 nanoseconds"
+                ))
+            })?;
         let cutoff_ns = now_ns.saturating_sub(retention_ns);
 
         // Delete activity results for old experiments first
@@ -150,7 +151,18 @@ impl AnalyticsStore {
 mod tests {
     use super::super::sample_journal;
     use super::super::AnalyticsStore;
+    use crate::error::AnalyticsError;
     use tumult_core::types::*;
+
+    #[test]
+    fn purge_retention_overflow_is_checked_error_not_panic() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let err = s.purge_older_than_days(u32::MAX).unwrap_err();
+        assert!(
+            matches!(err, AnalyticsError::Internal(ref msg) if msg.contains("overflows")),
+            "expected Internal overflow error, got {err:?}"
+        );
+    }
 
     #[test]
     fn purge_older_than_removes_old_experiments() {

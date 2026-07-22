@@ -20,6 +20,7 @@ chrono = { workspace = true }
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
+zeroize = { workspace = true }
 
 [dev-dependencies]
 # Hermetic mocked-HTTP tests: a local axum server records the signed request

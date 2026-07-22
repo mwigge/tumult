@@ -6,12 +6,17 @@ nav_order: 11
 
 # tumult-loadtest — Load Testing Integration
 
-Integrates k6 and JMeter with the Tumult experiment lifecycle for resilience testing under realistic traffic.
+Integrates k6 with the Tumult experiment lifecycle for resilience testing under realistic traffic.
+
+For the common case you do not need the plugin drivers at all: the
+experiment-level `load:` section (and the `tumult run --load` override) starts
+k6 before the method, stops it when the experiment ends, and records a
+structured `load_result` in the journal automatically. See the
+[Load Testing Guide](../guides/load-testing-guide.md).
 
 ## Prerequisites
 
 - **k6**: Install from https://k6.io/docs/get-started/installation/
-- **JMeter**: Install from https://jmeter.apache.org/download_jmeter.cgi
 
 ## k6 Driver
 
@@ -57,24 +62,6 @@ TUMULT_OTEL_ENDPOINT=http://localhost:4317 tumult run experiment.toon
 ```
 
 k6 will export its metrics through the same OTel Collector pipeline.
-
-## JMeter Driver
-
-### Start Load Test
-
-```toon
-method[1]:
-  - name: start-load
-    activity_type: action
-    provider:
-      type: process
-      path: plugins/tumult-loadtest/drivers/jmeter-start.sh
-      env:
-        TUMULT_JMETER_PLAN: load/test-plan.jmx
-        TUMULT_JMETER_THREADS: 20
-        TUMULT_JMETER_DURATION: 300
-    background: true
-```
 
 ## Example: Chaos Under Load
 

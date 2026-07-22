@@ -43,6 +43,13 @@ pub enum EngineError {
     GuardMissingTolerance { guard: String },
     #[error("guard '{guard}' has min_breaches = 0; it must be at least 1")]
     GuardInvalidMinBreaches { guard: String },
-    #[error("experiment template references undefined variable '${{{{ {name} }}}}'")]
-    UndefinedVar { name: String },
+    #[error(
+        "max_concurrent_faults must be at least 1 when set (0 would block every \
+         background activity forever)"
+    )]
+    InvalidMaxConcurrentFaults,
+    #[error("experiment template references undefined variables: {names}")]
+    UndefinedVars { names: String },
+    #[error("invalid script provider in activity '{activity}': {reason}")]
+    InvalidScriptProvider { activity: String, reason: String },
 }

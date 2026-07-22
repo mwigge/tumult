@@ -20,7 +20,7 @@ tumult run <experiment.toon> [OPTIONS]
 |--------|---------|-------------|
 | `--journal-path <path>` | `journal.toon` | Output journal location |
 | `--dry-run` | `false` | Validate and show plan without executing |
-| `--rollback-strategy <s>` | `deviated` | `always`, `deviated`, or `never` |
+| `--rollback-strategy <s>` | `on-deviation` | `always`, `on-deviation`, or `never` (`deviated` is accepted as an alias for `on-deviation`) |
 | `--baseline-mode <m>` | `full` | `full`, `skip`, or `only` |
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
 | `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
@@ -53,6 +53,10 @@ tumult run experiment.toon --output-format json | jq '.status'
 # Template variable substitution
 tumult run experiment.toon --var env=staging --var cluster=eu-west-1
 ```
+
+With the default `on-deviation` strategy, rollbacks run when the experiment
+deviates from its hypothesis or when a method step fails after a fault was
+injected. `always` runs them on every outcome; `never` skips them entirely.
 
 ### Template Variables
 
@@ -128,8 +132,8 @@ Script plugins are discovered from (in order):
 3. `$TUMULT_PLUGIN_PATH` — custom paths (colon-separated)
 
 At runtime you can override the search paths without modifying the binary.
-Native plugins (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`) are
-registered in the binary itself and are always listed.
+Native plugins (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`, `tumult-cloud`,
+`tumult-windows`) are registered in the binary itself and are always listed.
 
 ### Examples
 
@@ -142,13 +146,14 @@ tumult discover --plugin tumult-kafka
 tumult discover --plugin tumult-ssh
 ```
 
-From the repository root (10 script plugins in `./plugins/` plus the 3
+From the repository root (11 script plugins in `./plugins/` plus the 5
 built-in native plugins):
 
 ```text
 $ tumult discover
-Discovered 13 plugin(s) (10 script, 3 native):
+Discovered 16 plugin(s) (11 script, 5 native):
 
+  tumult-cloud (native)
   tumult-containers (script)
   tumult-db-mysql (script)
   tumult-db-postgres (script)
@@ -162,8 +167,10 @@ Discovered 13 plugin(s) (10 script, 3 native):
   tumult-pumba (script)
   tumult-ssh (native)
   tumult-stress (script)
+  tumult-timewarp (script)
+  tumult-windows (native)
 
-Actions: 64
+Actions: 91
   tumult-containers::kill-container
   ...
   tumult-kubernetes::delete_pod
@@ -190,7 +197,7 @@ Scaffolds `experiment.toon` in the current directory from a bundled, self-contai
 
 ```bash
 tumult init
-tumult init --plugin tumult-db
+tumult init --plugin tumult-db-postgres
 ```
 
 ## tumult analyze
@@ -206,6 +213,8 @@ tumult analyze [journals-dir] [OPTIONS]
 | `--query <sql>` | Custom SQL query |
 
 If `journals-dir` is omitted, queries the persistent store at `~/.tumult/analytics.duckdb`.
+
+`--query` is read-only: only `SELECT` and `WITH` statements are accepted; anything else is rejected before execution.
 
 ### Examples
 
@@ -259,14 +268,14 @@ tumult trend <journals-dir> [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--metric <m>` | `resilience_score` | Metric to trend (`resilience_score`, `recovery_time`, `duration_ms`) |
+| `--metric <m>` | `resilience_score` | Metric to trend (`resilience_score`, `duration_ms`, `estimate_accuracy`, `method_step_count`) |
 | `--last <window>` | — | Time window: `30d`, `90d`, etc. |
 | `--target <tech>` | — | Filter by target system (matches experiment title) |
 
 ### Examples
 
 ```bash
-tumult trend journals/ --metric recovery_time --last 30d
+tumult trend journals/ --metric duration_ms --last 30d
 tumult trend journals/ --target postgresql --metric resilience_score
 ```
 
@@ -384,7 +393,7 @@ tumult mcp serve --transport http --token my-secret # require bearer auth
 | Option | Description |
 |--------|-------------|
 | `--transport <stdio\|http>` | Transport mode (default: `stdio`) |
-| `--host <addr>` | Bind address for HTTP transport and health endpoint (default: `0.0.0.0`) |
+| `--host <addr>` | Bind address for HTTP transport and health endpoint (default: `127.0.0.1`; a non-loopback bind such as `0.0.0.0` requires `--token`) |
 | `--port <port>` | Port for the HTTP transport (default: `3100`) |
 | `--health-port <port>` | Port for the `/health` endpoint (default: `port + 1`) |
 | `--token <token>` | Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`) |
@@ -400,36 +409,21 @@ tumult-mcp                                # stdio (IDE integration)
 tumult-mcp --transport http --port 3100   # Streamable HTTP (containers, CI/CD)
 ```
 
-Exposes 24 tools to AI assistants:
+Exposes 40 tools to AI assistants, grouped by area:
 
-| Tool | Description |
-|------|-------------|
-| `tumult_run_experiment` | Execute an experiment — persists the journal and auto-ingests it into the analytics store (`journal_path`, `no_ingest`, `store_path`, `format`) |
-| `tumult_validate` | Validate experiment syntax and provider support |
-| `tumult_analyze` | SQL query over journals via embedded DuckDB |
-| `tumult_read_journal` | Read a journal as JSON (default) or raw TOON, full or summary |
-| `tumult_list_journals` | List .toon journal files in a directory (paginated) |
-| `tumult_discover` | List all plugins, actions, and probes |
-| `tumult_create_experiment` | Create a new experiment from a template |
-| `tumult_query_traces` | Query trace data for observability correlation |
-| `tumult_store_stats` | Return persistent store statistics |
-| `tumult_analyze_store` | SQL query directly against the persistent store |
-| `tumult_list_experiments` | List experiment .toon files in a directory (paginated) |
-| `tumult_report` | Render a journal as JSON or JUnit XML, inline or written to the workspace |
-| `tumult_compliance` | Compliance summary and verdict for one of 7 frameworks (`dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2`, `basel-iii`) |
-| `tumult_trend` | Cross-run metric trend over journals with a direction verdict |
-| `tumult_agents` | List agent CLI adapters (claude-code, codex) with install/version/auth state |
-| `tumult_gameday_create` | Scaffold a `.gameday.toon` campaign (experiments, load config, framework) |
-| `tumult_gameday_run` | Run a GameDay under shared load, return score and compliance status |
-| `tumult_gameday_analyze` | Analyze a completed GameDay journal |
-| `tumult_gameday_list` | List available `.gameday.toon` files (paginated) |
-| `tumult_recommend` | Recommend what to test next — coverage gaps, failure patterns, stale experiments; optional agent enhancement (`agent`, `agent_model`, `agent_timeout_secs`, `generate_experiments_dir`) |
-| `tumult_coverage` | Coverage report — plugins/actions/targets tested vs available |
-| `tumult_agentic_list_scenarios` | List agentic fault-injection scenario packs (metadata only) |
-| `tumult_agentic_smoke` | Run a deterministic local agentic smoke check |
-| `tumult_agentic_run_experiment` | Run a bundled agentic experiment (metadata only) |
+| Area | Tools |
+|---|---|
+| Experiments | `tumult_run_experiment`, `tumult_validate`, `tumult_discover`, `tumult_create_experiment`, `tumult_list_experiments` |
+| Journals and analytics | `tumult_read_journal`, `tumult_list_journals`, `tumult_analyze`, `tumult_analyze_store`, `tumult_store_stats`, `tumult_query_traces`, `tumult_report`, `tumult_compliance`, `tumult_trend` |
+| GameDays | `tumult_gameday_run`, `tumult_gameday_analyze`, `tumult_gameday_create`, `tumult_gameday_list` |
+| Intelligence | `tumult_recommend`, `tumult_coverage`, `tumult_agents`, `tumult_fault_catalog`, `tumult_scaffold_experiment` |
+| Agentic testing | `tumult_agentic_list_scenarios`, `tumult_agentic_smoke`, `tumult_agentic_run_experiment` |
+| ChaosGraph | `tumult_chaosgraph_query`, `tumult_chaosgraph_neighbors`, `tumult_chaosgraph_coverage_gaps`, `tumult_chaosgraph_cypher` |
+| Topology | `tumult_topology_import`, `tumult_topology_map`, `tumult_compliance_lineage`, `tumult_recommend_injection` |
+| Autopilot | `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify` |
+| Access | `tumult_whoami` |
 
-Every tool carries MCP tool annotations (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`), 16 tools return `structuredContent` with advertised output schemas, and workspace files are served as `tumult://journal|experiment|gameday/{file}` resources. See the [MCP Guide](mcp-guide.md) for the full data model.
+Every tool carries MCP tool annotations (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`), 30 tools return `structuredContent` with advertised output schemas, and workspace files are served as `tumult://journal|experiment|gameday/{file}` resources. The four destructive-annotated tools are `tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run`, and `tumult_autopilot_respond`. See the [MCP Guide](mcp-guide.md) for the full data model.
 
 Tool failures are returned with `isError: true` per the MCP specification. Authentication and rate-limit rejections are reported as such — not as "Unknown tool".
 
@@ -482,6 +476,103 @@ tumult chaosgraph query --kind service --format json
 ```
 
 The store must exist (run at least one experiment first); a missing store yields a clean `store not found` error.
+
+## tumult new
+
+Interactive experiment builder: pick a fault (domain → action → args → target → probe → title) and get a validated, ready-to-run experiment. With `--from <template>` it instantiates a curated starter non-interactively.
+
+```
+tumult new [--from <template>] [--set KEY=VALUE]... [--out <path>]
+```
+
+### Examples
+
+```bash
+# Interactive picker
+tumult new
+
+# Instantiate a curated starter with parameter overrides
+tumult new --from postgres-connection-kill --set host=db.internal --out pg-kill.toon
+```
+
+## tumult templates
+
+List the curated starter templates (name, description, params) accepted by `tumult new --from`.
+
+```
+tumult templates
+```
+
+## tumult agentic
+
+Agentic AI fault-injection scenarios and local smoke tests — scenario packs, deterministic fixtures, multi-turn trajectories, and a live-traffic proxy.
+
+```
+tumult agentic <list-packs|smoke|run|trajectory|replay|proxy|run-live>
+```
+
+See the [Agentic Scenarios guide](agentic-scenarios.md) for pack authoring and the [Agentic Observability guide](agentic-observability.md) for trace capture.
+
+## tumult gameday
+
+Coordinated experiment campaigns with resilience scoring and compliance mapping.
+
+```
+tumult gameday <create|run|analyze>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `create` | Create a `.gameday.toon` file from experiment paths |
+| `run` | Run all experiments in a GameDay under shared load |
+| `analyze` | Show aggregate analysis of a completed GameDay |
+
+See the [Experiment Scheduling guide](scheduling.md) for recurring GameDays.
+
+## tumult topology
+
+Declared service topology, compliance lineage, and injection recommendations over the analytics store.
+
+```
+tumult topology <import|discover-k8s|map|lineage|recommend>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `import` | Import a declared topology TOML (services + `depends_on`) into the store |
+| `discover-k8s` | Propose a topology TOML from a live cluster (never writes the store) |
+| `map` | Render the compliance-aware service map (text, Mermaid, or JSON) |
+| `lineage` | Show the (article × service) compliance lineage matrix |
+| `recommend` | Rank the next most valuable fault injections, with reasons |
+
+See the [Topology guide](topology.md).
+
+## tumult autopilot
+
+Policy-gated autopilot: decide, record, and (only when told to) enact the next compliance-driven fault injections. Audit-before-act: decisions are persisted before anything runs.
+
+```
+tumult autopilot <once|status|approve|deny|notify-change|export>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `once` | Run one pass of the decision loop (without `--execute` nothing is injected) |
+| `status` | List recorded decisions with their latest lifecycle event |
+| `approve` | Approve a proposed decision — runs its playbook experiment |
+| `deny` | Deny a proposed decision — records veto feedback |
+| `notify-change` | Record a deploy/config change event against a service |
+| `export` | Export the decision and event tables as Parquet files |
+
+See the [Autopilot guide](autopilot.md).
+
+## tumult tui
+
+Open the interactive analytics TUI over the store (read-only dashboard).
+
+```
+tumult tui [--store <path>] [--refresh-secs <n>]
+```
 
 ## Environment Variables
 

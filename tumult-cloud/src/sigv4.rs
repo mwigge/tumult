@@ -105,7 +105,10 @@ pub fn sign(
         headers.push((name.to_lowercase(), value.trim().to_string()));
     }
     if let Some(token) = &creds.session_token {
-        headers.push(("x-amz-security-token".to_string(), token.clone()));
+        headers.push((
+            "x-amz-security-token".to_string(),
+            token.as_str().to_string(),
+        ));
     }
     headers.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -136,7 +139,7 @@ pub fn sign(
     );
 
     let k_date = hmac(
-        format!("AWS4{}", creds.secret_access_key).as_bytes(),
+        format!("AWS4{}", creds.secret_access_key.as_str()).as_bytes(),
         date_stamp.as_bytes(),
     );
     let k_region = hmac(&k_date, req.region.as_bytes());
@@ -154,7 +157,10 @@ pub fn sign(
         ("X-Amz-Date".to_string(), amz_date),
     ];
     if let Some(token) = &creds.session_token {
-        out.push(("X-Amz-Security-Token".to_string(), token.clone()));
+        out.push((
+            "X-Amz-Security-Token".to_string(),
+            token.as_str().to_string(),
+        ));
     }
     out
 }
@@ -169,7 +175,9 @@ mod tests {
         // Canonical `get-vanilla` case from the AWS SigV4 test suite.
         let creds = AwsCredentials {
             access_key_id: "AKIDEXAMPLE".to_string(),
-            secret_access_key: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY".to_string(),
+            secret_access_key: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+                .to_string()
+                .into(),
             session_token: None,
         };
         let now = Utc.with_ymd_and_hms(2015, 8, 30, 12, 36, 0).unwrap();
@@ -201,8 +209,8 @@ mod tests {
     fn session_token_adds_security_token_header() {
         let creds = AwsCredentials {
             access_key_id: "AKIA".to_string(),
-            secret_access_key: "secret".to_string(),
-            session_token: Some("session".to_string()),
+            secret_access_key: "secret".to_string().into(),
+            session_token: Some("session".to_string().into()),
         };
         let now = Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap();
         let req = SignRequest {

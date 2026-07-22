@@ -1,3 +1,9 @@
+---
+title: Topology
+parent: Guides
+nav_order: 17
+---
+
 # Service topology, compliance lineage & injection recommendations
 
 ChaosGraph can now answer the three questions that matter after a chaos run:

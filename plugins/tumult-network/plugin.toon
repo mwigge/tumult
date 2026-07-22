@@ -3,7 +3,7 @@ version: 0.2.0
 description: Network chaos — latency, packet loss, DNS disruption, partition
 author: tumult
 
-actions[9]:
+actions[11]:
   - name: add-latency
     script: actions/add-latency.sh
     description: Add network latency using tc netem
@@ -28,9 +28,15 @@ actions[9]:
   - name: block-dns-rollback
     script: actions/block-dns-rollback.sh
     description: Remove DNS block entries from /etc/hosts and iptables
+  - name: redirect-dns-rollback
+    script: actions/redirect-dns-rollback.sh
+    description: Remove DNS redirect entries from /etc/hosts (idempotent)
   - name: partition-host
     script: actions/partition-host.sh
     description: Network partition a host via iptables DROP
+  - name: partition-host-rollback
+    script: actions/partition-host-rollback.sh
+    description: Remove the iptables DROP rules added by partition-host (idempotent)
 
 probes[3]:
   - name: ping-latency

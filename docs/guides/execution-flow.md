@@ -63,7 +63,7 @@ tumult run experiment.toon
 ### 3. Start Load (if configured)
 
 ```
-    ├── Start k6/JMeter in background
+    ├── Start k6 in background
     └── Wait for load to stabilize
 ```
 
@@ -162,7 +162,7 @@ Recovery is measured, not assumed: `recovery_time_s` and `mttr_s` reflect when t
 ### 11. Stop Load
 
 ```
-    ├── Stop k6/JMeter
+    ├── Stop k6
     └── Collect load metrics (throughput, latency, error rate)
 ```
 

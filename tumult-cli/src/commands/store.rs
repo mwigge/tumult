@@ -30,7 +30,8 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
         bail!("activities.parquet not found in {}", parquet_dir.display());
     }
 
-    let db_path = AnalyticsStore::default_path();
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     let store = AnalyticsStore::open(&db_path)?;
     store.import_tables(&exp_path, &act_path)?;
 
@@ -52,7 +53,8 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
 pub fn cmd_store_stats() -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
-    let db_path = AnalyticsStore::default_path();
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     if !db_path.exists() {
         println!("No persistent store found at: {}", db_path.display());
         println!("Run an experiment to create it automatically.");
@@ -86,7 +88,8 @@ pub fn cmd_store_stats() -> Result<()> {
 pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
-    let db_path = AnalyticsStore::default_path();
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     if !db_path.exists() {
         bail!("no persistent store found at: {}", db_path.display());
     }
@@ -117,7 +120,8 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
 pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
-    let db_path = AnalyticsStore::default_path();
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     if !db_path.exists() {
         bail!("no persistent store found at: {}", db_path.display());
     }
@@ -146,7 +150,8 @@ pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
 pub fn cmd_store_path() -> Result<()> {
     use tumult_analytics::AnalyticsStore;
 
-    let db_path = AnalyticsStore::default_path();
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     println!("{}", db_path.display());
     if db_path.exists() {
         if let Ok(size) = std::fs::metadata(&db_path) {
@@ -178,7 +183,8 @@ pub async fn cmd_store_migrate() -> Result<()> {
         );
     }
 
-    let db_path = AnalyticsStore::default_path();
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     if !db_path.exists() {
         bail!("no DuckDB store found at: {}", db_path.display());
     }

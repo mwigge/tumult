@@ -10,9 +10,12 @@ set -eu
 
 SIGNAL="${TUMULT_SIGNAL:-KILL}"
 KAFKA_DIR="${TUMULT_KAFKA_DIR:-/opt/kafka}"
+# Documented as optional (only relevant when driving the kill over SSH) — give
+# it a default so `set -u` does not abort on the unset read below.
+BROKER_HOST="${TUMULT_BROKER_HOST:-}"
 
-if [ -n "${TUMULT_BROKER_HOST}" ]; then
-    echo "killing Kafka broker on ${TUMULT_BROKER_HOST}"
+if [ -n "${BROKER_HOST}" ]; then
+    echo "killing Kafka broker on ${BROKER_HOST}"
     # When run via SSH, kill the local Kafka process
 fi
 

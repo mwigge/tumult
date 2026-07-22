@@ -1,6 +1,9 @@
 # Build
 target/
 
+# Runtime logs
+serve.out
+
 # Environment
 .env
 

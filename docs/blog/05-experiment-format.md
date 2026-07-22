@@ -64,9 +64,7 @@ Every Tumult experiment has the same sections. Some are required; most are optio
 
 ```toon
 title: Redis cache flush validates cache-aside pattern
-description: |
-  Flush the Redis cache and verify that the application falls back
-  to the database and refills the cache within the SLA window.
+description: Flush the Redis cache and verify that the application falls back to the database and refills the cache within the SLA window.
 
 tags[3]: cache, redis, resilience
 ```
@@ -75,7 +73,7 @@ tags[3]: cache, redis, resilience
 
 ### Configuration
 
-Configuration provides named values that can be referenced in provider arguments. Values are resolved at runtime from environment variables:
+Configuration provides named values that can be referenced anywhere in the experiment as `${config.<name>}` placeholders (substituted before the run starts). Values are resolved at runtime from environment variables, and are also injected into process and script provider subprocesses as `TUMULT_CONFIG_<NAME>` environment variables:
 
 ```toon
 configuration:
@@ -89,16 +87,18 @@ configuration:
 
 ### Secrets
 
-Secrets follow the same structure but are redacted from logs and journal output:
+Secrets follow the same structure but are redacted from logs and journal output. They are grouped — reference them as `${secrets.<group>.<key>}`; subprocesses receive them as `TUMULT_SECRET_<GROUP>_<KEY>`:
 
 ```toon
 secrets:
-  db_password:
-    type: env
-    key: DATABASE_PASSWORD
-  ssh_key:
-    type: file
-    path: /run/secrets/tumult-ssh-key
+  db:
+    password:
+      type: env
+      key: DATABASE_PASSWORD
+  ssh:
+    key:
+      type: file
+      path: /run/secrets/tumult-ssh-key
 ```
 
 ### Estimate (Phase 0)
@@ -149,15 +149,14 @@ steady_state_hypothesis:
         type: exact
         value: 200
 
-    - name: cache-hit-rate
+    - name: cache-available
       activity_type: probe
       provider:
         type: process
-        path: plugins/tumult-redis/probes/hit-rate.sh
+        path: plugins/tumult-db-redis/probes/redis-ping.sh
       tolerance:
-        type: range
-        from: 0.7        # tolerate >= 70% hit rate
-        to: 1.0
+        type: regex
+        pattern: "PONG"
 ```
 
 *(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
@@ -182,16 +181,16 @@ method[3]:
     activity_type: action
     provider:
       type: process
-      path: plugins/tumult-redis/actions/flush-all.sh
+      path: plugins/tumult-db-redis/actions/flush-all.sh
       env:
-        TUMULT_REDIS_HOST: "{{ configuration.redis_host }}"
+        TUMULT_REDIS_HOST: ${config.redis_host}
     pause_after_s: 2.0      # wait 2 seconds after flushing
 
   - name: measure-cache-miss-rate
     activity_type: probe
     provider:
       type: process
-      path: plugins/tumult-redis/probes/hit-rate.sh
+      path: plugins/tumult-db-redis/probes/redis-info.sh
     background: false
 
   - name: send-load-spike
@@ -227,7 +226,7 @@ provider:
   method: GET
   url: http://localhost:8080/health
   headers:
-    Authorization: "Bearer {{ secrets.api_token }}"
+    Authorization: "Bearer ${secrets.api.token}"
   timeout_s: 5.0
 ```
 
@@ -240,7 +239,7 @@ provider:
   path: /usr/local/bin/redis-cli
   arguments[2]: FLUSHALL, ASYNC
   env:
-    REDIS_HOST: "{{ configuration.redis_host }}"
+    REDIS_HOST: ${config.redis_host}
   timeout_s: 30.0
 ```
 
@@ -256,26 +255,40 @@ provider:
     grace_period_seconds: 0
 ```
 
+**Script provider**; dispatch a bundled script plugin from `plugins/`. Arguments are passed to the script as `TUMULT_*` environment variables (`pg_database` → `TUMULT_PG_DATABASE`):
+```toon
+provider:
+  type: script
+  plugin: tumult-db-postgres
+  function: kill-connections
+  arguments:
+    pg_database: payments
+```
+
 ### Execution Targets
 
-By default, activities run on the local machine. For remote execution:
+Activities run on the local machine. For remote execution today, use the
+native `tumult-ssh` plugin's `execute` function (arguments reach the
+compiled plugin as typed values):
 
 ```toon
 - name: stress-remote-db
   activity_type: action
   provider:
-    type: process
-    path: /usr/bin/stress-ng
-    arguments[2]: --cpu, 4, --timeout, 60s
-  execution_target:
-    type: ssh
-    host: db-primary.example.com
-    port: 22
-    user: ops
-    key_path: /home/ops/.ssh/tumult_ed25519
+    type: native
+    plugin: tumult-ssh
+    function: execute
+    arguments:
+      host: db-primary.example.com
+      port: 22
+      user: ops
+      key_file: /home/ops/.ssh/tumult_ed25519
+      command: stress-ng --cpu 4 --timeout 60s
 ```
 
-Supported execution targets: `local`, `ssh`, `container`, `kube_exec`.
+(A schema-level `ExecutionTarget` type — `local`, `ssh`, `container`,
+`kube_exec` — exists in `tumult-core` but is not wired to activities; an
+`execution_target:` key on an activity is ignored.)
 
 ### Rollbacks
 
@@ -287,9 +300,10 @@ rollbacks[1]:
     activity_type: action
     provider:
       type: process
-      path: plugins/tumult-redis/actions/warm-cache.sh
+      path: /usr/local/bin/redis-cli
+      arguments[2]: "SET", "cache:warm-marker", "1"
       env:
-        TUMULT_REDIS_HOST: "{{ configuration.redis_host }}"
+        REDIS_HOST: ${config.redis_host}
     background: false
 ```
 
@@ -298,7 +312,7 @@ Run with a specific rollback strategy:
 ```bash
 tumult run experiment.toon --rollback-strategy always   # always rollback
 tumult run experiment.toon --rollback-strategy never    # never rollback
-tumult run experiment.toon --rollback-strategy deviated # default
+tumult run experiment.toon --rollback-strategy on-deviation # default
 ```
 
 ### Regulatory Mapping
@@ -327,9 +341,7 @@ Putting it all together; a real experiment for validating Kafka consumer resilie
 
 ```toon
 title: Kafka consumer survives broker kill
-description: |
-  Kill one Kafka broker in a 3-broker cluster and verify that
-  consumers rebalance and resume within 30 seconds.
+description: Kill one Kafka broker in a 3-broker cluster and verify that consumers rebalance and resume within 30 seconds.
 
 tags[3]: kafka, messaging, resilience
 
@@ -366,8 +378,8 @@ steady_state_hypothesis:
         type: process
         path: plugins/tumult-kafka/probes/consumer-lag.sh
         env:
-          TUMULT_BOOTSTRAP: "{{ configuration.kafka_bootstrap }}"
-          TUMULT_GROUP: "{{ configuration.consumer_group }}"
+          TUMULT_KAFKA_BOOTSTRAP: ${config.kafka_bootstrap}
+          TUMULT_CONSUMER_GROUP: ${config.consumer_group}
       tolerance:
         type: range
         from: 0
@@ -389,9 +401,9 @@ rollbacks[1]:
     activity_type: action
     provider:
       type: process
-      path: plugins/tumult-kafka/actions/start-broker.sh
-      env:
-        TUMULT_BROKER_ID: "1"
+      path: /opt/kafka/bin/kafka-server-start.sh
+      arguments[2]: "-daemon", "/opt/kafka/config/server.properties"
+      timeout_s: 30.0
 
 regulatory:
   frameworks[1]: DORA
@@ -440,14 +452,14 @@ Hypothesis (BEFORE):
   ✓ health-check  [HTTP GET http://localhost:8080/health → 200]
 
 Method:
-  1. kill-db-connections  [native:tumult-db:terminate_connections]
+  1. kill-db-connections  [script:tumult-db-postgres:kill-connections]
      pause_after: 5s
 
 Hypothesis (AFTER):
   ✓ health-check  [HTTP GET http://localhost:8080/health → 200]
 
 Rollbacks:
-  1. restore-connections  [native:tumult-db:reset_connection_pool]
+  1. wait-for-reconnect  [process:pg_isready]
 
 Rollback strategy: on-deviation
 ```

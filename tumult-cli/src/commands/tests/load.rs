@@ -8,27 +8,31 @@ use super::helpers::*;
 
 #[test]
 fn parse_duration_seconds() {
-    assert!((parse_duration_str("30s") - 30.0).abs() < f64::EPSILON);
+    assert!((parse_duration_str("30s").unwrap() - 30.0).abs() < f64::EPSILON);
 }
 
 #[test]
 fn parse_duration_minutes() {
-    assert!((parse_duration_str("5m") - 300.0).abs() < f64::EPSILON);
+    assert!((parse_duration_str("5m").unwrap() - 300.0).abs() < f64::EPSILON);
 }
 
 #[test]
 fn parse_duration_hours() {
-    assert!((parse_duration_str("2h") - 7200.0).abs() < f64::EPSILON);
+    assert!((parse_duration_str("2h").unwrap() - 7200.0).abs() < f64::EPSILON);
 }
 
 #[test]
 fn parse_duration_bare_number() {
-    assert!((parse_duration_str("45") - 45.0).abs() < f64::EPSILON);
+    assert!((parse_duration_str("45").unwrap() - 45.0).abs() < f64::EPSILON);
 }
 
 #[test]
-fn parse_duration_invalid_falls_back_to_default() {
-    assert!((parse_duration_str("nonsense") - 30.0).abs() < f64::EPSILON);
+fn parse_duration_invalid_is_error() {
+    let err = parse_duration_str("nonsense").unwrap_err();
+    assert!(err.to_string().contains("invalid duration"), "{err}");
+    assert!(parse_duration_str("10x").is_err());
+    assert!(parse_duration_str("").is_err());
+    assert!(parse_duration_str("s").is_err());
 }
 
 // ── parse_var_args tests ──────────────────────────────────
@@ -70,13 +74,13 @@ fn parse_var_args_value_with_equals() {
 
 #[test]
 fn build_load_override_none_tool_returns_none() {
-    let result = build_load_override(None, None, None, None);
+    let result = build_load_override(None, None, None, None).unwrap();
     assert!(result.is_none());
 }
 
 #[test]
 fn build_load_override_explicit_none_returns_none() {
-    let result = build_load_override(Some(LoadToolArg::None), None, None, None);
+    let result = build_load_override(Some(LoadToolArg::None), None, None, None).unwrap();
     assert!(result.is_none());
 }
 
@@ -87,7 +91,8 @@ fn build_load_override_k6_returns_config() {
         None,
         Some(20),
         Some("60s".to_string()),
-    );
+    )
+    .unwrap();
     let config = result.unwrap();
     assert_eq!(config.vus, Some(20));
     assert!((config.duration_s.unwrap() - 60.0).abs() < f64::EPSILON);
@@ -95,12 +100,18 @@ fn build_load_override_k6_returns_config() {
 }
 
 #[test]
-fn build_load_override_jmeter_returns_config() {
-    let result = build_load_override(Some(LoadToolArg::Jmeter), None, None, None);
+fn build_load_override_k6_defaults() {
+    let result = build_load_override(Some(LoadToolArg::K6), None, None, None).unwrap();
     let config = result.unwrap();
-    assert!(matches!(config.tool, tumult_core::types::LoadTool::Jmeter));
+    assert!(matches!(config.tool, tumult_core::types::LoadTool::K6));
     assert_eq!(config.vus, Some(10)); // default
     assert!((config.duration_s.unwrap() - 30.0).abs() < f64::EPSILON); // default
+}
+
+#[test]
+fn build_load_override_invalid_duration_is_error() {
+    let result = build_load_override(Some(LoadToolArg::K6), None, None, Some("soon".to_string()));
+    assert!(result.is_err());
 }
 
 // ── k6 metric parser tests (CLI-TEST-01) ─────────────────────────────

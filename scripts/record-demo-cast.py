@@ -87,11 +87,11 @@ run("tumult topology import demo/topology/topology.toml",
 
 section("2 · run chaos with compliance mappings")
 comment("a latency drill on demo-app, mapped to DORA Art. 25 — completes, produces evidence")
-run("tumult run demo/experiments/demo-net.toon",
-    [T, "run", "demo/experiments/demo-net.toon"], grep=r"Running|Status|Method|Ingested")
+run("tumult run demo/experiments/demo-net.toon --force",
+    [T, "run", "demo/experiments/demo-net.toon", "--force"], grep=r"Running|Status|Method|Ingested")
 comment("pause the database behind a safety guard watching demo-app — the guard halts the run")
-run("tumult run demo/experiments/demo-guard-halt.toon",
-    [T, "run", "demo/experiments/demo-guard-halt.toon"], grep=r"Running|Status|Rollbacks|Ingested|halt")
+run("tumult run demo/experiments/demo-guard-halt.toon --force",
+    [T, "run", "demo/experiments/demo-guard-halt.toon", "--force"], grep=r"Running|Status|Rollbacks|Ingested|halt")
 
 section("3 · where does compliance break? (and WHY)")
 run("tumult topology map --framework DORA",

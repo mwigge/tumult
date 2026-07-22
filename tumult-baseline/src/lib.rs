@@ -66,17 +66,17 @@ mod tests {
     #[test]
     fn mean_of_known_dataset() {
         let data = sample_data();
-        assert!((mean(&data) - 55.0).abs() < f64::EPSILON);
+        assert!((mean(&data).unwrap() - 55.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn mean_of_single_value() {
-        assert!((mean(&[42.0]) - 42.0).abs() < f64::EPSILON);
+        assert!((mean(&[42.0]).unwrap() - 42.0).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn mean_of_empty_returns_zero() {
-        assert!((mean(&[]) - 0.0).abs() < f64::EPSILON);
+    fn mean_of_empty_returns_none() {
+        assert!(mean(&[]).is_none());
     }
 
     // ── stddev ─────────────────────────────────────────────────
@@ -84,20 +84,34 @@ mod tests {
     #[test]
     fn stddev_of_known_dataset() {
         let data = sample_data();
-        // Population stddev of 10,20,...,100 = sqrt(825) ≈ 28.722
-        let sd = stddev(&data);
-        assert!((sd - 28.7228).abs() < 0.01);
+        // Sample stddev of 10,20,...,100 = sqrt(8250/9) ≈ 30.2765
+        // (Bessel-corrected; the population value was ≈ 28.72).
+        let sd = stddev(&data).unwrap();
+        assert!((sd - 30.2765).abs() < 0.01);
     }
 
     #[test]
     fn stddev_of_constant_values_is_zero() {
         let data = vec![5.0, 5.0, 5.0, 5.0];
-        assert!((stddev(&data) - 0.0).abs() < f64::EPSILON);
+        assert!(stddev(&data).unwrap().abs() < f64::EPSILON);
     }
 
     #[test]
-    fn stddev_of_empty_returns_zero() {
-        assert!((stddev(&[]) - 0.0).abs() < f64::EPSILON);
+    fn stddev_of_empty_returns_none() {
+        assert!(stddev(&[]).is_none());
+    }
+
+    #[test]
+    fn stddev_of_single_sample_returns_none() {
+        // Sample variance is undefined for N < 2.
+        assert!(stddev(&[42.0]).is_none());
+    }
+
+    #[test]
+    fn stddev_uses_sample_denominator() {
+        // [1,2,3]: sample stddev = 1.0; population stddev would be ≈ 0.8165.
+        let sd = stddev(&[1.0, 2.0, 3.0]).unwrap();
+        assert!((sd - 1.0).abs() < f64::EPSILON);
     }
 
     // ── percentile ─────────────────────────────────────────────
@@ -140,7 +154,7 @@ mod tests {
         let data = sample_data();
         let bounds = derive_mean_stddev_bounds(&data, 2.0);
         let m = 55.0;
-        let sd = stddev(&data);
+        let sd = stddev(&data).unwrap();
         assert!((bounds.lower - (m - 2.0 * sd)).abs() < 0.01);
         assert!((bounds.upper - (m + 2.0 * sd)).abs() < 0.01);
     }

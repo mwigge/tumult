@@ -1,7 +1,7 @@
 ---
 title: "MCP over HTTP"
 parent: Blog
-nav_order: 17
+nav_order: 16
 updated: 2026-07-21
 ---
 
@@ -42,28 +42,23 @@ docker run --network tumult-e2e -p 3100:3100 tumult-mcp
 
 ## Live Demo
 
-All 14 MCP tools accessible over HTTP:
+All 40 MCP tools accessible over HTTP (summarized by group; see the [MCP guide](../guides/mcp-guide.md) for the full list):
 
 ```
 $ curl -s POST http://localhost:3100/mcp \
     -H "Accept: text/event-stream, application/json" \
     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-Available tools: 14
-  tumult_run_experiment
-  tumult_validate
-  tumult_analyze
-  tumult_read_journal
-  tumult_list_journals
-  tumult_discover
-  tumult_create_experiment
-  tumult_query_traces
-  tumult_store_stats
-  tumult_analyze_store
-  tumult_list_experiments
-  tumult_gameday_run
-  tumult_gameday_analyze
-  tumult_gameday_list
+Available tools: 40
+  Experiments:            tumult_run_experiment, tumult_validate, tumult_discover, ...
+  Journals and analytics: tumult_read_journal, tumult_analyze, tumult_report, ...
+  GameDays:               tumult_gameday_run, tumult_gameday_analyze, ...
+  Intelligence:           tumult_recommend, tumult_coverage, ...
+  Agentic testing:        tumult_agentic_list_scenarios, ...
+  ChaosGraph:             tumult_chaosgraph_query, ...
+  Topology:               tumult_topology_map, ...
+  Autopilot:              tumult_autopilot_run, ...
+  Access:                 tumult_whoami
 ```
 
 Running a live experiment via HTTP:
@@ -106,8 +101,8 @@ size_mb: 2.51
                                                     │
                                            ┌────────┴────────┐
                                            │  tumult-core    │
-                                           │  10 plugins     │
-                                           │  48 actions     │
+                                           │  16 plugins     │
+                                           │  91 actions     │
                                            │  DuckDB store   │
                                            └─────────────────┘
 ```

@@ -2,8 +2,10 @@
 
 mod auth;
 mod dispatch;
+mod enact;
 mod executor;
 mod output_schema;
+mod rate_limit;
 mod resources;
 mod schema;
 #[cfg(test)]
@@ -13,7 +15,10 @@ pub use auth::{host_is_loopback, McpAuth, Role};
 pub use executor::ProcessExecutor;
 pub use schema::*;
 
+use std::sync::Arc;
+
 use rust_mcp_sdk::schema::{CallToolError, CallToolRequestParams};
+use rust_mcp_sdk::McpServer;
 
 use crate::tools;
 
@@ -29,6 +34,11 @@ pub struct TumultHandler {
     pub(crate) workspace_root: std::path::PathBuf,
     /// Bearer token authentication configuration.
     pub(crate) auth: McpAuth,
+    /// Server-wide enactment ledger: at most one fault-injection enactment
+    /// runs at a time, and the autopilot gate sees the in-flight count.
+    pub(crate) enact_lock: enact::EnactLock,
+    /// Per-client token-bucket rate limiter.
+    pub(crate) rate_limiter: rate_limit::RateLimiter,
 }
 
 impl Default for TumultHandler {
@@ -37,6 +47,8 @@ impl Default for TumultHandler {
             semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
             workspace_root: std::env::current_dir().unwrap_or_else(|_| "/".into()),
             auth: McpAuth::from_env(),
+            enact_lock: enact::EnactLock::new(),
+            rate_limiter: rate_limit::RateLimiter::from_env(),
         }
     }
 }
@@ -49,6 +61,8 @@ impl TumultHandler {
             semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
             workspace_root,
             auth: McpAuth::from_env(),
+            enact_lock: enact::EnactLock::new(),
+            rate_limiter: rate_limit::RateLimiter::from_env(),
         }
     }
 
@@ -59,7 +73,16 @@ impl TumultHandler {
             semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_TOOL_CALLS),
             workspace_root,
             auth,
+            enact_lock: enact::EnactLock::new(),
+            rate_limiter: rate_limit::RateLimiter::from_env(),
         }
+    }
+
+    /// Replace the rate limiter (tests need deterministic buckets, not the
+    /// environment's).
+    #[cfg(test)]
+    pub(crate) fn set_rate_limiter(&mut self, limiter: rate_limit::RateLimiter) {
+        self.rate_limiter = limiter;
     }
 
     /// Validate and resolve a user-supplied file path against the workspace root.
@@ -117,5 +140,23 @@ impl TumultHandler {
             .and_then(|extra| extra.get("authorization"))
             .and_then(|v| v.as_str())
             .map(std::string::ToString::to_string)
+    }
+
+    /// Resolve the caller's Authorization value from the two supported
+    /// channels: an explicit `_meta.authorization` always wins; otherwise
+    /// fall back to the HTTP `Authorization: Bearer` header the transport
+    /// captured onto the session runtime (see `server::HeaderCaptureProvider`).
+    /// Stdio runtimes carry no header and yield `None`.
+    async fn resolve_authorization(
+        meta_authorization: Option<String>,
+        runtime: &Arc<dyn McpServer>,
+    ) -> Option<String> {
+        if meta_authorization.is_some() {
+            return meta_authorization;
+        }
+        runtime
+            .auth_info_cloned()
+            .await
+            .map(|info| format!("Bearer {}", info.token_unique_id))
     }
 }

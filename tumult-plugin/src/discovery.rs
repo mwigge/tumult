@@ -4,6 +4,10 @@
 //! 1. `./plugins/` (local to experiment)
 //! 2. `~/.tumult/plugins/` (user-global)
 //! 3. `TUMULT_PLUGIN_PATH` env var (custom paths, colon-separated)
+//!
+//! Discovery is fault-tolerant: one unreadable directory or malformed
+//! manifest is collected as a warning and never aborts the pass — the
+//! remaining search paths are still searched.
 
 use std::path::{Path, PathBuf};
 
@@ -23,26 +27,79 @@ pub enum DiscoveryError {
     },
 }
 
+/// A script plugin discovered on disk: the canonical directory containing
+/// its `plugin.toon` (the root manifest script paths resolve against) plus
+/// the parsed manifest.
+#[derive(Debug, Clone)]
+pub struct DiscoveredPlugin {
+    pub root: PathBuf,
+    pub manifest: ScriptPluginManifest,
+}
+
+/// Outcome of a discovery pass: every usable plugin found, plus one warning
+/// per skipped path or manifest. A single bad entry never aborts the pass.
+#[derive(Debug, Clone, Default)]
+pub struct DiscoveryReport {
+    pub plugins: Vec<DiscoveredPlugin>,
+    pub warnings: Vec<String>,
+}
+
+impl DiscoveryReport {
+    /// Manifests only, dropping roots and warnings — for registry use cases
+    /// that predate the report API.
+    #[must_use]
+    pub fn into_manifests(self) -> Vec<ScriptPluginManifest> {
+        self.plugins.into_iter().map(|p| p.manifest).collect()
+    }
+}
+
 /// Discover script plugins from a single directory.
 ///
 /// Each subdirectory containing a `plugin.toon` file is treated as a plugin.
-///
-/// # Errors
-///
-/// Returns [`DiscoveryError::ReadDir`] if the directory cannot be read.
-/// Returns [`DiscoveryError::ManifestParse`] if a `plugin.toon` file is malformed.
-pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
-    let mut plugins = Vec::new();
+/// A directory that simply does not exist yields an empty report (the normal
+/// case for search paths that are not configured); an unreadable directory
+/// or malformed manifest is collected as a warning and skipped.
+#[must_use]
+pub fn discover_plugins_in_dir(dir: &Path) -> DiscoveryReport {
+    let mut report = DiscoveryReport::default();
 
     if !dir.exists() || !dir.is_dir() {
-        return Ok(plugins);
+        return report;
     }
 
     // Canonicalize base dir to prevent symlink escapes
-    let canonical_dir = std::fs::canonicalize(dir)?;
+    let canonical_dir = match std::fs::canonicalize(dir) {
+        Ok(canonical) => canonical,
+        Err(e) => {
+            report
+                .warnings
+                .push(format!("skipping plugin directory {}: {e}", dir.display()));
+            return report;
+        }
+    };
 
-    for entry in std::fs::read_dir(&canonical_dir)? {
-        let entry = entry?;
+    let entries = match std::fs::read_dir(&canonical_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            report.warnings.push(format!(
+                "skipping plugin directory {}: {e}",
+                canonical_dir.display()
+            ));
+            return report;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                report.warnings.push(format!(
+                    "skipping unreadable entry in {}: {e}",
+                    canonical_dir.display()
+                ));
+                continue;
+            }
+        };
         let path = entry.path();
         if !path.is_dir() || path.is_symlink() {
             continue;
@@ -57,26 +114,35 @@ pub fn discover_plugins_in_dir(dir: &Path) -> Result<Vec<ScriptPluginManifest>, 
         }
 
         let manifest_path = canonical_path.join("plugin.toon");
-        if manifest_path.exists() {
-            let content = std::fs::read_to_string(&manifest_path).map_err(|e| {
-                DiscoveryError::ManifestParse {
-                    path: manifest_path.clone(),
-                    source: Box::new(e),
-                }
-            })?;
-            let manifest: ScriptPluginManifest =
-                toon_format::decode_default(&content).map_err(|e| {
-                    DiscoveryError::ManifestParse {
-                        path: manifest_path,
-                        source: Box::new(e),
-                    }
-                })?;
-            plugins.push(manifest);
+        if !manifest_path.exists() {
+            continue;
+        }
+        match read_manifest(&manifest_path) {
+            Ok(manifest) => report.plugins.push(DiscoveredPlugin {
+                root: canonical_path,
+                manifest,
+            }),
+            Err(e) => report.warnings.push(e.to_string()),
         }
     }
 
-    plugins.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(plugins)
+    report
+        .plugins
+        .sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
+    report
+}
+
+/// Read and parse a single `plugin.toon` manifest.
+fn read_manifest(manifest_path: &Path) -> Result<ScriptPluginManifest, DiscoveryError> {
+    let content =
+        std::fs::read_to_string(manifest_path).map_err(|e| DiscoveryError::ManifestParse {
+            path: manifest_path.to_path_buf(),
+            source: Box::new(e),
+        })?;
+    toon_format::decode_default(&content).map_err(|e| DiscoveryError::ManifestParse {
+        path: manifest_path.to_path_buf(),
+        source: Box::new(e),
+    })
 }
 
 /// Configuration for plugin discovery paths.
@@ -128,32 +194,75 @@ pub fn plugin_search_paths_with_config(config: &PluginDiscoveryConfig) -> Vec<Pa
 
 /// Discover all script plugins from all search paths.
 ///
-/// # Errors
-///
-/// Returns [`DiscoveryError`] if any search path cannot be read or contains a
-/// malformed manifest.
-pub fn discover_all_plugins() -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
-    discover_all_plugins_with_config(&PluginDiscoveryConfig::default())
+/// Fault-tolerant: every search path is tried even when an earlier one is
+/// unreadable or holds a malformed manifest — problems land in
+/// [`DiscoveryReport::warnings`]. Plugins are deduplicated by name,
+/// first-found-wins; a shadowed copy (e.g. a user-global plugin hidden by a
+/// `./plugins` entry of the same name) produces a warning naming the
+/// shadowed path.
+#[must_use]
+pub fn discover_all_report() -> DiscoveryReport {
+    discover_report_with_config(&PluginDiscoveryConfig::default())
 }
 
 /// Discover all script plugins using explicit config.
 ///
+/// See [`discover_all_report`] for the tolerance and dedup semantics.
+#[must_use]
+pub fn discover_report_with_config(config: &PluginDiscoveryConfig) -> DiscoveryReport {
+    let mut report = DiscoveryReport::default();
+    for path in plugin_search_paths_with_config(config) {
+        let found = discover_plugins_in_dir(&path);
+        report.plugins.extend(found.plugins);
+        report.warnings.extend(found.warnings);
+    }
+
+    // Deduplicate by name (first found wins); a shadowed copy warns.
+    let mut seen = std::collections::HashSet::new();
+    let mut unique = Vec::with_capacity(report.plugins.len());
+    for plugin in report.plugins {
+        if seen.insert(plugin.manifest.name.clone()) {
+            unique.push(plugin);
+        } else {
+            report.warnings.push(format!(
+                "plugin '{}' at {} ignored — shadowed by an earlier discovery path",
+                plugin.manifest.name,
+                plugin.root.display()
+            ));
+        }
+    }
+    report.plugins = unique;
+    report
+}
+
+/// Discover all script plugins from all search paths.
+///
+/// Compatibility wrapper over [`discover_all_report`] for callers that only
+/// need manifests; discovery warnings are dropped. Discovery no longer
+/// fails wholesale on a bad path or manifest.
+///
 /// # Errors
 ///
-/// Returns [`DiscoveryError`] if any search path cannot be read or contains a
-/// malformed manifest.
+/// Never fails — the `Result` is kept for source compatibility. Use
+/// [`discover_all_report`] when warnings matter.
+#[allow(clippy::unnecessary_wraps)] // `Result` kept for source compatibility
+pub fn discover_all_plugins() -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
+    Ok(discover_all_report().into_manifests())
+}
+
+/// Discover all script plugins using explicit config.
+///
+/// See [`discover_all_plugins`] — warnings are dropped, never fails.
+///
+/// # Errors
+///
+/// Never fails — the `Result` is kept for source compatibility. Use
+/// [`discover_report_with_config`] when warnings matter.
+#[allow(clippy::unnecessary_wraps)] // `Result` kept for source compatibility
 pub fn discover_all_plugins_with_config(
     config: &PluginDiscoveryConfig,
 ) -> Result<Vec<ScriptPluginManifest>, DiscoveryError> {
-    let mut all = Vec::new();
-    for path in plugin_search_paths_with_config(config) {
-        let found = discover_plugins_in_dir(&path)?;
-        all.extend(found);
-    }
-    // Deduplicate by name (first found wins)
-    let mut seen = std::collections::HashSet::new();
-    all.retain(|p| seen.insert(p.name.clone()));
-    Ok(all)
+    Ok(discover_report_with_config(config).into_manifests())
 }
 
 fn dirs_path() -> Option<PathBuf> {
@@ -200,16 +309,35 @@ mod tests {
         write_manifest(dir.path(), "tumult-kafka", &sample_manifest("tumult-kafka"));
         write_manifest(dir.path(), "tumult-redis", &sample_manifest("tumult-redis"));
 
-        let plugins = discover_plugins_in_dir(dir.path()).unwrap();
-        assert_eq!(plugins.len(), 2);
-        assert_eq!(plugins[0].name, "tumult-kafka");
-        assert_eq!(plugins[1].name, "tumult-redis");
+        let report = discover_plugins_in_dir(dir.path());
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.plugins.len(), 2);
+        assert_eq!(report.plugins[0].manifest.name, "tumult-kafka");
+        assert_eq!(report.plugins[1].manifest.name, "tumult-redis");
+    }
+
+    #[test]
+    fn report_carries_plugin_root() {
+        let dir = TempDir::new().unwrap();
+        write_manifest(dir.path(), "tumult-kafka", &sample_manifest("tumult-kafka"));
+
+        let report = discover_plugins_in_dir(dir.path());
+        assert_eq!(report.plugins.len(), 1);
+        let root = &report.plugins[0].root;
+        assert!(
+            root.ends_with("tumult-kafka"),
+            "root should be the plugin directory, got {}",
+            root.display()
+        );
+        assert!(root.join("plugin.toon").exists());
     }
 
     #[test]
     fn returns_empty_for_nonexistent_dir() {
-        let plugins = discover_plugins_in_dir(Path::new("/nonexistent/path")).unwrap();
-        assert!(plugins.is_empty());
+        let report = discover_plugins_in_dir(Path::new("/nonexistent/path"));
+        assert!(report.plugins.is_empty());
+        // A missing search path is the normal unconfigured case — no warning.
+        assert!(report.warnings.is_empty());
     }
 
     #[test]
@@ -218,9 +346,9 @@ mod tests {
         fs::create_dir(dir.path().join("no-manifest")).unwrap();
         write_manifest(dir.path(), "has-manifest", &sample_manifest("has-manifest"));
 
-        let plugins = discover_plugins_in_dir(dir.path()).unwrap();
-        assert_eq!(plugins.len(), 1);
-        assert_eq!(plugins[0].name, "has-manifest");
+        let report = discover_plugins_in_dir(dir.path());
+        assert_eq!(report.plugins.len(), 1);
+        assert_eq!(report.plugins[0].manifest.name, "has-manifest");
     }
 
     #[test]
@@ -229,19 +357,28 @@ mod tests {
         fs::write(dir.path().join("not-a-dir.txt"), "hello").unwrap();
         write_manifest(dir.path(), "real-plugin", &sample_manifest("real-plugin"));
 
-        let plugins = discover_plugins_in_dir(dir.path()).unwrap();
-        assert_eq!(plugins.len(), 1);
+        let report = discover_plugins_in_dir(dir.path());
+        assert_eq!(report.plugins.len(), 1);
     }
 
     #[test]
-    fn returns_error_for_invalid_manifest() {
+    fn malformed_manifest_warns_and_does_not_abort() {
         let dir = TempDir::new().unwrap();
         let plugin_dir = dir.path().join("bad-plugin");
         fs::create_dir(&plugin_dir).unwrap();
         fs::write(plugin_dir.join("plugin.toon"), "not valid toon {{{}").unwrap();
+        write_manifest(dir.path(), "good-plugin", &sample_manifest("good-plugin"));
 
-        let result = discover_plugins_in_dir(dir.path());
-        assert!(result.is_err());
+        let report = discover_plugins_in_dir(dir.path());
+        // The good plugin is still discovered; the bad one is a warning.
+        assert_eq!(report.plugins.len(), 1);
+        assert_eq!(report.plugins[0].manifest.name, "good-plugin");
+        assert_eq!(report.warnings.len(), 1);
+        assert!(
+            report.warnings[0].contains("bad-plugin"),
+            "warning should name the manifest path: {}",
+            report.warnings[0]
+        );
     }
 
     // ── plugin_search_paths ────────────────────────────────────
@@ -260,21 +397,73 @@ mod tests {
         assert!(paths.contains(&expected));
     }
 
-    // ── discover_all_plugins (deduplication) ───────────────────
+    // ── discover_report_with_config (dedup + shadow warnings) ──
 
     #[test]
-    fn discover_all_deduplicates_by_name() {
-        let dir = TempDir::new().unwrap();
-        write_manifest(dir.path(), "tumult-kafka", &sample_manifest("tumult-kafka"));
+    fn shadowed_plugin_warns_naming_shadowed_path() {
+        let local = TempDir::new().unwrap();
+        let global = TempDir::new().unwrap();
+        write_manifest(
+            local.path(),
+            "tumult-kafka",
+            &sample_manifest("tumult-kafka"),
+        );
+        write_manifest(
+            global.path(),
+            "tumult-kafka",
+            &sample_manifest("tumult-kafka"),
+        );
 
-        // Discover from the same dir twice via the direct function
-        let mut all = discover_plugins_in_dir(dir.path()).unwrap();
-        all.extend(discover_plugins_in_dir(dir.path()).unwrap());
+        let config = PluginDiscoveryConfig {
+            plugin_paths: vec![local.path().to_path_buf(), global.path().to_path_buf()],
+        };
+        let report = discover_report_with_config(&config);
 
-        // Deduplicate
-        let mut seen = std::collections::HashSet::new();
-        all.retain(|p| seen.insert(p.name.clone()));
-        assert_eq!(all.len(), 1);
+        // First path wins; exactly one copy survives.
+        let kafka: Vec<_> = report
+            .plugins
+            .iter()
+            .filter(|p| p.manifest.name == "tumult-kafka")
+            .collect();
+        assert_eq!(kafka.len(), 1);
+        assert!(kafka[0].root.starts_with(local.path()));
+
+        // The shadowed copy warns, naming the shadowed path.
+        let shadow_warnings: Vec<_> = report
+            .warnings
+            .iter()
+            .filter(|w| w.contains("shadowed"))
+            .collect();
+        assert_eq!(shadow_warnings.len(), 1, "{:?}", report.warnings);
+        assert!(
+            shadow_warnings[0].contains(&global.path().display().to_string()),
+            "warning should name the shadowed path: {}",
+            shadow_warnings[0]
+        );
+    }
+
+    #[test]
+    fn bad_path_does_not_abort_remaining_paths() {
+        let good = TempDir::new().unwrap();
+        write_manifest(good.path(), "tumult-good", &sample_manifest("tumult-good"));
+        let bad = TempDir::new().unwrap();
+        let bad_plugin = bad.path().join("broken");
+        fs::create_dir(&bad_plugin).unwrap();
+        fs::write(bad_plugin.join("plugin.toon"), "{{{{").unwrap();
+
+        let config = PluginDiscoveryConfig {
+            plugin_paths: vec![bad.path().to_path_buf(), good.path().to_path_buf()],
+        };
+        let report = discover_report_with_config(&config);
+
+        assert!(
+            report
+                .plugins
+                .iter()
+                .any(|p| p.manifest.name == "tumult-good"),
+            "discovery must continue past the bad path"
+        );
+        assert!(!report.warnings.is_empty());
     }
 
     // ── PluginDiscoveryConfig ─────────────────────────────────

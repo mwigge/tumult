@@ -7,6 +7,10 @@ ignore = [
     { id = "RUSTSEC-2024-0436", reason = "transitive through maintained dependencies including parquet and ratatui" },
     { id = "RUSTSEC-2025-0134", reason = "transitive through axum-server/rust-mcp-sdk" },
     { id = "RUSTSEC-2025-0141", reason = "both versions are transitive through syntect and grafeo; no safe compatible upgrade is available" },
+    # lru is transitive; Tumult does not call lru::IterMut, so the unsound
+    # iterator API is unreachable. Re-evaluate when a patched lru is available
+    # through our dependency tree.
+    { id = "RUSTSEC-2026-0002", reason = "transitive lru crate; Tumult does not call the affected lru::IterMut API" },
 ]
 
 [licenses]

@@ -70,31 +70,23 @@ tumult-nginx/
 
 The `plugin.toon` manifest declares what the plugin can do:
 
-```json
-{
-  "name": "tumult-nginx",
-  "version": "0.1.0",
-  "description": "Nginx chaos actions and probes",
-  "actions": [
-    {
-      "name": "kill-worker",
-      "script": "actions/kill-worker.sh",
-      "description": "Kill an nginx worker process"
-    },
-    {
-      "name": "reload-config",
-      "script": "actions/reload-config.sh",
-      "description": "Force nginx config reload"
-    }
-  ],
-  "probes": [
-    {
-      "name": "connection-count",
-      "script": "probes/connection-count.sh",
-      "description": "Count active nginx connections"
-    }
-  ]
-}
+```toon
+name: tumult-nginx
+version: 0.1.0
+description: Nginx chaos actions and probes
+
+actions[2]:
+  - name: kill-worker
+    script: actions/kill-worker.sh
+    description: Kill an nginx worker process
+  - name: reload-config
+    script: actions/reload-config.sh
+    description: Force nginx config reload
+
+probes[1]:
+  - name: connection-count
+    script: probes/connection-count.sh
+    description: Count active nginx connections
 ```
 
 ### The script contract
@@ -202,31 +194,23 @@ tumult-haproxy/
 ```
 
 **`plugin.toon`:**
-```json
-{
-  "name": "tumult-haproxy",
-  "version": "0.1.0",
-  "description": "HAProxy chaos actions and probes",
-  "actions": [
-    {
-      "name": "disable-backend",
-      "script": "actions/disable-backend.sh",
-      "description": "Disable a backend server in HAProxy"
-    },
-    {
-      "name": "enable-backend",
-      "script": "actions/enable-backend.sh",
-      "description": "Re-enable a backend server in HAProxy"
-    }
-  ],
-  "probes": [
-    {
-      "name": "active-backends",
-      "script": "probes/active-backends.sh",
-      "description": "Count active backends in a HAProxy backend pool"
-    }
-  ]
-}
+```toon
+name: tumult-haproxy
+version: 0.1.0
+description: HAProxy chaos actions and probes
+
+actions[2]:
+  - name: disable-backend
+    script: actions/disable-backend.sh
+    description: Disable a backend server in HAProxy
+  - name: enable-backend
+    script: actions/enable-backend.sh
+    description: Re-enable a backend server in HAProxy
+
+probes[1]:
+  - name: active-backends
+    script: probes/active-backends.sh
+    description: Count active backends in a HAProxy backend pool
 ```
 
 **`actions/disable-backend.sh`:**
@@ -309,17 +293,16 @@ rollbacks[1]:
 
 Script plugins cover most use cases. But some integrations require deep SDK access that bash cannot easily provide: Kubernetes API calls with authentication, cloud provider SDK operations, database driver-level fault injection.
 
-For these, Tumult supports native Rust plugins compiled as feature-flagged crates:
+For these, Tumult ships native Rust plugins compiled into the binary — no feature flags, no separate install:
 
 ```bash
-# Build with Kubernetes and SSH support
-cargo install tumult --features kubernetes,ssh
-
-# Build with all native plugins
-cargo install tumult --features kubernetes,ssh,analytics
+# Build from source; every native executor is included
+git clone https://github.com/mwigge/tumult.git
+cd tumult
+cargo build --release -p tumult-cli
 ```
 
-The native plugin interface is the `ChaosPlugin` trait in `tumult-plugin`. A native plugin implements actions and probes as async Rust functions with typed arguments. The `tumult-kubernetes` plugin, for example, uses `kube-rs`; a full async Kubernetes client; for operations that would be difficult to express reliably in bash:
+The native plugin interface is a pair of traits in `tumult-plugin`: `TumultPlugin` (metadata: name, version, provided actions) and `NativeExecutor` (dispatch: execute a named function with typed JSON arguments). A native plugin implements its actions and probes as async Rust functions with typed arguments. The `tumult-kubernetes` plugin, for example, uses `kube-rs`; a full async Kubernetes client; for operations that would be difficult to express reliably in bash:
 
 - Pod deletion with configurable grace periods
 - Deployment scaling with wait-for-convergence

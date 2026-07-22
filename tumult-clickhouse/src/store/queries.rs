@@ -57,42 +57,63 @@ impl ClickHouseStore {
 
     /// Deletes experiments (and their activity results) older than `days` days.
     ///
-    /// # Panics
-    ///
-    /// Panics if the retention period in nanoseconds overflows `i64` (requires
-    /// `days > 106_751` — approximately 292 years).
+    /// `ALTER TABLE ... DELETE` mutations in `ClickHouse` are asynchronous by
+    /// default, so a count taken immediately after issuing them would report 0
+    /// rows removed even when the purge later succeeds. Both statements are
+    /// therefore issued with `SETTINGS mutations_sync = 1`, which blocks until
+    /// the mutation has been applied on this replica — the `before − after`
+    /// count below then reflects the rows actually deleted rather than a
+    /// fabrication.
     ///
     /// # Errors
     ///
-    /// Returns an error if any `ClickHouse` query or delete operation fails.
+    /// Returns [`AnalyticsError::Internal`] if the retention period overflows
+    /// `i64` nanoseconds (requires `days > 106_751`), or an error if any
+    /// `ClickHouse` query or delete operation fails or times out (the
+    /// configured query timeout also bounds the synchronous mutation wait).
     pub async fn purge_older_than_days_async(&self, days: u32) -> Result<usize, AnalyticsError> {
         let _span = telemetry::begin_purge(days);
 
         let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX);
         let retention_ns = i64::from(days)
             .checked_mul(86_400_000_000_000)
-            .expect("retention period overflow");
+            .ok_or_else(|| {
+                AnalyticsError::Internal(format!(
+                    "retention period of {days} days overflows i64 nanoseconds"
+                ))
+            })?;
         let cutoff_ns = now_ns.saturating_sub(retention_ns);
 
         let before = self.experiment_count_async().await?;
 
-        // Parameterized delete via bind
-        self.client
-            .query(
-                "ALTER TABLE activity_results DELETE WHERE experiment_id IN \
-                 (SELECT experiment_id FROM experiments WHERE started_at_ns < ?)",
-            )
-            .bind(cutoff_ns)
-            .execute()
-            .await
-            .map_err(|e| Self::ch_err(&e))?;
+        // Parameterized delete via bind; `mutations_sync = 1` makes the ALTER
+        // return only after the mutation is applied (see the doc comment).
+        self.with_timeout(async {
+            self.client
+                .query(
+                    "ALTER TABLE activity_results DELETE WHERE experiment_id IN \
+                     (SELECT experiment_id FROM experiments WHERE started_at_ns < ?) \
+                     SETTINGS mutations_sync = 1",
+                )
+                .bind(cutoff_ns)
+                .execute()
+                .await
+                .map_err(|e| Self::ch_err(&e))
+        })
+        .await?;
 
-        self.client
-            .query("ALTER TABLE experiments DELETE WHERE started_at_ns < ?")
-            .bind(cutoff_ns)
-            .execute()
-            .await
-            .map_err(|e| Self::ch_err(&e))?;
+        self.with_timeout(async {
+            self.client
+                .query(
+                    "ALTER TABLE experiments DELETE WHERE started_at_ns < ? \
+                     SETTINGS mutations_sync = 1",
+                )
+                .bind(cutoff_ns)
+                .execute()
+                .await
+                .map_err(|e| Self::ch_err(&e))
+        })
+        .await?;
 
         let after = self.experiment_count_async().await?;
         let purged = before.saturating_sub(after);

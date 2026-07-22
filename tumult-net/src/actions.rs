@@ -7,11 +7,23 @@
 //! PID in a pidfile under the OS temp directory, and the [`stop_proxy`] rollback
 //! tears that daemon down from a fresh invocation. `stop_proxy` is idempotent
 //! and safe to call when no proxy is running.
+//!
+//! Two guards make the detached-daemon hand-off safe:
+//!
+//! - **Readiness** — after spawning, the daemon's listen address is polled
+//!   until it accepts a connection (with a short deadline); a dead-on-arrival
+//!   daemon (e.g. the port was already bound) fails the start with its
+//!   captured stderr instead of leaving a pidfile pointing at a dead PID.
+//! - **Identity** — [`stop_proxy`] verifies the pidfile's PID actually belongs
+//!   to a `tumult-net-proxyd` process before signalling it, so a stale or
+//!   planted pidfile in the world-writable temp dir cannot kill an unrelated
+//!   process.
 
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::Duration;
 
 use crate::config::{FaultProfile, ProxySpec};
 use crate::error::NetError;
@@ -21,6 +33,11 @@ use crate::error::NetError;
 const PROXYD_ENV: &str = "TUMULT_NET_PROXYD";
 /// The daemon binary name shipped alongside the CLI.
 const PROXYD_BIN: &str = "tumult-net-proxyd";
+/// How long a freshly spawned daemon gets to accept its first connection
+/// before the start is declared failed.
+const READY_TIMEOUT: Duration = Duration::from_secs(2);
+/// Interval between readiness probes of the daemon's listen address.
+const READY_POLL: Duration = Duration::from_millis(50);
 
 /// Derive the pidfile path used to discover a proxy bound to `listen`.
 fn pidfile_path(listen: SocketAddr) -> PathBuf {
@@ -58,15 +75,51 @@ fn locate_proxyd() -> Result<PathBuf, NetError> {
     ))
 }
 
-/// Spawn a detached daemon for `spec`, write its pidfile, and return the PID.
+/// Derive the path of the startup log capturing the daemon's stderr, so a
+/// dead-on-arrival daemon's error can be surfaced by the readiness check.
+fn stderr_log_path(listen: SocketAddr) -> PathBuf {
+    pidfile_path(listen).with_extension("stderr.log")
+}
+
+/// Poll `listen` until the daemon accepts a TCP connection or [`READY_TIMEOUT`]
+/// elapses. A successful probe is dropped immediately; the proxy sees it as an
+/// aborted client connection.
+async fn wait_ready(listen: SocketAddr) -> bool {
+    tokio::time::timeout(READY_TIMEOUT, async {
+        loop {
+            if tokio::net::TcpStream::connect(listen).await.is_ok() {
+                return;
+            }
+            tokio::time::sleep(READY_POLL).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+/// Spawn a detached daemon for `spec`, verify it comes up, write its pidfile,
+/// and return the PID.
+///
+/// After the spawn the daemon's listen address is polled for up to
+/// [`READY_TIMEOUT`]. If it never accepts a connection (e.g. the port was
+/// already bound) the daemon's captured stderr is returned as the error, any
+/// half-alive process is signalled, and the pidfile is removed rather than
+/// left pointing at a dead PID.
 async fn spawn_proxy(
     listen: SocketAddr,
     upstream: SocketAddr,
     profile: FaultProfile,
 ) -> Result<u32, NetError> {
+    if listen == upstream {
+        return Err(NetError::invalid(
+            "upstream",
+            format!("listen and upstream are both {listen}; a proxy loop is never useful"),
+        ));
+    }
     profile.validate()?;
     let daemon = locate_proxyd()?;
     let pidfile = pidfile_path(listen);
+    let stderr_log = stderr_log_path(listen);
     let spec = ProxySpec {
         listen,
         upstream,
@@ -74,20 +127,52 @@ async fn spawn_proxy(
         pidfile: pidfile.clone(),
     };
 
-    // Fire-and-forget: the detached daemon must outlive this CLI invocation, so
-    // it is launched via std (which never kills the child on drop) with its
-    // standard streams pointed at the null device.
+    // The detached daemon must outlive this CLI invocation, so it is launched
+    // via std (which never kills the child on drop). stderr goes to a startup
+    // log file instead of the null device so the readiness check can report
+    // *why* a dead-on-arrival daemon failed.
+    let stderr_file = std::fs::File::create(&stderr_log)?;
     let child = std::process::Command::new(&daemon)
         .args(spec.to_argv())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(stderr_file))
         .spawn()?;
     let pid = child.id();
     drop(child);
 
     tokio::fs::write(&pidfile, pid.to_string()).await?;
-    Ok(pid)
+
+    if wait_ready(listen).await {
+        // Came up cleanly; nothing more will be written to the startup log.
+        let _ = tokio::fs::remove_file(&stderr_log).await;
+        return Ok(pid);
+    }
+
+    // Dead on arrival: surface the daemon's captured stderr, stop any
+    // half-alive process, and leave no pidfile behind for rollback to chase.
+    let details = tokio::fs::read_to_string(&stderr_log)
+        .await
+        .unwrap_or_default();
+    let _ = tokio::process::Command::new("kill")
+        .arg(pid.to_string())
+        .status()
+        .await;
+    let _ = tokio::fs::remove_file(&pidfile).await;
+    let _ = tokio::fs::remove_file(&stderr_log).await;
+    let detail = details.trim();
+    let reason = if detail.is_empty() {
+        "daemon produced no output".to_string()
+    } else {
+        format!("daemon stderr: {detail}")
+    };
+    Err(NetError::invalid(
+        "proxyd",
+        format!(
+            "`{PROXYD_BIN}` did not accept connections on {listen} within {}s ({reason})",
+            READY_TIMEOUT.as_secs()
+        ),
+    ))
 }
 
 /// Start a composite chaos proxy applying every fault in `profile`.
@@ -254,6 +339,29 @@ pub async fn terminate_connections(
     ))
 }
 
+/// Confirm that `pid` belongs to a live `tumult-net-proxyd` daemon.
+///
+/// The pidfile lives in the world-writable OS temp dir, so PID reuse or a
+/// planted file must never cause [`stop_proxy`] to kill an unrelated process:
+/// on Linux `/proc/<pid>/cmdline` must contain the proxyd binary name. A
+/// process that cannot be identified (already exited, so no `/proc` entry) is
+/// conservatively treated as *not ours*.
+#[cfg(target_os = "linux")]
+async fn is_proxyd_process(pid: u32) -> bool {
+    match tokio::fs::read(format!("/proc/{pid}/cmdline")).await {
+        Ok(cmdline) => String::from_utf8_lossy(&cmdline).contains(PROXYD_BIN),
+        Err(_) => false,
+    }
+}
+
+/// Off Linux there is no portable `/proc`-style process-identity source, so
+/// the historic best-effort kill is kept (a world-writable shared temp dir is
+/// primarily a Linux deployment shape).
+#[cfg(not(target_os = "linux"))]
+async fn is_proxyd_process(_pid: u32) -> bool {
+    true
+}
+
 /// Stop the chaos proxy bound to `listen` and remove its pidfile.
 ///
 /// This is the rollback for every disruptive action above. It is idempotent:
@@ -282,7 +390,19 @@ pub async fn stop_proxy(listen: SocketAddr) -> Result<String, NetError> {
         return Ok(format!("no chaos proxy running on {listen_s}"));
     };
 
-    // Best-effort terminate; the daemon may already have exited.
+    // Never signal a process we cannot identify as our daemon (see
+    // `is_proxyd_process`): refuse the kill, drop the stale pidfile, and
+    // report instead of killing whatever happens to hold the PID today.
+    if !is_proxyd_process(pid).await {
+        let _ = tokio::fs::remove_file(&pidfile).await;
+        crate::telemetry::event_proxy_stopped(None);
+        return Ok(format!(
+            "no chaos proxy running on {listen_s} (removed stale pidfile: pid {pid} is not a live `{PROXYD_BIN}`)"
+        ));
+    }
+
+    // Verified proxyd process; best-effort terminate — the daemon may still
+    // have exited between the identity check and the kill.
     let _ = tokio::process::Command::new("kill")
         .arg(pid.to_string())
         .status()
@@ -322,10 +442,83 @@ mod tests {
     async fn stop_proxy_removes_a_stale_pidfile() {
         let listen = addr("127.0.0.1:65533");
         let pidfile = pidfile_path(listen);
-        // Simulate a leftover pidfile pointing at a long-dead PID.
+        // Simulate a leftover pidfile pointing at a long-dead PID. The identity
+        // check refuses the kill and the stale file is cleaned up instead.
         tokio::fs::write(&pidfile, "999999999").await.unwrap();
         let out = stop_proxy(listen).await.expect("rollback");
-        assert!(out.contains("stopped"));
+        assert!(out.contains("stale pidfile"), "out: {out}");
         assert!(!pidfile.exists());
+    }
+
+    #[tokio::test]
+    async fn start_proxy_rejects_listen_equal_to_upstream() {
+        // Rejected before any daemon lookup/spawn, so no proxyd is needed.
+        let err = start_proxy(
+            addr("127.0.0.1:65000"),
+            addr("127.0.0.1:65000"),
+            FaultProfile::default(),
+        )
+        .await
+        .expect_err("a proxy loop must be rejected");
+        assert!(err.to_string().contains("proxy loop"), "err: {err}");
+    }
+
+    /// A pidfile pointing at the test runner itself (not a proxyd) must not be
+    /// signalled — if the identity check regresses this test dies loudly.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn stop_proxy_refuses_to_kill_a_non_proxyd_process() {
+        let listen = addr("127.0.0.1:65532");
+        let pidfile = pidfile_path(listen);
+        tokio::fs::write(&pidfile, std::process::id().to_string())
+            .await
+            .unwrap();
+        let out = stop_proxy(listen).await.expect("rollback");
+        assert!(out.contains("stale pidfile"), "out: {out}");
+        assert!(!pidfile.exists());
+    }
+
+    /// A process whose cmdline carries the proxyd name is killed as before.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn stop_proxy_kills_a_verified_proxyd_process() {
+        let Ok(mut child) = std::process::Command::new("sh")
+            .args(["-c", "exec -a tumult-net-proxyd sleep 60"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            return; // no `sh` on this host — nothing to test
+        };
+        // Wait until the stand-in has fully exec'd (its argv[0] IS the proxyd
+        // name) before writing the pidfile. Reading /proc/<pid>/cmdline while
+        // the process is mid-exec can yield an empty string, which would fail
+        // the identity check below non-deterministically under parallel load.
+        let mut execd = false;
+        for _ in 0..100 {
+            if let Ok(cmdline) = tokio::fs::read(format!("/proc/{}/cmdline", child.id())).await {
+                if cmdline.split(|b| *b == 0).next() == Some(PROXYD_BIN.as_bytes()) {
+                    execd = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        if !execd {
+            let _ = child.kill();
+            panic!("stand-in daemon never exec'd as `{PROXYD_BIN}`");
+        }
+        let listen = addr("127.0.0.1:65531");
+        let pidfile = pidfile_path(listen);
+        tokio::fs::write(&pidfile, child.id().to_string())
+            .await
+            .unwrap();
+
+        let out = stop_proxy(listen).await.expect("rollback");
+        assert!(out.contains("stopped"), "out: {out}");
+        assert!(!pidfile.exists());
+        let status = child.wait().expect("reap stand-in daemon");
+        assert!(!status.success(), "stand-in should have been signalled");
     }
 }

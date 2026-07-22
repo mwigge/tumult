@@ -73,6 +73,38 @@ fn activity_row_serializable() {
     assert!(json.contains("test-action"));
 }
 
+/// The retention-period arithmetic overflow used to be an `expect` panic in
+/// library code; it must now surface as a checked `AnalyticsError::Internal`.
+/// The overflow check runs before any network I/O, so an unreachable store
+/// suffices.
+#[test]
+fn purge_retention_overflow_is_checked_error_not_panic() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build runtime");
+
+    rt.block_on(async {
+        let store = ClickHouseStore {
+            client: Client::default().with_url("http://127.0.0.1:1"),
+            database: "test".into(),
+            query_timeout: std::time::Duration::from_millis(100),
+        };
+        let err = store
+            .purge_older_than_days_async(u32::MAX)
+            .await
+            .expect_err("u32::MAX days must overflow i64 nanoseconds");
+        assert!(
+            matches!(
+                err,
+                tumult_analytics::error::AnalyticsError::Internal(ref msg)
+                    if msg.contains("overflows")
+            ),
+            "expected Internal overflow error, got {err:?}"
+        );
+    });
+}
+
 /// Verifies that the synchronous `AnalyticsBackend` wrapper methods use
 /// `block_in_place` rather than a bare `block_on`, which would panic when
 /// called from inside an already-running multi-threaded Tokio context.

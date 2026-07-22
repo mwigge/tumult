@@ -22,7 +22,17 @@ pub(super) fn run_experiment(
     let path = handler.resolve_path(&args.experiment_path)?;
     let journal_rel = args.journal_path.as_deref().unwrap_or(DEFAULT_JOURNAL_PATH);
     let journal_path = handler.resolve_output_path(journal_rel)?;
-    Ok(tokio::task::block_in_place(|| {
+    // An enact path like any other: while another enactment holds the
+    // server-wide slot, refuse rather than queue — a queued fault is a
+    // stale fault. The RAII guard releases on completion and on error.
+    let Some(guard) = handler.enact_lock.try_acquire() else {
+        return Ok(Err(crate::error::ToolError::Execution(
+            "another fault-injection enactment is already running on this server; retry when it \
+             completes"
+                .into(),
+        )));
+    };
+    let result = tokio::task::block_in_place(|| {
         tools::run_experiment(tools::RunExperimentRequest {
             experiment_path: &path,
             rollback_strategy: &args.rollback_strategy,
@@ -32,8 +42,9 @@ pub(super) fn run_experiment(
             format: &args.format,
             parent_context: Some(mcp_context),
         })
-    })
-    .map(|report| {
+    });
+    drop(guard);
+    Ok(result.map(|report| {
         let journal = std::path::Path::new(&journal_path);
         let link = crate::handler::resources::workspace_resource_link(
             &handler.workspace_root,

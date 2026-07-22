@@ -199,22 +199,26 @@ ORDER BY outcome_accuracy ASC;
 
 ## The Path to Autonomous Chaos Engineering
 
-Tumult's Phase 3 roadmap includes an MCP (Model Context Protocol) server adapter. When complete, this means any AI agent that speaks MCP can:
+*(Update 2026-07: the MCP server described below as a roadmap item has since shipped — these are the real tool names agents call today.)*
 
-1. Call `tumult.discover_plugins()` to find available fault injection capabilities
-2. Call `tumult.run_experiment(definition)` to execute a chaos experiment
+Tumult's Phase 3 roadmap included an MCP (Model Context Protocol) server adapter. With it, any AI agent that speaks MCP can:
+
+1. Call `tumult_discover` to find available fault injection capabilities
+2. Call `tumult_run_experiment` to execute a chaos experiment
 3. Read the TOON journal from the response; compact enough to fit in context
 4. Analyze the result and decide what to run next
 
 The AI agent does not need to understand Rust, manage binaries, or parse verbose JSON. It sends structured requests and receives structured, token-efficient responses. Tumult becomes a tool in an agentic quality engineering workflow; one capability among many that an autonomous QE system can invoke.
 
-This is not science fiction. The pieces are in place: the format is designed for it, the data model is designed for it, and the MCP adapter is on the roadmap. What remains is building the adapter layer and connecting it to the agent orchestration frameworks that are already in production use.
+This is not science fiction. The pieces were designed for it from the start: the format is designed for it, the data model is designed for it, and the MCP adapter shipped with exactly this shape.
 
 ---
 
 ## What This Means Today
 
-Even before the MCP server ships, the TOON format delivers value:
+*(Update 2026-07: the MCP server has shipped; see the [blog index](index.md) for the later posts.)*
+
+Beyond the MCP server, the TOON format delivers value:
 
 - **Cheaper LLM analysis**: pass journal files directly to your LLM of choice for post-experiment analysis without hitting context limits
 - **Human readability**: engineers can read experiments and journals without a JSON formatter

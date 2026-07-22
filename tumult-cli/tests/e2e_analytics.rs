@@ -87,7 +87,7 @@ async fn e2e_run_analyze_export() {
 
     // Run experiment
     let executor: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
-        std::sync::Arc::new(tumult_cli::commands::ProviderExecutor);
+        std::sync::Arc::new(tumult_cli::commands::ProviderExecutor::new());
     let controls = std::sync::Arc::new(tumult_core::controls::ControlRegistry::new());
     let config = tumult_core::runner::RunConfig::default();
     let journal =
@@ -142,4 +142,68 @@ async fn e2e_run_analyze_export() {
     let arrow_path = dir.path().join("test.arrow");
     tumult_analytics::export_arrow_ipc(&exp_batch, &arrow_path).unwrap();
     assert!(arrow_path.exists());
+}
+
+// ── cmd_export --format arrow ─────────────────────────────────
+
+/// Serializes the CWD-changing export test against any future CWD-sensitive
+/// tests in this binary.
+static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[test]
+fn cmd_export_writes_arrow_ipc_readable_file() {
+    let _lock = CWD_LOCK.lock().unwrap();
+    let dir = TempDir::new().unwrap();
+
+    let journal = Journal {
+        experiment_title: "Arrow export fixture".into(),
+        experiment_id: "exp-arrow-1".into(),
+        status: ExperimentStatus::Completed,
+        started_at_ns: 1,
+        ended_at_ns: 2,
+        duration_ms: 1,
+        steady_state_before: None,
+        steady_state_after: None,
+        method_results: vec![],
+        rollback_results: vec![],
+        rollback_failures: 0,
+        estimate: None,
+        baseline_result: None,
+        during_result: None,
+        post_result: None,
+        load_result: None,
+        analysis: None,
+        regulatory: None,
+        halt: None,
+        blast_radius: None,
+    };
+    let journal_path = dir.path().join("arrow-fixture.toon");
+    tumult_core::journal::write_journal(&journal, &journal_path).unwrap();
+
+    // cmd_export writes <stem>.arrow into the current directory — run it from
+    // the tempdir and restore the original CWD immediately after.
+    let original_cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(dir.path()).unwrap();
+    let result =
+        tumult_cli::commands::cmd_export(&journal_path, tumult_cli::commands::ExportFormat::Arrow);
+    std::env::set_current_dir(&original_cwd).unwrap();
+    result.unwrap();
+
+    // Read the IPC file back: the single experiment row must survive.
+    let out_path = dir.path().join("arrow-fixture.arrow");
+    let file = std::fs::File::open(&out_path).unwrap();
+    let mut reader = arrow::ipc::reader::FileReader::try_new(file, None).unwrap();
+    let batch = reader
+        .next()
+        .expect("one record batch")
+        .expect("valid arrow batch");
+    assert_eq!(batch.num_rows(), 1);
+    let title_col = batch
+        .column_by_name("title")
+        .expect("title column in export");
+    let titles = title_col
+        .as_any()
+        .downcast_ref::<arrow::array::StringArray>()
+        .unwrap();
+    assert_eq!(titles.value(0), "Arrow export fixture");
 }

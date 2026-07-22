@@ -63,10 +63,7 @@ Pod deletion is the "hello world" of Kubernetes chaos testing. Every Kubernetes 
 
 ```toon
 title: API deployment survives pod deletion
-description: |
-  Delete an API pod and verify the deployment recovers within 30 seconds.
-  Validates ReplicaSet behavior, readiness probe configuration, and
-  load balancer endpoint updates.
+description: Delete an API pod and verify the deployment recovers within 30 seconds. Validates ReplicaSet behavior, readiness probe configuration, and load balancer endpoint updates.
 
 tags[3]: kubernetes, pod-chaos, resilience
 
@@ -118,7 +115,7 @@ method[1]:
       arguments:
         namespace: production
         name: api-server-7b8c9d-xk2p1
-        grace_period_seconds: 0      # immediate kill, no graceful shutdown
+        grace_period_seconds: 0
     pause_after_s: 5.0
 
 rollbacks[1]:
@@ -142,11 +139,7 @@ Scale-to-zero chaos tests a different failure mode: not a sudden pod death, but 
 
 ```toon
 title: Payments service survives scale-to-zero and recovery
-description: |
-  Scale the payments deployment to zero replicas and verify traffic
-  is correctly shed before scaling back up to validate full recovery.
-  Tests endpoint propagation, circuit breaker behavior, and graceful
-  upstream handling.
+description: Scale the payments deployment to zero replicas and verify traffic is correctly shed before scaling back up to validate full recovery. Tests endpoint propagation, circuit breaker behavior, and graceful upstream handling.
 
 tags[3]: kubernetes, scale-chaos, payments
 
@@ -165,13 +158,13 @@ steady_state_hypothesis:
     - name: payments-health
       activity_type: probe
       provider:
-        type: http
-        method: GET
-        url: http://payments-service.production.svc.cluster.local/health
-        timeout_s: 5.0
+        type: process
+        path: curl
+        arguments[8]: "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", "http://payments-service.production.svc.cluster.local/health"
+        timeout_s: 10.0
       tolerance:
-        type: exact
-        value: 200
+        type: regex
+        pattern: "200"
 
 method[2]:
   - name: scale-payments-to-zero
@@ -185,7 +178,6 @@ method[2]:
         name: payments-api
         replicas: 0
     pause_after_s: 10.0
-
   - name: check-pods-terminated
     activity_type: probe
     provider:
@@ -230,10 +222,7 @@ Node drain is a higher blast radius than pod deletion. Draining a node evicts al
 
 ```toon
 title: Cluster survives node drain
-description: |
-  Drain one worker node and verify all workloads reschedule successfully.
-  Tests node affinity rules, PodDisruptionBudgets, resource requests vs
-  available capacity, and scheduling latency.
+description: Drain one worker node and verify all workloads reschedule successfully. Tests node affinity rules, PodDisruptionBudgets, resource requests vs available capacity, and scheduling latency.
 
 tags[3]: kubernetes, node-chaos, cluster
 
@@ -301,7 +290,7 @@ method[1]:
       plugin: tumult-kubernetes
       function: drain_node
       arguments:
-        name: "{{ configuration.drain_target }}"
+        name: ${config.drain_target}
         grace_period_seconds: 30
     pause_after_s: 30.0
 
@@ -313,7 +302,7 @@ rollbacks[1]:
       plugin: tumult-kubernetes
       function: uncordon_node
       arguments:
-        name: "{{ configuration.drain_target }}"
+        name: ${config.drain_target}
 ```
 
 ---
@@ -324,10 +313,7 @@ Network chaos at the Kubernetes level uses NetworkPolicy resources to create sel
 
 ```toon
 title: Checkout service degrades gracefully when inventory unreachable
-description: |
-  Apply a NetworkPolicy that blocks traffic from checkout to inventory.
-  Verify checkout falls back to cached inventory and continues processing
-  orders without complete failure.
+description: Apply a NetworkPolicy that blocks traffic from checkout to inventory. Verify checkout falls back to cached inventory and continues processing orders without complete failure.
 
 tags[3]: kubernetes, network-chaos, checkout
 
@@ -349,8 +335,8 @@ method[1]:
             podSelector:
               matchLabels:
                 app: inventory-service
-            ingress:
-              - from:
+            ingress[1]:
+              - from[1]:
                   - podSelector:
                       matchLabels:
                         app: NOT-checkout-service

@@ -15,6 +15,7 @@ tokio = { workspace = true, features = ["process"] }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }
+libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

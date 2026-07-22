@@ -168,7 +168,7 @@ fn resolve_path_returns_error_for_traversal() {
 
 use rust_mcp_sdk::schema::CallToolMeta;
 
-use crate::handler::test_support::stub_runtime;
+use crate::handler::test_support::{stub_runtime, stub_runtime_with_bearer};
 
 /// Build `CallToolRequestParams` from a tool name, JSON arguments, and an
 /// optional `_meta.authorization` value (how stdio clients pass the bearer).
@@ -453,24 +453,26 @@ fn tool_annotations_reflect_tool_behavior() {
 
     // autopilot_run persists new decision records on every pass (not
     // idempotent) and, with execute=true, runs playbook experiments
-    // against real targets (open-world). Recording decisions is
-    // additive, not destructive.
+    // against real targets (open-world) — real fault injection, so the
+    // annotation is honest about the destructive potential even though
+    // the default (execute=false) only decides and records.
     let run = AutopilotRunTool::tool();
     let a = run.annotations.as_ref().expect("autopilot run annotations");
-    assert_eq!(a.destructive_hint, Some(false));
+    assert_eq!(a.destructive_hint, Some(true));
     assert_eq!(a.read_only_hint, Some(false));
     assert_eq!(a.idempotent_hint, Some(false));
     assert_eq!(a.open_world_hint, Some(true));
 
     // autopilot_respond appends exactly one human event per decision (a
     // second response errors — not idempotent); approval runs the
-    // playbook experiment (open-world).
+    // playbook experiment (open-world) after the gate re-evaluation, so
+    // it is destructive exactly like autopilot_run with execute=true.
     let respond = AutopilotRespondTool::tool();
     let a = respond
         .annotations
         .as_ref()
         .expect("autopilot respond annotations");
-    assert_eq!(a.destructive_hint, Some(false));
+    assert_eq!(a.destructive_hint, Some(true));
     assert_eq!(a.read_only_hint, Some(false));
     assert_eq!(a.idempotent_hint, Some(false));
     assert_eq!(a.open_world_hint, Some(true));
@@ -2202,4 +2204,334 @@ async fn call_tool_waits_while_semaphore_saturated_and_resumes_on_release() {
         .unwrap()
         .expect("call must succeed after release");
     assert!(text.contains("Valid: 'MCP test experiment'"));
+}
+
+// ── tools/list authentication gate ─────────────────────────────
+
+/// With auth configured, `tools/list` requires a valid token (any role):
+/// the listing names the destructive tools, so it is gated exactly like
+/// `resources/list`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn list_tools_requires_auth_when_configured() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![("view-tok".into(), Role::Viewer)]),
+    );
+
+    // No token → refused before any tool is named.
+    let err = handler
+        .handle_list_tools_request(None, stub_runtime())
+        .await
+        .expect_err("tools/list must require a token when auth is configured");
+    assert!(err.to_string().contains("Unauthorized"), "got: {err}");
+
+    // A viewer token suffices (the listing is role-agnostic).
+    let mut extra = serde_json::Map::new();
+    extra.insert(
+        "authorization".into(),
+        serde_json::Value::String("Bearer view-tok".into()),
+    );
+    let params = PaginatedRequestParams {
+        cursor: None,
+        meta: Some(rust_mcp_sdk::schema::PaginatedMeta {
+            progress_token: None,
+            extra: Some(extra),
+        }),
+    };
+    let result = handler
+        .handle_list_tools_request(Some(params), stub_runtime())
+        .await
+        .expect("a valid viewer token must list tools");
+    assert_eq!(result.tools.len(), 40);
+}
+
+/// With no auth configured (loopback-only mode) `tools/list` stays open —
+/// pinned separately from the round-trip content test.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn list_tools_open_when_auth_not_configured() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = open_handler(tmp.path());
+    let result = handler
+        .handle_list_tools_request(None, stub_runtime())
+        .await
+        .expect("tools/list must stay open in open mode");
+    assert_eq!(result.tools.len(), 40);
+}
+
+// ── HTTP Authorization header channel ──────────────────────────
+
+/// A bearer token captured from the HTTP `Authorization` header (carried on
+/// the session runtime as `AuthInfo`) authenticates the call exactly like an
+/// explicit `_meta.authorization`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_authorization_header_authenticates_call() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![("view-tok".into(), Role::Viewer)]),
+    );
+    let params = call_params("tumult_whoami", serde_json::json!({}), None);
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime_with_bearer("view-tok"))
+        .await
+        .expect("header-authenticated call must succeed");
+    assert!(result.is_error.is_none(), "{}", result_text(&result));
+    let structured = result.structured_content.as_ref().unwrap();
+    assert_eq!(structured["role"], "viewer");
+    assert_eq!(structured["authenticated"], true);
+}
+
+/// When both channels are present, the explicit `_meta.authorization` wins.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn meta_authorization_takes_precedence_over_header() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![
+            ("view-tok".into(), Role::Viewer),
+            ("op-tok".into(), Role::Operator),
+        ]),
+    );
+    // Header says operator, explicit _meta says viewer → viewer.
+    let params = call_params(
+        "tumult_whoami",
+        serde_json::json!({}),
+        Some("Bearer view-tok"),
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime_with_bearer("op-tok"))
+        .await
+        .expect("call must succeed");
+    let structured = result.structured_content.as_ref().unwrap();
+    assert_eq!(
+        structured["role"], "viewer",
+        "explicit _meta.authorization must win over the header"
+    );
+}
+
+/// A wrong token fails closed regardless of the channel it arrives on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_authorization_header_wrong_token_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![("view-tok".into(), Role::Viewer)]),
+    );
+    let params = call_params("tumult_whoami", serde_json::json!({}), None);
+    let err = handler
+        .handle_call_tool_request(params, stub_runtime_with_bearer("not-a-token"))
+        .await
+        .expect_err("a wrong header token must be rejected");
+    assert!(err.to_string().contains("Unauthorized"), "got: {err}");
+    assert!(
+        err.to_string().contains("invalid bearer token"),
+        "got: {err}"
+    );
+}
+
+// ── Viewer store_path restriction ──────────────────────────────
+
+/// A viewer's `store_path` override is ignored — viewers always read the
+/// default/configured store — while an operator's override is honored.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn viewer_store_path_override_is_ignored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let default_store = tmp.path().join("default.duckdb");
+    drop(tumult_analytics::AnalyticsStore::open(&default_store).unwrap());
+    // The viewer's target deliberately does not exist: if the override were
+    // honored the call would error on the missing store.
+    let evil = tmp.path().join("evil.duckdb");
+    std::env::set_var("TUMULT_ANALYTICS_PATH", &default_store);
+    let handler = TumultHandler::with_auth(
+        tmp.path().to_path_buf(),
+        McpAuth::from_tokens(vec![
+            ("view-tok".into(), Role::Viewer),
+            ("op-tok".into(), Role::Operator),
+        ]),
+    );
+
+    // Viewer: the override is dropped; the default store answers.
+    let params = call_params(
+        "tumult_store_stats",
+        serde_json::json!({ "store_path": evil.to_str().unwrap() }),
+        Some("Bearer view-tok"),
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("viewer call must dispatch");
+    assert!(
+        result.is_error.is_none(),
+        "viewer must be served by the default store, not the override: {}",
+        result_text(&result)
+    );
+
+    // Operator: the override is honored and surfaces the missing store.
+    let params = call_params(
+        "tumult_store_stats",
+        serde_json::json!({ "store_path": evil.to_str().unwrap() }),
+        Some("Bearer op-tok"),
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("operator call must dispatch");
+    assert_eq!(
+        result.is_error,
+        Some(true),
+        "the operator override must reach the store layer"
+    );
+    assert!(
+        result_text(&result).contains("evil.duckdb"),
+        "the operator error must name the honored override: {}",
+        result_text(&result)
+    );
+    std::env::remove_var("TUMULT_ANALYTICS_PATH");
+}
+
+// ── Server-wide enactment lock (concurrency veto) ──────────────
+
+/// While an enactment holds the server-wide slot, a second enact attempt
+/// gates against `concurrent_experiments = 1` and is vetoed instead of
+/// running — two overlapping enact attempts never both execute.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn overlapping_enact_attempt_is_vetoed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store_path = tmp.path().join("analytics.duckdb");
+    let playbook = crate::tools::test_support::write_valid_experiment(tmp.path());
+    let policy = tmp.path().join("autopilot.toml");
+    std::fs::write(&policy, "[autopilot]\nenabled = true\n").unwrap();
+    let hash = tumult_autopilot::policy_hash(&std::fs::read_to_string(&policy).unwrap());
+    {
+        let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
+        let record = tumult_analytics::DecisionRecord {
+            id: "d-conc".into(),
+            decided_at_ns: 1_000,
+            trigger: "staleness".into(),
+            service_id: "svc:db".into(),
+            tier: Some("data".into()),
+            plugin: "tumult-db".into(),
+            action: "kill-primary".into(),
+            article_id: "compliance:DORA/Art. 25".into(),
+            score: 1.5,
+            reasons: serde_json::json!([]),
+            confidence: "high".into(),
+            playbook: Some(playbook),
+            validator: serde_json::json!({}),
+            verdict: "propose".into(),
+            gate_rules: serde_json::json!([]),
+            gate_detail: serde_json::json!({}),
+            policy_hash: hash,
+            autonomy_score: None,
+        };
+        store.insert_autopilot_decision(&record).unwrap();
+    }
+    let handler = open_handler(tmp.path());
+
+    // Hold the enactment slot — simulates another enactment in flight.
+    let guard = handler.enact_lock.try_acquire().expect("slot starts free");
+
+    let params = call_params(
+        "tumult_autopilot_respond",
+        serde_json::json!({
+            "decision_id": "d-conc",
+            "approve": true,
+            "policy_path": policy.to_str().unwrap(),
+            "store_path": store_path.to_str().unwrap(),
+        }),
+        None,
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("respond must dispatch");
+    assert_eq!(result.is_error, Some(true));
+    let text = result_text(&result);
+    assert!(
+        text.contains("approval refused by gate re-evaluation"),
+        "{text}"
+    );
+    assert!(text.contains("no_concurrent_experiment"), "{text}");
+    assert!(
+        !tmp.path().join("autopilot-journals").exists(),
+        "a vetoed approval must not run the playbook"
+    );
+    drop(guard);
+}
+
+/// The enactment lock covers the direct execution tools too: while an
+/// enactment is in flight, `tumult_run_experiment` refuses fast instead of
+/// injecting a second fault.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn overlapping_run_experiment_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    crate::tools::test_support::write_valid_experiment(tmp.path());
+    let handler = open_handler(tmp.path());
+    let guard = handler.enact_lock.try_acquire().expect("slot starts free");
+
+    let params = call_params(
+        "tumult_run_experiment",
+        serde_json::json!({ "experiment_path": "test.toon", "no_ingest": true }),
+        None,
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("run_experiment must dispatch");
+    assert_eq!(result.is_error, Some(true));
+    assert!(
+        result_text(&result).contains("already running"),
+        "got: {}",
+        result_text(&result)
+    );
+    assert!(
+        !tmp.path().join("journal.toon").exists(),
+        "a refused run must not execute"
+    );
+
+    // Once the slot is released the same call runs.
+    drop(guard);
+    let params = call_params(
+        "tumult_run_experiment",
+        serde_json::json!({ "experiment_path": "test.toon", "no_ingest": true }),
+        None,
+    );
+    let result = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect("run_experiment must dispatch");
+    assert!(
+        result.is_error.is_none(),
+        "released slot must let the run through: {}",
+        result_text(&result)
+    );
+}
+
+// ── Per-client rate limiting ───────────────────────────────────
+
+/// After the burst is exhausted, further requests from the same client are
+/// refused before any dispatch work happens.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rate_limiter_refuses_requests_after_burst() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut handler = open_handler(tmp.path());
+    handler.set_rate_limiter(crate::handler::rate_limit::RateLimiter::new(0.001, 2));
+
+    for attempt in 0..2 {
+        let params = call_params("tumult_discover", serde_json::json!({}), None);
+        handler
+            .handle_call_tool_request(params, stub_runtime())
+            .await
+            .unwrap_or_else(|e| panic!("call {attempt} within burst must succeed: {e}"));
+    }
+    let params = call_params("tumult_discover", serde_json::json!({}), None);
+    let err = handler
+        .handle_call_tool_request(params, stub_runtime())
+        .await
+        .expect_err("the request after the burst must be refused");
+    assert!(
+        err.to_string().contains("rate limit exceeded"),
+        "got: {err}"
+    );
 }

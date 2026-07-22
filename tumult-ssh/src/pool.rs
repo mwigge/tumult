@@ -1,8 +1,11 @@
 //! SSH session pool — reuse live connections across experiment activities.
 //!
-//! [`SshPool`] maintains one cached [`SshSession`] per `(host, port, user)`
-//! key, wrapped in `Arc<Mutex<SshSession>>` so callers can hold a lock-guard
-//! while executing commands.
+//! [`SshPool`] maintains one cached [`SshSession`] per
+//! `(host, port, user, auth identity, host-key policy)` key, wrapped in
+//! `Arc<Mutex<SshSession>>` so callers can hold a lock-guard while executing
+//! commands. The auth identity and host-key policy are part of the key so a
+//! second config for the same endpoint triple never silently reuses a session
+//! established with different credentials or verification rules.
 //!
 //! # Reconnection
 //!
@@ -16,26 +19,54 @@
 //! `Arc<SshPool>`.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::config::SshConfig;
+use crate::config::{AuthMethod, HostKeyPolicy, SshConfig};
 use crate::error::SshError;
 use crate::session::SshSession;
 
-/// Key that uniquely identifies a remote endpoint + user combination.
+/// Authentication identity for pool-key purposes. Secret material itself (the
+/// passphrase) is never stored — only the method, the key path, and whether a
+/// passphrase protects the key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum PoolAuth {
+    Key {
+        key_path: PathBuf,
+        passphrase_protected: bool,
+    },
+    Agent,
+}
+
+/// Key that uniquely identifies a remote endpoint + user + auth + verification
+/// combination.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PoolKey {
     host: String,
     port: u16,
     user: String,
+    auth: PoolAuth,
+    host_key_policy: HostKeyPolicy,
 }
 
 impl PoolKey {
     fn from_config(config: &SshConfig) -> Self {
+        let auth = match &config.auth {
+            AuthMethod::Key {
+                key_path,
+                passphrase,
+            } => PoolAuth::Key {
+                key_path: key_path.clone(),
+                passphrase_protected: passphrase.is_some(),
+            },
+            AuthMethod::Agent => PoolAuth::Agent,
+        };
         Self {
             host: config.host.clone(),
             port: config.port,
             user: config.user.clone(),
+            auth,
+            host_key_policy: config.host_key_policy.clone(),
         }
     }
 }
@@ -230,24 +261,55 @@ mod tests {
     }
 
     #[test]
-    fn pool_key_equality_by_host_port_user() {
-        let key1 = PoolKey {
+    fn pool_key_equality_by_full_identity() {
+        let base = PoolKey {
             host: "db-01".into(),
             port: 22,
             user: "ops".into(),
+            auth: PoolAuth::Agent,
+            host_key_policy: HostKeyPolicy::Verify,
         };
-        let key2 = PoolKey {
-            host: "db-01".into(),
-            port: 22,
-            user: "ops".into(),
-        };
-        let key3 = PoolKey {
-            host: "db-01".into(),
+        let same = base.clone();
+        let other_port = PoolKey {
             port: 2222,
-            user: "ops".into(),
+            ..base.clone()
         };
-        assert_eq!(key1, key2);
-        assert_ne!(key1, key3);
+        let other_auth = PoolKey {
+            auth: PoolAuth::Key {
+                key_path: PathBuf::from("/tmp/key"),
+                passphrase_protected: false,
+            },
+            ..base.clone()
+        };
+        let other_policy = PoolKey {
+            host_key_policy: HostKeyPolicy::AcceptAny,
+            ..base.clone()
+        };
+        assert_eq!(base, same);
+        assert_ne!(base, other_port);
+        assert_ne!(base, other_auth, "auth identity must be part of the key");
+        assert_ne!(
+            base, other_policy,
+            "host-key policy must be part of the key"
+        );
+    }
+
+    #[test]
+    fn pool_key_distinguishes_key_paths_and_passphrase_presence() {
+        let key_a = SshConfig::with_key("h", "u", PathBuf::from("/keys/a"));
+        let key_b = SshConfig::with_key("h", "u", PathBuf::from("/keys/b"));
+        assert_ne!(
+            PoolKey::from_config(&key_a),
+            PoolKey::from_config(&key_b),
+            "different key files must not share a session"
+        );
+
+        let agent = SshConfig::with_agent("h", "u");
+        assert_ne!(
+            PoolKey::from_config(&key_a),
+            PoolKey::from_config(&agent),
+            "key auth and agent auth must not share a session"
+        );
     }
 
     #[test]
@@ -257,6 +319,8 @@ mod tests {
         assert_eq!(key.host, "web-01");
         assert_eq!(key.port, 2222);
         assert_eq!(key.user, "deploy");
+        assert_eq!(key.auth, PoolAuth::Agent);
+        assert_eq!(key.host_key_policy, HostKeyPolicy::Verify);
     }
 
     #[test]

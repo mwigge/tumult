@@ -5,20 +5,23 @@
 //! the fail-fast path) without mutating the real process environment. The
 //! `*_from_env` wrappers bind the closure to [`std::env::var`].
 
+use zeroize::Zeroizing;
+
 use crate::error::CloudError;
 
 /// AWS access credentials resolved from the standard environment variables.
 ///
 /// The session token is optional and only present for temporary
-/// (STS / instance-profile) credentials.
+/// (STS / instance-profile) credentials. Secret material is wrapped in
+/// [`Zeroizing`] so it is scrubbed from memory on drop.
 #[derive(Clone)]
 pub struct AwsCredentials {
     /// `AWS_ACCESS_KEY_ID`.
     pub access_key_id: String,
     /// `AWS_SECRET_ACCESS_KEY`.
-    pub secret_access_key: String,
+    pub secret_access_key: Zeroizing<String>,
     /// `AWS_SESSION_TOKEN`, when using temporary credentials.
-    pub session_token: Option<String>,
+    pub session_token: Option<Zeroizing<String>>,
 }
 
 // A manual, redacting `Debug` impl so credentials never leak into logs, panic
@@ -44,19 +47,21 @@ impl AwsCredentials {
     /// Returns [`CloudError::MissingCredential`] naming the first absent
     /// required variable (`AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY`).
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, CloudError> {
+        // Only environment variables are ever read — there is no instance
+        // profile / IMDS lookup — so the context line must say so.
         let access_key_id = lookup("AWS_ACCESS_KEY_ID").ok_or(CloudError::MissingCredential {
             var: "AWS_ACCESS_KEY_ID",
-            context: "AWS credential chain (env / instance profile)",
+            context: "read from environment variables only (no instance-profile lookup)",
         })?;
         let secret_access_key =
             lookup("AWS_SECRET_ACCESS_KEY").ok_or(CloudError::MissingCredential {
                 var: "AWS_SECRET_ACCESS_KEY",
-                context: "AWS credential chain (env / instance profile)",
+                context: "read from environment variables only (no instance-profile lookup)",
             })?;
         Ok(Self {
             access_key_id,
-            secret_access_key,
-            session_token: lookup("AWS_SESSION_TOKEN"),
+            secret_access_key: Zeroizing::new(secret_access_key),
+            session_token: lookup("AWS_SESSION_TOKEN").map(Zeroizing::new),
         })
     }
 
@@ -105,16 +110,23 @@ pub fn region_from_env(explicit: Option<&str>) -> Result<String, CloudError> {
 
 /// Resolve an Azure Resource Manager bearer token from a `lookup` closure.
 ///
+/// The token is returned wrapped in [`Zeroizing`] so it is scrubbed from
+/// memory on drop.
+///
 /// # Errors
 ///
 /// Returns [`CloudError::MissingCredential`] naming `AZURE_ACCESS_TOKEN`.
-pub fn azure_token(lookup: impl Fn(&str) -> Option<String>) -> Result<String, CloudError> {
-    lookup("AZURE_ACCESS_TOKEN").ok_or(CloudError::MissingCredential {
-        var: "AZURE_ACCESS_TOKEN",
-        context:
-            "obtain via `az account get-access-token --resource https://management.azure.com` \
-                  or a managed-identity token",
-    })
+pub fn azure_token(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<Zeroizing<String>, CloudError> {
+    lookup("AZURE_ACCESS_TOKEN")
+        .map(Zeroizing::new)
+        .ok_or(CloudError::MissingCredential {
+            var: "AZURE_ACCESS_TOKEN",
+            context:
+                "obtain via `az account get-access-token --resource https://management.azure.com` \
+                      or a managed-identity token",
+        })
 }
 
 /// Convenience wrapper for [`azure_token`] against the real environment.
@@ -122,18 +134,22 @@ pub fn azure_token(lookup: impl Fn(&str) -> Option<String>) -> Result<String, Cl
 /// # Errors
 ///
 /// Returns [`CloudError::MissingCredential`] if the token is unset.
-pub fn azure_token_from_env() -> Result<String, CloudError> {
+pub fn azure_token_from_env() -> Result<Zeroizing<String>, CloudError> {
     azure_token(|key| std::env::var(key).ok())
 }
 
 /// Resolve a Google Cloud OAuth access token from a `lookup` closure.
 ///
+/// The token is returned wrapped in [`Zeroizing`] so it is scrubbed from
+/// memory on drop.
+///
 /// # Errors
 ///
 /// Returns [`CloudError::MissingCredential`] naming `GOOGLE_OAUTH_ACCESS_TOKEN`.
-pub fn gcp_token(lookup: impl Fn(&str) -> Option<String>) -> Result<String, CloudError> {
+pub fn gcp_token(lookup: impl Fn(&str) -> Option<String>) -> Result<Zeroizing<String>, CloudError> {
     lookup("GOOGLE_OAUTH_ACCESS_TOKEN")
         .or_else(|| lookup("CLOUDSDK_AUTH_ACCESS_TOKEN"))
+        .map(Zeroizing::new)
         .ok_or(CloudError::MissingCredential {
             var: "GOOGLE_OAUTH_ACCESS_TOKEN",
             context: "obtain via `gcloud auth print-access-token`",
@@ -145,7 +161,7 @@ pub fn gcp_token(lookup: impl Fn(&str) -> Option<String>) -> Result<String, Clou
 /// # Errors
 ///
 /// Returns [`CloudError::MissingCredential`] if no token is set.
-pub fn gcp_token_from_env() -> Result<String, CloudError> {
+pub fn gcp_token_from_env() -> Result<Zeroizing<String>, CloudError> {
     gcp_token(|key| std::env::var(key).ok())
 }
 
@@ -194,7 +210,10 @@ mod tests {
         };
         let creds = AwsCredentials::from_lookup(lookup).unwrap();
         assert_eq!(creds.access_key_id, "AKIA");
-        assert_eq!(creds.session_token.as_deref(), Some("token"));
+        assert_eq!(
+            creds.session_token.as_deref().map(String::as_str),
+            Some("token")
+        );
     }
 
     #[test]

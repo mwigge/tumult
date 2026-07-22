@@ -17,8 +17,12 @@ pub const FAULTS_INJECTED: &str = "resilience.agent.faults_injected";
 /// A live span wrapping one proxied request, parented under the client's inbound
 /// trace context. The proxy injects this span's `traceparent` upstream, then
 /// records the outcome and ends it. Span lifecycle stays in tumult-otel.
+///
+/// Dropping the wrapper without calling [`end`](Self::end) ends the span as a
+/// fallback, so an early return on a future code path cannot silently lose it.
 pub struct ProxySpan {
     context: opentelemetry::Context,
+    ended: bool,
 }
 
 impl ProxySpan {
@@ -46,16 +50,36 @@ impl ProxySpan {
     }
 
     /// End the span. Consumes the wrapper so it cannot be reused.
-    pub fn end(self) {
-        self.context.span().end();
+    pub fn end(mut self) {
+        self.end_once();
+    }
+
+    /// End the underlying span at most once. Shared by [`Self::end`] and the
+    /// `Drop` fallback; the flag guards against a double-end when `end` was
+    /// already called.
+    fn end_once(&mut self) {
+        if !self.ended {
+            self.ended = true;
+            self.context.span().end();
+        }
+    }
+}
+
+impl Drop for ProxySpan {
+    fn drop(&mut self) {
+        self.end_once();
     }
 }
 
 /// A live span held in a parentable context, returned by the tool-surface and
 /// experiment-root helpers. Attach a clone of [`context`](Self::context) as the
 /// current context so descendant spans nest under it, then [`end`](Self::end).
+///
+/// Dropping the scope without calling [`end`](Self::end) ends the span as a
+/// fallback, so an early return on a future code path cannot silently lose it.
 pub struct SpanScope {
     context: Context,
+    ended: bool,
 }
 
 impl SpanScope {
@@ -66,8 +90,24 @@ impl SpanScope {
     }
 
     /// End the span. Consumes the wrapper so it cannot be reused.
-    pub fn end(self) {
-        self.context.span().end();
+    pub fn end(mut self) {
+        self.end_once();
+    }
+
+    /// End the underlying span at most once. Shared by [`Self::end`] and the
+    /// `Drop` fallback; the flag guards against a double-end when `end` was
+    /// already called.
+    fn end_once(&mut self) {
+        if !self.ended {
+            self.ended = true;
+            self.context.span().end();
+        }
+    }
+}
+
+impl Drop for SpanScope {
+    fn drop(&mut self) {
+        self.end_once();
     }
 }
 
@@ -91,6 +131,7 @@ pub fn start_experiment_root(scenario: &str, client: &str) -> SpanScope {
         .start(&tracer);
     SpanScope {
         context: Context::current().with_span(span),
+        ended: false,
     }
 }
 
@@ -117,6 +158,7 @@ pub fn start_tool_span(client: &str, tool_name: &str) -> SpanScope {
         .start(&tracer);
     SpanScope {
         context: Context::current().with_span(span),
+        ended: false,
     }
 }
 
@@ -144,5 +186,95 @@ pub fn start_proxy_span(
         .start_with_context(&tracer, parent);
     ProxySpan {
         context: parent.with_span(span),
+        ended: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Drop-fallback tests build spans against a private in-memory provider
+    //! instead of the global one, so parallel tests elsewhere in the crate
+    //! cannot swap the global provider mid-assertion.
+    use super::*;
+    use opentelemetry::trace::TracerProvider as _;
+    use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+
+    fn harness() -> (SdkTracerProvider, InMemorySpanExporter) {
+        let exporter = InMemorySpanExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        (provider, exporter)
+    }
+
+    fn finished_count(provider: &SdkTracerProvider, exporter: &InMemorySpanExporter) -> usize {
+        provider.force_flush().ok();
+        exporter
+            .get_finished_spans()
+            .expect("spans")
+            .iter()
+            .filter(|span| span.name == "test.span")
+            .count()
+    }
+
+    #[test]
+    fn dropped_span_scope_ends_span_via_drop_fallback() {
+        let (provider, exporter) = harness();
+        let tracer = provider.tracer(SCOPE);
+        let span = tracer.span_builder("test.span").start(&tracer);
+        {
+            let _scope = SpanScope {
+                context: Context::current().with_span(span),
+                ended: false,
+            };
+            // No end() call — the Drop fallback must end it exactly once.
+        }
+        assert_eq!(finished_count(&provider, &exporter), 1);
+    }
+
+    #[test]
+    fn explicit_end_then_drop_ends_span_scope_only_once() {
+        let (provider, exporter) = harness();
+        let tracer = provider.tracer(SCOPE);
+        let span = tracer.span_builder("test.span").start(&tracer);
+        let scope = SpanScope {
+            context: Context::current().with_span(span),
+            ended: false,
+        };
+        scope.end();
+        assert_eq!(finished_count(&provider, &exporter), 1);
+    }
+
+    #[test]
+    fn dropped_proxy_span_ends_span_via_drop_fallback() {
+        let (provider, exporter) = harness();
+        let tracer = provider.tracer(SCOPE);
+        let parent = Context::new();
+        let span = tracer
+            .span_builder("test.span")
+            .start_with_context(&tracer, &parent);
+        {
+            let _proxy = ProxySpan {
+                context: parent.with_span(span),
+                ended: false,
+            };
+        }
+        assert_eq!(finished_count(&provider, &exporter), 1);
+    }
+
+    #[test]
+    fn explicit_end_then_drop_ends_proxy_span_only_once() {
+        let (provider, exporter) = harness();
+        let tracer = provider.tracer(SCOPE);
+        let parent = Context::new();
+        let span = tracer
+            .span_builder("test.span")
+            .start_with_context(&tracer, &parent);
+        let proxy = ProxySpan {
+            context: parent.with_span(span),
+            ended: false,
+        };
+        proxy.end();
+        assert_eq!(finished_count(&provider, &exporter), 1);
     }
 }

@@ -84,7 +84,7 @@ proptest! {
     ) {
         prop_assume!(x.is_finite());
 
-        let m = mean(&slice);
+        let m = mean(&slice).expect("slice is non-empty by construction");
 
         prop_assert!(
             (m - x).abs() <= x.abs() * 1e-10 + 1e-10,
@@ -99,12 +99,14 @@ proptest! {
 // ═══════════════════════════════════════════════════════════════
 
 proptest! {
-    /// Population standard deviation is always >= 0 for any non-empty finite vec.
+    /// Sample standard deviation is always >= 0 and always defined for any
+    /// finite vec with at least two elements.
     #[test]
     fn prop_stddev_non_negative(data in finite_f64_vec()) {
         prop_assume!(data.iter().all(|x| x.is_finite()));
+        prop_assume!(data.len() >= 2);
 
-        let sd = stddev(&data);
+        let sd = stddev(&data).expect("sample stddev is defined for N >= 2");
 
         prop_assert!(
             sd >= 0.0,

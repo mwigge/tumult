@@ -1,3 +1,9 @@
+---
+title: Autopilot
+parent: Guides
+nav_order: 18
+---
+
 # Autopilot: policy-gated autonomous fault injection
 
 Autopilot closes the loop the topology/compliance work opened: triggers

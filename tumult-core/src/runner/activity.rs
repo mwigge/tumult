@@ -1,7 +1,7 @@
 //! Activity execution: hypothesis evaluation, single/parallel activity
 //! execution, and rollback handling.
 
-use crate::controls::{ControlRegistry, LifecycleEvent};
+use crate::controls::{panic_message, ControlRegistry, LifecycleEvent};
 use crate::engine::evaluate_tolerance;
 use crate::execution::{
     make_result, partition_background, should_rollback, ResultParams, RollbackStrategy,
@@ -126,6 +126,45 @@ fn execute_single_activity(
     result
 }
 
+/// Execute a foreground activity, containing any provider panic.
+///
+/// Foreground activities run on the scoped-thread closure itself, so an
+/// unwinding provider would escape `std::thread::scope` and abort the whole
+/// run — no journal, no rollback, orphaned load processes. A panic is caught
+/// here and recorded as a `Failed` result (with the panic message), so the
+/// run proceeds to rollback per the configured strategy and ends with a
+/// `Failed` status instead.
+fn execute_foreground_activity(
+    activity: &Activity,
+    executor: &dyn ActivityExecutor,
+    controls: &ControlRegistry,
+) -> ActivityResult {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        execute_single_activity(activity, executor, controls)
+    }));
+    outcome.unwrap_or_else(|panic| {
+        let message = panic_message(&*panic);
+        tracing::error!(
+            activity = %activity.name,
+            panic = %message,
+            "foreground activity panicked"
+        );
+        ActivityResult {
+            name: activity.name.clone(),
+            activity_type: activity.activity_type.clone(),
+            status: ActivityStatus::Failed,
+            started_at_ns: epoch_nanos_now(),
+            duration_ms: 0,
+            output: None,
+            error: Some(format!("activity panicked: {message}")),
+            // The panic unwound past the activity span; record the run's trace
+            // (still attached on this thread) so the journal keeps one trace.
+            trace_id: current_trace_id(),
+            span_id: SpanId::empty(),
+        }
+    })
+}
+
 /// A counting gate that caps how many background faults execute concurrently
 /// and records the peak concurrency observed.
 ///
@@ -156,8 +195,10 @@ impl FaultGate {
     }
 
     /// Block until a slot is free (when a cap is set), then mark one fault
-    /// active, updating the observed peak.
-    fn acquire(&self) {
+    /// active, updating the observed peak. The returned [`GatePermit`]
+    /// releases the slot on drop, so a panic in the gated activity cannot
+    /// leak the slot and deadlock threads waiting on the condvar.
+    fn acquire(&self) -> GatePermit<'_> {
         let mut state = self
             .state
             .lock()
@@ -175,6 +216,7 @@ impl FaultGate {
         #[allow(clippy::cast_possible_truncation)]
         let active = state.active as u32;
         state.peak = state.peak.max(active);
+        GatePermit { gate: self }
     }
 
     /// Release a slot, waking one waiter.
@@ -193,6 +235,17 @@ impl FaultGate {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .peak
+    }
+}
+
+/// RAII permit for a [`FaultGate`] slot: dropping it releases the slot.
+struct GatePermit<'a> {
+    gate: &'a FaultGate,
+}
+
+impl Drop for GatePermit<'_> {
+    fn drop(&mut self) {
+        self.gate.release();
     }
 }
 
@@ -232,15 +285,20 @@ pub(crate) fn execute_activities(
     let bg_results: Vec<std::result::Result<ActivityResult, _>> = std::thread::scope(|scope| {
         // 1. Spawn background threads immediately. Each acquires a gate slot
         //    before executing, so no more than `max_concurrent_faults` run at
-        //    the same time.
+        //    the same time. Scoped OS threads don't inherit the thread-local
+        //    OTel context, so capture it here and attach it inside each
+        //    thread — that way all activities of a run share one trace.
+        let parent_cx = opentelemetry::Context::current();
         let handles: Vec<_> = background
             .iter()
             .map(|&activity| {
+                let parent_cx = parent_cx.clone();
                 scope.spawn(move || {
-                    gate_ref.acquire();
-                    let result = execute_single_activity(activity, executor, controls);
-                    gate_ref.release();
-                    result
+                    // RAII permit: releases the gate slot even if the activity
+                    // panics, so other gated threads can never deadlock.
+                    let _permit = gate_ref.acquire();
+                    let _cx_guard = parent_cx.attach();
+                    execute_single_activity(activity, executor, controls)
                 })
             })
             .collect();
@@ -279,7 +337,7 @@ pub(crate) fn execute_activities(
                 }
             }
 
-            let result = execute_single_activity(activity, executor, controls);
+            let result = execute_foreground_activity(activity, executor, controls);
 
             if let Some(pause) = activity.pause_after_s {
                 if pause > 0.0 {
@@ -338,17 +396,19 @@ pub(crate) fn execute_activities(
 }
 
 /// Run `experiment`'s rollback activities, if any, and if `strategy` calls
-/// for rollbacks given `deviated`. Wraps execution in a `resilience.rollback`
-/// span and the `BeforeRollback`/`AfterRollback` lifecycle events. Returns an
-/// empty vec if rollbacks are skipped.
+/// for rollbacks given `needs_rollback` (the run deviated, or it
+/// failed/was interrupted after a fault-injecting activity started — see
+/// [`RollbackStrategy::OnDeviation`]). Wraps execution in a
+/// `resilience.rollback` span and the `BeforeRollback`/`AfterRollback`
+/// lifecycle events. Returns an empty vec if rollbacks are skipped.
 pub(crate) fn run_rollbacks(
     experiment: &Experiment,
     executor: &std::sync::Arc<dyn ActivityExecutor>,
     controls: &std::sync::Arc<ControlRegistry>,
     strategy: &RollbackStrategy,
-    deviated: bool,
+    needs_rollback: bool,
 ) -> Vec<ActivityResult> {
-    if experiment.rollbacks.is_empty() || !should_rollback(strategy, deviated) {
+    if experiment.rollbacks.is_empty() || !should_rollback(strategy, needs_rollback) {
         return vec![];
     }
 

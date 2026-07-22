@@ -374,7 +374,8 @@ fn render_agentic_report(
     );
     let journal = tumult_agentic::journal::write_metadata_journal_file(journal_path, &evidence)?;
     let analytics = agentic_analytics_from_result(&run_id, &evidence.experiment_id, result);
-    let store_path = tumult_analytics::AnalyticsStore::default_path();
+    let store_path = tumult_analytics::AnalyticsStore::default_path()
+        .context("failed to determine analytics store path")?;
     let ingested = match tumult_analytics::AnalyticsStore::open(&store_path) {
         Ok(store) => store.ingest_agentic_run(&analytics).unwrap_or(false),
         Err(_) => false,

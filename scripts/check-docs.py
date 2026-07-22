@@ -97,6 +97,40 @@ def check_stale_claims(errors: list[str]) -> None:
                 fail(errors, path, f"stale active-document claim: {phrase!r}")
 
 
+def check_homepage_claims(errors: list[str]) -> None:
+    path = ROOT / "docs/index.html"
+    text = path.read_text(encoding="utf-8")
+    if "40 MCP" not in text:
+        fail(errors, path, "homepage must state the current 40-tool MCP surface")
+    banned = ("24 MCP", "13 plugin", "64 actions", "921 tests", "1,026 tests", "15 crates")
+    lowered = text.lower()
+    for phrase in banned:
+        if phrase.lower() in lowered:
+            fail(errors, path, f"stale homepage claim: {phrase!r}")
+
+
+def check_cli_reference_claims(errors: list[str]) -> None:
+    path = ROOT / "docs/guides/cli-reference.md"
+    text = path.read_text(encoding="utf-8")
+    for phrase in ("24 tools", "16 tools return structuredContent"):
+        if phrase in text:
+            fail(errors, path, f"stale MCP surface claim: {phrase!r}")
+
+
+def check_blog_tool_counts(errors: list[str]) -> None:
+    # Post 17 is explicitly labeled a historical 1.0-era retrospective and
+    # post 20 documents the 24-tool surface "for version 2.1.0"; both are
+    # versioned historical claims, so the present-tense ban exempts them.
+    exempt = {"17-tumult-1.0.md", "20-mcp-first-class.md"}
+    for path in sorted((ROOT / "docs/blog").glob("[0-9][0-9]-*.md")):
+        if path.name in exempt:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for phrase in ("14 MCP tools", "All 14 MCP tools"):
+            if phrase in text:
+                fail(errors, path, f"stale MCP tool count: {phrase!r}")
+
+
 def check_mermaid_accessibility(errors: list[str]) -> None:
     for path in DOC_FILES:
         text = path.read_text(encoding="utf-8")
@@ -113,6 +147,9 @@ def main() -> int:
     check_blog(errors)
     check_mcp_inventory(errors)
     check_stale_claims(errors)
+    check_homepage_claims(errors)
+    check_cli_reference_claims(errors)
+    check_blog_tool_counts(errors)
     check_mermaid_accessibility(errors)
     if errors:
         print("Documentation checks failed:", file=sys.stderr)

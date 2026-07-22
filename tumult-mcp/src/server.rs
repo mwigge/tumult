@@ -97,13 +97,78 @@ fn allowed_http_origins(host: &str, port: u16) -> Vec<String> {
     origins
 }
 
+/// Pass-through SDK `AuthProvider`: it authenticates nothing itself. Its only
+/// job is to make the SDK's HTTP auth middleware read the `Authorization:
+/// Bearer` header and stash the token as `AuthInfo` on the session runtime,
+/// where the tool handler picks it up (`resolve_authorization`). Real token
+/// validation stays in [`crate::handler::McpAuth`] — fail-closed, with
+/// constant-time comparison — so a wrong token still gets the same
+/// `Unauthorized` tool-level error as before.
+///
+/// One behavioral note: with this provider configured (i.e. whenever auth is
+/// configured), the SDK middleware answers requests that carry *no*
+/// `Authorization` header with `401` at the HTTP layer, before the JSON-RPC
+/// payload is read. Over HTTP the header is therefore the required channel;
+/// `_meta.authorization` remains the channel on stdio and takes precedence
+/// when both are present.
+struct HeaderCaptureProvider;
+
+#[async_trait::async_trait]
+impl rust_mcp_sdk::auth::AuthProvider for HeaderCaptureProvider {
+    async fn verify_token(
+        &self,
+        access_token: String,
+    ) -> Result<rust_mcp_sdk::auth::AuthInfo, rust_mcp_sdk::auth::AuthenticationError> {
+        Ok(rust_mcp_sdk::auth::AuthInfo {
+            token_unique_id: access_token,
+            client_id: None,
+            user_id: None,
+            scopes: None,
+            // The SDK middleware insists on a future expiry; it re-verifies
+            // on every request, so the horizon only needs to outlive one
+            // request. The token itself is validated later by `McpAuth`.
+            expires_at: Some(std::time::SystemTime::now() + std::time::Duration::from_hours(1)),
+            audience: None,
+            extra: None,
+        })
+    }
+
+    fn auth_endpoints(
+        &self,
+    ) -> Option<&std::collections::HashMap<String, rust_mcp_sdk::auth::OauthEndpoint>> {
+        None
+    }
+
+    async fn handle_request(
+        &self,
+        _request: rust_mcp_sdk::mcp_http::http::Request<&str>,
+        _state: Arc<rust_mcp_sdk::mcp_server::McpAppState>,
+    ) -> Result<
+        rust_mcp_sdk::mcp_http::http::Response<rust_mcp_sdk::mcp_http::GenericBody>,
+        rust_mcp_sdk::mcp_server::error::TransportServerError,
+    > {
+        // No OAuth endpoints are exposed; anything routed here is a 404.
+        use rust_mcp_sdk::mcp_http::GenericBodyExt as _;
+        Ok(rust_mcp_sdk::mcp_http::GenericBody::create_404_response())
+    }
+
+    fn protected_resource_metadata_url(&self) -> Option<&str> {
+        None
+    }
+}
+
 /// Minimal HTTP health check server using raw TCP.
 ///
 /// Responds to any request on the bound port with a `200 OK` JSON body.
 /// Intended for Kubernetes liveness/readiness probes and load balancer checks.
+/// Connection tasks are bounded by a semaphore so a slow-connection flood
+/// cannot exhaust the runtime.
 async fn run_health_server(host: &str, port: u16) {
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
+
+    /// Maximum concurrent health-check connections being serviced.
+    const MAX_HEALTH_CONNECTIONS: usize = 32;
 
     let addr = format!("{host}:{port}");
     let listener = match TcpListener::bind(&addr).await {
@@ -124,13 +189,21 @@ async fn run_health_server(host: &str, port: u16) {
         body.len(),
         body
     );
+    let slots = Arc::new(tokio::sync::Semaphore::new(MAX_HEALTH_CONNECTIONS));
 
     loop {
         let Ok((mut stream, _)) = listener.accept().await else {
             continue;
         };
+        // Bound the per-connection tasks: when every slot is held, drop the
+        // connection immediately rather than queueing unbounded work.
+        let Ok(permit) = slots.clone().try_acquire_owned() else {
+            drop(stream);
+            continue;
+        };
         let resp = response.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             // Read (and discard) the request — we respond the same regardless of path.
             let mut buf = [0u8; 1024];
             let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await;
@@ -210,6 +283,9 @@ pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
     }
 
     let workspace_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    // Captured before `auth` moves into the handler: the HTTP transport adds
+    // the header-capture middleware only when authentication is configured.
+    let auth_configured = auth.is_configured();
     let handler =
         crate::handler::TumultHandler::with_auth(workspace_root, auth).to_mcp_server_handler();
 
@@ -259,6 +335,15 @@ pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
                     event_store: Some(Arc::new(InMemoryEventStore::default())),
                     task_store: Some(Arc::new(InMemoryTaskStore::new(None))),
                     client_task_store: Some(Arc::new(InMemoryTaskStore::new(None))),
+                    // Capture the HTTP Authorization header onto the session
+                    // runtime so handlers can authenticate it. Only when auth
+                    // is configured: in open (loopback dev) mode no header is
+                    // required and the middleware would 401 its absence.
+                    auth: if auth_configured {
+                        Some(Arc::new(HeaderCaptureProvider))
+                    } else {
+                        None
+                    },
                     // MCP requires Origin validation for Streamable HTTP to
                     // prevent DNS-rebinding attacks. Non-browser clients that
                     // omit Origin remain supported by the SDK middleware.

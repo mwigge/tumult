@@ -83,7 +83,7 @@ fn preflight_guard_telemetry(playbook_path: &str) -> Option<bool> {
     let experiment = tumult_core::engine::parse_experiment(&content).ok()?;
     let guard = experiment.guards.first()?;
 
-    let outcome = crate::handler::ProcessExecutor.execute(&guard.probe);
+    let outcome = crate::handler::ProcessExecutor::new().execute(&guard.probe);
     if !outcome.success {
         return Some(false);
     }
@@ -110,7 +110,9 @@ fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64
 }
 
 /// Assemble gate-ready candidates from the store. Pure with respect to the
-/// clock: `now_ns` and ambient facts are passed in.
+/// clock: `now_ns` and ambient facts are passed in. `concurrent_experiments`
+/// is the server-wide enactment-ledger reading — while another enactment is
+/// in flight it is 1, so the `ambient.no_concurrent_experiment` veto fires.
 #[allow(clippy::too_many_lines)]
 pub(super) fn assemble_candidates(
     store: &tumult_analytics::AnalyticsStore,
@@ -118,6 +120,7 @@ pub(super) fn assemble_candidates(
     now_ns: i64,
     within_business_hours: bool,
     limit: usize,
+    concurrent_experiments: u32,
 ) -> Result<Vec<Assembled>, ToolError> {
     let inputs = gather_inputs(store)?;
     let lineage = compute_lineage(&inputs.lineage_input(), None, None);
@@ -207,7 +210,7 @@ pub(super) fn assemble_candidates(
             runs_today,
             hours_since_last_run_on_service: hours_since_last,
             within_business_hours,
-            concurrent_experiments: 0,
+            concurrent_experiments,
             // Dynamic pre-flight: actually run the guard probe once. Only
             // attempted when a guard exists — probing hopeless candidates
             // would waste probe timeouts.
@@ -317,7 +320,7 @@ pub(super) fn assemble_candidates(
                 runs_today,
                 hours_since_last_run_on_service: hours_since_last,
                 within_business_hours,
-                concurrent_experiments: 0,
+                concurrent_experiments,
                 guard_telemetry_ok: if has_guard {
                     preflight_guard_telemetry(&pb.experiment)
                 } else {
@@ -358,6 +361,108 @@ pub(super) fn assemble_candidates(
         }
     }
     Ok(out)
+}
+
+/// Re-run the full gate for a persisted decision against CURRENT state.
+///
+/// This is the approval re-gate: an `approve` recorded minutes or days ago
+/// must never execute on stale facts. Everything the original pass computed
+/// is recomputed here — the experiment file is re-inspected (its content may
+/// have changed), the ambient snapshot is re-read from the store, the guard
+/// telemetry pre-flight probe runs once more, and the autonomy record is
+/// re-aggregated. `concurrent_experiments` is the enactment-ledger reading,
+/// exactly as in [`assemble_candidates`].
+///
+/// The policy is supplied by the caller (the respond tool requires it on
+/// approve); the caller also verifies its hash against the decision record.
+pub(super) fn regate_decision(
+    store: &tumult_analytics::AnalyticsStore,
+    policy: &LoadedPolicy,
+    record: &tumult_analytics::DecisionRecord,
+    now_ns: i64,
+    within_business_hours: bool,
+    concurrent_experiments: u32,
+) -> Result<GateDecision, ToolError> {
+    let inputs = gather_inputs(store)?;
+    let lineage = compute_lineage(&inputs.lineage_input(), None, None);
+
+    // Re-inspect the playbook file as it exists NOW — a playbook edited
+    // since the decision is gated on its current content, not the original.
+    let (has_steady, has_rollback, has_guard, fault_count) = record
+        .playbook
+        .as_deref()
+        .map_or((false, false, false, 0), inspect_experiment);
+    let candidate = Candidate {
+        id: record.id.clone(),
+        service_id: record.service_id.clone(),
+        tier: record.tier.clone(),
+        plugin: record.plugin.clone(),
+        action: record.action.clone(),
+        article_id: record.article_id.clone(),
+        score: record.score,
+        reasons: Vec::new(),
+        confidence: if record.confidence == "high" {
+            ConfidenceTier::High
+        } else {
+            ConfidenceTier::Directional
+        },
+        playbook_experiment: record.playbook.clone(),
+        experiment_has_guard: has_guard,
+        experiment_has_rollback: has_rollback,
+        experiment_has_steady_state: has_steady,
+        experiment_fault_count: fault_count,
+        trigger: Trigger::Manual,
+    };
+
+    let hours_since_last = store
+        .autopilot_last_enacted_on(&candidate.service_id)
+        .map_err(|e| ToolError::Store(e.to_string()))?
+        .map(|ts| elapsed_hours(now_ns, ts));
+    let open_deviation = lineage
+        .iter()
+        .any(|c| c.service_id == candidate.service_id && c.status == ControlServiceStatus::Broken);
+    let runs_today = store
+        .autopilot_decisions_since(now_ns - 24 * 3_600_000_000_000)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let ambient = AmbientContext {
+        open_deviation_for_target: open_deviation,
+        runs_today,
+        hours_since_last_run_on_service: hours_since_last,
+        within_business_hours,
+        concurrent_experiments,
+        guard_telemetry_ok: if has_guard {
+            candidate
+                .playbook_experiment
+                .as_deref()
+                .and_then(preflight_guard_telemetry)
+        } else {
+            None
+        },
+    };
+
+    let key = class_key(
+        &candidate.plugin,
+        &candidate.action,
+        candidate.tier.as_deref(),
+    );
+    let autonomy = store
+        .autopilot_class_history()
+        .map_err(|e| ToolError::Store(e.to_string()))?
+        .into_iter()
+        .find(|h| h.class_key == key)
+        .map(|h| AutonomyRecord {
+            enacted_total: h.enacted_total,
+            enacted_clean: h.enacted_clean,
+        });
+
+    let validator = validate(&candidate);
+    Ok(evaluate(
+        &policy.policy,
+        &candidate,
+        &ambient,
+        autonomy.as_ref(),
+        &validator,
+    ))
 }
 
 /// The compliance article a playbook experiment evidences (its first

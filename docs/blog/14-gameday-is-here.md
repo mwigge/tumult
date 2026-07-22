@@ -191,7 +191,7 @@ The demo exercises the full agent-to-compliance pipeline:
 Agent (HTTP client)
     │ POST http://localhost:3100/mcp
     ▼
-tumult-mcp (14 MCP tools, session management)
+tumult-mcp (40 MCP tools, session management)
     │
     ▼
 tumult-core (5-phase lifecycle, GameDay orchestrator)

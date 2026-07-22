@@ -10,7 +10,58 @@ use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 
 use super::telemetry::epoch_nanos_now;
-use super::{run_experiment, ActivityExecutor, RunConfig, RunnerError, TRACER_NAME};
+use super::{
+    run_experiment, ActivityExecutor, LoadExecutor, LoadHandle, RunConfig, RunnerError, TRACER_NAME,
+};
+
+/// Stops the shared load process when dropped, so no exit path from
+/// [`run_gameday`] — early return, campaign-stopping error, or unwind — can
+/// leak the load-generator child (e.g. k6).
+struct LoadGuard<'a> {
+    handle: Option<LoadHandle>,
+    executor: Option<&'a std::sync::Arc<dyn LoadExecutor>>,
+}
+
+impl LoadGuard<'_> {
+    /// Take the handle out for an explicit, result-collecting stop on the
+    /// normal path; the guard then has nothing left to do on drop.
+    fn take(&mut self) -> Option<LoadHandle> {
+        self.handle.take()
+    }
+}
+
+impl Drop for LoadGuard<'_> {
+    fn drop(&mut self) {
+        if let (Some(handle), Some(executor)) = (self.handle.take(), self.executor) {
+            if let Err(e) = executor.stop(handle) {
+                tracing::error!(error = %e, "failed to stop gameday load on exit");
+            }
+        }
+    }
+}
+
+/// Executor + controls for one experiment in a [`run_gameday_with_wiring`]
+/// campaign.
+///
+/// Experiments can declare their own `configuration:`/`secrets:` (injected
+/// into provider subprocess env) and `controls:` (lifecycle hooks), so each
+/// experiment in a campaign may need its own pair rather than sharing one
+/// executor and one registry across the whole `GameDay`.
+pub struct ExperimentWiring {
+    /// Executor used for the experiment's activities.
+    pub executor: std::sync::Arc<dyn ActivityExecutor>,
+    /// Controls fired at the experiment's lifecycle events.
+    pub controls: std::sync::Arc<ControlRegistry>,
+}
+
+impl Clone for ExperimentWiring {
+    fn clone(&self) -> Self {
+        Self {
+            executor: self.executor.clone(),
+            controls: self.controls.clone(),
+        }
+    }
+}
 
 /// Runs a `GameDay` — a coordinated campaign of experiments under shared load.
 ///
@@ -18,19 +69,54 @@ use super::{run_experiment, ActivityExecutor, RunConfig, RunnerError, TRACER_NAM
 /// shared load generator across all of them. Computes an aggregate
 /// `ResilienceScore` and returns a `GameDayJournal`.
 ///
+/// An experiment that fails to *execute* (as opposed to deviate — deviation
+/// is a valid outcome captured in its journal) stops the campaign: the
+/// journals of the experiments that already completed are retained in the
+/// returned `GameDayJournal` rather than discarded, and the shared load
+/// process is stopped on every exit path.
+///
 /// # Errors
 ///
 /// Returns [`RunnerError::ExperimentCountMismatch`] if `experiments` does
-/// not line up one-to-one with `gameday.experiments`, and [`RunnerError`]
-/// if any experiment fails to execute (not if it deviates — deviation is a
-/// valid outcome captured in the journal).
+/// not line up one-to-one with `gameday.experiments`.
 #[must_use = "the GameDayJournal contains the aggregate results"]
-#[allow(clippy::too_many_lines)] // Orchestration function with OTel setup, load management, and scoring
 pub fn run_gameday(
     gameday: &GameDay,
     experiments: &[Experiment],
     executor: &std::sync::Arc<dyn ActivityExecutor>,
     controls: &std::sync::Arc<ControlRegistry>,
+    config: &RunConfig,
+) -> Result<GameDayJournal, RunnerError> {
+    run_gameday_with_wiring(
+        gameday,
+        experiments,
+        &|_, _| ExperimentWiring {
+            executor: executor.clone(),
+            controls: controls.clone(),
+        },
+        config,
+    )
+}
+
+/// Like [`run_gameday`], but resolves the executor and controls per
+/// experiment through `wiring` (called with the experiment's index and
+/// definition, in campaign order).
+///
+/// Frontends that honour per-experiment `configuration:`/`secrets:` env
+/// injection and declared `controls:` build one [`ExperimentWiring`] per
+/// experiment and pass a closure selecting it; frontends that share a
+/// single executor/registry keep using [`run_gameday`].
+///
+/// # Errors
+///
+/// Returns [`RunnerError::ExperimentCountMismatch`] if `experiments` does
+/// not line up one-to-one with `gameday.experiments`.
+#[must_use = "the GameDayJournal contains the aggregate results"]
+#[allow(clippy::too_many_lines)] // Orchestration function with OTel setup, load management, and scoring
+pub fn run_gameday_with_wiring(
+    gameday: &GameDay,
+    experiments: &[Experiment],
+    wiring: &dyn Fn(usize, &Experiment) -> ExperimentWiring,
     config: &RunConfig,
 ) -> Result<GameDayJournal, RunnerError> {
     // Journals are attributed to `gameday.experiments` entries by position
@@ -86,9 +172,27 @@ pub fn run_gameday(
         None
     };
 
+    // Guard so the shared load process is stopped on *every* exit path —
+    // including a campaign-stopping experiment error or an unwind — not just
+    // the happy path below.
+    let mut load_guard = LoadGuard {
+        handle: load_handle,
+        executor: config.load_executor.as_ref(),
+    };
+
     // Run each experiment with the GameDay span as parent context
     let mut journals = Vec::with_capacity(experiments.len());
-    for experiment in experiments {
+    for (index, experiment) in experiments.iter().enumerate() {
+        // A cancelled token (SIGINT) ends the campaign: remaining experiments
+        // are skipped rather than started-and-immediately-interrupted.
+        if config
+            .cancellation_token
+            .as_ref()
+            .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
+        {
+            tracing::warn!("gameday cancelled; skipping remaining experiments");
+            break;
+        }
         let exp_config = RunConfig {
             rollback_strategy: config.rollback_strategy.clone(),
             cancellation_token: config.cancellation_token.clone(),
@@ -96,18 +200,21 @@ pub fn run_gameday(
             load_executor: None, // load is managed at GameDay level
             max_concurrent_faults: config.max_concurrent_faults,
         };
-        match run_experiment(experiment, executor, controls, &exp_config) {
+        let wiring = wiring(index, experiment);
+        match run_experiment(experiment, &wiring.executor, &wiring.controls, &exp_config) {
             Ok(journal) => journals.push(journal),
             Err(e) => {
-                tracing::error!(error = %e, title = %experiment.title, "gameday experiment failed");
-                return Err(e);
+                // Stop the campaign but keep the journals already collected —
+                // they are valid results that belong in the gameday output.
+                tracing::error!(error = %e, title = %experiment.title, "gameday experiment failed; stopping campaign");
+                break;
             }
         }
     }
 
-    // Stop load and collect results
+    // Stop load and collect results (the guard covers every other path)
     let load_result =
-        if let (Some(handle), Some(ref load_exec)) = (load_handle, &config.load_executor) {
+        if let (Some(handle), Some(ref load_exec)) = (load_guard.take(), &config.load_executor) {
             match load_exec.stop(handle) {
                 Ok(result) => {
                     tracing::info!(

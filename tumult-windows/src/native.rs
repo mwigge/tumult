@@ -71,13 +71,25 @@ impl NativeExecutor for WindowsExecutor {
                 Ok(report.to_json().to_string())
             }
             "cpu_stress" => {
-                let workers = arg_num::<u32>(args, "workers")
+                let requested = arg_num::<u32>(args, "workers")
                     .and_then(|w| usize::try_from(w).ok())
                     .unwrap_or_else(faults::default_workers);
+                // Clamp to a sane maximum — an unbounded worker count would
+                // spawn that many busy-spin threads on the target host.
+                let max = faults::max_workers();
+                let clamped = requested > max;
+                let workers = requested.min(max);
                 let duration_secs = arg_num::<u32>(args, "duration_secs")
                     .map_or(DEFAULT_CPU_DURATION_SECS, u64::from);
                 let report = faults::cpu_stress(workers, Duration::from_secs(duration_secs));
-                Ok(report.to_json().to_string())
+                let mut json = report.to_json();
+                if clamped {
+                    json["warning"] = serde_json::json!(format!(
+                        "requested {requested} workers exceeds the maximum {max} \
+                         (4x logical CPUs, hard cap 256); clamped to {workers}"
+                    ));
+                }
+                Ok(json.to_string())
             }
             "network_blackhole" => {
                 let port = arg_num::<u16>(args, "port");
@@ -154,6 +166,26 @@ mod tests {
         let output = WindowsExecutor.execute("cpu_stress", &args).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(value["workers"], 2);
+        assert!(value.get("warning").is_none(), "no clamp, no warning");
+    }
+
+    #[tokio::test]
+    async fn cpu_stress_clamps_absurd_worker_counts_with_a_warning() {
+        let args = NativeArgs::from([
+            ("workers".into(), serde_json::json!(u32::MAX)),
+            ("duration_secs".into(), serde_json::json!(0)),
+        ]);
+        let output = WindowsExecutor.execute("cpu_stress", &args).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        let max = faults::max_workers();
+        assert_eq!(value["workers"], max, "workers must be clamped to the max");
+        assert!(
+            value["warning"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("clamped"),
+            "a clamp must surface a warning: {output}"
+        );
     }
 
     #[tokio::test]

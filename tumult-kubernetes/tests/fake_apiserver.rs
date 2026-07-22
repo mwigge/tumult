@@ -264,24 +264,36 @@ async fn drain_node_cordons_lists_by_node_and_skips_daemonset_pods() {
             ],
         })));
 
-        // 3. First eviction succeeds.
-        let (request, send) = handle.next_request().await.expect("first delete");
-        let (parts, _) = parts_and_json(request).await;
-        assert_eq!(parts.method, Method::DELETE);
-        assert_eq!(parts.uri.path(), "/api/v1/namespaces/default/pods/app-a");
-        send.send_response(json_response(&pod_json(
-            "default", "app-a", "Running", true, 0,
-        )));
+        // 3. First eviction succeeds: POST to the policy/v1 eviction
+        //    subresource (NOT a plain delete, so PDBs are honoured).
+        let (request, send) = handle.next_request().await.expect("first eviction");
+        let (parts, body) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::POST);
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/default/pods/app-a/eviction"
+        );
+        assert_eq!(body["metadata"]["name"], "app-a");
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Status",
+            "status": "Success",
+            "code": 201,
+        })));
 
-        // 4. Second eviction is rejected by the apiserver.
-        let (request, send) = handle.next_request().await.expect("second delete");
+        // 4. Second eviction is rejected by the apiserver (e.g. a
+        //    PodDisruptionBudget denial surfaces as 429).
+        let (request, send) = handle.next_request().await.expect("second eviction");
         let (parts, _) = parts_and_json(request).await;
-        assert_eq!(parts.method, Method::DELETE);
-        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods/app-b");
+        assert_eq!(parts.method, Method::POST);
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/prod/pods/app-b/eviction"
+        );
         send.send_response(status_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "InternalError",
-            "etcd is on fire",
+            StatusCode::TOO_MANY_REQUESTS,
+            "TooManyRequests",
+            "Cannot evict pod as it would violate the pod's disruption budget.",
         ));
     });
 
@@ -632,7 +644,12 @@ async fn resolve_target_pod_lists_by_label_and_picks_first_match() {
     let pod = inject::resolve_target_pod(client, "prod", None, Some("app=web"))
         .await
         .expect("resolution succeeds");
-    assert_eq!(pod, "web-abc");
+    assert_eq!(pod.name, "web-abc");
+    assert_eq!(pod.matched, Some(2), "match count must be reported");
+    assert_eq!(
+        pod.annotate("injected"),
+        "matched 2 pods, targeting pod/web-abc; injected"
+    );
     apiserver.await.expect("apiserver task");
 }
 
@@ -643,7 +660,9 @@ async fn resolve_target_pod_explicit_name_skips_api_call() {
     let pod = inject::resolve_target_pod(client, "prod", Some("chosen-0"), None)
         .await
         .expect("explicit name resolves without a call");
-    assert_eq!(pod, "chosen-0");
+    assert_eq!(pod.name, "chosen-0");
+    assert_eq!(pod.matched, None);
+    assert_eq!(pod.annotate("injected"), "injected");
 }
 
 #[tokio::test]
@@ -977,5 +996,101 @@ async fn node_status_reports_cordoned_ready_node() {
         "unschedulable=true must map to schedulable=false"
     );
     assert_eq!(status.conditions.len(), 2);
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn service_has_endpoints_true_when_addresses_present() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/prod/endpoints/api-service"
+        );
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Endpoints",
+            "metadata": { "name": "api-service", "namespace": "prod" },
+            "subsets": [{
+                "addresses": [{ "ip": "10.0.0.7" }, { "ip": "10.0.0.8" }],
+                "ports": [{ "port": 8080 }],
+            }],
+        })));
+    });
+
+    let has = probes::service_has_endpoints(client, "prod", "api-service")
+        .await
+        .expect("probe succeeds");
+
+    assert!(has, "endpoints with addresses must report true");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn service_has_endpoints_false_when_subsets_empty_or_addressless() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(
+            parts.uri.path(),
+            "/api/v1/namespaces/prod/endpoints/draining-service"
+        );
+        // A subset whose only entries are notReadyAddresses must not count.
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "Endpoints",
+            "metadata": { "name": "draining-service", "namespace": "prod" },
+            "subsets": [{
+                "notReadyAddresses": [{ "ip": "10.0.0.9" }],
+                "ports": [{ "port": 8080 }],
+            }],
+        })));
+    });
+
+    let has = probes::service_has_endpoints(client, "prod", "draining-service")
+        .await
+        .expect("probe succeeds");
+
+    assert!(!has, "no ready addresses must report false");
+    apiserver.await.expect("apiserver task");
+}
+
+#[tokio::test]
+async fn count_pods_in_phase_counts_only_matching_phase() {
+    let (client, handle) = mock_client();
+    let apiserver = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (request, send) = handle.next_request().await.expect("service not called");
+        let (parts, _) = parts_and_json(request).await;
+        assert_eq!(parts.method, Method::GET);
+        assert_eq!(parts.uri.path(), "/api/v1/namespaces/prod/pods");
+        let query = parts.uri.query().unwrap_or_default();
+        assert!(
+            query.contains("labelSelector=app%3Dweb"),
+            "label selector must be forwarded: {query}"
+        );
+        send.send_response(json_response(&json!({
+            "apiVersion": "v1",
+            "kind": "PodList",
+            "metadata": {},
+            "items": [
+                pod_json("prod", "web-0", "Running", true, 0),
+                pod_json("prod", "web-1", "Pending", false, 0),
+                pod_json("prod", "web-2", "Running", true, 0),
+            ],
+        })));
+    });
+
+    let running = probes::count_pods_in_phase(client, "prod", "app=web", "Running")
+        .await
+        .expect("probe succeeds");
+
+    assert_eq!(running, 2, "only Running pods must be counted");
     apiserver.await.expect("apiserver task");
 }

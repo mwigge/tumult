@@ -1,7 +1,12 @@
 #!/bin/sh
 # Flush all data from Redis (FLUSHALL)
 #
-# WARNING: This is destructive — all data will be lost.
+# *** WARNING: DESTRUCTIVE — NO ROLLBACK ***
+# This action performs FLUSHALL: every key in every database on the target
+# Redis instance is deleted immediately and irreversibly. There is no
+# rollback action; the only recovery is from an external backup, replica,
+# or AOF/RDB snapshot taken beforehand. Do not run this against an instance
+# whose data you cannot afford to lose.
 #
 # Environment variables:
 #   TUMULT_REDIS_HOST - Redis host (default: localhost)

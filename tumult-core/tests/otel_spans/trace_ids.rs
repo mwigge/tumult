@@ -212,3 +212,67 @@ fn runner_all_activities_share_same_trace_id() {
     let _ = provider.shutdown();
     drop(exporter);
 }
+
+#[test]
+fn background_activities_share_the_run_trace_id() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let tracer = global::tracer("tumult-test");
+    let _guard = {
+        let span = tracer.start("test-root");
+        let cx = opentelemetry::Context::current_with_span(span);
+        cx.attach()
+    };
+
+    // One foreground and one background step: scoped OS threads don't inherit
+    // the thread-local OTel context, so the runner must attach the captured
+    // context inside the background thread for both to share one trace.
+    let exp = Experiment {
+        title: "Background trace test".into(),
+        method: vec![
+            Activity {
+                name: "fg-step".into(),
+                ..Default::default()
+            },
+            Activity {
+                name: "bg-step".into(),
+                background: true,
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let fg = journal
+        .method_results
+        .iter()
+        .find(|r| r.name == "fg-step")
+        .expect("foreground result");
+    let bg = journal
+        .method_results
+        .iter()
+        .find(|r| r.name == "bg-step")
+        .expect("background result");
+
+    assert!(
+        !fg.trace_id.is_empty(),
+        "foreground trace_id should be populated when a tracer is active"
+    );
+    assert_eq!(
+        bg.trace_id.as_str(),
+        fg.trace_id.as_str(),
+        "background activity must share the run's trace_id"
+    );
+    assert_ne!(
+        bg.span_id.as_str(),
+        fg.span_id.as_str(),
+        "background activity should still have its own span"
+    );
+
+    let _ = provider.shutdown();
+    drop(exporter);
+}

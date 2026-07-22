@@ -113,9 +113,12 @@ pub fn gameday_create(request: &GameDayCreateRequest<'_>) -> Result<StructuredRe
 /// or any experiment fails to execute.
 #[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and result aggregation
 pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
-    use tumult_core::controls::ControlRegistry;
-    use tumult_core::engine::parse_experiment;
-    use tumult_core::runner::{run_gameday, RunConfig};
+    use tumult_core::controls::{ControlRegistry, ProviderControl};
+    use tumult_core::engine::{
+        apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
+        resolve_config, resolve_secrets, validate_experiment,
+    };
+    use tumult_core::runner::{run_gameday_with_wiring, ExperimentWiring, RunConfig};
     use tumult_core::types::GameDay;
 
     let path = Path::new(gameday_path);
@@ -126,7 +129,13 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
 
     let gameday_dir = path.parent().unwrap_or(Path::new("."));
 
+    // Each experiment gets the same configuration/secrets semantics as
+    // `tumult run`: values resolve up front (fatal on a missing env var or
+    // secret file), template substitution applies, resolved pairs inject
+    // into subprocesses as TUMULT_CONFIG_* / TUMULT_SECRET_*, and declared
+    // controls are registered so they fire at lifecycle events.
     let mut experiments = Vec::new();
+    let mut wirings = Vec::new();
     for gd_exp in &gameday.experiments {
         let exp_path = if gd_exp.path.is_absolute() {
             gd_exp.path.clone()
@@ -137,12 +146,70 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         let experiment = parse_experiment(&exp_content).map_err(|e| {
             ToolError::Parse(format!("failed to parse {}: {e}", exp_path.display()))
         })?;
+
+        let config = resolve_config(&experiment.configuration).map_err(|e| {
+            ToolError::Validation(format!(
+                "failed to resolve configuration for {}: {e}",
+                exp_path.display()
+            ))
+        })?;
+        let secrets = resolve_secrets(&experiment.secrets).map_err(|e| {
+            ToolError::Validation(format!(
+                "failed to resolve secrets for {}: {e}",
+                exp_path.display()
+            ))
+        })?;
+        let secrets_flat = flatten_secrets(&secrets);
+        let experiment = if config.is_empty() && secrets_flat.is_empty() {
+            experiment
+        } else {
+            apply_template_vars(
+                &experiment,
+                &std::collections::HashMap::new(),
+                &config,
+                &secrets_flat,
+            )
+            .map_err(|e| {
+                ToolError::Validation(format!(
+                    "failed to apply template variables for {}: {e}",
+                    exp_path.display()
+                ))
+            })?
+        };
+        validate_experiment(&experiment).map_err(|e| {
+            ToolError::Validation(format!("invalid experiment {}: {e}", exp_path.display()))
+        })?;
+
+        let (config_env, skipped_config) = build_config_env(&config);
+        let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
+        for key in skipped_config.iter().chain(&skipped_secrets) {
+            tracing::warn!(
+                key = %key,
+                file = %exp_path.display(),
+                "config/secret key does not form a valid env var name after uppercasing; \
+                 usable in templates but not injected as TUMULT_*"
+            );
+        }
+        let mut injected_env = config_env;
+        injected_env.extend(secret_env);
+
+        let executor: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
+            std::sync::Arc::new(crate::handler::ProcessExecutor::with_injected_env(
+                injected_env,
+            ));
+        let mut controls = ControlRegistry::new();
+        for control in &experiment.controls {
+            controls.register(Box::new(ProviderControl::new(
+                control.clone(),
+                executor.clone(),
+            )));
+        }
+        wirings.push(ExperimentWiring {
+            executor,
+            controls: std::sync::Arc::new(controls),
+        });
         experiments.push(experiment);
     }
-
-    let executor: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
-        std::sync::Arc::new(crate::handler::ProcessExecutor);
-    let controls = std::sync::Arc::new(ControlRegistry::new());
 
     // Same load executor as `tumult gameday run` (CLI parity): a declared
     // load config runs through the shared k6 executor instead of being
@@ -157,8 +224,13 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         ..RunConfig::default()
     };
 
-    let journal = run_gameday(&gameday, &experiments, &executor, &controls, &config)
-        .map_err(|e| ToolError::Execution(format!("gameday failed: {e}")))?;
+    let journal = run_gameday_with_wiring(
+        &gameday,
+        &experiments,
+        &|index, _| wirings[index].clone(),
+        &config,
+    )
+    .map_err(|e| ToolError::Execution(format!("gameday failed: {e}")))?;
 
     // Write journal
     let journal_path = path.with_extension("journal.toon");

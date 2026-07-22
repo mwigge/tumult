@@ -33,9 +33,17 @@ pub fn check_baseline_anomaly(data: &[f64], min_samples: usize) -> AnomalyCheck 
         };
     }
 
-    let m = mean(data);
-    let sd = stddev(data);
-    let cv = if m.abs() > f64::EPSILON { sd / m } else { 0.0 };
+    let m = mean(data).unwrap_or(0.0);
+    // N < 2 has no defined sample stddev; treat spread as zero rather than
+    // inventing variance from a single point.
+    let sd = stddev(data).unwrap_or(0.0);
+    // CV must use the magnitude of the mean: with a negative mean, `sd / m`
+    // is negative and the `cv > threshold` check below could never fire.
+    let cv = if m.abs() > f64::EPSILON {
+        sd / m.abs()
+    } else {
+        0.0
+    };
 
     if cv > 0.5 {
         return AnomalyCheck {
@@ -103,6 +111,25 @@ mod tests {
         let result = check_baseline_anomaly(&data, 5);
         assert!(!result.anomaly_detected);
         assert!(result.coefficient_of_variation.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn stable_negative_mean_data_is_not_anomalous() {
+        // Negative-mean data: CV must be computed against |mean| and stay small.
+        let data = vec![-100.0, -102.0, -98.0, -101.0, -99.0, -100.0, -103.0, -97.0];
+        let result = check_baseline_anomaly(&data, 5);
+        assert!(!result.anomaly_detected);
+        assert!(result.coefficient_of_variation >= 0.0);
+    }
+
+    #[test]
+    fn high_variance_negative_mean_is_anomalous() {
+        // With a signed-mean CV this never fired: sd/|m| ≈ 1.6 > 0.5 must fire.
+        let data = vec![-1.0, -100.0, -2.0, -99.0, -3.0, -98.0, -1.0, -200.0];
+        let result = check_baseline_anomaly(&data, 5);
+        assert!(result.anomaly_detected);
+        assert!(result.reason.unwrap().contains("coefficient of variation"));
+        assert!(result.coefficient_of_variation > 0.5);
     }
 
     #[test]

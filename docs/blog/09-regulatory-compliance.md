@@ -42,10 +42,7 @@ Every Tumult experiment can declare which regulatory requirements it satisfies:
 
 ```toon
 title: Payment database failover validates DORA Article 25 requirements
-description: |
-  Kill database primary connections and verify automatic reconnection.
-  Produces evidence for DORA Art. 25 (ICT resilience testing) and
-  Art. 11 (Response and Recovery).
+description: Kill database primary connections and verify automatic reconnection. Produces evidence for DORA Art. 25 (ICT resilience testing) and Art. 11 (Response and Recovery).
 
 tags[4]: database, resilience, regulatory:dora, regulatory:nis2
 
@@ -280,8 +277,12 @@ ORDER BY started_at_ns;
 Parquet export makes long-term retention practical. Journals compressed as Parquet are typically 10-20x smaller than equivalent JSON. A compliance archive of 5 years of daily experiment runs is tens of gigabytes in Parquet; trivial to store in S3 or cold storage.
 
 ```bash
-# Archive journals as Parquet for long-term retention
-tumult export journals/2025/*.toon --format parquet --output archives/2025/
+# Archive journals as Parquet for long-term retention. export converts one
+# journal per invocation, writing <journal-stem>.parquet in the current directory
+cd archives/2025/
+for journal in ../../journals/2025/*.toon; do
+  tumult export "$journal" --format parquet
+done
 
 # Query archived data directly (DuckDB reads Parquet from S3)
 tumult analyze 's3://your-bucket/archives/2025/*.parquet' \

@@ -4,6 +4,147 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.17.0] — 2026-07-23
+
+A full-platform review (code, docs, blog, website) drove this release:
+execution robustness for the fault path, wiring for model features that
+parsed but never executed, security hardening of the MCP surface, and a
+truthfulness sweep across every published number and example.
+
+### Added
+- **Script provider dispatch**: experiments can now execute bundled script
+  plugins directly — `provider: { type: script, plugin, function, arguments,
+  timeout_s }`. Previously the 11 script plugins were discoverable via
+  `tumult discover` but had no run path. `examples/dns-redirect-chaos.toon`
+  validates and runs again. Timeout kills the whole process group.
+- **`configuration:` / `secrets:` are live**: values resolve before
+  templating, substitute as `${config.name}` / `${secrets.group.key}`, and
+  inject as `TUMULT_CONFIG_*` / `TUMULT_SECRET_*` env into process and
+  script providers (CLI run, GameDay, and MCP paths). Secrets are never
+  journaled — covered by a dedicated no-leak test.
+- **Declared `controls:` execute**: `cmd_run`, GameDay, and the MCP
+  experiment/gameday tools register declared controls at lifecycle events
+  (previously an empty registry). Event identity arrives as
+  `TUMULT_CONTROL_EVENT` / `TUMULT_CONTROL_ACTIVITY`.
+- **OpenTelemetry metrics actually export**: `init_meter_provider` builds a
+  real OTLP `SdkMeterProvider`; every counter/gauge/histogram in the
+  workspace previously recorded into the noop global meter. The `tumult-mcp`
+  binary now initializes telemetry (traces + metrics) with graceful
+  degradation and shutdown on all exit paths.
+- `tumult export --format arrow` (Arrow IPC; the library exporter existed
+  but was unreachable from the CLI).
+- `tumult run --force`: the CLI refuses to overwrite an existing journal
+  unless forced.
+- **MCP HTTP auth**: `Authorization: Bearer` headers are honored via the
+  SDK auth middleware (`_meta.authorization` still preferred when both are
+  present); `tools/list` requires a valid token when auth is configured;
+  per-session rate limiting (`TUMULT_MCP_RATE_LIMIT_RPS` / `_BURST`).
+- **Autopilot**: approvals re-run the full gate against current state before
+  executing (no stale approvals); a server-wide enactment lock makes the
+  `ambient.no_concurrent_experiment` veto real across autopilot and
+  experiment/gameday enact paths.
+- **Kubernetes**: five functions registered that were implemented but
+  undispatchable — `drain_node` (now via the Eviction API, honoring
+  PodDisruptionBudgets), `apply_network_policy`, `delete_network_policy`,
+  `service_has_endpoints`, `count_pods_in_phase`.
+- Rollback scripts: `partition-host-rollback`, `partition-broker-rollback`,
+  and `redirect-dns-rollback` are declared in their manifests. Discovery:
+  16 plugins, 91 actions.
+- Templates: `$${...}` escapes a literal `${...}`; missing-variable errors
+  list every missing name.
+- CI: a `cargo-deny` job; `check-docs.py` now guards homepage stats,
+  cli-reference counts, and blog tool-count claims against staleness.
+
+### Changed
+- **Rollbacks run on failure**: the default `on-deviation` strategy now also
+  rolls back when a run fails after a fault was injected (previously a
+  `Failed` status skipped cleanup on the default path).
+- **SIGINT mid-method ends as `Interrupted` with a non-zero exit** — an
+  interrupted run can no longer be reported `Completed` (exit 0).
+- `tumult analyze` opens the store read-only everywhere, enforces
+  SELECT/WITH-only queries, and binds `experiment_id` as a parameter.
+- Baselines compute statistics **per probe** instead of pooling
+  heterogeneous probes into one bound; sample standard deviation (N−1);
+  coefficient of variation uses the absolute mean.
+- **Four destructive-annotated MCP tools**: `tumult_run_experiment`,
+  `tumult_gameday_run`, and now also `tumult_autopilot_run` /
+  `tumult_autopilot_respond` (both can enact fault injection).
+- Cloud executors use HTTP clients with connect/request timeouts; AWS
+  missing-credential errors no longer mention an instance profile that is
+  never queried.
+- SSH `command_timeout` is a total deadline (was per-message idle); the
+  session pool key includes auth identity and host-key policy.
+- Log output moves to stderr, keeping the MCP stdio JSON-RPC stream clean.
+- Viewer-role MCP tools ignore `store_path` overrides and always use the
+  configured store; autopilot policy parse errors no longer echo file
+  content to callers.
+- Windows `cpu_stress` clamps absurd worker counts with a warning.
+- Plugin discovery tolerates bad paths/manifests per-path and warns on
+  shadowing instead of aborting or silently defaulting.
+- `parse_duration_str` errors on unparseable input instead of silently
+  falling back to 30s/1m/1h.
+
+### Fixed
+- **False timeouts on chatty activities**: the CLI, plugin, and MCP process
+  executors now drain stdout/stderr concurrently while waiting (bounded,
+  with truncation notes) and kill the whole process group on timeout — a
+  >64 KiB output no longer deadlocks into a spurious timeout, and
+  grandchildren (e.g. `stress-ng`) no longer survive a kill.
+- **FaultGate deadlock**: the concurrency slot is an RAII guard (a provider
+  panic can no longer wedge gated threads); `max_concurrent_faults: 0` is
+  rejected at validation.
+- **Foreground provider panics are contained**: the run records the failure,
+  writes the journal, and proceeds to rollback instead of unwinding out of
+  the CLI. Control handlers are contained at the emit boundary.
+- GameDay runs stop the shared load process on every exit path, retain
+  completed experiment journals on error, validate experiments, and honor
+  SIGINT; `k6` stop is time-bounded.
+- Telemetry shutdown runs on all CLI exit paths (spans were lost exactly on
+  failed runs); background activities share the run's trace id.
+- Analytics ingest is transactional (a mid-ingest failure can no longer
+  poison dedup); `AnalyticsStore::default_path` and retention math return
+  errors instead of panicking.
+- ClickHouse purge reports honest counts (`mutations_sync`) and all ad-hoc
+  queries carry timeouts; Cypher clamps row caps and rejects queries over an
+  expansion-step budget.
+- net-proxy: rollback verifies the pidfile process is really
+  `tumult-net-proxyd` before killing (PID-reuse safe), spawn checks
+  bind/readiness, and `listen == upstream` loops are rejected.
+- Kubernetes in-pod injection validates `iface`/`image` arguments;
+  first-pod-match targeting now reports how many pods matched.
+- MCP: the process executor kills children on timeout and bounds captured
+  output; the concurrency semaphore is acquired after auth; the health
+  server bounds connections; agent prompts are passed via stdin, not argv
+  (no longer visible in `ps`).
+- Script plugins: pumba/netem and loadtest drivers quote and validate
+  arguments; kafka `kill-broker` no longer aborts on unset optional
+  variables; redis actions validate durations; deleted the undeclared,
+  data-destructive kafka `fill-disk` script.
+- Kubernetes pod drain honors PodDisruptionBudgets (Eviction API instead of
+  direct deletion).
+- Docs/truthfulness sweep: `cli-reference.md` matches the 40-tool/30-schema
+  server and current flags; QUICKSTART's MCP docker command includes the
+  required token; homepage stats bar no longer contradicts itself;
+  `docs/index-old.md` (stale homepage with broken install steps) removed
+  from the site; topology/autopilot guides appear in navigation; blog posts
+  01–05, 07–10, 12, 14, 16 corrected (all embedded experiment examples now
+  pass `tumult validate`); testprotocol inventory refreshed.
+
+### Security
+- MCP SQL validation rejects DuckDB filesystem/extension table functions
+  (`read_text`, `read_csv`, `glob`, …) — a select-only query can no longer
+  read arbitrary host files.
+- Cloud credentials use `Zeroizing` with redacted `Debug`.
+- `docs/security-assessment.md` gained a prompt-injection section covering
+  the recommend → generate → run chain and required operator checkpoints.
+- `deny.toml` now carries the documented RUSTSEC-2026-0002 (`lru::IterMut`)
+  exception the 2.16.1 notes described; Tumult does not call the affected
+  API.
+
+### Removed
+- `--load jmeter` (it silently ran k6) and the jmeter loadtest drivers.
+- `serve.out` runtime log from the repository root.
+
 ## [2.16.1] — 2026-07-22
 
 ### Changed

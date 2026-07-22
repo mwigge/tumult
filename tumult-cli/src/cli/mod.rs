@@ -76,6 +76,9 @@ pub(crate) enum Commands {
         /// Output journal location
         #[arg(long, default_value = "journal.toon")]
         journal_path: PathBuf,
+        /// Overwrite the journal file if it already exists
+        #[arg(long)]
+        force: bool,
         /// Validate and show plan without executing
         #[arg(long)]
         dry_run: bool,
@@ -97,7 +100,7 @@ pub(crate) enum Commands {
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
-        /// Path to load test script (k6 `.js` or `JMeter` `.jmx`)
+        /// Path to load test script (k6 `.js`)
         #[arg(long)]
         load_script: Option<PathBuf>,
         /// Number of virtual users for load test
@@ -544,10 +547,16 @@ pub(crate) enum AutopilotAction {
         #[arg(long)]
         store: Option<PathBuf>,
     },
-    /// Approve a proposed decision — runs its playbook experiment
+    /// Approve a proposed decision — runs its playbook experiment after a
+    /// full re-gate against current state, which requires the policy the
+    /// decision was gated under
     Approve {
         /// Decision id (from `tumult autopilot status`)
         id: String,
+        /// Path to the autopilot policy TOML (`[autopilot]` table) — required:
+        /// an approval re-gates against current state before the playbook runs
+        #[arg(long)]
+        policy: PathBuf,
         /// Analytics store path (default: ~/.tumult/analytics.duckdb)
         #[arg(long)]
         store: Option<PathBuf>,

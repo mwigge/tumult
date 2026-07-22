@@ -88,6 +88,9 @@ fn fault_id_for_action(action_name: &str, experiment: Option<&Experiment>) -> Op
             .map(|a| match &a.provider {
                 Provider::Native {
                     plugin, function, ..
+                }
+                | Provider::Script {
+                    plugin, function, ..
                 } => format!("fault:{plugin}::{function}"),
                 Provider::Process { .. } => format!("fault:{}", a.name),
             }),

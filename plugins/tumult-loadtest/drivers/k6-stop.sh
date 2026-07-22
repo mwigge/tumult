@@ -13,6 +13,33 @@ if [ ! -f "${PIDFILE}" ]; then
 fi
 
 PID=$(cat "${PIDFILE}")
+
+# The pidfile lives in world-writable /tmp — never signal a PID that cannot
+# be identified as k6 (PID reuse or a planted file).
+case "${PID}" in
+    ''|*[!0-9]*)
+        echo "warning: ${PIDFILE} does not contain a numeric PID ('${PID}'); removing stale file" >&2
+        rm -f "${PIDFILE}"
+        exit 0
+        ;;
+esac
+
+if [ "$(uname -s)" = "Linux" ]; then
+    if [ ! -d "/proc/${PID}" ]; then
+        echo "k6 process ${PID} already exited"
+        rm -f "${PIDFILE}"
+        exit 0
+    fi
+    # Identity check: /proc/<pid>/cmdline must mention k6, otherwise the
+    # pidfile is stale (or planted) and the current holder of the PID is an
+    # unrelated process we must not signal.
+    if ! tr '\0' ' ' < "/proc/${PID}/cmdline" 2>/dev/null | grep -q "k6"; then
+        echo "warning: PID ${PID} from ${PIDFILE} is not a k6 process; refusing to kill, removing stale pidfile" >&2
+        rm -f "${PIDFILE}"
+        exit 0
+    fi
+fi
+
 if kill -0 "${PID}" 2>/dev/null; then
     echo "stopping k6 (PID: ${PID})"
     kill -TERM "${PID}"

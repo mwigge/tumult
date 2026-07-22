@@ -36,6 +36,16 @@ pub(crate) fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
                 format!("{plugin}::{function}"),
             ),
         ],
+        Provider::Script {
+            plugin, function, ..
+        } => vec![
+            KeyValue::new("resilience.target.type", "script"),
+            KeyValue::new("resilience.target.name", plugin.clone()),
+            KeyValue::new(
+                "resilience.target.component",
+                format!("{plugin}::{function}"),
+            ),
+        ],
     }
 }
 

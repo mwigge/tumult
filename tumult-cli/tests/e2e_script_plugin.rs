@@ -151,7 +151,8 @@ async fn e2e_script_plugin_produces_complete_journal() {
     let journal_path = dir.path().join("journal.toon");
 
     // Use the CLI's ProviderExecutor
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(tumult_cli::commands::ProviderExecutor);
+    let executor: Arc<dyn ActivityExecutor> =
+        Arc::new(tumult_cli::commands::ProviderExecutor::new());
     let controls = Arc::new(ControlRegistry::new());
     let config = RunConfig::default();
 
@@ -235,11 +236,220 @@ async fn e2e_failing_script_marks_failed() {
         probe_script.to_str().unwrap(),
     );
 
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(tumult_cli::commands::ProviderExecutor);
+    let executor: Arc<dyn ActivityExecutor> =
+        Arc::new(tumult_cli::commands::ProviderExecutor::new());
     let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&experiment, &executor, &controls, &RunConfig::default()).unwrap();
 
     assert_eq!(journal.status, ExperimentStatus::Failed);
     assert_eq!(journal.method_results[0].status, ActivityStatus::Failed);
+}
+
+// ── type: script provider dispatch ────────────────────────────
+
+/// Serializes the env-mutating tests in this binary: `TUMULT_PLUGIN_PATH`
+/// is process-global, and tests run on parallel threads.
+static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Restore an env var to its prior value on drop (test env hygiene).
+struct EnvGuard(&'static str, Option<String>);
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &std::path::Path) -> Self {
+        let prior = std::env::var(key).ok();
+        std::env::set_var(key, value);
+        Self(key, prior)
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.1 {
+            Some(value) => std::env::set_var(self.0, value),
+            None => std::env::remove_var(self.0),
+        }
+    }
+}
+
+/// Script plugin fixture: an action that echoes its `TUMULT_BROKER_ID`
+/// argument (proving args → TUMULT_* env propagation), a cleanup action,
+/// and a probe that echoes "200".
+fn setup_script_provider_plugin(dir: &std::path::Path) {
+    let plugin_dir = dir.join("plugins").join("test-chaos");
+    std::fs::create_dir_all(plugin_dir.join("actions")).unwrap();
+    std::fs::create_dir_all(plugin_dir.join("probes")).unwrap();
+
+    let manifest = "\
+name: test-chaos
+version: 0.1.0
+description: Test chaos plugin
+
+actions[2]:
+  - name: inject
+    script: actions/inject.sh
+    description: Inject fault
+  - name: cleanup
+    script: actions/cleanup.sh
+    description: Clean up
+
+probes[1]:
+  - name: check
+    script: probes/check.sh
+    description: Check health
+";
+    std::fs::write(plugin_dir.join("plugin.toon"), manifest).unwrap();
+
+    let scripts = [
+        (
+            "actions/inject.sh",
+            "#!/bin/sh\necho \"injected ${TUMULT_BROKER_ID}\"\n",
+        ),
+        ("actions/cleanup.sh", "#!/bin/sh\necho cleaned\n"),
+        ("probes/check.sh", "#!/bin/sh\necho 200\n"),
+    ];
+    for (name, content) in scripts {
+        let path = plugin_dir.join(name);
+        std::fs::write(&path, content).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+/// An experiment driven entirely by `type: script` providers: hypothesis
+/// probe, method action (with an argument), and rollback.
+fn script_provider_experiment() -> Experiment {
+    let script_provider = |function: &str, arguments| Provider::Script {
+        plugin: "test-chaos".into(),
+        function: function.into(),
+        arguments,
+        timeout_s: Some(5.0),
+    };
+    Experiment {
+        version: "v1".into(),
+        title: "E2E script provider dispatch".into(),
+        steady_state_hypothesis: Some(Hypothesis {
+            title: "Probe returns 200".into(),
+            probes: vec![Activity {
+                name: "health-probe".into(),
+                activity_type: ActivityType::Probe,
+                provider: script_provider("check", HashMap::new()),
+                tolerance: Some(Tolerance::Exact {
+                    value: serde_json::Value::Number(200.into()),
+                }),
+                ..Default::default()
+            }],
+        }),
+        method: vec![Activity {
+            name: "inject-fault".into(),
+            activity_type: ActivityType::Action,
+            provider: script_provider(
+                "inject",
+                HashMap::from([(
+                    "broker_id".to_string(),
+                    serde_json::Value::String("42".into()),
+                )]),
+            ),
+            ..Default::default()
+        }],
+        rollbacks: vec![Activity {
+            name: "cleanup".into(),
+            activity_type: ActivityType::Action,
+            provider: script_provider("cleanup", HashMap::new()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_script_provider_dispatches_through_discovery() {
+    let _lock = ENV_LOCK.lock().await;
+    let dir = TempDir::new().unwrap();
+    setup_script_provider_plugin(dir.path());
+    // Point discovery at the fixture plugin dir (TUMULT_PLUGIN_PATH is one of
+    // the default search paths).
+    let _guard = EnvGuard::set("TUMULT_PLUGIN_PATH", &dir.path().join("plugins"));
+
+    let experiment = script_provider_experiment();
+    tumult_core::engine::validate_experiment(&experiment).unwrap();
+
+    let executor: Arc<dyn ActivityExecutor> =
+        Arc::new(tumult_cli::commands::ProviderExecutor::new());
+    let controls = Arc::new(ControlRegistry::new());
+    // RollbackStrategy::Always: a clean run still exercises rollback dispatch.
+    let config = RunConfig {
+        rollback_strategy: tumult_core::execution::RollbackStrategy::Always,
+        ..RunConfig::default()
+    };
+
+    let journal = run_experiment(&experiment, &executor, &controls, &config).unwrap();
+
+    assert_eq!(journal.status, ExperimentStatus::Completed);
+    // The action ran the manifest-declared script, with the experiment
+    // argument exported as TUMULT_BROKER_ID.
+    assert_eq!(journal.method_results.len(), 1);
+    assert_eq!(journal.method_results[0].status, ActivityStatus::Succeeded);
+    assert_eq!(
+        journal.method_results[0].output.as_deref(),
+        Some("injected 42")
+    );
+    // The script probe satisfied its tolerance.
+    assert!(journal.steady_state_before.as_ref().unwrap().met);
+    // Rollback executed through the same dispatch.
+    assert_eq!(journal.rollback_results.len(), 1);
+    assert_eq!(
+        journal.rollback_results[0].status,
+        ActivityStatus::Succeeded
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_script_provider_unknown_plugin_and_action_name_available() {
+    let _lock = ENV_LOCK.lock().await;
+    let dir = TempDir::new().unwrap();
+    setup_script_provider_plugin(dir.path());
+    let _guard = EnvGuard::set("TUMULT_PLUGIN_PATH", &dir.path().join("plugins"));
+
+    let executor = tumult_cli::commands::ProviderExecutor::new();
+
+    let mut activity = Activity {
+        name: "inject".into(),
+        activity_type: ActivityType::Action,
+        provider: Provider::Script {
+            plugin: "no-such-plugin".into(),
+            function: "inject".into(),
+            arguments: HashMap::new(),
+            timeout_s: None,
+        },
+        ..Default::default()
+    };
+    let outcome = executor.execute(&activity);
+    assert!(!outcome.success);
+    let error = outcome.error.unwrap();
+    assert!(
+        error.contains("unknown script plugin: no-such-plugin"),
+        "{error}"
+    );
+    assert!(
+        error.contains("test-chaos"),
+        "error should list available: {error}"
+    );
+
+    activity.provider = Provider::Script {
+        plugin: "test-chaos".into(),
+        function: "no-such-action".into(),
+        arguments: HashMap::new(),
+        timeout_s: None,
+    };
+    let outcome = executor.execute(&activity);
+    assert!(!outcome.success);
+    let error = outcome.error.unwrap();
+    assert!(
+        error.contains("unknown test-chaos action: no-such-action"),
+        "{error}"
+    );
+    assert!(
+        error.contains("inject"),
+        "error should list available: {error}"
+    );
 }

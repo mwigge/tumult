@@ -26,9 +26,21 @@
 //! that vanish, which is worse than an error. Mutating clauses are therefore
 //! rejected before execution; see the guard in `engine.rs` for the
 //! (conservative, documented) token-scan limitation.
+//!
+//! # Resource limits
+//!
+//! Every query runs against a whole-graph snapshot, so compute and output are
+//! capped inside the engine (not just at the MCP layer): caller-supplied row
+//! caps are clamped to [`MAX_ROW_CAP`], and queries whose estimated expansion
+//! work exceeds [`MAX_EXPANSION_STEPS`] are rejected with
+//! [`CypherError::BudgetExceeded`] before the graph is rebuilt. Grafeo's own
+//! 30-second query timeout is the wall-clock backstop underneath both.
 
 mod engine;
 mod snapshot;
 
-pub use engine::{run_cypher, run_cypher_capped, CypherError, CypherTable, DEFAULT_ROW_CAP};
+pub use engine::{
+    run_cypher, run_cypher_capped, CypherError, CypherTable, DEFAULT_ROW_CAP, MAX_EXPANSION_STEPS,
+    MAX_ROW_CAP,
+};
 pub use snapshot::{GraphSnapshot, SnapshotEdge, SnapshotNode};

@@ -7,6 +7,18 @@
 use rust_mcp_sdk::error::SdkResult;
 use tumult_mcp::server::{serve, ServeOptions, Transport};
 
+/// Drop guard that shuts the OpenTelemetry providers down on every exit path
+/// from `main` — including `?` early returns — flushing pending spans and
+/// metrics. Mirrors the guard in tumult-cli's `main`; `TumultTelemetry::
+/// shutdown` takes `&self`, so `Drop` can call it directly.
+struct TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry);
+
+impl Drop for TelemetryShutdown {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
+
 fn parse_args() -> ServeOptions {
     let mut opts = ServeOptions::default();
 
@@ -83,5 +95,24 @@ fn parse_args() -> ServeOptions {
 
 #[tokio::main]
 async fn main() -> SdkResult<()> {
+    // Same quiet-by-default logging policy as tumult-cli: without an OTLP
+    // endpoint there is nowhere for telemetry to go, so default to `warn`
+    // unless the operator set RUST_LOG explicitly.
+    if std::env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT").is_none()
+        && std::env::var_os("RUST_LOG").is_none()
+    {
+        std::env::set_var("RUST_LOG", "warn");
+    }
+
+    // Initialize OTel (traces AND metrics — `TumultTelemetry::new` installs
+    // the meter provider internally; do not call `init_meter_provider` again)
+    // before serving, so `tumult-mcp` and `tumult mcp serve` behave
+    // identically. Without an OTLP endpoint both providers degrade to noop
+    // and the server runs exactly as before. The guard shuts both providers
+    // down (flushing metrics) on the shutdown path out of `serve`.
+    let otel_config = tumult_otel::config::TelemetryConfig::from_env();
+    let _telemetry_guard =
+        TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
+
     serve(parse_args()).await
 }

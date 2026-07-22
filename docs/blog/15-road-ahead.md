@@ -1,7 +1,7 @@
 ---
 title: "The Road Ahead"
 parent: Blog
-nav_order: 16
+nav_order: 15
 updated: 2026-07-21
 ---
 

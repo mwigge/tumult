@@ -1,7 +1,7 @@
 ---
 title: "Tumult 1.0: Release Retrospective"
 parent: Blog
-nav_order: 18
+nav_order: 17
 updated: 2026-07-21
 ---
 

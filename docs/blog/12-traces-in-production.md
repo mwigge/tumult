@@ -7,7 +7,7 @@ updated: 2026-07-21
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> The Full Span Waterfall: Tumult Traces in SigNoz
 
-*Part 12 of the Tumult series. [← Part 10: Chaos Under Load](./10-chaos-under-load.md)*
+*Part 12 of the Tumult series. [← Part 11: Chaos-Test Your AI Agent](./11-agentic-fault-injection.md)*
 
 ---
 
@@ -123,7 +123,7 @@ The tumult-collector is a purpose-built distribution compiled with the [OpenTele
 The entire infrastructure starts with one command:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up -d
 ```
 
 No configuration files to write. No collector pipelines to assemble. The observability stack is pre-wired.

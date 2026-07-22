@@ -42,7 +42,18 @@ pub(super) fn gameday_create(
 pub(super) fn gameday_run(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: GameDayRunTool = parse_args(params)?;
     let path = handler.resolve_path(&args.gameday_path)?;
-    Ok(tokio::task::block_in_place(|| tools::gameday_run(&path)).map(ToolOutput::from))
+    // A campaign runs its experiments sequentially under one enactment slot
+    // (see run_experiment); refuse while another enactment is in flight.
+    let Some(guard) = handler.enact_lock.try_acquire() else {
+        return Ok(Err(crate::error::ToolError::Execution(
+            "another fault-injection enactment is already running on this server; retry when it \
+             completes"
+                .into(),
+        )));
+    };
+    let result = tokio::task::block_in_place(|| tools::gameday_run(&path));
+    drop(guard);
+    Ok(result.map(ToolOutput::from))
 }
 
 pub(super) fn gameday_analyze(

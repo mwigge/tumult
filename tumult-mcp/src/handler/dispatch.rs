@@ -185,15 +185,62 @@ impl TumultHandler {
                 )
             })
     }
+
+    /// Shed floods cheaply, before authentication or dispatch work: one
+    /// token from the caller's bucket. The key is the MCP session id (the
+    /// SDK does not expose the peer IP at any layer the handler can hook);
+    /// requests without a session (stdio, pre-initialize) share one global
+    /// bucket. Disabled entirely when the limiter is configured with RPS 0.
+    fn check_rate_limit(
+        &self,
+        runtime: &Arc<dyn rust_mcp_sdk::McpServer>,
+    ) -> std::result::Result<(), RpcError> {
+        let client = runtime.session_id().unwrap_or_default();
+        if self.rate_limiter.check(&client) {
+            Ok(())
+        } else {
+            Err(RpcError::invalid_request()
+                .with_message("rate limit exceeded: too many requests; slow down".to_string()))
+        }
+    }
+}
+
+/// Resolve the analytics store path for a tool call. A viewer-role caller
+/// may not point `DuckDB` at arbitrary filesystem paths (store errors relay
+/// host filesystem layout), so the `store_path` override is honored for
+/// operators — and for open-mode local callers, who are unauthenticated by
+/// design — while viewers always get the default/configured store.
+pub(super) fn store_path_for(role: Option<Role>, requested: &str) -> String {
+    match role {
+        Some(Role::Viewer) => super::schema::default_store_path(),
+        Some(Role::Operator) | None => requested.to_string(),
+    }
 }
 
 #[async_trait]
 impl ServerHandler for TumultHandler {
     async fn handle_list_tools_request(
         &self,
-        _params: Option<PaginatedRequestParams>,
-        _runtime: Arc<dyn McpServer>,
+        params: Option<PaginatedRequestParams>,
+        runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<ListToolsResult, RpcError> {
+        self.check_rate_limit(&runtime)?;
+        // tools/list reveals the callable surface (including the destructive
+        // tools), so it goes through the same bearer gate as resources/list:
+        // when auth is configured a valid token (any role) is required; with
+        // no auth configured (loopback-only mode) it stays open.
+        let params = params.unwrap_or_default();
+        let meta_authorization = params
+            .meta
+            .as_ref()
+            .and_then(|m| m.extra.as_ref())
+            .and_then(|extra| extra.get("authorization"))
+            .and_then(|v| v.as_str())
+            .map(std::string::ToString::to_string);
+        let authorization = Self::resolve_authorization(meta_authorization, &runtime).await;
+        self.auth
+            .check(authorization.as_deref())
+            .map_err(|e| RpcError::invalid_request().with_message(format!("Unauthorized: {e}")))?;
         let mut tools = vec![
             RunExperimentTool::tool(),
             ValidateTool::tool(),
@@ -251,19 +298,19 @@ impl ServerHandler for TumultHandler {
     async fn handle_call_tool_request(
         &self,
         params: CallToolRequestParams,
-        _runtime: Arc<dyn McpServer>,
+        runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, CallToolError> {
-        // Acquire rate-limiting permit before any non-Send work
-        let _permit = self
-            .semaphore
-            .acquire()
-            .await
-            .map_err(|_| CallToolError::from_message("semaphore closed".to_string()))?;
+        // Shed floods cheaply, before any auth or dispatch work.
+        self.check_rate_limit(&runtime)
+            .map_err(|e| CallToolError::from_message(e.message))?;
 
         // Enforce bearer-token authentication and role-based access control.
-        // Clients pass the Authorization value via `_meta.authorization` since
-        // stdio transport has no HTTP header context at the handler level.
-        let authorization = Self::extract_authorization(&params);
+        // The Authorization value arrives either via `_meta.authorization`
+        // (stdio, or explicit override) or via the HTTP `Authorization:
+        // Bearer` header captured on the session runtime; explicit `_meta`
+        // takes precedence when both are present.
+        let authorization =
+            Self::resolve_authorization(Self::extract_authorization(&params), &runtime).await;
         let principal_role = match self.auth.authenticate(authorization.as_deref()) {
             Ok(role) => role,
             Err(e) => return Err(CallToolError::from_message(format!("Unauthorized: {e}"))),
@@ -281,6 +328,15 @@ impl ServerHandler for TumultHandler {
                 )));
             }
         }
+
+        // Acquire the concurrency permit only after the caller is
+        // authenticated and authorized — unauthenticated work must not hold
+        // execution slots.
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| CallToolError::from_message("semaphore closed".to_string()))?;
 
         tracing::info!(tool = %params.name, "MCP tool call");
         // SpanGuard contains a non-Send OTel context guard. Capture the active
@@ -301,8 +357,8 @@ impl ServerHandler for TumultHandler {
             "tumult_discover" => meta::discover(),
             "tumult_create_experiment" => experiment::create_experiment(self, &params)?,
             "tumult_query_traces" => journal::query_traces(self, &params)?,
-            "tumult_store_stats" => analytics::store_stats(&params)?,
-            "tumult_analyze_store" => analytics::analyze_store(&params)?,
+            "tumult_store_stats" => analytics::store_stats(&params, principal_role)?,
+            "tumult_analyze_store" => analytics::analyze_store(&params, principal_role)?,
             "tumult_list_experiments" => experiment::list_experiments(self, &params)?,
             "tumult_report" => journal::report(self, &params)?,
             "tumult_compliance" => analytics::compliance(self, &params)?,
@@ -320,16 +376,16 @@ impl ServerHandler for TumultHandler {
             "tumult_chaosgraph_query" => graph::chaosgraph_query(&params)?,
             "tumult_chaosgraph_neighbors" => graph::chaosgraph_neighbors(&params)?,
             "tumult_chaosgraph_coverage_gaps" => graph::chaosgraph_coverage_gaps(&params)?,
-            "tumult_chaosgraph_cypher" => graph::chaosgraph_cypher(&params)?,
+            "tumult_chaosgraph_cypher" => graph::chaosgraph_cypher(&params, principal_role)?,
             "tumult_fault_catalog" => meta::fault_catalog(&params)?,
             "tumult_scaffold_experiment" => experiment::scaffold_experiment(&params)?,
             "tumult_topology_import" => topology::topology_import(&params)?,
             "tumult_topology_map" => topology::topology_map(&params)?,
             "tumult_compliance_lineage" => topology::compliance_lineage(&params)?,
             "tumult_recommend_injection" => topology::recommend_injection(&params)?,
-            "tumult_autopilot_run" => autopilot::autopilot_run(&params)?,
-            "tumult_autopilot_status" => autopilot::autopilot_status(&params)?,
-            "tumult_autopilot_respond" => autopilot::autopilot_respond(&params)?,
+            "tumult_autopilot_run" => autopilot::autopilot_run(self, &params)?,
+            "tumult_autopilot_status" => autopilot::autopilot_status(&params, principal_role)?,
+            "tumult_autopilot_respond" => autopilot::autopilot_respond(self, &params)?,
             "tumult_autopilot_export" => autopilot::autopilot_export(&params)?,
             "tumult_autopilot_notify" => autopilot::autopilot_notify(&params)?,
             "tumult_whoami" => meta::whoami(&params, principal_role)?,
@@ -342,20 +398,44 @@ impl ServerHandler for TumultHandler {
     async fn handle_list_resources_request(
         &self,
         params: Option<PaginatedRequestParams>,
-        _runtime: Arc<dyn McpServer>,
+        runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<ListResourcesResult, RpcError> {
+        self.check_rate_limit(&runtime)?;
         let params = params.unwrap_or_default();
         // Resources go through the same bearer gate as tool calls.
-        self.check_resource_auth(params.meta.as_ref().and_then(|m| m.extra.as_ref()))?;
+        let authorization = Self::resolve_authorization(
+            params
+                .meta
+                .as_ref()
+                .and_then(|m| m.extra.as_ref())
+                .and_then(|extra| extra.get("authorization"))
+                .and_then(|v| v.as_str())
+                .map(std::string::ToString::to_string),
+            &runtime,
+        )
+        .await;
+        self.check_resource_auth(authorization.as_deref())?;
         tokio::task::block_in_place(|| self.list_resources_page(params.cursor.as_deref()))
     }
 
     async fn handle_read_resource_request(
         &self,
         params: ReadResourceRequestParams,
-        _runtime: Arc<dyn McpServer>,
+        runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<ReadResourceResult, RpcError> {
-        self.check_resource_auth(params.meta.as_ref().and_then(|m| m.extra.as_ref()))?;
+        self.check_rate_limit(&runtime)?;
+        let authorization = Self::resolve_authorization(
+            params
+                .meta
+                .as_ref()
+                .and_then(|m| m.extra.as_ref())
+                .and_then(|extra| extra.get("authorization"))
+                .and_then(|v| v.as_str())
+                .map(std::string::ToString::to_string),
+            &runtime,
+        )
+        .await;
+        self.check_resource_auth(authorization.as_deref())?;
         tokio::task::block_in_place(|| self.read_resource_uri(&params.uri))
     }
 }

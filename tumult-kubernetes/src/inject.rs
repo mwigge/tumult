@@ -69,6 +69,47 @@ pub const DEFAULT_STRESS_IMAGE: &str = "ghcr.io/colinianking/stress-ng:latest";
 /// Default network interface a pod's primary veth is exposed as.
 pub const DEFAULT_IFACE: &str = "eth0";
 
+/// Validate a network interface name that is interpolated into the in-pod
+/// `sh -c` script: ASCII letters/digits plus `_ . : -` (covers `eth0`,
+/// `ens1f0.50`, `br-9f2d1c`, `vlan:1`), at most 64 chars. Anything else is
+/// rejected before it can smuggle shell metacharacters into a `NET_ADMIN`
+/// container running inside the target pod.
+fn validate_iface(iface: &str) -> Result<(), KubeError> {
+    let valid = !iface.is_empty()
+        && iface.len() <= 64
+        && iface
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'));
+    if valid {
+        Ok(())
+    } else {
+        Err(KubeError::InvalidConfig {
+            field: "iface",
+            reason: format!(
+                "`{iface}` is not a usable interface name; allowed: letters, digits, `_`, `.`, `:`, `-` (max 64 chars)"
+            ),
+        })
+    }
+}
+
+/// Validate a container image reference before it lands in the ephemeral
+/// container spec: non-empty, no whitespace, no quotes — it travels through a
+/// JSON patch and a generated shell command line.
+fn validate_image(image: &str) -> Result<(), KubeError> {
+    let valid = !image.is_empty()
+        && image
+            .chars()
+            .all(|c| !c.is_whitespace() && c != '"' && c != '\'');
+    if valid {
+        Ok(())
+    } else {
+        Err(KubeError::InvalidConfig {
+            field: "image",
+            reason: "image reference must not be empty or contain whitespace or quotes".to_string(),
+        })
+    }
+}
+
 /// Kind of in-pod resource stress to apply.
 #[derive(Debug, Clone, Copy)]
 pub enum StressKind {
@@ -97,13 +138,39 @@ fn unique_suffix() -> String {
     format!("{nanos:08x}")
 }
 
+/// Result of [`resolve_target_pod`]: the pod chosen for injection plus, when a
+/// label selector was used, how many pods it matched — so a wide selector's
+/// arbitrary victim choice is visible in the action output instead of silent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedPod {
+    /// Name of the pod to target.
+    pub name: String,
+    /// Number of pods the selector matched; `None` when an explicit pod name
+    /// was given and no list call was made.
+    pub matched: Option<usize>,
+}
+
+impl ResolvedPod {
+    /// Prepend the selector match count to an action's output for
+    /// transparency (`matched 3 pods, targeting pod/foo; …`). An explicit pod
+    /// target leaves the output untouched.
+    #[must_use]
+    pub fn annotate(&self, output: &str) -> String {
+        self.matched.map_or_else(
+            || output.to_string(),
+            |n| format!("matched {n} pods, targeting pod/{}; {output}", self.name),
+        )
+    }
+}
+
 /// Resolve a concrete target pod name from an explicit name or a label
 /// selector.
 ///
 /// When `pod` is `Some`, it is returned as-is (no API call). Otherwise
 /// `label_selector` must be `Some`; the namespace is listed and the first
 /// matching pod is chosen — mirroring how Chaos Mesh / Litmus pick a victim
-/// from a selector.
+/// from a selector. The number of matched pods is reported in the result so
+/// callers can surface how arbitrary that choice was.
 ///
 /// # Errors
 ///
@@ -115,9 +182,12 @@ pub async fn resolve_target_pod(
     namespace: &str,
     pod: Option<&str>,
     label_selector: Option<&str>,
-) -> Result<String, KubeError> {
+) -> Result<ResolvedPod, KubeError> {
     if let Some(name) = pod {
-        return Ok(name.to_string());
+        return Ok(ResolvedPod {
+            name: name.to_string(),
+            matched: None,
+        });
     }
     let Some(selector) = label_selector else {
         return Err(KubeError::InvalidConfig {
@@ -128,8 +198,13 @@ pub async fn resolve_target_pod(
     let pods: Api<Pod> = Api::namespaced(client, namespace);
     let lp = kube::api::ListParams::default().labels(selector);
     let list = pods.list(&lp).await?;
+    let matched = list.items.len();
     list.into_iter()
         .find_map(|p| p.metadata.name)
+        .map(|name| ResolvedPod {
+            name,
+            matched: Some(matched),
+        })
         .ok_or_else(|| KubeError::InvalidConfig {
             field: "label_selector",
             reason: format!("no pods matched selector `{selector}` in namespace `{namespace}`"),
@@ -154,7 +229,9 @@ fn append_ephemeral_container(container: serde_json::Value) -> serde_json::Value
 ///
 /// # Errors
 ///
-/// - [`KubeError::InvalidConfig`] if `delay_ms` or `duration_s` is zero.
+/// - [`KubeError::InvalidConfig`] if `delay_ms` or `duration_s` is zero, or if
+///   `iface` / `image` fail the pre-injection validation (shell-metacharacter
+///   guard).
 /// - [`KubeError::Api`] if the apiserver rejects the subresource patch (e.g.
 ///   pod not found, ephemeral containers disabled, `PodSecurity` denies
 ///   `NET_ADMIN`).
@@ -183,6 +260,8 @@ pub async fn pod_network_latency(
             reason: "duration must be greater than zero".to_string(),
         });
     }
+    validate_iface(iface)?;
+    validate_image(image)?;
 
     let name = format!("tumult-netem-{}", unique_suffix());
     let _span =
@@ -233,8 +312,9 @@ pub async fn pod_network_latency(
 ///
 /// # Errors
 ///
-/// - [`KubeError::InvalidConfig`] if `duration_s` is zero, or if the requested
-///   stress amount is zero (no CPU workers / no memory bytes).
+/// - [`KubeError::InvalidConfig`] if `duration_s` is zero, if the requested
+///   stress amount is zero (no CPU workers / no memory bytes), or if `image`
+///   fails the pre-injection validation.
 /// - [`KubeError::Api`] if the apiserver rejects the subresource patch.
 #[tracing::instrument(skip(client))]
 #[must_use = "callers must check whether the stress fault was injected"]
@@ -253,6 +333,7 @@ pub async fn pod_stress(
             reason: "duration must be greater than zero".to_string(),
         });
     }
+    validate_image(image)?;
 
     let (stress_args, summary) = match kind {
         StressKind::Cpu { workers } => {
@@ -320,5 +401,27 @@ mod tests {
     fn append_patch_nests_container_under_spec() {
         let patch = append_ephemeral_container(serde_json::json!({ "name": "x" }));
         assert_eq!(patch["spec"]["ephemeralContainers"][0]["name"], "x");
+    }
+
+    #[test]
+    fn iface_whitelist_accepts_common_names() {
+        for iface in ["eth0", "ens1f0.50", "br-9f2d1c", "vlan:1", "lo"] {
+            assert!(validate_iface(iface).is_ok(), "{iface} must be accepted");
+        }
+    }
+
+    #[test]
+    fn iface_whitelist_rejects_shell_metacharacters() {
+        for bad in ["eth0;id", "eth 0", "eth0`whoami`", "$(id)", "eth\t0", ""] {
+            assert!(validate_iface(bad).is_err(), "{bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn image_validation_rejects_whitespace_and_quotes() {
+        assert!(validate_image("ghcr.io/nicolaka/netshoot:latest").is_ok());
+        for bad in ["img tag", "img\"x", "img'x", "img\nid", ""] {
+            assert!(validate_image(bad).is_err(), "{bad:?} must be rejected");
+        }
     }
 }

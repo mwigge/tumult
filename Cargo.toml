@@ -42,7 +42,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.16.1"
+version = "2.17.0"
 edition = "2021"
 rust-version = "1.91.1"
 license = "Apache-2.0"
@@ -119,6 +119,9 @@ rust-mcp-sdk = "0.9"
 
 # Cancellation
 tokio-util = "0.7"
+
+# Unix process-group signalling (used in tumult-cli for timeout kills)
+libc = "0.2"
 
 # Pattern matching (used in tumult-core for experiment-name validation)
 regex-lite = "0.1"

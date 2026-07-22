@@ -3,13 +3,16 @@ version: 0.1.0
 description: Kafka broker chaos actions and consumer/producer probes
 author: tumult
 
-actions[3]:
+actions[4]:
   - name: kill-broker
     script: actions/kill-broker.sh
     description: Kill a Kafka broker process
   - name: partition-broker
     script: actions/partition-broker.sh
     description: Network partition a Kafka broker via iptables
+  - name: partition-broker-rollback
+    script: actions/partition-broker-rollback.sh
+    description: Remove the iptables DROP rules added by partition-broker (idempotent)
   - name: add-broker-latency
     script: actions/add-broker-latency.sh
     description: Add network latency to a Kafka broker

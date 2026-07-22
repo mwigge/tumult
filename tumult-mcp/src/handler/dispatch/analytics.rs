@@ -7,10 +7,10 @@ use crate::handler::schema::{
     AnalyzeStoreTool, AnalyzeTool, ComplianceTool, CoverageTool, RecommendTool, StoreStatsTool,
     TrendTool,
 };
-use crate::handler::TumultHandler;
+use crate::handler::{Role, TumultHandler};
 use crate::tools;
 
-use super::{parse_args, Dispatched, ToolOutput};
+use super::{parse_args, store_path_for, Dispatched, ToolOutput};
 
 pub(super) fn analyze(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: AnalyzeTool = parse_args(params)?;
@@ -18,15 +18,17 @@ pub(super) fn analyze(handler: &TumultHandler, params: &CallToolRequestParams) -
     Ok(tokio::task::block_in_place(|| tools::analyze(&path, &args.query)).map(ToolOutput::from))
 }
 
-pub(super) fn store_stats(params: &CallToolRequestParams) -> Dispatched {
+pub(super) fn store_stats(params: &CallToolRequestParams, role: Option<Role>) -> Dispatched {
     let args: StoreStatsTool = parse_args(params)?;
-    Ok(tokio::task::block_in_place(|| tools::store_stats(&args.store_path)).map(ToolOutput::from))
+    let store_path = store_path_for(role, &args.store_path);
+    Ok(tokio::task::block_in_place(|| tools::store_stats(&store_path)).map(ToolOutput::from))
 }
 
-pub(super) fn analyze_store(params: &CallToolRequestParams) -> Dispatched {
+pub(super) fn analyze_store(params: &CallToolRequestParams, role: Option<Role>) -> Dispatched {
     let args: AnalyzeStoreTool = parse_args(params)?;
+    let store_path = store_path_for(role, &args.store_path);
     Ok(
-        tokio::task::block_in_place(|| tools::analyze_persistent(&args.store_path, &args.query))
+        tokio::task::block_in_place(|| tools::analyze_persistent(&store_path, &args.query))
             .map(ToolOutput::from),
     )
 }

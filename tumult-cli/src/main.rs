@@ -1,6 +1,7 @@
 use tumult_cli::commands;
 use tumult_cli::commands::{build_load_override, parse_var_args};
 
+use anyhow::Context;
 use clap::Parser;
 
 use cli::{
@@ -9,6 +10,18 @@ use cli::{
 };
 
 mod cli;
+
+/// Drop guard that flushes OpenTelemetry spans on every exit path from
+/// `main` — including `?` early returns — so telemetry is not lost exactly
+/// on the failed runs where it matters most. `TumultTelemetry::shutdown`
+/// takes `&self`, so the guard can call it directly from `Drop`.
+struct TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry);
+
+impl Drop for TelemetryShutdown {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
 
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
@@ -25,9 +38,12 @@ async fn main() -> anyhow::Result<()> {
         std::env::set_var("RUST_LOG", "warn");
     }
 
-    // Initialize OpenTelemetry from environment
+    // Initialize OpenTelemetry from environment. The guard flushes spans on
+    // every exit path below (success or early `?` return), preserving the
+    // existing exit codes.
     let otel_config = tumult_otel::config::TelemetryConfig::from_env();
-    let telemetry = tumult_otel::telemetry::TumultTelemetry::new(otel_config);
+    let _telemetry_guard =
+        TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
 
     let cli = Cli::parse();
 
@@ -35,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Run {
             experiment,
             journal_path,
+            force,
             dry_run,
             rollback_strategy,
             baseline_mode: _,
@@ -54,10 +71,11 @@ async fn main() -> anyhow::Result<()> {
                 RollbackStrategy::Never => tumult_core::execution::RollbackStrategy::Never,
             };
             let var_map = parse_var_args(&vars)?;
-            let load_override = build_load_override(load, load_script, load_vus, load_duration);
+            let load_override = build_load_override(load, load_script, load_vus, load_duration)?;
             commands::cmd_run(
                 &experiment,
                 &journal_path,
+                force,
                 dry_run,
                 strategy,
                 !no_ingest,
@@ -156,8 +174,11 @@ async fn main() -> anyhow::Result<()> {
             generate_experiments,
         } => {
             let options = tumult_intelligence::RecommendOptions {
-                store_path: store_path
-                    .unwrap_or_else(tumult_analytics::AnalyticsStore::default_path),
+                store_path: match store_path {
+                    Some(path) => path,
+                    None => tumult_analytics::AnalyticsStore::default_path()
+                        .context("failed to determine analytics store path")?,
+                },
                 goal,
                 model,
                 include_draft: !no_draft,
@@ -395,11 +416,17 @@ async fn main() -> anyhow::Result<()> {
                     matches!(format, GraphFormat::Json),
                 )?;
             }
-            AutopilotAction::Approve { id, store } => {
-                commands::cmd_autopilot_respond(store.as_deref(), &id, true, None)?;
+            AutopilotAction::Approve { id, policy, store } => {
+                commands::cmd_autopilot_respond(store.as_deref(), &id, true, None, Some(&policy))?;
             }
             AutopilotAction::Deny { id, reason, store } => {
-                commands::cmd_autopilot_respond(store.as_deref(), &id, false, reason.as_deref())?;
+                commands::cmd_autopilot_respond(
+                    store.as_deref(),
+                    &id,
+                    false,
+                    reason.as_deref(),
+                    None,
+                )?;
             }
             AutopilotAction::NotifyChange {
                 service,
@@ -428,8 +455,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Flush OTel spans before exit
-    telemetry.shutdown();
-
+    // OTel spans are flushed by the TelemetryShutdown guard on all paths.
     Ok(())
 }

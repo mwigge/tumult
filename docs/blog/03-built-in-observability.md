@@ -43,48 +43,44 @@ Tumult solves both problems by generating the trace context itself.
 Every Tumult experiment produces a structured span tree:
 
 ```
-tumult.experiment (root span)
-│  experiment_id: 550e8400-e29b-41d4-a716-446655440000
-│  experiment_name: "PostgreSQL failover recovery"
+resilience.experiment (root span)
+│  resilience.experiment.id: 550e8400-e29b-41d4-a716-446655440000
+│  resilience.experiment.title: "PostgreSQL failover recovery"
 │  status: deviated
 │
 ├── resilience.hypothesis.before
 │   │  hypothesis_met: true
 │   │  duration_ms: 234
 │   │
-│   └── tumult.probe: health-check
+│   └── resilience.probe: health-check
 │          outcome: success
 │          duration_ms: 107
-│          resilience.probe_name: "health-check"
+│          resilience.action.name: "health-check"
 │
-├── tumult.method
-│   │  step_count: 2
-│   │
-│   ├── tumult.action: kill-db-connections
-│   │      plugin: tumult-db
-│   │      outcome: success
-│   │      duration_ms: 18
-│   │      resilience.fault.type: state
-│   │      resilience.fault.subtype: connection-kill
-│   │
-│   └── tumult.probe: connection-count
-│          outcome: success
-│          duration_ms: 31
-│          output: "0"
+├── resilience.action: kill-db-connections
+│      plugin: tumult-db-postgres
+│      outcome: success
+│      duration_ms: 18
+│      resilience.action.name: "kill-db-connections"
+│      resilience.activity.type: action
+│
+├── resilience.probe: connection-count
+│      outcome: success
+│      duration_ms: 31
+│      output: "0"
 │
 ├── resilience.hypothesis.after
 │   │  hypothesis_met: false
 │   │  duration_ms: 189
 │   │
-│   └── tumult.probe: health-check
+│   └── resilience.probe: health-check
 │          outcome: failure
 │          duration_ms: 5003
 │          error: "timeout after 5s"
 │
-└── tumult.rollback
-    └── tumult.action: restore-connections
-           outcome: success
-           duration_ms: 22
+└── resilience.rollback: wait-for-reconnect
+       outcome: success
+       duration_ms: 22
 ```
 
 This is not a log. It is a distributed trace. Open it in Jaeger's UI and you see the timeline: the hypothesis passing before fault injection, the action executing, the hypothesis probe timing out after fault injection, the rollback restoring state. The entire causal story in a single view.

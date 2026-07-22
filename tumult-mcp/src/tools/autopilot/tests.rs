@@ -163,6 +163,15 @@ fn decision(id: &str, verdict: &str) -> DecisionRecord {
     }
 }
 
+/// A seeded decision bound to a concrete playbook file and policy hash — the
+/// shape the approval re-gate needs to re-evaluate.
+fn decision_bound(id: &str, verdict: &str, playbook: &str, policy_hash: &str) -> DecisionRecord {
+    let mut record = decision(id, verdict);
+    record.playbook = Some(playbook.into());
+    record.policy_hash = policy_hash.into();
+    record
+}
+
 #[test]
 fn once_without_execute_records_decisions_and_graph_lineage() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -176,6 +185,7 @@ fn once_without_execute_records_decisions_and_graph_lineage() {
         policy_path.to_str().unwrap(),
         false,
         None,
+        0,
     )
     .unwrap();
 
@@ -217,6 +227,7 @@ fn once_with_disabled_policy_is_an_error() {
         policy_path.to_str().unwrap(),
         false,
         None,
+        0,
     )
     .unwrap_err();
     assert!(err.to_string().contains("disabled"), "{err}");
@@ -261,8 +272,15 @@ fn respond_deny_appends_the_veto_feedback_event() {
             .unwrap();
     }
 
-    let report =
-        autopilot_respond(db.to_str().unwrap(), "d-prop", false, Some("too risky")).unwrap();
+    let report = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        false,
+        Some("too risky"),
+        None,
+        0,
+    )
+    .unwrap();
     assert_eq!(report.structured["decision_id"], "d-prop");
     assert_eq!(report.structured["action"], "human_denied");
 
@@ -272,7 +290,7 @@ fn respond_deny_appends_the_veto_feedback_event() {
     drop(store);
 
     // A decision takes exactly one human response.
-    let err = autopilot_respond(db.to_str().unwrap(), "d-prop", false, None).unwrap_err();
+    let err = autopilot_respond(db.to_str().unwrap(), "d-prop", false, None, None, 0).unwrap_err();
     assert!(err.to_string().contains("already resolved"), "{err}");
 }
 
@@ -280,7 +298,8 @@ fn respond_deny_appends_the_veto_feedback_event() {
 fn respond_on_unknown_decision_is_not_found() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
-    let err = autopilot_respond(db.to_str().unwrap(), "no-such-id", true, None).unwrap_err();
+    let err =
+        autopilot_respond(db.to_str().unwrap(), "no-such-id", true, None, None, 0).unwrap_err();
     assert!(matches!(err, ToolError::NotFound(_)), "{err}");
 }
 
@@ -300,4 +319,298 @@ fn export_writes_both_parquet_tables() {
     assert_eq!(report.structured["dir"], out.to_str().unwrap());
     assert!(out.join("autopilot_decisions.parquet").exists());
     assert!(out.join("autopilot_events.parquet").exists());
+}
+
+// ── Concurrency veto (#3) ──────────────────────────────────────
+
+#[test]
+fn once_with_enactment_in_flight_vetoes_enact_verdicts() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = seed_broken_store(dir.path());
+    crate::tools::topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
+    with_plugin_catalog(dir.path());
+    let policy_path = write_enabled_policy(dir.path());
+
+    // The same pass that yields decisions with no enactment in flight must
+    // veto every enact verdict once the ledger reads 1 — and with
+    // execute=true nothing may run.
+    let report = autopilot_once(
+        db.to_str().unwrap(),
+        policy_path.to_str().unwrap(),
+        true,
+        None,
+        1,
+    )
+    .unwrap();
+    let decisions = report.structured["decisions"].as_array().unwrap();
+    assert!(!decisions.is_empty(), "expected at least one decision");
+    assert_eq!(
+        report.structured["enacted"], 0,
+        "a concurrent enactment must veto every enact verdict"
+    );
+    assert!(
+        decisions.iter().all(|d| d["run_status"].is_null()),
+        "vetoed decisions must not run: {decisions:?}"
+    );
+    let vetoed_on_concurrency = decisions.iter().any(|d| {
+        d["verdict"] == "veto"
+            && d["detail"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("no_concurrent")
+    });
+    assert!(
+        vetoed_on_concurrency,
+        "at least one decision must veto on ambient.no_concurrent_experiment: {decisions:?}"
+    );
+    assert!(
+        !dir.path().join("autopilot-journals").exists(),
+        "no playbook journal may be written when the gate vetoes"
+    );
+}
+
+// ── Approval re-gate (#2) ──────────────────────────────────────
+
+#[test]
+fn respond_approve_requires_policy_path() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    {
+        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-prop", "propose"))
+            .unwrap();
+    }
+
+    let err = autopilot_respond(db.to_str().unwrap(), "d-prop", true, None, None, 0).unwrap_err();
+    assert!(err.to_string().contains("policy_path is required"), "{err}");
+
+    // The usage error is validated before any event is appended: the
+    // decision must remain unanswered.
+    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    assert!(
+        !matches!(
+            status.last_event.as_deref(),
+            Some("human_approved" | "human_denied")
+        ),
+        "no response event may be recorded: {:?}",
+        status.last_event
+    );
+}
+
+#[test]
+fn respond_approve_refused_when_policy_changed() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let playbook = crate::tools::test_support::write_valid_experiment(dir.path());
+    {
+        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        store
+            .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, "old-hash"))
+            .unwrap();
+    }
+    let policy_path = write_enabled_policy(dir.path());
+
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        None,
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("approval refused"), "{err}");
+    assert!(err.to_string().contains("policy changed"), "{err}");
+
+    // The refusal is part of the audit trail, after the human response.
+    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    assert_eq!(status.last_event.as_deref(), Some("re_gate_refused"));
+    drop(store);
+    assert!(
+        !dir.path().join("autopilot-journals").exists(),
+        "a refused approval must not run the playbook"
+    );
+}
+
+#[test]
+fn respond_approve_refused_when_gate_now_vetoes() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let playbook = crate::tools::test_support::write_valid_experiment(dir.path());
+    let policy_path = write_enabled_policy(dir.path());
+    let hash = tumult_autopilot::policy_hash(&std::fs::read_to_string(&policy_path).unwrap());
+    {
+        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        store
+            .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, &hash))
+            .unwrap();
+    }
+
+    // The policy hash matches, but the enactment ledger now reads 1: the
+    // re-gate must veto the stale approval instead of executing it.
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        Some("looks good"),
+        Some(policy_path.to_str().unwrap()),
+        1,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("approval refused by gate re-evaluation"),
+        "{err}"
+    );
+    assert!(
+        err.to_string().contains("no_concurrent_experiment"),
+        "{err}"
+    );
+
+    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    assert_eq!(status.last_event.as_deref(), Some("re_gate_refused"));
+    drop(store);
+    assert!(
+        !dir.path().join("autopilot-journals").exists(),
+        "a vetoed re-gate must not run the playbook"
+    );
+}
+
+#[test]
+fn load_policy_parse_error_relays_no_file_content() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let policy_path = dir.path().join("autopilot.toml");
+    // A secret-looking value in a malformed file must not be echoed back.
+    std::fs::write(&policy_path, "[autopilot]\nenabled = \"hunter2-secret\n").unwrap();
+
+    let err = autopilot_once(
+        db.to_str().unwrap(),
+        policy_path.to_str().unwrap(),
+        false,
+        None,
+        0,
+    )
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("invalid TOML"), "{msg}");
+    assert!(
+        !msg.contains("hunter2-secret"),
+        "parse error must not relay file content: {msg}"
+    );
+}
+
+/// An echo-backed probe whose output satisfies its tolerance — the guard
+/// telemetry pre-flight runs it once and sees the safe condition hold.
+fn echo_probe(name: &str) -> Activity {
+    Activity {
+        name: name.into(),
+        activity_type: ActivityType::Probe,
+        provider: Provider::Process {
+            path: "echo".into(),
+            arguments: vec!["hello".into()],
+            env: std::collections::HashMap::new(),
+            timeout_s: Some(5.0),
+        },
+        tolerance: Some(tumult_core::types::Tolerance::Exact {
+            value: serde_json::Value::String("hello".into()),
+        }),
+        pause_before_s: None,
+        pause_after_s: None,
+        background: false,
+        label_selector: None,
+    }
+}
+
+/// Write an enact-eligible playbook: a steady-state probe, exactly one
+/// fault, a rollback, and a guard whose pre-flight passes. Returns the path.
+fn write_guarded_playbook(dir: &std::path::Path) -> String {
+    let fault = Activity {
+        name: "inject".into(),
+        activity_type: ActivityType::Action,
+        ..echo_probe("inject")
+    };
+    let rollback = Activity {
+        name: "rollback".into(),
+        activity_type: ActivityType::Action,
+        tolerance: None,
+        ..echo_probe("rollback")
+    };
+    let exp = Experiment {
+        title: "enact-eligible playbook".into(),
+        steady_state_hypothesis: Some(tumult_core::types::Hypothesis {
+            title: "target observable".into(),
+            probes: vec![echo_probe("steady-probe")],
+        }),
+        method: vec![fault],
+        guards: vec![tumult_core::types::Guard {
+            name: "guard".into(),
+            probe: echo_probe("guard-probe"),
+            min_breaches: 1,
+        }],
+        rollbacks: vec![rollback],
+        ..Default::default()
+    };
+    let toon = toon_format::encode_default(&exp).unwrap();
+    let path = dir.join("playbook.toon");
+    std::fs::write(&path, toon).unwrap();
+    path.to_str().unwrap().to_string()
+}
+
+#[test]
+fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let playbook = write_guarded_playbook(dir.path());
+    // A policy under which the decision's class is enact-eligible: tier
+    // listed, class pretrusted (no autonomy record needed), guard required
+    // and present with a passing telemetry pre-flight.
+    let policy_path = dir.path().join("autopilot.toml");
+    std::fs::write(
+        &policy_path,
+        format!(
+            "[autopilot]\nenabled = true\nenact_tiers = [\"data\"]\n\n\
+             [[autopilot.playbook]]\nplugin = \"tumult-db\"\naction = \"kill-primary\"\n\
+             experiment = \"{playbook}\"\n\n\
+             [[autopilot.pretrusted]]\nplugin = \"tumult-db\"\naction = \"kill-primary\"\n\
+             tier = \"data\"\n"
+        ),
+    )
+    .unwrap();
+    let hash = tumult_autopilot::policy_hash(&std::fs::read_to_string(&policy_path).unwrap());
+    {
+        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        store
+            .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, &hash))
+            .unwrap();
+    }
+
+    let report = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        Some("approved for enact"),
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .unwrap();
+    assert_eq!(report.structured["action"], "human_approved");
+    assert!(report.text.contains("ran "), "{}", report.text);
+
+    // Audit order: approved → re-gate passed → run completed.
+    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    assert_eq!(status.last_event.as_deref(), Some("run_completed"));
+    drop(store);
+    assert!(
+        dir.path()
+            .join("autopilot-journals")
+            .join("d-prop.journal.toon")
+            .exists(),
+        "an approved, gate-passing decision must run its playbook"
+    );
 }

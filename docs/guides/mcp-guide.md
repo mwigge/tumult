@@ -41,17 +41,51 @@ flowchart LR
     server -->|operator and explicit approval| targets[target systems]
 ```
 
+## Authentication
+
+Two credential channels are supported:
+
+- **HTTP transport:** send the standard `Authorization: Bearer <token>`
+  header. When authentication is configured, requests without the header are
+  answered `401` at the HTTP layer before the JSON-RPC payload is read.
+- **stdio transport (or explicit override):** pass
+  `_meta.authorization: "Bearer <token>"` in the JSON-RPC request params. An
+  explicit `_meta` value takes precedence when both channels are present.
+
+Once any token is configured (`TUMULT_MCP_AUTH_CONFIG` or `TUMULT_MCP_TOKEN`),
+every request must authenticate — including `tools/list`, `resources/list`,
+and `resources/read`. Viewer tokens may call read-only tools; operator tokens
+call everything. When no token is configured the server runs open, intended
+for loopback local development, and the bind guard refuses a network-exposed
+HTTP address in that mode.
+
+The HTTP transport rate-limits per client session with a token bucket
+(default 20 requests/second sustained, burst 60). Tune or disable it via
+environment:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TUMULT_MCP_RATE_LIMIT_RPS` | `20` | Sustained requests per second per client; `0` disables limiting |
+| `TUMULT_MCP_RATE_LIMIT_BURST` | `60` | Bucket capacity (maximum burst) |
+
 ## Safety contract
 
 Every tool declares MCP annotation hints for read-only, destructive,
 idempotent, and open-world behavior. Viewer credentials can use read-only
-tools. Writers and fault executors require the operator role.
+tools. Writers and fault executors require the operator role. A viewer's
+`store_path` argument is ignored — viewers always read the default store.
 
-`tumult_run_experiment` and `tumult_gameday_run` are destructive because they
-can inject faults into real targets. MCP clients should require explicit human
-approval for them. Recommendations that invoke a configured external agent may
-also make an open-world model request, but proposed experiment files still pass
-Tumult's parser and validator before being written.
+The destructive tools are four: `tumult_run_experiment`, `tumult_gameday_run`,
+`tumult_autopilot_run` (when `execute=true`), and `tumult_autopilot_respond`
+(when `approve=true`). MCP clients should require explicit human approval for
+them by name, not by annotation alone. An autopilot approval re-evaluates the
+full policy gate against current state before the playbook runs, and at most
+one fault-injection enactment runs at a time server-wide. Note that even with
+`execute=false`, an autopilot pass runs guard probes once against the target
+during pre-flight; no faults are injected. Recommendations that invoke a
+configured external agent may also make an open-world model request, but
+proposed experiment files still pass Tumult's parser and validator before
+being written.
 
 ## Structured responses
 

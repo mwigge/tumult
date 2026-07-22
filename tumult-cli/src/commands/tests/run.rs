@@ -17,6 +17,7 @@ async fn run_valid_experiment_produces_journal() {
         &exp_path,
         &journal_path,
         false,
+        false,
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
@@ -37,6 +38,7 @@ async fn run_dry_run_does_not_create_journal() {
     let result = cmd_run(
         &exp_path,
         &journal_path,
+        false,
         true,
         RollbackStrategy::OnDeviation,
         false,
@@ -54,6 +56,7 @@ async fn run_nonexistent_file_returns_error() {
     let result = cmd_run(
         Path::new("/nonexistent/experiment.toon"),
         Path::new("journal.toon"),
+        false,
         false,
         RollbackStrategy::OnDeviation,
         false,
@@ -73,6 +76,7 @@ async fn run_invalid_toon_returns_error() {
         &exp_path,
         &dir.path().join("journal.toon"),
         false,
+        false,
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
@@ -91,6 +95,7 @@ async fn run_empty_method_returns_error() {
         &exp_path,
         &dir.path().join("journal.toon"),
         false,
+        false,
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
@@ -98,6 +103,212 @@ async fn run_empty_method_returns_error() {
     )
     .await;
     assert!(result.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_refuses_to_overwrite_existing_journal_without_force() {
+    let dir = TempDir::new().unwrap();
+    let exp_path = write_valid_experiment(dir.path());
+    let journal_path = dir.path().join("journal.toon");
+
+    // First run writes the journal.
+    cmd_run(
+        &exp_path,
+        &journal_path,
+        false,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // Second run without --force refuses before executing anything.
+    let err = cmd_run(
+        &exp_path,
+        &journal_path,
+        false,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("journal already exists"), "{err}");
+    assert!(err.to_string().contains("--force"), "{err}");
+
+    // With --force the rerun succeeds.
+    cmd_run(
+        &exp_path,
+        &journal_path,
+        true,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dry_run_ignores_existing_journal() {
+    let dir = TempDir::new().unwrap();
+    let exp_path = write_valid_experiment(dir.path());
+    let journal_path = dir.path().join("journal.toon");
+    std::fs::write(&journal_path, "previous run").unwrap();
+
+    // A dry run writes no journal, so an existing file must not block it.
+    let result = cmd_run(
+        &exp_path,
+        &journal_path,
+        false,
+        true,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        std::fs::read_to_string(&journal_path).unwrap(),
+        "previous run"
+    );
+}
+
+// ── configuration / secrets wiring ──────────────────────────
+
+/// End-to-end proof for the config/secrets wiring: resolved values are
+/// available to templates (`${config.*}` / `${secrets.*}`) and injected into
+/// process-provider environments as `TUMULT_CONFIG_*` / `TUMULT_SECRET_*`,
+/// while the journal of the run never contains the secret value.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_config_secrets_experiment_injects_env_and_journals_no_secret() {
+    std::env::set_var(SECRET_ENV_VAR, SECRET_MARKER);
+    let dir = TempDir::new().unwrap();
+    let exp_path = write_config_secrets_experiment(dir.path());
+    let journal_path = dir.path().join("journal.toon");
+
+    let result = cmd_run(
+        &exp_path,
+        &journal_path,
+        false,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+    )
+    .await;
+    std::env::remove_var(SECRET_ENV_VAR);
+
+    assert!(result.is_ok(), "run failed: {result:?}");
+    let journal = std::fs::read_to_string(&journal_path).unwrap();
+
+    // Config templated into the title and injected into the env.
+    assert!(
+        journal.contains("config/secrets hello-config"),
+        "config template substitution missing from journal title: {journal}"
+    );
+    assert!(
+        journal.contains("cfg=hello-config"),
+        "TUMULT_CONFIG_* env injection missing from journal output: {journal}"
+    );
+    // The secret was really there: length reported, and the
+    // template-substituted secret matched the env-injected one.
+    assert!(
+        journal.contains("secret_len=20"),
+        "TUMULT_SECRET_* env injection missing from journal output: {journal}"
+    );
+    assert!(
+        journal.contains("match"),
+        "template-substituted secret did not reach the activity: {journal}"
+    );
+    // Escape hatch: literal ${HOME} survived templating and the shell.
+    assert!(
+        journal.contains("literal ${HOME}"),
+        "escape hatch output missing from journal: {journal}"
+    );
+
+    // HARD REQUIREMENT: the secret value appears nowhere in the journal.
+    assert!(
+        !journal.contains(SECRET_MARKER),
+        "secret value leaked into the journal: {journal}"
+    );
+}
+
+/// A run whose template references several unknown variables must fail
+/// before executing anything, naming ALL missing variables. (Passing any
+/// --var activates substitution, which makes every ${...} a required
+/// variable unless escaped with $${...}.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_with_missing_template_vars_fails_naming_all() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("missing-vars.toon");
+    let toon = "title: \"${alpha} vs ${beta}\"\nmethod[1]:\n  - name: step\n    activity_type: action\n    provider:\n      type: process\n      path: echo\n";
+    std::fs::write(&path, toon).unwrap();
+
+    let err = cmd_run(
+        &path,
+        &dir.path().join("journal.toon"),
+        false,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::from([("unrelated".to_string(), "x".to_string())]),
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    let msg = format!("{err:#}");
+    assert!(msg.contains("${alpha}"), "should name alpha: {msg}");
+    assert!(msg.contains("${beta}"), "should name beta: {msg}");
+}
+
+// ── declared controls wiring ────────────────────────────────
+
+/// An experiment-declared control must actually execute at lifecycle events
+/// (previously the registry was built empty and declared controls were
+/// silently dropped).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_executes_declared_controls_at_lifecycle_events() {
+    let dir = TempDir::new().unwrap();
+    let (exp_path, events_file) = write_control_experiment(dir.path());
+
+    cmd_run(
+        &exp_path,
+        &dir.path().join("journal.toon"),
+        false,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let events = std::fs::read_to_string(&events_file).unwrap();
+    for expected in [
+        "before_experiment",
+        "before_method",
+        "before_activity",
+        "after_activity",
+        "after_method",
+        "after_experiment",
+    ] {
+        assert!(
+            events.contains(expected),
+            "declared control did not fire on {expected}; events file: {events}"
+        );
+    }
 }
 
 // ── cmd_validate tests ────────────────────────────────────

@@ -148,3 +148,153 @@ fn gameday_experiment_count_mismatch_returns_error() {
         })
     ));
 }
+
+// -- GameDay robustness tests
+
+/// Load executor that records start/stop calls.
+struct RecordingLoadExecutor {
+    stopped: Arc<AtomicUsize>,
+}
+
+impl RecordingLoadExecutor {
+    fn new() -> (Self, Arc<AtomicUsize>) {
+        let stopped = Arc::new(AtomicUsize::new(0));
+        (
+            Self {
+                stopped: stopped.clone(),
+            },
+            stopped,
+        )
+    }
+}
+
+impl LoadExecutor for RecordingLoadExecutor {
+    fn start(&self, _config: &LoadConfig) -> Result<LoadHandle, String> {
+        Ok(LoadHandle {
+            inner: Box::new(()),
+        })
+    }
+
+    fn stop(&self, _handle: LoadHandle) -> Result<LoadResult, String> {
+        self.stopped.fetch_add(1, Ordering::Relaxed);
+        Ok(LoadResult {
+            tool: LoadTool::K6,
+            started_at_ns: 1_000_000_000,
+            ended_at_ns: 2_000_000_000,
+            duration_s: 1.0,
+            vus: 1,
+            throughput_rps: 10.0,
+            latency_p50_ms: 1.0,
+            latency_p95_ms: 2.0,
+            latency_p99_ms: 3.0,
+            error_rate: 0.0,
+            total_requests: 10,
+            thresholds_met: true,
+        })
+    }
+}
+
+fn gameday_with_load(paths: &[&str]) -> crate::types::GameDay {
+    use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+    GameDay {
+        title: "Robust GameDay".into(),
+        description: None,
+        tags: vec![],
+        regulatory: None,
+        load: Some(LoadConfig {
+            tool: LoadTool::K6,
+            script: std::path::PathBuf::from("load.js"),
+            vus: Some(1),
+            duration_s: Some(5.0),
+            thresholds: HashMap::new(),
+        }),
+        experiments: paths
+            .iter()
+            .map(|p| GameDayExperiment {
+                path: (*p).into(),
+                compliance_maps: vec![],
+            })
+            .collect(),
+        scoring: ScoringConfig::default(),
+    }
+}
+
+#[test]
+fn gameday_stops_load_and_retains_journals_when_experiment_errors() {
+    let gameday = gameday_with_load(&["ok.toon", "bad.toon"]);
+
+    let exp_ok = minimal_experiment();
+    // Empty method → run_experiment returns RunnerError::EmptyMethod.
+    let exp_bad = Experiment {
+        method: vec![],
+        ..minimal_experiment()
+    };
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let controls = Arc::new(ControlRegistry::new());
+    let (load_exec, stopped) = RecordingLoadExecutor::new();
+
+    let config = RunConfig {
+        load_executor: Some(Arc::new(load_exec)),
+        ..RunConfig::default()
+    };
+
+    let journal = run_gameday(&gameday, &[exp_ok, exp_bad], &executor, &controls, &config)
+        .expect("a failing experiment must not discard the campaign's results");
+
+    assert_eq!(
+        stopped.load(Ordering::Relaxed),
+        1,
+        "the shared load process must be stopped even when an experiment errors"
+    );
+    assert_eq!(
+        journal.experiment_journals.len(),
+        1,
+        "journals of completed experiments must be retained in the output"
+    );
+    assert_eq!(
+        journal.experiment_journals[0].status,
+        ExperimentStatus::Completed
+    );
+    assert!(
+        journal.load_result.is_some(),
+        "load results should still be collected"
+    );
+}
+
+#[test]
+fn gameday_cancelled_token_skips_experiments_and_stops_load() {
+    let gameday = gameday_with_load(&["a.toon", "b.toon"]);
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let controls = Arc::new(ControlRegistry::new());
+    let (load_exec, stopped) = RecordingLoadExecutor::new();
+
+    let token = CancellationToken::new();
+    token.cancel();
+
+    let config = RunConfig {
+        cancellation_token: Some(token),
+        load_executor: Some(Arc::new(load_exec)),
+        ..RunConfig::default()
+    };
+
+    let journal = run_gameday(
+        &gameday,
+        &[minimal_experiment(), minimal_experiment()],
+        &executor,
+        &controls,
+        &config,
+    )
+    .expect("a cancelled campaign still returns its journal");
+
+    assert!(
+        journal.experiment_journals.is_empty(),
+        "no experiment should start once the token is cancelled"
+    );
+    assert_eq!(
+        stopped.load(Ordering::Relaxed),
+        1,
+        "the shared load process must be stopped on the cancellation path"
+    );
+}

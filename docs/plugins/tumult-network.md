@@ -27,7 +27,9 @@ Script-based plugin for network fault injection. Covers latency, packet loss, co
 | `delay-dns` | Add latency to DNS queries (tc netem on port 53) | `TUMULT_INTERFACE`, `TUMULT_DNS_DELAY_MS`, `TUMULT_DNS_JITTER_MS` |
 | `redirect-dns` | Redirect a domain to a wrong IP via `/etc/hosts` | `TUMULT_DNS_DOMAIN` (required), `TUMULT_DNS_REDIRECT` |
 | `block-dns-rollback` | Remove DNS block entries from `/etc/hosts` and iptables | — |
+| `redirect-dns-rollback` | Remove DNS redirect entries from `/etc/hosts` (idempotent) | — |
 | `partition-host` | Network partition via iptables DROP | `TUMULT_TARGET_IP` (required), `TUMULT_DIRECTION` |
+| `partition-host-rollback` | Remove the iptables DROP rules added by `partition-host` (idempotent) | `TUMULT_TARGET_IP` |
 
 ## Probes
 
@@ -84,7 +86,7 @@ rollbacks[1]:
       action: reset-tc
 ```
 
-For DNS block/redirect (`/etc/hosts` + iptables):
+For DNS block (`/etc/hosts` + iptables):
 ```toon
 rollbacks[1]:
   - name: cleanup-dns
@@ -93,4 +95,15 @@ rollbacks[1]:
       type: script
       plugin: tumult-network
       action: block-dns-rollback
+```
+
+For DNS redirect (`/etc/hosts` entries added by `redirect-dns`):
+```toon
+rollbacks[1]:
+  - name: cleanup-dns-redirect
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      action: redirect-dns-rollback
 ```

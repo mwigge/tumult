@@ -188,20 +188,15 @@ Extreme range:      max - min > 10 × median
 Insufficient data:  fewer than minimum required samples
 ```
 
-If any of these conditions are true, the engine warns and optionally aborts:
+If any of these conditions are true, the engine flags the baseline instead of trusting it: the journal's baseline result records `anomaly_detected: true`, and the OTel span carries an `anomaly.detected` event with the reason and the coefficient of variation:
 
 ```
-Warning: baseline anomaly detected for probe 'latency-probe'
-  method: mean_stddev
-  coefficient_of_variation: 0.73 (threshold: 0.50)
-  This may indicate the system is already degraded or experiencing
-  high variability. Results may not be meaningful.
-  
-  To abort: set baseline.anomaly_abort: true
-  To continue with warning: set baseline.anomaly_abort: false (default)
+anomaly.detected
+  baseline.anomaly.reason: "probe 'latency-probe': high variance: coefficient of variation 0.73 exceeds 0.50"
+  baseline.anomaly.cv: 0.73
 ```
 
-Running a chaos experiment on an already-degraded system produces meaningless results. The baseline anomaly check is a guardrail against this mistake.
+Running a chaos experiment on an already-degraded system produces meaningless results. The baseline anomaly check is a guardrail against this mistake; when you see the flag, investigate the system before trusting the derived tolerances.
 
 ---
 
@@ -243,11 +238,14 @@ Here is a production-grade experiment that uses the mean_stddev baseline for a d
 
 ```toon
 title: Database primary kill validates connection failover
-description: |
-  Measure database query latency baseline, kill primary connections,
-  and verify recovery within derived tolerance bounds.
+description: Measure database query latency baseline, kill primary connections, and verify recovery within derived tolerance bounds.
 
 tags[3]: database, postgresql, resilience
+
+configuration:
+  db_host:
+    type: env
+    key: DATABASE_HOST
 
 estimate:
   expected_outcome: recovered
@@ -263,7 +261,6 @@ baseline:
   method: mean_stddev
   sigma: 2.0
   confidence: 0.95
-  anomaly_abort: true     # abort if baseline is anomalous
 
 steady_state_hypothesis:
   title: Database query latency within baseline tolerance
@@ -272,35 +269,40 @@ steady_state_hypothesis:
       activity_type: probe
       provider:
         type: process
-        path: plugins/tumult-db-postgres/probes/query-latency.sh
+        path: sh
+        arguments[2]: "-c", "start=$(date +%s%N); psql -tAc 'SELECT 1' >/dev/null; echo $(( ($(date +%s%N) - start) / 1000000 ))"
         env:
-          TUMULT_DB_HOST: "{{ configuration.db_host }}"
-          TUMULT_QUERY: "SELECT 1"
-      # No static tolerance; will be replaced by derived bounds from baseline
+          PGHOST: ${config.db_host}
+          PGUSER: tumult
+          PGDATABASE: payments
+        timeout_s: 10.0
       tolerance:
         type: range
         from: 0
-        to: 9999     # placeholder; overridden by baseline engine
+        to: 9999
 
 method[1]:
   - name: kill-primary-connections
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-db
-      function: terminate_connections
+      type: script
+      plugin: tumult-db-postgres
+      function: kill-connections
       arguments:
-        database: payments
+        pg_database: payments
     pause_after_s: 5.0
 
 rollbacks[1]:
-  - name: reset-connection-pool
+  - name: wait-for-reconnect
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-db
-      function: reset_connection_pool
+      type: process
+      path: pg_isready
+      arguments[2]: "-h", "localhost"
+      timeout_s: 10.0
 ```
+
+The wide `0–9999` tolerance on `query-latency` is only a placeholder: the baseline engine replaces it with the bounds derived from the sampled window.
 
 After this experiment runs, the journal contains:
 - The baseline-derived tolerance for `query-latency` (e.g., `[38ms, 53ms]`)

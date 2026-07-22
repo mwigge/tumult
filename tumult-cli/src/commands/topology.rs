@@ -23,7 +23,7 @@ use super::chaosgraph::{emit, resolve_store};
 /// Returns an error if the file cannot be read, the TOML is invalid, or the
 /// store is missing or cannot be written.
 pub fn cmd_topology_import(store: Option<&Path>, path: &Path, json: bool) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report = tumult_mcp::tools::topology_import(
         &store.to_string_lossy(),
         None,
@@ -99,7 +99,7 @@ pub fn cmd_topology_map(
     recommend: bool,
     limit: u32,
 ) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report = tumult_mcp::tools::topology_map(
         &store.to_string_lossy(),
         framework,
@@ -128,7 +128,7 @@ pub fn cmd_topology_lineage(
     service: Option<&str>,
     json: bool,
 ) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report = tumult_mcp::tools::compliance_lineage(
         &store.to_string_lossy(),
         framework,
@@ -151,7 +151,7 @@ pub fn cmd_topology_recommend(
     limit: u32,
     json: bool,
 ) -> Result<()> {
-    let store = resolve_store(store);
+    let store = resolve_store(store)?;
     let report =
         tumult_mcp::tools::recommend_injection(&store.to_string_lossy(), framework, Some(limit))
             .map_err(|e| anyhow!(e.to_string()))?;

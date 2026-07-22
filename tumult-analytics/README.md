@@ -43,11 +43,11 @@ long-running MCP server — so the store API distinguishes reads from writes:
 use tumult_analytics::AnalyticsStore;
 
 // Read path — coexists with the running MCP server.
-let store = AnalyticsStore::open_read_only(&AnalyticsStore::default_path())?;
+let store = AnalyticsStore::open_read_only(&AnalyticsStore::default_path()?)?;
 let rows = store.query("SELECT status, count(*) FROM experiments GROUP BY status")?;
 
 // Write path — exclusive; may return AnalyticsError::StoreLocked.
-let store = AnalyticsStore::open(&AnalyticsStore::default_path())?;
+let store = AnalyticsStore::open(&AnalyticsStore::default_path()?)?;
 ```
 
 ## More Information

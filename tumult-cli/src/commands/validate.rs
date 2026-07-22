@@ -6,7 +6,6 @@ use anyhow::{bail, Context, Result};
 
 use tumult_core::engine::{parse_experiment, resolve_config, resolve_secrets, validate_experiment};
 use tumult_core::types::Provider;
-use tumult_plugin::discovery::discover_all_plugins;
 use tumult_plugin::native::NativeExecutorRegistry;
 use tumult_plugin::registry::PluginRegistry;
 
@@ -17,6 +16,17 @@ use tumult_plugin::registry::PluginRegistry;
 /// Returns an error if the file cannot be read, parsed, or fails validation.
 #[must_use = "callers must handle validation errors"]
 pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
+    // S-C3: File size limit before deserialization (10MB max) — same guard
+    // as `cmd_run`, so a file too large to run is too large to validate.
+    let file_size = std::fs::metadata(experiment_path).map_or(0, |m| m.len());
+    if file_size > 10 * 1024 * 1024 {
+        bail!(
+            "experiment file too large ({} bytes, max 10MB): {}",
+            file_size,
+            experiment_path.display()
+        );
+    }
+
     let content = std::fs::read_to_string(experiment_path).with_context(|| {
         format!(
             "failed to read experiment file: {}",
@@ -31,6 +41,13 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 
     // SRE-10: Warn when a native activity references an unknown plugin or function.
     let native_registry = super::exec::native_registry();
+    // Same check for script providers, resolved through the discovery search
+    // paths; discovery problems are surfaced so a skipped path or malformed
+    // manifest does not silently shrink the available plugin set.
+    let discovery = tumult_plugin::discovery::discover_all_report();
+    for warning in &discovery.warnings {
+        eprintln!("warning: {warning}");
+    }
     let all_activities = experiment
         .method
         .iter()
@@ -64,6 +81,53 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
                     );
                 }
                 Some(_) => {} // registered native plugin + function
+            },
+            Provider::Script {
+                plugin, function, ..
+            } => match discovery
+                .plugins
+                .iter()
+                .find(|p| &p.manifest.name == plugin)
+            {
+                None => eprintln!(
+                    "warning: activity '{}' uses unknown script plugin '{}' (available: {})",
+                    activity.name,
+                    plugin,
+                    discovery
+                        .plugins
+                        .iter()
+                        .map(|p| p.manifest.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                Some(discovered)
+                    if !discovered
+                        .manifest
+                        .actions
+                        .iter()
+                        .any(|a| &a.name == function)
+                        && !discovered
+                            .manifest
+                            .probes
+                            .iter()
+                            .any(|p| &p.name == function) =>
+                {
+                    eprintln!(
+                        "warning: activity '{}' uses unknown action '{}::{}' (available: {})",
+                        activity.name,
+                        plugin,
+                        function,
+                        discovered
+                            .manifest
+                            .actions
+                            .iter()
+                            .map(|a| a.name.as_str())
+                            .chain(discovered.manifest.probes.iter().map(|p| p.name.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
+                Some(_) => {} // discovered script plugin + action
             },
             Provider::Process { .. } => {} // supported
         }
@@ -123,10 +187,15 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     let mut registry = PluginRegistry::new();
 
-    // Discover script plugins from filesystem
-    let manifests = discover_all_plugins().unwrap_or_default();
-    for manifest in manifests {
-        registry.register_script(manifest);
+    // Discover script plugins from filesystem. Discovery is fault-tolerant;
+    // problems (unreadable paths, malformed manifests, shadowed plugins) are
+    // surfaced on stderr instead of silently shrinking the listing.
+    let discovery = tumult_plugin::discovery::discover_all_report();
+    for warning in &discovery.warnings {
+        eprintln!("warning: {warning}");
+    }
+    for discovered in discovery.plugins {
+        registry.register_script(discovered.manifest);
     }
 
     // Native plugins come from the same composition-root registry the

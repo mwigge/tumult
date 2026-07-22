@@ -1,7 +1,7 @@
 ---
 title: Agentic Cross-Client Observability
 parent: Guides
-nav_order: 10
+nav_order: 11
 ---
 
 # Agentic Cross-Client Observability

@@ -5,33 +5,8 @@ use super::types::{
 };
 
 use crate::anomaly::check_baseline_anomaly;
-use crate::stats::{mean, stddev};
+use crate::stats::{mean, percentile_sorted, stddev, BaselineBounds};
 use crate::tolerance::derive_tolerance;
-
-fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    if sorted.len() == 1 {
-        return sorted[0];
-    }
-    let p = p.clamp(0.0, 100.0);
-    // Percentile rank computation: lengths are at most a few thousand elements,
-    // so precision loss from usize->f64 and sign/truncation from f64->usize are acceptable.
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let rank = (p / 100.0) * (sorted.len() - 1) as f64;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let lower = rank.floor() as usize;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let upper = rank.ceil() as usize;
-    #[allow(clippy::cast_precision_loss)]
-    let fraction = rank - lower as f64;
-    sorted[lower] + fraction * (sorted[upper] - sorted[lower])
-}
 
 /// Derive baseline statistics from pre-collected probe samples.
 ///
@@ -40,8 +15,13 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
 /// 2. Discarding warmup samples
 /// 3. Collecting successful values and error counts
 ///
-/// This function computes statistics, checks for anomalies, and derives
-/// tolerance bounds from the samples.
+/// All statistics, anomaly checks, and tolerance bounds are computed **per
+/// probe**. Probes measure different quantities on different scales (a ~100ms
+/// latency probe vs a ~5000 rps throughput probe); pooling their samples into
+/// one distribution produces a meaningless coefficient of variation and false
+/// "high variance" anomalies. The headline `tolerance_lower`/`tolerance_upper`
+/// on the result are the bounds of the worst-CV probe — see
+/// [`AcquisitionResult`].
 ///
 /// # Errors
 ///
@@ -93,10 +73,14 @@ pub fn derive_baseline(
     }
 
     let mut probes = Vec::with_capacity(probe_samples.len());
-    let mut all_values: Vec<f64> = Vec::new();
     let mut total_samples: u32 = 0;
     let mut any_anomaly = false;
     let mut anomaly_reason = None;
+    // Worst-case (highest) per-probe CV and the bounds of the probe that
+    // produced it. Re-used directly for telemetry — never recomputed via a
+    // second stddev()/mean() pass (BAS-MED-1).
+    let mut worst_cv = 0.0_f64;
+    let mut worst_cv_bounds: Option<BaselineBounds> = None;
 
     for ps in probe_samples {
         if ps.values.is_empty() {
@@ -117,10 +101,14 @@ pub fn derive_baseline(
 
         let sample_count = u32::try_from(ps.values.len()).unwrap_or(u32::MAX);
 
+        // Per-probe tolerance bounds from this probe's own samples.
+        let probe_bounds = derive_tolerance(&ps.values, &config.method);
+
         let stats = ProbeStats {
             name: ps.name.clone(),
-            mean: mean(&ps.values),
-            stddev: stddev(&ps.values),
+            mean: mean(&ps.values).unwrap_or(0.0),
+            // N < 2 has no defined sample stddev; report 0 spread.
+            stddev: stddev(&ps.values).unwrap_or(0.0),
             p50: percentile_sorted(&sorted, 50.0),
             p95: percentile_sorted(&sorted, 95.0),
             p99: percentile_sorted(&sorted, 99.0),
@@ -128,31 +116,40 @@ pub fn derive_baseline(
             max: sorted[sorted.len() - 1],
             error_rate,
             samples: sample_count,
+            tolerance_lower: probe_bounds.lower,
+            tolerance_upper: probe_bounds.upper,
         };
 
         total_samples = total_samples.saturating_add(stats.samples);
-        all_values.extend_from_slice(&ps.values);
+
+        // Per-probe anomaly check — pooling across probes would compare
+        // values on incompatible scales.
+        let check = check_baseline_anomaly(&ps.values, config.min_samples);
+        if check.anomaly_detected && !any_anomaly {
+            any_anomaly = true;
+            anomaly_reason = check
+                .reason
+                .map(|reason| format!("probe '{}': {reason}", ps.name));
+        }
+        if worst_cv_bounds.is_none() || check.coefficient_of_variation > worst_cv {
+            worst_cv = check.coefficient_of_variation;
+            worst_cv_bounds = Some(probe_bounds);
+        }
+
         probes.push(stats);
     }
 
-    // Check for anomalies across all combined samples
-    let anomaly_check = check_baseline_anomaly(&all_values, config.min_samples);
-    if anomaly_check.anomaly_detected {
-        any_anomaly = true;
-        anomaly_reason = anomaly_check.reason;
-    }
-
-    // Derive tolerance bounds from all combined samples
-    let bounds = derive_tolerance(&all_values, &config.method);
+    // A single probe keeps the historical headline bounds exactly; multiple
+    // probes report the noisiest (worst-CV) probe's bounds. `worst_cv_bounds`
+    // is always `Some` here because the loop ran at least once.
+    let bounds = worst_cv_bounds.unwrap_or(BaselineBounds {
+        lower: 0.0,
+        upper: 0.0,
+    });
 
     if any_anomaly {
         if let Some(ref reason) = anomaly_reason {
-            // Re-use the CV already computed by check_baseline_anomaly; no need
-            // to call stddev()/mean() a second time.
-            crate::telemetry::event_anomaly_detected(
-                reason,
-                anomaly_check.coefficient_of_variation,
-            );
+            crate::telemetry::event_anomaly_detected(reason, worst_cv);
         }
     }
 
@@ -221,6 +218,90 @@ mod tests {
 
         assert_eq!(result.probes.len(), 2);
         assert_eq!(result.total_samples, 20);
+    }
+
+    /// The headline defect: probes on incompatible scales (latency ~100ms,
+    /// throughput ~5000 rps) pooled into one distribution produced a huge
+    /// pooled CV and a false "high variance" anomaly. Per-probe statistics
+    /// must see both as stable.
+    #[test]
+    fn multi_probe_different_scales_no_false_anomaly() {
+        let latency = ProbeSamples {
+            name: "latency".into(),
+            values: vec![
+                100.0, 102.0, 98.0, 101.0, 99.0, 100.0, 103.0, 97.0, 101.0, 99.0,
+            ],
+            errors: 0,
+            total_attempts: 10,
+            sampled_at: vec![],
+        };
+        let throughput = ProbeSamples {
+            name: "throughput".into(),
+            values: vec![
+                5000.0, 5050.0, 4950.0, 5025.0, 4975.0, 5010.0, 4990.0, 5030.0, 4980.0, 5020.0,
+            ],
+            errors: 0,
+            total_attempts: 10,
+            sampled_at: vec![],
+        };
+        let result = derive_baseline(&[latency, throughput], &config_mean_stddev()).unwrap();
+        assert!(
+            !result.anomaly_detected,
+            "two stable probes on different scales must not be flagged anomalous"
+        );
+
+        let lat = &result.probes[0];
+        let thr = &result.probes[1];
+        // Each probe's bounds sit on its own scale.
+        assert!(lat.tolerance_lower < 100.0 && lat.tolerance_upper > 100.0);
+        assert!(
+            lat.tolerance_upper < 1000.0,
+            "latency bounds must not absorb the throughput scale: {}",
+            lat.tolerance_upper
+        );
+        assert!(thr.tolerance_lower > 1000.0 && thr.tolerance_lower < 5000.0);
+        assert!(thr.tolerance_upper > 5000.0);
+    }
+
+    #[test]
+    fn multi_probe_anomaly_reason_names_the_offending_probe() {
+        let stable = stable_samples("stable");
+        let noisy = ProbeSamples {
+            name: "noisy".into(),
+            values: vec![1.0, 100.0, 2.0, 99.0, 3.0, 98.0, 1.0, 200.0],
+            errors: 0,
+            total_attempts: 8,
+            sampled_at: vec![],
+        };
+        let result = derive_baseline(&[stable, noisy], &config_mean_stddev()).unwrap();
+        assert!(result.anomaly_detected);
+        let reason = result.anomaly_reason.unwrap();
+        assert!(
+            reason.contains("noisy"),
+            "reason must identify the anomalous probe: {reason}"
+        );
+    }
+
+    #[test]
+    fn single_sample_probe_derives_zero_stddev_and_collapsed_bounds() {
+        let samples = vec![ProbeSamples {
+            name: "single".into(),
+            values: vec![42.0],
+            errors: 0,
+            total_attempts: 1,
+            sampled_at: vec![],
+        }];
+        let config = AcquisitionConfig {
+            method: Method::MeanStddev { sigma: 2.0 },
+            min_samples: 1,
+        };
+        let result = derive_baseline(&samples, &config).unwrap();
+        assert!((result.probes[0].mean - 42.0).abs() < f64::EPSILON);
+        // Sample stddev is undefined for N = 1; reported spread is 0.
+        assert!(result.probes[0].stddev.abs() < f64::EPSILON);
+        assert!((result.probes[0].tolerance_lower - 42.0).abs() < f64::EPSILON);
+        assert!((result.probes[0].tolerance_upper - 42.0).abs() < f64::EPSILON);
+        assert!(!result.anomaly_detected);
     }
 
     #[test]

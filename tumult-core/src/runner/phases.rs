@@ -24,6 +24,18 @@ pub(crate) type ProbeSamples = Vec<(String, Vec<ActivityResult>)>;
 pub(crate) type ProbeSampleMap = HashMap<String, Vec<ActivityResult>>;
 
 /// Compute Phase 4 analysis from estimate and actual results.
+///
+/// Reserved/unpopulated fields in this version (kept as `None` rather than
+/// filled with fabricated values):
+/// - `estimate_recovery_delta_s` — requires comparing the estimated recovery
+///   time against the measured post-phase recovery; not computed yet.
+/// - `trend` — requires historical journals from the analytics store; not
+///   computed yet.
+///
+/// `estimate_accuracy` and `resilience_score` are populated but deliberately
+/// coarse binary indicators (1.0 when the actual recovery outcome matches
+/// the estimate / the run completed, 0.0 otherwise); richer scoring is left
+/// to the analytics layer.
 pub(crate) fn compute_analysis(
     experiment: &Experiment,
     status: &ExperimentStatus,
@@ -41,7 +53,9 @@ pub(crate) fn compute_analysis(
 
     Some(AnalysisResult {
         estimate_accuracy,
+        // Reserved: not populated in this version (see fn docs).
         estimate_recovery_delta_s: None,
+        // Reserved: not populated in this version (see fn docs).
         trend: None,
         resilience_score: if actual_recovered {
             Some(1.0)
@@ -170,6 +184,12 @@ pub(crate) fn collect_post_samples(
 /// Build a `DuringResult` from probe samples collected while fault injection
 /// was active. `sample_interval_s` is the actual interval the sampler ran
 /// with. Returns `None` if no samples were collected.
+///
+/// The degradation fields (`degradation_onset_s`, `degradation_peak_s`,
+/// `degradation_magnitude`, `graceful_degradation`) are reserved and always
+/// `None` in this version: deriving them requires latency-shape analysis
+/// over the samples that is not implemented yet, so they are left
+/// unpopulated rather than filled with placeholder values.
 pub(crate) fn build_during_result(
     started_at_ns: i64,
     ended_at_ns: i64,
@@ -246,6 +266,11 @@ pub(crate) fn build_during_result(
 
 /// Build a `PostResult` from probe samples collected after method completion
 /// to measure system recovery. Returns `None` if no samples were collected.
+///
+/// `residual_degradation`, `data_integrity_verified`, and
+/// `data_loss_detected` are reserved and always `None` in this version (they
+/// require checks the runner does not perform yet), rather than filled with
+/// placeholder values.
 pub(crate) fn build_post_result(
     started_at_ns: i64,
     ended_at_ns: i64,

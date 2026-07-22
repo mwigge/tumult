@@ -9,7 +9,8 @@ use crate::controls::{ControlRegistry, LifecycleEvent};
 use crate::engine::determine_status;
 use crate::execution::all_succeeded;
 use crate::types::{
-    ActivityStatus, BlastRadiusRecord, Experiment, ExperimentStatus, HypothesisResult, Journal,
+    ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
+    HypothesisResult, Journal,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -320,6 +321,61 @@ pub fn run_experiment_with_sampling(
         });
     }
 
+    // -- Mid-method cancellation: the caller's token fired while the method
+    // ran (SIGINT broke the foreground loop). The run must never be reported
+    // `Completed` from here on — stop load, run rollbacks (a fault may still
+    // be injected), and mark it `Interrupted`.
+    if method_token.is_cancelled() {
+        let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+        drop(load_span_guard);
+
+        let rollback_results = run_rollbacks(
+            experiment,
+            executor,
+            controls,
+            &config.rollback_strategy,
+            true,
+        );
+
+        let status = ExperimentStatus::Interrupted;
+        let analysis = compute_analysis(experiment, &status);
+
+        let ended_at_ns = epoch_nanos_now();
+        // Experiment durations never exceed u64::MAX milliseconds.
+        #[allow(clippy::cast_possible_truncation)]
+        let duration_ms = started.elapsed().as_millis() as u64;
+
+        controls.emit(&LifecycleEvent::AfterExperiment);
+
+        // Rollback failure counts in chaos experiments are always << u32::MAX.
+        #[allow(clippy::cast_possible_truncation)]
+        let rb_failures = rollback_results
+            .iter()
+            .filter(|r| r.status == ActivityStatus::Failed)
+            .count() as u32;
+
+        tracing::warn!(
+            experiment_id = %experiment_id,
+            experiment_title = %experiment.title,
+            duration_ms = duration_ms,
+            "experiment.interrupted"
+        );
+
+        return Ok(Journal {
+            ended_at_ns,
+            duration_ms,
+            steady_state_before: hypothesis_before,
+            method_results,
+            rollback_results,
+            rollback_failures: rb_failures,
+            during_result,
+            load_result,
+            analysis,
+            blast_radius,
+            ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
+        });
+    }
+
     // -- Phase 3: POST -- recovery measurement, taken immediately after the
     // method completes (and before hypothesis-after / rollback run), so
     // `post_result.recovery_time_s` reflects recovery from the fault itself
@@ -367,13 +423,20 @@ pub fn run_experiment_with_sampling(
     );
 
     // -- Rollbacks
-    let deviated = status == ExperimentStatus::Deviated;
+    // Deviation calls for cleanup; so does a failure after a fault-injecting
+    // (Action) activity actually started — the injected fault must be rolled
+    // back even though the run "failed" rather than "deviated".
+    let fault_started = method_results
+        .iter()
+        .any(|r| r.activity_type == ActivityType::Action);
+    let needs_rollback = status == ExperimentStatus::Deviated
+        || (status == ExperimentStatus::Failed && fault_started);
     let rollback_results = run_rollbacks(
         experiment,
         executor,
         controls,
         &config.rollback_strategy,
-        deviated,
+        needs_rollback,
     );
 
     // -- Phase 4: Analysis

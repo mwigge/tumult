@@ -15,7 +15,7 @@ use super::ExportFormat;
 #[must_use = "callers must handle export errors"]
 pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
     use tumult_analytics::arrow_convert::journal_to_record_batch;
-    use tumult_analytics::export::{export_csv, export_parquet};
+    use tumult_analytics::export::{export_arrow_ipc, export_csv, export_parquet};
     use tumult_core::journal::read_journal;
 
     let journal = read_journal(journal_path)
@@ -25,6 +25,7 @@ pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
         ExportFormat::Parquet => "parquet",
         ExportFormat::Csv => "csv",
         ExportFormat::Json => "json",
+        ExportFormat::Arrow => "arrow",
     };
     let stem = journal_path
         .file_stem()
@@ -34,11 +35,12 @@ pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
     let out_path = std::path::PathBuf::from(format!("{stem}.{ext}"));
 
     match format {
-        ExportFormat::Parquet | ExportFormat::Csv => {
+        ExportFormat::Parquet | ExportFormat::Csv | ExportFormat::Arrow => {
             let (exp_batch, _) = journal_to_record_batch(std::slice::from_ref(&journal))?;
             match format {
                 ExportFormat::Parquet => export_parquet(&exp_batch, &out_path)?,
                 ExportFormat::Csv => export_csv(&exp_batch, &out_path)?,
+                ExportFormat::Arrow => export_arrow_ipc(&exp_batch, &out_path)?,
                 ExportFormat::Json => unreachable!(),
             }
         }

@@ -22,7 +22,7 @@ pub(crate) struct StubMcpServer {
 }
 
 impl StubMcpServer {
-    pub(crate) fn new() -> Self {
+    fn with_auth_info(auth_info: Option<AuthInfo>) -> Self {
         Self {
             details: InitializeResult {
                 capabilities: ServerCapabilities::default(),
@@ -38,8 +38,26 @@ impl StubMcpServer {
                     website_url: None,
                 },
             },
-            auth_info: tokio::sync::RwLock::new(None),
+            auth_info: tokio::sync::RwLock::new(auth_info),
         }
+    }
+
+    pub(crate) fn new() -> Self {
+        Self::with_auth_info(None)
+    }
+
+    /// A stub carrying transport-captured auth info, simulating an HTTP
+    /// session whose `Authorization: Bearer` header the middleware stashed.
+    pub(crate) fn with_bearer_token(token: &str) -> Self {
+        Self::with_auth_info(Some(AuthInfo {
+            token_unique_id: token.to_string(),
+            client_id: None,
+            user_id: None,
+            scopes: None,
+            expires_at: None,
+            audience: None,
+            extra: None,
+        }))
     }
 }
 
@@ -112,4 +130,10 @@ impl McpServer for StubMcpServer {
 /// Fresh inert runtime for driving handler entry points in tests.
 pub(crate) fn stub_runtime() -> Arc<dyn McpServer> {
     Arc::new(StubMcpServer::new())
+}
+
+/// Runtime stub whose session carries the given bearer token as captured
+/// `AuthInfo` (the HTTP header channel).
+pub(crate) fn stub_runtime_with_bearer(token: &str) -> Arc<dyn McpServer> {
+    Arc::new(StubMcpServer::with_bearer_token(token))
 }

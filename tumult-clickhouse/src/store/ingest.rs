@@ -120,47 +120,57 @@ impl ClickHouseStore {
     }
 
     /// Async query execution — returns rows as TSV-parsed string vectors.
+    ///
+    /// Bounded by the configured query timeout like every other query path;
+    /// without it a hung `ClickHouse` connection would stall the caller
+    /// indefinitely.
     pub(crate) async fn query_async(&self, sql: &str) -> Result<Vec<QueryRow>, AnalyticsError> {
         let _span = telemetry::begin_query(sql);
 
-        let mut cursor = self
-            .client
-            .query(sql)
-            .fetch_bytes("TabSeparated")
-            .map_err(|e| Self::ch_err(&e))?;
+        self.with_timeout(async {
+            let mut cursor = self
+                .client
+                .query(sql)
+                .fetch_bytes("TabSeparated")
+                .map_err(|e| Self::ch_err(&e))?;
 
-        let mut result = Vec::new();
-        while let Some(bytes) = cursor.next().await.map_err(|e| Self::ch_err(&e))? {
-            let line = String::from_utf8_lossy(&bytes);
-            let fields: Vec<String> = line
-                .split('\t')
-                .map(std::string::ToString::to_string)
-                .collect();
-            result.push(QueryRow::from(fields));
-        }
+            let mut result = Vec::new();
+            while let Some(bytes) = cursor.next().await.map_err(|e| Self::ch_err(&e))? {
+                let line = String::from_utf8_lossy(&bytes);
+                let fields: Vec<String> = line
+                    .split('\t')
+                    .map(std::string::ToString::to_string)
+                    .collect();
+                result.push(QueryRow::from(fields));
+            }
 
-        telemetry::event_query_executed(result.len(), 0);
-        Ok(result)
+            telemetry::event_query_executed(result.len(), 0);
+            Ok(result)
+        })
+        .await
     }
 
     pub(crate) async fn query_columns_async(
         &self,
         sql: &str,
     ) -> Result<Vec<String>, AnalyticsError> {
-        let mut cursor = self
-            .client
-            .query(sql)
-            .fetch_bytes("TabSeparatedWithNames")
-            .map_err(|e| Self::ch_err(&e))?;
+        self.with_timeout(async {
+            let mut cursor = self
+                .client
+                .query(sql)
+                .fetch_bytes("TabSeparatedWithNames")
+                .map_err(|e| Self::ch_err(&e))?;
 
-        // First row is header with column names
-        if let Some(bytes) = cursor.next().await.map_err(|e| Self::ch_err(&e))? {
-            let line = String::from_utf8_lossy(&bytes);
-            return Ok(line
-                .split('\t')
-                .map(std::string::ToString::to_string)
-                .collect());
-        }
-        Ok(vec![])
+            // First row is header with column names
+            if let Some(bytes) = cursor.next().await.map_err(|e| Self::ch_err(&e))? {
+                let line = String::from_utf8_lossy(&bytes);
+                return Ok(line
+                    .split('\t')
+                    .map(std::string::ToString::to_string)
+                    .collect());
+            }
+            Ok(vec![])
+        })
+        .await
     }
 }

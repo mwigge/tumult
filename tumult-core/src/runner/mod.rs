@@ -30,7 +30,7 @@ mod sampler;
 mod telemetry;
 
 pub use experiment::{run_experiment, run_experiment_with_sampling};
-pub use gameday::run_gameday;
+pub use gameday::{run_gameday, run_gameday_with_wiring, ExperimentWiring};
 pub use telemetry::epoch_nanos_now;
 
 pub(crate) const TRACER_NAME: &str = "tumult-engine";
@@ -122,8 +122,10 @@ pub trait LoadExecutor: Send + Sync {
 /// calling `run_experiment`, so they are not part of this config.
 pub struct RunConfig {
     pub rollback_strategy: RollbackStrategy,
-    /// Optional cancellation token. When cancelled, the runner returns
-    /// `ExperimentStatus::Interrupted` before executing the next activity.
+    /// Optional cancellation token. When cancelled, the runner stops before
+    /// executing the next foreground activity, runs rollbacks for any fault
+    /// already injected, and ends the run with `ExperimentStatus::Interrupted`
+    /// — a cancelled run is never reported `Completed`.
     pub cancellation_token: Option<CancellationToken>,
     /// Optional parent OpenTelemetry context. When provided, the root
     /// `resilience.experiment` span is created as a child of this context,

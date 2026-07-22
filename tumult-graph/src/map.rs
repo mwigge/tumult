@@ -110,6 +110,12 @@ fn map_from_experiment(builder: &mut Builder, exp_id: &str, exp: &Experiment) {
                 plugin,
                 function,
                 arguments,
+            }
+            | Provider::Script {
+                plugin,
+                function,
+                arguments,
+                ..
             } => {
                 let fault_label = format!("{plugin}::{function}");
                 let fault_id = format!("fault:{fault_label}");

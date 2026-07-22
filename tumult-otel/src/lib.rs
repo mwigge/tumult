@@ -31,6 +31,15 @@ mod tests {
 
     static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// Serialises tests that touch the GLOBAL meter provider.
+    ///
+    /// `TumultTelemetry::new` registers a global meter provider when an OTLP
+    /// endpoint is set, and `shutdown()` resets it to noop — while the
+    /// production-path smoke test installs its own in-memory provider. Without
+    /// this lock, parallel test threads could interleave a noop reset between
+    /// another test's `set_meter_provider` and its recording, making it flaky.
+    static METER_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// RAII guard that restores an environment variable to its previous value
     /// when dropped, even on panic.
     struct EnvGuard {
@@ -175,6 +184,11 @@ mod tests {
 
     #[test]
     fn record_action_and_probe_sequence_does_not_panic() {
+        // Records through the global meter: hold the lock so these records
+        // cannot interleave with a provider-installing test (which asserts
+        // exact counter totals) — the source of an observed parallel flake.
+        let _meter_lock = METER_MUTEX.lock().unwrap();
+
         let meter = opentelemetry::global::meter("integration-test");
         let metrics = TumultMetrics::new(&meter);
 
@@ -194,6 +208,7 @@ mod tests {
 
     #[test]
     fn telemetry_disabled_config_does_not_initialize_providers() {
+        let _meter_lock = METER_MUTEX.lock().unwrap();
         let config = TelemetryConfig {
             enabled: false,
             ..TelemetryConfig::default()
@@ -205,6 +220,7 @@ mod tests {
 
     #[test]
     fn telemetry_enabled_without_endpoint_does_not_panic() {
+        let _meter_lock = METER_MUTEX.lock().unwrap();
         let config = TelemetryConfig {
             enabled: true,
             otlp_endpoint: None,
@@ -221,6 +237,7 @@ mod tests {
 
     #[test]
     fn telemetry_enabled_with_endpoint_initializes() {
+        let _meter_lock = METER_MUTEX.lock().unwrap();
         let rt = tokio_minimal::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -246,6 +263,7 @@ mod tests {
 
     #[test]
     fn telemetry_console_export_without_endpoint_does_not_panic() {
+        let _meter_lock = METER_MUTEX.lock().unwrap();
         let config = TelemetryConfig {
             enabled: true,
             console_export: true,
@@ -269,6 +287,8 @@ mod tests {
     fn shutdown_also_shuts_down_global_provider_without_panic() {
         use opentelemetry::global;
 
+        let _meter_lock = METER_MUTEX.lock().unwrap();
+
         let rt = tokio_minimal::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -289,5 +309,103 @@ mod tests {
 
         // Attempting to get a tracer from the global must not panic.
         let _tracer = global::tracer("post-shutdown-tracer");
+    }
+
+    // ── init_meter_provider ────────────────────────────────────
+
+    #[test]
+    fn init_meter_provider_returns_none_when_disabled() {
+        let config = TelemetryConfig {
+            enabled: false,
+            otlp_endpoint: Some("http://localhost:4317".into()),
+            ..TelemetryConfig::default()
+        };
+        assert!(telemetry::init_meter_provider(&config).is_none());
+    }
+
+    #[test]
+    fn init_meter_provider_returns_none_without_endpoint() {
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: None,
+            ..TelemetryConfig::default()
+        };
+        assert!(telemetry::init_meter_provider(&config).is_none());
+    }
+
+    #[test]
+    fn init_meter_provider_builds_provider_with_endpoint() {
+        let _meter_lock = METER_MUTEX.lock().unwrap();
+        let rt = tokio_minimal::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://localhost:4317".into()),
+            ..TelemetryConfig::default()
+        };
+        let provider = telemetry::init_meter_provider(&config);
+        assert!(provider.is_some());
+        // Clean up: shut down and reset the global so later tests start noop.
+        if let Some(p) = provider {
+            let _ = p.shutdown();
+        }
+        opentelemetry::global::set_meter_provider(
+            opentelemetry::metrics::noop::NoopMeterProvider::new(),
+        );
+    }
+
+    /// Production-path smoke test: with a real `SdkMeterProvider` registered
+    /// globally, instruments obtained via `global::meter(...)` — the exact
+    /// path every production caller takes — must actually record. Before the
+    /// meter-provider init existed, the global meter stayed noop and every
+    /// counter silently vanished.
+    #[test]
+    fn global_meter_records_counter_with_real_provider() {
+        use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData, SumDataPoint};
+        use opentelemetry_sdk::metrics::{InMemoryMetricExporter, SdkMeterProvider};
+
+        let _meter_lock = METER_MUTEX.lock().unwrap();
+
+        let exporter = InMemoryMetricExporter::default();
+        let provider = SdkMeterProvider::builder()
+            .with_periodic_exporter(exporter.clone())
+            .build();
+        opentelemetry::global::set_meter_provider(provider.clone());
+
+        // The production path: global meter -> TumultMetrics -> record.
+        let meter = opentelemetry::global::meter("smoke-test");
+        let metrics = TumultMetrics::new(&meter);
+        instrument::record_experiment(&metrics, true);
+        instrument::record_experiment(&metrics, false);
+
+        provider.force_flush().unwrap();
+
+        let mut recorded_total = None;
+        for rm in exporter.get_finished_metrics().unwrap_or_default() {
+            for sm in rm.scope_metrics() {
+                for metric in sm.metrics() {
+                    if metric.name() == "tumult_experiments_total" {
+                        if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                            recorded_total =
+                                Some(sum.data_points().map(SumDataPoint::value).sum::<u64>());
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            recorded_total,
+            Some(2),
+            "counter recorded through the global meter must reach the exporter"
+        );
+
+        // Clean up: shut down and reset the global so later tests start noop.
+        let _ = provider.shutdown();
+        opentelemetry::global::set_meter_provider(
+            opentelemetry::metrics::noop::NoopMeterProvider::new(),
+        );
     }
 }

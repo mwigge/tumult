@@ -2,9 +2,10 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
-use tumult_core::controls::ControlRegistry;
+use tumult_core::controls::{ControlRegistry, ProviderControl};
 use tumult_core::engine::{
-    apply_vars, parse_experiment, resolve_config, resolve_secrets, validate_experiment,
+    apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
+    resolve_config, resolve_secrets, validate_experiment,
 };
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::journal::write_journal;
@@ -26,6 +27,7 @@ use super::print_dry_run;
 pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     experiment_path: &Path,
     journal_path: &Path,
+    force: bool,
     dry_run: bool,
     rollback_strategy: RollbackStrategy,
     auto_ingest: bool,
@@ -44,6 +46,18 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         );
     }
 
+    // A journal holds the evidence of exactly one run: silently overwriting
+    // it destroys the previous run's record. Refuse unless --force was given.
+    // Checked up front (not just before writing) so a doomed run does not
+    // execute faults first; a dry run writes no journal and skips the check.
+    if !dry_run && journal_path.exists() && !force {
+        bail!(
+            "journal already exists: {} — pass --force to overwrite, or choose \
+             a different --journal-path",
+            journal_path.display()
+        );
+    }
+
     let content = tokio::fs::read_to_string(experiment_path)
         .await
         .with_context(|| {
@@ -56,27 +70,68 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     let experiment = parse_experiment(&content)
         .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
 
-    // Apply template variable substitution if any --var flags were provided.
-    let mut experiment = if vars.is_empty() {
+    // Resolve configuration and secrets first: the resolved values feed both
+    // template substitution (${config.*} / ${secrets.*}) and the subprocess
+    // env injection below. A missing env var or secret file is fatal here,
+    // before anything executes.
+    let config = resolve_config(&experiment.configuration)?;
+    let secrets = resolve_secrets(&experiment.secrets)?;
+    let secrets_flat = flatten_secrets(&secrets);
+
+    // Apply template substitution when any placeholder source exists: --var
+    // values plus the ${config.<name>} / ${secrets.<group>.<key>} namespaces.
+    // $${...} escapes to a literal ${...} for shell-style text.
+    let mut experiment = if vars.is_empty() && config.is_empty() && secrets_flat.is_empty() {
         experiment
     } else {
-        apply_vars(&experiment, &vars)
+        apply_template_vars(&experiment, &vars, &config, &secrets_flat)
             .with_context(|| "failed to apply template variables to experiment")?
     };
 
     validate_experiment(&experiment)?;
-
-    // Resolve configuration and secrets
-    let _config = resolve_config(&experiment.configuration)?;
-    let _secrets = resolve_secrets(&experiment.secrets)?;
 
     if dry_run {
         print_dry_run(&experiment);
         return Ok(());
     }
 
-    let executor = ProviderExecutor;
-    let controls = ControlRegistry::new();
+    // Build the TUMULT_CONFIG_* / TUMULT_SECRET_* environment injected into
+    // process and script provider subprocesses. Keys that cannot form valid
+    // env var names are skipped with a warning — the warnings name keys
+    // only, never values: these maps carry resolved secrets, and journals,
+    // logs, and analytics must never see a secret value.
+    let (config_env, skipped_config) = build_config_env(&config);
+    let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
+    for key in &skipped_config {
+        eprintln!(
+            "warning: configuration key '{key}' does not form a valid env var name after \
+             uppercasing; usable in templates but not injected as TUMULT_CONFIG_*"
+        );
+    }
+    for key in &skipped_secrets {
+        eprintln!(
+            "warning: secret key '{key}' does not form a valid env var name after \
+             uppercasing; usable in templates but not injected as TUMULT_SECRET_*"
+        );
+    }
+    let mut injected_env = config_env;
+    injected_env.extend(secret_env);
+
+    let executor = ProviderExecutor::with_injected_env(injected_env);
+    let executor_arc: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
+        std::sync::Arc::new(executor);
+
+    // Wire experiment-declared controls into the registry so they actually
+    // execute at lifecycle events (an empty registry would silently drop
+    // them). Declared controls share the run's provider executor.
+    let mut controls = ControlRegistry::new();
+    for control in &experiment.controls {
+        controls.register(Box::new(ProviderControl::new(
+            control.clone(),
+            executor_arc.clone(),
+        )));
+    }
+    let controls_arc = std::sync::Arc::new(controls);
 
     // Spawn a task that cancels the experiment if SIGINT (Ctrl-C) is received.
     let cancel_token = tokio_util::sync::CancellationToken::new();
@@ -111,9 +166,6 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
 
     println!("Running experiment: {}", experiment.title);
 
-    let executor_arc: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor> =
-        std::sync::Arc::new(executor);
-    let controls_arc = std::sync::Arc::new(controls);
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
     write_journal(&journal, journal_path)?;
@@ -157,7 +209,8 @@ async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Resu
     }
 
     // Default: DuckDB embedded
-    let db_path = tumult_analytics::AnalyticsStore::default_path();
+    let db_path = tumult_analytics::AnalyticsStore::default_path()
+        .context("failed to resolve analytics store path")?;
     let store = tumult_analytics::AnalyticsStore::open(&db_path)
         .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
     let ingested = store.ingest_journal_with_experiment(journal, Some(experiment))?;

@@ -1,7 +1,7 @@
 ---
 title: "Your Agent Is Now a First-Class Tumult Operator"
 parent: Blog
-nav_order: 21
+nav_order: 20
 updated: 2026-07-21
 ---
 

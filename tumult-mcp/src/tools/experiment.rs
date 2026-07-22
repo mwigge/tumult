@@ -103,8 +103,11 @@ impl std::fmt::Display for IngestionStatus {
 /// journal cannot be encoded or written.
 pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredReport, ToolError> {
     use std::sync::Arc;
-    use tumult_core::controls::ControlRegistry;
-    use tumult_core::engine::{parse_experiment, validate_experiment};
+    use tumult_core::controls::{ControlRegistry, ProviderControl};
+    use tumult_core::engine::{
+        apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
+        resolve_config, resolve_secrets, validate_experiment,
+    };
     use tumult_core::journal::{encode_journal, write_journal};
     use tumult_core::runner::{run_experiment as run, ActivityExecutor, RunConfig};
 
@@ -118,10 +121,65 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
 
     let content = std::fs::read_to_string(Path::new(request.experiment_path))?;
     let experiment = parse_experiment(&content).map_err(|e| ToolError::Parse(e.to_string()))?;
+
+    // Same configuration/secrets semantics as `tumult run`: values resolve
+    // up front (a missing env var or secret file fails the call), template
+    // substitution applies, and the resolved pairs are injected into
+    // provider subprocesses as TUMULT_CONFIG_* / TUMULT_SECRET_*.
+    let config = resolve_config(&experiment.configuration)
+        .map_err(|e| ToolError::Validation(format!("failed to resolve configuration: {e}")))?;
+    let secrets = resolve_secrets(&experiment.secrets)
+        .map_err(|e| ToolError::Validation(format!("failed to resolve secrets: {e}")))?;
+    let secrets_flat = flatten_secrets(&secrets);
+    let experiment = if config.is_empty() && secrets_flat.is_empty() {
+        experiment
+    } else {
+        apply_template_vars(
+            &experiment,
+            &std::collections::HashMap::new(),
+            &config,
+            &secrets_flat,
+        )
+        .map_err(|e| ToolError::Validation(format!("failed to apply template variables: {e}")))?
+    };
     validate_experiment(&experiment).map_err(|e| ToolError::Validation(e.to_string()))?;
 
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(crate::handler::ProcessExecutor);
-    let controls = Arc::new(ControlRegistry::new());
+    // The warnings name keys only, never values: these maps carry resolved
+    // secrets, and logs must never see a secret value.
+    let (config_env, skipped_config) = build_config_env(&config);
+    let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
+    for key in &skipped_config {
+        tracing::warn!(
+            key = %key,
+            "configuration key does not form a valid env var name after uppercasing; \
+             usable in templates but not injected as TUMULT_CONFIG_*"
+        );
+    }
+    for key in &skipped_secrets {
+        tracing::warn!(
+            key = %key,
+            "secret key does not form a valid env var name after uppercasing; \
+             usable in templates but not injected as TUMULT_SECRET_*"
+        );
+    }
+    let mut injected_env = config_env;
+    injected_env.extend(secret_env);
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(
+        crate::handler::ProcessExecutor::with_injected_env(injected_env),
+    );
+
+    // Wire experiment-declared controls into the registry so they actually
+    // execute at lifecycle events (an empty registry would silently drop
+    // them). Declared controls share the run's provider executor.
+    let mut controls_registry = ControlRegistry::new();
+    for control in &experiment.controls {
+        controls_registry.register(Box::new(ProviderControl::new(
+            control.clone(),
+            executor.clone(),
+        )));
+    }
+    let controls = Arc::new(controls_registry);
     let config = RunConfig {
         rollback_strategy: strategy,
         cancellation_token: None,
@@ -414,6 +472,75 @@ mod tests {
             "json",
         ));
         assert!(result.is_err());
+    }
+
+    /// End-to-end proof for the config/secrets/controls wiring on the MCP
+    /// run path: resolved configuration is injected into provider
+    /// subprocesses as `TUMULT_CONFIG_*`, and experiment-declared controls
+    /// fire at lifecycle events (previously this path injected nothing and
+    /// built an empty registry).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_injects_config_env_and_fires_declared_controls() {
+        let dir = TempDir::new().unwrap();
+        let events_file = dir.path().join("control-events.txt");
+        let exp_path = dir.path().join("wired.toon");
+        let experiment = format!(
+            r#"title: MCP wiring experiment
+
+tags[1]: test
+
+configuration:
+  marker:
+    type: inline
+    value: mcp-wired
+
+controls[1]:
+  - name: event-recorder
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo \"$TUMULT_CONTROL_EVENT\" >> {}"
+      timeout_s: 5.0
+
+method[1]:
+  - name: read-injected-env
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo \"cfg=$TUMULT_CONFIG_MARKER\""
+      timeout_s: 5.0
+"#,
+            events_file.display()
+        );
+        std::fs::write(&exp_path, experiment).unwrap();
+
+        let journal_path = dir.path().join("journal.toon");
+        let result = run_experiment(run_request(
+            exp_path.to_str().unwrap(),
+            "on-deviation",
+            &journal_path,
+            "unused.duckdb",
+            true,
+            "json",
+        ))
+        .unwrap();
+
+        // The resolved config reached the method subprocess as TUMULT_CONFIG_*.
+        assert!(
+            result.text.contains("cfg=mcp-wired"),
+            "TUMULT_CONFIG_* env injection missing from journal: {}",
+            result.text
+        );
+
+        // The declared control fired at lifecycle events.
+        let events = std::fs::read_to_string(&events_file).unwrap();
+        for expected in ["before_experiment", "before_method", "after_experiment"] {
+            assert!(
+                events.contains(expected),
+                "declared control did not fire on {expected}; events file: {events}"
+            );
+        }
     }
 
     // ── create_experiment ─────────────────────────────────────

@@ -209,3 +209,140 @@ fn run_experiment_emits_audit_log_without_panic() {
     assert_eq!(journal.status, ExperimentStatus::Completed);
     assert!(!journal.experiment_id.is_empty());
 }
+
+// -- Tests: fault gate (max_concurrent_faults)
+
+/// Executor that tracks how many activities run at the same instant.
+struct ConcurrencyTracker {
+    active: Arc<AtomicUsize>,
+    max_seen: Arc<AtomicUsize>,
+    sleep: std::time::Duration,
+}
+
+impl ConcurrencyTracker {
+    fn new(sleep: std::time::Duration) -> (Self, Arc<AtomicUsize>) {
+        let max_seen = Arc::new(AtomicUsize::new(0));
+        (
+            Self {
+                active: Arc::new(AtomicUsize::new(0)),
+                max_seen: max_seen.clone(),
+                sleep,
+            },
+            max_seen,
+        )
+    }
+}
+
+impl ActivityExecutor for ConcurrencyTracker {
+    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+        let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_seen.fetch_max(now, Ordering::SeqCst);
+        std::thread::sleep(self.sleep);
+        self.active.fetch_sub(1, Ordering::SeqCst);
+        ActivityOutcome {
+            success: true,
+            output: None,
+            error: None,
+            duration_ms: 0,
+        }
+    }
+}
+
+#[test]
+fn fault_gate_caps_concurrent_background_faults() {
+    let mut exp = minimal_experiment();
+    exp.max_concurrent_faults = Some(1);
+    exp.method = vec![
+        test_action_background("bg-1"),
+        test_action_background("bg-2"),
+        test_action_background("bg-3"),
+    ];
+
+    let (tracker, max_seen) = ConcurrencyTracker::new(std::time::Duration::from_millis(30));
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(tracker);
+    let controls = Arc::new(ControlRegistry::new());
+
+    let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+    assert_eq!(journal.method_results.len(), 3);
+    assert_eq!(
+        max_seen.load(Ordering::SeqCst),
+        1,
+        "a cap of 1 must serialize background faults"
+    );
+    let blast = journal
+        .blast_radius
+        .expect("blast radius should record the cap and peak");
+    assert_eq!(blast.max_concurrent_faults, Some(1));
+    assert_eq!(blast.peak_concurrent_faults, 1);
+}
+
+#[test]
+fn fault_gate_uncapped_allows_full_concurrency() {
+    let mut exp = minimal_experiment();
+    exp.method = vec![
+        test_action_background("bg-1"),
+        test_action_background("bg-2"),
+        test_action_background("bg-3"),
+    ];
+
+    let (tracker, max_seen) = ConcurrencyTracker::new(std::time::Duration::from_millis(50));
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(tracker);
+    let controls = Arc::new(ControlRegistry::new());
+
+    let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+    assert_eq!(journal.method_results.len(), 3);
+    assert_eq!(
+        max_seen.load(Ordering::SeqCst),
+        3,
+        "without a cap all background faults should overlap"
+    );
+}
+
+#[test]
+fn fault_gate_releases_slot_when_activity_panics() {
+    struct PanicOnNameExecutor;
+    impl ActivityExecutor for PanicOnNameExecutor {
+        fn execute(&self, activity: &Activity) -> ActivityOutcome {
+            assert!(
+                activity.name != "bg-panic",
+                "deliberate panic in gated background activity"
+            );
+            ActivityOutcome {
+                success: true,
+                output: None,
+                error: None,
+                duration_ms: 1,
+            }
+        }
+    }
+
+    let mut exp = minimal_experiment();
+    exp.max_concurrent_faults = Some(1);
+    exp.method = vec![
+        test_action_background("bg-panic"),
+        test_action_background("bg-ok"),
+    ];
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(PanicOnNameExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+
+    // With a cap of 1, a leaked slot would deadlock the remaining background
+    // activity forever; the RAII permit releases the slot during unwinding.
+    let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+
+    let panicked = journal
+        .method_results
+        .iter()
+        .find(|r| r.name == "bg-panic")
+        .expect("panicking activity result must be present");
+    assert_eq!(panicked.status, ActivityStatus::Failed);
+
+    let ok = journal
+        .method_results
+        .iter()
+        .find(|r| r.name == "bg-ok")
+        .expect("remaining activity must run after the panic released the slot");
+    assert_eq!(ok.status, ActivityStatus::Succeeded);
+}

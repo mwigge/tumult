@@ -38,6 +38,8 @@ pub mod executor;
 pub mod manifest;
 pub mod native;
 pub mod registry;
+// Script execution telemetry is emitted only by the POSIX executor path.
+#[cfg(not(windows))]
 pub(crate) mod telemetry;
 pub mod traits;
 

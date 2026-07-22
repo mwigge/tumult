@@ -95,6 +95,32 @@ impl AnalyticsStore {
             telemetry::event_journal_duplicate(&journal.experiment_id);
             return Ok(false);
         }
+
+        // Atomic ingest: experiments + activities + load + graph rows commit
+        // together or not at all. Without the transaction a mid-ingest failure
+        // committed the experiments row, and re-ingest then skipped the
+        // experiment as a duplicate — permanently losing the remaining rows.
+        self.conn.execute_batch("BEGIN TRANSACTION")?;
+        match self.ingest_journal_inner(journal, experiment) {
+            Ok(activity_count) => {
+                self.conn.execute_batch("COMMIT")?;
+                telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
+                Ok(true)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    /// The insert half of [`Self::ingest_journal_with_experiment`], run inside
+    /// the caller's transaction. Returns the number of activity rows written.
+    fn ingest_journal_inner(
+        &self,
+        journal: &Journal,
+        experiment: Option<&Experiment>,
+    ) -> Result<usize, AnalyticsError> {
         let exp_batch = journal_to_experiment_batch(journal)?;
         let act_batch = journal_to_activity_batch(journal)?;
         let activity_count = act_batch.num_rows();
@@ -108,8 +134,7 @@ impl AnalyticsStore {
         }
         // ChaosGraph: upsert this run's nodes/edges (schema v2).
         self.populate_graph(journal, experiment)?;
-        telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
-        Ok(true)
+        Ok(activity_count)
     }
 
     /// Ingest multiple journals, skipping duplicates.
@@ -258,6 +283,36 @@ mod tests {
             .unwrap();
         // Should only have 1 row, not 2
         assert_eq!(s.experiment_count().unwrap(), 1);
+    }
+
+    /// A failure mid-ingest must roll back the whole journal: previously the
+    /// `experiments` row stayed committed in autocommit, so a re-ingest was
+    /// skipped as a duplicate and the activity/load/graph rows were lost
+    /// permanently.
+    #[test]
+    fn failed_ingest_rolls_back_and_retry_succeeds() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let journal = sample_journal("e1", ExperimentStatus::Completed);
+
+        // Sabotage a late ingest step: `populate_graph` upserts into
+        // `graph_nodes`, so dropping the table forces a failure AFTER the
+        // experiments and activity rows were inserted.
+        s.conn.execute_batch("DROP TABLE graph_nodes").unwrap();
+
+        assert!(s.ingest_journal(&journal).is_err());
+        // Nothing partial survives: no experiments row, no activity rows.
+        assert_eq!(s.experiment_count().unwrap(), 0);
+        let rows = s.query("SELECT count(*) FROM activity_results").unwrap();
+        assert_eq!(rows[0][0], "0");
+
+        // Repair the schema and retry — must ingest, not skip as duplicate.
+        s.conn
+            .execute_batch(tumult_graph::sql::CREATE_TABLES)
+            .unwrap();
+        assert!(s.ingest_journal(&journal).unwrap());
+        assert_eq!(s.experiment_count().unwrap(), 1);
+        let rows = s.query("SELECT count(*) FROM activity_results").unwrap();
+        assert_eq!(rows[0][0], "1");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 ---
 title: "Agentic Trajectories: Chaos Engineering for Agents That Think in Steps"
 parent: Blog
-nav_order: 23
+nav_order: 22
 updated: 2026-07-21
 ---
 

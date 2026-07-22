@@ -17,18 +17,22 @@ pub enum ExecutionError {
 pub enum RollbackStrategy {
     /// Always execute rollbacks regardless of outcome.
     Always,
-    /// Only execute rollbacks when deviation is detected.
+    /// Execute rollbacks when the experiment deviates, **or** when it fails
+    /// or is interrupted after a fault-injecting activity started — an
+    /// injected fault needs cleanup even when nothing "deviated".
     OnDeviation,
     /// Never execute rollbacks.
     Never,
 }
 
-/// Determine if rollbacks should execute given the strategy and experiment outcome.
+/// Determine if rollbacks should execute given the strategy and whether the
+/// run needs rollback cleanup (deviation, or failure/interruption after a
+/// fault-injecting activity started).
 #[must_use]
-pub fn should_rollback(strategy: &RollbackStrategy, deviated: bool) -> bool {
+pub fn should_rollback(strategy: &RollbackStrategy, needs_rollback: bool) -> bool {
     match strategy {
         RollbackStrategy::Always => true,
-        RollbackStrategy::OnDeviation => deviated,
+        RollbackStrategy::OnDeviation => needs_rollback,
         RollbackStrategy::Never => false,
     }
 }

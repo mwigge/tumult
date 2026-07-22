@@ -59,7 +59,11 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 /// Returns an error if the store does not exist, cannot be opened read-only,
 /// or the terminal cannot be driven.
 pub fn run(store_path: Option<PathBuf>, refresh_secs: u64) -> Result<()> {
-    let path = store_path.unwrap_or_else(tumult_analytics::AnalyticsStore::default_path);
+    let path = match store_path {
+        Some(path) => path,
+        None => tumult_analytics::AnalyticsStore::default_path()
+            .map_err(|e| anyhow::anyhow!("cannot determine the default analytics store: {e}"))?,
+    };
     if !path.exists() {
         bail!(
             "no analytics store at {}\n\

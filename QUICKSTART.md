@@ -39,8 +39,13 @@ docker run --rm ghcr.io/mwigge/tumult discover
 docker run --rm ghcr.io/mwigge/tumult --help
 
 # Start MCP server for agent access
-docker run -p 3100:3100 --network tumult-e2e ghcr.io/mwigge/tumult-mcp
+docker run -p 3100:3100 --network tumult-e2e \
+  -e TUMULT_MCP_TOKEN='replace-with-a-secret' \
+  ghcr.io/mwigge/tumult-mcp
 ```
+
+Without a token the HTTP server binds to loopback only; a bearer token
+(`TUMULT_MCP_TOKEN`) is required before it will serve non-loopback clients.
 
 ### Option C: Clone and build
 
@@ -55,13 +60,14 @@ cargo build --release -p tumult-cli -p tumult-mcp
 make up-targets
 ```
 
-This starts 4 chaos targets on the `tumult-e2e` Docker network:
+This starts 5 chaos targets on the `tumult-e2e` Docker network:
 
 | Service | Port | Credentials |
 |---------|------|-------------|
 | PostgreSQL 16 | localhost:15432 | tumult / tumult_test |
 | Redis 7 | localhost:16379 | — |
 | Kafka 3.8 | localhost:19092 | — |
+| MySQL 8 | localhost:13306 | root / tumult_test |
 | SSH Server | localhost:12222 | `make ssh-key` for key |
 
 ### 3. Run your first chaos experiment

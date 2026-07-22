@@ -6,7 +6,7 @@
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Node, Pod};
 use k8s_openapi::api::networking::v1::NetworkPolicy;
-use kube::api::{Api, DeleteParams, Patch, PatchParams};
+use kube::api::{Api, DeleteParams, EvictParams, Patch, PatchParams};
 use kube::Client;
 
 use crate::error::KubeError;
@@ -135,7 +135,12 @@ impl std::fmt::Display for DrainResult {
     }
 }
 
-/// Drain a node: cordon it, then delete all non-DaemonSet pods on it.
+/// Drain a node: cordon it, then evict all non-DaemonSet pods on it.
+///
+/// Pods are removed through the policy/v1 **Eviction** subresource rather than
+/// plain deletes, so `PodDisruptionBudgets` are honoured: a pod whose eviction
+/// would violate its PDB lands in [`DrainResult::failed`] with the apiserver's
+/// error instead of being silently force-deleted.
 ///
 /// # Errors
 ///
@@ -159,10 +164,8 @@ pub async fn drain_node(
     let mut evicted = Vec::new();
     let mut failed = Vec::new();
     let mut skipped_daemonsets = 0;
-    let mut dp = DeleteParams::default();
-    if let Some(grace) = grace_period_seconds {
-        dp = dp.grace_period(grace);
-    }
+    let delete_options =
+        grace_period_seconds.map(|grace| DeleteParams::default().grace_period(grace));
 
     for pod in pod_list {
         let pod_name = pod.metadata.name.unwrap_or_default();
@@ -178,7 +181,11 @@ pub async fn drain_node(
         // Per-namespace Api requires an owned Client; kube Client is Arc-backed
         // so each clone here is a single atomic refcount increment.
         let ns_pods: Api<Pod> = Api::namespaced(client.clone(), &pod_ns);
-        match ns_pods.delete(&pod_name, &dp).await {
+        let ep = EvictParams {
+            delete_options: delete_options.clone(),
+            ..EvictParams::default()
+        };
+        match ns_pods.evict(&pod_name, &ep).await {
             Ok(_) => evicted.push(format!("{pod_ns}/{pod_name}")),
             Err(e) => failed.push((format!("{pod_ns}/{pod_name}"), e.to_string())),
         }

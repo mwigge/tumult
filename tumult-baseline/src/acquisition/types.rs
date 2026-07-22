@@ -25,13 +25,30 @@ pub struct ProbeStats {
     pub max: f64,
     pub error_rate: f64,
     pub samples: u32,
+    /// Tolerance lower bound derived from THIS probe's samples alone.
+    ///
+    /// Probes measure different quantities on different scales (latency in ms
+    /// vs throughput in rps), so bounds are never pooled across probes — each
+    /// probe carries its own.
+    pub tolerance_lower: f64,
+    /// Tolerance upper bound derived from THIS probe's samples alone.
+    pub tolerance_upper: f64,
 }
 
 /// Result of a complete baseline acquisition.
 #[derive(Debug, Clone)]
 pub struct AcquisitionResult {
     pub probes: Vec<ProbeStats>,
+    /// Representative tolerance lower bound.
+    ///
+    /// With exactly one probe this is that probe's bound (the historical
+    /// behaviour). With multiple probes it is the bound of the probe with the
+    /// worst (highest) coefficient of variation — the noisiest baseline drives
+    /// the headline tolerance. Prefer the per-probe bounds on [`ProbeStats`]
+    /// for evaluation; pooling probes of different scales into one bound is
+    /// statistically meaningless.
     pub tolerance_lower: f64,
+    /// Representative tolerance upper bound; see [`Self::tolerance_lower`].
     pub tolerance_upper: f64,
     pub anomaly_detected: bool,
     pub anomaly_reason: Option<String>,

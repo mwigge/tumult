@@ -15,12 +15,17 @@ const FUNCTIONS: &[&str] = &[
     "scale_deployment",
     "cordon_node",
     "uncordon_node",
+    "drain_node",
+    "apply_network_policy",
+    "delete_network_policy",
     "pod_network_latency",
     "pod_stress",
     "pod_is_ready",
     "deployment_is_ready",
     "all_pods_ready",
     "node_status",
+    "service_has_endpoints",
+    "count_pods_in_phase",
 ];
 
 /// Read an optional string argument, returning `None` when absent or non-string.
@@ -29,12 +34,13 @@ fn opt_str<'a>(args: &'a NativeArgs, key: &str) -> Option<&'a str> {
 }
 
 /// Resolve the target pod for an in-pod fault: use the explicit `pod` argument,
-/// else resolve the first pod matching `label_selector`.
+/// else resolve the first pod matching `label_selector` (reporting how many
+/// pods matched, so a wide selector's arbitrary victim is visible).
 async fn resolve_pod(
     client: kube::Client,
     args: &NativeArgs,
     namespace: &str,
-) -> Result<String, NativeError> {
+) -> Result<inject::ResolvedPod, NativeError> {
     let pod = opt_str(args, "pod");
     let selector = opt_str(args, "label_selector");
     if pod.is_none() && selector.is_none() {
@@ -78,6 +84,7 @@ impl NativeExecutor for KubernetesExecutor {
         FUNCTIONS
     }
 
+    #[allow(clippy::too_many_lines)] // Flat dispatch over all registered functions; one match arm per function
     async fn execute(&self, function: &str, args: &NativeArgs) -> Result<String, NativeError> {
         // Validate the function name before building a client, so typos fail
         // fast with the available-function list instead of a connection error.
@@ -126,6 +133,36 @@ impl NativeExecutor for KubernetesExecutor {
                     .await
                     .map_err(NativeError::execution)
             }
+            "drain_node" => {
+                let name = arg_str(args, "name")?;
+                let grace = arg_num::<u32>(args, "grace_period_seconds");
+                let result = actions::drain_node(client, name, grace)
+                    .await
+                    .map_err(NativeError::execution)?;
+                Ok(result.to_string())
+            }
+            "apply_network_policy" => {
+                let ns = arg_str(args, "namespace")?;
+                let policy_value =
+                    args.get("policy")
+                        .cloned()
+                        .ok_or_else(|| NativeError::MissingArgument {
+                            argument: "policy".to_string(),
+                        })?;
+                let policy = serde_json::from_value(policy_value).map_err(|e| {
+                    NativeError::invalid_argument("policy", format!("invalid NetworkPolicy: {e}"))
+                })?;
+                actions::apply_network_policy(client, ns, policy)
+                    .await
+                    .map_err(NativeError::execution)
+            }
+            "delete_network_policy" => {
+                let ns = arg_str(args, "namespace")?;
+                let name = arg_str(args, "name")?;
+                actions::delete_network_policy(client, ns, name)
+                    .await
+                    .map_err(NativeError::execution)
+            }
             "pod_network_latency" => {
                 let ns = arg_str(args, "namespace")?;
                 let pod = resolve_pod(client.clone(), args, ns).await?;
@@ -138,11 +175,12 @@ impl NativeExecutor for KubernetesExecutor {
                 let duration_s = arg_num::<u32>(args, "duration_s").unwrap_or(30);
                 let iface = opt_str(args, "iface").unwrap_or(inject::DEFAULT_IFACE);
                 let image = opt_str(args, "image").unwrap_or(inject::DEFAULT_NETEM_IMAGE);
-                inject::pod_network_latency(
-                    client, ns, &pod, delay_ms, jitter_ms, duration_s, iface, image,
+                let out = inject::pod_network_latency(
+                    client, ns, &pod.name, delay_ms, jitter_ms, duration_s, iface, image,
                 )
                 .await
-                .map_err(NativeError::execution)
+                .map_err(NativeError::execution)?;
+                Ok(pod.annotate(&out))
             }
             "pod_stress" => {
                 let ns = arg_str(args, "namespace")?;
@@ -151,9 +189,18 @@ impl NativeExecutor for KubernetesExecutor {
                 let kind = stress_kind(args)?;
                 let target_container = opt_str(args, "target_container");
                 let image = opt_str(args, "image").unwrap_or(inject::DEFAULT_STRESS_IMAGE);
-                inject::pod_stress(client, ns, &pod, kind, duration_s, target_container, image)
-                    .await
-                    .map_err(NativeError::execution)
+                let out = inject::pod_stress(
+                    client,
+                    ns,
+                    &pod.name,
+                    kind,
+                    duration_s,
+                    target_container,
+                    image,
+                )
+                .await
+                .map_err(NativeError::execution)?;
+                Ok(pod.annotate(&out))
             }
             "pod_is_ready" => {
                 let ns = arg_str(args, "namespace")?;
@@ -186,6 +233,23 @@ impl NativeExecutor for KubernetesExecutor {
                     .map_err(NativeError::execution)?;
                 serde_json::to_string(&status).map_err(NativeError::execution)
             }
+            "service_has_endpoints" => {
+                let ns = arg_str(args, "namespace")?;
+                let name = arg_str(args, "name")?;
+                let has = probes::service_has_endpoints(client, ns, name)
+                    .await
+                    .map_err(NativeError::execution)?;
+                Ok(format!("{has}"))
+            }
+            "count_pods_in_phase" => {
+                let ns = arg_str(args, "namespace")?;
+                let selector = arg_str(args, "label_selector")?;
+                let phase = arg_str(args, "phase")?;
+                let count = probes::count_pods_in_phase(client, ns, selector, phase)
+                    .await
+                    .map_err(NativeError::execution)?;
+                Ok(format!("{count}"))
+            }
             _ => Err(NativeError::unknown_function(
                 self.name(),
                 function,
@@ -207,6 +271,35 @@ mod tests {
         assert!(executor.functions().contains(&"node_status"));
         assert!(executor.functions().contains(&"pod_network_latency"));
         assert!(executor.functions().contains(&"pod_stress"));
+    }
+
+    #[test]
+    fn registry_covers_every_implemented_function() {
+        let executor = KubernetesExecutor;
+        let expected = [
+            "delete_pod",
+            "scale_deployment",
+            "cordon_node",
+            "uncordon_node",
+            "drain_node",
+            "apply_network_policy",
+            "delete_network_policy",
+            "pod_network_latency",
+            "pod_stress",
+            "pod_is_ready",
+            "deployment_is_ready",
+            "all_pods_ready",
+            "node_status",
+            "service_has_endpoints",
+            "count_pods_in_phase",
+        ];
+        assert_eq!(executor.functions().len(), expected.len());
+        for function in expected {
+            assert!(
+                executor.functions().contains(&function),
+                "{function} is implemented but not registered"
+            );
+        }
     }
 
     #[test]

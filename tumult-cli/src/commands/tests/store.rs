@@ -37,6 +37,7 @@ async fn cmd_run_with_auto_ingest() {
         &exp_path,
         &journal_path,
         false,
+        false,
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
@@ -56,6 +57,7 @@ async fn cmd_run_dry_run_does_not_ingest() {
     let result = cmd_run(
         &exp_path,
         &journal_path,
+        false,
         true,
         RollbackStrategy::OnDeviation,
         true,

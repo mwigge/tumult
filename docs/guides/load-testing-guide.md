@@ -20,7 +20,8 @@ A system that handles faults at idle may fail under production traffic. Load tes
 | Tool | Best For | Metrics |
 |------|----------|---------|
 | **k6** | HTTP/gRPC APIs, scripted scenarios | req duration, error rate, throughput, VUs |
-| **JMeter** | Complex protocols, legacy systems | response time, error rate, throughput, threads |
+
+k6 is the only supported load tool.
 
 ## Integration Pattern
 
@@ -64,12 +65,3 @@ tumult run experiment-with-load.toon
 | `TUMULT_K6_DURATION` | 30s | Test duration |
 | `TUMULT_K6_BINARY` | k6 | k6 binary path |
 | `TUMULT_OTEL_ENDPOINT` | (none) | OTLP endpoint for trace correlation |
-
-### JMeter
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TUMULT_JMETER_PLAN` | (required) | Path to .jmx test plan |
-| `TUMULT_JMETER_HOME` | /opt/jmeter | JMeter install directory |
-| `TUMULT_JMETER_THREADS` | (from plan) | Override thread count |
-| `TUMULT_JMETER_DURATION` | (from plan) | Override duration (seconds) |

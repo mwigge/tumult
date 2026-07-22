@@ -1,7 +1,7 @@
 ---
 title: Experiment Scheduling
 parent: Guides
-nav_order: 10
+nav_order: 19
 ---
 
 # Experiment Scheduling

@@ -39,6 +39,7 @@ pub mod azure;
 pub mod creds;
 pub mod error;
 pub mod gcp;
+mod http;
 pub mod native;
 pub mod sigv4;
 
