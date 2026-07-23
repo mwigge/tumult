@@ -442,11 +442,16 @@ mod tests {
     async fn stop_proxy_removes_a_stale_pidfile() {
         let listen = addr("127.0.0.1:65533");
         let pidfile = pidfile_path(listen);
-        // Simulate a leftover pidfile pointing at a long-dead PID. The identity
-        // check refuses the kill and the stale file is cleaned up instead.
+        // Simulate a leftover pidfile pointing at a long-dead PID. On Linux the
+        // identity check refuses the kill and the stale file is cleaned up;
+        // off Linux there is no /proc identity source, so the documented
+        // best-effort kill path runs instead. Both paths remove the pidfile.
         tokio::fs::write(&pidfile, "999999999").await.unwrap();
         let out = stop_proxy(listen).await.expect("rollback");
+        #[cfg(target_os = "linux")]
         assert!(out.contains("stale pidfile"), "out: {out}");
+        #[cfg(not(target_os = "linux"))]
+        assert!(out.contains("stopped"), "out: {out}");
         assert!(!pidfile.exists());
     }
 
@@ -482,33 +487,21 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn stop_proxy_kills_a_verified_proxyd_process() {
-        let Ok(mut child) = std::process::Command::new("sh")
-            .args(["-c", "exec -a tumult-net-proxyd sleep 60"])
+        use std::os::unix::process::CommandExt;
+
+        // argv[0] IS the proxyd name from the moment of exec: no shell
+        // (`dash` lacks `exec -a`, so the previous `sh -c` stand-in never
+        // started on Debian/Ubuntu runners) and no mid-exec /proc race.
+        let Ok(mut child) = std::process::Command::new("sleep")
+            .arg0(PROXYD_BIN)
+            .arg("60")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
         else {
-            return; // no `sh` on this host — nothing to test
+            return; // no `sleep` on this host — nothing to test
         };
-        // Wait until the stand-in has fully exec'd (its argv[0] IS the proxyd
-        // name) before writing the pidfile. Reading /proc/<pid>/cmdline while
-        // the process is mid-exec can yield an empty string, which would fail
-        // the identity check below non-deterministically under parallel load.
-        let mut execd = false;
-        for _ in 0..100 {
-            if let Ok(cmdline) = tokio::fs::read(format!("/proc/{}/cmdline", child.id())).await {
-                if cmdline.split(|b| *b == 0).next() == Some(PROXYD_BIN.as_bytes()) {
-                    execd = true;
-                    break;
-                }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        if !execd {
-            let _ = child.kill();
-            panic!("stand-in daemon never exec'd as `{PROXYD_BIN}`");
-        }
         let listen = addr("127.0.0.1:65531");
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, child.id().to_string())
