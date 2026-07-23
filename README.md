@@ -21,7 +21,7 @@ flowchart LR
     engine --> providers[Fault and probe providers]
     providers --> targets[Target systems]
     engine --> evidence[TOON journals and DuckDB]
-    evidence --> graph[ChaosGraph and reports]
+    evidence --> reports[ChaosGraph and reports]
     engine --> otel[OpenTelemetry exporter]
 ```
 
