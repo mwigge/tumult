@@ -419,6 +419,12 @@ mod tests {
         };
         let report = discover_report_with_config(&config);
 
+        // Discovery canonicalizes plugin roots (symlink-escape guard), so
+        // compare against canonicalized expectations — on macOS tempdirs
+        // live under /var but resolve to /private/var.
+        let local_canon = local.path().canonicalize().unwrap();
+        let global_canon = global.path().canonicalize().unwrap();
+
         // First path wins; exactly one copy survives.
         let kafka: Vec<_> = report
             .plugins
@@ -426,7 +432,7 @@ mod tests {
             .filter(|p| p.manifest.name == "tumult-kafka")
             .collect();
         assert_eq!(kafka.len(), 1);
-        assert!(kafka[0].root.starts_with(local.path()));
+        assert!(kafka[0].root.starts_with(&local_canon));
 
         // The shadowed copy warns, naming the shadowed path.
         let shadow_warnings: Vec<_> = report
@@ -436,7 +442,7 @@ mod tests {
             .collect();
         assert_eq!(shadow_warnings.len(), 1, "{:?}", report.warnings);
         assert!(
-            shadow_warnings[0].contains(&global.path().display().to_string()),
+            shadow_warnings[0].contains(&global_canon.display().to_string()),
             "warning should name the shadowed path: {}",
             shadow_warnings[0]
         );
