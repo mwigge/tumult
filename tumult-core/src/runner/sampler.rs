@@ -46,7 +46,12 @@ pub(super) fn spawn_during_sampler(
     let (stop_tx, stop_rx) = mpsc::channel();
     let started_at_ns = epoch_nanos_now();
 
+    // The sampling thread is detached from the calling context tree, so hand
+    // it the experiment context explicitly — otherwise its probe spans would
+    // start new traces instead of parenting to this run.
+    let parent_cx = opentelemetry::Context::current();
     let handle = std::thread::spawn(move || {
+        let _parent_guard = parent_cx.attach();
         collect_during_samples(
             &hypothesis,
             executor.as_ref(),

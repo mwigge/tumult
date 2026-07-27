@@ -104,15 +104,17 @@ async fn main() -> SdkResult<()> {
         std::env::set_var("RUST_LOG", "warn");
     }
 
-    // Initialize OTel (traces AND metrics — `TumultTelemetry::new` installs
-    // the meter provider internally; do not call `init_meter_provider` again)
-    // before serving, so `tumult-mcp` and `tumult mcp serve` behave
-    // identically. Without an OTLP endpoint both providers degrade to noop
-    // and the server runs exactly as before. The guard shuts both providers
-    // down (flushing metrics) on the shutdown path out of `serve`.
+    let args = parse_args();
+
+    // Initialize OTel (traces, metrics, and logs — `TumultTelemetry::new`
+    // installs all providers internally) before serving, so `tumult-mcp` and
+    // `tumult mcp serve` behave identically. Without an OTLP endpoint the
+    // providers degrade to noop and the server runs exactly as before. The
+    // guard shuts the providers down (flushing) on every exit path. The fmt
+    // layer always writes to stderr, keeping stdout clean for stdio framing.
     let otel_config = tumult_otel::config::TelemetryConfig::from_env();
     let _telemetry_guard =
         TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
 
-    serve(parse_args()).await
+    serve(args).await
 }

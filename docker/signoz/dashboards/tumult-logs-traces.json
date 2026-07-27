@@ -1,0 +1,684 @@
+{
+  "title": "Tumult — Operations Logs & Traces",
+  "description": "Every experiment and every operation: outcomes, durations, errors, and the trace-correlated log stream (OTLP logs pipeline).",
+  "tags": [
+    "tumult"
+  ],
+  "widgets": [
+    {
+      "id": "d1681211-d7b8-489b-bea5-23351c8a3831",
+      "title": "Experiment outcomes",
+      "description": "tumult.experiments.total rate by outcome.",
+      "panelTypes": "graph",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "metrics",
+              "queryName": "A",
+              "aggregateOperator": "rate",
+              "aggregateAttribute": {
+                "key": "tumult.experiments.total",
+                "dataType": "float64",
+                "type": "Sum",
+                "isColumn": true
+              },
+              "temporality": "Cumulative",
+              "timeAggregation": "rate",
+              "spaceAggregation": "sum",
+              "function": [],
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "groupBy": [
+                {
+                  "key": "resilience.outcome.status",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                }
+              ],
+              "having": [],
+              "limit": null,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "{{resilience.outcome.status}}",
+              "reduceTo": "avg",
+              "orderBy": []
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "665fbb9e-2861-46fd-896f-3344f7713122",
+      "title": "Operations by name",
+      "description": "Every action and probe span, grouped by operation name.",
+      "panelTypes": "graph",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "count",
+              "aggregateAttribute": {
+                "key": "",
+                "dataType": "float64",
+                "type": "tag",
+                "isColumn": false
+              },
+              "function": [],
+              "filters": {
+                "items": [
+                  {
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "tag",
+                      "isColumn": true
+                    },
+                    "op": "in",
+                    "value": [
+                      "resilience.action",
+                      "resilience.probe"
+                    ]
+                  }
+                ],
+                "op": "AND"
+              },
+              "groupBy": [
+                {
+                  "key": "resilience.action.name",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                }
+              ],
+              "having": [],
+              "limit": null,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "{{resilience.action.name}}",
+              "reduceTo": "avg",
+              "orderBy": []
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "905b5d4c-5970-4b9d-bb03-937cfad9af26",
+      "title": "Operation duration p95",
+      "description": "p95 duration per operation.",
+      "panelTypes": "graph",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "p95",
+              "aggregateAttribute": {
+                "key": "durationNano",
+                "dataType": "float64",
+                "type": "",
+                "isColumn": true
+              },
+              "function": [],
+              "filters": {
+                "items": [
+                  {
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "tag",
+                      "isColumn": true
+                    },
+                    "op": "in",
+                    "value": [
+                      "resilience.action",
+                      "resilience.probe"
+                    ]
+                  }
+                ],
+                "op": "AND"
+              },
+              "groupBy": [
+                {
+                  "key": "resilience.action.name",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                }
+              ],
+              "having": [],
+              "limit": null,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "{{resilience.action.name}}",
+              "reduceTo": "avg",
+              "orderBy": []
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "ns",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "7aa19327-e497-4f86-a048-792d3f0900b4",
+      "title": "Plugin errors /s",
+      "description": "",
+      "panelTypes": "graph",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "metrics",
+              "queryName": "A",
+              "aggregateOperator": "rate",
+              "aggregateAttribute": {
+                "key": "tumult.plugin.errors.total",
+                "dataType": "float64",
+                "type": "Sum",
+                "isColumn": true
+              },
+              "temporality": "Cumulative",
+              "timeAggregation": "rate",
+              "spaceAggregation": "sum",
+              "function": [],
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "groupBy": [
+                {
+                  "key": "resilience.plugin.name",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                }
+              ],
+              "having": [],
+              "limit": null,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "{{resilience.plugin.name}}",
+              "reduceTo": "avg",
+              "orderBy": []
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "edf667eb-57bf-47aa-9e78-9480cecce9a4",
+      "title": "Logs by severity",
+      "description": "OTLP log bridge output — every tumult log, trace-correlated.",
+      "panelTypes": "graph",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "logs",
+              "queryName": "A",
+              "aggregateOperator": "count",
+              "aggregateAttribute": {
+                "key": "",
+                "dataType": "",
+                "type": "",
+                "isColumn": false
+              },
+              "function": [],
+              "filters": {
+                "items": [
+                  {
+                    "key": {
+                      "key": "service.name",
+                      "dataType": "string",
+                      "type": "resource",
+                      "isColumn": false
+                    },
+                    "op": "=",
+                    "value": "tumult"
+                  }
+                ],
+                "op": "AND"
+              },
+              "groupBy": [
+                {
+                  "key": "severity_text",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                }
+              ],
+              "having": [],
+              "limit": null,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "{{severity_text}}",
+              "reduceTo": "avg",
+              "orderBy": []
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "8227d092-5e05-434a-b468-04d3480eac54",
+      "title": "Recent errors & warnings",
+      "description": "Newest WARN/ERROR lines; trace_id jumps to the trace.",
+      "panelTypes": "list",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "logs",
+              "queryName": "A",
+              "aggregateOperator": "noop",
+              "aggregateAttribute": {
+                "key": "",
+                "dataType": "",
+                "type": "",
+                "isColumn": false
+              },
+              "function": [],
+              "filters": {
+                "items": [
+                  {
+                    "key": {
+                      "key": "service.name",
+                      "dataType": "string",
+                      "type": "resource",
+                      "isColumn": false
+                    },
+                    "op": "=",
+                    "value": "tumult"
+                  },
+                  {
+                    "key": {
+                      "key": "severity_text",
+                      "dataType": "string",
+                      "type": "tag",
+                      "isColumn": true
+                    },
+                    "op": "in",
+                    "value": [
+                      "WARN",
+                      "ERROR"
+                    ]
+                  }
+                ],
+                "op": "AND"
+              },
+              "groupBy": [],
+              "having": [],
+              "limit": 100,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "",
+              "reduceTo": "avg",
+              "orderBy": [
+                {
+                  "columnName": "timestamp",
+                  "order": "desc"
+                }
+              ],
+              "selectFields": [
+                {
+                  "key": "timestamp",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                },
+                {
+                  "key": "severity_text",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                },
+                {
+                  "key": "body",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                },
+                {
+                  "key": "trace_id",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                }
+              ]
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "ee3c9cab-ede8-4ff6-9cd1-14526412957d",
+      "title": "Recent experiments",
+      "description": "Newest resilience.experiment spans.",
+      "panelTypes": "list",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "noop",
+              "aggregateAttribute": {
+                "key": "",
+                "dataType": "",
+                "type": "",
+                "isColumn": false
+              },
+              "function": [],
+              "filters": {
+                "items": [
+                  {
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "tag",
+                      "isColumn": true
+                    },
+                    "op": "=",
+                    "value": "resilience.experiment"
+                  }
+                ],
+                "op": "AND"
+              },
+              "groupBy": [],
+              "having": [],
+              "limit": 100,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "",
+              "reduceTo": "avg",
+              "orderBy": [
+                {
+                  "columnName": "timestamp",
+                  "order": "desc"
+                }
+              ],
+              "selectFields": [
+                {
+                  "key": "timestamp",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                },
+                {
+                  "key": "durationNano",
+                  "dataType": "float64",
+                  "type": "",
+                  "isColumn": true
+                },
+                {
+                  "key": "resilience.experiment.title",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                },
+                {
+                  "key": "resilience.experiment.id",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                },
+                {
+                  "key": "traceID",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                }
+              ]
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    },
+    {
+      "id": "a8e620f7-775d-4fa7-b8af-f7f70f174c2f",
+      "title": "Recent operations",
+      "description": "Newest action/probe spans with target type.",
+      "panelTypes": "list",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "noop",
+              "aggregateAttribute": {
+                "key": "",
+                "dataType": "",
+                "type": "",
+                "isColumn": false
+              },
+              "function": [],
+              "filters": {
+                "items": [
+                  {
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "tag",
+                      "isColumn": true
+                    },
+                    "op": "in",
+                    "value": [
+                      "resilience.action",
+                      "resilience.probe"
+                    ]
+                  }
+                ],
+                "op": "AND"
+              },
+              "groupBy": [],
+              "having": [],
+              "limit": 100,
+              "stepInterval": 60,
+              "expression": "A",
+              "disabled": false,
+              "legend": "",
+              "reduceTo": "avg",
+              "orderBy": [
+                {
+                  "columnName": "timestamp",
+                  "order": "desc"
+                }
+              ],
+              "selectFields": [
+                {
+                  "key": "timestamp",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                },
+                {
+                  "key": "name",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                },
+                {
+                  "key": "durationNano",
+                  "dataType": "float64",
+                  "type": "",
+                  "isColumn": true
+                },
+                {
+                  "key": "resilience.action.name",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                },
+                {
+                  "key": "resilience.target.type",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false
+                },
+                {
+                  "key": "traceID",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": true
+                }
+              ]
+            }
+          ],
+          "queryFormulas": []
+        }
+      },
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "none",
+      "isStacked": false,
+      "nullZeroValues": "",
+      "opacity": "",
+      "thresholds": [],
+      "softMin": null,
+      "softMax": null
+    }
+  ],
+  "layout": [
+    {
+      "i": "d1681211-d7b8-489b-bea5-23351c8a3831",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "665fbb9e-2861-46fd-896f-3344f7713122",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "905b5d4c-5970-4b9d-bb03-937cfad9af26",
+      "x": 0,
+      "y": 3,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "7aa19327-e497-4f86-a048-792d3f0900b4",
+      "x": 6,
+      "y": 3,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "edf667eb-57bf-47aa-9e78-9480cecce9a4",
+      "x": 0,
+      "y": 6,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "8227d092-5e05-434a-b468-04d3480eac54",
+      "x": 6,
+      "y": 6,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "ee3c9cab-ede8-4ff6-9cd1-14526412957d",
+      "x": 0,
+      "y": 9,
+      "w": 6,
+      "h": 3
+    },
+    {
+      "i": "a8e620f7-775d-4fa7-b8af-f7f70f174c2f",
+      "x": 6,
+      "y": 9,
+      "w": 6,
+      "h": 3
+    }
+  ],
+  "variables": {}
+}

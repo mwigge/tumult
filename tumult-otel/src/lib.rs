@@ -387,7 +387,7 @@ mod tests {
         for rm in exporter.get_finished_metrics().unwrap_or_default() {
             for sm in rm.scope_metrics() {
                 for metric in sm.metrics() {
-                    if metric.name() == "tumult_experiments_total" {
+                    if metric.name() == "tumult.experiments.total" {
                         if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
                             recorded_total =
                                 Some(sum.data_points().map(SumDataPoint::value).sum::<u64>());

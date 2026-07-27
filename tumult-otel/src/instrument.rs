@@ -136,6 +136,26 @@ pub fn record_experiment(metrics: &TumultMetrics, success: bool) {
         .add(1, &[KeyValue::new(attributes::OUTCOME, outcome)]);
 }
 
+/// Record the end-to-end duration of a completed experiment lifecycle.
+pub fn record_experiment_duration(metrics: &TumultMetrics, duration_s: f64, success: bool) {
+    let outcome = if success { "success" } else { "failure" };
+    metrics
+        .experiment_duration_seconds
+        .record(duration_s, &[KeyValue::new(attributes::OUTCOME, outcome)]);
+}
+
+/// Record the execution of a rollback activity.
+pub fn record_rollback(metrics: &TumultMetrics, rollback_name: &str, success: bool) {
+    let outcome = if success { "success" } else { "failure" };
+    metrics.rollbacks_total.add(
+        1,
+        &[
+            KeyValue::new(attributes::ACTION_NAME, rollback_name.to_string()),
+            KeyValue::new(attributes::OUTCOME, outcome),
+        ],
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,12 +208,12 @@ mod tests {
         record_action(&metrics, "tumult-db", "kill-connections", start, true);
         let names = flush_and_names(&provider, &exporter);
         assert!(
-            names.iter().any(|n| n == "tumult_actions_total"),
-            "expected tumult_actions_total in {names:?}"
+            names.iter().any(|n| n == "tumult.actions.total"),
+            "expected tumult.actions.total in {names:?}"
         );
         // On success, plugin_errors_total must NOT be reported (no data points recorded).
         assert!(
-            !names.iter().any(|n| n == "tumult_plugin_errors_total"),
+            !names.iter().any(|n| n == "tumult.plugin.errors.total"),
             "plugin_errors_total must not be emitted on success; found in {names:?}"
         );
     }
@@ -206,12 +226,12 @@ mod tests {
         record_action(&metrics, "tumult-db", "kill-connections", start, false);
         let names = flush_and_names(&provider, &exporter);
         assert!(
-            names.iter().any(|n| n == "tumult_actions_total"),
-            "expected tumult_actions_total in {names:?}"
+            names.iter().any(|n| n == "tumult.actions.total"),
+            "expected tumult.actions.total in {names:?}"
         );
         assert!(
-            names.iter().any(|n| n == "tumult_plugin_errors_total"),
-            "expected tumult_plugin_errors_total on failure in {names:?}"
+            names.iter().any(|n| n == "tumult.plugin.errors.total"),
+            "expected tumult.plugin.errors.total on failure in {names:?}"
         );
     }
 
@@ -223,8 +243,8 @@ mod tests {
         record_action(&metrics, "tumult-db", "kill-connections", start, true);
         let names = flush_and_names(&provider, &exporter);
         assert!(
-            names.iter().any(|n| n == "tumult_action_duration_seconds"),
-            "expected tumult_action_duration_seconds histogram in {names:?}"
+            names.iter().any(|n| n == "tumult.action.duration"),
+            "expected tumult.action.duration histogram in {names:?}"
         );
     }
 
@@ -236,11 +256,11 @@ mod tests {
         record_probe(&metrics, "tumult-http", "health-check", start, true);
         let names = flush_and_names(&provider, &exporter);
         assert!(
-            names.iter().any(|n| n == "tumult_probes_total"),
-            "expected tumult_probes_total in {names:?}"
+            names.iter().any(|n| n == "tumult.probes.total"),
+            "expected tumult.probes.total in {names:?}"
         );
         assert!(
-            !names.iter().any(|n| n == "tumult_plugin_errors_total"),
+            !names.iter().any(|n| n == "tumult.plugin.errors.total"),
             "plugin_errors_total must not be emitted on probe success"
         );
     }
@@ -253,8 +273,8 @@ mod tests {
         record_probe(&metrics, "tumult-http", "health-check", start, false);
         let names = flush_and_names(&provider, &exporter);
         assert!(
-            names.iter().any(|n| n == "tumult_plugin_errors_total"),
-            "expected tumult_plugin_errors_total on probe failure in {names:?}"
+            names.iter().any(|n| n == "tumult.plugin.errors.total"),
+            "expected tumult.plugin.errors.total on probe failure in {names:?}"
         );
     }
 
@@ -267,8 +287,8 @@ mod tests {
         assert!(
             names
                 .iter()
-                .any(|n| n == "tumult_hypothesis_deviations_total"),
-            "expected tumult_hypothesis_deviations_total in {names:?}"
+                .any(|n| n == "tumult.hypothesis.deviations.total"),
+            "expected tumult.hypothesis.deviations.total in {names:?}"
         );
     }
 
@@ -280,8 +300,8 @@ mod tests {
         record_experiment(&metrics, false);
         let names = flush_and_names(&provider, &exporter);
         assert!(
-            names.iter().any(|n| n == "tumult_experiments_total"),
-            "expected tumult_experiments_total in {names:?}"
+            names.iter().any(|n| n == "tumult.experiments.total"),
+            "expected tumult.experiments.total in {names:?}"
         );
     }
 

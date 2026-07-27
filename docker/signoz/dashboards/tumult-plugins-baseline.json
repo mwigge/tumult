@@ -135,34 +135,112 @@
     "row-script-stats": {
       "collapsed": false,
       "widgets": [
-        { "h": 4, "i": "stat-script-total", "moved": false, "static": false, "w": 3, "x": 0, "y": 1 },
-        { "h": 4, "i": "stat-script-success", "moved": false, "static": false, "w": 3, "x": 3, "y": 1 },
-        { "h": 4, "i": "stat-baseline-probes", "moved": false, "static": false, "w": 3, "x": 6, "y": 1 },
-        { "h": 4, "i": "stat-baseline-samples", "moved": false, "static": false, "w": 3, "x": 9, "y": 1 }
+        {
+          "h": 4,
+          "i": "stat-script-total",
+          "moved": false,
+          "static": false,
+          "w": 3,
+          "x": 0,
+          "y": 1
+        },
+        {
+          "h": 4,
+          "i": "stat-script-success",
+          "moved": false,
+          "static": false,
+          "w": 3,
+          "x": 3,
+          "y": 1
+        },
+        {
+          "h": 4,
+          "i": "stat-baseline-probes",
+          "moved": false,
+          "static": false,
+          "w": 3,
+          "x": 6,
+          "y": 1
+        },
+        {
+          "h": 4,
+          "i": "stat-baseline-samples",
+          "moved": false,
+          "static": false,
+          "w": 3,
+          "x": 9,
+          "y": 1
+        }
       ]
     },
     "row-script-trends": {
       "collapsed": false,
       "widgets": [
-        { "h": 6, "i": "graph-script-rate", "moved": false, "static": false, "w": 6, "x": 0, "y": 6 },
-        { "h": 6, "i": "graph-script-duration", "moved": false, "static": false, "w": 6, "x": 6, "y": 6 }
+        {
+          "h": 6,
+          "i": "graph-script-rate",
+          "moved": false,
+          "static": false,
+          "w": 6,
+          "x": 0,
+          "y": 6
+        },
+        {
+          "h": 6,
+          "i": "graph-script-duration",
+          "moved": false,
+          "static": false,
+          "w": 6,
+          "x": 6,
+          "y": 6
+        }
       ]
     },
     "row-baseline": {
       "collapsed": false,
       "widgets": [
-        { "h": 6, "i": "graph-baseline-tolerance", "moved": false, "static": false, "w": 6, "x": 0, "y": 13 },
-        { "h": 6, "i": "graph-baseline-acquire-rate", "moved": false, "static": false, "w": 6, "x": 6, "y": 13 }
+        {
+          "h": 6,
+          "i": "graph-baseline-tolerance",
+          "moved": false,
+          "static": false,
+          "w": 6,
+          "x": 0,
+          "y": 13
+        },
+        {
+          "h": 6,
+          "i": "graph-baseline-acquire-rate",
+          "moved": false,
+          "static": false,
+          "w": 6,
+          "x": 6,
+          "y": 13
+        }
       ]
     },
     "row-drift": {
       "collapsed": false,
       "widgets": [
-        { "h": 6, "i": "graph-drift-overlay", "moved": false, "static": false, "w": 12, "x": 0, "y": 20 }
+        {
+          "h": 6,
+          "i": "graph-drift-overlay",
+          "moved": false,
+          "static": false,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        }
       ]
     }
   },
-  "tags": ["tumult", "chaos", "plugin", "script", "baseline"],
+  "tags": [
+    "tumult",
+    "chaos",
+    "plugin",
+    "script",
+    "baseline"
+  ],
   "title": "Tumult — Plugins & Baseline",
   "uploadedGrafana": false,
   "uuid": "tumult-plugins-baseline-v1",
@@ -195,7 +273,10 @@
               "dataSource": "metrics",
               "disabled": false,
               "expression": "A",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
               "groupBy": [],
               "having": [],
@@ -211,9 +292,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-stat-script-total",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -276,9 +371,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-stat-script-success",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -302,13 +411,16 @@
                 "isColumn": true,
                 "isJSON": false,
                 "key": "baseline.probes_total",
-                "type": "Gauge"
+                "type": "Sum"
               },
-              "aggregateOperator": "latest",
+              "aggregateOperator": "rate",
               "dataSource": "metrics",
               "disabled": false,
               "expression": "A",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
               "groupBy": [],
               "having": [],
@@ -319,14 +431,28 @@
               "reduceTo": "last",
               "spaceAggregation": "sum",
               "stepInterval": 60,
-              "timeAggregation": "latest"
+              "timeAggregation": "rate"
             }
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-stat-baseline-probes",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -350,13 +476,16 @@
                 "isColumn": true,
                 "isJSON": false,
                 "key": "baseline.samples_total",
-                "type": "Gauge"
+                "type": "Sum"
               },
-              "aggregateOperator": "latest",
+              "aggregateOperator": "rate",
               "dataSource": "metrics",
               "disabled": false,
               "expression": "A",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
               "groupBy": [],
               "having": [],
@@ -367,14 +496,28 @@
               "reduceTo": "last",
               "spaceAggregation": "sum",
               "stepInterval": 60,
-              "timeAggregation": "latest"
+              "timeAggregation": "rate"
             }
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-stat-baseline-samples",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -418,7 +561,10 @@
               "dataSource": "metrics",
               "disabled": false,
               "expression": "A",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
               "groupBy": [
                 {
@@ -443,9 +589,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-graph-script-rate",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -562,9 +722,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-graph-script-duration",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -611,7 +785,10 @@
               "dataSource": "metrics",
               "disabled": false,
               "expression": "A",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
               "groupBy": [],
               "having": [],
@@ -637,7 +814,10 @@
               "dataSource": "metrics",
               "disabled": false,
               "expression": "B",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
               "groupBy": [],
               "having": [],
@@ -653,9 +833,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-graph-baseline-tolerance",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -729,9 +923,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-graph-baseline-acquire-rate",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],
@@ -778,20 +986,14 @@
               "dataSource": "metrics",
               "disabled": false,
               "expression": "A",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
-              "groupBy": [
-                {
-                  "dataType": "string",
-                  "id": "resilience.probe.name--string--tag--false",
-                  "isColumn": false,
-                  "isJSON": false,
-                  "key": "resilience.probe.name",
-                  "type": "tag"
-                }
-              ],
+              "groupBy": [],
               "having": [],
-              "legend": "lower ({{resilience.probe.name}})",
+              "legend": "lower",
               "limit": null,
               "orderBy": [],
               "queryName": "A",
@@ -813,58 +1015,17 @@
               "dataSource": "metrics",
               "disabled": false,
               "expression": "B",
-              "filters": { "items": [], "op": "AND" },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
               "functions": [],
-              "groupBy": [
-                {
-                  "dataType": "string",
-                  "id": "resilience.probe.name--string--tag--false",
-                  "isColumn": false,
-                  "isJSON": false,
-                  "key": "resilience.probe.name",
-                  "type": "tag"
-                }
-              ],
+              "groupBy": [],
               "having": [],
-              "legend": "upper ({{resilience.probe.name}})",
+              "legend": "upper",
               "limit": null,
               "orderBy": [],
               "queryName": "B",
-              "reduceTo": "last",
-              "spaceAggregation": "avg",
-              "stepInterval": 60,
-              "timeAggregation": "latest"
-            },
-            {
-              "aggregateAttribute": {
-                "dataType": "float64",
-                "id": "baseline.probe.value--float64--Gauge--true",
-                "isColumn": true,
-                "isJSON": false,
-                "key": "baseline.probe.value",
-                "type": "Gauge"
-              },
-              "aggregateOperator": "latest",
-              "dataSource": "metrics",
-              "disabled": false,
-              "expression": "C",
-              "filters": { "items": [], "op": "AND" },
-              "functions": [],
-              "groupBy": [
-                {
-                  "dataType": "string",
-                  "id": "resilience.probe.name--string--tag--false",
-                  "isColumn": false,
-                  "isJSON": false,
-                  "key": "resilience.probe.name",
-                  "type": "tag"
-                }
-              ],
-              "having": [],
-              "legend": "probe value ({{resilience.probe.name}})",
-              "limit": null,
-              "orderBy": [],
-              "queryName": "C",
               "reduceTo": "last",
               "spaceAggregation": "avg",
               "stepInterval": 60,
@@ -873,9 +1034,23 @@
           ],
           "queryFormulas": []
         },
-        "clickhouse_sql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "id": "q-graph-drift-overlay",
-        "promql": [{ "disabled": false, "legend": "", "name": "A", "query": "" }],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
         "queryType": "builder"
       },
       "selectedLogFields": [],

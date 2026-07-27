@@ -151,6 +151,7 @@ pub fn run_experiment_with_sampling(
         );
 
         controls.emit(&LifecycleEvent::AfterExperiment);
+        record_experiment_outcome(&started, false);
 
         // Rollback failure counts in chaos experiments are always << u32::MAX.
         #[allow(clippy::cast_possible_truncation)]
@@ -182,6 +183,7 @@ pub fn run_experiment_with_sampling(
             #[allow(clippy::cast_possible_truncation)]
             let duration_ms = started.elapsed().as_millis() as u64;
             controls.emit(&LifecycleEvent::AfterExperiment);
+            record_experiment_outcome(&started, false);
             return Ok(Journal {
                 ended_at_ns,
                 duration_ms,
@@ -467,6 +469,17 @@ pub fn run_experiment_with_sampling(
         "experiment.completed"
     );
 
+    // Per-experiment metrics: outcome counter, lifecycle duration, and a
+    // deviation count tagged with the experiment title when the steady
+    // state was breached.
+    record_experiment_outcome(&started, status == ExperimentStatus::Completed);
+    if status == ExperimentStatus::Deviated {
+        tumult_otel::instrument::record_deviation(
+            tumult_otel::TumultMetrics::global(),
+            &experiment.title,
+        );
+    }
+
     Ok(Journal {
         ended_at_ns,
         duration_ms,
@@ -525,4 +538,17 @@ fn build_blast_radius(
         max_concurrent_faults,
         peak_concurrent_faults,
     })
+}
+
+/// Record the outcome of a finished experiment: the `tumult.experiments.total`
+/// counter and the `tumult.experiment.duration` histogram, both tagged with
+/// the outcome. No-op when no meter provider is installed.
+fn record_experiment_outcome(started: &Instant, success: bool) {
+    let metrics = tumult_otel::TumultMetrics::global();
+    tumult_otel::instrument::record_experiment(metrics, success);
+    tumult_otel::instrument::record_experiment_duration(
+        metrics,
+        started.elapsed().as_secs_f64(),
+        success,
+    );
 }

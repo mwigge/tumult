@@ -10,12 +10,18 @@ use tokio_util::sync::CancellationToken;
 
 use crate::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult, ExpectedOutcome,
-    Experiment, ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, SpanId, TraceId,
+    Experiment, ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost,
 };
 
+use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry::KeyValue;
+
 use super::activity::probe_outcome_ok;
-use super::telemetry::epoch_nanos_now;
-use super::ActivityExecutor;
+use super::telemetry::{
+    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
+    set_span_status_from_outcome, target_attributes,
+};
+use super::{ActivityExecutor, TRACER_NAME};
 
 /// Probe samples grouped by probe name, each group in collection order.
 pub(crate) type ProbeSamples = Vec<(String, Vec<ActivityResult>)>;
@@ -75,9 +81,37 @@ fn sample_probe_round(
     let mut all_within_tolerance = true;
 
     for probe in &hypothesis.probes {
+        // Each sample is a real probe execution — give it the same span
+        // coverage as method-phase activities so during/post operations
+        // show up in traces and join the experiment's trace tree.
+        let tracer = opentelemetry::global::tracer(TRACER_NAME);
+        let mut attrs = vec![
+            KeyValue::new("resilience.action.name", probe.name.clone()),
+            KeyValue::new("resilience.activity.type", ActivityType::Probe.to_string()),
+        ];
+        attrs.extend(target_attributes(probe));
+        attrs.extend(fault_attributes(probe));
+        let span = tracer
+            .span_builder("resilience.probe")
+            .with_attributes(attrs)
+            .start(&tracer);
+        let cx = opentelemetry::Context::current_with_span(span);
+        let guard = cx.attach();
+
         let start = Instant::now();
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(probe);
+        set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
+        tumult_otel::instrument::record_probe(
+            tumult_otel::TumultMetrics::global(),
+            &plugin_name(probe),
+            &probe.name,
+            start,
+            outcome.success,
+        );
+        let trace_id = current_trace_id();
+        let span_id = current_span_id();
+        drop(guard);
         // Probe durations never exceed u64::MAX milliseconds (~585M years).
         #[allow(clippy::cast_possible_truncation)]
         let elapsed = start.elapsed().as_millis() as u64;
@@ -100,8 +134,8 @@ fn sample_probe_round(
             duration_ms: elapsed,
             output: outcome.output,
             error: outcome.error,
-            trace_id: TraceId::empty(),
-            span_id: SpanId::empty(),
+            trace_id,
+            span_id,
         });
     }
 

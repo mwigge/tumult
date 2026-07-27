@@ -16,7 +16,7 @@ use opentelemetry::KeyValue;
 use tokio_util::sync::CancellationToken;
 
 use super::telemetry::{
-    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes,
+    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
     set_span_status_from_outcome, target_attributes,
 };
 use super::{ActivityExecutor, TRACER_NAME};
@@ -105,8 +105,29 @@ fn execute_single_activity(
     let _guard = cx.attach();
 
     let started_at_ns = epoch_nanos_now();
+    let start = std::time::Instant::now();
     let outcome = executor.execute(activity);
     set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
+
+    // Per-operation metrics: every action and probe is counted and timed,
+    // tagged with the plugin serving it and the outcome.
+    let metrics = tumult_otel::TumultMetrics::global();
+    match activity.activity_type {
+        ActivityType::Action => tumult_otel::instrument::record_action(
+            metrics,
+            &plugin_name(activity),
+            &activity.name,
+            start,
+            outcome.success,
+        ),
+        ActivityType::Probe => tumult_otel::instrument::record_probe(
+            metrics,
+            &plugin_name(activity),
+            &activity.name,
+            start,
+            outcome.success,
+        ),
+    }
 
     let result = make_result(ResultParams {
         activity,
@@ -421,6 +442,14 @@ pub(crate) fn run_rollbacks(
     let _rb_guard = rb_cx.attach();
     let results =
         execute_rollback_activities(&experiment.rollbacks, executor.as_ref(), controls.as_ref());
+    let metrics = tumult_otel::TumultMetrics::global();
+    for r in &results {
+        tumult_otel::instrument::record_rollback(
+            metrics,
+            &r.name,
+            r.status == ActivityStatus::Succeeded,
+        );
+    }
     controls.emit(&LifecycleEvent::AfterRollback);
     results
 }

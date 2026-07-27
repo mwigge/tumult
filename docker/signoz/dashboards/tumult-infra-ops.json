@@ -494,15 +494,15 @@
               "groupBy": [
                 {
                   "dataType": "string",
-                  "id": "ssh.target.host--string--tag--false",
+                  "id": "ssh.host--string--tag--false",
                   "isColumn": false,
                   "isJSON": false,
-                  "key": "ssh.target.host",
+                  "key": "ssh.host",
                   "type": "tag"
                 }
               ],
               "having": [],
-              "legend": "{{ssh.target.host}}",
+              "legend": "{{ssh.host}}",
               "limit": 20,
               "orderBy": [],
               "queryName": "A",
@@ -592,15 +592,15 @@
               "groupBy": [
                 {
                   "dataType": "string",
-                  "id": "ssh.target.host--string--tag--false",
+                  "id": "ssh.host--string--tag--false",
                   "isColumn": false,
                   "isJSON": false,
-                  "key": "ssh.target.host",
+                  "key": "ssh.host",
                   "type": "tag"
                 }
               ],
               "having": [],
-              "legend": "{{ssh.target.host}}",
+              "legend": "{{ssh.host}}",
               "limit": 20,
               "orderBy": [],
               "queryName": "A",

@@ -11,6 +11,7 @@
 
 use opentelemetry::global;
 use opentelemetry::KeyValue;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
@@ -92,6 +93,50 @@ pub fn init_meter_provider(config: &TelemetryConfig) -> Option<SdkMeterProvider>
     }
 }
 
+/// Initialize the OTLP logs pipeline and return its [`SdkLoggerProvider`].
+///
+/// Mirrors [`init_meter_provider`]: returns `None` when telemetry is
+/// disabled, no OTLP endpoint is configured, or the exporter fails to build
+/// (logs then stay on the local fmt layer only). On success, builds a
+/// gRPC-tonic log exporter behind a batch processor. Every tracing event is
+/// mirrored to the collector — stamped with the active trace/span ids — via
+/// an `OpenTelemetryTracingBridge` layer on the subscriber.
+///
+/// The provider is not registered globally (the bridge layer holds it
+/// directly); the returned provider must be kept alive for the process
+/// lifetime and shut down on exit (see [`TumultTelemetry::shutdown`]).
+#[must_use = "the provider must be retained and shut down on exit"]
+pub fn init_logger_provider(config: &TelemetryConfig) -> Option<SdkLoggerProvider> {
+    if !config.enabled {
+        return None;
+    }
+    let endpoint = config.otlp_endpoint.as_ref()?;
+
+    let resource = Resource::builder()
+        .with_service_name(config.service_name.clone())
+        .with_attribute(KeyValue::new("service.version", SERVICE_VERSION))
+        .build();
+
+    match opentelemetry_otlp::LogExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint.as_str())
+        .build()
+    {
+        Ok(exporter) => {
+            let provider = SdkLoggerProvider::builder()
+                .with_resource(resource)
+                .with_batch_exporter(exporter)
+                .build();
+            tracing::info!(endpoint = %endpoint, service = %config.service_name, "OTLP logs exporter initialized");
+            Some(provider)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to init OTLP log exporter");
+            None
+        }
+    }
+}
+
 /// Central telemetry manager for the Tumult platform.
 #[derive(Debug)]
 pub struct TumultTelemetry {
@@ -99,6 +144,7 @@ pub struct TumultTelemetry {
     service_name: String,
     tracer_provider: Option<SdkTracerProvider>,
     meter_provider: Option<SdkMeterProvider>,
+    logger_provider: Option<SdkLoggerProvider>,
 }
 
 impl TumultTelemetry {
@@ -118,6 +164,9 @@ impl TumultTelemetry {
         // disabled or no OTLP endpoint is configured this is `None` and every
         // `global::meter(...)` instrument stays on the noop provider.
         let meter_provider = init_meter_provider(&config);
+        // Logs pipeline: batch OTLP/gRPC exporter mirrored from tracing
+        // events; `None` under the same conditions as the meter provider.
+        let logger_provider = init_logger_provider(&config);
 
         // Move service_name out of config immediately so the Resource builder
         // and the final struct both consume the owned String without cloning.
@@ -134,6 +183,7 @@ impl TumultTelemetry {
                 service_name,
                 tracer_provider: None,
                 meter_provider,
+                logger_provider,
             };
         }
 
@@ -166,8 +216,12 @@ impl TumultTelemetry {
                     // Step 1: Register TracerProvider BEFORE installing subscriber
                     global::set_tracer_provider(provider.clone());
 
-                    // Step 2: Install tracing subscriber with OTel bridge layer
+                    // Step 2: Install tracing subscriber with OTel bridge layers
+                    // (traces via tracing-opentelemetry, logs via the appender).
                     let otel_layer = tracing_opentelemetry::layer();
+                    let log_bridge = logger_provider.as_ref().map(
+                        opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new,
+                    );
                     let _ = tracing_subscriber::registry()
                         .with(
                             EnvFilter::try_from_default_env()
@@ -175,6 +229,7 @@ impl TumultTelemetry {
                         )
                         .with(fmt_layer())
                         .with(otel_layer)
+                        .with(log_bridge)
                         .try_init();
 
                     tracing::info!(endpoint = %endpoint, service = %service_name, "OTLP exporter initialized");
@@ -232,6 +287,7 @@ impl TumultTelemetry {
             service_name,
             tracer_provider: provider,
             meter_provider,
+            logger_provider,
         }
     }
 
@@ -278,5 +334,14 @@ impl TumultTelemetry {
         // Same rationale as the tracer reset above: post-shutdown metric
         // recordings must hit a noop provider, not a closed exporter.
         global::set_meter_provider(opentelemetry::metrics::noop::NoopMeterProvider::new());
+
+        // The log bridge layer holds this provider directly (no global), so
+        // events emitted after shutdown are dropped by the SDK's shut-down
+        // batch processor rather than exported.
+        if let Some(ref provider) = self.logger_provider {
+            if let Err(e) = provider.shutdown() {
+                tracing::warn!(error = %e, "logger provider shutdown error");
+            }
+        }
     }
 }

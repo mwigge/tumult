@@ -61,6 +61,18 @@ pub(crate) fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
     ]
 }
 
+/// Derive the plugin name an activity is served by, for metric labels.
+///
+/// Native and script activities name their plugin explicitly; process
+/// activities are served by the built-in executor, so the provider type is
+/// the plugin.
+pub(crate) fn plugin_name(activity: &Activity) -> String {
+    match &activity.provider {
+        Provider::Native { plugin, .. } | Provider::Script { plugin, .. } => plugin.clone(),
+        Provider::Process { .. } => "process".to_string(),
+    }
+}
+
 /// Set span error status if the outcome failed.
 pub(crate) fn set_span_status_from_outcome(success: bool, error: Option<&str>) {
     if !success {
