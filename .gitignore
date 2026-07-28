@@ -7,6 +7,9 @@ web/node_modules/
 web/.svelte-kit/
 web/build/
 
+# Demo output
+demo-out/
+
 # Local DuckDB stores
 *.duckdb
 *.duckdb.wal

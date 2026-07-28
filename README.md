@@ -36,7 +36,44 @@ reports — with a guarded AI analytics layer in later phases.
   drill-down, custom span-waterfall as the signature piece). See
   [web/README.md](web/README.md).
 
-## Quickstart
+## Docker demo (easiest path)
+
+One command exercises the full pipeline — OTLP/gRPC + OTLP/HTTP ingest,
+DuckDB storage, semantic metrics, HTML reports:
+
+```sh
+docker compose -f docker/docker-compose.demo.yml up
+```
+
+What happens:
+
+1. `kronikad` starts (ports `4317`/`4318`, store in a named volume).
+2. `seed` fires **40 synthetic chaos experiments** at it over real OTLP/gRPC —
+   full `resilience.experiment` span trees (hypothesis → action → probe →
+   rollback), `tumult.*` metrics and correlated logs, spread over the past 14
+   days so rollups have shape (deterministic via `--seed 7`).
+3. `report` fetches one self-contained HTML report per semantic metric from
+   kronikad's live `GET /report?metric=<name>` endpoint into **`demo-out/`** —
+   open `demo-out/hypothesis_pass_rate.html` in a browser.
+
+Re-seed with more (or different) data:
+
+```sh
+docker compose -f docker/docker-compose.demo.yml run --rm seed \
+  kronika-demo --endpoint http://kronikad:4317 --experiments 40 --seed 8
+```
+
+While the stack is up, point **real** telemetry at the same ports: tumult via
+`TUMULT_OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`,
+smedja via `SMEDJA_OTLP_ENDPOINT=http://localhost:4318`.
+
+Clean up (drops the demo volume):
+
+```sh
+docker compose -f docker/docker-compose.demo.yml down -v
+```
+
+## Quickstart (from source)
 
 ```sh
 # Run the daemon (DB at ~/.kronika/kronika.duckdb; override with KRONIKA_DB)
@@ -54,6 +91,11 @@ export SMEDJA_OTLP_ENDPOINT=http://localhost:4318
 cargo run -p kronikad -- import journal.json --label "march game day"
 
 # Ad-hoc HTML report for a semantic metric
+# (from the running daemon — DuckDB allows only one read-write process,
+# so the report subcommand below requires the daemon to be stopped)
+curl "localhost:4318/report?metric=hypothesis_pass_rate" > report.html
+
+# Same report via the CLI (writes to stdout or --out <file>)
 cargo run -p kronikad -- report --metric hypothesis_pass_rate > report.html
 
 # Health check
@@ -76,6 +118,7 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 
 ```
 bin/kronikad        daemon + CLI (serve / import / report)
+bin/kronika-demo    synthetic chaos generator (real OTLP client; demo seeding)
 crates/kronika-store    embedded DuckDB store (single-writer + RO readers)
 crates/kronika-otel     OTLP proto → row translation (pure)
 crates/kronika-ingest   gRPC/HTTP servers, writer channel, manual import
@@ -85,7 +128,7 @@ crates/kronika-ai       Llm trait, OpenAI-compatible client, SQL guardrails
 metrics/            starter semantic metric definitions
 web/                SvelteKit UI skeleton (hand-written, not installed)
 docs/               research, architecture, ADRs
-docker/             optional otel-collector dev tooling
+docker/             Dockerfile, one-command demo stack, optional otel-collector dev tooling
 ```
 
 ## Docs

@@ -8,6 +8,7 @@ members = [
     "crates/kronika-report",
     "crates/kronika-ai",
     "bin/kronikad",
+    "bin/kronika-demo",
 ]
 
 [workspace.package]

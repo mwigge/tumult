@@ -1226,6 +1226,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kronika-demo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "opentelemetry-proto",
+ "prost",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "kronika-ingest"
 version = "0.1.0"
 dependencies = [

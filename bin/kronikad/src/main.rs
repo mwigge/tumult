@@ -2,15 +2,24 @@
 //!
 //! Default command (`serve`): open the store, spawn the single-writer
 //! channel, and run the OTLP/gRPC (`:4317`) and OTLP/HTTP (`:4318`, with
-//! `GET /healthz`) ingest servers until SIGTERM/SIGINT.
+//! `GET /healthz`) ingest servers until SIGTERM/SIGINT. The HTTP server also
+//! exposes `GET /report?metric=<name>`, which renders a metric report from
+//! the live store — this works while the daemon holds the write lock, unlike
+//! the `report` subcommand which needs the daemon stopped.
 //!
 //! Subcommands:
 //! * `kronikad import <file>` — manual CSV / tumult journal JSON import.
 //! * `kronikad report --metric <name>` — print an HTML report to stdout.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
+use axum::routing::get;
+use axum::Router;
 use clap::{Parser, Subcommand};
 use kronika_ingest::{Config, IngestWriter, ManualImporter};
 use kronika_store::Store;
@@ -38,11 +47,14 @@ enum Command {
         #[arg(long)]
         label: Option<String>,
     },
-    /// Print an HTML report for a semantic metric to stdout.
+    /// Print an HTML report for a semantic metric to stdout (or --out).
     Report {
         /// Metric name from the metrics directory (e.g. hypothesis_pass_rate).
         #[arg(long)]
         metric: String,
+        /// Write the report to this file instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
 }
 
@@ -59,7 +71,7 @@ async fn main() -> Result<()> {
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve().await,
         Command::Import { file, label } => import(file, label),
-        Command::Report { metric } => report(metric),
+        Command::Report { metric, out } => report(metric, out),
     }
 }
 
@@ -105,11 +117,16 @@ async fn serve() -> Result<()> {
         result
     });
 
-    // OTLP/HTTP server (smedja exporter target) + health endpoint.
+    // OTLP/HTTP server (smedja exporter target) + health + live reports.
     let http_addr = config.otlp_http_addr;
+    let report_state = ReportState {
+        db_path: config.db_path.clone(),
+        metrics_dir: config.metrics_dir.clone(),
+    };
     let http_server = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
-        let result = axum::serve(listener, kronika_ingest::http::router(ingest))
+        let app = kronika_ingest::http::router(ingest).merge(report_router(report_state));
+        let result = axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal("http"))
             .await;
         tracing::info!("HTTP server future completed: {result:?}");
@@ -147,22 +164,53 @@ fn import(file: PathBuf, label: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn report(metric: String) -> Result<()> {
+fn report(metric: String, out: Option<PathBuf>) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
-    let defs = kronika_metrics::load_dir(&config.metrics_dir)
-        .with_context(|| format!("load metrics from {}", config.metrics_dir.display()))?;
-    let def = defs.iter().find(|d| d.name == metric).with_context(|| {
-        format!(
+    match render_metric_report(&config.db_path, &config.metrics_dir, &metric)? {
+        ReportLookup::Html(html) => match out {
+            Some(path) => {
+                std::fs::write(&path, &html)
+                    .with_context(|| format!("write report to {}", path.display()))?;
+                eprintln!("wrote {}", path.display());
+            }
+            None => print!("{html}"),
+        },
+        ReportLookup::UnknownMetric(msg) => anyhow::bail!(msg),
+    }
+    Ok(())
+}
+
+/// Outcome of looking up and rendering one metric report.
+enum ReportLookup {
+    Html(String),
+    UnknownMetric(String),
+}
+
+/// Load metric definitions, find `metric`, and render its HTML report against
+/// the store at `db_path` (opened read-only). Shared by the `report`
+/// subcommand and the live `GET /report` endpoint.
+fn render_metric_report(
+    db_path: &std::path::Path,
+    metrics_dir: &std::path::Path,
+    metric: &str,
+) -> Result<ReportLookup> {
+    let defs = kronika_metrics::load_dir(metrics_dir)
+        .with_context(|| format!("load metrics from {}", metrics_dir.display()))?;
+    let Some(def) = defs.iter().find(|d| d.name == metric) else {
+        return Ok(ReportLookup::UnknownMetric(format!(
             "metric {metric:?} not found; available: {}",
             defs.iter()
                 .map(|d| d.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
-        )
-    })?;
+        )));
+    };
 
-    // Read-only handle: does not collide with a running daemon's writer.
-    let store = Store::at(&config.db_path);
+    // Cross-process, DuckDB allows only one process with the store open
+    // read-write — so this fails while another daemon holds `db_path`. Inside
+    // the daemon process (the /report endpoint) the read-only connection
+    // shares the in-process instance and coexists with the ingest writer.
+    let store = Store::at(db_path);
     let reader = store.read_only().context("open store read-only")?;
     let report = kronika_report::build_report(
         &reader,
@@ -170,6 +218,44 @@ fn report(metric: String) -> Result<()> {
         &format!("kronika — {metric}"),
         None,
     )?;
-    print!("{}", kronika_report::render_html(&report));
-    Ok(())
+    Ok(ReportLookup::Html(kronika_report::render_html(&report)))
+}
+
+/// State for the live report endpoint: where the store and metric
+/// definitions live.
+#[derive(Clone)]
+struct ReportState {
+    db_path: PathBuf,
+    metrics_dir: PathBuf,
+}
+
+/// `GET /report?metric=<name>` — render a metric report from the live store
+/// while the daemon is running (used by the docker demo's report step).
+fn report_router(state: ReportState) -> Router {
+    Router::new()
+        .route("/report", get(report_handler))
+        .with_state(state)
+}
+
+async fn report_handler(
+    State(state): State<ReportState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let Some(metric) = params.get("metric").cloned() else {
+        return (StatusCode::BAD_REQUEST, "missing query parameter: metric").into_response();
+    };
+    let result = tokio::task::spawn_blocking(move || {
+        render_metric_report(&state.db_path, &state.metrics_dir, &metric)
+    })
+    .await;
+    match result {
+        Ok(Ok(ReportLookup::Html(html))) => Html(html).into_response(),
+        Ok(Ok(ReportLookup::UnknownMetric(msg))) => (StatusCode::NOT_FOUND, msg).into_response(),
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("report task failed: {e}"),
+        )
+            .into_response(),
+    }
 }

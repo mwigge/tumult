@@ -1,0 +1,82 @@
+# One-command demo: kronikad + synthetic chaos seed + HTML reports.
+#
+#   docker compose -f docker/docker-compose.demo.yml up
+#
+# Flow: kronikad comes up → `seed` fires 40 synthetic chaos experiments at it
+# over real OTLP/gRPC → `report` pulls one HTML report per semantic metric
+# from kronikad's live `GET /report?metric=<name>` endpoint into ./demo-out/.
+# Open e.g. demo-out/hypothesis_pass_rate.html in a browser.
+#
+# Re-seed later (adds more data; use a different seed for different shapes):
+#   docker compose -f docker/docker-compose.demo.yml run --rm seed \
+#     kronika-demo --endpoint http://kronikad:4317 --experiments 40 --seed 8
+#
+# Point real tumult at localhost:4317 / smedja at localhost:4318 while the
+# stack is up to mix real telemetry in.
+
+name: kronika-demo
+
+services:
+  kronikad:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: kronika-demo:latest
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - kronika-demo-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4318/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  seed:
+    image: kronika-demo:latest
+    command:
+      - kronika-demo
+      - --endpoint
+      - http://kronikad:4317
+      - --experiments
+      - "40"
+      - --seed
+      - "7"
+    depends_on:
+      kronikad:
+        condition: service_healthy
+    restart: "no"
+
+  report:
+    image: kronika-demo:latest
+    # One-shot: fetches rendered reports from kronikad's live /report
+    # endpoint (DuckDB allows a single read-write process, so reports must be
+    # served by the daemon, not by opening the store from this container).
+    # Writes into the host bind-mounted ./demo-out; runs as root so the bind
+    # mount is writable regardless of host uid, and files are chmod'ed
+    # world-readable afterwards.
+    user: root
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /out
+        for m in hypothesis_pass_rate experiment_count deviation_rate mttr coverage action_duration_p95; do
+          curl -sf "http://kronikad:4318/report?metric=$$m" -o "/out/$$m.html"
+        done
+        chmod -R a+rwX /out
+    volumes:
+      # ../demo-out = repo root (bind sources resolve against this file's dir).
+      - ../demo-out:/out
+    depends_on:
+      kronikad:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    restart: "no"
+
+volumes:
+  kronika-demo-data:
