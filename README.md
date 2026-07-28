@@ -47,7 +47,7 @@ docker compose -f docker/docker-compose.demo.yml up
 
 What happens:
 
-1. `kronikad` starts (ports `4317`/`4318`, store in a named volume).
+1. `kronikad` starts (host ports `14317`/`14318`, store in a named volume).
 2. `seed` fires **40 synthetic chaos experiments** at it over real OTLP/gRPC —
    full `resilience.experiment` span trees (hypothesis → action → probe →
    rollback), `tumult.*` metrics and correlated logs, spread over the past 14
@@ -64,8 +64,13 @@ docker compose -f docker/docker-compose.demo.yml run --rm seed \
 ```
 
 While the stack is up, point **real** telemetry at the same ports: tumult via
-`TUMULT_OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`,
-smedja via `SMEDJA_OTLP_ENDPOINT=http://localhost:4318`.
+`TUMULT_OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317`,
+smedja via `SMEDJA_OTLP_ENDPOINT=http://localhost:14318`.
+
+> Host ports are `14317`/`14318` (not the OTLP-standard `4317`/`4318`) so the
+> demo runs side-by-side with an existing collector — e.g. a local SigNoz —
+> that already owns `4317`/`4318`. Container-internal traffic still uses the
+> standard ports.
 
 Clean up (drops the demo volume):
 

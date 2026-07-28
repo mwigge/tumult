@@ -11,8 +11,12 @@
 #   docker compose -f docker/docker-compose.demo.yml run --rm seed \
 #     kronika-demo --endpoint http://kronikad:4317 --experiments 40 --seed 8
 #
-# Point real tumult at localhost:4317 / smedja at localhost:4318 while the
+# Point real tumult at localhost:14317 / smedja at localhost:14318 while the
 # stack is up to mix real telemetry in.
+#
+# Host ports are 14317/14318 (not the OTLP-standard 4317/4318) so the demo
+# can run side-by-side with an existing collector (e.g. SigNoz) that already
+# owns 4317/4318. Container-internal traffic still uses 4317/4318.
 
 name: kronika-demo
 
@@ -23,8 +27,8 @@ services:
       dockerfile: docker/Dockerfile
     image: kronika-demo:latest
     ports:
-      - "4317:4317"
-      - "4318:4318"
+      - "14317:4317"
+      - "14318:4318"
     volumes:
       - kronika-demo-data:/data
     healthcheck:
