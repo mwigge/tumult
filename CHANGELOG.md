@@ -6,6 +6,50 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 
 ---
 
+## [0.3.0] — 2026-07-28
+
+### Added
+- Logs explorer: `GET /api/logs` (range/severity/service/q/limit; severity a
+  case-insensitive exact match, `q` an escaped contains-match; newest first,
+  `experiment_id` lifted from log attributes for linking) and
+  `GET /api/logs/volume` (bucketed counts per severity). `/logs` UI page with
+  a stacked-bar volume chart, URL-synced filters and expandable rows exposing
+  attributes plus experiment/trace links.
+- Traces explorer: `GET /api/traces` (spans grouped into traces — root
+  name/service, span/error counts, experiment outcome where applicable;
+  service/min-duration/outcome filters), `GET /api/traces/durations`
+  (root-span duration points plus p50/p95/p99 via `quantile_cont`) and
+  `GET /api/traces/{id}` (every span and log of one trace). `/traces` UI page
+  with a log-scale duration scatter (percentile mark lines, click-through)
+  and a slowest-first table; `/traces/[id]` reuses the waterfall and span
+  drawer.
+- Raw metrics explorer: `GET /api/metrics/catalog` (names across
+  sums/gauges/histograms with the attribute keys seen on their points) and
+  `GET /api/metrics/query` (bucketed series; sums `SUM`, gauges `AVG`,
+  histograms aggregate avg plus an interpolated p95 computed in Rust;
+  optional split by a strict-charset attribute key; unknown names 404).
+  `/metrics` UI page with typed picker, group-by dropdown, line/area/bar
+  toggle, interval and range controls.
+- Topology: `GET /api/topology` (service/target nodes with runs/errors/avg
+  aggregates from `service_name` and tumult's `resilience.target.name`
+  attribute; edges from parent→child span joins and service→target calls;
+  capped at 100 nodes). `/topology` UI page with a force-directed graph —
+  node size by span count, services colored by error rate, click-through
+  from a service to its traces.
+- Grounded LLM narratives (`kronika_report::narrative`): a facts package
+  built from the report's own KPI/table numbers goes to the LLM; only
+  sentences whose numerals are grounded in those facts survive (percent
+  matches `x` and `x/100` forms; 1% tolerance for rounding). Unreachable
+  LLM, 30s timeout or a fully ungrounded reply leaves the digest unchanged.
+  Wired into the daemon's report scheduler and `POST /api/reports/generate`.
+  ADR 0002 updated: Phase 2 landed.
+
+### Changed
+- `EChart.svelte` accepts an optional click handler; ECharts registers the
+  scatter and graph charts.
+
+---
+
 ## [0.2.0] — 2026-07-28
 
 ### Added

@@ -33,17 +33,21 @@ reports — with a guarded AI analytics layer in later phases.
   from the UI.
 - **Query API** — read-only JSON under `/api/*` (overview KPIs with deltas
   and sparklines, bucketed time series for any semantic metric, experiment
-  list/detail with waterfall spans + correlated logs, dimensions, reports,
-  guarded NL→SQL ask), executed on read-only connections that coexist with
-  the ingest writer.
+  list/detail with waterfall spans + correlated logs, logs search + volume,
+  trace grouping + durations + detail, raw metric catalog + grouped queries,
+  service/target topology, dimensions, reports, guarded NL→SQL ask),
+  executed on read-only connections that coexist with the ingest writer.
 - **Web UI** — SvelteKit SPA embedded into the kronikad binary and served on
   the HTTP port: Overview KPIs, calendar heatmap, fault donut, filterable
-  experiment list, custom span waterfall with a span detail drawer, NL Ask,
-  Reports. See [web/README.md](web/README.md).
+  experiment list, custom span waterfall with a span detail drawer, Logs,
+  Traces, Metrics and Topology explorers, NL Ask, Reports. See
+  [web/README.md](web/README.md).
 - **AI analytics** — OpenAI-compatible LLM interface + SQL guardrail
   pipeline (read-only, allow-listed, single-SELECT, injected LIMIT), live
   behind `POST /api/ask` with curated golden answers when no LLM is
-  configured; see [docs/adr/0002-ai-layer.md](docs/adr/0002-ai-layer.md).
+  configured; digest narratives grounded sentence-by-sentence against the
+  report's own numbers (`kronika_report::narrative`); see
+  [docs/adr/0002-ai-layer.md](docs/adr/0002-ai-layer.md).
 
 ## Docker demo (easiest path)
 

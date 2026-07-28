@@ -41,9 +41,10 @@ execution) and smedja.
       YAML semantic     digest renderer           read-only JSON API
       layer → SQL       (ad-hoc + scheduled)      (/api/*, spawn_blocking)
               │              │                    │  overview · series ·
-              │              ▼                    │  experiments · ask
-              │         <db dir>/reports/         ▼        ▲
-              │         report_<epoch>.html   web/ SPA (rust-embed, same
+              │              ▼                    │  experiments · logs ·
+              │         <db dir>/reports/         │  traces · metrics ·
+              │         report_<epoch>.html       ▼  topology · ask  ▲
+              │              │                web/ SPA (rust-embed, same
               │              │                HTTP port) ──┘
               ▼              ▼                   ▲  POST /api/ask ──▶ kronika-ai
          kronikad       UI Reports page          │   Llm → sql_guard → read-only
@@ -65,10 +66,19 @@ execution) and smedja.
    validated SQL (`[a-z0-9_.]` identifiers only → injection-impossible).
 5. **UI / reports** — `kronika-api` answers the UI's queries through fresh
    read-only connections (never touching the write lock); the SPA itself is
-   rust-embedded into kronikad and served from the same HTTP port. Ad-hoc
+   rust-embedded into kronikad and served from the same HTTP port. Beyond
+   Overview/Experiments it backs the explorer pages: `/api/logs[ /volume]`
+   (raw log search + severity volume), `/api/traces[ /durations, /{id}]`
+   (spans grouped into traces, duration percentiles, per-trace detail),
+   `/api/metrics/catalog` + `/api/metrics/query` (raw sums/gauges/histograms
+   with optional attribute grouping; histogram p95 interpolated in Rust) and
+   `/api/topology` (service/target call graph). Ad-hoc
    digests come from `kronikad report` / `GET /report`; with
    `KRONIKA_REPORT_INTERVAL` set, the daemon additionally renders a digest
-   per interval into `<db dir>/reports/` (surfaced by `/api/reports`).
+   per interval into `<db dir>/reports/` (surfaced by `/api/reports`). When
+   an LLM is reachable, digests (scheduled and `POST /api/reports/generate`)
+   gain a narrative section via `kronika_report::narrative`, which keeps
+   only sentences whose numbers are grounded in the report's own facts.
 
 The docker demo (`docker/docker-compose.demo.yml`) is the **reference
 ingestion flow** end to end: the pinned tumult release binary runs the
