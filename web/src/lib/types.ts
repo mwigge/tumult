@@ -52,6 +52,9 @@ export interface Span {
   service_name: string;
   fault_type: string | null;
   fault_subtype: string | null;
+  // Present on trace-detail rows (experiment roots carry these in tumult).
+  experiment_id?: string | null;
+  experiment_name?: string | null;
   span_attrs: Record<string, string>;
   events: unknown;
 }
@@ -131,4 +134,30 @@ export interface LogVolume {
   interval: string;
   bucket_s: number;
   rows: { ts: number; severity: string; count: number }[];
+}
+
+export interface TraceRow {
+  trace_id: string;
+  started_ns: number;
+  duration_ns: number;
+  span_count: number;
+  error_count: number;
+  root_name: string | null;
+  service_name: string | null;
+  experiment_id: string | null;
+  experiment_name: string | null;
+  status: string | null;
+}
+
+export interface TraceDurations {
+  points: { trace_id: string; ts_ns: number; duration_ms: number }[];
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+}
+
+export interface TraceDetail {
+  trace_id: string;
+  spans: Span[];
+  logs: LogRow[];
 }

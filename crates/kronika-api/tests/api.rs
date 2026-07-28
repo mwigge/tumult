@@ -565,3 +565,82 @@ async fn logs_volume_buckets_counts_per_severity() {
     assert_eq!(status, 400);
     assert!(body["error"].as_str().unwrap().contains("invalid interval"));
 }
+
+#[tokio::test]
+async fn traces_groups_spans_and_filters() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(&srv.base, "/api/traces").await;
+    assert_eq!(status, 200, "{body}");
+    let rows = body["traces"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    // Newest first; root span gives the name/service, outcome joins from
+    // the experiment.completed log.
+    assert_eq!(rows[0]["trace_id"], "trace-exp-fail");
+    assert_eq!(rows[0]["root_name"], "resilience.experiment");
+    assert_eq!(rows[0]["service_name"], "tumult");
+    assert_eq!(rows[0]["span_count"], 2);
+    assert_eq!(rows[0]["error_count"], 0);
+    assert_eq!(rows[0]["status"], "Deviated");
+    assert_eq!(rows[0]["experiment_id"], "exp-fail");
+    assert_eq!(rows[1]["status"], "Completed");
+    // Trace duration spans the whole tree (5s), not just one span.
+    assert_eq!(rows[0]["duration_ns"], serde_json::json!(5 * NS));
+
+    let (_, body) = get(&srv.base, "/api/traces?outcome=completed").await;
+    let rows = body["traces"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["trace_id"], "trace-exp-pass");
+    let (_, body) = get(&srv.base, "/api/traces?outcome=incomplete").await;
+    assert_eq!(body["traces"].as_array().unwrap().len(), 0);
+    let (status, _) = get(&srv.base, "/api/traces?outcome=bogus").await;
+    assert_eq!(status, 400);
+
+    let (_, body) = get(&srv.base, "/api/traces?service=tumult").await;
+    assert_eq!(body["traces"].as_array().unwrap().len(), 2);
+    let (_, body) = get(&srv.base, "/api/traces?service=nope").await;
+    assert_eq!(body["traces"].as_array().unwrap().len(), 0);
+
+    // Duration filter is trace-level, in milliseconds.
+    let (_, body) = get(&srv.base, "/api/traces?min_duration_ms=4000").await;
+    assert_eq!(body["traces"].as_array().unwrap().len(), 2);
+    let (_, body) = get(&srv.base, "/api/traces?min_duration_ms=6000").await;
+    assert_eq!(body["traces"].as_array().unwrap().len(), 0);
+
+    let (status, _) = get(&srv.base, "/api/traces?range=1y").await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn trace_durations_points_and_percentiles() {
+    let srv = spawn_server().await;
+    let (status, body) = get(&srv.base, "/api/traces/durations").await;
+    assert_eq!(status, 200, "{body}");
+    let points = body["points"].as_array().unwrap();
+    assert_eq!(points.len(), 2);
+    assert!(points[0]["trace_id"]
+        .as_str()
+        .unwrap()
+        .starts_with("trace-"));
+    assert_eq!(points[0]["duration_ms"], 5000.0);
+    // Both root spans run exactly 5s, so every percentile is 5000ms.
+    assert_eq!(body["p50_ms"], 5000.0);
+    assert_eq!(body["p95_ms"], 5000.0);
+    assert_eq!(body["p99_ms"], 5000.0);
+}
+
+#[tokio::test]
+async fn trace_detail_returns_spans_and_logs() {
+    let srv = spawn_server().await;
+    let (status, body) = get(&srv.base, "/api/traces/trace-exp-pass").await;
+    assert_eq!(status, 200, "{body}");
+    let spans = body["spans"].as_array().unwrap();
+    assert_eq!(spans.len(), 2);
+    assert!(spans[0]["parent_span_id"].is_null());
+    assert_eq!(spans[0]["experiment_id"], "exp-pass");
+    // The two tumult logs on this trace (the unlinked WARN row stays out).
+    assert_eq!(body["logs"].as_array().unwrap().len(), 2);
+
+    let (status, _) = get(&srv.base, "/api/traces/no-such-trace").await;
+    assert_eq!(status, 404);
+}

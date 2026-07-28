@@ -11,7 +11,10 @@ import type {
   MetricDefInfo,
   Overview,
   ReportFile,
-  Timeseries
+  Timeseries,
+  TraceDetail,
+  TraceDurations,
+  TraceRow
 } from './types';
 
 async function get<T>(path: string): Promise<T> {
@@ -59,6 +62,17 @@ export const api = {
     ).toString();
     return get<LogVolume>(`/api/logs/volume${qs ? `?${qs}` : ''}`);
   },
+
+  traces: (params: Record<string, string>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '')
+    ).toString();
+    return get<{ count: number; traces: TraceRow[] }>(`/api/traces${qs ? `?${qs}` : ''}`);
+  },
+
+  traceDurations: (range: string) => get<TraceDurations>(`/api/traces/durations?range=${range}`),
+
+  trace: (id: string) => get<TraceDetail>(`/api/traces/${encodeURIComponent(id)}`),
 
   ask: async (question: string): Promise<AskResponse> => {
     const resp = await fetch('/api/ask', {

@@ -5,7 +5,17 @@
   import type { EChartsCoreOption } from '$lib/echarts';
   import { onMount } from 'svelte';
 
-  let { option, height = 260 }: { option: EChartsCoreOption; height?: number } = $props();
+  let {
+    option,
+    height = 260,
+    onclick
+  }: {
+    option: EChartsCoreOption;
+    height?: number;
+    // ECharts 'click' event params (seriesType-specific shape) — used by the
+    // traces scatter to navigate on point click.
+    onclick?: (params: { data?: unknown }) => void;
+  } = $props();
 
   let el: HTMLDivElement;
   let chart: ReturnType<typeof echarts.init> | null = null;
@@ -13,6 +23,7 @@
   onMount(() => {
     chart = echarts.init(el);
     chart.setOption(option);
+    if (onclick) chart.on('click', onclick);
     const ro = new ResizeObserver(() => chart?.resize());
     ro.observe(el);
     return () => {
