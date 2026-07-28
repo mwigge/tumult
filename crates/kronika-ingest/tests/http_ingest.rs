@@ -99,3 +99,93 @@ async fn http_post_protobuf_traces_lands_in_store() {
     server.abort();
     drop(writer_task);
 }
+
+/// Regression for the epoch-0 log timestamp bug: tumult's log records arrive
+/// with `time_unix_nano` unset. A record with a real 2026 timestamp must keep
+/// it through ingest → store; a record with no timestamp must get kronika's
+/// receipt time (never 0/1970).
+#[tokio::test]
+async fn http_post_logs_preserves_or_assigns_timestamps() {
+    use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+
+    const REAL_2026: u64 = 1_785_268_000_000_000_000;
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![kv("service.name", Value::StringValue("tumult".into()))],
+                dropped_attributes_count: 0,
+                entity_refs: vec![],
+            }),
+            scope_logs: vec![ScopeLogs {
+                scope: None,
+                log_records: vec![
+                    LogRecord {
+                        time_unix_nano: REAL_2026,
+                        severity_text: "INFO".into(),
+                        body: Some(AnyValue {
+                            value: Some(Value::StringValue("experiment.started".into())),
+                        }),
+                        ..LogRecord::default()
+                    },
+                    LogRecord {
+                        // tumult's shape: neither time nor observed time set.
+                        severity_text: "INFO".into(),
+                        body: Some(AnyValue {
+                            value: Some(Value::StringValue("experiment.completed".into())),
+                        }),
+                        ..LogRecord::default()
+                    },
+                ],
+                schema_url: String::new(),
+            }],
+            schema_url: String::new(),
+        }],
+    };
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&tmp.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let (ingest, writer_task) = IngestWriter::spawn(writer, 16);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, http::router(ingest)).await.unwrap();
+    });
+
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as i64;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/logs"))
+        .header("content-type", "application/x-protobuf")
+        .body(request.encode_to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+
+    // The write travels a channel; give the writer task a beat to land it.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let reader = store.read_only().unwrap();
+    let rows = reader
+        .query_json_rows("SELECT ts_ns, body FROM logs ORDER BY ts_ns")
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    // Real 2026 timestamp survives verbatim.
+    assert_eq!(
+        rows[0]["ts_ns"],
+        serde_json::json!(REAL_2026),
+        "real timestamp must survive ingest"
+    );
+    // Untimestamped record got a receipt time, not epoch 0.
+    let assigned = rows[1]["ts_ns"].as_i64().unwrap();
+    assert!(
+        assigned >= before,
+        "expected receipt time >= {before}, got {assigned}"
+    );
+
+    server.abort();
+    drop(writer_task);
+}

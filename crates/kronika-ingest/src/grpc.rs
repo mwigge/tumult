@@ -84,7 +84,7 @@ impl LogsService for OtlpGrpc {
         &self,
         request: Request<ExportLogsServiceRequest>,
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
-        let rows = kronika_otel::logs_request_to_rows(request.get_ref());
+        let rows = kronika_otel::logs_request_to_rows(request.get_ref(), crate::now_ns());
         self.ingest
             .write(Batch::Logs(rows))
             .await

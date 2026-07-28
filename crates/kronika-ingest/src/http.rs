@@ -64,7 +64,7 @@ async fn metrics(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoRe
 async fn logs(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
     match decode::<ExportLogsServiceRequest>(&body).await {
         Ok(request) => {
-            let rows = kronika_otel::logs_request_to_rows(&request);
+            let rows = kronika_otel::logs_request_to_rows(&request, crate::now_ns());
             let count = rows.len();
             match ingest.write(Batch::Logs(rows)).await {
                 Ok(()) => (StatusCode::OK, format!("{count} log records ingested")).into_response(),

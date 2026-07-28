@@ -19,7 +19,9 @@ fn now_ns() -> i64 {
 
 /// Two experiments: `exp-pass` (Completed, 30 min ago) and `exp-fail`
 /// (Deviated, 10 min ago), with tumult-style outcome logs and counters.
-fn seed(db_path: &std::path::Path) {
+/// Returns the timestamp of exp-pass's `experiment.started` log so tests can
+/// pin its survival end-to-end.
+fn seed(db_path: &std::path::Path) -> i64 {
     let store = Store::open(db_path).unwrap();
     let writer = store.writer().unwrap();
     let now = now_ns();
@@ -149,12 +151,15 @@ fn seed(db_path: &std::path::Path) {
             counter("tumult.hypothesis.deviations.total", None, now - 595 * NS),
         ])
         .unwrap();
+
+    now - 1800 * NS
 }
 
 struct TestServer {
     base: String,
     _tmp: tempfile::TempDir,
     reports_dir: PathBuf,
+    pass_log_ts: i64,
 }
 
 async fn spawn_server() -> TestServer {
@@ -167,7 +172,7 @@ async fn spawn_server() -> TestServer {
         "<html>digest</html>",
     )
     .unwrap();
-    seed(&db_path);
+    let pass_log_ts = seed(&db_path);
 
     let metrics_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../metrics")
@@ -192,6 +197,7 @@ async fn spawn_server() -> TestServer {
         base: format!("http://{addr}"),
         _tmp: tmp,
         reports_dir,
+        pass_log_ts,
     }
 }
 
@@ -304,6 +310,10 @@ async fn experiment_detail_returns_spans_logs_metrics() {
     assert_eq!(body["experiment"]["status"], "Completed");
     assert_eq!(body["spans"].as_array().unwrap().len(), 2);
     assert_eq!(body["logs"].as_array().unwrap().len(), 2);
+    // Regression: a log's real timestamp must survive ingest → store → API
+    // verbatim (the epoch-0 bug rendered every log as 1970 in the UI).
+    assert_eq!(body["logs"][0]["ts_ns"], serde_json::json!(srv.pass_log_ts));
+    assert!(body["logs"][0]["ts_ns"].as_i64().unwrap() > 1_700_000_000_000_000_000);
     assert!(
         !body["metrics"].as_array().unwrap().is_empty(),
         "metric_sums rows join on experiment_name"
