@@ -172,7 +172,53 @@ fn seed(db_path: &std::path::Path) -> i64 {
             counter("tumult.experiments.total", Some("success"), now - 1795 * NS),
             counter("tumult.experiments.total", Some("failure"), now - 595 * NS),
             counter("tumult.hypothesis.deviations.total", None, now - 595 * NS),
+            // Raw-metric explorer fixtures: one sum split by an attr key,
+            // exercising group_by without touching the KPI counters.
+            MetricSumRow {
+                ts_ns: now - 1700 * NS,
+                metric_name: "demo.requests".into(),
+                value: 10.0,
+                attrs: vec![("route".to_string(), "/api".to_string())],
+                ..MetricSumRow::default()
+            },
+            MetricSumRow {
+                ts_ns: now - 1600 * NS,
+                metric_name: "demo.requests".into(),
+                value: 20.0,
+                attrs: vec![("route".to_string(), "/web".to_string())],
+                ..MetricSumRow::default()
+            },
+            MetricSumRow {
+                ts_ns: now - 100 * NS,
+                metric_name: "demo.requests".into(),
+                value: 5.0,
+                attrs: vec![("route".to_string(), "/api".to_string())],
+                ..MetricSumRow::default()
+            },
         ])
+        .unwrap();
+
+    writer
+        .insert_metric_gauges(&[kronika_store::MetricGaugeRow {
+            ts_ns: now - 300 * NS,
+            metric_name: "demo.cpu.usage".into(),
+            value: 0.5,
+            ..Default::default()
+        }])
+        .unwrap();
+    // 4 observations: 1 below 100, 2 in [100,200), 1 at/above 200.
+    writer
+        .insert_metric_histograms(&[kronika_store::MetricHistogramRow {
+            ts_ns: now - 400 * NS,
+            metric_name: "demo.latency".into(),
+            count: 4,
+            sum: 600.0,
+            min: Some(50.0),
+            max: Some(210.0),
+            bucket_counts: vec![1, 2, 1],
+            explicit_bounds: vec![100.0, 200.0],
+            ..Default::default()
+        }])
         .unwrap();
 
     now - 1800 * NS
@@ -643,4 +689,92 @@ async fn trace_detail_returns_spans_and_logs() {
 
     let (status, _) = get(&srv.base, "/api/traces/no-such-trace").await;
     assert_eq!(status, 404);
+}
+
+#[tokio::test]
+async fn metrics_catalog_lists_names_types_and_dimensions() {
+    let srv = spawn_server().await;
+    let (status, body) = get(&srv.base, "/api/metrics/catalog").await;
+    assert_eq!(status, 200, "{body}");
+    let metrics = body["metrics"].as_array().unwrap();
+    let find = |name: &str| metrics.iter().find(|m| m["name"] == name).cloned();
+
+    let sums = find("tumult.experiments.total").unwrap();
+    assert_eq!(sums["types"], serde_json::json!(["sum"]));
+    let gauge = find("demo.cpu.usage").unwrap();
+    assert_eq!(gauge["types"], serde_json::json!(["gauge"]));
+    let hist = find("demo.latency").unwrap();
+    assert_eq!(hist["types"], serde_json::json!(["histogram"]));
+    let requests = find("demo.requests").unwrap();
+    assert_eq!(requests["dimensions"], serde_json::json!(["route"]));
+}
+
+#[tokio::test]
+async fn metrics_query_aggregates_by_type() {
+    let srv = spawn_server().await;
+
+    // Sum over a 1d bucket: both tumult counters land in one point.
+    let (status, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=tumult.experiments.total&interval=1d",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["type"], "sum");
+    let series = body["series"].as_array().unwrap();
+    assert_eq!(series.len(), 1);
+    assert!(series[0]["group"].is_null());
+    let points = series[0]["points"].as_array().unwrap();
+    assert_eq!(points.len(), 1);
+    assert_eq!(points[0]["v"], 2.0);
+
+    // Gauge averages instead of summing.
+    let (_, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=demo.cpu.usage&interval=1d",
+    )
+    .await;
+    assert_eq!(body["series"][0]["points"][0]["v"], 0.5);
+
+    // Histogram: avg = sum/count, p95 clamps into the overflow bucket.
+    let (_, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=demo.latency&interval=1d",
+    )
+    .await;
+    assert_eq!(body["type"], "histogram");
+    let point = &body["series"][0]["points"][0];
+    assert_eq!(point["avg"], 150.0);
+    assert_eq!(point["p95"], 200.0);
+
+    let (status, _) = get(&srv.base, "/api/metrics/query?name=no.such.metric").await;
+    assert_eq!(status, 404);
+    let (status, _) = get(&srv.base, "/api/metrics/query").await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn metrics_query_splits_by_attribute_key() {
+    let srv = spawn_server().await;
+    let (status, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=demo.requests&group_by=route&interval=1d",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let series = body["series"].as_array().unwrap();
+    assert_eq!(series.len(), 2, "{series:?}");
+    // Groups sort by label: /api before /web; /api sums 10 + 5.
+    assert_eq!(series[0]["group"], "/api");
+    assert_eq!(series[0]["points"][0]["v"], 15.0);
+    assert_eq!(series[1]["group"], "/web");
+    assert_eq!(series[1]["points"][0]["v"], 20.0);
+
+    // Attribute keys become SQL — the charset is strict.
+    let (status, _) = get(
+        &srv.base,
+        "/api/metrics/query?name=demo.requests&group_by=x%27%3BDROP",
+    )
+    .await;
+    assert_eq!(status, 400);
 }

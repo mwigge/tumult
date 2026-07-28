@@ -161,3 +161,23 @@ export interface TraceDetail {
   spans: Span[];
   logs: LogRow[];
 }
+
+export interface MetricCatalogEntry {
+  name: string;
+  types: ('sum' | 'gauge' | 'histogram')[];
+  dimensions: string[];
+}
+
+export interface MetricSeries {
+  group: string | null;
+  points: { ts: number; v?: number | null; avg?: number | null; p95?: number | null }[];
+}
+
+export interface MetricQueryResult {
+  name: string;
+  type: 'sum' | 'gauge' | 'histogram';
+  interval: string;
+  range: string;
+  group_by: string | null;
+  series: MetricSeries[];
+}

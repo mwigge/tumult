@@ -8,7 +8,9 @@ import type {
   ExperimentRow,
   LogEntry,
   LogVolume,
+  MetricCatalogEntry,
   MetricDefInfo,
+  MetricQueryResult,
   Overview,
   ReportFile,
   Timeseries,
@@ -73,6 +75,15 @@ export const api = {
   traceDurations: (range: string) => get<TraceDurations>(`/api/traces/durations?range=${range}`),
 
   trace: (id: string) => get<TraceDetail>(`/api/traces/${encodeURIComponent(id)}`),
+
+  metricsCatalog: () => get<{ metrics: MetricCatalogEntry[] }>('/api/metrics/catalog'),
+
+  metricQuery: (params: Record<string, string>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '')
+    ).toString();
+    return get<MetricQueryResult>(`/api/metrics/query${qs ? `?${qs}` : ''}`);
+  },
 
   ask: async (question: string): Promise<AskResponse> => {
     const resp = await fetch('/api/ask', {
