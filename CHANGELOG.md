@@ -4,6 +4,39 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.18.0] — 2026-07-28
+
+Full OTLP observability: all three signals (traces, metrics, logs) now
+export, and every experiment operation is measured and traceable end to end.
+
+### Added
+- **OTLP logs pipeline**: `init_logger_provider` builds a batch OTLP/gRPC
+  `SdkLoggerProvider`; every tracing event is mirrored to the collector via
+  an `OpenTelemetryTracingBridge` layer, stamped with the active trace/span
+  ids. `TumultTelemetry::shutdown` flushes and closes it with the other
+  providers.
+- **Runner metrics wiring**: experiments record `tumult.experiments.total` +
+  `tumult.experiment.duration` on every exit (completed, aborted,
+  interrupted); actions, probes, and rollbacks record counters + duration
+  histograms (`tumult.actions/probes/rollbacks.total`,
+  `tumult.action/probe.duration`, `tumult.plugin.errors.total`) tagged with
+  plugin and activity name.
+- **Sampling spans**: during/post-phase probe sampling now emits
+  `resilience.probe` spans parented into the experiment trace tree (the
+  detached sampler thread receives the run context explicitly), and samples
+  carry real trace/span ids instead of empty placeholders.
+- **docker/signoz tooling**: new `Tumult — Operations Logs & Traces`
+  dashboard, `import-dashboards.sh` (v2 login, credential-free), and a
+  README so anyone cloning can stand up the same observability stack.
+
+### Changed
+- Metric names standardized to dot-style (`tumult.experiments.total` etc.)
+  to match the shipped SigNoz dashboards; analytics store gauges renamed to
+  `resilience.store.*`; dashboard attribute mismatches fixed (`ssh.host`,
+  baseline panel query types).
+- The MCP server telemetry init now relies on the always-stderr fmt layer —
+  no configuration needed to keep the stdio protocol stream clean.
+
 ## [2.17.0] — 2026-07-23
 
 A full-platform review (code, docs, blog, website) drove this release:
