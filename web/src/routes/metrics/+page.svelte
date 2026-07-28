@@ -119,7 +119,11 @@
         type: filters.chart === 'bar' ? 'bar' : 'line',
         stack: stacked ? 'total' : undefined,
         areaStyle: filters.chart === 'area' ? {} : undefined,
-        showSymbol: false,
+        // Sparse series (a single bucket in the window) must still render —
+        // a lone line point without a symbol draws nothing at all.
+        showSymbol: filters.chart !== 'bar',
+        symbol: 'circle',
+        symbolSize: 6,
         itemStyle: { color: PALETTE[i % PALETTE.length] },
         data: s.data
       }))

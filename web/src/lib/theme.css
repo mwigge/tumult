@@ -1,6 +1,9 @@
 /* kronika dark theme — near-black Grafana-caliber chrome; saturated colour
    is reserved for status (emerald ok / amber warn / red fail) and data. */
 :root {
+  /* Native widgets (dropdown popups, spinners, scrollbars) follow the dark
+     theme instead of rendering browser-default white. */
+  color-scheme: dark;
   --bg: #0b0e11;
   --bg-raised: #11161b;
   --bg-panel: #151b21;
@@ -210,7 +213,8 @@ table.data tr.clickable:hover {
 }
 select,
 input[type="text"],
-input[type="search"] {
+input[type="search"],
+input[type="number"] {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   color: var(--text);
