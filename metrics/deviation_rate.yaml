@@ -1,16 +1,19 @@
-# Share of experiment runs that deviated from expected behaviour
-# (resilience.outcome.status = 'deviated').
+# Share of experiment runs that deviated from expected behaviour:
+# tumult increments tumult.hypothesis.deviations.total exactly when a run
+# finishes Deviated, so the rate is deviations over all experiment runs
+# (tumult.experiments.total).
 name: deviation_rate
 description: Fraction of experiment runs whose outcome status was 'deviated'.
-source_table: spans
+source_table: metric_sums
 time_col: ts_ns
 measure:
   type: rate
   num:
     column: "*"
-    condition: { column: outcome_status, equals: "deviated" }
+    conditions:
+      - { column: metric_name, equals: "tumult.hypothesis.deviations.total" }
   den:
     column: "*"
-    condition: { column: span_name, equals: "resilience.experiment" }
+    conditions:
+      - { column: metric_name, equals: "tumult.experiments.total" }
 dimensions: []
-condition: { column: span_name, equals: "resilience.experiment" }

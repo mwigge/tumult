@@ -89,8 +89,17 @@ CREATE TABLE IF NOT EXISTS metric_histograms (
     bucket_counts BIGINT[],
     explicit_bounds DOUBLE[],
     attrs MAP(VARCHAR, VARCHAR),
-    resource_attrs MAP(VARCHAR, VARCHAR)
+    resource_attrs MAP(VARCHAR, VARCHAR),
+    experiment_name VARCHAR,
+    outcome_status VARCHAR,
+    plugin_name VARCHAR
 );
+-- v1 → v1.1: promoted dim columns for pre-existing databases (the CREATE
+-- above already includes them; ADD COLUMN IF NOT EXISTS makes this a no-op
+-- there).
+ALTER TABLE metric_histograms ADD COLUMN IF NOT EXISTS experiment_name VARCHAR;
+ALTER TABLE metric_histograms ADD COLUMN IF NOT EXISTS outcome_status VARCHAR;
+ALTER TABLE metric_histograms ADD COLUMN IF NOT EXISTS plugin_name VARCHAR;
 CREATE INDEX IF NOT EXISTS idx_metric_histograms_name_ts
     ON metric_histograms (metric_name, ts_ns);
 

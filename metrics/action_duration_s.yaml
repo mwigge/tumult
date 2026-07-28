@@ -1,0 +1,16 @@
+# Mean fault-action duration in seconds, grouped by the tumult plugin that
+# served the action (tumult.action.duration histogram, sum / count).
+# tumult emits the plugin as resilience.plugin.name, promoted to
+# plugin_name at ingest.
+name: action_duration_s
+description: Mean action duration in seconds, per plugin.
+source_table: metric_histograms
+time_col: ts_ns
+measure:
+  type: rate
+  num:
+    column: sum
+  den:
+    column: count
+dimensions: [plugin_name]
+condition: { column: metric_name, equals: "tumult.action.duration" }

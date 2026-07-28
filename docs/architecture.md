@@ -62,6 +62,13 @@ execution) and smedja.
    read-only connections; scheduled reports are computed deterministically
    from the same metric definitions.
 
+The docker demo (`docker/docker-compose.demo.yml`) is the **reference
+ingestion flow** end to end: the pinned tumult release binary runs the
+experiment suite in `demo/experiments/` and emits genuine OTLP/gRPC
+(traces, metrics, logs) into kronikad, which normalizes, stores and renders
+it into the HTML reports under `demo-out/`. Whatever tumult emits on the
+wire is exactly what kronika's semantic layer computes over.
+
 ## Single-writer model (mirrors tumult-analytics)
 
 DuckDB is single-writer per file; a read-write open holds an exclusive lock.
@@ -70,8 +77,11 @@ DuckDB is single-writer per file; a read-write open holds an exclusive lock.
   onto one `Writer`. A second read-write open maps the opaque DuckDB lock
   error to `StoreError::StoreLocked` (after a short bounded retry).
 - **Many readers** — `AccessMode::ReadOnly` connections do not take the write
-  lock, so reports, the UI API and `kronikad report` coexist with the
-  running daemon.
+  lock, so reports and the UI API coexist with the writer *inside the daemon
+  process*. Cross-process, DuckDB permits only one process with the file open
+  read-write: `kronikad report` therefore requires the daemon to be stopped,
+  and the live `GET /report?metric=<name>` endpoint exists precisely so
+  reports can be produced while the daemon holds the store.
 - **At rest** — DuckDB has no encryption at rest; the store directory is
   created `0o700` and should sit on an encrypted volume for sensitive data.
 

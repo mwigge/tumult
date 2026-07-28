@@ -89,6 +89,9 @@ pub struct MetricHistogramRow {
     pub max: Option<f64>,
     pub bucket_counts: Vec<i64>,
     pub explicit_bounds: Vec<f64>,
+    pub experiment_name: Option<String>,
+    pub outcome_status: Option<String>,
+    pub plugin_name: Option<String>,
     pub attrs: Vec<(String, String)>,
     pub resource_attrs: Vec<(String, String)>,
 }

@@ -367,7 +367,8 @@ impl Writer {
                 "INSERT INTO metric_histograms VALUES (?,?,?,?,?,?,
                     CAST(? AS BIGINT[]), CAST(? AS DOUBLE[]),
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
+                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                    ?,?,?)",
             )?;
             for r in rows {
                 stmt.execute(params![
@@ -381,6 +382,9 @@ impl Writer {
                     serde_json::to_string(&r.explicit_bounds)?,
                     attrs_json(&r.attrs)?,
                     attrs_json(&r.resource_attrs)?,
+                    r.experiment_name,
+                    r.outcome_status,
+                    r.plugin_name,
                 ])?;
             }
             Ok(())
@@ -555,6 +559,9 @@ mod tests {
                 max: Some(9.0),
                 bucket_counts: vec![1, 2, 4],
                 explicit_bounds: vec![5.0, 10.0],
+                experiment_name: Some("exp".into()),
+                outcome_status: Some("success".into()),
+                plugin_name: Some("process".into()),
                 attrs: vec![],
                 resource_attrs: vec![],
             }])
@@ -567,6 +574,13 @@ mod tests {
         assert_eq!(rows[0]["count"], serde_json::json!(7));
         assert_eq!(rows[0]["bucket_counts"], serde_json::json!([1, 2, 4]));
         assert_eq!(rows[0]["explicit_bounds"], serde_json::json!([5.0, 10.0]));
+        let dims = reader
+            .query_json_rows(
+                "SELECT experiment_name, outcome_status, plugin_name FROM metric_histograms",
+            )
+            .unwrap();
+        assert_eq!(dims[0]["experiment_name"], serde_json::json!("exp"));
+        assert_eq!(dims[0]["plugin_name"], serde_json::json!("process"));
     }
 
     #[test]

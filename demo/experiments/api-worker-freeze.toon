@@ -1,0 +1,48 @@
+title: api-worker freeze — heartbeat recovers after SIGSTOP injection
+description: A heartbeat worker simulates an API service; SIGSTOP freezes it (latency injection), SIGCONT restores it, and the heartbeat freshness probe confirms recovery
+
+tags[2]: latency, resilience
+
+steady_state_hypothesis:
+  title: The API worker heartbeat is fresh (less than 1s old)
+  probes[1]:
+    - name: heartbeat-fresh
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/api; if [ ! -f /tmp/kd-demo/api/worker.pid ] || ! kill -0 $(cat /tmp/kd-demo/api/worker.pid) 2>/dev/null; then : > /tmp/kd-demo/api/heartbeat; (while :; do date +%s >> /tmp/kd-demo/api/heartbeat; sleep 0.3; done) >/dev/null 2>&1 < /dev/null & echo $! > /tmp/kd-demo/api/worker.pid; sleep 0.5; fi; now=$(date +%s); last=$(tail -1 /tmp/kd-demo/api/heartbeat 2>/dev/null || echo $now); echo $((now - last))"
+        timeout_s: 10.0
+      tolerance:
+        type: range
+        from: 0.0
+        to: 1.0
+
+method[2]:
+  - name: freeze-worker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "kill -STOP $(cat /tmp/kd-demo/api/worker.pid); sleep 2; kill -CONT $(cat /tmp/kd-demo/api/worker.pid); echo froze-for-2s"
+      timeout_s: 10.0
+  - name: verify-heartbeat-recovered
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "now=$(date +%s); last=$(tail -1 /tmp/kd-demo/api/heartbeat 2>/dev/null || echo $now); echo $((now - last))"
+      timeout_s: 5.0
+    tolerance:
+      type: range
+      from: 0.0
+      to: 1.0
+
+rollbacks[1]:
+  - name: stop-worker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "kill $(cat /tmp/kd-demo/api/worker.pid) 2>/dev/null; rm -f /tmp/kd-demo/api/worker.pid; echo stopped"
+      timeout_s: 5.0

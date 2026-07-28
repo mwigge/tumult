@@ -1,0 +1,36 @@
+title: config corruption — invalid config rejected
+description: Corrupt an application config value and verify the validation probe rejects it — designed to DEVIATE so the rollback restores the known-good config
+
+tags[2]: configuration, resilience
+
+steady_state_hypothesis:
+  title: Application config has a sane timeout
+  probes[1]:
+    - name: config-valid
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/cfg; [ -f /tmp/kd-demo/cfg/app.conf ] || printf 'workers=4\ntimeout=30\n' > /tmp/kd-demo/cfg/app.conf; [ -f /tmp/kd-demo/cfg/app.conf.bak ] || cp /tmp/kd-demo/cfg/app.conf /tmp/kd-demo/cfg/app.conf.bak; grep -q '^timeout=[1-9]' /tmp/kd-demo/cfg/app.conf && echo valid || echo invalid"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^valid$"
+
+method[1]:
+  - name: corrupt-timeout
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sed -i 's/^timeout=[0-9]*$/timeout=0/' /tmp/kd-demo/cfg/app.conf; echo corrupted"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: restore-config
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cp /tmp/kd-demo/cfg/app.conf.bak /tmp/kd-demo/cfg/app.conf; echo restored"
+      timeout_s: 5.0

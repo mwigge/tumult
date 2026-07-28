@@ -32,12 +32,16 @@ pub enum MetricsError {
 }
 
 /// One side of a [`Measure::Rate`]: a column to aggregate, optionally
-/// restricted by an equality condition. The special column `"*"` counts rows.
+/// restricted by equality conditions. The special column `"*"` counts rows.
+/// `condition` and `conditions` are ANDed together (`conditions` exists so a
+/// rate term can pin more than one column, e.g. a metric name plus a dim).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Term {
     pub column: String,
     #[serde(default)]
     pub condition: Option<Condition>,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
 }
 
 /// A literal in an equality condition (rendered escaped).
@@ -132,7 +136,18 @@ fn render_condition(cond: &Condition) -> Result<String, MetricsError> {
 }
 
 fn render_term(term: &Term) -> Result<String, MetricsError> {
-    let condition = term.condition.as_ref().map(render_condition).transpose()?;
+    let mut conds = Vec::new();
+    if let Some(cond) = &term.condition {
+        conds.push(render_condition(cond)?);
+    }
+    for cond in &term.conditions {
+        conds.push(render_condition(cond)?);
+    }
+    let condition = if conds.is_empty() {
+        None
+    } else {
+        Some(conds.join(" AND "))
+    };
     if term.column == "*" {
         return Ok(match condition {
             Some(cond) => format!("COUNT(*) FILTER (WHERE {cond})"),
@@ -315,6 +330,35 @@ condition: { column: span_name, equals: "resilience.experiment" }
         assert!(sql.contains("ts_ns >= 10"));
         assert!(sql.contains("ts_ns < 20"));
         assert!(sql.contains("GROUP BY target_system, target_environment"));
+    }
+
+    #[test]
+    fn rate_term_and_lists_conditions() {
+        let def: MetricDef = serde_yaml::from_str(
+            r#"
+name: deviation_rate
+source_table: metric_sums
+measure:
+  type: rate
+  num:
+    column: "*"
+    conditions:
+      - { column: metric_name, equals: "tumult.hypothesis.deviations.total" }
+  den:
+    column: "*"
+    condition: { column: metric_name, equals: "tumult.experiments.total" }
+    conditions:
+      - { column: outcome_status, equals: "success" }
+"#,
+        )
+        .unwrap();
+        let sql = to_sql(&def, &[], None).unwrap();
+        assert!(sql.contains(
+            "COUNT(*) FILTER (WHERE metric_name = 'tumult.hypothesis.deviations.total')"
+        ));
+        assert!(
+            sql.contains("metric_name = 'tumult.experiments.total' AND outcome_status = 'success'")
+        );
     }
 
     #[test]

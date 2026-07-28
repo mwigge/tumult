@@ -31,6 +31,31 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 - `kronikad`: `serve` (default), `import <file>`, `report --metric <name>`.
 - `web/` SvelteKit skeleton (hand-written; not installed), `docs/` (research,
   architecture, ADRs 0001–0002), optional otel-collector dev compose.
+- Docker demo: the pinned tumult v2.18.0 release binary (fetched from GitHub
+  releases, checksum-verified against `SHA256SUMS.txt` at image build) runs
+  the real experiment suite in `demo/experiments/` — eight `.toon`
+  experiments (six pass, one deviates, one fails; both rolled back) emitting
+  genuine OTLP/gRPC into kronikad; HTML reports land in `demo-out/`. The
+  synthetic `kronika-demo` generator remains as optional backfill behind
+  `--profile synthetic`.
+- `kronikad`: live `GET /report?metric=<name>` endpoint (DuckDB is
+  single-process read-write, so reports against a running daemon must be
+  served by the daemon); `report --out <file>`.
+- `kronika-metrics`: rate terms accept AND-lists of equality conditions.
+- `kronika-report`: dimensioned metrics render real breakdown tables; the
+  headline KPI uses an ungrouped query.
+- `kronika-otel`/`kronika-store`: promote the keys tumult actually emits
+  (`resilience.experiment.title`, `resilience.plugin.name`) alongside the
+  metadata-standard names; `metric_histograms` gains promoted-dim columns
+  (idempotent `ALTER` for existing stores).
+
+### Changed
+- Semantic metrics retargeted at tumult's real wire emission:
+  `hypothesis_pass_rate` and `deviation_rate` compute over the
+  `tumult.experiments.total` / `tumult.hypothesis.deviations.total`
+  counters; new `experiment_duration_s`, `experiment_coverage` and
+  `action_duration_s`; the span-based `mttr`, `coverage` and
+  `action_duration_p95` definitions remain for the synthetic profile.
 
 ### Roadmap
 - Web UI data plumbing + span-waterfall component.

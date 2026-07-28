@@ -8,11 +8,13 @@ use opentelemetry_proto::tonic::metrics::v1::{metric, number_data_point};
 use crate::common::{self, keys, ResourceCtx};
 
 /// Promoted low-cardinality metric dimensions (tumult metadata standard §6:
-/// only bounded `resilience.*` keys are metric-safe).
+/// only bounded `resilience.*` keys are metric-safe). Covers both the
+/// standard's names and the ones tumult's instruments actually emit.
 const PROMOTED_METRIC_KEYS: &[&str] = &[
     keys::EXPERIMENT_NAME,
     keys::OUTCOME_STATUS,
     keys::FAULT_PLUGIN,
+    keys::PLUGIN_NAME,
 ];
 
 /// The three metric row batches produced from one export request.
@@ -34,7 +36,8 @@ fn promoted_dims(attrs: &[KeyValue]) -> PromotedDims {
     PromotedDims {
         experiment_name: common::attr_string(attrs, keys::EXPERIMENT_NAME),
         outcome_status: common::attr_string(attrs, keys::OUTCOME_STATUS),
-        plugin_name: common::attr_string(attrs, keys::FAULT_PLUGIN),
+        plugin_name: common::attr_string(attrs, keys::FAULT_PLUGIN)
+            .or_else(|| common::attr_string(attrs, keys::PLUGIN_NAME)),
         attrs: common::unpromoted_attrs(attrs, PROMOTED_METRIC_KEYS),
     }
 }
@@ -96,6 +99,7 @@ pub fn metrics_request_to_rows(request: &ExportMetricsServiceRequest) -> MetricR
                     }
                     Some(metric::Data::Histogram(histogram)) => {
                         for dp in &histogram.data_points {
+                            let dims = promoted_dims(&dp.attributes);
                             out.histograms.push(MetricHistogramRow {
                                 ts_ns: ts(dp.time_unix_nano),
                                 metric_name: metric.name.clone(),
@@ -109,7 +113,10 @@ pub fn metrics_request_to_rows(request: &ExportMetricsServiceRequest) -> MetricR
                                     .map(|c| i64::try_from(*c).unwrap_or(i64::MAX))
                                     .collect(),
                                 explicit_bounds: dp.explicit_bounds.clone(),
-                                attrs: common::unpromoted_attrs(&dp.attributes, &[]),
+                                experiment_name: dims.experiment_name,
+                                outcome_status: dims.outcome_status,
+                                plugin_name: dims.plugin_name,
+                                attrs: dims.attrs,
                                 resource_attrs: resource.resource_attrs.clone(),
                             });
                         }

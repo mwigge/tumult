@@ -1,22 +1,29 @@
-# One-command demo: kronikad + synthetic chaos seed + HTML reports.
+# One-command demo: kronikad + REAL tumult chaos experiments + HTML reports.
 #
 #   docker compose -f docker/docker-compose.demo.yml up
 #
-# Flow: kronikad comes up → `seed` fires 40 synthetic chaos experiments at it
-# over real OTLP/gRPC → `report` pulls one HTML report per semantic metric
-# from kronikad's live `GET /report?metric=<name>` endpoint into ./demo-out/.
-# Open e.g. demo-out/hypothesis_pass_rate.html in a browser.
+# Flow: kronikad comes up → `seed` runs the tumult experiment suite in
+# ../demo/experiments/ with the pinned tumult release binary (v2.18.0,
+# checksum-verified at image build) — genuine chaos runs emitting real
+# OTLP/gRPC traces, metrics and logs → `report` pulls one HTML report per
+# semantic metric from kronikad's live `GET /report?metric=<name>` endpoint
+# into ./demo-out/. Open e.g. demo-out/hypothesis_pass_rate.html in a browser.
 #
-# Re-seed later (adds more data; use a different seed for different shapes):
-#   docker compose -f docker/docker-compose.demo.yml run --rm seed \
-#     kronika-demo --endpoint http://kronikad:4317 --experiments 40 --seed 8
+# Two suite experiments are designed NOT to pass (one Deviated, one Failed,
+# both rolled back) so the reports show real deviations and rollbacks.
+#
+# Optional synthetic backfill (adds 40 generated experiments spread over the
+# past 14 days, for time-series shape):
+#   docker compose -f docker/docker-compose.demo.yml --profile synthetic up
+#
+# Re-run the suite later against the same store (data accumulates):
+#   docker compose -f docker/docker-compose.demo.yml run --rm seed
 #
 # Point real tumult at localhost:14317 / smedja at localhost:14318 while the
-# stack is up to mix real telemetry in.
-#
-# Host ports are 14317/14318 (not the OTLP-standard 4317/4318) so the demo
-# can run side-by-side with an existing collector (e.g. SigNoz) that already
-# owns 4317/4318. Container-internal traffic still uses 4317/4318.
+# stack is up to mix in telemetry from outside the demo. (Host ports are
+# 14317/14318 so the demo runs side-by-side with an existing collector that
+# already owns the OTLP-standard 4317/4318; container-internal traffic uses
+# the standard ports.)
 
 name: kronika-demo
 
@@ -40,6 +47,47 @@ services:
 
   seed:
     image: kronika-demo:latest
+    # Runs the real tumult experiment suite. HOME=/tmp keeps tumult's state
+    # writable (the kronika user has no writable home in this container);
+    # journals stay in /tmp (ephemeral — kronikad is the record). The suite
+    # must finish even when an experiment deviates or fails (tumult exits
+    # non-zero on both), so failures are tallied, not fatal.
+    environment:
+      HOME: /tmp
+      TUMULT_OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://kronikad:4317
+      OTEL_SERVICE_NAME: tumult
+    volumes:
+      - ../demo/experiments:/experiments:ro
+    command:
+      - sh
+      - -c
+      - |
+        passed=0; notpassed=0
+        for f in /experiments/*.toon; do
+          n=$$(basename "$$f" .toon)
+          echo "=== seed: running $$n"
+          if tumult run "$$f" --journal-path "/tmp/journal-$$n.toon" --no-ingest; then
+            passed=$$((passed + 1))
+            echo "=== seed: $$n -> PASSED"
+          else
+            notpassed=$$((notpassed + 1))
+            echo "=== seed: $$n -> DEVIATED/FAILED (by design for part of the suite)"
+          fi
+          sleep 3
+        done
+        echo "=== seed: suite done — $$passed passed, $$notpassed deviated/failed"
+    depends_on:
+      kronikad:
+        condition: service_healthy
+    restart: "no"
+
+  # Optional synthetic backfill (kronika-demo generator) — only started with
+  # `--profile synthetic`. Adds time-spread history; the primary seed above
+  # is the real tumult suite.
+  synthetic:
+    image: kronika-demo:latest
+    profiles: ["synthetic"]
     command:
       - kronika-demo
       - --endpoint
@@ -51,6 +99,8 @@ services:
     depends_on:
       kronikad:
         condition: service_healthy
+      seed:
+        condition: service_completed_successfully
     restart: "no"
 
   report:
@@ -67,8 +117,9 @@ services:
       - -c
       - |
         set -e
+        sleep 5
         mkdir -p /out
-        for m in hypothesis_pass_rate experiment_count deviation_rate mttr coverage action_duration_p95; do
+        for m in experiment_count hypothesis_pass_rate deviation_rate experiment_duration_s experiment_coverage action_duration_s; do
           curl -sf "http://kronikad:4318/report?metric=$$m" -o "/out/$$m.html"
         done
         chmod -R a+rwX /out

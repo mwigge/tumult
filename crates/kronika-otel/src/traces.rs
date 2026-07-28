@@ -11,6 +11,7 @@ use crate::common::{self, keys, ResourceCtx};
 const PROMOTED_SPAN_KEYS: &[&str] = &[
     keys::EXPERIMENT_ID,
     keys::EXPERIMENT_NAME,
+    keys::EXPERIMENT_TITLE,
     keys::OUTCOME_STATUS,
     keys::OUTCOME_HYPOTHESIS_MET,
     keys::OUTCOME_RECOVERY_TIME_S,
@@ -19,6 +20,7 @@ const PROMOTED_SPAN_KEYS: &[&str] = &[
     keys::FAULT_SEVERITY,
     keys::FAULT_BLAST_RADIUS,
     keys::FAULT_PLUGIN,
+    keys::PLUGIN_NAME,
     keys::TARGET_SYSTEM,
     keys::TARGET_TECHNOLOGY,
     keys::TARGET_ENVIRONMENT,
@@ -81,9 +83,11 @@ fn span_to_row(span: &Span, resource: &ResourceCtx) -> SpanRow {
     // Span attributes win over resource attributes for experiment identity
     // (the standard sets experiment.* on both the root span's resource and
     // the span itself; child spans may only have it via the resource).
+    // tumult's CLI runner names the experiment via `resilience.experiment.title`.
     let experiment_id =
         common::attr_string(attrs, keys::EXPERIMENT_ID).or_else(|| resource.experiment_id.clone());
     let experiment_name = common::attr_string(attrs, keys::EXPERIMENT_NAME)
+        .or_else(|| common::attr_string(attrs, keys::EXPERIMENT_TITLE))
         .or_else(|| resource.experiment_name.clone());
 
     let (status_code, status_message) = span.status.as_ref().map_or_else(
@@ -117,7 +121,8 @@ fn span_to_row(span: &Span, resource: &ResourceCtx) -> SpanRow {
         target_system: common::attr_string(attrs, keys::TARGET_SYSTEM),
         target_technology: common::attr_string(attrs, keys::TARGET_TECHNOLOGY),
         target_environment: common::attr_string(attrs, keys::TARGET_ENVIRONMENT),
-        plugin_name: common::attr_string(attrs, keys::FAULT_PLUGIN),
+        plugin_name: common::attr_string(attrs, keys::FAULT_PLUGIN)
+            .or_else(|| common::attr_string(attrs, keys::PLUGIN_NAME)),
         hypothesis_met: common::attr_bool(attrs, keys::OUTCOME_HYPOTHESIS_MET),
         recovery_time_s: common::attr_double(attrs, keys::OUTCOME_RECOVERY_TIME_S),
         span_attrs: common::unpromoted_attrs(attrs, PROMOTED_SPAN_KEYS),

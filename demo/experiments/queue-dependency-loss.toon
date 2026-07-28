@@ -1,0 +1,36 @@
+title: message-queue dependency loss — restart fails
+description: Simulate losing a queue dependency's data dir and a failing restart script — designed to FAIL so the rollback restores the dependency
+
+tags[2]: dependency, resilience
+
+steady_state_hypothesis:
+  title: Queue dependency data dir is present
+  probes[1]:
+    - name: dependency-present
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/queue/data && echo healthy"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^healthy$"
+
+method[1]:
+  - name: lose-and-restart-dependency
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -rf /tmp/kd-demo/queue/data; echo attempting-restart; exit 1"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: restore-dependency
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "mkdir -p /tmp/kd-demo/queue/data; echo restored"
+      timeout_s: 5.0

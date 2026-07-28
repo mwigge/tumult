@@ -186,8 +186,19 @@ pub fn build_report(
     for def in defs {
         let sql = to_sql(def, &[], time_range)?;
         let rows = reader.query_json_rows(&sql)?;
-        let value = rows
-            .first()
+        // The headline number must describe the whole window, so for
+        // dimensioned defs it comes from an ungrouped query (the grouped
+        // rows below become the breakdown table).
+        let value_row = if def.dimensions.is_empty() {
+            rows.first().cloned()
+        } else {
+            let mut ungrouped = def.clone();
+            ungrouped.dimensions = Vec::new();
+            let ungrouped_sql = to_sql(&ungrouped, &[], time_range)?;
+            reader.query_json_rows(&ungrouped_sql)?.into_iter().next()
+        };
+        let value = value_row
+            .as_ref()
             .and_then(|r| r.get("value"))
             .map_or_else(|| "—".to_string(), fmt_value);
         sections.push(Section::Kpi {
@@ -197,6 +208,31 @@ pub fn build_report(
             delta: None,
         });
         if !def.dimensions.is_empty() {
+            // Dimensioned metrics render their groups as a real table so the
+            // digest shows the breakdown (e.g. which experiments ran), not
+            // just a chart placeholder.
+            let headers: Vec<String> = def
+                .dimensions
+                .iter()
+                .cloned()
+                .chain(std::iter::once("value".to_string()))
+                .collect();
+            let table_rows = rows
+                .iter()
+                .map(|row| {
+                    def.dimensions
+                        .iter()
+                        .map(|d| row.get(d).map_or_else(|| "—".to_string(), fmt_value))
+                        .chain(std::iter::once(
+                            row.get("value").map_or_else(|| "—".to_string(), fmt_value),
+                        ))
+                        .collect()
+                })
+                .collect();
+            sections.push(Section::Table {
+                headers,
+                rows: table_rows,
+            });
             sections.push(Section::ChartRef {
                 metric: def.name.clone(),
                 dimension: def.dimensions.first().cloned(),

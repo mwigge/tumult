@@ -334,12 +334,16 @@ pub fn generate(rng: &mut XorShift, n: usize, now_ns: u64, spread: bool) -> Demo
             }));
         }
 
-        // Metrics.
+        // Metrics. The counter dims mirror real tumult: experiments.total is
+        // tagged resilience.outcome.status = success|failure (a run only
+        // counts as success when the hypothesis held), deviations.total is
+        // tagged with the experiment name only.
+        let metric_outcome = if hypothesis_met { "success" } else { "failure" };
         let end_ns = offset_ns + total_duration_ns;
         sum_points.push(NumberDataPoint {
             attributes: vec![
                 ks("resilience.experiment.name", experiment_name.clone()),
-                ks("resilience.outcome.status", outcome_status),
+                ks("resilience.outcome.status", metric_outcome),
                 ks("resilience.target.system", target_system),
             ],
             time_unix_nano: end_ns,
@@ -348,10 +352,7 @@ pub fn generate(rng: &mut XorShift, n: usize, now_ns: u64, spread: bool) -> Demo
         });
         if !hypothesis_met {
             deviation_points.push(NumberDataPoint {
-                attributes: vec![
-                    ks("resilience.experiment.name", experiment_name.clone()),
-                    ks("resilience.outcome.status", "deviated"),
-                ],
+                attributes: vec![ks("resilience.experiment.name", experiment_name.clone())],
                 time_unix_nano: end_ns,
                 value: Some(number_data_point::Value::AsInt(1)),
                 ..NumberDataPoint::default()

@@ -38,8 +38,9 @@ reports — with a guarded AI analytics layer in later phases.
 
 ## Docker demo (easiest path)
 
-One command exercises the full pipeline — OTLP/gRPC + OTLP/HTTP ingest,
-DuckDB storage, semantic metrics, HTML reports:
+One command exercises the full pipeline with **real chaos experiments** —
+tumult runs, genuine OTLP/gRPC traces + metrics + logs, DuckDB storage,
+semantic metrics, HTML reports:
 
 ```sh
 docker compose -f docker/docker-compose.demo.yml up
@@ -48,19 +49,40 @@ docker compose -f docker/docker-compose.demo.yml up
 What happens:
 
 1. `kronikad` starts (host ports `14317`/`14318`, store in a named volume).
-2. `seed` fires **40 synthetic chaos experiments** at it over real OTLP/gRPC —
-   full `resilience.experiment` span trees (hypothesis → action → probe →
-   rollback), `tumult.*` metrics and correlated logs, spread over the past 14
-   days so rollups have shape (deterministic via `--seed 7`).
+2. `seed` runs the **real tumult experiment suite** in `demo/experiments/` —
+   eight `.toon` experiments executed by the pinned tumult **v2.18.0** release
+   binary (fetched from GitHub releases and checksum-verified against the
+   published `SHA256SUMS.txt` at image build time). Each run emits genuine
+   OTLP into kronikad: `resilience.experiment` span trees, `tumult.*`
+   metrics, and structured logs. Six experiments are designed to pass, one to
+   **deviate** (config corruption, rolled back) and one to **fail**
+   (dependency restart, rolled back) — so the reports show real deviations
+   and rollbacks, not just green runs.
 3. `report` fetches one self-contained HTML report per semantic metric from
    kronikad's live `GET /report?metric=<name>` endpoint into **`demo-out/`** —
    open `demo-out/hypothesis_pass_rate.html` in a browser.
 
-Re-seed with more (or different) data:
+This is the cross-repo contract in action: kronika ingests exactly what
+[tumult](https://github.com/mwigge/tumult) emits. Extend the suite by
+dropping your own tumult experiment files into `demo/experiments/` — the seed
+runs every `*.toon` it finds (they must be safe in a plain container:
+process/script actions, no SSH/k8s/network targets).
+
+Re-run the suite against the same store (data accumulates):
 
 ```sh
-docker compose -f docker/docker-compose.demo.yml run --rm seed \
-  kronika-demo --endpoint http://kronikad:4317 --experiments 40 --seed 8
+docker compose -f docker/docker-compose.demo.yml run --rm seed
+```
+
+Optional synthetic backfill: the `kronika-demo` generator (40 generated
+experiments spread over the past 14 days, for time-series shape) stays
+available behind a profile — it is a backfill, not the demo's seed:
+
+```sh
+docker compose -f docker/docker-compose.demo.yml --profile synthetic up
+# reports are generated after the tumult suite; re-fetch them once the
+# synthetic backfill has landed:
+docker compose -f docker/docker-compose.demo.yml run --rm report
 ```
 
 While the stack is up, point **real** telemetry at the same ports: tumult via
@@ -123,7 +145,7 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 
 ```
 bin/kronikad        daemon + CLI (serve / import / report)
-bin/kronika-demo    synthetic chaos generator (real OTLP client; demo seeding)
+bin/kronika-demo    synthetic chaos generator (optional demo backfill)
 crates/kronika-store    embedded DuckDB store (single-writer + RO readers)
 crates/kronika-otel     OTLP proto → row translation (pure)
 crates/kronika-ingest   gRPC/HTTP servers, writer channel, manual import
@@ -131,6 +153,7 @@ crates/kronika-metrics  YAML semantic layer → validated SQL
 crates/kronika-report   report model, HTML renderer, scheduler
 crates/kronika-ai       Llm trait, OpenAI-compatible client, SQL guardrails
 metrics/            starter semantic metric definitions
+demo/experiments/   tumult experiment suite run by the docker demo seed
 web/                SvelteKit UI skeleton (hand-written, not installed)
 docs/               research, architecture, ADRs
 docker/             Dockerfile, one-command demo stack, optional otel-collector dev tooling

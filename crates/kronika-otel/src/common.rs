@@ -9,6 +9,9 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 pub mod keys {
     pub const EXPERIMENT_ID: &str = "resilience.experiment.id";
     pub const EXPERIMENT_NAME: &str = "resilience.experiment.name";
+    /// What tumult's CLI runner actually sets on the experiment root span
+    /// (the standard's `experiment.name` is emitted by the MCP layer only).
+    pub const EXPERIMENT_TITLE: &str = "resilience.experiment.title";
     pub const OUTCOME_STATUS: &str = "resilience.outcome.status";
     pub const OUTCOME_HYPOTHESIS_MET: &str = "resilience.outcome.hypothesis_met";
     pub const OUTCOME_RECOVERY_TIME_S: &str = "resilience.outcome.recovery_time_s";
@@ -17,6 +20,9 @@ pub mod keys {
     pub const FAULT_SEVERITY: &str = "resilience.fault.severity";
     pub const FAULT_BLAST_RADIUS: &str = "resilience.fault.blast_radius";
     pub const FAULT_PLUGIN: &str = "resilience.fault.plugin";
+    /// The plugin dimension tumult's instruments actually use
+    /// (`tumult.actions.total` etc.); `fault.plugin` is the standard's name.
+    pub const PLUGIN_NAME: &str = "resilience.plugin.name";
     pub const TARGET_SYSTEM: &str = "resilience.target.system";
     pub const TARGET_TECHNOLOGY: &str = "resilience.target.technology";
     pub const TARGET_ENVIRONMENT: &str = "resilience.target.environment";
@@ -148,7 +154,8 @@ impl ResourceCtx {
             service_name: attr_string(attrs, keys::SERVICE_NAME).unwrap_or_default(),
             service_version: attr_string(attrs, keys::SERVICE_VERSION),
             experiment_id: attr_string(attrs, keys::EXPERIMENT_ID),
-            experiment_name: attr_string(attrs, keys::EXPERIMENT_NAME),
+            experiment_name: attr_string(attrs, keys::EXPERIMENT_NAME)
+                .or_else(|| attr_string(attrs, keys::EXPERIMENT_TITLE)),
             resource_attrs: unpromoted_attrs(
                 attrs,
                 &[
@@ -156,6 +163,7 @@ impl ResourceCtx {
                     keys::SERVICE_VERSION,
                     keys::EXPERIMENT_ID,
                     keys::EXPERIMENT_NAME,
+                    keys::EXPERIMENT_TITLE,
                 ],
             ),
         }
