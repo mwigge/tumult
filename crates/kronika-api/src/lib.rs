@@ -617,8 +617,10 @@ async fn experiments(
         wheres.push(format!("s.target_system = {}", sql_string(target)));
     }
     if let Some(fault) = &params.fault {
+        // Child spans (actions/probes) carry the fault but not experiment_id —
+        // they correlate with the run through trace_id.
         wheres.push(format!(
-            "EXISTS (SELECT 1 FROM spans c WHERE c.experiment_id = s.experiment_id \
+            "EXISTS (SELECT 1 FROM spans c WHERE c.trace_id = s.trace_id \
              AND c.fault_type = {})",
             sql_string(fault)
         ));
@@ -637,7 +639,7 @@ async fn experiments(
     let sql = format!(
         "SELECT {EXPERIMENT_COLS}, \
          (SELECT string_agg(DISTINCT c.fault_type, ',') FROM spans c \
-          WHERE c.experiment_id = s.experiment_id AND c.fault_type IS NOT NULL) AS faults \
+          WHERE c.trace_id = s.trace_id AND c.fault_type IS NOT NULL) AS faults \
          {EXPERIMENT_FROM} WHERE {} ORDER BY s.ts_ns DESC LIMIT 500",
         wheres.join(" AND ")
     );
@@ -671,12 +673,17 @@ async fn experiment_detail(
             return Ok(None);
         };
 
+        // Tumult sets experiment_id only on the root span; the rest of the
+        // run's span tree (probes, actions, rollbacks) shares its trace_id.
         let spans = reader
             .query_json_rows(&format!(
                 "SELECT ts_ns, trace_id, span_id, parent_span_id, span_name, span_kind, \
                  duration_ns, status_code, status_message, service_name, \
                  fault_type, fault_subtype, span_attrs, events \
-                 FROM spans WHERE experiment_id = {id_sql} ORDER BY ts_ns LIMIT 2000"
+                 FROM spans \
+                 WHERE experiment_id = {id_sql} \
+                    OR trace_id IN (SELECT trace_id FROM spans WHERE experiment_id = {id_sql}) \
+                 ORDER BY ts_ns LIMIT 2000"
             ))
             .map_err(|e| e.to_string())?;
 

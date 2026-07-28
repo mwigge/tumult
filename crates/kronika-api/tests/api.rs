@@ -53,6 +53,8 @@ fn seed(db_path: &std::path::Path) {
         resource_attrs: vec![],
         events: "[]".into(),
     };
+    // Tumult-realistic: only the root span carries experiment_id; children
+    // correlate through trace_id.
     let action = |id: &str, ts: i64| SpanRow {
         ts_ns: ts,
         trace_id: format!("trace-{id}"),
@@ -65,7 +67,7 @@ fn seed(db_path: &std::path::Path) {
         status_message: String::new(),
         service_name: "tumult".into(),
         service_version: Some("2.18.0".into()),
-        experiment_id: Some(id.into()),
+        experiment_id: None,
         experiment_name: None,
         outcome_status: None,
         fault_type: Some("injection".into()),
