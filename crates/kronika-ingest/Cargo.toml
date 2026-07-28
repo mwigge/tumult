@@ -1,0 +1,26 @@
+[package]
+name = "kronika-ingest"
+description = "OTLP gRPC/HTTP ingest + manual importers writing into kronika-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+kronika-store.workspace = true
+kronika-otel.workspace = true
+opentelemetry-proto.workspace = true
+tonic.workspace = true
+prost.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+csv.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+dirs-next.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile.workspace = true

@@ -1,0 +1,15 @@
+# Fraction of experiment runs whose hypothesis held
+# (resilience.outcome.hypothesis_met over resilience.experiment spans).
+name: hypothesis_pass_rate
+description: Share of experiment runs where the steady-state hypothesis was met.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: rate
+  num:
+    column: hypothesis_met
+    condition: { column: span_name, equals: "resilience.experiment" }
+  den:
+    column: "*"
+    condition: { column: span_name, equals: "resilience.experiment" }
+dimensions: []

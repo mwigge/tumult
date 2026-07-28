@@ -1,0 +1,16 @@
+# Share of experiment runs that deviated from expected behaviour
+# (resilience.outcome.status = 'deviated').
+name: deviation_rate
+description: Fraction of experiment runs whose outcome status was 'deviated'.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: rate
+  num:
+    column: "*"
+    condition: { column: outcome_status, equals: "deviated" }
+  den:
+    column: "*"
+    condition: { column: span_name, equals: "resilience.experiment" }
+dimensions: []
+condition: { column: span_name, equals: "resilience.experiment" }

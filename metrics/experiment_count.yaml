@@ -1,0 +1,9 @@
+# Number of experiment runs (resilience.experiment spans) in the window.
+name: experiment_count
+description: Count of experiment runs in the window.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: count
+dimensions: []
+condition: { column: span_name, equals: "resilience.experiment" }

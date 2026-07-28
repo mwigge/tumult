@@ -1,0 +1,23 @@
+[package]
+name = "kronikad"
+description = "kronika daemon — OTLP ingest servers, manual import, ad-hoc reports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "kronikad"
+path = "src/main.rs"
+
+[dependencies]
+kronika-store.workspace = true
+kronika-ingest.workspace = true
+kronika-metrics.workspace = true
+kronika-report.workspace = true
+axum.workspace = true
+clap.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

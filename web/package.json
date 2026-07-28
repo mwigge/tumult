@@ -1,0 +1,32 @@
+{
+  "name": "kronika-web",
+  "version": "0.1.0",
+  "private": true,
+  "_comment": "Hand-written skeleton — run `npm install` to bring up. See web/README.md for the rationale behind every dependency.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "_comment-uplot": "workhorse time-series + KPI sparklines (~50KB, fastest option)",
+    "uplot": "1.6.31",
+    "_comment-echarts": "tree-shaken heatmap + calendar views only",
+    "echarts": "5.5.1",
+    "_comment-plot": "bespoke analytical marks",
+    "@observablehq/plot": "0.6.16"
+  },
+  "devDependencies": {
+    "_comment-kit": "SvelteKit app framework",
+    "@sveltejs/kit": "2.8.1",
+    "@sveltejs/adapter-node": "5.2.9",
+    "@sveltejs/vite-plugin-svelte": "4.0.2",
+    "svelte": "5.2.7",
+    "svelte-check": "4.1.0",
+    "typescript": "5.7.2",
+    "vite": "5.4.11",
+    "_comment-deferred": "Phase 2: mosaic-core (pinned, behind a selection abstraction), @finos/perspective (optional ad-hoc widget)"
+  }
+}

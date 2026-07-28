@@ -1,0 +1,11 @@
+# Mean time to recovery: average resilience.outcome.recovery_time_s
+# over experiment runs.
+name: mttr
+description: Mean time to recovery (seconds) across experiment runs.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: avg
+  column: recovery_time_s
+dimensions: []
+condition: { column: span_name, equals: "resilience.experiment" }

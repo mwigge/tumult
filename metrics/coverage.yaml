@@ -1,0 +1,11 @@
+# Coverage: distinct target systems exercised by chaos experiments
+# in the window.
+name: coverage
+description: Number of distinct target systems under test.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: count_distinct
+  column: target_system
+dimensions: []
+condition: { column: span_name, equals: "resilience.experiment" }
