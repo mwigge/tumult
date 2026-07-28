@@ -144,7 +144,9 @@ async fn serve() -> Result<()> {
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
         let app = kronika_ingest::http::router(ingest)
             .merge(report_router(report_state))
-            .merge(kronika_api::router(api_state));
+            .merge(kronika_api::router(api_state))
+            // Everything that is not /v1, /report, /healthz or /api is the UI.
+            .fallback(ui_handler);
         let result = axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal("http"))
             .await;
@@ -246,6 +248,48 @@ fn render_metric_report(
 struct ReportState {
     db_path: PathBuf,
     metrics_dir: PathBuf,
+}
+
+/// The compiled web UI (SvelteKit static SPA), embedded into the binary.
+/// `web/build/` must exist at compile time — run `npm ci && npm run build`
+/// in `web/` first (the Dockerfile does this in a node stage).
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../../web/build/"]
+struct UiAssets;
+
+/// Serve the embedded SPA: real files by path, `index.html` at `/`, and the
+/// `200.html` app shell for every other non-API path (client-side routing).
+async fn ui_handler(uri: axum::http::Uri) -> Response {
+    use axum::http::header;
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+    if let Some(file) = UiAssets::get(path) {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        // Fingerprinted assets are safe to cache forever.
+        let cache = if path.starts_with("_app/immutable/") {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
+        };
+        let mut resp = (
+            [(header::CONTENT_TYPE, mime.as_ref().to_string())],
+            file.data,
+        )
+            .into_response();
+        resp.headers_mut().insert(
+            header::CACHE_CONTROL,
+            cache.parse().expect("static header value"),
+        );
+        return resp;
+    }
+    match UiAssets::get("200.html") {
+        Some(file) => (
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            file.data,
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, "web UI is not embedded").into_response(),
+    }
 }
 
 /// `GET /report?metric=<name>` — render a metric report from the live store

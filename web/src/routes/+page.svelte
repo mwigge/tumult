@@ -1,196 +1,226 @@
-<!--
-  kronika — dashboard skeleton (static mock).
-  Shows the intended layout regions and design language before any data
-  plumbing exists: KPI row → rollup trend → dimension leaderboard →
-  drill-down panel (future home of the span-waterfall).
-  View state will be URL-serialized (time range, filters, selection).
--->
 <script lang="ts">
-	const kpis = [
-		{ label: 'hypothesis pass rate', value: '—', note: 'of experiment runs' },
-		{ label: 'MTTR', value: '—', note: 'mean recovery, seconds' },
-		{ label: 'deviation rate', value: '—', note: 'runs that deviated' },
-		{ label: 'coverage', value: '—', note: 'target systems exercised' }
-	];
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { api } from '$lib/api';
+  import type { Overview } from '$lib/types';
+  import { CHART } from '$lib/echarts';
+  import KpiCard from '$lib/components/KpiCard.svelte';
+  import RangeSwitch from '$lib/components/RangeSwitch.svelte';
+  import EChart from '$lib/components/EChart.svelte';
+
+  const range = $derived($page.url.searchParams.get('range') ?? '24h');
+
+  let data: Overview | null = $state(null);
+  let error: string | null = $state(null);
+
+  $effect(() => {
+    let cancelled = false;
+    data = null;
+    error = null;
+    api
+      .overview(range)
+      .then((d) => !cancelled && (data = d))
+      .catch((e) => !cancelled && (error = String(e)));
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  function setRange(r: string) {
+    goto(`?range=${r}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
+
+  const dayStr = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
+
+  const perDayOption = $derived.by(() => {
+    if (!data) return {};
+    const points = data.experiments_per_day;
+    if (range === '24h') {
+      return {
+        ...tooltip(),
+        grid: { left: 40, right: 12, top: 18, bottom: 26 },
+        xAxis: axisCat(points.map((p) => dayStr(p.ts))),
+        yAxis: axisVal(),
+        series: [
+          {
+            type: 'bar',
+            data: points.map((p) => p.v),
+            itemStyle: { color: CHART.accent, borderRadius: [3, 3, 0, 0] },
+            barMaxWidth: 44
+          }
+        ]
+      };
+    }
+    const from = dayStr(data.from_ns / 1_000_000_000);
+    const to = dayStr(data.to_ns / 1_000_000_000);
+    const max = Math.max(1, ...points.map((p) => p.v));
+    return {
+      tooltip: { ...CHART.tooltip },
+      visualMap: {
+        min: 0,
+        max,
+        show: false,
+        inRange: { color: ['#1c242c', '#2d5d84', CHART.accent] }
+      },
+      calendar: {
+        range: [from, to],
+        top: 34,
+        left: 44,
+        right: 12,
+        cellSize: ['auto', 16],
+        splitLine: { lineStyle: { color: CHART.axis } },
+        itemStyle: { color: 'transparent', borderColor: CHART.axis },
+        dayLabel: { color: CHART.text },
+        monthLabel: { color: CHART.text },
+        yearLabel: { show: false }
+      },
+      series: [
+        {
+          type: 'heatmap',
+          coordinateSystem: 'calendar',
+          data: points.map((p) => [dayStr(p.ts), p.v])
+        }
+      ]
+    };
+  });
+
+  const faultsOption = $derived.by(() => {
+    if (!data) return {};
+    return {
+      tooltip: { ...CHART.tooltip, trigger: 'item' },
+      legend: { bottom: 0, textStyle: { color: CHART.text } },
+      series: [
+        {
+          type: 'pie',
+          radius: ['48%', '72%'],
+          center: ['50%', '44%'],
+          itemStyle: { borderColor: '#151b21', borderWidth: 2 },
+          label: { show: false },
+          data: data.faults.map((f) => ({
+            name: f.fault_subtype ? `${f.fault_type} / ${f.fault_subtype}` : f.fault_type,
+            value: f.count
+          })),
+          color: [CHART.warn, CHART.accent, CHART.fail, CHART.ok]
+        }
+      ]
+    };
+  });
+
+  function tooltip() {
+    return { tooltip: { ...CHART.tooltip } };
+  }
+  function axisCat(data: string[]) {
+    return {
+      type: 'category',
+      data,
+      axisLine: { lineStyle: { color: CHART.axis } },
+      axisLabel: { color: CHART.text },
+      axisTick: { show: false }
+    };
+  }
+  function axisVal() {
+    return {
+      type: 'value',
+      minInterval: 1,
+      splitLine: { lineStyle: { color: CHART.split } },
+      axisLabel: { color: CHART.text }
+    };
+  }
 </script>
 
-<svelte:head>
-	<title>kronika — the chronicle of your resilience work</title>
-</svelte:head>
+<div class="page-head">
+  <h1>Overview</h1>
+  <span class="sub">resilience posture for the selected window</span>
+  <div style="margin-left: auto">
+    <RangeSwitch value={range} onchange={setRange} />
+  </div>
+</div>
 
-<header class="topbar">
-	<h1>kronika</h1>
-	<span class="window">window: last 7 days · rollup: day · n = —</span>
-</header>
+{#if error}
+  <div class="state error panel">Failed to load overview: {error}</div>
+{:else if !data}
+  <div class="grid" style="grid-template-columns: repeat(5, 1fr); margin-bottom: 14px">
+    {#each Array(5) as _, i (i)}
+      <div class="skeleton" style="height: 92px"></div>
+    {/each}
+  </div>
+  <div class="skeleton" style="height: 260px"></div>
+{:else}
+  <div class="grid kpis">
+    {#each data.kpis as kpi (kpi.name)}
+      <KpiCard {kpi} />
+    {/each}
+  </div>
 
-<main>
-	<!-- KPI row: saturated color is reserved for status -->
-	<section class="kpi-row" aria-label="key indicators">
-		{#each kpis as kpi}
-			<div class="kpi-card">
-				<div class="kpi-label">{kpi.label}</div>
-				<div class="kpi-value">{kpi.value}</div>
-				<div class="kpi-note">{kpi.note}</div>
-				<div class="sparkline" aria-hidden="true"></div>
-			</div>
-		{/each}
-	</section>
+  <div class="grid cols-2" style="margin-top: 14px">
+    <div class="panel">
+      <h2>Experiments per day</h2>
+      {#if data.experiments_per_day.length === 0}
+        <div class="state">No experiments in this window.</div>
+      {:else}
+        <EChart option={perDayOption} height={range === '24h' ? 220 : 200} />
+      {/if}
+    </div>
+    <div class="panel">
+      <h2>Fault breakdown</h2>
+      {#if data.faults.length === 0}
+        <div class="state">No fault-injection spans recorded in this window.</div>
+      {:else}
+        <EChart option={faultsOption} height={220} />
+      {/if}
+    </div>
+  </div>
 
-	<section class="grid">
-		<!-- Rollup trend (uPlot lives here) -->
-		<div class="panel trend">
-			<h2>experiment outcomes — trend</h2>
-			<div class="chart-placeholder">uPlot time-series · hour / day / week rollups</div>
-		</div>
-
-		<!-- Dimension leaderboard -->
-		<div class="panel leaderboard">
-			<h2>leaderboard — by target system</h2>
-			<table>
-				<thead>
-					<tr><th>target system</th><th>runs</th><th>pass rate</th></tr>
-				</thead>
-				<tbody>
-					<tr><td colspan="3" class="empty">waiting for telemetry…</td></tr>
-				</tbody>
-			</table>
-		</div>
-	</section>
-
-	<!-- Drill-down: fleet → experiment → operation/span (span-waterfall) -->
-	<section class="panel drilldown">
-		<h2>drill-down</h2>
-		<div class="breadcrumb">fleet / experiment / operation · span</div>
-		<div class="waterfall-placeholder">
-			custom span-waterfall component — the signature piece
-			(resilience.experiment → hypothesis / action / probe / rollback)
-		</div>
-	</section>
-</main>
+  <div class="panel" style="margin-top: 14px">
+    <h2>Target systems</h2>
+    {#if data.targets.length === 0}
+      <div class="state">
+        No target-system metadata in this window — tumult runs don't tag target
+        systems yet, so this fills in once targets are annotated.
+      </div>
+    {:else}
+      {@const max = Math.max(...data.targets.map((t) => t.experiments))}
+      <table class="data">
+        <thead>
+          <tr><th>Target</th><th style="width: 40%">Experiments</th><th>n</th><th>Pass rate</th></tr>
+        </thead>
+        <tbody>
+          {#each data.targets as t (t.target)}
+            <tr>
+              <td class="mono">{t.target}</td>
+              <td>
+                <div class="tbar" style="width: {(t.experiments / max) * 100}%"></div>
+              </td>
+              <td class="mono">{t.experiments}</td>
+              <td class="mono">
+                {t.pass_rate === null ? '—' : `${(t.pass_rate * 100).toFixed(0)}%`}
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </div>
+{/if}
 
 <style>
-	:global(body) {
-		margin: 0;
-		font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
-		background: #fafafa;
-		color: #1c1e21;
-	}
-	.topbar {
-		display: flex;
-		align-items: baseline;
-		gap: 1rem;
-		padding: 0.75rem 1.5rem;
-		background: #fff;
-		border-bottom: 1px solid #e5e7eb;
-	}
-	.topbar h1 {
-		font-size: 1.1rem;
-		font-weight: 600;
-		margin: 0;
-	}
-	.window {
-		color: #6b7280;
-		font-size: 0.8rem;
-	}
-	main {
-		max-width: 72rem;
-		margin: 0 auto;
-		padding: 1.5rem;
-	}
-	.kpi-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-		gap: 0.75rem;
-		margin-bottom: 1rem;
-	}
-	.kpi-card {
-		background: #fff;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		padding: 0.75rem 1rem;
-	}
-	.kpi-label {
-		color: #6b7280;
-		font-size: 0.72rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-	.kpi-value {
-		font-size: 1.6rem;
-		font-weight: 600;
-	}
-	.kpi-note {
-		color: #6b7280;
-		font-size: 0.78rem;
-	}
-	.sparkline {
-		height: 2rem;
-		margin-top: 0.5rem;
-		background: repeating-linear-gradient(
-			90deg,
-			#e5e7eb 0,
-			#e5e7eb 2px,
-			transparent 2px,
-			transparent 8px
-		);
-	}
-	.grid {
-		display: grid;
-		grid-template-columns: 3fr 2fr;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
-	}
-	.panel {
-		background: #fff;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		padding: 1rem;
-	}
-	.panel h2 {
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: #374151;
-		margin: 0 0 0.75rem;
-	}
-	.chart-placeholder {
-		height: 14rem;
-		display: grid;
-		place-items: center;
-		color: #9ca3af;
-		font-size: 0.85rem;
-		background: linear-gradient(#f9fafb, #f3f4f6);
-		border-radius: 4px;
-	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.85rem;
-	}
-	th {
-		text-align: left;
-		color: #6b7280;
-		font-weight: 500;
-		padding: 0.35rem 0.5rem;
-		border-bottom: 1px solid #e5e7eb;
-	}
-	td {
-		padding: 0.35rem 0.5rem;
-	}
-	.empty {
-		color: #9ca3af;
-	}
-	.breadcrumb {
-		color: #6b7280;
-		font-size: 0.8rem;
-		margin-bottom: 0.5rem;
-	}
-	.waterfall-placeholder {
-		height: 10rem;
-		display: grid;
-		place-items: center;
-		color: #9ca3af;
-		font-size: 0.85rem;
-		border: 1px dashed #d1d5db;
-		border-radius: 4px;
-	}
+  .kpis {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  @media (max-width: 1200px) {
+    .kpis {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  @media (max-width: 800px) {
+    .kpis {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  .tbar {
+    height: 8px;
+    border-radius: 2px;
+    background: var(--accent-dim);
+    min-width: 2px;
+  }
 </style>

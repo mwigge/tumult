@@ -1,48 +1,51 @@
 # kronika-web
 
-Presentation-first web UI for kronika — the chronicle of your resilience work.
+The kronika analytics UI — a static SvelteKit SPA embedded into `kronikad`
+(via `rust-embed`) and served on the daemon's HTTP port alongside `/api/*`.
 
-> **Status: skeleton.** This directory is intentionally hand-written — no
-> `npm create` / `npm install` has been run yet (no network guarantee at
-> scaffold time). `package.json` is complete and pinned; run `npm install`
-> when you're ready to bring the UI up.
+## Build
+
+```sh
+npm ci
+npm run build   # writes build/ — required before `cargo build -p kronikad`
+```
+
+`kronikad` embeds `web/build/` at **compile time**, so a local `cargo build`
+fails until the UI has been built once. The Dockerfile handles this ordering
+with a dedicated node stage. `npm run check` runs svelte-check (0 errors is
+the bar); `npm run dev` starts vite with `/api` proxied to
+`http://127.0.0.1:4318`.
 
 ## Stack, and why
 
 | Choice | Why |
 |---|---|
-| **SvelteKit** | Small runtime, fast first paint, file-based routing that maps 1:1 onto the drill-down hierarchy (fleet → experiment → operation/span). Compiled components keep the dashboard snappy over large rollups. |
-| **uPlot** (~50 KB) | The fastest lean time-series library available. Workhorse for rollup trends (hour/day/week) and KPI sparklines. |
-| **ECharts (tree-shaken imports)** | Only for what uPlot doesn't do well: heatmaps (experiment × time) and the calendar view of resilience work. Imported per-chart to keep the bundle lean. |
-| **Custom span-waterfall component** | The signature piece of the product: a Grafana-style trace waterfall for experiment traces (`resilience.experiment` → hypothesis/action/probe/rollback spans), purpose-built on our DuckDB span model. References: `@grafana/flamegraph`, speedscope — the component is well-understood, and owning it lets us encode `resilience.*` semantics (outcome color, fault annotations) directly. |
-| **Observable Plot (planned)** | Bespoke marks for one-off analytical views. |
-| **mosaic-core — deferred to Phase 2** | State-of-the-art crossfiltering over DuckDB (TVCG'24, pixel-resolution pre-aggregation), but self-declared not production-ready. Pinned and wrapped behind an internal *selection abstraction* when adopted, so views never depend on Mosaic directly. |
-| **Perspective (optional)** | Ad-hoc exploration widget only; never the core layout. |
+| **SvelteKit 2 + Svelte 5 (runes), adapter-static SPA** | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by kronikad for client-side routes. |
+| **ECharts, tree-shaken** (`echarts/core`, `web/src/lib/echarts.ts`) | Time-series bar, calendar heatmap (experiments/day) and donut (fault breakdown) with zoom/tooltip — only the registered chart types ship. |
+| **Custom span waterfall** (`Waterfall.svelte`) | The signature piece: ruler, indented span tree, status-coloured duration bars (Ok emerald / Error red / Unset slate), click → drawer with attributes, events and correlated logs. Owning it lets us encode `resilience.*` semantics directly. |
+| **Hand-rolled CSS** (`lib/theme.css`) | Near-black Grafana-caliber theme; saturated colour is reserved for status and data. No UI framework — fewer moving parts in the embedded build. |
 
-Explicitly rejected: Plotly (too heavy), generic-BI dashboard aesthetics
-(Metabase/Superset/Lightdash) — kronika is presentation-first, not a chart
-warehouse.
+Explicitly rejected: Tailwind/component kits (build weight for no benefit at
+this size), Plotly (too heavy), generic-BI dashboard aesthetics.
 
 ## Design language
 
-- Hierarchy: **KPI row → rollup trend → dimension leaderboard → drill-down table.**
-- Saturated color is reserved for status (hypothesis met / deviated / failed).
-- Aggregate above leaf level; every panel shows `n`, the time window, and the
-  aggregation level.
-- Muted gridlines, direct labels, no chartjunk.
-- All view state (time range, filters, selected experiment) is serialized in
-  the URL — Grafana-style, so every view is shareable.
-- WCAG 2.2 AA contrast.
+- Hierarchy: **KPI row (value · delta vs previous window · sparkline) →
+  trend/heatmap → leaderboard → drill-down table → waterfall.**
+- Aggregate above leaf level; panels always show the window they describe and
+  render honest empty states (e.g. target coverage before targets are
+  annotated, MTTR before recovery times are emitted).
+- Filters are URL-synced everywhere so a view is a shareable link.
 
-## Layout (see `src/routes/+page.svelte` for the static mock)
+## Pages
 
-```
-┌──────────────────────────────────────────────────────┐
-│ KPI row: pass rate · MTTR · deviation rate · coverage │
-├───────────────────────────────┬──────────────────────┤
-│ Rollup trend (uPlot)          │ Dimension leaderboard │
-├───────────────────────────────┴──────────────────────┤
-│ Drill-down: fleet → experiment → operation/span       │
-│ (span-waterfall lives here)                           │
-└──────────────────────────────────────────────────────┘
-```
+- `/` — Overview: KPI cards, experiments-per-day (bar 24h / calendar heatmap
+  7d+), fault donut, target-system leaderboard.
+- `/experiments` — filterable run list (range, outcome, fault, target,
+  free-text); newest first.
+- `/experiments/[id]` — trace waterfall + span drawer, correlated logs,
+  metric points.
+- `/ask` — NL → guarded SQL → result table; golden answers work without an
+  LLM, otherwise graceful setup hint (`{configured:false}` from the API).
+- `/reports` — digests written by the daemon's `KRONIKA_REPORT_INTERVAL`
+  scheduler.
