@@ -11,6 +11,7 @@ name = "kronikad"
 path = "src/main.rs"
 
 [dependencies]
+kronika-ai.workspace = true
 kronika-store.workspace = true
 kronika-ingest.workspace = true
 kronika-metrics.workspace = true

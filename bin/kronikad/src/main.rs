@@ -138,6 +138,7 @@ async fn serve() -> Result<()> {
             config.metrics_dir.clone(),
             api_state.reports_dir().clone(),
             interval,
+            std::sync::Arc::new(kronika_ai::OpenAiCompatClient::from_env()),
         );
     }
     let http_server = tokio::spawn(async move {
@@ -367,28 +368,41 @@ fn report_interval_from_env() -> Option<std::time::Duration> {
 }
 
 /// Render one digest for the trailing `interval` window and write it to
-/// `reports_dir/report_<epoch>.html`. Blocking; call via `spawn_blocking`.
-fn write_digest(
+/// `reports_dir/report_<epoch>.html`. When the LLM is reachable, a grounded
+/// narrative section is prepended (see `kronika_report::narrative`).
+async fn write_digest(
     db_path: &std::path::Path,
     metrics_dir: &std::path::Path,
     reports_dir: &std::path::Path,
     interval: std::time::Duration,
+    llm: std::sync::Arc<dyn kronika_ai::Llm>,
 ) -> Result<PathBuf> {
-    let defs = kronika_metrics::load_dir(metrics_dir)
-        .with_context(|| format!("load metrics from {}", metrics_dir.display()))?;
-    let store = Store::at(db_path);
-    let reader = store.read_only().context("open store read-only")?;
+    let (db, mdir) = (db_path.to_path_buf(), metrics_dir.to_path_buf());
+    let report = tokio::task::spawn_blocking(move || -> Result<kronika_report::Report> {
+        let defs = kronika_metrics::load_dir(&mdir)
+            .with_context(|| format!("load metrics from {}", mdir.display()))?;
+        let store = Store::at(&db);
+        let reader = store.read_only().context("open store read-only")?;
+        let now_s = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let from_ns = (now_s - interval.as_secs()) as i64 * 1_000_000_000;
+        let to_ns = now_s as i64 * 1_000_000_000;
+        Ok(kronika_report::build_report(
+            &reader,
+            &defs,
+            &format!("kronika digest — last {}s", interval.as_secs()),
+            Some((from_ns, to_ns)),
+        )?)
+    })
+    .await??;
+    // Best-effort LLM narrative: unreachable LLM, timeout or a reply with no
+    // grounded sentences leaves the digest unchanged.
+    let report =
+        kronika_report::narrative::narrate(&llm, report, std::time::Duration::from_secs(30)).await;
     let now_s = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let from_ns = (now_s - interval.as_secs()) as i64 * 1_000_000_000;
-    let to_ns = now_s as i64 * 1_000_000_000;
-    let report = kronika_report::build_report(
-        &reader,
-        &defs,
-        &format!("kronika digest — last {}s", interval.as_secs()),
-        Some((from_ns, to_ns)),
-    )?;
     std::fs::create_dir_all(reports_dir)?;
     let path = reports_dir.join(format!("report_{now_s}.html"));
     std::fs::write(&path, kronika_report::render_html(&report))
@@ -404,6 +418,7 @@ fn spawn_report_scheduler(
     metrics_dir: PathBuf,
     reports_dir: PathBuf,
     interval: std::time::Duration,
+    llm: std::sync::Arc<dyn kronika_ai::Llm>,
 ) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -412,15 +427,17 @@ fn spawn_report_scheduler(
         ticker.tick().await;
         loop {
             ticker.tick().await;
-            let (db, mdir, rdir) = (db_path.clone(), metrics_dir.clone(), reports_dir.clone());
-            match tokio::task::spawn_blocking(move || write_digest(&db, &mdir, &rdir, interval))
-                .await
-            {
-                Ok(Ok(path)) => {
+            let (db, mdir, rdir, llm) = (
+                db_path.clone(),
+                metrics_dir.clone(),
+                reports_dir.clone(),
+                llm.clone(),
+            );
+            match write_digest(&db, &mdir, &rdir, interval, llm).await {
+                Ok(path) => {
                     tracing::info!(path = %path.display(), "scheduled digest written")
                 }
-                Ok(Err(e)) => tracing::warn!(error = %format!("{e:#}"), "scheduled digest failed"),
-                Err(e) => tracing::warn!(error = %e, "scheduled digest task failed"),
+                Err(e) => tracing::warn!(error = %format!("{e:#}"), "scheduled digest failed"),
             }
         }
     });

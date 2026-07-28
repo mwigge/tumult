@@ -2,6 +2,8 @@
 //! tokio-interval scheduler producing reports from semantic metric
 //! definitions over a read-only store connection.
 
+pub mod narrative;
+
 use std::path::PathBuf;
 use std::time::Duration;
 

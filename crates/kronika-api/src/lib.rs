@@ -1623,6 +1623,7 @@ async fn generate_report(
     }
     let metrics_dir = state.metrics_dir.as_ref().clone();
     let reports_dir = state.reports_dir.as_ref().clone();
+    let llm = state.llm.clone();
     let metric_name = metric.clone();
     let body = with_reader(&state.db_path, move |reader| {
         let defs =
@@ -1637,24 +1638,28 @@ async fn generate_report(
             None,
         )
         .map_err(|e| e.to_string())?;
-        let html = kronika_report::render_html(&report);
-        std::fs::create_dir_all(&reports_dir).map_err(|e| e.to_string())?;
-        let now_s = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        let name = format!("manual_{metric_name}_{now_s}.html");
-        std::fs::write(reports_dir.join(&name), &html).map_err(|e| e.to_string())?;
-        Ok(Some(
-            json!({"name": name, "metric": metric_name, "bytes": html.len()}),
-        ))
+        Ok(Some(report))
     })
     .await?;
-    match body {
-        Some(body) => Ok(Json(body)),
-        None => Err((
+    let Some(report) = body else {
+        return Err((
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("metric {metric:?} not found; see /api/metrics")})),
         )
-            .into_response()),
-    }
+            .into_response());
+    };
+    // Best-effort LLM narrative: unreachable/unconfigured LLM or a reply
+    // with no grounded sentences leaves the digest unchanged.
+    let report =
+        kronika_report::narrative::narrate(&llm, report, std::time::Duration::from_secs(30)).await;
+    let html = kronika_report::render_html(&report);
+    std::fs::create_dir_all(&reports_dir).map_err(|e| internal(e.to_string()))?;
+    let now_s = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let name = format!("manual_{metric}_{now_s}.html");
+    std::fs::write(reports_dir.join(&name), &html).map_err(|e| internal(e.to_string()))?;
+    Ok(Json(
+        json!({"name": name, "metric": metric, "bytes": html.len()}),
+    ))
 }

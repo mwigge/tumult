@@ -1,7 +1,7 @@
 # ADR 0002: AI analytics layer — deterministic math, governed semantics, LLM narrates
 
-- Status: accepted (Phase 1 groundwork only)
-- Date: 2026-07-28
+- Status: accepted (Phases 1–2 live: NL query, narrative digests)
+- Date: 2026-07-28 (updated 2026-07-28 for Phase 2)
 
 ## Context
 
@@ -48,12 +48,17 @@ Concretely:
 ## Phases
 
 1. **NL query** — question → governed SQL (guardrails above) → result + SQL shown.
+   *Landed:* `/api/ask` (golden answers + LLM path with sql_guard).
 2. **Narrative digests** — scheduled reports verbalized from facts packages.
+   *Landed:* `kronika_report::narrative` builds a facts package from the
+   report's own KPI/table numbers, asks the LLM for a short summary, and
+   mechanically keeps only sentences whose numerals are grounded in those
+   facts (percent values match in `x` and `x/100` forms; 1% tolerance for
+   LLM rounding). Ungrounded sentences are dropped; an unreachable LLM,
+   timeout (30s) or a fully ungrounded reply ships the digest unchanged.
+   Wired into the daemon's report scheduler and `POST /api/reports/generate`.
 3. **Anomaly explanation** — evidence-package-grounded explanations with citations.
 4. **Suggested insights** — proactive "what matters" selection.
-
-Phase 1 ships only the interface + guardrails; no live LLM calls exist in
-the codebase yet.
 
 ## Consequences
 
