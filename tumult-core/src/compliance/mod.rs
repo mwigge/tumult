@@ -135,6 +135,10 @@ mod tests {
     }
 
     #[test]
+    // clippy sees a const array's length statically and calls the emptiness
+    // guard tautological — it is not: it trips the moment someone empties
+    // the registry.
+    #[allow(clippy::const_is_empty)]
     fn registry_is_well_formed() {
         assert!(!CITATIONS.is_empty(), "registry must not be empty");
         for c in CITATIONS {
