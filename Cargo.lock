@@ -1226,6 +1226,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kronika-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "kronika-ai",
+ "kronika-metrics",
+ "kronika-store",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "kronika-demo"
 version = "0.1.0"
 dependencies = [
@@ -1308,6 +1324,7 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "kronika-api",
  "kronika-ingest",
  "kronika-metrics",
  "kronika-report",

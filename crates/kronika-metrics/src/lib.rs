@@ -257,6 +257,69 @@ pub fn to_sql(
     ))
 }
 
+/// Compile a definition into a **time-bucketed series** SQL: the same measure
+/// as [`to_sql`], aggregated per `bucket_ns`-wide bucket of `def.time_col`,
+/// plus the caller-supplied `group_by` dimensions. Each row carries
+/// `bucket_s` (bucket start, epoch seconds) and `value`.
+///
+/// The bucket expression is derived inside a subquery so the definition's own
+/// `time_col` filter still applies to raw rows; everything interpolated is
+/// either validated by [`validate`] or the integer `bucket_ns`.
+///
+/// # Errors
+/// Same as [`to_sql`].
+pub fn to_sql_bucketed(
+    def: &MetricDef,
+    bucket_ns: i64,
+    group_by: &[&str],
+    time_range: Option<(i64, i64)>,
+) -> Result<String, MetricsError> {
+    validate(def)?;
+    if bucket_ns <= 0 {
+        return Err(MetricsError::InvalidIdentifier(format!(
+            "bucket_ns must be positive, got {bucket_ns}"
+        )));
+    }
+    let mut dims: Vec<String> = Vec::new();
+    for dim in group_by {
+        check_ident(dim)?;
+        dims.push((*dim).to_string());
+    }
+    let measure_sql = render_measure(&def.measure)?;
+    let select_dims = if dims.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", dims.join(", "))
+    };
+    let mut wheres = Vec::new();
+    if let Some(cond) = &def.condition {
+        wheres.push(render_condition(cond)?);
+    }
+    if let Some((start, end)) = time_range {
+        wheres.push(format!("{} >= {start}", def.time_col));
+        wheres.push(format!("{} < {end}", def.time_col));
+    }
+    let where_sql = if wheres.is_empty() {
+        String::new()
+    } else {
+        format!("\nWHERE {}", wheres.join("\n  AND "))
+    };
+    let group_sql = if dims.is_empty() {
+        "\nGROUP BY bucket_s\nORDER BY bucket_s".to_string()
+    } else {
+        format!(
+            "\nGROUP BY bucket_s, {}\nORDER BY bucket_s, {}",
+            dims.join(", "),
+            dims.join(", ")
+        )
+    };
+    Ok(format!(
+        "SELECT ({} // {bucket_ns}) * {bucket_ns} // 1000000000 AS bucket_s{select_dims}, \
+         {measure_sql} AS value\nFROM {}{where_sql}{group_sql}",
+        def.time_col, def.source_table
+    ))
+}
+
 /// Load every `*.yaml`/`*.yml` metric definition in a directory (sorted by
 /// file name) and validate them.
 ///
@@ -393,6 +456,33 @@ measure: { type: count }
             equals: Literal::Str("it's".into()),
         };
         assert_eq!(render_condition(&cond).unwrap(), "outcome_status = 'it''s'");
+    }
+
+    #[test]
+    fn bucketed_series_compiles() {
+        let sql =
+            to_sql_bucketed(&pass_rate_def(), 3_600_000_000_000, &[], Some((10, 20))).unwrap();
+        assert!(sql
+            .contains("SELECT (ts_ns // 3600000000000) * 3600000000000 // 1000000000 AS bucket_s"));
+        assert!(sql.contains("AS value\nFROM spans"));
+        assert!(sql.contains("ts_ns >= 10"));
+        assert!(sql.contains("GROUP BY bucket_s\nORDER BY bucket_s"));
+    }
+
+    #[test]
+    fn bucketed_series_with_dimension() {
+        let def: MetricDef = serde_yaml::from_str(
+            r#"
+name: experiment_count
+source_table: spans
+measure: { type: count }
+condition: { column: span_name, equals: "resilience.experiment" }
+"#,
+        )
+        .unwrap();
+        let sql = to_sql_bucketed(&def, 86_400_000_000_000, &["target_system"], None).unwrap();
+        assert!(sql.contains("AS bucket_s, target_system, COUNT(*) AS value"));
+        assert!(sql.contains("GROUP BY bucket_s, target_system"));
     }
 
     #[test]

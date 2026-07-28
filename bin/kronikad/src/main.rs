@@ -7,6 +7,12 @@
 //! the live store — this works while the daemon holds the write lock, unlike
 //! the `report` subcommand which needs the daemon stopped.
 //!
+//! The same HTTP server mounts the read-only query API (`/api/*`, from
+//! `kronika-api`) that backs the web UI. When `KRONIKA_REPORT_INTERVAL`
+//! (e.g. `1h`, `30m`) is set, a scheduler renders a metric digest per
+//! interval into `<db dir>/reports/report_<epoch>.html`; `/api/reports`
+//! lists them. Automatic reporting is off by default.
+//!
 //! Subcommands:
 //! * `kronikad import <file>` — manual CSV / tumult journal JSON import.
 //! * `kronikad report --metric <name>` — print an HTML report to stdout.
@@ -117,15 +123,28 @@ async fn serve() -> Result<()> {
         result
     });
 
-    // OTLP/HTTP server (smedja exporter target) + health + live reports.
+    // OTLP/HTTP server (smedja exporter target) + health + live reports + the
+    // read-only query API backing the web UI.
     let http_addr = config.otlp_http_addr;
     let report_state = ReportState {
         db_path: config.db_path.clone(),
         metrics_dir: config.metrics_dir.clone(),
     };
+    let api_state =
+        kronika_api::ApiState::from_env_parts(config.db_path.clone(), config.metrics_dir.clone());
+    if let Some(interval) = report_interval_from_env() {
+        spawn_report_scheduler(
+            config.db_path.clone(),
+            config.metrics_dir.clone(),
+            api_state.reports_dir().clone(),
+            interval,
+        );
+    }
     let http_server = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
-        let app = kronika_ingest::http::router(ingest).merge(report_router(report_state));
+        let app = kronika_ingest::http::router(ingest)
+            .merge(report_router(report_state))
+            .merge(kronika_api::router(api_state));
         let result = axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal("http"))
             .await;
@@ -258,4 +277,107 @@ async fn report_handler(
         )
             .into_response(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Automatic reporting (KRONIKA_REPORT_INTERVAL)
+
+/// Parse a `KRONIKA_REPORT_INTERVAL` value (`45s`, `30m`, `1h`, …).
+fn parse_report_interval(raw: &str) -> Option<std::time::Duration> {
+    let (num, unit) = raw.split_at(raw.len().checked_sub(1)?);
+    let n: u64 = num.trim().parse().ok()?;
+    if n == 0 {
+        return None;
+    }
+    let secs = match unit {
+        "s" => n,
+        "m" => n.checked_mul(60)?,
+        "h" => n.checked_mul(3_600)?,
+        "d" => n.checked_mul(86_400)?,
+        _ => return None,
+    };
+    Some(std::time::Duration::from_secs(secs))
+}
+
+/// `None` when the env var is unset, empty, `0` or `off`; invalid values are
+/// warned about and treated as off.
+fn report_interval_from_env() -> Option<std::time::Duration> {
+    let raw = std::env::var("KRONIKA_REPORT_INTERVAL").ok()?;
+    let raw = raw.trim();
+    if raw.is_empty() || raw == "0" || raw.eq_ignore_ascii_case("off") {
+        return None;
+    }
+    match parse_report_interval(raw) {
+        Some(d) => {
+            tracing::info!(interval = ?d, "automatic reporting enabled");
+            Some(d)
+        }
+        None => {
+            tracing::warn!(
+                value = raw,
+                "invalid KRONIKA_REPORT_INTERVAL (want e.g. 30m or 1h); automatic reporting disabled"
+            );
+            None
+        }
+    }
+}
+
+/// Render one digest for the trailing `interval` window and write it to
+/// `reports_dir/report_<epoch>.html`. Blocking; call via `spawn_blocking`.
+fn write_digest(
+    db_path: &std::path::Path,
+    metrics_dir: &std::path::Path,
+    reports_dir: &std::path::Path,
+    interval: std::time::Duration,
+) -> Result<PathBuf> {
+    let defs = kronika_metrics::load_dir(metrics_dir)
+        .with_context(|| format!("load metrics from {}", metrics_dir.display()))?;
+    let store = Store::at(db_path);
+    let reader = store.read_only().context("open store read-only")?;
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let from_ns = (now_s - interval.as_secs()) as i64 * 1_000_000_000;
+    let to_ns = now_s as i64 * 1_000_000_000;
+    let report = kronika_report::build_report(
+        &reader,
+        &defs,
+        &format!("kronika digest — last {}s", interval.as_secs()),
+        Some((from_ns, to_ns)),
+    )?;
+    std::fs::create_dir_all(reports_dir)?;
+    let path = reports_dir.join(format!("report_{now_s}.html"));
+    std::fs::write(&path, kronika_report::render_html(&report))
+        .with_context(|| format!("write digest to {}", path.display()))?;
+    Ok(path)
+}
+
+/// Spawn the report scheduler: one digest per interval, written into
+/// `<db dir>/reports/` where `/api/reports` picks it up. Failures are logged
+/// and the schedule continues.
+fn spawn_report_scheduler(
+    db_path: PathBuf,
+    metrics_dir: PathBuf,
+    reports_dir: PathBuf,
+    interval: std::time::Duration,
+) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        // Skip the immediate first tick: produce the first digest after one
+        // full interval, once ingest has had time to land data.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let (db, mdir, rdir) = (db_path.clone(), metrics_dir.clone(), reports_dir.clone());
+            match tokio::task::spawn_blocking(move || write_digest(&db, &mdir, &rdir, interval))
+                .await
+            {
+                Ok(Ok(path)) => {
+                    tracing::info!(path = %path.display(), "scheduled digest written")
+                }
+                Ok(Err(e)) => tracing::warn!(error = %format!("{e:#}"), "scheduled digest failed"),
+                Err(e) => tracing::warn!(error = %e, "scheduled digest task failed"),
+            }
+        }
+    });
 }

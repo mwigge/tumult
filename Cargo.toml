@@ -7,6 +7,7 @@ members = [
     "crates/kronika-metrics",
     "crates/kronika-report",
     "crates/kronika-ai",
+    "crates/kronika-api",
     "bin/kronikad",
     "bin/kronika-demo",
 ]
@@ -26,6 +27,7 @@ kronika-ingest = { path = "crates/kronika-ingest" }
 kronika-metrics = { path = "crates/kronika-metrics" }
 kronika-report = { path = "crates/kronika-report" }
 kronika-ai = { path = "crates/kronika-ai" }
+kronika-api = { path = "crates/kronika-api" }
 
 # Storage — same major as tumult-analytics
 duckdb = { version = "1.10503", features = ["bundled"] }

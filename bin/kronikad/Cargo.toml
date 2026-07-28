@@ -15,6 +15,7 @@ kronika-store.workspace = true
 kronika-ingest.workspace = true
 kronika-metrics.workspace = true
 kronika-report.workspace = true
+kronika-api.workspace = true
 axum.workspace = true
 clap.workspace = true
 tokio.workspace = true
