@@ -6,6 +6,8 @@ import type {
   Dimensions,
   ExperimentDetail,
   ExperimentRow,
+  LogEntry,
+  LogVolume,
   MetricDefInfo,
   Overview,
   ReportFile,
@@ -43,6 +45,20 @@ export const api = {
   metrics: () => get<{ metrics: MetricDefInfo[] }>('/api/metrics'),
 
   reports: () => get<{ reports: ReportFile[] }>('/api/reports'),
+
+  logs: (params: Record<string, string>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '')
+    ).toString();
+    return get<{ count: number; logs: LogEntry[] }>(`/api/logs${qs ? `?${qs}` : ''}`);
+  },
+
+  logsVolume: (params: Record<string, string>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '')
+    ).toString();
+    return get<LogVolume>(`/api/logs/volume${qs ? `?${qs}` : ''}`);
+  },
 
   ask: async (question: string): Promise<AskResponse> => {
     const resp = await fetch('/api/ask', {

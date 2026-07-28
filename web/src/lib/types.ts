@@ -114,3 +114,21 @@ export interface ReportFile {
   bytes: number;
   modified_s: number;
 }
+
+export interface LogEntry {
+  ts_ns: number;
+  severity_text: string | null;
+  body: string;
+  trace_id: string | null;
+  span_id: string | null;
+  service_name: string | null;
+  experiment_id: string | null;
+  log_attrs: Record<string, string>;
+  resource_attrs: Record<string, string>;
+}
+
+export interface LogVolume {
+  interval: string;
+  bucket_s: number;
+  rows: { ts: number; severity: string; count: number }[];
+}

@@ -131,6 +131,29 @@ fn seed(db_path: &std::path::Path) -> i64 {
                 Some("Deviated"),
                 now - 595 * NS,
             ),
+            // Extra rows so the logs explorer filters have something to bite
+            // on: an error inside exp-fail's trace, and a warning from a
+            // second service with no experiment linkage.
+            LogRow {
+                ts_ns: now - 590 * NS,
+                severity_text: "ERROR".into(),
+                body: "probe redis-latency failed: connection refused".into(),
+                trace_id: Some("trace-exp-fail".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![("experiment_id".to_string(), "exp-fail".to_string())],
+                resource_attrs: vec![],
+            },
+            LogRow {
+                ts_ns: now - 580 * NS,
+                severity_text: "WARN".into(),
+                body: "target postgres-1 slow to recover".into(),
+                trace_id: None,
+                span_id: None,
+                service_name: "chaos-agent".into(),
+                log_attrs: vec![],
+                resource_attrs: vec![],
+            },
         ])
         .unwrap();
 
@@ -459,4 +482,86 @@ async fn reports_lists_and_serves_digest_files() {
         .reports_dir
         .join("2026-01-01T00-00_digest.html")
         .exists());
+}
+
+#[tokio::test]
+async fn logs_lists_filters_and_searches() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(&srv.base, "/api/logs?range=24h").await;
+    assert_eq!(status, 200, "{body}");
+    let rows = body["logs"].as_array().unwrap();
+    assert_eq!(rows.len(), 6, "{rows:?}");
+    // Newest first: the WARN row (10 min ago) leads.
+    assert_eq!(rows[0]["severity_text"], "WARN");
+    assert_eq!(rows[0]["service_name"], "chaos-agent");
+    // experiment_id is lifted out of log_attrs for UI linking.
+    assert_eq!(rows[1]["experiment_id"], "exp-fail");
+
+    // Severity is a case-insensitive exact match, not a substring search.
+    let (_, body) = get(&srv.base, "/api/logs?severity=error").await;
+    let rows = body["logs"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["severity_text"], "ERROR");
+    let (_, body) = get(&srv.base, "/api/logs?severity=err").await;
+    assert_eq!(body["logs"].as_array().unwrap().len(), 0);
+
+    let (_, body) = get(&srv.base, "/api/logs?service=chaos-agent").await;
+    let rows = body["logs"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["severity_text"], "WARN");
+
+    // Free-text search matches the body, %/_ in the query stay literal.
+    let (_, body) = get(&srv.base, "/api/logs?q=connection+refused").await;
+    let rows = body["logs"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0]["body"].as_str().unwrap().contains("redis-latency"));
+    let (_, body) = get(&srv.base, "/api/logs?q=%25").await; // literal "%"
+    assert_eq!(body["logs"].as_array().unwrap().len(), 0);
+
+    // Limit is honoured and capped.
+    let (_, body) = get(&srv.base, "/api/logs?limit=2").await;
+    assert_eq!(body["logs"].as_array().unwrap().len(), 2);
+    let (_, body) = get(&srv.base, "/api/logs?limit=99999").await;
+    assert_eq!(body["logs"].as_array().unwrap().len(), 6);
+
+    let (status, body) = get(&srv.base, "/api/logs?range=1y").await;
+    assert_eq!(status, 400);
+    assert!(body["error"].as_str().unwrap().contains("invalid range"));
+    let (status, _) = get(&srv.base, "/api/logs?range=24h&limit=0").await;
+    // limit clamps to >= 1 rather than erroring.
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn logs_volume_buckets_counts_per_severity() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(&srv.base, "/api/logs/volume?range=24h&interval=1h").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["bucket_s"], 3600);
+    let rows = body["rows"].as_array().unwrap();
+    // All seed logs land in one 1h bucket, split by severity.
+    let total: u64 = rows.iter().map(|r| r["count"].as_u64().unwrap()).sum();
+    assert_eq!(total, 6, "{rows:?}");
+    let count_of = |sev: &str| {
+        rows.iter()
+            .filter(|r| r["severity"] == sev)
+            .map(|r| r["count"].as_u64().unwrap())
+            .sum::<u64>()
+    };
+    assert_eq!(count_of("INFO"), 4);
+    assert_eq!(count_of("ERROR"), 1);
+    assert_eq!(count_of("WARN"), 1);
+    assert!(rows[0]["ts"].as_i64().unwrap() > 1_700_000_000);
+
+    // Filters apply to the volume too.
+    let (_, body) = get(&srv.base, "/api/logs/volume?severity=error").await;
+    let rows = body["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["count"], 1);
+
+    let (status, body) = get(&srv.base, "/api/logs/volume?interval=10m").await;
+    assert_eq!(status, 400);
+    assert!(body["error"].as_str().unwrap().contains("invalid interval"));
 }

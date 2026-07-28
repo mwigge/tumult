@@ -15,6 +15,11 @@
 //! * `GET /api/dimensions` — distinct filter values (outcomes, targets,
 //!   faults, experiment names).
 //! * `GET /api/metrics` — semantic metrics available for `/api/timeseries`.
+//! * `GET /api/logs?range=&severity=&service=&q=&limit=` — raw log rows,
+//!   newest first (severity is a case-insensitive exact match, `q` a
+//!   contains-match on the body).
+//! * `GET /api/logs/volume?range=&interval=&severity=&service=&q=` — log
+//!   volume bucketed per severity for the explorer's stacked bar.
 //! * `POST /api/ask` — natural-language → SQL → rows, guarded by
 //!   `kronika_ai::sql_guard`; degrades to `{configured:false}` when no LLM
 //!   is reachable.
@@ -103,6 +108,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/experiments/{id}", get(experiment_detail))
         .route("/api/dimensions", get(dimensions))
         .route("/api/metrics", get(list_metrics))
+        .route("/api/logs", get(logs))
+        .route("/api/logs/volume", get(logs_volume))
         .route("/api/ask", post(ask::ask))
         .route("/api/reports", get(list_reports))
         .route("/api/reports/generate", post(generate_report))
@@ -162,6 +169,17 @@ fn sql_contains(s: &str) -> String {
         .replace('_', "\\_")
         .replace('\'', "''");
     format!("'%{esc}%'")
+}
+
+/// Quote a user-supplied string as an `ILIKE` pattern with no wildcards —
+/// a case-insensitive exact match (`%`/`_` escaped, use with `ESCAPE '\'`).
+fn sql_ieq(s: &str) -> String {
+    let esc = s
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+        .replace('\'', "''");
+    format!("'{esc}'")
 }
 
 /// Time-window predicate on `ts_ns`.
@@ -782,6 +800,119 @@ async fn list_metrics(State(state): State<ApiState>) -> Result<Json<Value>, Resp
         .map(|d| json!({"name": d.name, "description": d.description}))
         .collect();
     Ok(Json(json!({"metrics": metrics})))
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/logs + /api/logs/volume
+
+#[derive(Deserialize)]
+struct LogsParams {
+    range: Option<String>,
+    severity: Option<String>,
+    service: Option<String>,
+    q: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct LogsVolumeParams {
+    range: Option<String>,
+    interval: Option<String>,
+    severity: Option<String>,
+    service: Option<String>,
+    q: Option<String>,
+}
+
+/// WHERE clauses shared by the logs list and volume endpoints (range always
+/// applies, so the list is never empty).
+fn log_wheres(
+    range: Option<&str>,
+    severity: Option<&str>,
+    service: Option<&str>,
+    q: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let range = range.unwrap_or("24h");
+    let Some((cur, _)) = windows(range) else {
+        return Err(format!("invalid range {range:?}; expected 24h|7d|14d"));
+    };
+    let mut wheres = vec![w(cur.0, cur.1)];
+    if let Some(sev) = severity.filter(|s| !s.is_empty()) {
+        // Severity texts are short tokens (INFO/WARN/ERROR…): case-insensitive
+        // exact match, not a contains search.
+        wheres.push(format!("severity_text ILIKE {} ESCAPE '\\'", sql_ieq(sev)));
+    }
+    if let Some(svc) = service.filter(|s| !s.is_empty()) {
+        wheres.push(format!("service_name = {}", sql_string(svc)));
+    }
+    if let Some(q) = q.filter(|s| !s.is_empty()) {
+        if q.chars().count() > 200 {
+            return Err("q too long (max 200 chars)".into());
+        }
+        wheres.push(format!("body ILIKE {} ESCAPE '\\'", sql_contains(q)));
+    }
+    Ok(wheres)
+}
+
+async fn logs(
+    State(state): State<ApiState>,
+    Query(params): Query<LogsParams>,
+) -> Result<Json<Value>, Response> {
+    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+    let wheres = log_wheres(
+        params.range.as_deref(),
+        params.severity.as_deref(),
+        params.service.as_deref(),
+        params.q.as_deref(),
+    )
+    .map_err(bad)?;
+    let limit = params.limit.unwrap_or(200).clamp(1, 1000);
+    let sql = format!(
+        "SELECT ts_ns, severity_text, body, trace_id, span_id, service_name, \
+         log_attrs['experiment_id'] AS experiment_id, log_attrs, resource_attrs \
+         FROM logs WHERE {} ORDER BY ts_ns DESC LIMIT {limit}",
+        wheres.join(" AND ")
+    );
+    let rows = with_reader(&state.db_path, move |reader| {
+        reader.query_json_rows(&sql).map_err(|e| e.to_string())
+    })
+    .await?;
+    Ok(Json(json!({"count": rows.len(), "logs": rows})))
+}
+
+async fn logs_volume(
+    State(state): State<ApiState>,
+    Query(params): Query<LogsVolumeParams>,
+) -> Result<Json<Value>, Response> {
+    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+    let interval = params.interval.unwrap_or_else(|| "1h".into());
+    let Some(bucket_s) = parse_interval(&interval) else {
+        return Err(bad(format!(
+            "invalid interval {interval:?}; expected 5m|1h|1d"
+        )));
+    };
+    let wheres = log_wheres(
+        params.range.as_deref(),
+        params.severity.as_deref(),
+        params.service.as_deref(),
+        params.q.as_deref(),
+    )
+    .map_err(bad)?;
+    // One row per (bucket, severity); the UI pivots into stacked series.
+    let sql = format!(
+        "SELECT {} AS ts, COALESCE(severity_text, 'UNKNOWN') AS severity, COUNT(*) AS count \
+         FROM logs WHERE {} GROUP BY 1, 2 ORDER BY 1",
+        bucket_expr(bucket_s),
+        wheres.join(" AND ")
+    );
+    let rows = with_reader(&state.db_path, move |reader| {
+        reader.query_json_rows(&sql).map_err(|e| e.to_string())
+    })
+    .await?;
+    Ok(Json(json!({
+        "interval": interval,
+        "bucket_s": bucket_s,
+        "rows": rows,
+    })))
 }
 
 // ---------------------------------------------------------------------------
