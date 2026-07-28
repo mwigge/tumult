@@ -34,7 +34,7 @@ pub const MAX_ROW_CAP: usize = 10_000;
 /// enforced as a pre-execution estimate: each relationship pattern is one
 /// expansion tier whose cost is the running result frontier times the average
 /// node degree times the pattern's hop multiplier (see
-/// [`estimate_expansion_steps`]). Queries whose estimate exceeds this budget
+/// `estimate_expansion_steps`). Queries whose estimate exceeds this budget
 /// are rejected with [`CypherError::BudgetExceeded`] before the graph is
 /// even built. Grafeo's own 30-second query timeout remains as the
 /// wall-clock backstop for shapes the estimate cannot see (e.g.
