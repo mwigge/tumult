@@ -38,7 +38,11 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Cold-cache runs (new SHA lineage, e.g. after a history rewrite) compile
+    # the full dependency graph under --all-targets --all-features and then
+    # build cargo-machete from source — that exceeded the old 10 min budget
+    # and GitHub killed the step mid-lint, cancelling the whole run.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
