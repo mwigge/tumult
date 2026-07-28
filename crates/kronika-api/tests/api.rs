@@ -389,6 +389,47 @@ async fn ask_degrades_gracefully_without_llm() {
 }
 
 #[tokio::test]
+async fn generate_report_renders_stores_and_lists() {
+    let srv = spawn_server().await;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/reports/generate", srv.base))
+        .json(&serde_json::json!({"metric": "experiment_count"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let name = body["name"].as_str().unwrap();
+    assert!(name.starts_with("manual_experiment_count_"), "{name}");
+    assert!(body["bytes"].as_u64().unwrap() > 0);
+
+    // It lands in the list…
+    let (_, list) = get(&srv.base, "/api/reports").await;
+    let names: Vec<&str> = list["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["name"].as_str())
+        .collect();
+    assert!(names.contains(&name), "{names:?}");
+    // …and is served as HTML.
+    let resp = reqwest::get(format!("{}/api/reports/{name}", srv.base))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(resp.text().await.unwrap().contains("experiment_count"));
+
+    // Unknown metric → 404.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/reports/generate", srv.base))
+        .json(&serde_json::json!({"metric": "no_such_metric"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
 async fn reports_lists_and_serves_digest_files() {
     let srv = spawn_server().await;
     let (status, body) = get(&srv.base, "/api/reports").await;

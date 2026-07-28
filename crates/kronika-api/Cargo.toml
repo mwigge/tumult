@@ -10,6 +10,7 @@ authors.workspace = true
 kronika-store.workspace = true
 kronika-metrics.workspace = true
 kronika-ai.workspace = true
+kronika-report.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

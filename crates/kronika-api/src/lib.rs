@@ -19,7 +19,8 @@
 //!   `kronika_ai::sql_guard`; degrades to `{configured:false}` when no LLM
 //!   is reachable.
 //! * `GET /api/reports` / `GET /api/reports/{name}` — HTML digests written
-//!   by the daemon's report scheduler.
+//!   by the daemon's report scheduler; `POST /api/reports/generate` renders
+//!   one metric digest on demand into the same directory.
 //!
 //! Every query runs on a fresh read-only connection inside `spawn_blocking`,
 //! so the API coexists with the daemon's single writer and never touches the
@@ -104,6 +105,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics", get(list_metrics))
         .route("/api/ask", post(ask::ask))
         .route("/api/reports", get(list_reports))
+        .route("/api/reports/generate", post(generate_report))
         .route("/api/reports/{name}", get(get_report))
         .with_state(state)
 }
@@ -824,5 +826,66 @@ async fn get_report(State(state): State<ApiState>, Path(name): Path<String>) -> 
     match std::fs::read_to_string(state.reports_dir.join(&name)) {
         Ok(html) => Html(html).into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "report not found").into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct GenerateRequest {
+    metric: String,
+}
+
+/// `POST /api/reports/generate {metric}` — manual counterpart to the
+/// scheduler: render one metric digest now (over all stored data, matching
+/// `GET /report?metric=`), write it into the reports dir so it appears in
+/// `GET /api/reports`, and return its name. Manual digests carry a
+/// `manual_<metric>_<epoch>.html` name, distinct from the scheduler's
+/// `report_<epoch>.html`.
+async fn generate_report(
+    State(state): State<ApiState>,
+    Json(req): Json<GenerateRequest>,
+) -> Result<Json<Value>, Response> {
+    let metric = req.metric.trim().to_string();
+    if metric.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "metric must not be empty"})),
+        )
+            .into_response());
+    }
+    let metrics_dir = state.metrics_dir.as_ref().clone();
+    let reports_dir = state.reports_dir.as_ref().clone();
+    let metric_name = metric.clone();
+    let body = with_reader(&state.db_path, move |reader| {
+        let defs =
+            kronika_metrics::load_dir(&metrics_dir).map_err(|e| format!("load metrics: {e}"))?;
+        let Some(def) = defs.iter().find(|d| d.name == metric_name) else {
+            return Ok(None);
+        };
+        let report = kronika_report::build_report(
+            reader,
+            std::slice::from_ref(def),
+            &format!("kronika — {metric_name}"),
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+        let html = kronika_report::render_html(&report);
+        std::fs::create_dir_all(&reports_dir).map_err(|e| e.to_string())?;
+        let now_s = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let name = format!("manual_{metric_name}_{now_s}.html");
+        std::fs::write(reports_dir.join(&name), &html).map_err(|e| e.to_string())?;
+        Ok(Some(
+            json!({"name": name, "metric": metric_name, "bytes": html.len()}),
+        ))
+    })
+    .await?;
+    match body {
+        Some(body) => Ok(Json(body)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("metric {metric:?} not found; see /api/metrics")})),
+        )
+            .into_response()),
     }
 }
