@@ -1,6 +1,6 @@
 // Tree-shaken ECharts: only the charts/components kronika uses.
 import * as echarts from 'echarts/core';
-import { BarChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts';
+import { BarChart, GraphChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts';
 import {
   CalendarComponent,
   DataZoomComponent,
@@ -17,6 +17,7 @@ echarts.use([
   PieChart,
   HeatmapChart,
   ScatterChart,
+  GraphChart,
   GridComponent,
   TooltipComponent,
   DataZoomComponent,

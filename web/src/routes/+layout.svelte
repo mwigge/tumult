@@ -8,6 +8,7 @@
     { href: '/logs', label: 'Logs', icon: '≣' },
     { href: '/traces', label: 'Traces', icon: '⌁' },
     { href: '/metrics', label: 'Metrics', icon: '∿' },
+    { href: '/topology', label: 'Topology', icon: '✳' },
     { href: '/ask', label: 'Ask', icon: '✦' },
     { href: '/reports', label: 'Reports', icon: '▤' }
   ];

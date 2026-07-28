@@ -14,6 +14,7 @@ import type {
   Overview,
   ReportFile,
   Timeseries,
+  Topology,
   TraceDetail,
   TraceDurations,
   TraceRow
@@ -84,6 +85,8 @@ export const api = {
     ).toString();
     return get<MetricQueryResult>(`/api/metrics/query${qs ? `?${qs}` : ''}`);
   },
+
+  topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
 
   ask: async (question: string): Promise<AskResponse> => {
     const resp = await fetch('/api/ask', {

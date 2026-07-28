@@ -82,7 +82,14 @@ fn seed(db_path: &std::path::Path) -> i64 {
         plugin_name: Some("process".into()),
         hypothesis_met: None,
         recovery_time_s: None,
-        span_attrs: vec![],
+        // tumult tags the system under test on action spans.
+        span_attrs: vec![
+            (
+                "resilience.target.name".to_string(),
+                "postgres-1".to_string(),
+            ),
+            ("resilience.target.type".to_string(), "database".to_string()),
+        ],
         resource_attrs: vec![],
         events: "[]".into(),
     };
@@ -777,4 +784,38 @@ async fn metrics_query_splits_by_attribute_key() {
     )
     .await;
     assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn topology_builds_service_and_target_graph() {
+    let srv = spawn_server().await;
+    let (status, body) = get(&srv.base, "/api/topology").await;
+    assert_eq!(status, 200, "{body}");
+
+    let nodes = body["nodes"].as_array().unwrap();
+    let svc = nodes.iter().find(|n| n["id"] == "svc:tumult").unwrap();
+    assert_eq!(svc["type"], "service");
+    assert_eq!(svc["runs"], 4);
+    assert_eq!(svc["errors"], 0);
+    let tgt = nodes.iter().find(|n| n["id"] == "tgt:postgres-1").unwrap();
+    assert_eq!(tgt["type"], "target");
+    assert_eq!(tgt["runs"], 2);
+
+    let edges = body["edges"].as_array().unwrap();
+    // Service → target calls from the action spans' target attribute.
+    assert!(edges.iter().any(|e| e["from_id"] == "svc:tumult"
+        && e["to_id"] == "tgt:postgres-1"
+        && e["weight"] == 2));
+    // Intra-service parent→child hops with differing span names survive as
+    // a self-loop (root experiment span → action span).
+    assert!(edges
+        .iter()
+        .any(|e| e["from_id"] == "svc:tumult" && e["to_id"] == "svc:tumult"));
+
+    let (status, _) = get(&srv.base, "/api/topology?range=1y").await;
+    assert_eq!(status, 400);
+    // An empty window yields an empty graph, not an error.
+    let (status, body) = get(&srv.base, "/api/topology?range=24h").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["nodes"].as_array().unwrap().len(), 2);
 }

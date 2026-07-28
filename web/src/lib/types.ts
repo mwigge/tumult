@@ -181,3 +181,23 @@ export interface MetricQueryResult {
   group_by: string | null;
   series: MetricSeries[];
 }
+
+export interface TopologyNode {
+  id: string;
+  name: string;
+  type: 'service' | 'target';
+  runs: number;
+  errors: number;
+  avg_duration_ns: number | null;
+}
+
+export interface TopologyEdge {
+  from_id: string;
+  to_id: string;
+  weight: number;
+}
+
+export interface Topology {
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+}
