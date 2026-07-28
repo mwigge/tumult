@@ -28,23 +28,35 @@ reports — with a guarded AI analytics layer in later phases.
   (`metrics/*.yaml`) compiled to strictly validated SQL (injection-impossible
   by construction).
 - **Reports** — self-contained HTML digests (`kronikad report --metric …`),
-  scheduled reports via tokio interval; email delivery in Phase 2.
-- **AI groundwork** — OpenAI-compatible LLM interface + SQL guardrail
-  pipeline (read-only, allow-listed, single-SELECT, injected LIMIT). No live
-  LLM calls yet; see [docs/adr/0002-ai-layer.md](docs/adr/0002-ai-layer.md).
-- **Web UI** — SvelteKit skeleton in `web/` (KPI row → trend → leaderboard →
-  drill-down, custom span-waterfall as the signature piece). See
-  [web/README.md](web/README.md).
+  plus automatic scheduled digests: set `KRONIKA_REPORT_INTERVAL=1h` and the
+  daemon renders one digest per interval into `<db dir>/reports/`, browsable
+  from the UI.
+- **Query API** — read-only JSON under `/api/*` (overview KPIs with deltas
+  and sparklines, bucketed time series for any semantic metric, experiment
+  list/detail with waterfall spans + correlated logs, dimensions, reports,
+  guarded NL→SQL ask), executed on read-only connections that coexist with
+  the ingest writer.
+- **Web UI** — SvelteKit SPA embedded into the kronikad binary and served on
+  the HTTP port: Overview KPIs, calendar heatmap, fault donut, filterable
+  experiment list, custom span waterfall with a span detail drawer, NL Ask,
+  Reports. See [web/README.md](web/README.md).
+- **AI analytics** — OpenAI-compatible LLM interface + SQL guardrail
+  pipeline (read-only, allow-listed, single-SELECT, injected LIMIT), live
+  behind `POST /api/ask` with curated golden answers when no LLM is
+  configured; see [docs/adr/0002-ai-layer.md](docs/adr/0002-ai-layer.md).
 
 ## Docker demo (easiest path)
 
 One command exercises the full pipeline with **real chaos experiments** —
 tumult runs, genuine OTLP/gRPC traces + metrics + logs, DuckDB storage,
-semantic metrics, HTML reports:
+semantic metrics, the web UI:
 
 ```sh
 docker compose -f docker/docker-compose.demo.yml up
 ```
+
+Then open **http://localhost:14318/** — the kronika UI (Overview →
+Experiments → waterfall drill-down → Ask → Reports).
 
 What happens:
 
@@ -60,7 +72,9 @@ What happens:
    and rollbacks, not just green runs.
 3. `report` fetches one self-contained HTML report per semantic metric from
    kronikad's live `GET /report?metric=<name>` endpoint into **`demo-out/`** —
-   open `demo-out/hypothesis_pass_rate.html` in a browser.
+   open `demo-out/hypothesis_pass_rate.html` in a browser. The daemon also
+   renders its own digest hourly (`KRONIKA_REPORT_INTERVAL=1h` in the demo)
+   into `/data/reports/`, listed on the UI's **Reports** page.
 
 This is the cross-repo contract in action: kronika ingests exactly what
 [tumult](https://github.com/mwigge/tumult) emits. Extend the suite by
@@ -122,6 +136,10 @@ cargo run -p kronikad -- import journal.json --label "march game day"
 # so the report subcommand below requires the daemon to be stopped)
 curl "localhost:4318/report?metric=hypothesis_pass_rate" > report.html
 
+# Automatic scheduled digests (renders into <db dir>/reports/ hourly;
+# browse them on the UI's Reports page)
+KRONIKA_REPORT_INTERVAL=1h cargo run -p kronikad
+
 # Same report via the CLI (writes to stdout or --out <file>)
 cargo run -p kronikad -- report --metric hypothesis_pass_rate > report.html
 
@@ -137,6 +155,7 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 | `KRONIKA_OTLP_HTTP_ADDR` | `0.0.0.0:4318` | OTLP/HTTP listen address |
 | `KRONIKA_DB` | `~/.kronika/kronika.duckdb` | DuckDB store path |
 | `KRONIKA_METRICS_DIR` | `metrics/` | semantic metric definitions |
+| `KRONIKA_REPORT_INTERVAL` | off | automatic digest interval (`45s`, `30m`, `1h`, `1d`) |
 | `KRONIKA_LLM_BASE_URL` | `http://localhost:11434/v1` | LLM endpoint (Ollama) |
 | `KRONIKA_LLM_API_KEY` | — | LLM API key |
 | `KRONIKA_LLM_MODEL` | `qwen2.5:7b` | LLM model |
@@ -144,17 +163,18 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 ## Repository layout
 
 ```
-bin/kronikad        daemon + CLI (serve / import / report)
+bin/kronikad        daemon + CLI (serve / import / report), embeds + serves web/
 bin/kronika-demo    synthetic chaos generator (optional demo backfill)
 crates/kronika-store    embedded DuckDB store (single-writer + RO readers)
 crates/kronika-otel     OTLP proto → row translation (pure)
 crates/kronika-ingest   gRPC/HTTP servers, writer channel, manual import
-crates/kronika-metrics  YAML semantic layer → validated SQL
+crates/kronika-metrics  YAML semantic layer → validated SQL (+ bucketed series)
 crates/kronika-report   report model, HTML renderer, scheduler
 crates/kronika-ai       Llm trait, OpenAI-compatible client, SQL guardrails
+crates/kronika-api      read-only JSON query API backing the UI (/api/*)
 metrics/            starter semantic metric definitions
 demo/experiments/   tumult experiment suite run by the docker demo seed
-web/                SvelteKit UI skeleton (hand-written, not installed)
+web/                SvelteKit SPA (embedded into kronikad; see web/README.md)
 docs/               research, architecture, ADRs
 docker/             Dockerfile, one-command demo stack, optional otel-collector dev tooling
 ```
@@ -170,6 +190,7 @@ docker/             Dockerfile, one-command demo stack, optional otel-collector 
 ## Development
 
 ```sh
+cd web && npm ci && npm run build && cd ..  # required once: kronikad embeds web/build/
 cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings

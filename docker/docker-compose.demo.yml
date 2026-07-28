@@ -1,13 +1,19 @@
-# One-command demo: kronikad + REAL tumult chaos experiments + HTML reports.
+# One-command demo: kronikad + REAL tumult chaos experiments + the web UI.
 #
 #   docker compose -f docker/docker-compose.demo.yml up
+#
+# Then open http://localhost:14318/ — the kronika analytics UI (embedded in
+# the kronikad binary): Overview KPIs, experiment drill-down with the span
+# waterfall, NL Ask, scheduled Reports.
 #
 # Flow: kronikad comes up → `seed` runs the tumult experiment suite in
 # ../demo/experiments/ with the pinned tumult release binary (v2.18.0,
 # checksum-verified at image build) — genuine chaos runs emitting real
-# OTLP/gRPC traces, metrics and logs → `report` pulls one HTML report per
-# semantic metric from kronikad's live `GET /report?metric=<name>` endpoint
-# into ./demo-out/. Open e.g. demo-out/hypothesis_pass_rate.html in a browser.
+# OTLP/gRPC traces, metrics and logs → `report` also pulls one HTML report
+# per semantic metric from kronikad's live `GET /report?metric=<name>`
+# endpoint into ./demo-out/. The daemon itself renders a digest into
+# /data/reports/ every KRONIKA_REPORT_INTERVAL (1h here), browsable on the
+# UI's Reports page.
 #
 # Two suite experiments are designed NOT to pass (one Deviated, one Failed,
 # both rolled back) so the reports show real deviations and rollbacks.
@@ -36,6 +42,10 @@ services:
     ports:
       - "14317:4317"
       - "14318:4318"
+    environment:
+      # Render a metric digest into /data/reports/ hourly; the UI's Reports
+      # page lists them via /api/reports.
+      KRONIKA_REPORT_INTERVAL: 1h
     volumes:
       - kronika-demo-data:/data
     healthcheck:

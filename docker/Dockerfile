@@ -4,9 +4,19 @@
 
 ARG TUMULT_VERSION=2.18.0
 
+# Build the web UI (SvelteKit static SPA). kronikad rust-embeds web/build/
+# at compile time, so this stage must run before the cargo build.
+FROM node:22-bookworm-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM rust:1-bookworm AS builder
 WORKDIR /build
 COPY . .
+COPY --from=web /web/build ./web/build
 RUN cargo build --release --bin kronikad --bin kronika-demo
 
 # Fetch the pinned tumult release binary (the demo's seed runs REAL tumult

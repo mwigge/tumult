@@ -35,15 +35,20 @@ execution) and smedja.
                     │  import_batches · view: experiment_runs       │
                     └────────┬─────────────────┘
               read-only conns (AccessMode::ReadOnly, many, coexist)
-              ┌──────────────┼───────────────────┐
-              ▼              ▼                   ▼
-      kronika-metrics   kronika-report      kronika-ai (Phase 1)
-      YAML semantic     digest renderer +   Llm iface + sql_guard
-      layer → SQL       tokio scheduler     (guardrails only)
-              │              │                   │
-              ▼              ▼                   ▼
-         web/ (SvelteKit)  HTML digests      later: NL query,
-         + kronikad report (stdout/email)    narrative, anomaly explain
+              ┌──────────────┼───────────────────────────┐
+              ▼              ▼                           ▼
+      kronika-metrics   kronika-report            kronika-api
+      YAML semantic     digest renderer           read-only JSON API
+      layer → SQL       (ad-hoc + scheduled)      (/api/*, spawn_blocking)
+              │              │                    │  overview · series ·
+              │              ▼                    │  experiments · ask
+              │         <db dir>/reports/         ▼        ▲
+              │         report_<epoch>.html   web/ SPA (rust-embed, same
+              │              │                HTTP port) ──┘
+              ▼              ▼                   ▲  POST /api/ask ──▶ kronika-ai
+         kronikad       UI Reports page          │   Llm → sql_guard → read-only
+         report CLI     (/api/reports)           │   execution (guarded, LIMIT)
+         (store closed)                          │
 ```
 
 ## Data flow
@@ -58,9 +63,12 @@ execution) and smedja.
    backpressure) to the single writer connection.
 4. **Semantic layer** — `metrics/*.yaml` definitions compile to strictly
    validated SQL (`[a-z0-9_.]` identifiers only → injection-impossible).
-5. **UI / reports** — the web UI and `kronika-report` digests read through
-   read-only connections; scheduled reports are computed deterministically
-   from the same metric definitions.
+5. **UI / reports** — `kronika-api` answers the UI's queries through fresh
+   read-only connections (never touching the write lock); the SPA itself is
+   rust-embedded into kronikad and served from the same HTTP port. Ad-hoc
+   digests come from `kronikad report` / `GET /report`; with
+   `KRONIKA_REPORT_INTERVAL` set, the daemon additionally renders a digest
+   per interval into `<db dir>/reports/` (surfaced by `/api/reports`).
 
 The docker demo (`docker/docker-compose.demo.yml`) is the **reference
 ingestion flow** end to end: the pinned tumult release binary runs the
