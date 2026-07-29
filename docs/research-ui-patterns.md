@@ -5,7 +5,7 @@ overlays, click-to-filter, correlation legs); deferrals are marked per
 pattern. Effort: S < 1 day, M = days, L = a release of its own.
 
 Fifteen interaction patterns recur across mature observability UIs. Each
-entry: who does it best, why it works, kronika's status, and effort. The
+entry: who does it best, why it works, Krönika's status, and effort. The
 catalog exists so UI work is picked by value, not by what's easiest to
 build next.
 
@@ -15,7 +15,7 @@ build next.
 - **Why:** the detail view is where curiosity starts; making the answer to
   "show me only/none of these" one click removes the query-syntax tax for
   the most common refinement.
-- **kronika:** **implemented v0.6.0** — hover actions on attribute tables
+- **Krönika:** **implemented v0.6.0** — hover actions on attribute tables
   in the log detail rows and span drawer, writing the page's existing
   filter state into URL params. Effort **S**.
 
@@ -23,9 +23,9 @@ build next.
 - **Best:** Lightstep (change markers), Grafana (annotations). Deploys and
   incidents drawn as bands/lines over time series.
 - **Why:** the first question on any anomaly is "what changed?" — the
-  chart should answer it instead of requiring a second tool. For kronika
+  chart should answer it instead of requiring a second tool. For Krönika
   the "change" is the experiment run itself.
-- **kronika:** **implemented v0.6.0** — experiment runs overlapping the
+- **Krönika:** **implemented v0.6.0** — experiment runs overlapping the
   visible window render as outcome-coloured `markArea` bands + a start
   `markLine` on Overview and Metrics charts (`GET
   /api/experiments/windows?from&to`); clicking a band opens the run.
@@ -35,14 +35,14 @@ build next.
 - **Best:** Grafana. Range in the URL on every page, shareable by copy.
 - **Why:** links that reproduce exactly what the sender saw are the
   cheapest collaboration feature there is.
-- **kronika:** done — `?range=` (and page-specific filters) live in the
+- **Krönika:** done — `?range=` (and page-specific filters) live in the
   URL everywhere; pattern 1 extends it. Effort: done.
 
 ## 4. Structured query-builder chips
 - **Best:** Honeycomb, Datadog. Filters as removable chips, not raw text.
 - **Why:** chips make active filters visible and individually undoable;
   text queries hide their own state.
-- **kronika:** partial — filter state exists as discrete URL params (chip
+- **Krönika:** partial — filter state exists as discrete URL params (chip
   semantics) but renders as plain controls, not chips. Effort **M**;
   candidate for a filter-bar component once a third page needs one.
 
@@ -50,7 +50,7 @@ build next.
 - **Best:** Honeycomb BubbleUp — "which attributes explain this selection?"
 - **Why:** turns "something looks wrong" into "here's the dimension that
   differs", skipping manual group-by roulette.
-- **kronika:** **deferred (L)** — needs per-dimension deviation scoring
+- **Krönika:** **deferred (L)** — needs per-dimension deviation scoring
   over the attribute maps; a feature of its own, not a UI tweak.
 
 ## 6. Severity volume histogram with brush
@@ -58,14 +58,14 @@ build next.
   dragging selects a sub-window.
 - **Why:** the volume shape tells you where to look before you read a
   single line; brushing makes the histogram itself the time picker.
-- **kronika:** histogram half done (stacked severity volume on the Logs
+- **Krönika:** histogram half done (stacked severity volume on the Logs
   page); **brush zoom not implemented**. Effort **S** for the brush.
 
 ## 7. Sentry triage inbox
 - **Best:** Sentry. Issues as an inbox: archive, assign, regress.
 - **Why:** findings arrive faster than they're fixed; an explicit triage
   queue prevents silent accumulation.
-- **kronika:** **deferred → v0.7.0** — open weaknesses already surface in
+- **Krönika:** **deferred → v0.7.0** — open weaknesses already surface in
   R1 and on the Overview; the missing piece is per-finding state
   (ack/fixed/snoozed), which is a store schema change plus UI. Effort
   **M/L**.
@@ -74,9 +74,9 @@ build next.
 - **Best:** Grafana exemplars, Tempo↔Loki links. One click from a log to
   its trace, from a span to its logs.
 - **Why:** signals are one system observed three ways; navigation should
-  treat them as such. Kronika adds a fourth leg most tools lack: the
+  treat them as such. Krönika adds a fourth leg most tools lack: the
   *experiment run* that caused the signal.
-- **kronika:** **implemented v0.6.0** — log rows with `trace_id` link to
+- **Krönika:** **implemented v0.6.0** — log rows with `trace_id` link to
   `/traces/:id` (already present), span detail links to the overlapping
   experiment run; experiment links already existed on logs and traces.
   Effort **S**.
@@ -85,14 +85,14 @@ build next.
 - **Best:** Datadog saved views, Grafana "add to dashboard".
 - **Why:** the view someone carefully filtered is usually the view they
   want in the report; capturing it in place beats re-describing it.
-- **kronika:** not implemented — R1/R2/R3 generate from templates only.
+- **Krönika:** not implemented — R1/R2/R3 generate from templates only.
   Effort **M**; natural pairing with pattern 4 chips.
 
 ## 10. Unified service page
 - **Best:** Datadog APM service page, Grafana's service-oriented views.
 - **Why:** "tell me about X" should be one destination aggregating every
   signal for X, not five filtered pages.
-- **kronika:** closest analogue is the experiment detail page (spans +
+- **Krönika:** closest analogue is the experiment detail page (spans +
   logs + scores for one run). A per-target-service page is unbuilt; target
   metadata is still sparse from tumult. Effort **M**, blocked on richer
   target tagging.
@@ -101,7 +101,7 @@ build next.
 - **Best:** Datadog live tail, `tail -f` made social.
 - **Why:** during an active experiment you watch the stream, not history;
   polling with refresh buttons is a poor substitute.
-- **kronika:** not implemented (pages poll on filter change only). Effort
+- **Krönika:** not implemented (pages poll on filter change only). Effort
   **M** (SSE or poll-interval on the logs page; ingest is already
   near-real-time).
 
@@ -109,7 +109,7 @@ build next.
 - **Best:** Grafana's panel grid, Vega-Lite as the extreme.
 - **Why:** a grammar lets users compose arbitrary views — at the price of
   a builder UI and per-user dashboard sprawl.
-- **kronika:** **deliberately skipped** — opinionated fixed pages + the
+- **Krönika:** **deliberately skipped** — opinionated fixed pages + the
   YAML semantic layer are the product's stance; a builder contradicts
   "compliance tool with one canonical story". Recorded so the decision is
   explicit, not absent.
@@ -119,14 +119,14 @@ build next.
   density setting.
 - **Why:** triage wants maximum rows per screen; review wants breathing
   room — one density serves neither.
-- **kronika:** not implemented (fixed compact tables). Effort **S**; low
+- **Krönika:** not implemented (fixed compact tables). Effort **S**; low
   priority while the audience is small.
 
 ## 14. Keyboard navigation
 - **Best:** Linear, Sentry (`j/k`, `/` to search).
 - **Why:** triage is repetitive; keyboard throughput beats mouse
   throughput an order of magnitude in.
-- **kronika:** not implemented beyond browser defaults. Effort **M**
+- **Krönika:** not implemented beyond browser defaults. Effort **M**
   (needs a focus model across list pages). Pairs naturally with pattern 7.
 
 ## 15. AI as editable query, not chat
@@ -134,7 +134,7 @@ build next.
   chat is a means; the *generated query you can see and edit* is the end.
 - **Why:** an opaque answer can't be trusted or adjusted; a visible query
   is verifiable, teaches the syntax, and hands control back.
-- **kronika:** done in spirit — `/api/ask` returns the SQL it ran and the
+- **Krönika:** done in spirit — `/api/ask` returns the SQL it ran and the
   Ask page shows it. A "open this query in Logs/Traces" hand-off is the
   missing leg. Effort **S/M**.
 

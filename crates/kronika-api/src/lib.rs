@@ -1889,7 +1889,7 @@ async fn generate_report(
         let report = kronika_report::build_report(
             reader,
             std::slice::from_ref(def),
-            &format!("kronika — {metric_name}"),
+            &format!("Krönika — {metric_name}"),
             None,
         )
         .map_err(|e| e.to_string())?;

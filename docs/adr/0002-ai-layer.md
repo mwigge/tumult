@@ -5,7 +5,7 @@
 
 ## Context
 
-Kronika's AI layer will offer NL-query, narrative digests and anomaly
+Krönika's AI layer will offer NL-query, narrative digests and anomaly
 explanation over resilience data. Realistic text-to-SQL accuracy (BIRD
 benchmark) is 60–75 % first-shot and 85–95 % with grounding; unguarded LLM
 SQL against the store is a correctness *and* safety hazard, and log/span

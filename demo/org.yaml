@@ -1,4 +1,4 @@
-# kronika demo org: a three-level hierarchy (domain → unit → team) mapping
+# Krönika demo org: a three-level hierarchy (domain → unit → team) mapping
 # the seeded tumult experiment names onto teams. "service partition*" is
 # deliberately NOT assigned so the demo shows the synthetic (unassigned)
 # bucket under the root. edge-team's targets only match the seeded manual

@@ -1,6 +1,6 @@
 # kronika-web
 
-The kronika analytics UI — a static SvelteKit SPA embedded into `kronikad`
+The Krönika analytics UI — a static SvelteKit SPA embedded into `kronikad`
 (via `rust-embed`) and served on the daemon's HTTP port alongside `/api/*`.
 
 ## Build

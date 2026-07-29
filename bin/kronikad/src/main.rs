@@ -41,7 +41,7 @@ use kronika_store::Store;
 #[command(
     name = "kronikad",
     version,
-    about = "kronika — the chronicle of your resilience work"
+    about = "Krönika — the chronicle of your resilience work"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -255,7 +255,7 @@ fn render_metric_report(
     let report = kronika_report::build_report(
         &reader,
         std::slice::from_ref(def),
-        &format!("kronika — {metric}"),
+        &format!("Krönika — {metric}"),
         None,
     )?;
     Ok(ReportLookup::Html(kronika_report::render_html(&report)))
@@ -409,7 +409,7 @@ async fn write_digest(
         Ok(kronika_report::build_report(
             &reader,
             &defs,
-            &format!("kronika digest — last {}s", interval.as_secs()),
+            &format!("Krönika digest — last {}s", interval.as_secs()),
             Some((from_ns, to_ns)),
         )?)
     })

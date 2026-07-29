@@ -1,6 +1,6 @@
 [package]
 name = "kronika-api"
-description = "Read-only JSON query API backing the kronika analytics UI (overview, series, experiments, NL ask)"
+description = "Read-only JSON query API backing the Krönika analytics UI (overview, series, experiments, NL ask)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

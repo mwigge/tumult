@@ -1,8 +1,8 @@
-# kronika
+# Krönika
 
 *The chronicle of your resilience work.*
 
-Kronika is a graphical analytics & reporting app for chaos-engineering data —
+Krönika is a graphical analytics & reporting app for chaos-engineering data —
 the companion piece to [tumult](https://github.com/mwigge/tumult) (chaos
 execution CLI) and smedja. It ingests resilience telemetry automatically over
 OpenTelemetry and manually from files, stores it in embedded DuckDB, and
@@ -101,7 +101,7 @@ semantic metrics, the web UI:
 docker compose -f docker/docker-compose.demo.yml up
 ```
 
-Then open **http://localhost:14318/** — the kronika UI (Overview →
+Then open **http://localhost:14318/** — the Krönika UI (Overview →
 Experiments → waterfall drill-down → Ask → Reports).
 
 What happens:
@@ -122,7 +122,7 @@ What happens:
    renders its own digest hourly (`KRONIKA_REPORT_INTERVAL=1h` in the demo)
    into `/data/reports/`, listed on the UI's **Reports** page.
 
-This is the cross-repo contract in action: kronika ingests exactly what
+This is the cross-repo contract in action: Krönika ingests exactly what
 [tumult](https://github.com/mwigge/tumult) emits. Extend the suite by
 dropping your own tumult experiment files into `demo/experiments/` — the seed
 runs every `*.toon` it finds (they must be safe in a plain container:

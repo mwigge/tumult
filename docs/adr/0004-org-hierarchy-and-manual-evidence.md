@@ -5,7 +5,7 @@
 
 ## Context
 
-v0.4.0 gave kronika per-experiment resilience scores and compliance-grade
+v0.4.0 gave Krönika per-experiment resilience scores and compliance-grade
 reports. Two gaps remained for programme-level resilience management:
 
 1. **No organisational axis.** Scores roll up by target system and

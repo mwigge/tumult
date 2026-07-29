@@ -5,15 +5,15 @@
 
 ## Context
 
-Kronika's embedded DuckDB store has no lifecycle story: it grows forever,
+Krönika's embedded DuckDB store has no lifecycle story: it grows forever,
 and there is no durable, tool-agnostic copy of the telemetry outside the
 proprietary database file. The OpenObserve gap analysis
 (`docs/research-openobserve-gap.md`) identified retention and a columnar
 lake export as the two highest-priority gaps, with "immutability as a
-compliance feature" as the framing that ties them to kronika's existing
+compliance feature" as the framing that ties them to Krönika's existing
 hash-chained manual-evidence audit.
 
-**License boundary.** OpenObserve is AGPL-3.0; kronika is Apache-2.0.
+**License boundary.** OpenObserve is AGPL-3.0; Krönika is Apache-2.0.
 This design borrows *ideas* (hot store + immutable columnar cold tier,
 write-once files as a compliance property, documented durability
 guarantees) and is a clean-room implementation against DuckDB's documented

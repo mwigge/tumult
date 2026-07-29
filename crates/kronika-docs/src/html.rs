@@ -51,7 +51,7 @@ pub fn render_html(doc: &ReportDoc) -> String {
     // Cover block (first page).
     body.push_str(&format!(
         "<section class='cover'>\
-         <div class='wordmark'>KRONIKA</div><div class='accent-rule'></div>\
+         <div class='wordmark'>KRÖNIKA</div><div class='accent-rule'></div>\
          <div class='cover-mid'>\
          <span class='doc-class'>{class}</span>\
          <h1 class='display'>{title}</h1>\
@@ -220,7 +220,7 @@ fn render_block(block: &Block) -> String {
         }
         Block::Chart(spec) => {
             format!(
-                "<figure>{}<figcaption>Source: kronika · data as of {}</figcaption></figure>",
+                "<figure>{}<figcaption>Source: Krönika · data as of {}</figcaption></figure>",
                 render_svg(spec),
                 "{{DATA_AS_OF}}"
             )

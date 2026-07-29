@@ -2,7 +2,7 @@
 #
 #   docker compose -f docker/docker-compose.demo.yml up
 #
-# Then open http://localhost:14318/ — the kronika analytics UI (embedded in
+# Then open http://localhost:14318/ — the Krönika analytics UI (embedded in
 # the kronikad binary): Overview KPIs, experiment drill-down with the span
 # waterfall, NL Ask, scheduled Reports.
 #

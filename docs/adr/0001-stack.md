@@ -5,7 +5,7 @@
 
 ## Context
 
-Kronika is the analytics & reporting companion to tumult and smedja. It must
+Krönika is the analytics & reporting companion to tumult and smedja. It must
 ingest OTLP from both exporters (gRPC and HTTP/protobuf), store telemetry
 locally with strong ad-hoc query capability, and serve a presentation-first
 web UI. The question is where the query engine lives and what serves the API.
@@ -29,7 +29,7 @@ and embedded DuckDB, mirroring tumult-analytics' single-writer pattern.
   that owns the file — at which point the server might as well own queries
   too.
 - **DuckDB-WASM trade-offs.** WASM shines for client-heavy, offline-first BI
-  over static files. Kronika's data is continuously appended by a daemon,
+  over static files. Krönika's data is continuously appended by a daemon,
   and the single-writer file model means a browser cannot open the live
   store. Shipping snapshots to the browser duplicates the lake-export
   roadmap item for no interactive win.

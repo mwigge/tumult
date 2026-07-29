@@ -67,7 +67,7 @@ previous equal window.
 
 Rationale: linear and explainable — a board member can verify any number
 with the table above. Known limitation: "never run" only surfaces for
-experiments present in the store; kronika has no external experiment
+experiments present in the store; Krönika has no external experiment
 inventory to diff against. A missing outcome log (run never completed)
 counts as a failed attempt — conservative by design.
 
@@ -87,7 +87,7 @@ Print-first, editorial rather than dashboard-y:
   `font-variant-numeric: tabular-nums` in the HTML preview and the web UI).
 - Charts are vector SVGs (Okabe–Ito palette, direct labels, no legends
   where avoidable), shared verbatim between the PDF and the HTML preview.
-- Every chart caption carries "Source: kronika · data as of …".
+- Every chart caption carries "Source: Krönika · data as of …".
 - **Status is glyph + label, never hue alone** — outcomes, run states,
   severities and OTel status codes share one mapping (`Cell::glyph`):
   green ● good, orange ▲ warning, vermillion × bad, grey ○ unknown. Glyphs

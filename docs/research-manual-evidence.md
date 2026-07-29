@@ -5,7 +5,7 @@ Status: implemented in v0.5.0 — see `kronika_store::manual`,
 
 ## Problem
 
-kronika's evidence trail is only as good as its telemetry. Real resilience
+Krönika's evidence trail is only as good as its telemetry. Real resilience
 programmes run plenty of tests that never touch an agent:
 
 - **game days** coordinated over a call, with actions executed by hand;
@@ -118,7 +118,7 @@ can pin content.
 
 ## The "acting as" caveat
 
-There is no authentication in kronika. The API takes plain `entered_by` /
+There is no authentication in Krönika. The API takes plain `entered_by` /
 `by` / `reviewer` strings (the UI keeps an "acting as" name in
 localStorage) and the store enforces the lifecycle *given those strings* —
 including reviewer ≠ enterer. This is honest workflow scaffolding, not

@@ -1,6 +1,6 @@
-# Architecture — kronika
+# Architecture — Krönika
 
-Kronika ingests chaos/resilience telemetry (OTLP + manual files), stores it
+Krönika ingests chaos/resilience telemetry (OTLP + manual files), stores it
 in embedded DuckDB, and serves a presentation-first UI plus scheduled
 reports. Companion to [tumult](https://github.com/mwigge/tumult) (chaos
 execution) and smedja.
@@ -90,7 +90,7 @@ ingestion flow** end to end: the pinned tumult release binary runs the
 experiment suite in `demo/experiments/` and emits genuine OTLP/gRPC
 (traces, metrics, logs) into kronikad, which normalizes, stores and renders
 it into the HTML reports under `demo-out/`. Whatever tumult emits on the
-wire is exactly what kronika's semantic layer computes over.
+wire is exactly what Krönika's semantic layer computes over.
 
 ## Single-writer model (mirrors tumult-analytics)
 
@@ -120,7 +120,7 @@ immutable copy exists in the lake.**
   `<db dir>/lake`): per table, one write-once file per day-partition
   (`spans/date=2026-07-29/data-<run>.parquet`). Files are never rewritten —
   *immutability as a compliance feature*: next to the v0.5.0 hash-chained
-  manual-evidence audit, the trail of what kronika recorded is
+  manual-evidence audit, the trail of what Krönika recorded is
   WORM-shaped and tamper-evident, and readable by any parquet-capable
   tool (`read_parquet('lake/spans/date=*/*.parquet')`).
 - **Export** — incremental against a per-table event-time watermark in
@@ -161,5 +161,5 @@ latest-run scoring SQL (see ADR 0004).
 ## Roadmap: external tooling on the lake
 
 The parquet lake (above) is the substrate for future external tooling —
-any parquet-capable engine can query kronika's history without touching
+any parquet-capable engine can query Krönika's history without touching
 the hot store.

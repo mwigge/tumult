@@ -1,4 +1,4 @@
-# Research findings — kronika
+# Research findings — Krönika
 
 Distilled research behind the product and architecture decisions. Companion
 ADRs: [adr/0001-stack.md](adr/0001-stack.md), [adr/0002-ai-layer.md](adr/0002-ai-layer.md),
@@ -19,7 +19,7 @@ What to steal, and what to position against:
   time-range/view state, annotations on charts. The waterfall and URL state
   are adopted; the "everything is a panel grid" aesthetic is not.
 - **Metabase / Superset / Lightdash** — the generic-BI aesthetic this product
-  positions *against*: kronika is presentation-first, opinionated, and
+  positions *against*: Krönika is presentation-first, opinionated, and
   chaos-domain-specific rather than a general chart warehouse.
 - **Mosaic** (https://github.com/uwdata/mosaic, TVCG'24,
   https://idl.cs.washington.edu/papers/mosaic) — state-of-the-art
@@ -86,7 +86,7 @@ What to steal, and what to position against:
 - **tumult** emits OTLP/gRPC (bare `host:4317`, no path;
   `TUMULT_OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT`, service name
   `tumult`). **smedja** emits OTLP/HTTP protobuf with `/v1/*` paths
-  (`SMEDJA_OTLP_ENDPOINT`, service name `smdjad`). Kronika must accept both —
+  (`SMEDJA_OTLP_ENDPOINT`, service name `smdjad`). Krönika must accept both —
   hence two servers in `kronika-ingest`.
 - **tumult span vocabulary**: `resilience.experiment`,
   `resilience.hypothesis.before|after`, `resilience.action|probe|rollback|load|gameday`

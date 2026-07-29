@@ -1,12 +1,19 @@
 # Changelog
 
-All notable changes to kronika are documented here.
+All notable changes to Krönika are documented here.
 
 Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap`.
 
 ---
 
 ## [Unreleased]
+
+### Changed
+- Product display name is now **Krönika**: user-facing strings (UI
+  wordmark/title, report cover wordmark and footers, digest titles,
+  README/docs prose) use the new spelling. Identifiers stay ASCII:
+  crate/binary/package names, file paths, env vars (`KRONIKA_*`), API
+  paths, doc IDs and the repo URL are unchanged.
 
 ## [0.6.0] — 2026-07-29
 

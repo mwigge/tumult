@@ -1,6 +1,6 @@
 [package]
 name = "kronikad"
-description = "kronika daemon — OTLP ingest servers, manual import, ad-hoc reports"
+description = "Krönika daemon — OTLP ingest servers, manual import, ad-hoc reports"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

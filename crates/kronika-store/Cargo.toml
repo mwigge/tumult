@@ -1,6 +1,6 @@
 [package]
 name = "kronika-store"
-description = "Embedded DuckDB store for kronika (single-writer + read-only readers)"
+description = "Embedded DuckDB store for Krönika (single-writer + read-only readers)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

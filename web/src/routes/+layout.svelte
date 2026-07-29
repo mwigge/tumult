@@ -23,7 +23,7 @@
 <div class="shell">
   <aside class="side">
     <div class="brand">
-      <div class="name">kronika</div>
+      <div class="name">Krönika</div>
       <div class="tag">the chronicle of your resilience work</div>
     </div>
     <nav class="nav">
