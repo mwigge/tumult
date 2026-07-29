@@ -18,6 +18,7 @@
 //! encrypted volume for sensitive data.
 
 mod error;
+mod manual;
 mod rows;
 mod schema;
 
@@ -27,6 +28,9 @@ use std::time::Duration;
 use duckdb::{params, AccessMode, Config, Connection};
 
 pub use error::StoreError;
+pub use manual::{
+    AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
+};
 pub use rows::{
     ExperimentRun, ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow,
 };
@@ -161,14 +165,15 @@ impl Store {
 
 /// Run `f` inside a transaction on `conn` (single-writer, so a plain
 /// `BEGIN`/`COMMIT` batch is enough).
-fn with_tx<T>(
+fn with_tx<T, E: From<StoreError>>(
     conn: &Connection,
-    f: impl FnOnce() -> Result<T, StoreError>,
-) -> Result<T, StoreError> {
-    conn.execute_batch("BEGIN TRANSACTION")?;
+    f: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    conn.execute_batch("BEGIN TRANSACTION")
+        .map_err(StoreError::from)?;
     match f() {
         Ok(v) => {
-            conn.execute_batch("COMMIT")?;
+            conn.execute_batch("COMMIT").map_err(StoreError::from)?;
             Ok(v)
         }
         Err(e) => {

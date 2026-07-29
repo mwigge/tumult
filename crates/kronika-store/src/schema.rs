@@ -1,11 +1,14 @@
-//! Schema v1 DDL.
+//! Schema v2 DDL.
 //!
 //! Wide, ClickHouse-exporter-aligned tables plus `MAP(VARCHAR, VARCHAR)`
 //! attribute maps for the dynamic tail (e.g. `resilience.baseline.probe.{name}.*`).
 //! Low-cardinality, high-selectivity `resilience.*` keys are materialized as
 //! columns by the ingest layer; everything else stays in the maps.
+//!
+//! v2 adds the manual-evidence tables (`manual_experiments`,
+//! `manual_experiment_audit`, `evidence_attachments`) — see `manual.rs`.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -115,6 +118,67 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key VARCHAR PRIMARY KEY,
     value BIGINT NOT NULL
 );
+
+-- v2: manual evidence. Hand-entered test records (game days, tabletops,
+-- failovers, …) with attestation, a draft → submitted → verified/rejected
+-- review lifecycle, an append-only hash-chained audit trail, and external
+-- evidence links (no file storage — URIs only).
+CREATE TABLE IF NOT EXISTS manual_experiments (
+    id VARCHAR PRIMARY KEY,
+    experiment_name VARCHAR NOT NULL,
+    exercise_type VARCHAR NOT NULL,
+    executed_at_ns BIGINT NOT NULL,
+    hypothesis VARCHAR NOT NULL,
+    method VARCHAR NOT NULL,
+    outcome_status VARCHAR NOT NULL,
+    hypothesis_met BOOLEAN,
+    findings VARCHAR,
+    action_items JSON,
+    target_system VARCHAR,
+    target_environment VARCHAR,
+    blast_radius VARCHAR,
+    recovery_time_s DOUBLE,
+    duration_s DOUBLE,
+    origin VARCHAR NOT NULL DEFAULT 'manual',
+    entered_by VARCHAR NOT NULL,
+    entered_at_ns BIGINT NOT NULL,
+    attestation VARCHAR NOT NULL,
+    status VARCHAR NOT NULL DEFAULT 'draft',
+    reviewed_by VARCHAR,
+    reviewed_at_ns BIGINT,
+    review_note VARCHAR,
+    renewal_due_ns BIGINT,
+    framework_refs VARCHAR[],
+    batch_id VARCHAR,
+    content_hash VARCHAR NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_manual_experiments_name ON manual_experiments (experiment_name);
+CREATE INDEX IF NOT EXISTS idx_manual_experiments_status ON manual_experiments (status);
+
+CREATE TABLE IF NOT EXISTS manual_experiment_audit (
+    id VARCHAR PRIMARY KEY,
+    experiment_id VARCHAR NOT NULL,
+    changed_by VARCHAR NOT NULL,
+    changed_at_ns BIGINT NOT NULL,
+    action VARCHAR NOT NULL,
+    diff JSON,
+    prev_hash VARCHAR,
+    new_hash VARCHAR NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_manual_audit_experiment ON manual_experiment_audit (experiment_id);
+
+CREATE TABLE IF NOT EXISTS evidence_attachments (
+    id VARCHAR PRIMARY KEY,
+    experiment_id VARCHAR NOT NULL,
+    kind VARCHAR NOT NULL,
+    uri VARCHAR NOT NULL,
+    label VARCHAR,
+    file_hash VARCHAR,
+    added_by VARCHAR NOT NULL,
+    added_at_ns BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_evidence_attachments_experiment
+    ON evidence_attachments (experiment_id);
 ";
 
 /// Rollup view: one row per experiment run, over the experiment root spans
