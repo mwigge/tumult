@@ -4,7 +4,9 @@
 
   const NAV = [
     { href: '/', label: 'Overview', icon: '◧' },
+    { href: '/scores', label: 'Scores', icon: '▦' },
     { href: '/experiments', label: 'Experiments', icon: '⚗' },
+    { href: '/manual', label: 'Manual', icon: '✎' },
     { href: '/logs', label: 'Logs', icon: '≣' },
     { href: '/traces', label: 'Traces', icon: '⌁' },
     { href: '/metrics', label: 'Metrics', icon: '∿' },

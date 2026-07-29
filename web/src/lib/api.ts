@@ -8,6 +8,9 @@ import type {
   ExperimentRow,
   LogEntry,
   LogVolume,
+  ManualDetail,
+  ManualExperiment,
+  ManualRecordInput,
   MetricCatalogEntry,
   MetricDefInfo,
   MetricQueryResult,
@@ -16,6 +19,7 @@ import type {
   ReportMetaV2,
   ReportTemplate,
   Scorecard,
+  ScoreTree,
   Timeseries,
   Topology,
   TraceDetail,
@@ -25,6 +29,19 @@ import type {
 
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(path);
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(body.error ?? `HTTP ${resp.status}`);
+  }
+  return body as T;
+}
+
+async function send<T>(method: string, path: string, payload: unknown): Promise<T> {
+  const resp = await fetch(path, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     throw new Error(body.error ?? `HTTP ${resp.status}`);
@@ -122,7 +139,52 @@ export const api = {
       throw new Error(body.error ?? `HTTP ${resp.status}`);
     }
     return body as AskResponse;
-  }
+  },
+
+  scoreTree: (node: string, range: string) =>
+    get<ScoreTree>(`/api/scores/tree?node=${encodeURIComponent(node)}&range=${range}`),
+
+  manualList: (status: string) =>
+    get<{ records: ManualExperiment[] }>(
+      `/api/manual/experiments${status ? `?status=${status}` : ''}`
+    ),
+
+  manualDetail: (id: string) =>
+    get<ManualDetail>(`/api/manual/experiments/${encodeURIComponent(id)}`),
+
+  manualCreate: (rec: ManualRecordInput) =>
+    send<{ id: string }>('POST', '/api/manual/experiments', rec),
+
+  manualUpdate: (id: string, rec: ManualRecordInput) =>
+    send<{ ok: boolean }>('PUT', `/api/manual/experiments/${encodeURIComponent(id)}`, rec),
+
+  manualSubmit: (id: string, by: string, attestation?: string) =>
+    send<{ ok: boolean }>('POST', `/api/manual/experiments/${encodeURIComponent(id)}/submit`, {
+      by,
+      attestation: attestation ?? null
+    }),
+
+  manualVerify: (id: string, reviewer: string, note?: string) =>
+    send<{ ok: boolean }>('POST', `/api/manual/experiments/${encodeURIComponent(id)}/verify`, {
+      reviewer,
+      note: note ?? null
+    }),
+
+  manualReject: (id: string, reviewer: string, note: string) =>
+    send<{ ok: boolean }>('POST', `/api/manual/experiments/${encodeURIComponent(id)}/reject`, {
+      reviewer,
+      note
+    }),
+
+  manualAttach: (id: string, kind: string, uri: string, label: string | null, addedBy: string) =>
+    send<{ id: string }>(
+      'POST',
+      `/api/manual/experiments/${encodeURIComponent(id)}/attachments`,
+      { kind, uri, label, added_by: addedBy }
+    ),
+
+  manualImport: (label: string | null, records: ManualRecordInput[]) =>
+    send<{ batch_id: string; ids: string[] }>('POST', '/api/manual/import', { label, records })
 };
 
 // --- formatting helpers ----------------------------------------------------

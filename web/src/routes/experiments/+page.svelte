@@ -12,6 +12,7 @@
     outcome: $page.url.searchParams.get('outcome') ?? '',
     target: $page.url.searchParams.get('target') ?? '',
     fault: $page.url.searchParams.get('fault') ?? '',
+    origin: $page.url.searchParams.get('origin') ?? '',
     q: $page.url.searchParams.get('q') ?? ''
   });
 
@@ -79,6 +80,11 @@
         <option value={t}>{t}</option>
       {/each}
     </select>
+    <select value={filters.origin} onchange={(e) => setFilter('origin', e.currentTarget.value)}>
+      <option value="">all origins</option>
+      <option value="automated">automated</option>
+      <option value="manual">manual</option>
+    </select>
     <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
   </div>
 </div>
@@ -100,15 +106,31 @@
       </thead>
       <tbody>
         {#each rows as row (row.id)}
-          <tr class="clickable" onclick={() => goto(`/experiments/${row.id}`)}>
-            <td><StatusBadge status={row.status} /></td>
-            <td>{row.name ?? '—'}</td>
-            <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
-            <td title={new Date(row.started_ns / 1e6).toISOString()}>{fmtAgo(row.started_ns)}</td>
-            <td class="mono">{fmtDuration(row.duration_ns)}</td>
-            <td class="mono" style="color: var(--warn)">{row.faults ?? ''}</td>
-            <td class="mono">{row.target_system ?? '—'}</td>
-          </tr>
+          {#if row.origin === 'manual'}
+            <!-- Manual records have no span waterfall; they live under /manual. -->
+            <tr title="manual evidence record — see the Manual page">
+              <td><StatusBadge status={row.status} /></td>
+              <td>
+                {row.name ?? '—'}
+                <span class="badge neutral origin" title="review status: {row.review_status ?? 'unknown'}">manual</span>
+              </td>
+              <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
+              <td title={new Date(row.started_ns / 1e6).toISOString()}>{fmtAgo(row.started_ns)}</td>
+              <td class="mono">{fmtDuration(row.duration_ns)}</td>
+              <td class="mono" style="color: var(--warn)">{row.faults ?? ''}</td>
+              <td class="mono">{row.target_system ?? '—'}</td>
+            </tr>
+          {:else}
+            <tr class="clickable" onclick={() => goto(`/experiments/${row.id}`)}>
+              <td><StatusBadge status={row.status} /></td>
+              <td>{row.name ?? '—'}</td>
+              <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
+              <td title={new Date(row.started_ns / 1e6).toISOString()}>{fmtAgo(row.started_ns)}</td>
+              <td class="mono">{fmtDuration(row.duration_ns)}</td>
+              <td class="mono" style="color: var(--warn)">{row.faults ?? ''}</td>
+              <td class="mono">{row.target_system ?? '—'}</td>
+            </tr>
+          {/if}
         {/each}
       </tbody>
     </table>
@@ -121,5 +143,9 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .origin {
+    margin-left: 6px;
+    font-size: 10px;
   }
 </style>

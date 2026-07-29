@@ -29,7 +29,7 @@ export interface ExperimentRow {
   name: string | null;
   started_ns: number;
   duration_ns: number | null;
-  trace_id: string;
+  trace_id: string | null;
   target_system: string | null;
   target_technology: string | null;
   target_environment: string | null;
@@ -37,6 +37,8 @@ export interface ExperimentRow {
   deviations: string | null;
   duration_ms: string | null;
   faults: string | null;
+  origin: 'automated' | 'manual' | null;
+  review_status: string | null;
 }
 
 export interface Span {
@@ -250,4 +252,107 @@ export interface ReportMetaV2 {
     experiment_id: string | null;
     framework: string | null;
   };
+}
+
+// ---------------------------------------------------------------------------
+// v0.5: org hierarchy rollups + manual evidence
+
+export type RunStateV5 = 'passed' | 'stale' | 'partial' | 'failed' | 'never_run';
+
+export interface OrgNodeScore {
+  path: string;
+  name: string;
+  kind: string;
+  score: number;
+  band: string;
+  coverage: number;
+  scored: number;
+  expected: number;
+  weakest: string | null;
+  weight: number;
+  children: OrgNodeScore[];
+}
+
+export interface ScoreTree extends OrgNodeScore {
+  delta: number;
+  sparkline: [number, number][];
+}
+
+export interface ManualExperiment {
+  id: string;
+  experiment_name: string;
+  exercise_type: string;
+  executed_at_ns: number;
+  hypothesis: string;
+  method: string;
+  outcome_status: string;
+  hypothesis_met: boolean | null;
+  findings: string | null;
+  action_items: unknown;
+  target_system: string | null;
+  target_environment: string | null;
+  blast_radius: string | null;
+  recovery_time_s: number | null;
+  duration_s: number | null;
+  origin: string;
+  entered_by: string;
+  entered_at_ns: number;
+  attestation: string;
+  status: 'draft' | 'submitted' | 'verified' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at_ns: number | null;
+  review_note: string | null;
+  renewal_due_ns: number | null;
+  framework_refs: string[] | null;
+  batch_id: string | null;
+  content_hash: string;
+}
+
+export interface ManualAuditRow {
+  id: string;
+  experiment_id: string;
+  changed_by: string;
+  changed_at_ns: number;
+  action: string;
+  diff: unknown;
+  prev_hash: string | null;
+  new_hash: string;
+}
+
+export interface EvidenceAttachment {
+  id: string;
+  experiment_id: string;
+  kind: string;
+  uri: string;
+  label: string | null;
+  file_hash: string | null;
+  added_by: string;
+  added_at_ns: number;
+}
+
+export interface ManualDetail {
+  experiment: ManualExperiment;
+  audit: ManualAuditRow[];
+  attachments: EvidenceAttachment[];
+}
+
+export interface ManualRecordInput {
+  experiment_name: string;
+  exercise_type: string;
+  executed_at_ns: number;
+  hypothesis: string;
+  method: string;
+  outcome_status: string;
+  hypothesis_met?: boolean | null;
+  findings?: string | null;
+  action_items?: string[];
+  target_system?: string | null;
+  target_environment?: string | null;
+  blast_radius?: string | null;
+  recovery_time_s?: number | null;
+  duration_s?: number | null;
+  entered_by: string;
+  attestation: string;
+  renewal_due_ns?: number | null;
+  framework_refs?: string[];
 }
