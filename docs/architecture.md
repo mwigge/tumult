@@ -126,7 +126,8 @@ immutable copy exists in the lake.**
 - **Export** — incremental against a per-table event-time watermark in
   `<lake>/_meta.json` (tmp+rename, advanced only after every table
   succeeded → idempotent retries). `manual_experiments` exports as a full
-  snapshot per run (records mutate through their review lifecycle); its
+  snapshot per run (records mutate through their review lifecycle;
+  fingerprint-gated so an unchanged register writes no new file); its
   audit table exports incrementally on `changed_at_ns`. Runs on
   `KRONIKA_LAKE_INTERVAL` (default `24h`) or on demand via
   `POST /api/lake/export`; `GET /api/lake/status` shows watermarks, files
