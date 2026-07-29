@@ -645,6 +645,48 @@ mod tests {
     }
 
     #[test]
+    fn experiment_runs_resolves_outcome_from_completed_log() {
+        // tumult leaves span.outcome_status NULL; the outcome lives on the
+        // `experiment.completed` log record's capitalised `status` attr.
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let mut span = sample_span("exp-log");
+        span.outcome_status = None;
+        writer.insert_spans(&[span]).unwrap();
+        writer
+            .insert_logs(&[LogRow {
+                ts_ns: 1_774_980_300_000_000_000,
+                severity_text: "INFO".into(),
+                body: "experiment.completed".into(),
+                trace_id: Some("abc123".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![
+                    ("experiment_id".into(), "exp-log".into()),
+                    ("status".into(), "Deviated".into()),
+                ],
+                resource_attrs: vec![],
+            }])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        let runs = reader.experiment_runs().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].outcome_status.as_deref(), Some("Deviated"));
+        // The span's own outcome still wins when present.
+        let writer = store.writer().unwrap();
+        writer.insert_spans(&[sample_span("exp-span")]).unwrap();
+        // Fresh reader: read-only connections pin their snapshot at open.
+        let reader2 = store.read_only().unwrap();
+        let rows = reader2
+            .query_json_rows(
+                "SELECT experiment_id, outcome_status FROM experiment_runs ORDER BY experiment_id",
+            )
+            .unwrap();
+        assert_eq!(rows[1]["outcome_status"], serde_json::json!("completed"));
+    }
+
+    #[test]
     fn read_only_reader_coexists_with_open_writer() {
         let d = tempfile::TempDir::new().unwrap();
         let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();

@@ -182,18 +182,24 @@ CREATE INDEX IF NOT EXISTS idx_evidence_attachments_experiment
 ";
 
 /// Rollup view: one row per experiment run, over the experiment root spans
-/// tumult emits as `resilience.experiment`.
+/// tumult emits as `resilience.experiment`. The outcome lives on tumult's
+/// `experiment.completed` log record (capitalised `status` attr), not on the
+/// span, so it is resolved via the same join the API list query uses.
+/// CREATE OR REPLACE so existing databases pick up view changes on startup.
 pub const CREATE_VIEWS: &str = "
-CREATE VIEW IF NOT EXISTS experiment_runs AS
+CREATE OR REPLACE VIEW experiment_runs AS
 SELECT
-    experiment_id,
-    any_value(experiment_name) AS experiment_name,
-    min(ts_ns) AS started_at_ns,
-    max(ts_ns + duration_ns) AS ended_at_ns,
-    max(duration_ns) AS duration_ns,
-    any_value(outcome_status) AS outcome_status,
-    any_value(hypothesis_met) AS hypothesis_met
-FROM spans
-WHERE span_name = 'resilience.experiment'
-GROUP BY experiment_id;
+    s.experiment_id,
+    any_value(s.experiment_name) AS experiment_name,
+    min(s.ts_ns) AS started_at_ns,
+    max(s.ts_ns + s.duration_ns) AS ended_at_ns,
+    max(s.duration_ns) AS duration_ns,
+    any_value(coalesce(s.outcome_status, l.log_attrs['status'])) AS outcome_status,
+    any_value(s.hypothesis_met) AS hypothesis_met
+FROM spans s
+LEFT JOIN logs l
+    ON l.log_attrs['experiment_id'] = s.experiment_id
+    AND l.body = 'experiment.completed'
+WHERE s.span_name = 'resilience.experiment'
+GROUP BY s.experiment_id;
 ";
