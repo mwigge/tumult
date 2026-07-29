@@ -110,8 +110,14 @@ fn donut(slices: &[(String, f64)]) -> String {
 fn lines(series: &[(String, Vec<(f64, f64)>)]) -> String {
     let (w, h) = (480.0_f64, 160.0);
     let (ml, mr, mt, mb) = (40.0, 90.0, 10.0, 22.0);
-    let xs: Vec<f64> = series.iter().flat_map(|s| s.1.iter().map(|p| p.0)).collect();
-    let ys: Vec<f64> = series.iter().flat_map(|s| s.1.iter().map(|p| p.1)).collect();
+    let xs: Vec<f64> = series
+        .iter()
+        .flat_map(|s| s.1.iter().map(|p| p.0))
+        .collect();
+    let ys: Vec<f64> = series
+        .iter()
+        .flat_map(|s| s.1.iter().map(|p| p.1))
+        .collect();
     if xs.is_empty() || ys.is_empty() {
         return String::new();
     }

@@ -181,7 +181,11 @@ fn kpis_block(out: &mut String, kpis: &[(String, String, Option<String>)]) {
             esc(label)
         );
         out.push_str("    #v(3pt)\n");
-        let _ = writeln!(out, "    #text(size: 16pt, weight: \"bold\")[{}]", esc(value));
+        let _ = writeln!(
+            out,
+            "    #text(size: 16pt, weight: \"bold\")[{}]",
+            esc(value)
+        );
         if let Some(sub) = sub {
             out.push_str("    #v(2pt)\n");
             let _ = writeln!(out, "    #text(size: 8pt, fill: luma(100))[{}]", esc(sub));
@@ -223,7 +227,11 @@ fn table_block(out: &mut String, headers: &[String], rows: &[Vec<String>], numer
     out.push_str("  table.hline(stroke: 0.8pt + luma(140)),\n");
     out.push_str("  table.header(\n");
     for h in headers {
-        let _ = writeln!(out, "    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[{}]]],", esc(h));
+        let _ = writeln!(
+            out,
+            "    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[{}]]],",
+            esc(h)
+        );
     }
     out.push_str("  ),\n  table.hline(stroke: 0.5pt + luma(200)),\n");
     for row in rows {
@@ -241,9 +249,14 @@ fn table_block(out: &mut String, headers: &[String], rows: &[Vec<String>], numer
 fn signoff_block(out: &mut String, entries: &[(String, String)]) {
     let cols = entries.len().clamp(1, 2);
     let colspec = vec!["1fr"; cols].join(", ");
-    let _ = writeln!(out, "\n#v(18pt)\n#grid(\n  columns: ({colspec}),\n  gutter: 28pt,");
+    let _ = writeln!(
+        out,
+        "\n#v(18pt)\n#grid(\n  columns: ({colspec}),\n  gutter: 28pt,"
+    );
     for (role, name) in entries {
-        out.push_str("  [\n    #v(26pt)\n    #line(length: 100%, stroke: 0.6pt + luma(110))\n    #v(2pt)\n");
+        out.push_str(
+            "  [\n    #v(26pt)\n    #line(length: 100%, stroke: 0.6pt + luma(110))\n    #v(2pt)\n",
+        );
         let _ = writeln!(
             out,
             "    #text(size: 8pt, fill: luma(100))[#smallcaps[{}]]",
@@ -271,7 +284,10 @@ mod tests {
             classification: "Internal".into(),
             generated_at_ns: 1_785_273_590_000_000_000,
             data_as_of_ns: 1_785_273_590_000_000_000,
-            period: Some((1_785_273_590_000_000_000 - 86_400_000_000_000 * 30, 1_785_273_590_000_000_000)),
+            period: Some((
+                1_785_273_590_000_000_000 - 86_400_000_000_000 * 30,
+                1_785_273_590_000_000_000,
+            )),
             framework: None,
             experiment_id: None,
         }

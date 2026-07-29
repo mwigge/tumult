@@ -139,7 +139,11 @@ fn render_block(block: &Block) -> String {
                 .iter()
                 .enumerate()
                 .map(|(i, h)| {
-                    let cls = if numeric_cols.contains(&i) { " class='num'" } else { "" };
+                    let cls = if numeric_cols.contains(&i) {
+                        " class='num'"
+                    } else {
+                        ""
+                    };
                     format!("<th{cls}>{}</th>", esc(h))
                 })
                 .collect();
@@ -150,18 +154,26 @@ fn render_block(block: &Block) -> String {
                         .iter()
                         .enumerate()
                         .map(|(i, c)| {
-                            let cls =
-                                if numeric_cols.contains(&i) { " class='num'" } else { "" };
+                            let cls = if numeric_cols.contains(&i) {
+                                " class='num'"
+                            } else {
+                                ""
+                            };
                             format!("<td{cls}>{}</td>", esc(c))
                         })
                         .collect();
                     format!("<tr>{cells}</tr>")
                 })
                 .collect();
-            format!("<table class='data'><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>")
+            format!(
+                "<table class='data'><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+            )
         }
         Block::Bullets(items) => {
-            let lis: String = items.iter().map(|i| format!("<li>{}</li>", esc(i))).collect();
+            let lis: String = items
+                .iter()
+                .map(|i| format!("<li>{}</li>", esc(i)))
+                .collect();
             format!("<ul>{lis}</ul>")
         }
         Block::Chart(spec) => {

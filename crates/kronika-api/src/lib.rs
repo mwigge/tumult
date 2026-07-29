@@ -1722,9 +1722,7 @@ async fn generate_report_v2(
     State(state): State<ApiState>,
     Json(req): Json<GenerateV2Request>,
 ) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| {
-        (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
-    };
+    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
     let Ok(kind) = serde_json::from_value::<kronika_docs::TemplateKind>(json!(req.kind)) else {
         return Err(bad(format!(
             "unknown type {:?}; expected executive-digest|game-day|evidence-pack",
@@ -1762,27 +1760,23 @@ async fn generate_report_v2(
     let generated_at = now_ns();
     let exp_id = req.experiment_id.clone();
     let framework = req.framework.clone();
-    let built = with_reader(&state.db_path, move |reader| {
-        match kind {
-            kronika_docs::TemplateKind::ExecutiveDigest => {
-                kronika_docs::builders::build_executive(reader, generated_at, period_ns, generated_at)
-                    .map(Some)
-            }
-            kronika_docs::TemplateKind::GameDay => kronika_docs::builders::build_game_day(
-                reader,
-                exp_id.as_deref().unwrap_or_default(),
-                generated_at,
-            ),
-            kronika_docs::TemplateKind::EvidencePack => {
-                kronika_docs::builders::build_evidence_pack(
-                    reader,
-                    framework.as_deref().unwrap_or_default(),
-                    Some(period_ns),
-                    generated_at,
-                )
+    let built = with_reader(&state.db_path, move |reader| match kind {
+        kronika_docs::TemplateKind::ExecutiveDigest => {
+            kronika_docs::builders::build_executive(reader, generated_at, period_ns, generated_at)
                 .map(Some)
-            }
         }
+        kronika_docs::TemplateKind::GameDay => kronika_docs::builders::build_game_day(
+            reader,
+            exp_id.as_deref().unwrap_or_default(),
+            generated_at,
+        ),
+        kronika_docs::TemplateKind::EvidencePack => kronika_docs::builders::build_evidence_pack(
+            reader,
+            framework.as_deref().unwrap_or_default(),
+            Some(period_ns),
+            generated_at,
+        )
+        .map(Some),
     })
     .await?;
     let Some(doc) = built else {
@@ -1821,7 +1815,8 @@ async fn generate_report_v2(
         },
     });
     std::fs::write(v2_dir.join(format!("{id}.pdf")), &pdf).map_err(|e| internal(e.to_string()))?;
-    std::fs::write(v2_dir.join(format!("{id}.html")), &html).map_err(|e| internal(e.to_string()))?;
+    std::fs::write(v2_dir.join(format!("{id}.html")), &html)
+        .map_err(|e| internal(e.to_string()))?;
     std::fs::write(
         v2_dir.join(format!("{id}.json")),
         serde_json::to_string_pretty(&meta).unwrap_or_default(),

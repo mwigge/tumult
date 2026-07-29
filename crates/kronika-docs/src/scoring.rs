@@ -126,7 +126,10 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
             .get("status")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned);
-        let runs = row.get("runs").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        let runs = row
+            .get("runs")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
         // tumult outcomes: Completed passes; Deviated/Failed fail; a missing
         // outcome (incomplete run) counts as a failed attempt — conservative.
         let passed = outcome.as_deref() == Some("Completed");
@@ -154,8 +157,7 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
     let mut targets: Vec<TargetScore> = by_target
         .into_iter()
         .map(|(target, exps)| {
-            let score =
-                exps.iter().map(|e| f64::from(e.score)).sum::<f64>() / exps.len() as f64;
+            let score = exps.iter().map(|e| f64::from(e.score)).sum::<f64>() / exps.len() as f64;
             TargetScore {
                 target,
                 score,

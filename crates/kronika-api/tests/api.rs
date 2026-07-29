@@ -965,7 +965,10 @@ async fn reports_v2_evidence_pack_validates_framework() {
         .await
         .unwrap();
     let html = resp.text().await.unwrap();
-    assert!(html.contains("verified against the licensed framework text"), "{html}");
+    assert!(
+        html.contains("verified against the licensed framework text"),
+        "{html}"
+    );
 }
 
 #[tokio::test]

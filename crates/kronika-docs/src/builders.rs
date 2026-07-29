@@ -94,7 +94,10 @@ pub fn build_executive(
     );
     meta.period = Some((from_ns, as_of_ns));
 
-    let mut blocks = vec![Block::H1("Bottom line".into()), Block::Paragraph(bluf(&card, &open))];
+    let mut blocks = vec![
+        Block::H1("Bottom line".into()),
+        Block::Paragraph(bluf(&card, &open)),
+    ];
 
     blocks.push(Block::Kpis(vec![
         (
@@ -144,9 +147,7 @@ pub fn build_executive(
                     t.target.clone(),
                     card.experiments
                         .iter()
-                        .filter(|e| {
-                            e.target.as_deref().unwrap_or("(untargeted)") == t.target
-                        })
+                        .filter(|e| e.target.as_deref().unwrap_or("(untargeted)") == t.target)
                         .count()
                         .to_string(),
                     t.runs.to_string(),
@@ -167,7 +168,9 @@ pub fn build_executive(
         fmt_date(as_of_ns),
         discovered,
         fixed,
-        mttr_s.map_or(String::new(), |m| format!(" Mean time to recovery across runs reporting one: {m:.1}s.")),
+        mttr_s.map_or(String::new(), |m| format!(
+            " Mean time to recovery across runs reporting one: {m:.1}s."
+        )),
     )));
 
     blocks.push(Block::H2("Open weaknesses".into()));
@@ -269,13 +272,20 @@ fn outlook(card: &Scorecard) -> String {
         .count();
     let mut pts = Vec::new();
     if untested > 0 {
-        pts.push(format!("schedule first runs for {untested} untested experiment(s)"));
+        pts.push(format!(
+            "schedule first runs for {untested} untested experiment(s)"
+        ));
     }
     if stale > 0 {
-        pts.push(format!("re-run {stale} experiment(s) whose last pass is over 30 days old"));
+        pts.push(format!(
+            "re-run {stale} experiment(s) whose last pass is over 30 days old"
+        ));
     }
     if let Some(w) = card.targets.first() {
-        pts.push(format!("focus next game-day on {}, the weakest target", w.target));
+        pts.push(format!(
+            "focus next game-day on {}, the weakest target",
+            w.target
+        ));
     }
     if pts.is_empty() {
         "Coverage is green across the board; maintain cadence and consider widening fault scenarios.".into()
@@ -305,7 +315,10 @@ fn issue_stats(
     let mut by_name: std::collections::BTreeMap<String, Vec<(i64, bool)>> =
         std::collections::BTreeMap::new();
     for row in &rows {
-        let (Some(name), Some(ts)) = (cell(row, "name"), row.get("ts").and_then(serde_json::Value::as_i64)) else {
+        let (Some(name), Some(ts)) = (
+            cell(row, "name"),
+            row.get("ts").and_then(serde_json::Value::as_i64),
+        ) else {
             continue;
         };
         let ok = cell(row, "status") == Some("Completed");
@@ -408,8 +421,14 @@ pub fn build_game_day(
         .and_then(|r| r.get("log_attrs").cloned());
 
     let name = cell(&root, "experiment_name").unwrap_or("unknown experiment");
-    let root_ts = root.get("ts_ns").and_then(serde_json::Value::as_i64).unwrap_or(0);
-    let hypothesis = match root.get("hypothesis_met").and_then(serde_json::Value::as_bool) {
+    let root_ts = root
+        .get("ts_ns")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+    let hypothesis = match root
+        .get("hypothesis_met")
+        .and_then(serde_json::Value::as_bool)
+    {
         Some(true) => "Met".to_string(),
         Some(false) => "Not met".to_string(),
         None => "Not recorded".to_string(),
@@ -449,7 +468,9 @@ pub fn build_game_day(
             ),
             (
                 "Severity".into(),
-                cell(&root, "fault_severity").unwrap_or("medium").to_string(),
+                cell(&root, "fault_severity")
+                    .unwrap_or("medium")
+                    .to_string(),
             ),
             ("Hypothesis".into(), hypothesis.clone()),
             ("Outcome".into(), outcome.clone()),
@@ -459,15 +480,16 @@ pub fn build_game_day(
     let rollback_spans: Vec<&serde_json::Value> = spans
         .iter()
         .filter(|s| {
-            cell(s, "span_name")
-                .is_some_and(|n| n.to_ascii_lowercase().contains("rollback"))
+            cell(s, "span_name").is_some_and(|n| n.to_ascii_lowercase().contains("rollback"))
         })
         .collect();
     blocks.push(Block::H2("Blast radius and safety".into()));
     blocks.push(Block::KeyValues(vec![
         (
             "Blast radius".into(),
-            cell(&root, "blast_radius").unwrap_or("not recorded").to_string(),
+            cell(&root, "blast_radius")
+                .unwrap_or("not recorded")
+                .to_string(),
         ),
         (
             "Recovery time".into(),
@@ -477,7 +499,12 @@ pub fn build_game_day(
         ),
         (
             "Rollback exercised".into(),
-            if rollback_spans.is_empty() { "no" } else { "yes" }.to_string(),
+            if rollback_spans.is_empty() {
+                "no"
+            } else {
+                "yes"
+            }
+            .to_string(),
         ),
     ]));
 
@@ -500,7 +527,9 @@ pub fn build_game_day(
                 vec![
                     s.get("ts_ns")
                         .and_then(serde_json::Value::as_i64)
-                        .map_or("—".into(), |ts| format!("{:.1}", (ts - first_ts) as f64 / 1e9)),
+                        .map_or("—".into(), |ts| {
+                            format!("{:.1}", (ts - first_ts) as f64 / 1e9)
+                        }),
                     cell(s, "span_name").unwrap_or("—").to_string(),
                     cell(s, "span_kind").unwrap_or("—").to_string(),
                     s.get("duration_ns")
@@ -547,13 +576,17 @@ pub fn build_game_day(
             "No rollback action was exercised in this run.".into(),
         ));
     } else {
-        let ok = rollback_spans
-            .iter()
-            .all(|s| cell(s, "status_code") == Some("Ok") || cell(s, "status_code") == Some("Unset"));
+        let ok = rollback_spans.iter().all(|s| {
+            cell(s, "status_code") == Some("Ok") || cell(s, "status_code") == Some("Unset")
+        });
         blocks.push(Block::Paragraph(format!(
             "{} rollback span(s) executed; status: {}.",
             rollback_spans.len(),
-            if ok { "all clean" } else { "errors present — investigate" }
+            if ok {
+                "all clean"
+            } else {
+                "errors present — investigate"
+            }
         )));
     }
 
@@ -572,7 +605,9 @@ pub fn build_game_day(
     }
     cfg.sort();
     if cfg.is_empty() {
-        blocks.push(Block::Paragraph("No configuration attributes recorded.".into()));
+        blocks.push(Block::Paragraph(
+            "No configuration attributes recorded.".into(),
+        ));
     } else {
         cfg.truncate(40);
         blocks.push(Block::KeyValues(cfg));
