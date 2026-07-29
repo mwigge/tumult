@@ -8,6 +8,7 @@ members = [
     "crates/kronika-report",
     "crates/kronika-ai",
     "crates/kronika-api",
+    "crates/kronika-docs",
     "bin/kronikad",
     "bin/kronika-demo",
 ]
@@ -28,6 +29,7 @@ kronika-metrics = { path = "crates/kronika-metrics" }
 kronika-report = { path = "crates/kronika-report" }
 kronika-ai = { path = "crates/kronika-ai" }
 kronika-api = { path = "crates/kronika-api" }
+kronika-docs = { path = "crates/kronika-docs" }
 
 # Storage — same major as tumult-analytics
 duckdb = { version = "1.10503", features = ["bundled"] }
@@ -57,6 +59,11 @@ csv = "1"
 # LLM client
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 async-trait = "0.1"
+
+# PDF report pipeline
+typst = "0.15"
+typst-pdf = "0.15"
+sha2 = "0.10"
 
 # Errors
 thiserror = "2"
