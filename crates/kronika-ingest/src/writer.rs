@@ -8,15 +8,18 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::error::IngestError;
 
+/// An arbitrary write executed against the single [`Writer`] — used by
+/// the manual-evidence lifecycle so API-triggered mutations ride the
+/// same single-writer channel as telemetry (never a second connection).
+pub type ExecFn = Box<dyn FnOnce(&Writer) -> Result<(), String> + Send>;
+
 /// One batch of telemetry to persist.
 pub enum Batch {
     Spans(Vec<SpanRow>),
     Logs(Vec<LogRow>),
     Metrics(MetricRows),
-    /// An arbitrary write executed against the single [`Writer`] — used by
-    /// the manual-evidence lifecycle so API-triggered mutations ride the
-    /// same single-writer channel as telemetry (never a second connection).
-    Exec(Box<dyn FnOnce(&Writer) -> Result<(), String> + Send>),
+    /// See [`ExecFn`].
+    Exec(ExecFn),
 }
 
 struct Envelope {
