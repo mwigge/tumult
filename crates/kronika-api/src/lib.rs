@@ -40,6 +40,13 @@
 //! * `GET /api/reports` / `GET /api/reports/{name}` — HTML digests written
 //!   by the daemon's report scheduler; `POST /api/reports/generate` renders
 //!   one metric digest on demand into the same directory.
+//! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
+//!   (freshness-decayed per-experiment scores, target and portfolio rollup).
+//! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?}`
+//!   — build a compliance-grade report (R1 executive digest, R3 game-day,
+//!   R2 evidence pack) as PDF + print-HTML + JSON meta under
+//!   `reports/v2/`; `GET /api/reports/v2` lists metas and
+//!   `GET /api/reports/v2/{id}/pdf|html` serves the artifacts.
 //!
 //! Every query runs on a fresh read-only connection inside `spawn_blocking`,
 //! so the API coexists with the daemon's single writer and never touches the
@@ -133,6 +140,11 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/ask", post(ask::ask))
         .route("/api/reports", get(list_reports))
         .route("/api/reports/generate", post(generate_report))
+        .route("/api/reports/v2", get(list_reports_v2))
+        .route("/api/reports/v2/generate", post(generate_report_v2))
+        .route("/api/reports/v2/{id}/pdf", get(get_report_v2_pdf))
+        .route("/api/reports/v2/{id}/html", get(get_report_v2_html))
+        .route("/api/scores", get(scores))
         .route("/api/reports/{name}", get(get_report))
         .with_state(state)
 }
@@ -1662,4 +1674,209 @@ async fn generate_report(
     Ok(Json(
         json!({"name": name, "metric": metric, "bytes": html.len()}),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/scores + /api/reports/v2/*
+
+#[derive(Deserialize)]
+struct ScoresQuery {
+    range: Option<String>,
+}
+
+/// `GET /api/scores?range=24h|7d|14d` — resilience scorecard as of now,
+/// with the portfolio delta against the previous equal window.
+async fn scores(
+    State(state): State<ApiState>,
+    Query(q): Query<ScoresQuery>,
+) -> Result<Json<Value>, Response> {
+    let range = q.range.as_deref().unwrap_or("7d");
+    let Some(((from, to), _)) = windows(range) else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "range must be one of 24h|7d|14d"})),
+        )
+            .into_response());
+    };
+    let card = with_reader(&state.db_path, move |reader| {
+        kronika_docs::scoring::compute(reader, to, Some(to - from))
+    })
+    .await?;
+    Ok(Json(
+        serde_json::to_value(card).map_err(|e| internal(e.to_string()))?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct GenerateV2Request {
+    #[serde(rename = "type")]
+    kind: String,
+    period: Option<String>,
+    experiment_id: Option<String>,
+    framework: Option<String>,
+}
+
+/// `POST /api/reports/v2/generate` — build one compliance-grade report and
+/// persist `{id}.pdf`, `{id}.html` and `{id}.json` under `reports/v2/`.
+async fn generate_report_v2(
+    State(state): State<ApiState>,
+    Json(req): Json<GenerateV2Request>,
+) -> Result<Json<Value>, Response> {
+    let bad = |msg: String| {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
+    };
+    let Ok(kind) = serde_json::from_value::<kronika_docs::TemplateKind>(json!(req.kind)) else {
+        return Err(bad(format!(
+            "unknown type {:?}; expected executive-digest|game-day|evidence-pack",
+            req.kind
+        )));
+    };
+    let period_ns = match req.period.as_deref() {
+        None => 7 * 86_400 * 1_000_000_000i64,
+        Some(p) => match parse_range(p) {
+            Some(secs) => secs * 1_000_000_000,
+            None => return Err(bad("period must be one of 24h|7d|14d".into())),
+        },
+    };
+    if kind == kronika_docs::TemplateKind::GameDay
+        && req.experiment_id.as_deref().is_none_or(str::is_empty)
+    {
+        return Err(bad("game-day requires experiment_id".into()));
+    }
+    if kind == kronika_docs::TemplateKind::EvidencePack {
+        match req.framework.as_deref() {
+            None => return Err(bad("evidence-pack requires framework".into())),
+            Some(f)
+                if !kronika_docs::builders::FRAMEWORK_CLAUSES
+                    .iter()
+                    .any(|(name, _)| *name == f.to_ascii_lowercase()) =>
+            {
+                return Err(bad(format!(
+                    "unknown framework {f:?}; expected dora|nis2|iso27001|soc2"
+                )));
+            }
+            _ => {}
+        }
+    }
+
+    let generated_at = now_ns();
+    let exp_id = req.experiment_id.clone();
+    let framework = req.framework.clone();
+    let built = with_reader(&state.db_path, move |reader| {
+        match kind {
+            kronika_docs::TemplateKind::ExecutiveDigest => {
+                kronika_docs::builders::build_executive(reader, generated_at, period_ns, generated_at)
+                    .map(Some)
+            }
+            kronika_docs::TemplateKind::GameDay => kronika_docs::builders::build_game_day(
+                reader,
+                exp_id.as_deref().unwrap_or_default(),
+                generated_at,
+            ),
+            kronika_docs::TemplateKind::EvidencePack => {
+                kronika_docs::builders::build_evidence_pack(
+                    reader,
+                    framework.as_deref().unwrap_or_default(),
+                    Some(period_ns),
+                    generated_at,
+                )
+                .map(Some)
+            }
+        }
+    })
+    .await?;
+    let Some(doc) = built else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "experiment_id not found"})),
+        )
+            .into_response());
+    };
+
+    let pdf = kronika_docs::typst_pdf::render_pdf(&doc).map_err(|e| internal(e.to_string()))?;
+    let html = kronika_docs::html::render(&doc);
+    let sha256: String = {
+        use sha2::Digest as _;
+        sha2::Sha256::digest(&pdf)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+
+    let v2_dir = state.reports_dir.join("v2");
+    std::fs::create_dir_all(&v2_dir).map_err(|e| internal(e.to_string()))?;
+    let id = &doc.meta.doc_id;
+    let meta = json!({
+        "doc_id": id,
+        "type": req.kind,
+        "title": doc.meta.title,
+        "created_ns": doc.meta.generated_at_ns,
+        "data_as_of_ns": doc.meta.data_as_of_ns,
+        "bytes": pdf.len(),
+        "sha256": sha256,
+        "params": {
+            "period": req.period,
+            "experiment_id": req.experiment_id,
+            "framework": req.framework,
+        },
+    });
+    std::fs::write(v2_dir.join(format!("{id}.pdf")), &pdf).map_err(|e| internal(e.to_string()))?;
+    std::fs::write(v2_dir.join(format!("{id}.html")), &html).map_err(|e| internal(e.to_string()))?;
+    std::fs::write(
+        v2_dir.join(format!("{id}.json")),
+        serde_json::to_string_pretty(&meta).unwrap_or_default(),
+    )
+    .map_err(|e| internal(e.to_string()))?;
+    Ok(Json(meta))
+}
+
+/// `GET /api/reports/v2` — metas of every generated v2 report, newest first.
+async fn list_reports_v2(State(state): State<ApiState>) -> Json<Value> {
+    let mut reports = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(state.reports_dir.join("v2")) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "json") {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if let Ok(meta) = serde_json::from_str::<Value>(&text) {
+                        reports.push(meta);
+                    }
+                }
+            }
+        }
+    }
+    reports.sort_by_key(|r| r.get("created_ns").and_then(Value::as_i64).unwrap_or(0));
+    reports.reverse();
+    Json(json!({"reports": reports}))
+}
+
+/// A doc id is `KRK-<code>-<yyyymmdd>-<hash6>`: flat, safe charset.
+fn valid_doc_id(id: &str) -> bool {
+    id.starts_with("KRK-")
+        && id.len() <= 100
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+async fn get_report_v2_pdf(State(state): State<ApiState>, Path(id): Path<String>) -> Response {
+    if !valid_doc_id(&id) {
+        return (StatusCode::BAD_REQUEST, "invalid document id").into_response();
+    }
+    match std::fs::read(state.reports_dir.join("v2").join(format!("{id}.pdf"))) {
+        Ok(bytes) => (
+            [(axum::http::header::CONTENT_TYPE, "application/pdf")],
+            bytes,
+        )
+            .into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "report not found").into_response(),
+    }
+}
+
+async fn get_report_v2_html(State(state): State<ApiState>, Path(id): Path<String>) -> Response {
+    if !valid_doc_id(&id) {
+        return (StatusCode::BAD_REQUEST, "invalid document id").into_response();
+    }
+    match std::fs::read_to_string(state.reports_dir.join("v2").join(format!("{id}.html"))) {
+        Ok(html) => Html(html).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "report not found").into_response(),
+    }
 }

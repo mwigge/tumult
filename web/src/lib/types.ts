@@ -201,3 +201,53 @@ export interface Topology {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
 }
+
+// ---------------------------------------------------------------------------
+// v2: resilience scoring + compliance reports
+
+export type RunState = 'passed' | 'stale' | 'failed' | 'never_run';
+
+export interface ExperimentScore {
+  name: string;
+  target: string | null;
+  score: number;
+  state: RunState;
+  band: string;
+  last_run_ns: number | null;
+  last_outcome: string | null;
+  runs: number;
+}
+
+export interface TargetScore {
+  target: string;
+  score: number;
+  band: string;
+  runs: number;
+  last_run_ns: number | null;
+}
+
+export interface Scorecard {
+  portfolio: number;
+  band: string;
+  delta: number | null;
+  as_of_ns: number;
+  targets: TargetScore[];
+  experiments: ExperimentScore[];
+}
+
+export type ReportTemplate = 'executive-digest' | 'game-day' | 'evidence-pack';
+
+export interface ReportMetaV2 {
+  doc_id: string;
+  type: ReportTemplate;
+  title: string;
+  created_ns: number;
+  data_as_of_ns: number;
+  bytes: number;
+  sha256: string;
+  params: {
+    period: string | null;
+    experiment_id: string | null;
+    framework: string | null;
+  };
+}

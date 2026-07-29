@@ -13,6 +13,9 @@ import type {
   MetricQueryResult,
   Overview,
   ReportFile,
+  ReportMetaV2,
+  ReportTemplate,
+  Scorecard,
   Timeseries,
   Topology,
   TraceDetail,
@@ -51,6 +54,26 @@ export const api = {
   metrics: () => get<{ metrics: MetricDefInfo[] }>('/api/metrics'),
 
   reports: () => get<{ reports: ReportFile[] }>('/api/reports'),
+
+  scores: (range: string) => get<Scorecard>(`/api/scores?range=${range}`),
+
+  reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),
+
+  generateReportV2: async (req: {
+    type: ReportTemplate;
+    period?: string;
+    experiment_id?: string;
+    framework?: string;
+  }): Promise<ReportMetaV2> => {
+    const resp = await fetch('/api/reports/v2/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req)
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error ?? `HTTP ${resp.status}`);
+    return body as ReportMetaV2;
+  },
 
   logs: (params: Record<string, string>) => {
     const qs = new URLSearchParams(
