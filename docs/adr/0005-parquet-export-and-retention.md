@@ -47,7 +47,10 @@ lake files are write-once and never mutated in place. Tables: `spans`,
 - `manual_experiments` is the exception: records mutate through the
   draft → verified lifecycle, so each run writes a **full snapshot** (one
   file, latest wins) instead of pretending event-time incrementality
-  applies to mutable rows.
+  applies to mutable rows. Snapshots are fingerprint-gated: a run compares
+  an md5 of all `content_hash` values against the one recorded in
+  `_meta.json` and skips the write when the register has not changed, so
+  an unchanged register produces no new file.
 
 ### Retention gated on the watermark
 

@@ -15,7 +15,8 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
   incremental, watermark-driven export of `spans`, `logs`, the three
   metric tables and `manual_experiment_audit` to immutable day-partitioned
   parquet files (`<lake>/<table>/date=<d>/data-<run>.parquet`), plus a
-  full-snapshot export of `manual_experiments` per run. Watermarks live in
+  full-snapshot export of `manual_experiments` (fingerprint-gated: skipped
+  when the register has not changed since the previous run). Watermarks live in
   `<lake>/_meta.json` (tmp+rename; advanced only after every table
   succeeds → idempotent re-runs). Scheduled in `kronikad` on
   `KRONIKA_LAKE_INTERVAL` (default `24h`, `0`/`off` disables) into

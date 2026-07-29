@@ -134,6 +134,10 @@ struct LakeMeta {
     last_export_ns: Option<i64>,
     #[serde(default)]
     tables: BTreeMap<String, i64>,
+    /// Hash of the ordered manual-evidence content hashes; the snapshot is
+    /// rewritten only when this changes.
+    #[serde(default)]
+    manual_fingerprint: Option<String>,
 }
 
 fn meta_path(dir: &Path) -> PathBuf {
@@ -233,20 +237,25 @@ fn export_incremental(
 }
 
 /// Full-snapshot export for the mutable evidence register: latest snapshot
-/// wins; consumers take the newest file.
+/// wins; consumers take the newest file. Rewritten only when the register's
+/// content hashes change (`fingerprint`), so idempotent re-runs write
+/// nothing here either.
 fn export_snapshot(
     reader: &Reader,
     cfg: &LakeConfig,
     run_ns: i64,
-) -> Result<TableExport, StoreError> {
-    let day = reader
+    prior_fingerprint: Option<&str>,
+) -> Result<(TableExport, String), StoreError> {
+    let fp = reader
         .query_json_rows(&format!(
-            "SELECT strftime(to_timestamp({run_ns} / 1000000000.0), '%Y-%m-%d') AS d"
+            "SELECT md5(COALESCE(string_agg(content_hash, ',' ORDER BY id), '')) AS fp \
+             FROM {MANUAL_TABLE}"
         ))?
         .first()
-        .and_then(|r| r.get("d"))
+        .and_then(|r| r.get("fp"))
         .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_else(|| "unknown".to_string());
+        .unwrap_or_default();
+    let unchanged = prior_fingerprint == Some(fp.as_str());
     let count = reader.query_json_rows(&format!("SELECT count(*) AS n FROM {MANUAL_TABLE}"))?;
     let n = count
         .first()
@@ -254,7 +263,16 @@ fn export_snapshot(
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
     let mut files = Vec::new();
-    if n > 0 {
+    let mut rows = 0;
+    if n > 0 && !unchanged {
+        let day = reader
+            .query_json_rows(&format!(
+                "SELECT strftime(to_timestamp({run_ns} / 1000000000.0), '%Y-%m-%d') AS d"
+            ))?
+            .first()
+            .and_then(|r| r.get("d"))
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_else(|| "unknown".to_string());
         let rel = format!("{MANUAL_TABLE}/date={day}/data-{run_ns}.parquet");
         let path = cfg.dir.join(&rel);
         if let Some(parent) = path.parent() {
@@ -265,13 +283,17 @@ fn export_snapshot(
             path.display()
         ))?;
         files.push(rel);
+        rows = n;
     }
-    Ok(TableExport {
-        name: MANUAL_TABLE.to_string(),
-        rows: n,
-        watermark_ns: run_ns,
-        files,
-    })
+    Ok((
+        TableExport {
+            name: MANUAL_TABLE.to_string(),
+            rows,
+            watermark_ns: run_ns,
+            files,
+        },
+        fp,
+    ))
 }
 
 /// Run one export pass over all tables. The watermark file is advanced only
@@ -298,9 +320,10 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
         .insert(AUDIT_TABLE.to_string(), audit.watermark_ns);
     tables.push(audit);
 
-    let manual = export_snapshot(reader, cfg, run_ns)?;
+    let (manual, fp) = export_snapshot(reader, cfg, run_ns, meta.manual_fingerprint.as_deref())?;
     meta.tables
         .insert(MANUAL_TABLE.to_string(), manual.watermark_ns);
+    meta.manual_fingerprint = Some(fp);
     tables.push(manual);
 
     meta.last_export_ns = Some(run_ns);
@@ -558,5 +581,57 @@ mod tests {
             .query_json_rows("SELECT count(*) AS n FROM manual_experiment_audit")
             .unwrap();
         assert_eq!(n[0]["n"], serde_json::json!(1));
+    }
+
+    fn insert_manual(writer: &Writer, id: &str, hash: &str) {
+        writer
+            .execute(
+                "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
+                 executed_at_ns, hypothesis, method, outcome_status, entered_by, \
+                 entered_at_ns, attestation, content_hash) \
+                 VALUES (?, 'm', 'drill', 1, 'h', 'm', 'passed', 'alice', 1, 'attest', ?)",
+                duckdb::params![id, hash],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn manual_snapshot_skips_when_unchanged_and_rewrites_on_change() {
+        let (_d, store, cfg) = fixture();
+        let writer = store.writer().unwrap();
+        insert_manual(&writer, "m1", "hash1");
+        let reader = store.read_only().unwrap();
+
+        let first = export(&reader, &cfg).unwrap();
+        let manual = first
+            .tables
+            .iter()
+            .find(|t| t.name == MANUAL_TABLE)
+            .unwrap();
+        assert_eq!(manual.rows, 1);
+        assert_eq!(manual.files.len(), 1);
+
+        // Unchanged register: no new snapshot file.
+        let second = export(&reader, &cfg).unwrap();
+        let manual = second
+            .tables
+            .iter()
+            .find(|t| t.name == MANUAL_TABLE)
+            .unwrap();
+        assert_eq!(manual.rows, 0);
+        assert!(manual.files.is_empty());
+
+        // Changed register: new snapshot written.
+        insert_manual(&writer, "m2", "hash2");
+        let reader2 = store.read_only().unwrap();
+        let third = export(&reader2, &cfg).unwrap();
+        let manual = third
+            .tables
+            .iter()
+            .find(|t| t.name == MANUAL_TABLE)
+            .unwrap();
+        assert_eq!(manual.rows, 2);
+        assert_eq!(manual.files.len(), 1);
+        assert_eq!(parquet_count(&reader2, &cfg, MANUAL_TABLE), 3);
     }
 }
