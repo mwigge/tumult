@@ -1,0 +1,30 @@
+# kronika demo org: a three-level hierarchy (domain → unit → team) mapping
+# the seeded tumult experiment names onto teams. "service partition*" is
+# deliberately NOT assigned so the demo shows the synthetic (unassigned)
+# bucket under the root. edge-team's targets only match the seeded manual
+# evidence record (cdn failover) — a unit whose score comes from manual
+# evidence alone. Loaded by kronikad from /data/org.yaml (the default
+# `<db dir>/org.yaml`; override with KRONIKA_ORG_FILE).
+nodes:
+  - {name: platform, kind: domain}
+  - {name: edge, kind: unit, parent: platform}
+  - {name: compute, kind: unit, parent: platform}
+  - {name: data, kind: unit, parent: platform}
+  - {name: edge-team, kind: team, parent: edge}
+  - {name: runtime-team, kind: team, parent: compute}
+  - {name: data-team, kind: team, parent: data}
+assignments:
+  - team: edge-team
+    targets: ["cdn*"]
+    criticality:
+      "cdn failover — edge PoP loss": critical
+  - team: runtime-team
+    targets: ["api-worker*", "worker-process*", "host cpu*", "disk pressure*", "batch worker*"]
+    criticality:
+      "api-worker freeze — heartbeat recovers after SIGSTOP injection": critical
+      "host cpu burn — shell stays responsive": high
+  - team: data-team
+    targets: ["message-queue*", "config corruption*"]
+    criticality:
+      "message-queue dependency loss — restart fails": high
+defaults: {weight: 1.0, stale_days: 30}
