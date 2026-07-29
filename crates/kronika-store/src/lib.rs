@@ -18,6 +18,7 @@
 //! encrypted volume for sensitive data.
 
 mod error;
+pub mod lake;
 mod manual;
 mod rows;
 mod schema;
@@ -149,6 +150,10 @@ impl Store {
     /// Open a read-only connection (`access_mode = READ_ONLY`). Multiple
     /// read-only connections coexist across processes, including next to an
     /// open writer. The store must already exist and be migrated.
+    ///
+    /// The connection pins its snapshot at open: it does NOT observe writes
+    /// committed afterwards — open a fresh reader per unit of work (the API
+    /// opens one per request; the lake scheduler one per run).
     ///
     /// # Errors
     ///
@@ -413,6 +418,12 @@ impl Writer {
         )?;
         Ok(())
     }
+
+    /// Raw parameterized statement returning affected-row count — crate-internal
+    /// escape hatch (lake retention deletes, lake tests).
+    pub(crate) fn execute(&self, sql: &str, p: impl duckdb::Params) -> Result<usize, StoreError> {
+        Ok(self.conn.execute(sql, p)?)
+    }
 }
 
 /// The read side of the store (read-only `DuckDB` connection).
@@ -464,6 +475,13 @@ impl Reader {
             out.push(serde_json::from_str(&row?)?);
         }
         Ok(out)
+    }
+
+    /// Raw batch execution on the read connection — crate-internal, used by
+    /// the lake exporter for `COPY … TO … (FORMAT PARQUET)` (reads the store,
+    /// writes only parquet files, so it is valid on a read-only connection).
+    pub(crate) fn execute_batch(&self, sql: &str) -> Result<(), StoreError> {
+        Ok(self.conn.execute_batch(sql)?)
     }
 }
 

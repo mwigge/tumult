@@ -53,6 +53,7 @@
 //! write lock.
 
 mod ask;
+pub mod lake;
 pub mod manual;
 
 use std::collections::HashMap;
@@ -190,6 +191,8 @@ pub fn router(state: ApiState) -> Router {
             post(manual::attach),
         )
         .route("/api/manual/import", post(manual::import))
+        .route("/api/lake/status", get(lake::status))
+        .route("/api/lake/export", post(lake::export_now))
         .route("/api/reports", get(list_reports))
         .route("/api/reports/generate", post(generate_report))
         .route("/api/reports/v2", get(list_reports_v2))

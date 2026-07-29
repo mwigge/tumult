@@ -1324,3 +1324,60 @@ async fn manual_reject_flow_and_import() {
         .unwrap();
     assert_eq!(resp.status(), 400);
 }
+
+#[tokio::test]
+async fn lake_status_and_manual_export_trigger() {
+    let srv = spawn_server().await;
+
+    // Nothing exported yet.
+    let (status, body) = get(&srv.base, "/api/lake/status").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["files"], 0);
+    assert_eq!(body["retention_days"], 0);
+    assert!(body["last_export_ns"].is_null());
+
+    // Trigger one export pass (retention off: no delete, but the endpoint
+    // still reports `deleted`).
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/lake/export", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let report: Value = resp.json().await.unwrap();
+    let spans = report["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "spans")
+        .unwrap()
+        .clone();
+    assert!(spans["rows"].as_u64().unwrap() >= 4, "{spans}");
+    assert!(!spans["files"].as_array().unwrap().is_empty());
+    assert!(spans["watermark_ns"].as_i64().unwrap() > 0);
+    assert_eq!(report["deleted"], serde_json::json!({}));
+
+    // Status now reports files, bytes and watermarks.
+    let (status, body) = get(&srv.base, "/api/lake/status").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body["files"].as_u64().unwrap() > 0);
+    assert!(body["bytes"].as_u64().unwrap() > 0);
+    assert!(body["last_export_ns"].as_i64().unwrap() > 0);
+    assert!(body["watermarks"]["spans"].as_i64().unwrap() > 0);
+
+    // Idempotent re-run: no new rows, no new files.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/lake/export", srv.base))
+        .send()
+        .await
+        .unwrap();
+    let second: Value = resp.json().await.unwrap();
+    assert!(
+        second["tables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|t| t["rows"] == 0),
+        "{second}"
+    );
+}

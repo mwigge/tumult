@@ -13,6 +13,13 @@
 //! interval into `<db dir>/reports/report_<epoch>.html`; `/api/reports`
 //! lists them. Automatic reporting is off by default.
 //!
+//! The parquet lake job runs on `KRONIKA_LAKE_INTERVAL` (default `24h`,
+//! `0`/`off` disables): incremental export of every table into
+//! `KRONIKA_LAKE_DIR` (default `<db dir>/lake`), then — only when
+//! `KRONIKA_RETENTION_DAYS > 0` — deletion of already-exported hot rows
+//! older than that many days (the manual-evidence tables are never
+//! deleted). `POST /api/lake/export` triggers the same job on demand.
+//!
 //! Subcommands:
 //! * `kronikad import <file>` — manual CSV / tumult journal JSON import.
 //! * `kronikad report --metric <name>` — print an HTML report to stdout.
@@ -142,6 +149,14 @@ async fn serve() -> Result<()> {
             api_state.reports_dir().clone(),
             interval,
             std::sync::Arc::new(kronika_ai::OpenAiCompatClient::from_env()),
+        );
+    }
+    if let Some(interval) = lake_interval_from_env() {
+        spawn_lake_scheduler(
+            config.db_path.clone(),
+            ingest.clone(),
+            kronika_store::lake::LakeConfig::from_env(&config.db_path),
+            interval,
         );
     }
     let http_server = tokio::spawn(async move {
@@ -330,8 +345,8 @@ async fn report_handler(
 // ---------------------------------------------------------------------------
 // Automatic reporting (KRONIKA_REPORT_INTERVAL)
 
-/// Parse a `KRONIKA_REPORT_INTERVAL` value (`45s`, `30m`, `1h`, …).
-fn parse_report_interval(raw: &str) -> Option<std::time::Duration> {
+/// Parse an interval value (`45s`, `30m`, `1h`, `1d`, …).
+fn parse_interval(raw: &str) -> Option<std::time::Duration> {
     let (num, unit) = raw.split_at(raw.len().checked_sub(1)?);
     let n: u64 = num.trim().parse().ok()?;
     if n == 0 {
@@ -355,7 +370,7 @@ fn report_interval_from_env() -> Option<std::time::Duration> {
     if raw.is_empty() || raw == "0" || raw.eq_ignore_ascii_case("off") {
         return None;
     }
-    match parse_report_interval(raw) {
+    match parse_interval(raw) {
         Some(d) => {
             tracing::info!(interval = ?d, "automatic reporting enabled");
             Some(d)
@@ -441,6 +456,110 @@ fn spawn_report_scheduler(
                     tracing::info!(path = %path.display(), "scheduled digest written")
                 }
                 Err(e) => tracing::warn!(error = %format!("{e:#}"), "scheduled digest failed"),
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Parquet lake export + retention (KRONIKA_LAKE_*)
+
+/// `Some(24h)` by default; `KRONIKA_LAKE_INTERVAL` overrides, `0`/`off`
+/// disables the lake job entirely.
+fn lake_interval_from_env() -> Option<std::time::Duration> {
+    let default = std::time::Duration::from_secs(86_400);
+    let Ok(raw) = std::env::var("KRONIKA_LAKE_INTERVAL") else {
+        return Some(default);
+    };
+    let raw = raw.trim();
+    if raw.is_empty() || raw == "0" || raw.eq_ignore_ascii_case("off") {
+        return None;
+    }
+    match parse_interval(raw) {
+        Some(d) => Some(d),
+        None => {
+            tracing::warn!(
+                value = raw,
+                "invalid KRONIKA_LAKE_INTERVAL (want e.g. 30m or 24h); using 24h"
+            );
+            Some(default)
+        }
+    }
+}
+
+/// One export pass: fresh read-only reader (a long-lived reader pins its
+/// snapshot), then retention deletes on the single writer when the policy
+/// asks for them.
+async fn run_lake_job(
+    db_path: &std::path::Path,
+    ingest: &IngestWriter,
+    cfg: &kronika_store::lake::LakeConfig,
+) -> Result<()> {
+    let (db, cfg2) = (db_path.to_path_buf(), cfg.clone());
+    let report = tokio::task::spawn_blocking(move || -> Result<_> {
+        let store = Store::at(&db);
+        let reader = store.read_only().context("open store read-only")?;
+        Ok(kronika_store::lake::export(&reader, &cfg2)?)
+    })
+    .await??;
+    let total: u64 = report.tables.iter().map(|t| t.rows).sum();
+    tracing::info!(
+        rows = total,
+        files = report.tables.iter().map(|t| t.files.len()).sum::<usize>(),
+        dir = %report.lake_dir,
+        "lake export complete"
+    );
+    if cfg.retention_days > 0 {
+        let cfg3 = cfg.clone();
+        let slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let slot2 = std::sync::Arc::clone(&slot);
+        ingest
+            .write(kronika_ingest::Batch::Exec(Box::new(move |writer| {
+                *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(
+                    kronika_store::lake::enforce_retention(writer, &cfg3)
+                        .map_err(|e| e.to_string()),
+                );
+                Ok(())
+            })))
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        match slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            Some(Ok(deleted)) => {
+                let total: u64 = deleted.values().sum();
+                if total > 0 {
+                    tracing::info!(rows = total, "lake retention reclaimed hot rows");
+                }
+            }
+            Some(Err(e)) => anyhow::bail!("retention failed: {e}"),
+            None => anyhow::bail!("retention did not run"),
+        };
+    }
+    Ok(())
+}
+
+/// Spawn the lake scheduler: one export (+ optional retention) per interval.
+/// Failures are logged and the schedule continues — the watermark makes the
+/// next run retry from the last good state.
+fn spawn_lake_scheduler(
+    db_path: PathBuf,
+    ingest: IngestWriter,
+    cfg: kronika_store::lake::LakeConfig,
+    interval: std::time::Duration,
+) {
+    tracing::info!(
+        interval = ?interval,
+        dir = %cfg.dir.display(),
+        retention_days = cfg.retention_days,
+        "lake export job enabled"
+    );
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        // Skip the immediate first tick: export after one full interval.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            if let Err(e) = run_lake_job(&db_path, &ingest, &cfg).await {
+                tracing::warn!(error = %format!("{e:#}"), "lake export job failed");
             }
         }
     });

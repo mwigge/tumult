@@ -108,6 +108,40 @@ DuckDB is single-writer per file; a read-write open holds an exclusive lock.
 - **At rest** — DuckDB has no encryption at rest; the store directory is
   created `0o700` and should sit on an encrypted volume for sensitive data.
 
+## Parquet lake + retention (durability story)
+
+Two tiers, one guarantee: **nothing leaves the hot store before an
+immutable copy exists in the lake.**
+
+- **Hot tier** — the embedded DuckDB store: ACID, single-writer, WAL-backed
+  (crash-safe to the last committed batch). Optimised for the recent-query
+  workload of the UI and reports.
+- **Cold tier** — the parquet lake (`KRONIKA_LAKE_DIR`, default
+  `<db dir>/lake`): per table, one write-once file per day-partition
+  (`spans/date=2026-07-29/data-<run>.parquet`). Files are never rewritten —
+  *immutability as a compliance feature*: next to the v0.5.0 hash-chained
+  manual-evidence audit, the trail of what kronika recorded is
+  WORM-shaped and tamper-evident, and readable by any parquet-capable
+  tool (`read_parquet('lake/spans/date=*/*.parquet')`).
+- **Export** — incremental against a per-table event-time watermark in
+  `<lake>/_meta.json` (tmp+rename, advanced only after every table
+  succeeded → idempotent retries). `manual_experiments` exports as a full
+  snapshot per run (records mutate through their review lifecycle); its
+  audit table exports incrementally on `changed_at_ns`. Runs on
+  `KRONIKA_LAKE_INTERVAL` (default `24h`) or on demand via
+  `POST /api/lake/export`; `GET /api/lake/status` shows watermarks, files
+  and bytes.
+- **Retention** — `KRONIKA_RETENTION_DAYS=0` (default) keeps everything.
+  When >0, hot rows older than the cutoff are deleted **only if already
+  exported** (`ts_ns <= watermark`), through the single-writer channel.
+  `manual_experiment_audit` and `manual_experiments` are never deleted:
+  append-only compliance evidence in both tiers.
+
+Caveat (event-time watermarking): rows arriving with `ts_ns` at or below
+the current watermark are invisible to incremental export — irrelevant for
+real-time telemetry; re-export from scratch after hand-backfills. See
+ADR 0005.
+
 ## Schema v2
 
 Wide, ClickHouse-exporter-aligned tables: `spans`, `logs`, `metric_sums`,
@@ -123,14 +157,8 @@ table — it is `org.yaml` (`KRONIKA_ORG_FILE`, default `<db dir>/org.yaml`)
 loaded at daemon start; org rollups are computed at read time from the
 latest-run scoring SQL (see ADR 0004).
 
-## Roadmap: lake export
+## Roadmap: external tooling on the lake
 
-Nightly/scheduled export of the wide tables to a Parquet lake:
-
-```sql
-COPY spans TO 'lake/spans' (FORMAT PARQUET, PARTITION_BY (date));
-```
-
-with `date` derived from `ts_ns`. The DuckDB store stays the hot tier; the
-Parquet lake is the durable, shareable cold tier (and the future Mosaic /
-external-tooling substrate).
+The parquet lake (above) is the substrate for future external tooling —
+any parquet-capable engine can query kronika's history without touching
+the hot store.

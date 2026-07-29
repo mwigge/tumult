@@ -50,6 +50,9 @@ services:
       # /data/org.yaml is the default lookup path; KRONIKA_ORG_FILE
       # overrides it (documented here for discoverability).
       # KRONIKA_ORG_FILE: /data/org.yaml
+      # Parquet lake: export into /data/lake on the default 24h interval;
+      # retention OFF — the demo accumulates, never deletes.
+      KRONIKA_RETENTION_DAYS: "0"
     volumes:
       - kronika-demo-data:/data
       - ../demo/org.yaml:/data/org.yaml:ro

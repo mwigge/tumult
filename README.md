@@ -21,6 +21,15 @@ reports — with a guarded AI analytics layer in later phases.
 - **Embedded DuckDB store** — wide, ClickHouse-exporter-aligned tables +
   `MAP(VARCHAR, VARCHAR)` attrs; single-writer with coexisting read-only
   readers (tumult-analytics pattern).
+- **Parquet lake + retention** — incremental, watermark-driven export of
+  every table to immutable day-partitioned parquet files
+  (`KRONIKA_LAKE_DIR`, default `<db dir>/lake`) on a scheduled daemon job
+  (`KRONIKA_LAKE_INTERVAL`, default `24h`) or `POST /api/lake/export`;
+  `GET /api/lake/status` reports watermarks/files/bytes. Optional
+  retention (`KRONIKA_RETENTION_DAYS`, default 0 = keep forever) deletes
+  only already-exported hot rows; the manual-evidence tables are never
+  deleted. Immutability as a compliance feature: write-once parquet +
+  the hash-chained audit = a WORM-shaped evidence trail (ADR 0005).
 - **Domain-native schema** — promotes the tumult `resilience.*` metadata
   standard (v2.0) into materialized columns: experiment identity, outcome,
   fault taxonomy, target, hypothesis verdict, recovery time.
@@ -191,6 +200,9 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 | `KRONIKA_METRICS_DIR` | `metrics/` | semantic metric definitions |
 | `KRONIKA_ORG_FILE` | `<db dir>/org.yaml` | org hierarchy for scores/tree + R1 By-domain |
 | `KRONIKA_REPORT_INTERVAL` | off | automatic digest interval (`45s`, `30m`, `1h`, `1d`) |
+| `KRONIKA_LAKE_DIR` | `<db dir>/lake` | parquet lake root (day-partitioned immutable export) |
+| `KRONIKA_LAKE_INTERVAL` | `24h` | lake export interval; `0`/`off` disables the job |
+| `KRONIKA_RETENTION_DAYS` | `0` (keep forever) | delete already-exported hot rows older than N days; the manual-evidence tables are never deleted |
 | `KRONIKA_LLM_BASE_URL` | `http://localhost:11434/v1` | LLM endpoint (Ollama) |
 | `KRONIKA_LLM_API_KEY` | — | LLM API key |
 | `KRONIKA_LLM_MODEL` | `qwen2.5:7b` | LLM model |

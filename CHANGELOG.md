@@ -8,10 +8,36 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-29
+
+### Added
+- **Parquet lake export + retention** (`kronika_store::lake`, ADR 0005):
+  incremental, watermark-driven export of `spans`, `logs`, the three
+  metric tables and `manual_experiment_audit` to immutable day-partitioned
+  parquet files (`<lake>/<table>/date=<d>/data-<run>.parquet`), plus a
+  full-snapshot export of `manual_experiments` per run. Watermarks live in
+  `<lake>/_meta.json` (tmp+rename; advanced only after every table
+  succeeds → idempotent re-runs). Scheduled in `kronikad` on
+  `KRONIKA_LAKE_INTERVAL` (default `24h`, `0`/`off` disables) into
+  `KRONIKA_LAKE_DIR` (default `<db dir>/lake`); on-demand via
+  `POST /api/lake/export`; status at `GET /api/lake/status`. Retention
+  (`KRONIKA_RETENTION_DAYS`, default 0 = keep forever) deletes hot rows
+  only when already exported (`ts_ns <= watermark`) through the
+  single-writer channel; `manual_experiment_audit` and
+  `manual_experiments` are never deleted (append-only compliance
+  evidence). Clean-room implementation — OpenObserve (AGPL-3.0) lent
+  ideas, no code.
+- **Research docs**: `docs/research-openobserve-gap.md` (capability gap +
+  AGPL/Apache boundary + borrow-list) and `docs/research-ui-patterns.md`
+  (15-pattern observability UI catalog with per-pattern status/effort).
+
 ### Changed
 - **Relicensed MIT → Apache-2.0** (LICENSE, workspace `Cargo.toml`,
   `web/package.json`, README). Added a third-party attributions section
   to the README (ECharts NOTICE, zrender, tslib, Typst, DuckDB, OFL fonts).
+- Read-only store connections now document their snapshot semantics: a
+  long-lived `Reader` pins its snapshot at open and does not observe later
+  commits — open a fresh reader per unit of work.
 
 ## [0.5.0] — 2026-07-29
 
