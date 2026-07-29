@@ -24,6 +24,9 @@ execution) and smedja.
   journal JSON) ──────▶│  (kronikad import <file>)    │              │
                        │        ▼                     ▼              │
                         │  single bounded mpsc channel (backpressure) │
+                        │    ▲ Batch::Exec — manual-evidence lifecycle│
+                        │    │ closures from kronika-api ride the same│
+                        │    │ channel (the API opens no write conn)  │
                         │        ▼                                    │
                         │  kronika-store WRITER (single DuckDB conn)  │
                         └────────┬───────────────────────────────────┘
@@ -33,6 +36,8 @@ execution) and smedja.
                     │  ~/.kronika/kronika.duckdb  (dir mode 0o700)  │
                     │  spans · logs · metric_sums/gauges/histograms │
                     │  import_batches · view: experiment_runs       │
+                    │  manual_experiments · manual_experiment_audit │
+                    │  evidence_attachments (schema v2)             │
                     └────────┬─────────────────┘
               read-only conns (AccessMode::ReadOnly, many, coexist)
               ┌──────────────┼───────────────────────────┐
@@ -103,12 +108,20 @@ DuckDB is single-writer per file; a read-write open holds an exclusive lock.
 - **At rest** — DuckDB has no encryption at rest; the store directory is
   created `0o700` and should sit on an encrypted volume for sensitive data.
 
-## Schema v1
+## Schema v2
 
 Wide, ClickHouse-exporter-aligned tables: `spans`, `logs`, `metric_sums`,
 `metric_gauges`, `metric_histograms` (+ `import_batches` for manual imports,
 `schema_meta` versioning). Rollup view `experiment_runs` projects one row per
 `resilience.experiment` span.
+
+v2 adds manual evidence: `manual_experiments` (content + draft → submitted →
+verified/rejected lifecycle + provenance + `content_hash`),
+`manual_experiment_audit` (append-only, `prev_hash → new_hash` hash chain),
+and `evidence_attachments` (external URIs only). The org hierarchy is not a
+table — it is `org.yaml` (`KRONIKA_ORG_FILE`, default `<db dir>/org.yaml`)
+loaded at daemon start; org rollups are computed at read time from the
+latest-run scoring SQL (see ADR 0004).
 
 ## Roadmap: lake export
 

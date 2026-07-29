@@ -28,8 +28,11 @@ reports — with a guarded AI analytics layer in later phases.
   (`metrics/*.yaml`) compiled to strictly validated SQL (injection-impossible
   by construction).
 - **Reports** — compliance-grade documents (v2): R1 executive resilience
-  digest, R3 per-run game-day report and an R2 evidence-pack skeleton
-  (DORA/NIS2/ISO 27001/SOC 2 clause lists) rendered as embedded-Typst PDFs
+  digest (with a By-domain org rollup and an automated/manual evidence-mix
+  footnote), R3 per-run game-day report and an R2 evidence-pack skeleton
+  (DORA/NIS2/ISO 27001/SOC 2 clause lists; the test register carries
+  manual-evidence provenance and a per-entry attestation appendix)
+  rendered as embedded-Typst PDFs
   plus print-HTML previews via `kronika-docs`, generated from the UI or
   `POST /api/reports/v2/generate`, persisted with SHA-256 metas under
   `<db dir>/reports/v2/`. Resilience scoring (Gremlin-style with 30-day
@@ -37,6 +40,26 @@ reports — with a guarded AI analytics layer in later phases.
   self-contained HTML metric digests (`kronikad report --metric …`) remain:
   set `KRONIKA_REPORT_INTERVAL=1h` and the daemon renders one digest per
   interval into `<db dir>/reports/`, browsable from the UI.
+- **Org hierarchy rollups** — a Backstage-style `org.yaml`
+  (`KRONIKA_ORG_FILE`, default `<db dir>/org.yaml`) declares a
+  single-parent tree (team → unit → domain) with glob assignments and
+  per-experiment criticality (critical ×3, high ×2). Node scores are
+  criticality-weighted means recomputed from every leaf in the subtree —
+  never averages of child means — with scored/expected coverage next to
+  every number and unmapped experiments visible in a synthetic
+  `(unassigned)` bucket. Served at `GET /api/scores/tree` and browsable on
+  the UI's Scores page (treemap → click-to-drill → tree table).
+- **Manual evidence** — hand-executed tests (game days, tabletops,
+  failovers, pentests, drills) entered via `POST /api/manual/experiments`
+  or the UI's Manual page: a draft → submitted → verified/rejected
+  lifecycle with mandatory attestation on submit, reviewer ≠ enterer
+  enforcement (DORA Art. 24(4) / ISO 27001 A.5.35), an append-only
+  hash-chained audit trail, and URI-only evidence attachments. Verified
+  records score exactly like automated runs (inconclusive excluded);
+  drafts/submitted count toward coverage as pending. Bulk import
+  (`POST /api/manual/import`) lands records as attested drafts. No auth:
+  the "acting as" name is a plain string — workflow scaffolding, not
+  access control.
 - **Query API** — read-only JSON under `/api/*` (overview KPIs with deltas
   and sparklines, bucketed time series for any semantic metric, experiment
   list/detail with waterfall spans + correlated logs, logs search + volume,
@@ -166,6 +189,7 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 | `KRONIKA_OTLP_HTTP_ADDR` | `0.0.0.0:4318` | OTLP/HTTP listen address |
 | `KRONIKA_DB` | `~/.kronika/kronika.duckdb` | DuckDB store path |
 | `KRONIKA_METRICS_DIR` | `metrics/` | semantic metric definitions |
+| `KRONIKA_ORG_FILE` | `<db dir>/org.yaml` | org hierarchy for scores/tree + R1 By-domain |
 | `KRONIKA_REPORT_INTERVAL` | off | automatic digest interval (`45s`, `30m`, `1h`, `1d`) |
 | `KRONIKA_LLM_BASE_URL` | `http://localhost:11434/v1` | LLM endpoint (Ollama) |
 | `KRONIKA_LLM_API_KEY` | — | LLM API key |
@@ -176,15 +200,20 @@ Configuration (all env vars, see `kronika-ingest/src/config.rs`):
 ```
 bin/kronikad        daemon + CLI (serve / import / report), embeds + serves web/
 bin/kronika-demo    synthetic chaos generator (optional demo backfill)
-crates/kronika-store    embedded DuckDB store (single-writer + RO readers)
+crates/kronika-store    embedded DuckDB store (single-writer + RO readers),
+                        manual evidence tables + lifecycle
 crates/kronika-otel     OTLP proto → row translation (pure)
 crates/kronika-ingest   gRPC/HTTP servers, writer channel, manual import
 crates/kronika-metrics  YAML semantic layer → validated SQL (+ bucketed series)
 crates/kronika-report   report model, HTML renderer, scheduler
 crates/kronika-ai       Llm trait, OpenAI-compatible client, SQL guardrails
-crates/kronika-api      read-only JSON query API backing the UI (/api/*)
+crates/kronika-api      JSON query API backing the UI (/api/*, incl. manual writes
+                        via the daemon's single writer)
+crates/kronika-docs     compliance report pipeline (Typst PDF/HTML), resilience
+                        scoring, org hierarchy rollups
 metrics/            starter semantic metric definitions
 demo/experiments/   tumult experiment suite run by the docker demo seed
+demo/org.yaml       demo org hierarchy (mounted to /data/org.yaml)
 web/                SvelteKit SPA (embedded into kronikad; see web/README.md)
 docs/               research, architecture, ADRs
 docker/             Dockerfile, one-command demo stack, optional otel-collector dev tooling
@@ -195,8 +224,13 @@ docker/             Dockerfile, one-command demo stack, optional otel-collector 
 - [docs/research.md](docs/research.md) — the research behind the decisions
 - [docs/architecture.md](docs/architecture.md) — components, data flow,
   single-writer model, lake-export roadmap
+- [docs/research-org-rollups.md](docs/research-org-rollups.md) /
+  [docs/research-manual-evidence.md](docs/research-manual-evidence.md) —
+  v0.5.0 research (weighted org rollups; attested manual evidence)
 - [docs/adr/0001-stack.md](docs/adr/0001-stack.md),
-  [docs/adr/0002-ai-layer.md](docs/adr/0002-ai-layer.md)
+  [docs/adr/0002-ai-layer.md](docs/adr/0002-ai-layer.md),
+  [docs/adr/0003-typst-report-pipeline.md](docs/adr/0003-typst-report-pipeline.md),
+  [docs/adr/0004-org-hierarchy-and-manual-evidence.md](docs/adr/0004-org-hierarchy-and-manual-evidence.md)
 
 ## Development
 

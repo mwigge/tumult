@@ -6,6 +6,82 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 
 ---
 
+## [0.5.0] — 2026-07-29
+
+### Added
+- **Org hierarchy rollups** (`kronika_docs::org`, ADR 0004): a
+  Backstage-style `org.yaml` (`nodes` / `assignments` / `defaults`)
+  declares a single-parent tree of arbitrary depth; experiments map to
+  teams via `*`-only globs with per-name criticality (critical ×3,
+  high ×2). Node scores are criticality-weighted means **recomputed from
+  all leaves in the subtree** (never averages of child means) with
+  scored/expected coverage; unmapped experiments surface in a visible
+  synthetic `(unassigned)` node under the implicit company root. Loaded
+  from `KRONIKA_ORG_FILE` (default `<db dir>/org.yaml`); computed at read
+  time — no table migration for Part A.
+- **`GET /api/scores/tree?node=&range=`** — one node's score, band, delta,
+  10-point sparkline and one level of child rollups (weakest first), with
+  node-path and range validation.
+- **Scores UI page** — KPI cards + ECharts treemap at the root (area ∝
+  leaves × criticality, band hues from Okabe–Ito), click-to-drill with
+  breadcrumb and `?node=` URL state; indented tree table (score, band
+  glyph, Δ, sparkline, coverage, weakest member, weakest-first) below the
+  root.
+- **Manual evidence** (schema v2, `kronika_store::manual`, ADR 0004): new
+  `manual_experiments`, `manual_experiment_audit` and
+  `evidence_attachments` tables. Records (game days, tabletops, failovers,
+  pentests, drills) move draft → submitted → verified/rejected: full
+  mutability in draft only, mandatory attestation on submit, reviewer ≠
+  enterer enforcement on verify/reject (same-user → 400), mandatory note
+  on reject, and an append-only SHA-256 hash-chained audit trail.
+  Attachments are external URIs only (`url`/`ticket`; no file storage).
+  IDs are hand-rolled monotonic ULIDs.
+- **`/api/manual/*` endpoints** — create/list/get/update drafts,
+  submit/verify/reject, attachments, and `POST /api/manual/import`
+  (bulk-creates attested **drafts** in one transaction under an
+  `import_batches` row — attestation is never bypassed). Mutations ride
+  the daemon's single writer via a new `Batch::Exec` ingest variant; the
+  API opens no write connection.
+- **Manual evidence in scoring and views**: verified records score exactly
+  like automated runs (passed 100 / **partial 75** via a new
+  `RunState::Partial` / failed 50; **inconclusive is excluded** — it still
+  counts toward coverage's expected); drafts/submitted count toward
+  coverage as pending with zero weight. `/api/experiments` UNIONs manual
+  rows with an `origin` column and origin filter; scoring keys leaves per
+  `(name, origin)`.
+- **Manual UI page** — two-section entry form (test record + attestation;
+  save draft / save & submit), verification queue (verify/reject with
+  note), and a records browser with audit-trail and attachment detail. The
+  "acting as" name is a plain string (no auth — documented).
+- **Reports**: R1 gains a "By domain" table (top-level org children:
+  score, band, coverage, weakest) and an evidence-mix footnote ("N
+  automated, M verified manual"); R2's test register carries provenance
+  (origin, executed vs entered dates, verifier) with a per-entry
+  attestation appendix for verified manual records; the content model
+  gains `Block::H3`.
+- **Demo**: `demo/org.yaml` (three-level hierarchy over the seeded suite,
+  one experiment deliberately unassigned) mounted at `/data/org.yaml`; the
+  seed service additionally creates a verified manual gameday (alice →
+  bob), a submitted tabletop (pending) and a draft drill.
+- Docs: [docs/research-org-rollups.md](docs/research-org-rollups.md),
+  [docs/research-manual-evidence.md](docs/research-manual-evidence.md),
+  [docs/adr/0004-org-hierarchy-and-manual-evidence.md](docs/adr/0004-org-hierarchy-and-manual-evidence.md).
+
+### Changed
+- Schema version 1 → 2 (additive; existing stores migrate on open).
+- `ApiState` now carries the org tree and (in the daemon) the ingest
+  handle; `build_executive` takes an `&OrgTree`.
+- kronika-api depends on kronika-ingest for `Batch::Exec`.
+
+### Known limitations
+- An experiment name present in both origins yields one scored leaf per
+  origin (documented double-count edge). Pending manual records are read
+  as-of-now for sparkline history (score history is exact; coverage
+  history approximate). Per-child Δ/sparklines are not computed in the
+  tree table (cost). No auth — "acting as" names are unverified strings.
+
+---
+
 ## [0.4.0] — 2026-07-28
 
 ### Added

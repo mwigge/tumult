@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-ai"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -2074,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-api"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "kronika-ai",
@@ -2094,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-demo"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-docs"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "kronika-store",
  "serde",
@@ -2122,7 +2122,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-ingest"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "csv",
@@ -2143,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-metrics"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -2153,7 +2153,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-otel"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "kronika-store",
  "opentelemetry-proto",
@@ -2162,7 +2162,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-report"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "kronika-ai",
  "kronika-metrics",
@@ -2176,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "kronika-store"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "duckdb",
  "serde",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "kronikad"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "axum",
