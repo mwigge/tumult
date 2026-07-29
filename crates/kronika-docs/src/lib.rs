@@ -9,8 +9,10 @@ pub mod builders;
 pub mod html;
 pub mod markup;
 pub mod model;
+pub mod org;
 pub mod scoring;
 pub mod svg;
 pub mod typst_pdf;
 
 pub use model::{Block, Cell, ChartSpec, DocMeta, ReportDoc, TemplateKind};
+pub use org::{OrgNodeScore, OrgTree, ScoredLeaf};
