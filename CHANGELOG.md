@@ -39,6 +39,13 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
   below. Tabular numerals adopted in `theme.css` (`table.data`, `.mono`).
 - Docs: `docs/research-compliance.md`, `docs/research-ux.md`,
   `docs/adr/0003-typst-report-pipeline.md`.
+- Report visual polish: composed covers (wordmark + accent rule,
+  classification chip, prominent period, document control anchored to the
+  page bottom), R1 score-trend line and coverage donut, per-experiment bar
+  charts with value labels, balanced KPI grids, glyph+label status cells
+  (`Cell::glyph`, never hue alone), readable R3 timeline statuses (OTel
+  codes mapped), and fraction-width table columns with justification and
+  hyphenation disabled in cells.
 
 ### Roadmap (deferred from this cycle)
 - ⌘K command palette (wants a global id-search backend first).

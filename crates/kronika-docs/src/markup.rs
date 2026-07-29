@@ -7,7 +7,7 @@ use typst::foundations::Bytes;
 use typst::syntax::VirtualPath;
 
 use crate::html::{fmt_date, fmt_datetime};
-use crate::model::{Block, DocMeta, ReportDoc, TemplateKind};
+use crate::model::{Block, Cell, DocMeta, ReportDoc, TemplateKind};
 
 /// Escape characters that carry meaning in Typst markup.
 fn esc(s: &str) -> String {
@@ -82,7 +82,8 @@ pub fn doc_to_typst(doc: &ReportDoc) -> (String, HashMap<VirtualPath, Bytes>) {
                 headers,
                 rows,
                 numeric_cols,
-            } => table_block(&mut out, headers, rows, numeric_cols),
+                widths,
+            } => table_block(&mut out, headers, rows, numeric_cols, widths.as_deref()),
             Block::Bullets(items) => {
                 out.push_str("\n#list(\n");
                 for item in items {
@@ -120,22 +121,50 @@ pub fn doc_to_typst(doc: &ReportDoc) -> (String, HashMap<VirtualPath, Bytes>) {
 }
 
 fn cover(out: &mut String, meta: &DocMeta) {
-    out.push_str("#text(size: 9pt, weight: \"bold\", tracking: 0.25em)[KRONIKA]\n");
-    out.push_str("#v(52pt)\n");
+    // Brand wordmark + accent rule (single accent color across the doc).
+    out.push_str("#text(size: 9pt, weight: \"bold\", tracking: 0.3em)[KRONIKA]\n");
+    out.push_str("#v(6pt)\n#line(length: 100%, stroke: 1.2pt + rgb(\"#0072B2\"))\n");
+    out.push_str("#v(96pt)\n");
+
+    // Classification chip: bordered pill, letterspaced caps.
     let _ = writeln!(
         out,
-        "#text(font: \"Source Serif 4\", size: 25pt)[{}]",
+        "#box(stroke: 0.6pt + luma(110), radius: 9pt, inset: (x: 9pt, y: 3.5pt))[#text(size: 7.5pt, tracking: 0.18em, fill: luma(70))[#smallcaps[{}]]]",
+        esc(&meta.classification)
+    );
+    out.push_str("#v(16pt)\n");
+
+    let _ = writeln!(
+        out,
+        "#text(font: \"Source Serif 4\", size: 27pt)[{}]",
         esc(&meta.title)
     );
-    out.push_str("#v(10pt)\n");
+    out.push_str("#v(12pt)\n");
     let _ = writeln!(
         out,
-        "#text(size: 11pt, fill: luma(90))[{} #h(6pt) · #h(6pt) {}]",
+        "#text(size: 12pt, fill: luma(80))[{}]",
         template_label(meta.template),
-        esc(&meta.classification),
     );
-    out.push_str("#v(30pt)\n");
+    // Period (or data-as-of for single-run reports) stated prominently.
+    if let Some((from, to)) = meta.period {
+        out.push_str("#v(8pt)\n");
+        let _ = writeln!(
+            out,
+            "#text(size: 11.5pt, weight: \"semibold\")[Reporting period: {} – {}]",
+            esc(&fmt_date(from)),
+            esc(&fmt_date(to))
+        );
+    } else {
+        out.push_str("#v(8pt)\n");
+        let _ = writeln!(
+            out,
+            "#text(size: 11.5pt, weight: \"semibold\")[Data as of {}]",
+            esc(&fmt_date(meta.data_as_of_ns))
+        );
+    }
 
+    // Document control anchored to the bottom of the cover page.
+    out.push_str("#v(1fr)\n");
     let mut rows: Vec<(String, String)> = vec![
         ("Document".into(), meta.doc_id.clone()),
         ("Version".into(), meta.version.clone()),
@@ -154,23 +183,28 @@ fn cover(out: &mut String, meta: &DocMeta) {
     if let Some(e) = &meta.experiment_id {
         rows.push(("Experiment".into(), e.clone()));
     }
-    out.push_str("#table(\n  columns: (auto, 1fr),\n  stroke: none,\n  inset: (x: 0pt, y: 4pt),\n");
-    for (i, (k, v)) in rows.iter().enumerate() {
-        if i > 0 {
-            out.push_str("  table.hline(stroke: 0.5pt + luma(210)),\n");
-        }
+    out.push_str(
+        "#table(\n  columns: (30%, 70%),\n  stroke: none,\n  inset: (x: 0pt, y: 5.5pt),\n",
+    );
+    out.push_str("  table.hline(stroke: 0.8pt + luma(140)),\n");
+    for (k, v) in &rows {
         let _ = writeln!(
             out,
-            "  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[{}]]], [{}],",
+            "  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[{}]]], [#text(size: 10pt)[{}]],",
             esc(k),
             esc(v)
         );
+        out.push_str("  table.hline(stroke: 0.5pt + luma(215)),\n");
     }
     out.push_str(")\n#pagebreak()\n");
 }
 
 fn kpis_block(out: &mut String, kpis: &[(String, String, Option<String>)]) {
-    let cols = kpis.len().clamp(1, 4);
+    // Balanced rows: 4 → 2×2, 5 → 3+2, otherwise one row of ≤ 3.
+    let cols = match kpis.len() {
+        4 => 2,
+        n => n.clamp(1, 3),
+    };
     let colspec = vec!["1fr"; cols].join(", ");
     let _ = writeln!(out, "\n#grid(\n  columns: ({colspec}),\n  gutter: 10pt,");
     for (label, value, sub) in kpis {
@@ -195,20 +229,47 @@ fn kpis_block(out: &mut String, kpis: &[(String, String, Option<String>)]) {
     out.push_str(")\n");
 }
 
-fn kv_block(out: &mut String, kvs: &[(String, String)]) {
+/// Render one cell: plain text or glyph + label status (glyph colored,
+/// label in body color — never hue alone).
+fn cell_markup(cell: &Cell, numeric: bool) -> String {
+    match cell {
+        Cell::Text(t) => {
+            if numeric {
+                format!("[#text(number-width: \"tabular\")[{}]]", esc(t))
+            } else {
+                format!("[{}]", esc(t))
+            }
+        }
+        Cell::Status(s) => {
+            let (glyph, color) = Cell::glyph(s);
+            format!(
+                "[#text(fill: rgb(\"{color}\"))[{glyph}] #text(number-width: \"tabular\")[{}]]",
+                esc(s)
+            )
+        }
+    }
+}
+
+fn kv_block(out: &mut String, kvs: &[(String, Cell)]) {
     out.push_str("\n#table(\n  columns: (auto, 1fr),\n  stroke: none,\n  inset: (x: 0pt, y: 3.5pt),\n  column-gutter: 16pt,\n");
     for (k, v) in kvs {
         let _ = writeln!(
             out,
-            "  [#text(size: 9pt, fill: luma(100))[#smallcaps[{}]]], [{}],",
+            "  [#text(size: 9pt, fill: luma(100))[#smallcaps[{}]]], {},",
             esc(k),
-            esc(v)
+            cell_markup(v, false)
         );
     }
     out.push_str(")\n");
 }
 
-fn table_block(out: &mut String, headers: &[String], rows: &[Vec<String>], numeric_cols: &[usize]) {
+fn table_block(
+    out: &mut String,
+    headers: &[String],
+    rows: &[Vec<Cell>],
+    numeric_cols: &[usize],
+    widths: Option<&[f64]>,
+) {
     let n = headers.len().max(1);
     let aligns: Vec<&str> = (0..n)
         .map(|i| {
@@ -219,9 +280,21 @@ fn table_block(out: &mut String, headers: &[String], rows: &[Vec<String>], numer
             }
         })
         .collect();
+    let colspec = match widths {
+        Some(ws) if ws.len() == n => format!(
+            "({})",
+            ws.iter()
+                .map(|w| format!("{w}fr"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        _ => format!("{n}"),
+    };
+    // Cells never justify and never hyphenate: narrow columns stay clean.
+    out.push_str("\n#[\n#set par(justify: false)\n#set text(hyphenate: false)\n");
     let _ = writeln!(
         out,
-        "\n#table(\n  columns: {n},\n  stroke: none,\n  inset: (x: 6pt, y: 4.5pt),\n  align: ({}),",
+        "#table(\n  columns: {colspec},\n  stroke: none,\n  inset: (x: 6pt, y: 4.5pt),\n  align: ({}),",
         aligns.join(", ")
     );
     out.push_str("  table.hline(stroke: 0.8pt + luma(140)),\n");
@@ -236,14 +309,10 @@ fn table_block(out: &mut String, headers: &[String], rows: &[Vec<String>], numer
     out.push_str("  ),\n  table.hline(stroke: 0.5pt + luma(200)),\n");
     for row in rows {
         for (i, cell) in row.iter().enumerate() {
-            if numeric_cols.contains(&i) {
-                let _ = writeln!(out, "  [#text(number-width: \"tabular\")[{}]],", esc(cell));
-            } else {
-                let _ = writeln!(out, "  [{}],", esc(cell));
-            }
+            let _ = writeln!(out, "  {},", cell_markup(cell, numeric_cols.contains(&i)));
         }
     }
-    out.push_str("  table.hline(stroke: 0.8pt + luma(140)),\n)\n");
+    out.push_str("  table.hline(stroke: 0.8pt + luma(140)),\n)\n]\n");
 }
 
 fn signoff_block(out: &mut String, entries: &[(String, String)]) {
@@ -251,11 +320,11 @@ fn signoff_block(out: &mut String, entries: &[(String, String)]) {
     let colspec = vec!["1fr"; cols].join(", ");
     let _ = writeln!(
         out,
-        "\n#v(18pt)\n#grid(\n  columns: ({colspec}),\n  gutter: 28pt,"
+        "\n#v(12pt)\n#grid(\n  columns: ({colspec}),\n  gutter: 28pt,"
     );
     for (role, name) in entries {
         out.push_str(
-            "  [\n    #v(26pt)\n    #line(length: 100%, stroke: 0.6pt + luma(110))\n    #v(2pt)\n",
+            "  [\n    #v(20pt)\n    #line(length: 100%, stroke: 0.6pt + luma(110))\n    #v(2pt)\n",
         );
         let _ = writeln!(
             out,
@@ -317,10 +386,19 @@ mod tests {
                 Block::Table {
                     headers: vec!["Target".into(), "Experiments".into(), "Score".into()],
                     rows: vec![
-                        vec!["payments-api".into(), "6".into(), "88".into()],
-                        vec!["ledger-db".into(), "2".into(), "50".into()],
+                        vec![
+                            Cell::text("payments-api"),
+                            Cell::text("6"),
+                            Cell::status("good"),
+                        ],
+                        vec![
+                            Cell::text("ledger-db"),
+                            Cell::text("2"),
+                            Cell::status("poor"),
+                        ],
                     ],
                     numeric_cols: vec![1, 2],
+                    widths: None,
                 },
                 Block::Chart(ChartSpec::Bars(vec![
                     ("payments-api".into(), 88.0),

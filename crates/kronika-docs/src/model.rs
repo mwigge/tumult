@@ -40,6 +40,43 @@ pub struct DocMeta {
     pub experiment_id: Option<String>,
 }
 
+/// A table/key-value cell: plain text or a status value rendered as
+/// glyph + label (never hue alone).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Cell {
+    Text(String),
+    Status(String),
+}
+
+impl Cell {
+    pub fn text(s: impl Into<String>) -> Self {
+        Self::Text(s.into())
+    }
+    pub fn status(s: impl Into<String>) -> Self {
+        Self::Status(s.into())
+    }
+
+    /// Glyph + Okabe-Ito color for a status/severity string. Outcomes,
+    /// run states, severities and OTel status codes share the mapping:
+    /// green ● good, orange ▲ warning, vermillion × bad, grey ○ unknown.
+    /// (Glyphs restricted to ● ▲ × ○ — present in the vendored Inter.)
+    #[must_use]
+    pub fn glyph(status: &str) -> (&'static str, &'static str) {
+        match status.to_ascii_lowercase().as_str() {
+            "completed" | "passed" | "ok" | "low" | "good" | "met" => ("●", "#009E73"),
+            "deviated" | "stale" | "medium" | "warning" | "fair" => ("▲", "#E69F00"),
+            "failed" | "error" | "high" | "critical" | "poor" | "not met" => ("×", "#D55E00"),
+            _ => ("○", "#6B7280"),
+        }
+    }
+}
+
+impl From<String> for Cell {
+    fn from(s: String) -> Self {
+        Self::Text(s)
+    }
+}
+
 /// One content block of a report.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
@@ -49,12 +86,14 @@ pub enum Block {
     /// (label, value, optional sub-line) KPI cards.
     Kpis(Vec<(String, String, Option<String>)>),
     /// Key/value definition list (document control, headers).
-    KeyValues(Vec<(String, String)>),
-    /// Tables: light horizontal rules, right-aligned numeric columns.
+    KeyValues(Vec<(String, Cell)>),
+    /// Tables: light horizontal rules, right-aligned numeric columns,
+    /// optional relative column widths (`[3.0, 1.0]` → `3fr, 1fr`).
     Table {
         headers: Vec<String>,
-        rows: Vec<Vec<String>>,
+        rows: Vec<Vec<Cell>>,
         numeric_cols: Vec<usize>,
+        widths: Option<Vec<f64>>,
     },
     Bullets(Vec<String>),
     Chart(ChartSpec),

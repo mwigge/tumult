@@ -88,6 +88,10 @@ Print-first, editorial rather than dashboard-y:
 - Charts are vector SVGs (Okabe–Ito palette, direct labels, no legends
   where avoidable), shared verbatim between the PDF and the HTML preview.
 - Every chart caption carries "Source: kronika · data as of …".
+- **Status is glyph + label, never hue alone** — outcomes, run states,
+  severities and OTel status codes share one mapping (`Cell::glyph`):
+  green ● good, orange ▲ warning, vermillion × bad, grey ○ unknown. Glyphs
+  are restricted to ● ▲ × ○, all present in the vendored Inter.
 
 The HTML preview (`GET /api/reports/v2/{id}/html`) is the same document
 styled for the browser iframe with `@page` rules so it also prints cleanly

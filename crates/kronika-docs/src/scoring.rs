@@ -53,6 +53,8 @@ pub struct ExperimentScore {
     pub band: String,
     pub last_run_ns: Option<i64>,
     pub last_outcome: Option<String>,
+    /// Fault severity of the latest run (`fault_severity` on the root span).
+    pub severity: Option<String>,
     pub runs: u64,
 }
 
@@ -80,7 +82,7 @@ pub struct Scorecard {
 /// Latest run per experiment: (ts_ns, outcome) for the most recent root
 /// span, plus run counts. Outcome joins tumult's `experiment.completed` log.
 const LATEST_SQL: &str = "SELECT s.experiment_name AS name, s.target_system AS target, \
-     s.ts_ns AS ts, l.log_attrs['status'] AS status, \
+     s.ts_ns AS ts, s.fault_severity AS severity, l.log_attrs['status'] AS status, \
      (SELECT COUNT(*) FROM spans r WHERE r.span_name = 'resilience.experiment' \
       AND r.experiment_name = s.experiment_name AND r.ts_ns <= {AS_OF}) AS runs \
      FROM spans s LEFT JOIN logs l \
@@ -108,6 +110,28 @@ pub fn compute(
     Ok(card)
 }
 
+/// Portfolio score sampled at `points` evenly spaced instants across
+/// `(as_of_ns - period_ns, as_of_ns]` — the R1 trend chart. X values are
+/// bucket indices `1..=points`.
+///
+/// # Errors
+/// Returns the store error string when a query fails.
+pub fn portfolio_series(
+    reader: &Reader,
+    as_of_ns: i64,
+    period_ns: i64,
+    points: usize,
+) -> Result<Vec<(f64, f64)>, String> {
+    let points = points.max(2) as i64;
+    let step = period_ns / points;
+    let mut out = Vec::with_capacity(points as usize);
+    for i in 1..=points {
+        let t = as_of_ns - period_ns + step * i;
+        out.push((i as f64, compute_as_of(reader, t)?.portfolio));
+    }
+    Ok(out)
+}
+
 fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
     let sql = LATEST_SQL.replace("{AS_OF}", &as_of_ns.to_string());
     let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
@@ -130,6 +154,10 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
             .get("runs")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
+        let severity = row
+            .get("severity")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
         // tumult outcomes: Completed passes; Deviated/Failed fail; a missing
         // outcome (incomplete run) counts as a failed attempt — conservative.
         let passed = outcome.as_deref() == Some("Completed");
@@ -142,6 +170,7 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
             band: band(f64::from(score)).to_string(),
             last_run_ns: ts,
             last_outcome: outcome,
+            severity,
             runs,
         });
     }

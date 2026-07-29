@@ -28,10 +28,10 @@ pub fn render_svg(spec: &ChartSpec) -> String {
     }
 }
 
-/// Horizontal bars, widest first, with direct value labels.
+/// Horizontal bars in caller order, with direct value labels at bar ends.
 fn bars(rows: &[(String, f64)]) -> String {
-    let label_w = 150.0_f64;
-    let bar_max_w = 260.0_f64;
+    let label_w = 170.0_f64;
+    let bar_max_w = 240.0_f64;
     let row_h = 22.0_f64;
     let max = rows.iter().map(|r| r.1).fold(0.0_f64, f64::max).max(1e-9);
     let h = rows.len() as f64 * row_h + 8.0;
@@ -43,17 +43,26 @@ fn bars(rows: &[(String, f64)]) -> String {
         let w = (v / max * bar_max_w).max(1.0);
         let color = PALETTE[i % PALETTE.len()];
         out.push_str(&format!(
-            "<text x='0' y='{ty:.1}' font-size='10' fill='#333' {FONT}>{label}</text>\
+            "<text x='0' y='{ty:.1}' font-size='9.5' fill='#333' {FONT}>{label}</text>\
              <rect x='{label_w}' y='{y:.1}' width='{w:.1}' height='14' fill='{color}'/>\
-             <text x='{tx:.1}' y='{ty:.1}' font-size='10' fill='#333' {FONT}>{v}</text>",
+             <text x='{tx:.1}' y='{ty:.1}' font-size='9.5' fill='#333' {FONT}>{v}</text>",
             ty = y + 11.0,
             tx = label_w + w + 6.0,
-            label = esc(label),
+            label = esc(&truncate(label, 30)),
             v = fmt_num(*v),
         ));
     }
     out.push_str("</svg>");
     out
+}
+
+/// Ellipsize a label to `max` chars (char-boundary safe).
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max - 1).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// Donut with a legend; shares as glyph + label + percentage.
@@ -125,10 +134,20 @@ fn lines(series: &[(String, Vec<(f64, f64)>)]) -> String {
         xs.iter().copied().fold(f64::INFINITY, f64::min),
         xs.iter().copied().fold(f64::NEG_INFINITY, f64::max),
     );
-    let (y0, mut y1) = (
-        ys.iter().copied().fold(f64::INFINITY, f64::min).min(0.0),
+    let (y0, y1) = (
+        ys.iter().copied().fold(f64::INFINITY, f64::min),
         ys.iter().copied().fold(f64::NEG_INFINITY, f64::max),
     );
+    // Pad the range so the trend shape is readable (no forced zero
+    // baseline — that flattens any score trend into a straight line).
+    // Non-negative series (scores, counts) never dip below zero though.
+    let pad = ((y1 - y0) * 0.15).max(2.0);
+    let y0 = if y0 >= 0.0 {
+        (y0 - pad).max(0.0)
+    } else {
+        y0 - pad
+    };
+    let (y0, mut y1) = (y0, y1 + pad);
     if (y1 - y0).abs() < 1e-9 {
         y1 = y0 + 1.0;
     }
@@ -219,5 +238,15 @@ mod tests {
         let svg = render_svg(&ChartSpec::Lines(vec![("score".into(), vec![(1.0, 87.0)])]));
         assert!(svg.contains("<circle"));
         assert!(svg.contains("score"));
+    }
+
+    #[test]
+    fn long_bar_labels_are_truncated() {
+        let svg = render_svg(&ChartSpec::Bars(vec![(
+            "api-worker freeze — heartbeat recovers after SIGSTOP injection".into(),
+            100.0,
+        )]));
+        assert!(svg.contains('…'), "{svg}");
+        assert!(!svg.contains("SIGSTOP injection"));
     }
 }

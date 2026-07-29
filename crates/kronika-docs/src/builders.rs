@@ -7,7 +7,7 @@ use kronika_store::Reader;
 use sha2::{Digest, Sha256};
 
 use crate::html::{fmt_date, fmt_datetime};
-use crate::model::{Block, ChartSpec, DocMeta, ReportDoc, TemplateKind};
+use crate::model::{Block, Cell, ChartSpec, DocMeta, ReportDoc, TemplateKind};
 use crate::scoring::{self, RunState, Scorecard};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -123,12 +123,40 @@ pub fn build_executive(
         ),
     ]));
 
+    // Score trend across the period (portfolio sampled at 10 instants).
+    let trend = scoring::portfolio_series(reader, as_of_ns, period_ns, 10)?;
+    blocks.push(Block::H2("Score trend".into()));
+    blocks.push(Block::Chart(ChartSpec::Lines(vec![(
+        "portfolio".into(),
+        trend,
+    )])));
+
+    // Per-experiment bars, weakest first (experiments are sorted by score).
+    blocks.push(Block::H2("Experiment scores".into()));
     blocks.push(Block::Chart(ChartSpec::Bars(
-        card.targets
+        card.experiments
             .iter()
-            .map(|t| (t.target.clone(), t.score))
+            .map(|e| (e.name.clone(), f64::from(e.score)))
             .collect(),
     )));
+
+    // Coverage: experiments with ≥ 1 run inside the window vs not.
+    let in_window = runs_in_window(reader, from_ns, as_of_ns)?;
+    let tested_in_window = card
+        .experiments
+        .iter()
+        .filter(|e| in_window.contains(&e.name))
+        .count() as f64;
+    let not_run = card.experiments.len() as f64 - tested_in_window;
+    blocks.push(Block::H2("Coverage".into()));
+    if card.experiments.is_empty() {
+        blocks.push(Block::Paragraph("No experiments on record.".into()));
+    } else {
+        blocks.push(Block::Chart(ChartSpec::Donut(vec![
+            ("Tested in window".into(), tested_in_window),
+            ("Not run in window".into(), not_run),
+        ])));
+    }
 
     blocks.push(Block::H2("Target scores".into()));
     blocks.push(Block::Table {
@@ -144,19 +172,22 @@ pub fn build_executive(
             .iter()
             .map(|t| {
                 vec![
-                    t.target.clone(),
-                    card.experiments
-                        .iter()
-                        .filter(|e| e.target.as_deref().unwrap_or("(untargeted)") == t.target)
-                        .count()
-                        .to_string(),
-                    t.runs.to_string(),
-                    f1(t.score),
-                    t.band.clone(),
+                    Cell::text(t.target.clone()),
+                    Cell::text(
+                        card.experiments
+                            .iter()
+                            .filter(|e| e.target.as_deref().unwrap_or("(untargeted)") == t.target)
+                            .count()
+                            .to_string(),
+                    ),
+                    Cell::text(t.runs.to_string()),
+                    Cell::text(f1(t.score)),
+                    Cell::status(t.band.clone()),
                 ]
             })
             .collect(),
         numeric_cols: vec![1, 2, 3],
+        widths: Some(vec![3.0, 1.1, 0.8, 0.8, 1.0]),
     });
 
     blocks.push(Block::H2("Issues discovered and fixed".into()));
@@ -173,7 +204,7 @@ pub fn build_executive(
         )),
     )));
 
-    blocks.push(Block::H2("Open weaknesses".into()));
+    blocks.push(Block::H2("Open weaknesses and decisions needed".into()));
     if open.is_empty() {
         blocks.push(Block::Paragraph(
             "No open weaknesses: every known experiment last ran green.".into(),
@@ -181,26 +212,29 @@ pub fn build_executive(
     } else {
         blocks.push(Block::Table {
             headers: vec![
-                "Experiment".into(),
-                "Target".into(),
                 "Severity".into(),
+                "Experiment".into(),
                 "Last run".into(),
                 "Age (d)".into(),
+                "Decision needed".into(),
             ],
             rows: open
                 .iter()
                 .map(|e| {
                     vec![
-                        e.name.clone(),
-                        e.target.clone().unwrap_or("—".into()),
-                        e.last_outcome.clone().unwrap_or("incomplete".into()),
-                        e.last_run_ns.map_or("never".into(), fmt_date),
-                        e.last_run_ns
-                            .map_or("—".into(), |ts| ((as_of_ns - ts) / DAY_NS).to_string()),
+                        Cell::status(e.severity.clone().unwrap_or_else(|| "medium".into())),
+                        Cell::text(e.name.clone()),
+                        Cell::text(e.last_run_ns.map_or("never".into(), fmt_date)),
+                        Cell::text(
+                            e.last_run_ns
+                                .map_or("—".into(), |ts| ((as_of_ns - ts) / DAY_NS).to_string()),
+                        ),
+                        Cell::text(decision_for(e.state)),
                     ]
                 })
                 .collect(),
-            numeric_cols: vec![4],
+            numeric_cols: vec![3],
+            widths: Some(vec![1.2, 3.0, 1.0, 0.7, 2.0]),
         });
     }
 
@@ -296,6 +330,35 @@ fn outlook(card: &Scorecard) -> String {
 
 /// Count deviated/failed runs in `[from, to)` and how many later ran green;
 /// plus MTTR from spans that report `recovery_time_s`.
+/// The decision an open weakness asks of the reader, by run state.
+fn decision_for(state: RunState) -> String {
+    match state {
+        RunState::Failed => "Re-run, remediate, or accept".into(),
+        RunState::Stale => "Re-run to refresh evidence".into(),
+        RunState::NeverRun => "Schedule first run".into(),
+        RunState::Passed => "—".into(),
+    }
+}
+
+/// Experiment names with at least one run in `[from_ns, to_ns)`.
+fn runs_in_window(
+    reader: &Reader,
+    from_ns: i64,
+    to_ns: i64,
+) -> Result<std::collections::BTreeSet<String>, String> {
+    let rows = reader
+        .query_json_rows(&format!(
+            "SELECT DISTINCT experiment_name AS name FROM spans \
+             WHERE span_name = 'resilience.experiment' AND experiment_name IS NOT NULL \
+               AND ts_ns >= {from_ns} AND ts_ns < {to_ns}"
+        ))
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| cell(r, "name").map(str::to_owned))
+        .collect())
+}
+
 fn issue_stats(
     reader: &Reader,
     from_ns: i64,
@@ -447,33 +510,40 @@ pub fn build_game_day(
     let mut blocks = vec![
         Block::H1("Run summary".into()),
         Block::KeyValues(vec![
-            ("Experiment".into(), name.to_string()),
-            ("Run id".into(), experiment_id.to_string()),
-            ("Date".into(), fmt_datetime(root_ts)),
+            ("Experiment".into(), Cell::text(name)),
+            ("Run id".into(), Cell::text(experiment_id)),
+            ("Date".into(), Cell::text(fmt_datetime(root_ts))),
             (
                 "Target".into(),
-                cell(&root, "target_system").unwrap_or("—").to_string(),
+                Cell::text(cell(&root, "target_system").unwrap_or("—")),
             ),
             (
                 "Environment".into(),
-                cell(&root, "target_environment").unwrap_or("—").to_string(),
+                Cell::text(cell(&root, "target_environment").unwrap_or("—")),
             ),
             (
                 "Scenario".into(),
-                match (cell(&root, "fault_type"), cell(&root, "fault_subtype")) {
-                    (Some(t), Some(s)) => format!("{t} / {s}"),
-                    (Some(t), None) => t.to_string(),
-                    _ => "—".into(),
-                },
+                Cell::text(
+                    match (cell(&root, "fault_type"), cell(&root, "fault_subtype")) {
+                        (Some(t), Some(s)) => format!("{t} / {s}"),
+                        (Some(t), None) => t.to_string(),
+                        _ => "—".into(),
+                    },
+                ),
             ),
             (
                 "Severity".into(),
-                cell(&root, "fault_severity")
-                    .unwrap_or("medium")
-                    .to_string(),
+                Cell::status(cell(&root, "fault_severity").unwrap_or("medium")),
             ),
-            ("Hypothesis".into(), hypothesis.clone()),
-            ("Outcome".into(), outcome.clone()),
+            (
+                "Hypothesis".into(),
+                if hypothesis == "Not recorded" {
+                    Cell::text(hypothesis.clone())
+                } else {
+                    Cell::status(hypothesis.clone())
+                },
+            ),
+            ("Outcome".into(), Cell::status(outcome.clone())),
         ]),
     ];
 
@@ -487,24 +557,23 @@ pub fn build_game_day(
     blocks.push(Block::KeyValues(vec![
         (
             "Blast radius".into(),
-            cell(&root, "blast_radius")
-                .unwrap_or("not recorded")
-                .to_string(),
+            Cell::text(cell(&root, "blast_radius").unwrap_or("not recorded")),
         ),
         (
             "Recovery time".into(),
-            root.get("recovery_time_s")
-                .and_then(serde_json::Value::as_f64)
-                .map_or("not recorded".into(), |r| format!("{r:.1}s")),
+            Cell::text(
+                root.get("recovery_time_s")
+                    .and_then(serde_json::Value::as_f64)
+                    .map_or("not recorded".into(), |r| format!("{r:.1}s")),
+            ),
         ),
         (
             "Rollback exercised".into(),
-            if rollback_spans.is_empty() {
+            Cell::text(if rollback_spans.is_empty() {
                 "no"
             } else {
                 "yes"
-            }
-            .to_string(),
+            }),
         ),
     ]));
 
@@ -525,21 +594,31 @@ pub fn build_game_day(
             .iter()
             .map(|s| {
                 vec![
-                    s.get("ts_ns")
-                        .and_then(serde_json::Value::as_i64)
-                        .map_or("—".into(), |ts| {
-                            format!("{:.1}", (ts - first_ts) as f64 / 1e9)
-                        }),
-                    cell(s, "span_name").unwrap_or("—").to_string(),
-                    cell(s, "span_kind").unwrap_or("—").to_string(),
-                    s.get("duration_ns")
-                        .and_then(serde_json::Value::as_f64)
-                        .map_or("—".into(), |d| format!("{:.1}", d / 1e6)),
-                    cell(s, "status_code").unwrap_or("—").to_string(),
+                    Cell::text(
+                        s.get("ts_ns")
+                            .and_then(serde_json::Value::as_i64)
+                            .map_or("—".into(), |ts| {
+                                format!("{:.1}", (ts - first_ts) as f64 / 1e9)
+                            }),
+                    ),
+                    Cell::text(cell(s, "span_name").unwrap_or("—")),
+                    Cell::text(cell(s, "span_kind").unwrap_or("—")),
+                    Cell::text(
+                        s.get("duration_ns")
+                            .and_then(serde_json::Value::as_f64)
+                            .map_or("—".into(), |d| format!("{:.1}", d / 1e6)),
+                    ),
+                    // OTel codes → readable status: Unset is "no status".
+                    match cell(s, "status_code") {
+                        Some("Ok") => Cell::status("ok"),
+                        Some("Error") => Cell::status("error"),
+                        _ => Cell::text("—"),
+                    },
                 ]
             })
             .collect(),
         numeric_cols: vec![0, 3],
+        widths: Some(vec![0.7, 2.6, 0.9, 1.0, 0.9]),
     });
 
     blocks.push(Block::H2("Verdict".into()));
@@ -592,18 +671,18 @@ pub fn build_game_day(
 
     blocks.push(Block::PageBreak);
     blocks.push(Block::H2("Configuration appendix".into()));
-    let mut cfg: Vec<(String, String)> = Vec::new();
+    let mut cfg: Vec<(String, Cell)> = Vec::new();
     if let Some(attrs) = root.get("span_attrs").and_then(|a| a.as_object()) {
         for (k, v) in attrs {
-            cfg.push((k.clone(), v.as_str().unwrap_or("").to_string()));
+            cfg.push((k.clone(), Cell::text(v.as_str().unwrap_or(""))));
         }
     }
     if let Some(serde_json::Value::Object(attrs)) = &started_attrs {
         for (k, v) in attrs {
-            cfg.push((format!("start.{k}"), v.as_str().unwrap_or("").to_string()));
+            cfg.push((format!("start.{k}"), Cell::text(v.as_str().unwrap_or(""))));
         }
     }
-    cfg.sort();
+    cfg.sort_by(|a, b| a.0.cmp(&b.0));
     if cfg.is_empty() {
         blocks.push(Block::Paragraph(
             "No configuration attributes recorded.".into(),
@@ -743,7 +822,7 @@ pub fn build_evidence_pack(
     } else if tested_names.len() <= 3 {
         tested_names.join(", ")
     } else {
-        format!("{} experiments (see test register)", tested_names.len())
+        format!("See test register ({})", tested_names.len())
     };
     blocks.push(Block::Table {
         headers: vec![
@@ -757,15 +836,16 @@ pub fn build_evidence_pack(
             .iter()
             .map(|clause| {
                 vec![
-                    (*clause).to_string(),
-                    tested_summary.clone(),
-                    card.band.clone(),
-                    "—".into(),
-                    "—".into(),
+                    Cell::text(*clause),
+                    Cell::text(tested_summary.clone()),
+                    Cell::status(card.band.clone()),
+                    Cell::text("—"),
+                    Cell::text("—"),
                 ]
             })
             .collect(),
         numeric_cols: vec![],
+        widths: Some(vec![3.2, 2.2, 1.0, 0.9, 1.1]),
     });
     blocks.push(Block::Footnote(CLAUSE_VERIFY_FOOTNOTE.into()));
 
@@ -786,15 +866,18 @@ pub fn build_evidence_pack(
                 .iter()
                 .map(|e| {
                     vec![
-                        e.name.clone(),
-                        e.target.clone().unwrap_or("—".into()),
-                        e.last_run_ns.map_or("never".into(), fmt_date),
-                        e.last_outcome.clone().unwrap_or("—".into()),
-                        e.score.to_string(),
+                        Cell::text(e.name.clone()),
+                        Cell::text(e.target.clone().unwrap_or("—".into())),
+                        Cell::text(e.last_run_ns.map_or("never".into(), fmt_date)),
+                        e.last_outcome
+                            .as_ref()
+                            .map_or_else(|| Cell::text("—"), |o| Cell::status(o.clone())),
+                        Cell::text(e.score.to_string()),
                     ]
                 })
                 .collect(),
             numeric_cols: vec![4],
+            widths: Some(vec![3.0, 1.0, 0.9, 1.3, 0.7]),
         });
     }
 

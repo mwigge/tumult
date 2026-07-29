@@ -13,4 +13,4 @@ pub mod scoring;
 pub mod svg;
 pub mod typst_pdf;
 
-pub use model::{Block, ChartSpec, DocMeta, ReportDoc, TemplateKind};
+pub use model::{Block, Cell, ChartSpec, DocMeta, ReportDoc, TemplateKind};
