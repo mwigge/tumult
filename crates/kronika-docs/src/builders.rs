@@ -970,7 +970,7 @@ pub fn build_evidence_pack(
                 })
                 .collect(),
             numeric_cols: vec![7],
-            widths: Some(vec![2.2, 1.0, 0.9, 0.8, 0.8, 0.9, 1.0, 0.6]),
+            widths: Some(vec![1.8, 0.8, 0.7, 1.2, 1.2, 0.9, 1.0, 0.6]),
         });
     }
 
