@@ -10,7 +10,7 @@ turns it into rollups, drill-downs, dashboards and scheduled narrative
 reports — with a guarded AI analytics layer in later phases.
 
 <!-- status badges: placeholder until CI exists -->
-<!-- ![ci](...) ![license](https://img.shields.io/badge/license-MIT-blue) -->
+<!-- ![ci](...) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) -->
 
 ## Features
 
@@ -244,4 +244,17 @@ cargo fmt --check
 
 ## License
 
-MIT — Morgan Wigge. See [LICENSE](LICENSE).
+Apache-2.0 — Morgan Wigge. See [LICENSE](LICENSE).
+
+### Third-party attributions
+
+- [Apache ECharts](https://echarts.apache.org/) (Apache-2.0) — charting in the web UI.
+  Copyright 2017-2024 The Apache Software Foundation. This product includes
+  software developed at The Apache Software Foundation (https://www.apache.org/).
+- [zrender](https://github.com/ecomfe/zrender) (BSD-3-Clause) — ECharts rendering engine.
+- [tslib](https://github.com/microsoft/tslib) (0BSD) — TypeScript runtime helpers.
+- [Typst](https://typst.app/) (Apache-2.0) — embedded PDF typesetting for reports.
+- [DuckDB](https://duckdb.org/) (MIT) — embedded analytical store.
+- Fonts: [Inter](https://rsms.me/inter/) and
+  [Source Serif 4](https://github.com/adobe-fonts/source-serif) (SIL OFL 1.1) —
+  vendored with their license texts under `assets/fonts/`.

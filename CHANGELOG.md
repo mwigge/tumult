@@ -6,6 +6,13 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Relicensed MIT → Apache-2.0** (LICENSE, workspace `Cargo.toml`,
+  `web/package.json`, README). Added a third-party attributions section
+  to the README (ECharts NOTICE, zrender, tslib, Typst, DuckDB, OFL fonts).
+
 ## [0.5.0] — 2026-07-29
 
 ### Added
