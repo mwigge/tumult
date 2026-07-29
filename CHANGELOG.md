@@ -6,7 +6,50 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 
 ---
 
-## [0.3.0] — 2026-07-28
+## [0.4.0] — 2026-07-28
+
+### Added
+- **Compliance-grade report pipeline** (`kronika-docs` crate, ADR 0003): a
+  renderer-agnostic content model (`ReportDoc`/`Block`/`ChartSpec`) with
+  two outputs — embedded-Typst PDFs (typst 0.15 compiled in-process, no
+  external runtime) and print-styled HTML previews. Charts are shared
+  vector SVGs (Okabe–Ito palette, direct labels); fonts are vendored OFL
+  Inter + Source Serif 4 (`assets/fonts/`, embedded in the binary) so
+  docker builds stay offline-reproducible.
+- **Three report templates**: R1 executive digest (deterministic BLUF,
+  portfolio KPIs, target scores, issues discovered/fixed + MTTR, open
+  weaknesses, outlook), R3 game-day report (run summary, blast radius &
+  rollback, span timeline, verdict, findings, config appendix), and an R2
+  evidence-pack skeleton for DORA/NIS2/ISO 27001/SOC 2 with a traceability
+  matrix, test register, findings log, sign-off and the mandatory
+  "verify clause references against the licensed framework text" footnote.
+  Document IDs `KRK-<code>-<yyyymmdd>-<hash6>`; artifacts persisted as
+  `{id}.pdf`/`.html`/`.json` with the PDF's SHA-256 in the meta.
+- **Resilience scoring** (`kronika_docs::scoring`): Gremlin-style scores
+  with 30-day freshness decay (passed 100 / stale 75 / failed 50 / never
+  run 0; bands >70 good, 50–70 fair, <50 poor), target and portfolio
+  rollups with a period-over-period delta, served at `GET /api/scores`.
+- **`/api/reports/v2/*`**: `POST …/generate {type,period?,experiment_id?,
+  framework?}`, `GET …/v2` (metas newest first), `GET …/v2/{id}/pdf|html`
+  (strict doc-id validation). Integration tests cover the scorecard, all
+  three template round-trips and the validation paths.
+- **Reports UI v2**: template picker with conditional
+  framework/experiment/period controls, artifact list with type badge and
+  short SHA, iframe print preview, PDF download; quick metric digests kept
+  below. Tabular numerals adopted in `theme.css` (`table.data`, `.mono`).
+- Docs: `docs/research-compliance.md`, `docs/research-ux.md`,
+  `docs/adr/0003-typst-report-pipeline.md`.
+
+### Roadmap (deferred from this cycle)
+- ⌘K command palette (wants a global id-search backend first).
+- Brush/range-select on Overview charts (needs a coordinated selection
+  model; likely with Phase-2 Mosaic crossfiltering).
+- BubbleUp-style "explain this spike" drill-downs.
+- Notebook-style ad-hoc reports on top of the v2 content model.
+- R4/R5 templates (service deep-dive, regulator run-log) pending auditor
+  feedback; triage inbox for open weaknesses.
+
+---
 
 ### Added
 - Logs explorer: `GET /api/logs` (range/severity/service/q/limit; severity a

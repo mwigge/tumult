@@ -27,15 +27,22 @@ reports — with a guarded AI analytics layer in later phases.
 - **Semantic metrics layer** — Rill-style YAML metric views
   (`metrics/*.yaml`) compiled to strictly validated SQL (injection-impossible
   by construction).
-- **Reports** — self-contained HTML digests (`kronikad report --metric …`),
-  plus automatic scheduled digests: set `KRONIKA_REPORT_INTERVAL=1h` and the
-  daemon renders one digest per interval into `<db dir>/reports/`, browsable
-  from the UI.
+- **Reports** — compliance-grade documents (v2): R1 executive resilience
+  digest, R3 per-run game-day report and an R2 evidence-pack skeleton
+  (DORA/NIS2/ISO 27001/SOC 2 clause lists) rendered as embedded-Typst PDFs
+  plus print-HTML previews via `kronika-docs`, generated from the UI or
+  `POST /api/reports/v2/generate`, persisted with SHA-256 metas under
+  `<db dir>/reports/v2/`. Resilience scoring (Gremlin-style with 30-day
+  freshness decay) feeds both the digest and `GET /api/scores`. Classic
+  self-contained HTML metric digests (`kronikad report --metric …`) remain:
+  set `KRONIKA_REPORT_INTERVAL=1h` and the daemon renders one digest per
+  interval into `<db dir>/reports/`, browsable from the UI.
 - **Query API** — read-only JSON under `/api/*` (overview KPIs with deltas
   and sparklines, bucketed time series for any semantic metric, experiment
   list/detail with waterfall spans + correlated logs, logs search + volume,
   trace grouping + durations + detail, raw metric catalog + grouped queries,
-  service/target topology, dimensions, reports, guarded NL→SQL ask),
+  service/target topology, dimensions, reports, resilience scores, guarded
+  NL→SQL ask),
   executed on read-only connections that coexist with the ingest writer.
 - **Web UI** — SvelteKit SPA embedded into the kronikad binary and served on
   the HTTP port: Overview KPIs, calendar heatmap, fault donut, filterable

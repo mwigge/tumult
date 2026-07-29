@@ -41,14 +41,14 @@ execution) and smedja.
       YAML semantic     digest renderer           read-only JSON API
       layer → SQL       (ad-hoc + scheduled)      (/api/*, spawn_blocking)
               │              │                    │  overview · series ·
-              │              ▼                    │  experiments · logs ·
-              │         <db dir>/reports/         │  traces · metrics ·
-              │         report_<epoch>.html       ▼  topology · ask  ▲
-              │              │                web/ SPA (rust-embed, same
-              │              │                HTTP port) ──┘
-              ▼              ▼                   ▲  POST /api/ask ──▶ kronika-ai
-         kronikad       UI Reports page          │   Llm → sql_guard → read-only
-         report CLI     (/api/reports)           │   execution (guarded, LIMIT)
+              │   kronika-docs                    │  experiments · logs ·
+              │   compliance reports              │  traces · metrics ·
+              │   (R1/R2/R3 → PDF +               ▼  topology · ask  ▲
+              │    HTML, scores)              web/ SPA (rust-embed, same
+              │         │                     HTTP port) ──┘
+              ▼         ▼                        ▲  POST /api/ask ──▶ kronika-ai
+         <db dir>/reports/  (+ reports/v2/       │   Llm → sql_guard → read-only
+         report_<epoch>.html  KRK-*.pdf/.html/.json)  execution (guarded, LIMIT)
          (store closed)                          │
 ```
 
