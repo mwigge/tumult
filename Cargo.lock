@@ -2079,6 +2079,7 @@ dependencies = [
  "axum",
  "kronika-ai",
  "kronika-docs",
+ "kronika-ingest",
  "kronika-metrics",
  "kronika-report",
  "kronika-store",

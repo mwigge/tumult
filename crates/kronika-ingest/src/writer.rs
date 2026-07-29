@@ -13,6 +13,10 @@ pub enum Batch {
     Spans(Vec<SpanRow>),
     Logs(Vec<LogRow>),
     Metrics(MetricRows),
+    /// An arbitrary write executed against the single [`Writer`] — used by
+    /// the manual-evidence lifecycle so API-triggered mutations ride the
+    /// same single-writer channel as telemetry (never a second connection).
+    Exec(Box<dyn FnOnce(&Writer) -> Result<(), String> + Send>),
 }
 
 struct Envelope {
@@ -76,6 +80,7 @@ fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
             writer.insert_metric_gauges(&rows.gauges)?;
             writer.insert_metric_histograms(&rows.histograms)?;
         }
+        Batch::Exec(f) => f(writer).map_err(IngestError::Channel)?,
     }
     Ok(())
 }

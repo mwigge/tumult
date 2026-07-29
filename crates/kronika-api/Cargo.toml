@@ -12,6 +12,7 @@ kronika-metrics.workspace = true
 kronika-ai.workspace = true
 kronika-report.workspace = true
 kronika-docs.workspace = true
+kronika-ingest.workspace = true
 sha2.workspace = true
 axum.workspace = true
 tokio.workspace = true

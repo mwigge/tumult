@@ -130,8 +130,11 @@ async fn serve() -> Result<()> {
         db_path: config.db_path.clone(),
         metrics_dir: config.metrics_dir.clone(),
     };
-    let api_state =
-        kronika_api::ApiState::from_env_parts(config.db_path.clone(), config.metrics_dir.clone());
+    let api_state = kronika_api::ApiState::from_env_parts(
+        config.db_path.clone(),
+        config.metrics_dir.clone(),
+        Some(ingest.clone()),
+    );
     if let Some(interval) = report_interval_from_env() {
         spawn_report_scheduler(
             config.db_path.clone(),

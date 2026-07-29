@@ -53,6 +53,7 @@
 //! write lock.
 
 mod ask;
+pub mod manual;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -72,13 +73,17 @@ use serde_json::{json, Value};
 const ROOT: &str = "span_name = 'resilience.experiment'";
 
 /// Shared handler state: where the store, metric definitions and rendered
-/// reports live, plus the LLM client for `/api/ask`.
+/// reports live, plus the LLM client for `/api/ask`, the org tree for
+/// `/api/scores/tree` and R1's "By domain", and the ingest handle that
+/// carries manual-evidence mutations onto the daemon's single writer.
 #[derive(Clone)]
 pub struct ApiState {
     db_path: Arc<PathBuf>,
     metrics_dir: Arc<PathBuf>,
     reports_dir: Arc<PathBuf>,
     llm: Arc<dyn kronika_ai::Llm>,
+    org: Arc<kronika_docs::OrgTree>,
+    ingest: Option<kronika_ingest::IngestWriter>,
 }
 
 impl ApiState {
@@ -89,27 +94,51 @@ impl ApiState {
         metrics_dir: PathBuf,
         reports_dir: PathBuf,
         llm: Arc<dyn kronika_ai::Llm>,
+        org: kronika_docs::OrgTree,
+        ingest: Option<kronika_ingest::IngestWriter>,
     ) -> Self {
         Self {
             db_path: Arc::new(db_path),
             metrics_dir: Arc::new(metrics_dir),
             reports_dir: Arc::new(reports_dir),
             llm,
+            org: Arc::new(org),
+            ingest,
         }
     }
 
     /// Daemon constructor: reports live in `<db dir>/reports`, LLM configured
-    /// from `KRONIKA_LLM_*` env vars.
+    /// from `KRONIKA_LLM_*` env vars. The org tree loads from
+    /// `KRONIKA_ORG_FILE`, defaulting to `<db dir>/org.yaml`; a missing file
+    /// means an empty tree (everything rolls up under `(unassigned)`) and an
+    /// invalid file logs a warning and falls back to empty.
     #[must_use]
-    pub fn from_env_parts(db_path: PathBuf, metrics_dir: PathBuf) -> Self {
+    pub fn from_env_parts(
+        db_path: PathBuf,
+        metrics_dir: PathBuf,
+        ingest: Option<kronika_ingest::IngestWriter>,
+    ) -> Self {
         let reports_dir = db_path
             .parent()
             .map_or_else(|| PathBuf::from("reports"), |d| d.join("reports"));
+        let org_path = std::env::var_os("KRONIKA_ORG_FILE")
+            .map(PathBuf::from)
+            .or_else(|| db_path.parent().map(|d| d.join("org.yaml")));
+        let org = org_path
+            .filter(|p| p.exists())
+            .map_or_else(kronika_docs::OrgTree::empty, |p| {
+                kronika_docs::OrgTree::load(&p).unwrap_or_else(|e| {
+                    tracing::warn!(path = %p.display(), error = %e, "invalid org file; using empty tree");
+                    kronika_docs::OrgTree::empty()
+                })
+            });
         Self::new(
             db_path,
             metrics_dir,
             reports_dir,
             Arc::new(kronika_ai::OpenAiCompatClient::from_env()),
+            org,
+            ingest,
         )
     }
 
@@ -117,6 +146,12 @@ impl ApiState {
     #[must_use]
     pub fn reports_dir(&self) -> &PathBuf {
         &self.reports_dir
+    }
+
+    /// The ingest handle carrying manual-evidence writes (daemon only).
+    #[must_use]
+    pub fn ingest_handle(&self) -> Option<&kronika_ingest::IngestWriter> {
+        self.ingest.as_ref()
     }
 }
 
@@ -138,6 +173,23 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics/query", get(metrics_query))
         .route("/api/topology", get(topology))
         .route("/api/ask", post(ask::ask))
+        .route("/api/scores/tree", get(scores_tree))
+        .route(
+            "/api/manual/experiments",
+            get(manual::list).post(manual::create),
+        )
+        .route(
+            "/api/manual/experiments/{id}",
+            get(manual::detail).put(manual::update),
+        )
+        .route("/api/manual/experiments/{id}/submit", post(manual::submit))
+        .route("/api/manual/experiments/{id}/verify", post(manual::verify))
+        .route("/api/manual/experiments/{id}/reject", post(manual::reject))
+        .route(
+            "/api/manual/experiments/{id}/attachments",
+            post(manual::attach),
+        )
+        .route("/api/manual/import", post(manual::import))
         .route("/api/reports", get(list_reports))
         .route("/api/reports/generate", post(generate_report))
         .route("/api/reports/v2", get(list_reports_v2))
@@ -620,6 +672,7 @@ struct ExperimentParams {
     target: Option<String>,
     fault: Option<String>,
     q: Option<String>,
+    origin: Option<String>,
 }
 
 /// The root-span ↔ completed-log join used by the list and detail queries.
@@ -687,14 +740,74 @@ async fn experiments(
              OR s.experiment_id ILIKE {like} ESCAPE '\\')"
         ));
     }
+    let origin = params.origin.as_deref();
+    if let Some(o) = origin {
+        if o != "automated" && o != "manual" {
+            return Err(bad(format!(
+                "invalid origin {o:?}; expected automated|manual"
+            )));
+        }
+    }
+    // Manual records join the view unless explicitly excluded; they have no
+    // tumult outcome/fault taxonomy, so those two filters drop the manual
+    // branch entirely (documented behaviour).
+    let include_manual =
+        origin != Some("automated") && params.outcome.is_none() && params.fault.is_none();
+    let include_spans = origin != Some("manual");
 
-    let sql = format!(
+    let spans_sql = format!(
         "SELECT {EXPERIMENT_COLS}, \
          (SELECT string_agg(DISTINCT c.fault_type, ',') FROM spans c \
-          WHERE c.trace_id = s.trace_id AND c.fault_type IS NOT NULL) AS faults \
-         {EXPERIMENT_FROM} WHERE {} ORDER BY s.ts_ns DESC LIMIT 500",
+          WHERE c.trace_id = s.trace_id AND c.fault_type IS NOT NULL) AS faults, \
+         'automated' AS origin, NULL AS review_status \
+         {EXPERIMENT_FROM} WHERE {}",
         wheres.join(" AND ")
     );
+
+    let sql = if !include_manual {
+        format!("{spans_sql} ORDER BY s.ts_ns DESC LIMIT 500")
+    } else {
+        // The manual branch mirrors the span columns; range/target/q filters
+        // map onto the manual columns.
+        let mut mwheres = vec!["1=1".to_string()];
+        if let Some(range) = &params.range {
+            let Some((cur, _)) = windows(range) else {
+                return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+            };
+            mwheres.push(format!(
+                "m.executed_at_ns >= {} AND m.executed_at_ns < {}",
+                cur.0, cur.1
+            ));
+        }
+        if let Some(target) = &params.target {
+            mwheres.push(format!("m.target_system = {}", sql_string(target)));
+        }
+        if let Some(q) = &params.q {
+            let like = sql_contains(q);
+            mwheres.push(format!(
+                "(m.experiment_name ILIKE {like} ESCAPE '\\' \
+                 OR m.id ILIKE {like} ESCAPE '\\')"
+            ));
+        }
+        let manual_sql = format!(
+            "SELECT m.id, m.experiment_name AS name, m.executed_at_ns AS started_ns, \
+             CAST(m.duration_s * 1000000000 AS BIGINT) AS duration_ns, \
+             NULL AS trace_id, m.target_system, NULL AS target_technology, \
+             m.target_environment, m.outcome_status AS status, \
+             NULL AS deviations, NULL AS duration_ms, NULL AS faults, \
+             'manual' AS origin, m.status AS review_status \
+             FROM manual_experiments m WHERE {}",
+            mwheres.join(" AND ")
+        );
+        if include_spans {
+            format!(
+                "SELECT * FROM ({spans_sql} UNION ALL {manual_sql}) \
+                 ORDER BY started_ns DESC LIMIT 500"
+            )
+        } else {
+            format!("{manual_sql} ORDER BY started_ns DESC LIMIT 500")
+        }
+    };
     let rows = with_reader(&state.db_path, move |reader| {
         reader.query_json_rows(&sql).map_err(|e| e.to_string())
     })
@@ -1708,6 +1821,100 @@ async fn scores(
 }
 
 #[derive(Deserialize)]
+struct TreeParams {
+    node: Option<String>,
+    range: Option<String>,
+}
+
+/// `GET /api/scores/tree?node=<path>&range=24h|7d|14d` — org rollup for one
+/// node: criticality-weighted score recomputed from all leaves in its
+/// subtree, coverage, a period sparkline, and one level of child rollups.
+async fn scores_tree(
+    State(state): State<ApiState>,
+    Query(params): Query<TreeParams>,
+) -> Result<Json<Value>, Response> {
+    let node = params.node.unwrap_or_default();
+    let node = node.trim_matches('/').to_string();
+    if state.org.resolve(&node).is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("unknown org node {node:?}")})),
+        )
+            .into_response());
+    }
+    let Some(secs) = parse_range(params.range.as_deref().unwrap_or("7d")) else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "range must be one of 24h|7d|14d"})),
+        )
+            .into_response());
+    };
+    let period_ns = secs * 1_000_000_000;
+    let as_of = now_ns();
+    let org = state.org.clone();
+
+    let payload = with_reader(&state.db_path, move |reader| {
+        // Leaves at an instant: every scored experiment plus pending manual
+        // records (expected but unscored). Pending status is read as of NOW
+        // for every sample point — a documented approximation, since the
+        // lifecycle has no history before the audit trail.
+        let leaves_at = |t: i64| -> Result<Vec<kronika_docs::ScoredLeaf>, String> {
+            let card = kronika_docs::scoring::compute(reader, t, None)?;
+            let mut leaves: Vec<kronika_docs::ScoredLeaf> = card
+                .experiments
+                .iter()
+                .map(|e| kronika_docs::ScoredLeaf {
+                    name: e.name.clone(),
+                    score: Some(e.score),
+                })
+                .collect();
+            leaves.extend(
+                kronika_docs::scoring::pending_manual_leaves(reader)?
+                    .into_iter()
+                    .map(|name| kronika_docs::ScoredLeaf { name, score: None }),
+            );
+            Ok(leaves)
+        };
+
+        let current = org
+            .compute_node(&node, &leaves_at(as_of)?)
+            .ok_or_else(|| format!("unknown org node {node:?}"))?;
+        let previous = org
+            .compute_node(&node, &leaves_at(as_of - period_ns)?)
+            .ok_or_else(|| format!("unknown org node {node:?}"))?;
+
+        const POINTS: i64 = 10;
+        let step = period_ns / POINTS;
+        let mut sparkline = Vec::with_capacity(POINTS as usize);
+        for i in 1..=POINTS {
+            let t = as_of - period_ns + step * i;
+            let score = org
+                .compute_node(&node, &leaves_at(t)?)
+                .map_or(0.0, |n| n.score);
+            sparkline.push(vec![json!(i), json!(score)]);
+        }
+
+        Ok(json!({
+            "path": current.path,
+            "name": current.name,
+            "kind": current.kind,
+            "score": current.score,
+            "band": current.band,
+            "delta": current.score - previous.score,
+            "coverage": current.coverage,
+            "scored": current.scored,
+            "expected": current.expected,
+            "weakest": current.weakest,
+            "weight": current.weight,
+            "sparkline": sparkline,
+            "children": current.children,
+        }))
+    })
+    .await?;
+    Ok(Json(payload))
+}
+
+#[derive(Deserialize)]
 struct GenerateV2Request {
     #[serde(rename = "type")]
     kind: String,
@@ -1760,11 +1967,16 @@ async fn generate_report_v2(
     let generated_at = now_ns();
     let exp_id = req.experiment_id.clone();
     let framework = req.framework.clone();
+    let org = state.org.clone();
     let built = with_reader(&state.db_path, move |reader| match kind {
-        kronika_docs::TemplateKind::ExecutiveDigest => {
-            kronika_docs::builders::build_executive(reader, generated_at, period_ns, generated_at)
-                .map(Some)
-        }
+        kronika_docs::TemplateKind::ExecutiveDigest => kronika_docs::builders::build_executive(
+            reader,
+            &org,
+            generated_at,
+            period_ns,
+            generated_at,
+        )
+        .map(Some),
         kronika_docs::TemplateKind::GameDay => kronika_docs::builders::build_game_day(
             reader,
             exp_id.as_deref().unwrap_or_default(),

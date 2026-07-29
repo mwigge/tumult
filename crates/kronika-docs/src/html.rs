@@ -133,6 +133,7 @@ fn render_block(block: &Block) -> String {
     match block {
         Block::H1(text) => format!("<h1 class='section'>{}</h1>", esc(text)),
         Block::H2(text) => format!("<h2>{}</h2>", esc(text)),
+        Block::H3(text) => format!("<h3>{}</h3>", esc(text)),
         Block::Paragraph(text) => format!("<p>{}</p>", esc(text)),
         Block::Kpis(kpis) => {
             let cards: String = kpis

@@ -4,6 +4,11 @@
 //! 30 days decays to 75 (stale), a failed/deviated run scores 50, and never
 //! run scores 0. Bands: > 70 good, 50–70 fair, < 50 poor. The portfolio
 //! rollup is the mean of target scores with a period-over-period delta.
+//!
+//! Verified manual evidence scores exactly like automated telemetry
+//! (passed 100 / partial 75 / failed 50; inconclusive outcomes are excluded
+//! from scoring entirely). Draft/submitted manual records carry no score
+//! weight — they surface via [`pending_manual_leaves`] for coverage.
 
 use kronika_store::Reader;
 
@@ -16,6 +21,8 @@ pub const STALE_NS: i64 = 30 * 86_400 * 1_000_000_000;
 pub enum RunState {
     Passed,
     Stale,
+    /// A verified manual run with a `partial` outcome: always 75.
+    Partial,
     Failed,
     NeverRun,
 }
@@ -56,6 +63,8 @@ pub struct ExperimentScore {
     /// Fault severity of the latest run (`fault_severity` on the root span).
     pub severity: Option<String>,
     pub runs: u64,
+    /// `automated` (OTLP telemetry) or `manual` (verified manual evidence).
+    pub origin: String,
 }
 
 /// One scored target (mean of its experiment scores).
@@ -81,8 +90,13 @@ pub struct Scorecard {
 
 /// Latest run per experiment: (ts_ns, outcome) for the most recent root
 /// span, plus run counts. Outcome joins tumult's `experiment.completed` log.
-const LATEST_SQL: &str = "SELECT s.experiment_name AS name, s.target_system AS target, \
+/// Verified manual records (excluding inconclusive outcomes) are UNIONed in
+/// with `origin = 'manual'`; the latest row is picked per (name, origin), so
+/// an experiment name present in both worlds yields one row per origin.
+const LATEST_SQL: &str = "SELECT * FROM ( \
+     SELECT s.experiment_name AS name, s.target_system AS target, \
      s.ts_ns AS ts, s.fault_severity AS severity, l.log_attrs['status'] AS status, \
+     'automated' AS origin, \
      (SELECT COUNT(*) FROM spans r WHERE r.span_name = 'resilience.experiment' \
       AND r.experiment_name = s.experiment_name AND r.ts_ns <= {AS_OF}) AS runs \
      FROM spans s LEFT JOIN logs l \
@@ -90,7 +104,13 @@ const LATEST_SQL: &str = "SELECT s.experiment_name AS name, s.target_system AS t
       AND l.body = 'experiment.completed' \
      WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
        AND s.ts_ns <= {AS_OF} \
-     QUALIFY ROW_NUMBER() OVER (PARTITION BY s.experiment_name ORDER BY s.ts_ns DESC) = 1";
+     UNION ALL \
+     SELECT m.experiment_name, m.target_system, m.executed_at_ns, NULL, \
+     m.outcome_status, 'manual', 1 \
+     FROM manual_experiments m \
+     WHERE m.status = 'verified' AND m.outcome_status != 'inconclusive' \
+       AND m.executed_at_ns <= {AS_OF} \
+     ) QUALIFY ROW_NUMBER() OVER (PARTITION BY name, origin ORDER BY ts DESC) = 1";
 
 /// Compute the scorecard as of `as_of_ns`; `delta` compares against the
 /// portfolio as of `as_of_ns - period_ns` when a period is given.
@@ -160,8 +180,18 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
             .map(str::to_owned);
         // tumult outcomes: Completed passes; Deviated/Failed fail; a missing
         // outcome (incomplete run) counts as a failed attempt — conservative.
-        let passed = outcome.as_deref() == Some("Completed");
-        let (score, state) = score_run(ts.map(|t| (t, passed)), as_of_ns);
+        // Manual outcomes (lowercase): passed passes, partial scores 75,
+        // failed fails (inconclusive rows never reach the query).
+        let (score, state) = match outcome.as_deref().map(str::to_ascii_lowercase).as_deref() {
+            Some("completed") | Some("passed") => score_run(ts.map(|t| (t, true)), as_of_ns),
+            Some("partial") => (75, RunState::Partial),
+            _ => score_run(ts.map(|t| (t, false)), as_of_ns),
+        };
+        let origin = row
+            .get("origin")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("automated")
+            .to_string();
         experiments.push(ExperimentScore {
             name: name.to_string(),
             target,
@@ -172,6 +202,7 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
             last_outcome: outcome,
             severity,
             runs,
+            origin,
         });
     }
     experiments.sort_by(|a, b| a.score.cmp(&b.score).then_with(|| a.name.cmp(&b.name)));
@@ -214,6 +245,28 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
         targets,
         experiments,
     })
+}
+
+/// Names of manual records still pending verification (`draft`/`submitted`).
+/// They count toward org coverage as expected-but-unscored leaves.
+///
+/// # Errors
+/// Returns the store error string when the query fails.
+pub fn pending_manual_leaves(reader: &Reader) -> Result<Vec<String>, String> {
+    let rows = reader
+        .query_json_rows(
+            "SELECT experiment_name AS name FROM manual_experiments \
+             WHERE status IN ('draft', 'submitted') ORDER BY experiment_name",
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            r.get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .collect())
 }
 
 #[cfg(test)]

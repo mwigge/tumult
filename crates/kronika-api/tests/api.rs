@@ -6,9 +6,21 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kronika_store::{LogRow, MetricSumRow, SpanRow, Store};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const NS: i64 = 1_000_000_000;
+
+/// Org fixture: `pg-failover` maps to data/db-team (critical), everything
+/// else lands in `(unassigned)`.
+const ORG_YAML: &str = "
+nodes:
+  - {name: data, kind: domain}
+  - {name: db-team, parent: data}
+assignments:
+  - team: db-team
+    targets: [\"pg-*\"]
+    criticality: {pg-failover: critical}
+";
 
 fn now_ns() -> i64 {
     SystemTime::now()
@@ -261,7 +273,15 @@ async fn spawn_server() -> TestServer {
         None,
         "test-model".into(),
     ));
-    let state = kronika_api::ApiState::new(db_path, metrics_dir, reports_dir.clone(), llm);
+    let state = kronika_api::ApiState::new(
+        db_path.clone(),
+        metrics_dir,
+        reports_dir.clone(),
+        llm,
+        kronika_docs::OrgTree::from_yaml(ORG_YAML).unwrap(),
+        // A real single-writer channel so manual-evidence endpoints work.
+        Some(kronika_ingest::IngestWriter::spawn(Store::at(&db_path).writer().unwrap(), 16).0),
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -985,4 +1005,322 @@ async fn reports_v2_rejects_bad_document_ids() {
     .await
     .unwrap();
     assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn scores_tree_rolls_up_org_hierarchy() {
+    let srv = spawn_server().await;
+    // Root: data subtree holds pg-failover (critical, 100); (unassigned)
+    // holds cache-stampede (50). Root = (3*100 + 1*50) / 4 = 87.5.
+    let (status, body) = get(&srv.base, "/api/scores/tree").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["path"], "");
+    assert!(
+        (body["score"].as_f64().unwrap() - 87.5).abs() < 1e-9,
+        "{}",
+        body["score"]
+    );
+    assert_eq!(body["expected"], 2);
+    assert_eq!(body["scored"], 2);
+    assert_eq!(body["sparkline"].as_array().unwrap().len(), 10);
+    let children = body["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    // Weakest first: (unassigned) 50 before data 100.
+    assert_eq!(children[0]["name"], "(unassigned)");
+    assert_eq!(children[0]["score"], 50.0);
+    assert_eq!(children[1]["name"], "data");
+    assert_eq!(children[1]["score"], 100.0);
+
+    // Drill one level: node=data.
+    let (status, child) = get(&srv.base, "/api/scores/tree?node=data").await;
+    assert_eq!(status, 200, "{child}");
+    assert_eq!(child["score"], 100.0);
+    assert_eq!(child["weakest"], "pg-failover");
+    assert_eq!(child["children"][0]["name"], "db-team");
+    assert_eq!(child["children"][0]["path"], "data/db-team");
+
+    // Unknown node → 400.
+    let (status, _) = get(&srv.base, "/api/scores/tree?node=nope").await;
+    assert_eq!(status, 400);
+    // Bad range → 400.
+    let (status, _) = get(&srv.base, "/api/scores/tree?range=99y").await;
+    assert_eq!(status, 400);
+}
+
+/// A valid manual record body (partial outcome, entered by `by`).
+fn manual_body(by: &str) -> Value {
+    json!({
+        "experiment_name": "pg-manual-gameday",
+        "exercise_type": "gameday",
+        "executed_at_ns": now_ns() - 3600 * NS,
+        "hypothesis": "Failover keeps p95 under 800ms",
+        "method": "Disabled the primary; observed failover",
+        "outcome_status": "partial",
+        "hypothesis_met": true,
+        "findings": "Failover worked; warm-up took 40s",
+        "action_items": ["Pre-warm the secondary"],
+        "target_system": "database",
+        "target_environment": "production",
+        "recovery_time_s": 40.0,
+        "duration_s": 3600.0,
+        "entered_by": by,
+        "attestation": "I attest this record reflects the exercise as executed.",
+        "framework_refs": ["DORA Art. 24(7)"]
+    })
+}
+
+#[tokio::test]
+async fn manual_evidence_lifecycle_end_to_end() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+    let base = srv.base.clone();
+
+    // Create a draft.
+    let resp = client
+        .post(format!("{base}/api/manual/experiments"))
+        .json(&manual_body("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let id = resp.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Listed as draft; not yet scored.
+    let (status, list) = get(&base, "/api/manual/experiments?status=draft").await;
+    assert_eq!(status, 200);
+    assert_eq!(list["records"].as_array().unwrap().len(), 1);
+    let (_, scores) = get(&base, "/api/scores").await;
+    assert!(scores["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["name"] != "pg-manual-gameday"));
+
+    // Edit the draft (full replace).
+    let mut edited = manual_body("alice");
+    edited["findings"] = json!("updated findings after replay");
+    let resp = client
+        .put(format!("{base}/api/manual/experiments/{id}"))
+        .json(&edited)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Attach evidence (url ok, file kind rejected — no file storage).
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/attachments"))
+        .json(&json!({
+            "kind": "url",
+            "uri": "https://wiki.example.com/gameday",
+            "label": "write-up",
+            "added_by": "alice"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/attachments"))
+        .json(&json!({"kind": "file", "uri": "/etc/passwd", "added_by": "alice"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Verify before submit → 409.
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/verify"))
+        .json(&json!({"reviewer": "bob"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 409);
+
+    // Submit locks the record; edits are then rejected.
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/submit"))
+        .json(&json!({"by": "alice"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let resp = client
+        .put(format!("{base}/api/manual/experiments/{id}"))
+        .json(&edited)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 409);
+
+    // Same-user verify → 400 (segregation of duties).
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/verify"))
+        .json(&json!({"reviewer": "alice"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // A second user verifies.
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/verify"))
+        .json(&json!({"reviewer": "bob", "note": "evidence reviewed"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Detail: verified, audit chain intact, one attachment.
+    let (status, detail) = get(&base, &format!("/api/manual/experiments/{id}")).await;
+    assert_eq!(status, 200);
+    assert_eq!(detail["experiment"]["status"], "verified");
+    assert_eq!(detail["experiment"]["reviewed_by"], "bob");
+    assert_eq!(detail["attachments"].as_array().unwrap().len(), 1);
+    let actions: Vec<&str> = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["action"].as_str().unwrap())
+        .collect();
+    assert_eq!(actions, ["create", "edit", "attach", "submit", "verify"]);
+    let audit = detail["audit"].as_array().unwrap();
+    for w in audit.windows(2) {
+        assert_eq!(w[0]["new_hash"], w[1]["prev_hash"]);
+    }
+
+    // Scored as manual partial (75) with origin.
+    let (_, scores) = get(&base, "/api/scores").await;
+    let manual = scores["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == "pg-manual-gameday")
+        .expect("manual record in scores")
+        .clone();
+    assert_eq!(manual["origin"], "manual");
+    assert_eq!(manual["score"], 75);
+    assert_eq!(manual["state"], "partial");
+
+    // The experiments list unions manual rows; origin filter works.
+    let (status, list) = get(&base, "/api/experiments?origin=manual").await;
+    assert_eq!(status, 200);
+    let rows = list["experiments"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["origin"], "manual");
+    assert_eq!(rows[0]["review_status"], "verified");
+    let (_, all) = get(&base, "/api/experiments").await;
+    assert!(all["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["origin"] == "manual"));
+
+    // The org tree sees the manual record too (it matches pg-*).
+    let (_, tree) = get(&base, "/api/scores/tree?node=data/db-team").await;
+    assert_eq!(tree["expected"], 2);
+
+    // R1 executive digest renders with the By-domain section.
+    let resp = client
+        .post(format!("{base}/api/reports/v2/generate"))
+        .json(&json!({"type": "executive-digest", "period": "7d"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let meta: Value = resp.json().await.unwrap();
+    let id2 = meta["doc_id"].as_str().unwrap();
+    let resp = reqwest::get(format!("{base}/api/reports/v2/{id2}/html"))
+        .await
+        .unwrap();
+    let html = resp.text().await.unwrap();
+    assert!(html.contains("By domain"), "{html}");
+    assert!(html.contains("Evidence mix"), "{html}");
+}
+
+#[tokio::test]
+async fn manual_reject_flow_and_import() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+    let base = srv.base.clone();
+
+    // Reject requires a note and lands in status rejected.
+    let resp = client
+        .post(format!("{base}/api/manual/experiments"))
+        .json(&manual_body("alice"))
+        .send()
+        .await
+        .unwrap();
+    let id = resp.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client
+        .post(format!("{base}/api/manual/experiments/{id}/submit"))
+        .json(&json!({"by": "alice"}))
+        .send()
+        .await
+        .unwrap();
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/reject"))
+        .json(&json!({"reviewer": "bob", "note": "  "}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let resp = client
+        .post(format!("{base}/api/manual/experiments/{id}/reject"))
+        .json(&json!({"reviewer": "bob", "note": "insufficient evidence"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let (_, detail) = get(&base, &format!("/api/manual/experiments/{id}")).await;
+    assert_eq!(detail["experiment"]["status"], "rejected");
+
+    // Bulk import lands as drafts under one batch and does not score.
+    let mut second = manual_body("dan");
+    second["experiment_name"] = json!("vpn-tabletop");
+    second["outcome_status"] = json!("passed");
+    let resp = client
+        .post(format!("{base}/api/manual/import"))
+        .json(&json!({
+            "label": "q3-backfill",
+            "records": [manual_body("carol"), second]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["ids"].as_array().unwrap().len(), 2);
+    let (_, drafts) = get(&base, "/api/manual/experiments?status=draft").await;
+    assert_eq!(drafts["records"].as_array().unwrap().len(), 2);
+    assert!(drafts["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|r| r["batch_id"] == body["batch_id"]));
+    let (_, scores) = get(&base, "/api/scores").await;
+    assert!(scores["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["name"] != "vpn-tabletop"));
+
+    // Unknown id → 404; bad enum → 400.
+    let (status, _) = get(&base, "/api/manual/experiments/01JNONE").await;
+    assert_eq!(status, 404);
+    let mut bad = manual_body("alice");
+    bad["exercise_type"] = json!("war-game");
+    let resp = client
+        .post(format!("{base}/api/manual/experiments"))
+        .json(&bad)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
 }

@@ -61,6 +61,7 @@ pub fn doc_to_typst(doc: &ReportDoc) -> (String, HashMap<VirtualPath, Bytes>) {
     out.push_str("#show heading: set text(font: \"Source Serif 4\", weight: \"regular\")\n");
     out.push_str("#show heading.where(level: 1): set text(size: 16pt)\n");
     out.push_str("#show heading.where(level: 2): set text(size: 12.5pt)\n");
+    out.push_str("#show heading.where(level: 3): set text(size: 11pt)\n");
 
     cover(&mut out, meta);
 
@@ -72,6 +73,9 @@ pub fn doc_to_typst(doc: &ReportDoc) -> (String, HashMap<VirtualPath, Bytes>) {
             }
             Block::H2(t) => {
                 let _ = writeln!(out, "\n== {}\n", esc(t));
+            }
+            Block::H3(t) => {
+                let _ = writeln!(out, "\n=== {}\n", esc(t));
             }
             Block::Paragraph(t) => {
                 let _ = writeln!(out, "\n{}\n", esc(t));

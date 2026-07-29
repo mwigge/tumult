@@ -6,11 +6,35 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kronika_docs::builders;
+use kronika_docs::org::OrgTree;
 use kronika_docs::typst_pdf::render_pdf;
-use kronika_store::{LogRow, SpanRow, Store};
+use kronika_store::{ExerciseType, LogRow, ManualOutcome, NewManualExperiment, SpanRow, Store};
 
 const NS: i64 = 1_000_000_000;
 const DAY: i64 = 86_400 * NS;
+
+/// Org fixture for the R1 "By domain" section: three units under one
+/// domain, one experiment deliberately unassigned.
+const ORG_YAML: &str = "
+nodes:
+  - {name: platform, kind: domain}
+  - {name: infrastructure, kind: unit, parent: platform}
+  - {name: application, kind: unit, parent: platform}
+  - {name: data, kind: unit, parent: platform}
+  - {name: infra-team, parent: infrastructure}
+  - {name: app-team, parent: application}
+  - {name: data-team, parent: data}
+assignments:
+  - team: infra-team
+    targets: [\"disk pressure*\", \"host cpu*\", \"legacy batch*\", \"cdn*\"]
+    criticality: {\"cdn failover — edge PoP loss\": critical}
+  - team: app-team
+    targets: [\"api-worker*\", \"batch worker*\", \"worker-process*\"]
+    criticality: {\"api-worker freeze — heartbeat recovers after SIGSTOP injection\": high}
+  - team: data-team
+    targets: [\"message-queue*\", \"config corruption*\"]
+defaults: {weight: 1.0, stale_days: 30}
+";
 
 fn now_ns() -> i64 {
     SystemTime::now()
@@ -309,6 +333,57 @@ fn main() {
     let writer = store.writer().unwrap();
     writer.insert_spans(&spans).unwrap();
     writer.insert_logs(&logs).unwrap();
+
+    // Manual evidence: one verified gameday (scores), one submitted
+    // (pending), one draft (pending).
+    let manual = |name: &str, outcome: ManualOutcome, by: &str| NewManualExperiment {
+        experiment_name: name.into(),
+        exercise_type: ExerciseType::GameDay,
+        executed_at_ns: now - 3 * DAY,
+        hypothesis: "Edge PoP loss fails over within 60s".into(),
+        method: "Disabled the primary PoP during a live game day".into(),
+        outcome,
+        hypothesis_met: Some(matches!(outcome, ManualOutcome::Passed)),
+        findings: Some("Failover worked; warm-up took 40s".into()),
+        action_items: vec!["Pre-warm the secondary PoP".into()],
+        target_system: Some("cdn".into()),
+        target_environment: Some("production".into()),
+        blast_radius: Some("single-pop".into()),
+        recovery_time_s: Some(40.0),
+        duration_s: Some(3600.0),
+        entered_by: by.into(),
+        attestation: "I attest this record reflects the exercise as executed.".into(),
+        renewal_due_ns: Some(now + 90 * DAY),
+        framework_refs: vec!["DORA Art. 24(7)".into(), "ISO 27001 A.5.30".into()],
+    };
+    let verified = writer
+        .create_manual_draft(&manual(
+            "cdn failover — edge PoP loss",
+            ManualOutcome::Passed,
+            "alice",
+        ))
+        .unwrap();
+    writer.submit_manual(&verified, None, "alice").unwrap();
+    writer
+        .verify_manual(&verified, "bob", Some("evidence reviewed on call"))
+        .unwrap();
+    let submitted = writer
+        .create_manual_draft(&manual(
+            "vpn concentrator tabletop",
+            ManualOutcome::Partial,
+            "carol",
+        ))
+        .unwrap();
+    writer.submit_manual(&submitted, None, "carol").unwrap();
+    writer
+        .create_manual_draft(&manual(
+            "dns failover drill",
+            ManualOutcome::Inconclusive,
+            "alice",
+        ))
+        .unwrap();
+
+    let org = OrgTree::from_yaml(ORG_YAML).unwrap();
     drop(writer);
     drop(store);
 
@@ -319,7 +394,7 @@ fn main() {
     let docs = [
         (
             "r1",
-            builders::build_executive(&reader, now, period, now).unwrap(),
+            builders::build_executive(&reader, &org, now, period, now).unwrap(),
         ),
         (
             "r3",

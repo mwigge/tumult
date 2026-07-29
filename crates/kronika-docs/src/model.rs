@@ -82,6 +82,7 @@ impl From<String> for Cell {
 pub enum Block {
     H1(String),
     H2(String),
+    H3(String),
     Paragraph(String),
     /// (label, value, optional sub-line) KPI cards.
     Kpis(Vec<(String, String, Option<String>)>),
