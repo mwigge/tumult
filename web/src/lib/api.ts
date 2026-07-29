@@ -6,6 +6,7 @@ import type {
   Dimensions,
   ExperimentDetail,
   ExperimentRow,
+  ExperimentWindow,
   LogEntry,
   LogVolume,
   ManualDetail,
@@ -65,6 +66,11 @@ export const api = {
   },
 
   experiment: (id: string) => get<ExperimentDetail>(`/api/experiments/${encodeURIComponent(id)}`),
+
+  experimentWindows: (fromNs: number, toNs: number) =>
+    get<{ count: number; runs: ExperimentWindow[] }>(
+      `/api/experiments/windows?from=${fromNs}&to=${toNs}`
+    ),
 
   dimensions: () => get<Dimensions>('/api/dimensions'),
 

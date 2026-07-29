@@ -162,6 +162,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/overview", get(overview))
         .route("/api/timeseries", get(timeseries))
         .route("/api/experiments", get(experiments))
+        .route("/api/experiments/windows", get(experiment_windows))
         .route("/api/experiments/{id}", get(experiment_detail))
         .route("/api/dimensions", get(dimensions))
         .route("/api/metrics", get(list_metrics))
@@ -272,6 +273,54 @@ fn sql_ieq(s: &str) -> String {
 /// Time-window predicate on `ts_ns`.
 fn w(from: i64, to: i64) -> String {
     format!("ts_ns >= {from} AND ts_ns < {to}")
+}
+
+/// Parse a click-to-filter `k=v` parameter into (key, value); the key must
+/// be non-empty (the value may be, to filter for empty attrs).
+fn attr_kv(s: &str) -> Option<(&str, &str)> {
+    let (k, v) = s.split_once('=')?;
+    if k.is_empty() {
+        None
+    } else {
+        Some((k, v))
+    }
+}
+
+/// Click-to-filter predicates on the attribute maps, for the logs list
+/// (`log_attrs` / `resource_attrs` columns) and — via `span_alias` — for the
+/// traces list (`EXISTS` over any span of the trace). `attr` keeps only
+/// rows where the key has exactly the value in either map; `attr_not`
+/// excludes them (NULL-safe: rows lacking the key survive `attr_not`).
+fn attr_wheres(
+    attr: Option<&str>,
+    attr_not: Option<&str>,
+    key_cols: (&str, &str),
+) -> Result<Vec<String>, String> {
+    let (a, b) = key_cols;
+    let mut wheres = Vec::new();
+    if let Some(raw) = attr.filter(|s| !s.is_empty()) {
+        let Some((k, v)) = attr_kv(raw) else {
+            return Err(format!("invalid attr {raw:?}; expected k=v"));
+        };
+        wheres.push(format!(
+            "({a}[{}] = {v} OR {b}[{}] = {v})",
+            sql_string(k),
+            sql_string(k),
+            v = sql_string(v)
+        ));
+    }
+    if let Some(raw) = attr_not.filter(|s| !s.is_empty()) {
+        let Some((k, v)) = attr_kv(raw) else {
+            return Err(format!("invalid attr_not {raw:?}; expected k=v"));
+        };
+        wheres.push(format!(
+            "NOT (COALESCE({a}[{}] = {v}, false) OR COALESCE({b}[{}] = {v}, false))",
+            sql_string(k),
+            sql_string(k),
+            v = sql_string(v)
+        ));
+    }
+    Ok(wheres)
 }
 
 /// 500 JSON error response.
@@ -818,6 +867,47 @@ async fn experiments(
     Ok(Json(json!({"count": rows.len(), "experiments": rows})))
 }
 
+#[derive(Deserialize)]
+struct ExperimentWindowsParams {
+    from: Option<i64>,
+    to: Option<i64>,
+}
+
+/// `GET /api/experiments/windows?from=&to=` — experiment runs overlapping
+/// the `[from, to)` window (epoch ns), for chart overlays. Cheaper than the
+/// list endpoint: one row per run from the `experiment_runs` rollup view.
+async fn experiment_windows(
+    State(state): State<ApiState>,
+    Query(params): Query<ExperimentWindowsParams>,
+) -> Result<Json<Value>, Response> {
+    let (Some(from), Some(to)) = (params.from, params.to) else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "missing query parameters: from and to (epoch ns)"})),
+        )
+            .into_response());
+    };
+    if from >= to {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "from must be before to"})),
+        )
+            .into_response());
+    }
+    let sql = format!(
+        "SELECT experiment_id AS id, experiment_name AS name, \
+         started_at_ns AS start_ns, ended_at_ns AS end_ns, outcome_status AS outcome \
+         FROM experiment_runs \
+         WHERE started_at_ns < {to} AND ended_at_ns > {from} \
+         ORDER BY started_at_ns LIMIT 200"
+    );
+    let rows = with_reader(&state.db_path, move |reader| {
+        reader.query_json_rows(&sql).map_err(|e| e.to_string())
+    })
+    .await?;
+    Ok(Json(json!({"count": rows.len(), "runs": rows})))
+}
+
 async fn experiment_detail(
     State(state): State<ApiState>,
     Path(id): Path<String>,
@@ -959,6 +1049,8 @@ struct LogsParams {
     severity: Option<String>,
     service: Option<String>,
     q: Option<String>,
+    attr: Option<String>,
+    attr_not: Option<String>,
     limit: Option<u32>,
 }
 
@@ -969,15 +1061,20 @@ struct LogsVolumeParams {
     severity: Option<String>,
     service: Option<String>,
     q: Option<String>,
+    attr: Option<String>,
+    attr_not: Option<String>,
 }
 
 /// WHERE clauses shared by the logs list and volume endpoints (range always
 /// applies, so the list is never empty).
+#[allow(clippy::too_many_arguments)]
 fn log_wheres(
     range: Option<&str>,
     severity: Option<&str>,
     service: Option<&str>,
     q: Option<&str>,
+    attr: Option<&str>,
+    attr_not: Option<&str>,
 ) -> Result<Vec<String>, String> {
     let range = range.unwrap_or("24h");
     let Some((cur, _)) = windows(range) else {
@@ -998,6 +1095,11 @@ fn log_wheres(
         }
         wheres.push(format!("body ILIKE {} ESCAPE '\\'", sql_contains(q)));
     }
+    wheres.extend(attr_wheres(
+        attr,
+        attr_not,
+        ("log_attrs", "resource_attrs"),
+    )?);
     Ok(wheres)
 }
 
@@ -1011,6 +1113,8 @@ async fn logs(
         params.severity.as_deref(),
         params.service.as_deref(),
         params.q.as_deref(),
+        params.attr.as_deref(),
+        params.attr_not.as_deref(),
     )
     .map_err(bad)?;
     let limit = params.limit.unwrap_or(200).clamp(1, 1000);
@@ -1043,6 +1147,8 @@ async fn logs_volume(
         params.severity.as_deref(),
         params.service.as_deref(),
         params.q.as_deref(),
+        params.attr.as_deref(),
+        params.attr_not.as_deref(),
     )
     .map_err(bad)?;
     // One row per (bucket, severity); the UI pivots into stacked series.
@@ -1072,6 +1178,8 @@ struct TracesParams {
     service: Option<String>,
     min_duration_ms: Option<f64>,
     outcome: Option<String>,
+    attr: Option<String>,
+    attr_not: Option<String>,
 }
 
 /// Reusable outcome predicate on the joined `experiment.completed` status
@@ -1137,6 +1245,25 @@ async fn traces(
     }
     if let Some(ow) = outcome_where(params.outcome.as_deref()).map_err(bad)? {
         trace_wheres.push(ow);
+    }
+    // Click-to-filter on span attributes (any span of the trace).
+    for (raw, negate) in [
+        (params.attr.as_deref(), false),
+        (params.attr_not.as_deref(), true),
+    ] {
+        let Some(raw) = raw.filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        let Some((k, v)) = attr_kv(raw) else {
+            return Err(bad(format!("invalid attr filter {raw:?}; expected k=v")));
+        };
+        let not = if negate { "NOT " } else { "" };
+        trace_wheres.push(format!(
+            "{not}EXISTS (SELECT 1 FROM spans sx WHERE sx.trace_id = t.trace_id \
+             AND (sx.span_attrs[{k}] = {v} OR sx.resource_attrs[{k}] = {v}))",
+            k = sql_string(k),
+            v = sql_string(v)
+        ));
     }
     let trace_where = if trace_wheres.is_empty() {
         String::new()

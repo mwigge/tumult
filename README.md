@@ -79,7 +79,10 @@ reports — with a guarded AI analytics layer in later phases.
 - **Web UI** — SvelteKit SPA embedded into the kronikad binary and served on
   the HTTP port: Overview KPIs, calendar heatmap, fault donut, filterable
   experiment list, custom span waterfall with a span detail drawer, Logs,
-  Traces, Metrics and Topology explorers, NL Ask, Reports. See
+  Traces, Metrics and Topology explorers, NL Ask, Reports. Experiment runs
+  overlay the Overview/Metrics charts as outcome-coloured bands
+  (click → the run), and attribute values in the log/span detail views
+  offer ⊕/⊖ click-to-filter. See
   [web/README.md](web/README.md).
 - **AI analytics** — OpenAI-compatible LLM interface + SQL guardrail
   pipeline (read-only, allow-listed, single-SELECT, injected LIMIT), live

@@ -2,8 +2,9 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
-  import type { Overview } from '$lib/types';
+  import type { ExperimentWindow, Overview } from '$lib/types';
   import { CHART } from '$lib/echarts';
+  import { experimentOverlay, overlayRunId } from '$lib/overlays';
   import KpiCard from '$lib/components/KpiCard.svelte';
   import RangeSwitch from '$lib/components/RangeSwitch.svelte';
   import EChart from '$lib/components/EChart.svelte';
@@ -12,6 +13,8 @@
 
   let data: Overview | null = $state(null);
   let error: string | null = $state(null);
+  // Experiment runs overlapping the visible window (chart overlay bands).
+  let runs: ExperimentWindow[] = $state([]);
 
   $effect(() => {
     let cancelled = false;
@@ -19,7 +22,14 @@
     error = null;
     api
       .overview(range)
-      .then((d) => !cancelled && (data = d))
+      .then((d) => {
+        if (cancelled) return;
+        data = d;
+        api
+          .experimentWindows(d.from_ns, d.to_ns)
+          .then((w) => !cancelled && (runs = w.runs))
+          .catch(() => !cancelled && (runs = []));
+      })
       .catch((e) => !cancelled && (error = String(e)));
     return () => {
       cancelled = true;
@@ -36,6 +46,10 @@
     if (!data) return {};
     const points = data.experiments_per_day;
     if (range === '24h') {
+      // Category axis of day buckets: overlay bands map a run onto its day
+      // column. (The calendar-heatmap branch below has no markArea support
+      // on the calendar coordinate system, so overlays are 24h-only here.)
+      const overlay = experimentOverlay(runs, (ms) => dayStr(ms / 1000));
       return {
         ...tooltip(),
         grid: { left: 40, right: 12, top: 18, bottom: 26 },
@@ -47,7 +61,8 @@
             data: points.map((p) => p.v),
             itemStyle: { color: CHART.accent, borderRadius: [3, 3, 0, 0] },
             barMaxWidth: 44
-          }
+          },
+          ...(overlay ? [overlay] : [])
         ]
       };
     }
@@ -109,6 +124,10 @@
   function tooltip() {
     return { tooltip: { ...CHART.tooltip } };
   }
+  function onOverlayClick(params: { componentType?: string; data?: unknown }) {
+    const id = overlayRunId(params);
+    if (id) goto(`/experiments/${encodeURIComponent(id)}`);
+  }
   function axisCat(data: string[]) {
     return {
       type: 'category',
@@ -158,7 +177,7 @@
       {#if data.experiments_per_day.length === 0}
         <div class="state">No experiments in this window.</div>
       {:else}
-        <EChart option={perDayOption} height={range === '24h' ? 220 : 200} />
+        <EChart option={perDayOption} height={range === '24h' ? 220 : 200} onclick={onOverlayClick} />
       {/if}
     </div>
     <div class="panel">

@@ -41,6 +41,15 @@ export interface ExperimentRow {
   review_status: string | null;
 }
 
+/** One experiment run's time window, from `GET /api/experiments/windows`. */
+export interface ExperimentWindow {
+  id: string | null;
+  name: string | null;
+  start_ns: number;
+  end_ns: number;
+  outcome: string | null;
+}
+
 export interface Span {
   ts_ns: number;
   trace_id: string;

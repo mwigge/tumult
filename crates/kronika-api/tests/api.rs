@@ -1381,3 +1381,82 @@ async fn lake_status_and_manual_export_trigger() {
         "{second}"
     );
 }
+
+#[tokio::test]
+async fn experiments_windows_returns_overlapping_runs() {
+    let srv = spawn_server().await;
+    // Whole seeded window: both runs.
+    let (status, body) = get(
+        &srv.base,
+        "/api/experiments/windows?from=0&to=9000000000000000000",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let runs = body["runs"].as_array().unwrap();
+    assert_eq!(runs.len(), 2, "{runs:?}");
+    let ids: Vec<&str> = runs.iter().filter_map(|r| r["id"].as_str()).collect();
+    assert!(ids.contains(&"exp-pass") && ids.contains(&"exp-fail"));
+    assert!(runs[0]["start_ns"].as_i64().unwrap() > 0);
+    assert!(runs[0]["end_ns"].as_i64().unwrap() > runs[0]["start_ns"].as_i64().unwrap());
+    assert!(runs
+        .iter()
+        .all(|r| r["outcome"].is_string() || r["outcome"].is_null()));
+
+    // Narrow window overlapping only exp-fail (started ~10 min ago).
+    let now = now_ns();
+    let from = now - 900 * NS;
+    let (status, body) = get(
+        &srv.base,
+        &format!("/api/experiments/windows?from={from}&to={now}"),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let runs = body["runs"].as_array().unwrap();
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    assert_eq!(runs[0]["id"], "exp-fail");
+
+    // Window before everything: nothing overlaps; bad params: 400.
+    let (_, body) = get(&srv.base, "/api/experiments/windows?from=1&to=2").await;
+    assert_eq!(body["runs"].as_array().unwrap().len(), 0);
+    let (status, _) = get(&srv.base, "/api/experiments/windows?from=5").await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn logs_attr_click_to_filter() {
+    let srv = spawn_server().await;
+    // filter-for: only logs carrying experiment_id=exp-pass.
+    let (status, body) = get(&srv.base, "/api/logs?attr=experiment_id%3Dexp-pass").await;
+    assert_eq!(status, 200, "{body}");
+    let logs = body["logs"].as_array().unwrap();
+    assert_eq!(logs.len(), 2, "{logs:?}");
+    assert!(logs
+        .iter()
+        .all(|l| l["log_attrs"]["experiment_id"] == "exp-pass"));
+
+    // filter-out: drops exp-pass's two logs, keeps the rest.
+    let (status, body) = get(&srv.base, "/api/logs?attr_not=experiment_id%3Dexp-pass").await;
+    assert_eq!(status, 200, "{body}");
+    let logs = body["logs"].as_array().unwrap();
+    assert!(logs.len() >= 4, "{logs:?}");
+    assert!(logs
+        .iter()
+        .all(|l| l["log_attrs"]["experiment_id"] != "exp-pass"));
+
+    // malformed: 400.
+    let (status, _) = get(&srv.base, "/api/logs?attr=noequals").await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn traces_attr_click_to_filter() {
+    let srv = spawn_server().await;
+    // Seed spans carry no span_attrs; filter-for matches nothing…
+    let (status, body) = get(&srv.base, "/api/traces?attr=resilience.suite%3Ddemo").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["traces"].as_array().unwrap().len(), 0);
+    // …and filter-out keeps everything.
+    let (status, body) = get(&srv.base, "/api/traces?attr_not=resilience.suite%3Ddemo").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["traces"].as_array().unwrap().len(), 2, "{body}");
+}

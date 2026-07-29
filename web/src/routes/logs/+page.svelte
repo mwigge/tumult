@@ -23,7 +23,9 @@
     range: $page.url.searchParams.get('range') ?? '24h',
     severity: $page.url.searchParams.get('severity') ?? '',
     service: $page.url.searchParams.get('service') ?? '',
-    q: $page.url.searchParams.get('q') ?? ''
+    q: $page.url.searchParams.get('q') ?? '',
+    attr: $page.url.searchParams.get('attr') ?? '',
+    attr_not: $page.url.searchParams.get('attr_not') ?? ''
   });
 
   let rows: LogEntry[] | null = $state(null);
@@ -59,6 +61,17 @@
     if (value) params.set(key, value);
     else params.delete(key);
     goto(`?${params}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
+
+  // Click-to-filter (facet ⊕/⊖) from the detail attribute table: the
+  // attr/attr_not URL params map to exact k=v predicates on the API.
+  function filterFor(e: MouseEvent, k: string, v: string) {
+    e.stopPropagation();
+    setFilter('attr', `${k}=${v}`);
+  }
+  function filterOut(e: MouseEvent, k: string, v: string) {
+    e.stopPropagation();
+    setFilter('attr_not', `${k}=${v}`);
   }
 
   function sevClass(sev: string | null): 'ok' | 'warn' | 'fail' | 'neutral' {
@@ -142,6 +155,21 @@
   </div>
 </div>
 
+{#if filters.attr || filters.attr_not}
+  <div class="facet-chips">
+    {#if filters.attr}
+      <button class="chip" title="remove filter" onclick={() => setFilter('attr', '')}>
+        ⊕ {filters.attr} <span class="x">×</span>
+      </button>
+    {/if}
+    {#if filters.attr_not}
+      <button class="chip" title="remove filter" onclick={() => setFilter('attr_not', '')}>
+        ⊖ {filters.attr_not} <span class="x">×</span>
+      </button>
+    {/if}
+  </div>
+{/if}
+
 <div class="panel">
   {#if volume && volume.rows.length > 0}
     <EChart option={volumeOption} height={180} />
@@ -197,7 +225,14 @@
                     <table class="attrs">
                       <tbody>
                         {#each Object.entries(row.log_attrs) as [k, v] (k)}
-                          <tr><td class="mono key">{k}</td><td class="mono">{v}</td></tr>
+                          <tr class="attr-row">
+                            <td class="mono key">{k}</td>
+                            <td class="mono">{v}</td>
+                            <td class="facets">
+                              <button title="filter for {k}={v}" onclick={(e) => filterFor(e, k, v)}>⊕</button>
+                              <button title="filter out {k}={v}" onclick={(e) => filterOut(e, k, v)}>⊖</button>
+                            </td>
+                          </tr>
                         {/each}
                       </tbody>
                     </table>
@@ -247,5 +282,48 @@
   }
   table.attrs .key {
     color: var(--text-dim);
+  }
+  .facets {
+    visibility: hidden;
+    white-space: nowrap;
+  }
+  .attr-row:hover .facets {
+    visibility: visible;
+  }
+  .facets button {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 4px;
+    margin-left: 4px;
+  }
+  .facets button:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .facet-chips {
+    display: flex;
+    gap: 8px;
+    margin: -6px 0 10px;
+  }
+  .chip {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11.5px;
+    font-family: var(--mono, monospace);
+    padding: 2px 10px;
+  }
+  .chip .x {
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+  .chip:hover .x {
+    color: var(--fail);
   }
 </style>

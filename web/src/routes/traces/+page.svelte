@@ -13,7 +13,9 @@
     range: $page.url.searchParams.get('range') ?? '24h',
     service: $page.url.searchParams.get('service') ?? '',
     min_duration_ms: $page.url.searchParams.get('min_duration_ms') ?? '',
-    outcome: $page.url.searchParams.get('outcome') ?? ''
+    outcome: $page.url.searchParams.get('outcome') ?? '',
+    attr: $page.url.searchParams.get('attr') ?? '',
+    attr_not: $page.url.searchParams.get('attr_not') ?? ''
   });
 
   let rows: TraceRow[] | null = $state(null);
@@ -149,6 +151,21 @@
   </div>
 </div>
 
+{#if filters.attr || filters.attr_not}
+  <div class="facet-chips">
+    {#if filters.attr}
+      <button class="chip" title="remove filter" onclick={() => setFilter('attr', '')}>
+        ⊕ {filters.attr} <span class="x">×</span>
+      </button>
+    {/if}
+    {#if filters.attr_not}
+      <button class="chip" title="remove filter" onclick={() => setFilter('attr_not', '')}>
+        ⊖ {filters.attr_not} <span class="x">×</span>
+      </button>
+    {/if}
+  </div>
+{/if}
+
 <div class="panel">
   {#if durations && durations.points.length > 0}
     <EChart option={scatterOption} height={220} onclick={onPoint} />
@@ -210,6 +227,28 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .facet-chips {
+    display: flex;
+    gap: 8px;
+    margin: -6px 0 10px;
+  }
+  .chip {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11.5px;
+    font-family: var(--mono, monospace);
+    padding: 2px 10px;
+  }
+  .chip .x {
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+  .chip:hover .x {
+    color: var(--fail);
   }
   .dur {
     display: flex;

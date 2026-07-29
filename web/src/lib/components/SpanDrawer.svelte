@@ -1,9 +1,12 @@
 <script lang="ts">
   // Right-hand drawer for one waterfall span: timing, status, attributes,
   // events and correlated logs (by span_id, else overlapping the span's
-  // time window on the same trace).
-  import type { LogRow, Span } from '$lib/types';
-  import { fmtDuration, fmtTs } from '$lib/api';
+  // time window on the same trace). Attribute values offer click-to-filter
+  // (⊕/⊖) onto the traces list; a run overlapping the span's window links
+  // to its experiment page.
+  import { goto } from '$app/navigation';
+  import type { ExperimentWindow, LogRow, Span } from '$lib/types';
+  import { api, fmtDuration, fmtTs } from '$lib/api';
   import StatusBadge from './StatusBadge.svelte';
 
   let {
@@ -25,6 +28,34 @@
 
   const attrs = $derived(Object.entries(span.span_attrs ?? {}));
   const events = $derived(Array.isArray(span.events) ? span.events : []);
+
+  // The experiment run overlapping this span's window (correlation leg),
+  // when the span itself doesn't already carry experiment_id.
+  let run: ExperimentWindow | null = $state(null);
+  $effect(() => {
+    let cancelled = false;
+    run = null;
+    if (!span.experiment_id) {
+      api
+        .experimentWindows(span.ts_ns, span.ts_ns + Math.max(span.duration_ns, 1))
+        .then((w) => {
+          if (!cancelled) run = w.runs[0] ?? null;
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  });
+  const experimentId = $derived.by(() => span.experiment_id ?? run?.id ?? null);
+
+  // Click-to-filter: hand the traces list an exact k=v attr predicate.
+  function filterFor(k: string, v: string) {
+    goto(`/traces?attr=${encodeURIComponent(`${k}=${v}`)}`);
+  }
+  function filterOut(k: string, v: string) {
+    goto(`/traces?attr_not=${encodeURIComponent(`${k}=${v}`)}`);
+  }
 
   function sevClass(sev: string | null): string {
     const s = (sev ?? '').toUpperCase();
@@ -63,6 +94,10 @@
         <dt>Fault</dt>
         <dd class="mono">{span.fault_type}{span.fault_subtype ? ` / ${span.fault_subtype}` : ''}</dd>
       {/if}
+      {#if experimentId}
+        <dt>Experiment</dt>
+        <dd class="mono"><a href="/experiments/{encodeURIComponent(experimentId)}">{run?.name ?? span.experiment_name ?? experimentId} ↗</a></dd>
+      {/if}
     </dl>
   </section>
 
@@ -72,9 +107,13 @@
       <table class="data">
         <tbody>
           {#each attrs as [k, v] (k)}
-            <tr>
+            <tr class="attr-row">
               <td class="mono dim">{k}</td>
               <td class="mono">{v}</td>
+              <td class="facets">
+                <button title="filter traces for {k}={v}" onclick={() => filterFor(k, v)}>⊕</button>
+                <button title="filter traces out {k}={v}" onclick={() => filterOut(k, v)}>⊖</button>
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -98,6 +137,9 @@
         <div class="log">
           <span class="mono sev {sevClass(log.severity_text)}">{log.severity_text ?? 'LOG'}</span>
           <span class="body">{log.body}</span>
+          {#if log.trace_id}
+            <a class="corr" href="/traces/{encodeURIComponent(log.trace_id)}" title="open trace">↗</a>
+          {/if}
         </div>
       {/each}
     {/if}
@@ -193,5 +235,35 @@
   }
   .dim {
     color: var(--text-dim);
+  }
+  .facets {
+    visibility: hidden;
+    white-space: nowrap;
+    border: none;
+  }
+  .attr-row:hover .facets {
+    visibility: visible;
+  }
+  .facets button {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 4px;
+    margin-left: 4px;
+  }
+  .facets button:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .corr {
+    color: var(--text-dim);
+    text-decoration: none;
+    margin-left: auto;
+  }
+  .corr:hover {
+    color: var(--accent);
   }
 </style>

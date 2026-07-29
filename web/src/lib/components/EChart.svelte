@@ -13,8 +13,8 @@
     option: EChartsCoreOption;
     height?: number;
     // ECharts 'click' event params (seriesType-specific shape) — used by the
-    // traces scatter to navigate on point click.
-    onclick?: (params: { data?: unknown }) => void;
+    // traces scatter and the experiment overlays to navigate on click.
+    onclick?: (params: { componentType?: string; data?: unknown }) => void;
   } = $props();
 
   let el: HTMLDivElement;

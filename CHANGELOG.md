@@ -30,6 +30,19 @@ Format: `## [version] — YYYY-MM-DD` / `### Added|Fixed|Changed|Removed|Roadmap
 - **Research docs**: `docs/research-openobserve-gap.md` (capability gap +
   AGPL/Apache boundary + borrow-list) and `docs/research-ui-patterns.md`
   (15-pattern observability UI catalog with per-pattern status/effort).
+- **Experiment-run chart overlays** (UI patterns 2): `GET
+  /api/experiments/windows?from&to` returns runs overlapping a window; the
+  Overview (24h) and Metrics charts shade them as outcome-coloured
+  `markArea` bands with a start `markLine`, and clicking a band opens the
+  run (`web/src/lib/overlays.ts`, one helper used by both pages).
+- **Click-to-filter** (UI pattern 1): attribute values in the Logs detail
+  rows and the trace SpanDrawer get hover ⊕/⊖ actions that set exact
+  `attr=k=v` / `attr_not=k=v` URL params (new `attr`/`attr_not` predicates
+  on `/api/logs`, `/api/logs/volume` and `/api/traces` — the latter as an
+  `EXISTS` over any span of the trace), shown as removable chips.
+- **Correlation legs** (UI pattern 8): the SpanDrawer links to the
+  experiment run overlapping the span's window (when the span doesn't
+  carry `experiment_id` itself) and correlated logs link to their trace.
 
 ### Changed
 - **Relicensed MIT → Apache-2.0** (LICENSE, workspace `Cargo.toml`,
