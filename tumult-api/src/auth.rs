@@ -109,6 +109,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/registry/{id}", Role::Viewer),
     ("GET", "/api/runs", Role::Viewer),
     ("GET", "/api/runs/{id}", Role::Viewer),
+    ("GET", "/api/runs/{id}/audit/verify", Role::Viewer),
     ("GET", "/api/lake/status", Role::Viewer),
     ("GET", "/api/reports", Role::Viewer),
     ("GET", "/api/reports/v2", Role::Viewer),

@@ -163,7 +163,8 @@ enqueues onto a bounded in-process queue (`TUMULTD_RUN_CONCURRENCY` /
 `TUMULTD_RUN_QUEUE_DEPTH`, 429 on overload); `POST /api/runs/{id}/stop`
 cancels the runner's e-stop token mid-method (rollbacks unwind the fault)
 or cancels before start; `GET /api/runs[/{id}]` read state and audit
-trail. Execution goes through `tumult-exec`'s `ProviderExecutor` — the
+trail; `GET /api/runs/{id}/audit/verify` re-verifies the run's v7 audit
+hash chain (`{run_id, chain_valid}`). Execution goes through `tumult-exec`'s `ProviderExecutor` — the
 same crate the CLI uses — on a fixed worker pool, with every state
 transition persisted through the single-writer channel (`runs` +
 `run_audit`, deliberately index-free since schema v5: ART index desync

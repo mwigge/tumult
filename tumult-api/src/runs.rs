@@ -460,3 +460,60 @@ pub async fn detail(
         None => Err(not_found(format!("unknown run id {id:?}"))),
     }
 }
+
+/// `GET /api/runs/{id}/audit/verify` — re-verify the run's audit hash chain
+/// (schema v7): every chained row's stored hash is recomputed and the
+/// `prev_hash` pointers are checked pairwise (tumult-lake's
+/// `Reader::verify_run_audit_chain`).
+/// `chain_valid: false` means the trail was tampered with. 404 for unknown
+/// runs and for runs outside the principal's environment scopes (same rule
+/// as [`detail`]); `detail` already returns the trail itself, so this
+/// exposes nothing new.
+pub async fn audit_verify(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, Response> {
+    if id.chars().count() > 100 {
+        return Err(bad_request("run id too long".into()));
+    }
+    let scopes = principal.env_scopes.clone();
+    let lookup = id.clone();
+    let result = with_reader(&state.db_path, move |reader| {
+        let exists = if scopes.is_empty() {
+            reader.run_get(&lookup).map_err(|e| e.to_string())?.is_some()
+        } else {
+            let env_list = scopes
+                .iter()
+                .map(|s| sql_string(s))
+                .collect::<Vec<_>>()
+                .join(", ");
+            !reader
+                .query_json_rows(&format!(
+                    "SELECT r.id FROM runs r \
+                     LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                                FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+                     WHERE r.id = {} \
+                       AND (e.env IN ({env_list}) OR r.experiment_id IS NULL)",
+                    sql_string(&lookup)
+                ))
+                .map_err(|e| e.to_string())?
+                .is_empty()
+        };
+        if !exists {
+            return Ok(None);
+        }
+        reader
+            .verify_run_audit_chain(&lookup)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    })
+    .await?;
+    match result {
+        Some(chain_valid) => Ok(Json(json!({
+            "run_id": id,
+            "chain_valid": chain_valid,
+        }))),
+        None => Err(not_found(format!("unknown run id {id:?}"))),
+    }
+}

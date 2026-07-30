@@ -1869,6 +1869,27 @@ async fn run_lifecycle_end_to_end() {
 }
 
 #[tokio::test]
+async fn run_audit_verify_reports_chain_validity() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+
+    // A run executed to a terminal state has an intact hash chain.
+    let run_id = enqueue_approved(&srv.base, &registry_id).await;
+    let detail = await_terminal_run(&srv.base, &run_id).await;
+    assert_eq!(detail["run"]["state"], "passed", "{detail}");
+
+    let (status, body) = get(&srv.base, &format!("/api/runs/{run_id}/audit/verify")).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["run_id"], json!(run_id));
+    assert_eq!(body["chain_valid"], true, "{body}");
+
+    // Unknown run id: 404 (tamper detection itself is covered at the lake
+    // layer by `verify_run_audit_chain`'s test).
+    let (status, _body) = get(&srv.base, "/api/runs/run-does-not-exist/audit/verify").await;
+    assert_eq!(status, 404);
+}
+
+#[tokio::test]
 async fn stop_unknown_terminal_and_running_runs() {
     let srv = spawn_server().await;
     let registry_id = register_run_def(&srv.base).await;
