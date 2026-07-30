@@ -24,8 +24,13 @@
 //! ("Failed to delete all rows from index"), poisoning the store exactly
 //! when orphan reconciliation must write. Run tables are tiny; scans are
 //! free and uniqueness is enforced in code.
+//!
+//! v6 adds the auth tables (`users`, `sessions`, `tokens`,
+//! `user_env_scopes`) — additive and index-free under the same rule as the
+//! v5 run tables — plus the `run_audit.actor` column carrying the session
+//! identity on run audit events (NULL for system events).
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 5;
+pub const CURRENT_SCHEMA_VERSION: i64 = 6;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -331,6 +336,45 @@ CREATE TABLE IF NOT EXISTS run_audit (
     at_ns   BIGINT NOT NULL,
     event   VARCHAR NOT NULL,
     detail  VARCHAR
+);
+-- v6: `actor` is the authenticated session identity on run audit events
+-- (NULL for system events). Additive and idempotent, like the v1.1
+-- metric_histograms ALTERs above.
+ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS actor VARCHAR;
+
+-- v6: auth tables. Same index-free rule as the v5 run tables: a daemon
+-- killed mid-write can return with DuckDB's ART indexes desynced from the
+-- table after WAL replay, and every subsequent UPDATE then dies fatally on
+-- 'Failed to delete all rows from index'. These tables are tiny (a handful
+-- of users, live sessions, and API tokens), sequential scans are free, and
+-- uniqueness (username, session id hash, token hash) is enforced in code.
+CREATE TABLE IF NOT EXISTS users (
+    id              VARCHAR NOT NULL,   -- uuid; the bootstrap 'legacy' user uses id 'legacy'
+    username        VARCHAR NOT NULL,   -- unique at code level
+    password_hash   VARCHAR NOT NULL,   -- argon2id PHC string; '!' = can never verify (legacy)
+    role            VARCHAR NOT NULL,   -- viewer|operator|approver|admin
+    must_change     BOOLEAN NOT NULL,   -- one-time bootstrap password must be changed
+    disabled        BOOLEAN NOT NULL,
+    created_at_ns   BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    id_hash         VARCHAR NOT NULL,   -- sha256 hex of the opaque session id (cookie value never stored)
+    user_id         VARCHAR NOT NULL,
+    created_at_ns   BIGINT NOT NULL,
+    expires_at_ns   BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tokens (
+    id              VARCHAR NOT NULL,   -- uuid of the token record (revocation handle)
+    user_id         VARCHAR NOT NULL,
+    name            VARCHAR NOT NULL,   -- human label, e.g. 'deploy script'
+    token_hash      VARCHAR NOT NULL,   -- sha256 hex of the kro_-prefixed token
+    created_at_ns   BIGINT NOT NULL,
+    last_used_at_ns BIGINT,
+    revoked         BOOLEAN NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_env_scopes (
+    user_id         VARCHAR NOT NULL,
+    environment     VARCHAR NOT NULL    -- one row per allowed env; zero rows = all environments
 );
 ";
 

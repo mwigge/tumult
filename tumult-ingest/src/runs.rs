@@ -582,7 +582,7 @@ async fn attempt_orphan_rollback(
     let id = run_id.to_string();
     let _ = exec_write(ingest, move |writer| {
         writer
-            .insert_run_audit(&id, "rollback_started", Some("orphan recovery"))
+            .insert_run_audit(&id, "rollback_started", Some("orphan recovery"), None)
             .map_err(|e| e.to_string())
     })
     .await;
@@ -627,7 +627,7 @@ async fn attempt_orphan_rollback(
     let id = run_id.to_string();
     let _ = exec_write(ingest, move |writer| {
         writer
-            .insert_run_audit(&id, event, None)
+            .insert_run_audit(&id, event, None, None)
             .map_err(|e| e.to_string())
     })
     .await;

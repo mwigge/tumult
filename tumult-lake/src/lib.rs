@@ -5,7 +5,8 @@
 #![allow(clippy::pedantic)]
 
 //! `tumult-lake` — the unified embedded `DuckDB` store: chaos/resilience
-//! telemetry (spans, logs, metrics), manual evidence, and the journal
+//! telemetry (spans, logs, metrics), manual evidence, the daemon-run tables,
+//! auth identities (users, sessions, tokens), and the journal
 //! analytics family (experiments, activities, ChaosGraph, autopilot) in one
 //! database file, behind one writer.
 //!
@@ -38,6 +39,8 @@
 
 #[cfg(feature = "duckdb")]
 pub mod arrow_convert;
+#[cfg(feature = "duckdb")]
+pub mod auth;
 pub mod backend;
 #[cfg(feature = "duckdb")]
 pub mod duckdb_store;
@@ -65,6 +68,8 @@ use std::time::Duration;
 #[cfg(feature = "duckdb")]
 use duckdb::{params, AccessMode, Config, Connection};
 
+#[cfg(feature = "duckdb")]
+pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
@@ -274,6 +279,19 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     };
     if stored == Some(4) {
         conn.execute_batch(schema::MIGRATE_V5_RUN_TABLES_INDEX_FREE)?;
+    }
+    // < v6: seed the `legacy` backfill identity so pre-auth free-text
+    // `entered_by` / `reviewed_by` values on manual-experiment rows
+    // semantically belong to a real (but un-loginable: password_hash '!',
+    // disabled) user and the audit hash chain is never rewritten. Guarded
+    // strictly on the stored version — idempotent by version, like the v5
+    // rebuild; fresh databases (stored = None) have no legacy rows and get
+    // no legacy user.
+    if stored.is_some_and(|v| v < 6) {
+        conn.execute(
+            "INSERT INTO users VALUES ('legacy', 'legacy', '!', 'viewer', false, true, 0)",
+            [],
+        )?;
     }
     // ChaosGraph node/edge tables (part of schema v3): DDL lives in
     // `tumult_graph::sql`. `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`

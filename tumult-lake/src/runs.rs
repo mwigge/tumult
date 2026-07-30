@@ -114,7 +114,7 @@ impl Writer {
                     run.queued_at_ns
                 ],
             )?;
-            self.insert_run_audit(&run.id, "enqueued", None)
+            self.insert_run_audit(&run.id, "enqueued", None, None)
         })
     }
 
@@ -144,7 +144,7 @@ impl Writer {
                 "UPDATE runs SET state = ? WHERE id = ?",
                 params![state, run_id],
             )?;
-            self.insert_run_audit(run_id, audit_event.unwrap_or(state), audit_detail)
+            self.insert_run_audit(run_id, audit_event.unwrap_or(state), audit_detail, None)
         })
     }
 
@@ -166,7 +166,7 @@ impl Writer {
                  experiment_id = COALESCE(?, experiment_id) WHERE id = ?",
                 params![run_state::RUNNING, now_ns(), experiment_id, run_id],
             )?;
-            self.insert_run_audit(run_id, "started", experiment_id)
+            self.insert_run_audit(run_id, "started", experiment_id, None)
         })
     }
 
@@ -198,11 +198,13 @@ impl Writer {
                     run_id
                 ],
             )?;
-            self.insert_run_audit(run_id, state, error)
+            self.insert_run_audit(run_id, state, error, None)
         })
     }
 
-    /// Append one event to a run's audit trail.
+    /// Append one event to a run's audit trail. `actor` is the authenticated
+    /// session identity behind the event (schema v6); `None` for system
+    /// events.
     ///
     /// # Errors
     /// Returns an error if the row fails to insert.
@@ -211,10 +213,11 @@ impl Writer {
         run_id: &str,
         event: &str,
         detail: Option<&str>,
+        actor: Option<&str>,
     ) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO run_audit VALUES (?,?,?,?)",
-            params![run_id, now_ns(), event, detail],
+            "INSERT INTO run_audit (run_id, at_ns, event, detail, actor) VALUES (?,?,?,?,?)",
+            params![run_id, now_ns(), event, detail, actor],
         )?;
         Ok(())
     }
@@ -514,7 +517,10 @@ CREATE INDEX idx_run_audit_run ON run_audit (run_id, at_ns);
 
         let store = Store::open(&db).unwrap();
         let writer = store.writer().unwrap();
-        assert_eq!(writer.schema_version().unwrap(), 5);
+        assert_eq!(
+            writer.schema_version().unwrap(),
+            crate::CURRENT_SCHEMA_VERSION
+        );
 
         // Data survived the rebuild…
         let reader = store.read_only().unwrap();
@@ -543,11 +549,14 @@ CREATE INDEX idx_run_audit_run ON run_audit (run_id, at_ns);
             .unwrap();
         assert!(index_rows.is_empty(), "{index_rows:?}");
 
-        // Re-opening is a no-op (version already 5, no rebuild attempted).
+        // Re-opening is a no-op (version already current, no rebuild attempted).
         drop(store);
         let store = Store::open(&db).unwrap();
         let writer = store.writer().unwrap();
-        assert_eq!(writer.schema_version().unwrap(), 5);
+        assert_eq!(
+            writer.schema_version().unwrap(),
+            crate::CURRENT_SCHEMA_VERSION
+        );
         let reader = store.read_only().unwrap();
         assert!(reader.run_get("run-old").unwrap().is_some());
     }
