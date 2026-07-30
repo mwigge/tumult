@@ -11,6 +11,24 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  web:
+    name: Web UI (Krönika SPA embedded in tumultd)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx svelte-check --tsconfig ./tsconfig.json
+      - run: npm run build
+
   check:
     name: Check
     runs-on: ubuntu-latest
@@ -21,6 +39,15 @@ jobs:
         with:
           toolchain: 1.91.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # tumultd rust-embeds web/build/ at compile time; without this the
+      # workspace cargo step below fails on the tumultd crate.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
       - run: cargo check --all-targets --all-features
 
   fmt:
@@ -50,6 +77,15 @@ jobs:
           toolchain: 1.91.1
           components: clippy
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # tumultd rust-embeds web/build/ at compile time; without this the
+      # workspace cargo step below fails on the tumultd crate.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
       - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
       # Fail on unused dependencies declared in Cargo.toml (respects
       # [package.metadata.cargo-machete] ignore lists).
@@ -66,6 +102,15 @@ jobs:
         with:
           toolchain: 1.91.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # tumultd rust-embeds web/build/ at compile time; without this the
+      # workspace cargo step below fails on the tumultd crate.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
       - run: cargo test --all-features
 
   doc:
@@ -78,6 +123,15 @@ jobs:
         with:
           toolchain: 1.91.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # tumultd rust-embeds web/build/ at compile time; without this the
+      # workspace cargo step below fails on the tumultd crate.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
       - run: cargo doc --no-deps --all-features
 
   audit:

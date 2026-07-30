@@ -1,3 +1,9 @@
+// Imported from kronika (Apache-2.0, same author). Pedantic lints are
+// scoped to tumult-native crates: this crate predates the pedantic gate and
+// carries intentional patterns it flags (timestamp/score casts, f64
+// comparisons). CI still applies -D warnings to it.
+#![allow(clippy::pedantic)]
+
 //! `tumult-api` — the read-only JSON query API backing the kronika UI.
 //!
 //! Routes (all under `/api`, all read-only against the store):

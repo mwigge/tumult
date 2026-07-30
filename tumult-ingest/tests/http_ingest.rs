@@ -1,3 +1,7 @@
+// Imported from kronika. Pedantic lints are scoped to tumult-native
+// crates; this file predates the pedantic gate (see crate lib.rs).
+#![allow(clippy::pedantic)]
+
 //! Integration test: POST a protobuf `ExportTraceServiceRequest` to the
 //! OTLP/HTTP server on an ephemeral port and assert the row lands in the store.
 

@@ -14,6 +14,10 @@
 //! also running on a read-only connection with a statement timeout (see
 //! `docs/adr/0002-ai-layer.md`); this module is the first gate, not the wall.
 
+// Imported from kronika (kronika-ai). Pedantic lints are scoped to
+// tumult-native code; this module predates the pedantic gate.
+#![allow(clippy::pedantic)]
+
 /// Why a generated query was rejected.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum SqlGuardError {

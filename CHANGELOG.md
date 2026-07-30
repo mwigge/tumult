@@ -4,6 +4,38 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+The Krönika chronicle platform is folded into this repository: the kronika
+workspace (daemon, OTLP ingestion, DuckDB lake, compliance reports, query API
+and SvelteKit UI) now lives here as first-class tumult crates.
+
+### Added
+- **tumultd daemon + web UI**: the kronikad HTTP daemon is now the `tumultd`
+  workspace member, embedding the SvelteKit SPA from `web/` (built with
+  `cd web && npm ci && npm run build` — the binary requires `web/build/` at
+  compile time).
+- **Imported crates**: `tumult-otlp`, `tumult-lake`, `tumult-ingest`,
+  `tumult-metrics`, `tumult-report`, `tumult-compliance`, `tumult-api`
+  (formerly `kronika-*`), plus `tumult-intelligence` gains the kronika-ai
+  `llm` and `sql_guard` modules.
+- **Demo stack**: `docker/Dockerfile.tumultd` (multi-stage: web build →
+  release build → slim runtime) and `docker/docker-compose.kronika.yml`
+  (tumultd + experiment-suite seed + report export); the dev collector pair
+  moved to `docker/docker-compose.kronika-collector.yml` +
+  `docker/otel-collector-kronika.yaml`. The old `kronika-demo` binary and the
+  `docker/kronika-legacy-staging/` scaffold are removed.
+- **CI**: new `web` job (`npm ci`, `svelte-check`, `npm run build`); check,
+  clippy, test and doc jobs now build `web/` before compiling, since tumultd
+  embeds the UI.
+- **Release**: `release.yml` builds and publishes `tumultd` tarballs
+  alongside `tumult-cli` for all targets.
+
+### Changed
+- Clippy pedantic stays enabled workspace-wide; the imported chronicle
+  crates carry a documented, scoped `#![allow(clippy::pedantic)]` at their
+  crate roots (183 pre-existing warnings, intentionally not churned).
+
 ## [2.18.0] — 2026-07-28
 
 Full OTLP observability: all three signals (traces, metrics, logs) now

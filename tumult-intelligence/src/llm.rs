@@ -8,6 +8,10 @@
 //! No live LLM calls happen anywhere in v1 — the client is only wired for
 //! configuration and request serialisation.
 
+// Imported from kronika (kronika-ai). Pedantic lints are scoped to
+// tumult-native code; this module predates the pedantic gate.
+#![allow(clippy::pedantic)]
+
 use serde::{Deserialize, Serialize};
 
 /// Errors from the LLM client.

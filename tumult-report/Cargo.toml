@@ -9,7 +9,6 @@ license.workspace = true
 tumult-intelligence.workspace = true
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
