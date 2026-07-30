@@ -7484,6 +7484,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tumult-auth",
  "tumult-compliance",
  "tumult-core",
  "tumult-ingest",
@@ -7491,6 +7492,7 @@ dependencies = [
  "tumult-lake",
  "tumult-metrics",
  "tumult-report",
+ "uuid",
 ]
 
 [[package]]
@@ -7697,6 +7699,7 @@ dependencies = [
  "tokio-util",
  "tonic",
  "tracing",
+ "tumult-auth",
  "tumult-core",
  "tumult-lake",
  "tumult-otlp",
@@ -7837,6 +7840,7 @@ dependencies = [
  "opentelemetry_sdk",
  "serde",
  "tokio",
+ "tonic",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -7957,6 +7961,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tumult-api",
+ "tumult-auth",
  "tumult-exec",
  "tumult-ingest",
  "tumult-intelligence",
@@ -7964,6 +7969,7 @@ dependencies = [
  "tumult-metrics",
  "tumult-otel",
  "tumult-report",
+ "uuid",
 ]
 
 [[package]]

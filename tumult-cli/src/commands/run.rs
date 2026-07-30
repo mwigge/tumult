@@ -205,6 +205,11 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
 /// `DuckDB` lock.
 const DAEMON_URL_ENV: &str = "TUMULT_DAEMON_URL";
 
+/// Env var with the daemon API token (`kro_...`): when set, the journal
+/// POST sends `Authorization: Bearer <token>`. Unset means no header
+/// (loopback dev daemon).
+const DAEMON_TOKEN_ENV: &str = "TUMULT_DAEMON_TOKEN";
+
 /// Why a daemon import attempt did not succeed.
 enum DaemonPostError {
     /// No HTTP response at all (connect refused, timeout): the journal
@@ -276,9 +281,15 @@ async fn post_journal_to_daemon(
         .build()
         .map_err(|e| DaemonPostError::Unreachable(e.to_string()))?;
     let url = format!("{}/api/import/journal", base.trim_end_matches('/'));
-    let resp = client
+    let mut request = client
         .post(&url)
-        .json(&serde_json::json!({"journal": journal, "experiment": experiment}))
+        .json(&serde_json::json!({"journal": journal, "experiment": experiment}));
+    if let Ok(token) = std::env::var(DAEMON_TOKEN_ENV) {
+        if !token.is_empty() {
+            request = request.bearer_auth(token);
+        }
+    }
+    let resp = request
         .send()
         .await
         .map_err(|e| DaemonPostError::Unreachable(e.to_string()))?;

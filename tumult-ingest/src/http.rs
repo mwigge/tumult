@@ -4,11 +4,16 @@
 //! bodies carrying the OTLP export requests, decode them with prost, and
 //! funnel the resulting rows into the single-writer channel.
 //! `GET /healthz` is the daemon health endpoint.
+//!
+//! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
+//! `/v1/*` route requires `Authorization: Bearer <token>`; `/healthz` and
+//! any non-`/v1` route stay open.
 
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
@@ -19,14 +24,63 @@ use prost::Message;
 use crate::error::IngestError;
 use crate::writer::{Batch, IngestWriter};
 
-/// Build the HTTP router (OTLP/HTTP + health).
+/// Build the HTTP router (OTLP/HTTP + health), unauthenticated.
 pub fn router(ingest: IngestWriter) -> Router {
-    Router::new()
+    router_with_token(ingest, None)
+}
+
+/// Build the HTTP router; when `ingest_token` is `Some`, every `/v1/*`
+/// route requires `Authorization: Bearer <token>` (constant-time compare).
+pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> Router {
+    let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/traces", post(traces))
         .route("/v1/metrics", post(metrics))
-        .route("/v1/logs", post(logs))
-        .with_state(ingest)
+        .route("/v1/logs", post(logs));
+    let router = match ingest_token {
+        Some(token) => router.layer(middleware::from_fn_with_state(
+            std::sync::Arc::new(format!("Bearer {token}")),
+            require_bearer,
+        )),
+        None => router,
+    };
+    router.with_state(ingest)
+}
+
+/// Bearer-token guard for the `/v1/*` OTLP routes; every other path passes
+/// through (`/healthz` stays open for load-balancer probes).
+async fn require_bearer(
+    State(expected): State<std::sync::Arc<String>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    if req.uri().path().starts_with("/v1/") {
+        let presented = req
+            .headers()
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok());
+        let authorized = presented.is_some_and(|v| tumult_auth::constant_time_eq(v, &expected));
+        if !authorized {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    }
+    next.run(req).await
+}
+
+/// Startup posture warning: with no ingest token, a non-loopback OTLP/HTTP
+/// bind accepts telemetry from anywhere on the network.
+pub fn warn_if_unauthenticated(addr: &std::net::SocketAddr, ingest_token: Option<&str>) {
+    if ingest_token.is_none() && !addr.ip().is_loopback() {
+        tracing::warn!(
+            addr = %addr,
+            "OTLP ingest is unauthenticated on a network interface; set \
+             KRONIKA_INGEST_TOKEN to require a bearer token on /v1/*"
+        );
+    }
 }
 
 async fn healthz() -> &'static str {

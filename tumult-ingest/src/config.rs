@@ -10,12 +10,16 @@ use std::path::PathBuf;
 /// * `TUMULT_LAKE_PATH` — unified DuckDB store path (default `~/.tumult/lake.duckdb`);
 ///   `KRONIKA_DB` is honored as a deprecated alias with a warning
 /// * `KRONIKA_METRICS_DIR` — semantic metric definitions (default `metrics/`)
+/// * `KRONIKA_INGEST_TOKEN` — bearer token required on OTLP ingest
+///   (`/v1/*` HTTP routes and the gRPC export methods); unset/empty means
+///   unauthenticated ingest (loopback dev mode)
 #[derive(Debug, Clone)]
 pub struct Config {
     pub db_path: PathBuf,
     pub otlp_grpc_addr: SocketAddr,
     pub otlp_http_addr: SocketAddr,
     pub metrics_dir: PathBuf,
+    pub ingest_token: Option<String>,
 }
 
 impl Config {
@@ -52,11 +56,15 @@ impl Config {
             .map_err(|e| format!("invalid KRONIKA_OTLP_HTTP_ADDR: {e}"))?;
         let metrics_dir = std::env::var("KRONIKA_METRICS_DIR")
             .map_or_else(|_| PathBuf::from("metrics"), PathBuf::from);
+        let ingest_token = std::env::var("KRONIKA_INGEST_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty());
         Ok(Self {
             db_path,
             otlp_grpc_addr,
             otlp_http_addr,
             metrics_dir,
+            ingest_token,
         })
     }
 }
@@ -74,10 +82,12 @@ mod tests {
         std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
         std::env::remove_var("TUMULT_LAKE_PATH");
         std::env::remove_var("KRONIKA_DB");
+        std::env::remove_var("KRONIKA_INGEST_TOKEN");
         let cfg = Config::from_env().unwrap();
         assert_eq!(cfg.otlp_grpc_addr.port(), 4317);
         assert_eq!(cfg.otlp_http_addr.port(), 4318);
         assert!(cfg.db_path.ends_with("lake.duckdb"));
+        assert_eq!(cfg.ingest_token, None);
 
         std::env::set_var("TUMULT_LAKE_PATH", "/tmp/unified.duckdb");
         std::env::set_var("KRONIKA_DB", "/tmp/legacy.duckdb");
@@ -88,5 +98,15 @@ mod tests {
         let cfg = Config::from_env().unwrap();
         assert_eq!(cfg.db_path, PathBuf::from("/tmp/legacy.duckdb"));
         std::env::remove_var("KRONIKA_DB");
+
+        // KRONIKA_INGEST_TOKEN: empty string behaves as unset.
+        std::env::set_var("KRONIKA_INGEST_TOKEN", "");
+        assert_eq!(Config::from_env().unwrap().ingest_token, None);
+        std::env::set_var("KRONIKA_INGEST_TOKEN", "kro_secret");
+        assert_eq!(
+            Config::from_env().unwrap().ingest_token.as_deref(),
+            Some("kro_secret")
+        );
+        std::env::remove_var("KRONIKA_INGEST_TOKEN");
     }
 }

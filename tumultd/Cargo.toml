@@ -27,3 +27,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
+uuid.workspace = true

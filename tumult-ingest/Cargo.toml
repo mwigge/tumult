@@ -9,6 +9,7 @@ license.workspace = true
 tumult-lake.workspace = true
 tumult-otlp.workspace = true
 tumult-core = { path = "../tumult-core" }
+tumult-auth = { path = "../tumult-auth" }
 opentelemetry-proto.workspace = true
 tonic.workspace = true
 prost.workspace = true
