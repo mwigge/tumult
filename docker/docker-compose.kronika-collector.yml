@@ -1,6 +1,6 @@
 # OPTIONAL dev tooling — not required to run Krönika.
 #
-# kronikad already speaks OTLP natively on :4317 (gRPC) and :4318 (HTTP).
+# tumultd already speaks OTLP natively on :4317 (gRPC) and :4318 (HTTP).
 # This collector is only useful when you want a real OpenTelemetry Collector
 # in the loop during development (e.g. to tee telemetry to a file exporter,
 # debug what tumult/smedja actually send, or chain processors).
@@ -8,7 +8,7 @@
 #   docker compose -f docker/docker-compose.yml up
 #
 # Then point exporters at the collector (host ports 14317/14318) and it
-# forwards to kronikad on the host (kronika.host:4317) while also writing
+# forwards to tumultd on the host (tumultd.host:4317) while also writing
 # /tmp/otel-dev-export/telemetry.jsonl via the file exporter.
 
 services:
@@ -16,11 +16,11 @@ services:
     image: otel/opentelemetry-collector-contrib:latest
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./otel-collector-kronika.yaml:/etc/otelcol-contrib/config.yaml:ro
       - /tmp/otel-dev-export:/tmp/export
     ports:
       - "14317:4317"   # OTLP/gRPC into the collector (host port 14317)
       - "14318:4318"   # OTLP/HTTP into the collector (host port 14318)
     extra_hosts:
-      # Where the collector forwards: kronikad on the host.
-      - "kronika.host:host-gateway"
+      # Where the collector forwards: tumultd on the host.
+      - "tumultd.host:host-gateway"

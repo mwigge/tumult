@@ -1,5 +1,5 @@
-# OPTIONAL dev tooling — OpenTelemetry Collector in front of kronikad.
-# Receives OTLP on :4317/:4318, forwards to kronikad on the host, and tees
+# OPTIONAL dev tooling — OpenTelemetry Collector in front of tumultd.
+# Receives OTLP on :4317/:4318, forwards to tumultd on the host, and tees
 # everything to /tmp/export/telemetry.jsonl for debugging what exporters send.
 
 receivers:
@@ -13,7 +13,7 @@ processors:
 
 exporters:
   otlp:
-    endpoint: kronika.host:4317
+    endpoint: tumultd.host:4317
     tls:
       insecure: true
   file:
