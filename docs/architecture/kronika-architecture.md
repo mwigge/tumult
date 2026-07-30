@@ -129,7 +129,14 @@ left active by a previous process lifetime are reconciled: marked
 state writes themselves fail, outcome recorded (`rollback_pending` flags
 the failures for an operator). A telemetry loopback points the daemon's
 own OTel exporter at its own gRPC ingest, so daemon-run experiments land
-in the same tables and UI as CLI runs.
+in the same tables and UI as CLI runs. The UI drives the whole loop: the
+Run page (`/runs/new`) picks a validated definition from
+`GET /api/registry[/{id}]`, renders a parameter form from the
+definition's `${var}` placeholders, previews the resolved plan
+(`dry-run`), and enqueues; the run detail (`/runs/[id]`) polls state,
+embeds the live waterfall as loopback spans land, and exposes the
+two-step e-stop with rollback status — all role-aware (viewer is
+read-only).
 
 ## Authentication and RBAC (schema v6)
 

@@ -62,6 +62,18 @@ and SvelteKit UI) now lives here as first-class tumult crates.
   Clients send the token via the standard `OTEL_EXPORTER_OTLP_HEADERS`
   (tumult-otel now attaches it as gRPC metadata), and `tumult run` sends
   `TUMULT_DAEMON_TOKEN` on the journal POST to the daemon.
+- **UI execution — the Run page**: the web UI can now drive daemon-run
+  experiments end to end. `/runs` lists runs with state badges, timing and
+  rollback indicators; `/runs/new` picks a validated definition from the new
+  `GET /api/registry[/{id}]` endpoints, renders a parameter form from the
+  definition's `${var}` placeholders, previews the resolved plan via
+  `POST /api/runs/dry-run`, and starts the run; `/runs/[id]` polls live
+  state, shows the audit trail with the authenticated actor, embeds the
+  telemetry waterfall as spans land via the OTLP loopback, and carries the
+  two-step e-stop (`POST /api/runs/{id}/stop`) with rollback status. Start
+  and stop are role-aware (viewer is read-only); `POST /api/runs/validate`
+  now records the principal as `registered_by`. The `pending_approval`
+  state badge is reserved for the upcoming approval flow.
 - **tumult-exec**: new crate — the CLI's provider executor
   (`ProviderExecutor` + the native plugin registry) extracted so the daemon
   and the CLI share one execution path.
