@@ -1,4 +1,10 @@
-# ADR 0004: Org hierarchy rollups and manual evidence
+---
+title: "ADR-009: Org Hierarchy and Manual Evidence"
+parent: Architecture Decisions
+nav_order: 9
+---
+
+# ADR-009: Org Hierarchy and Manual Evidence (imported from kronika ADR 0004)
 
 - Status: accepted (live in v0.5.0)
 - Date: 2026-07-29

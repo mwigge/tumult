@@ -34,11 +34,19 @@ members = [
     # "tumult-cloud-aws",
     # "tumult-cloud-gcp",
     # "tumult-cloud-azure",
-    # "tumult-report",
+    "tumult-report",
     # Phase 5
     "tumult-agent-cli",
     # 2.15 — autopilot (pure decision logic: policy, validator, gate, ladder)
     "tumult-autopilot",
+    # Krönika platform (imported from kronika; crates keep their 0.6.x versions)
+    "tumult-otlp",
+    "tumult-lake",
+    "tumult-ingest",
+    "tumult-metrics",
+    "tumult-compliance",
+    "tumult-api",
+    "tumultd",
 ]
 
 [workspace.package]
@@ -145,6 +153,30 @@ crossterm = "0.28"
 
 # Temporary file/directory creation (dev-dependency across all crates)
 tempfile = "3"
+
+# Krönika platform crates (imported from kronika) — internal path deps
+tumult-otlp = { path = "tumult-otlp" }
+tumult-lake = { path = "tumult-lake" }
+tumult-ingest = { path = "tumult-ingest" }
+tumult-metrics = { path = "tumult-metrics" }
+tumult-report = { path = "tumult-report" }
+tumult-compliance = { path = "tumult-compliance" }
+tumult-api = { path = "tumult-api" }
+tumult-intelligence = { path = "tumult-intelligence" }
+
+# OTLP receive side (tumult-otlp / tumult-ingest)
+opentelemetry-proto = { version = "0.32", features = ["gen-tonic"] }
+tonic = "0.14"
+prost = "0.14"
+
+# Krönika reports, manual import, embedded web UI
+serde_yaml = "0.9"
+csv = "1"
+typst = "0.15"
+typst-pdf = "0.15"
+sha2 = "0.10"
+rust-embed = "8"
+mime_guess = "2"
 
 # Speed up dev builds for heavy C/C++ dependencies (DuckDB, Arrow, Parquet).
 # Only affects dependencies, not workspace crates (those stay at -O0 for fast

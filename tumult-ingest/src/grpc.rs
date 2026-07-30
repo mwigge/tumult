@@ -50,7 +50,7 @@ impl TraceService for OtlpGrpc {
         &self,
         request: Request<ExportTraceServiceRequest>,
     ) -> Result<Response<ExportTraceServiceResponse>, Status> {
-        let spans = kronika_otel::trace_request_to_spans(request.get_ref());
+        let spans = tumult_otlp::trace_request_to_spans(request.get_ref());
         self.ingest
             .write(Batch::Spans(spans))
             .await
@@ -67,7 +67,7 @@ impl MetricsService for OtlpGrpc {
         &self,
         request: Request<ExportMetricsServiceRequest>,
     ) -> Result<Response<ExportMetricsServiceResponse>, Status> {
-        let rows = kronika_otel::metrics_request_to_rows(request.get_ref());
+        let rows = tumult_otlp::metrics_request_to_rows(request.get_ref());
         self.ingest
             .write(Batch::Metrics(rows))
             .await
@@ -84,7 +84,7 @@ impl LogsService for OtlpGrpc {
         &self,
         request: Request<ExportLogsServiceRequest>,
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
-        let rows = kronika_otel::logs_request_to_rows(request.get_ref(), crate::now_ns());
+        let rows = tumult_otlp::logs_request_to_rows(request.get_ref(), crate::now_ns());
         self.ingest
             .write(Batch::Logs(rows))
             .await

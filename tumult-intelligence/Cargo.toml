@@ -19,6 +19,10 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
+# OpenAI-compatible HTTP client + SQL guardrails (llm / sql_guard modules)
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 # Integration tests build synthetic analytics stores and plugin manifests.

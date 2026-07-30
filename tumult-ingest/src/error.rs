@@ -1,6 +1,6 @@
 //! Error type for the ingest layer.
 
-use kronika_store::StoreError;
+use tumult_lake::StoreError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum IngestError {

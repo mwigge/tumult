@@ -1,6 +1,6 @@
 //! `GET /api/lake/status` and `POST /api/lake/export` — the parquet lake's
 //! observability and its manual trigger (the scheduled job in `kronikad`
-//! runs the same `kronika_store::lake::export` on an interval).
+//! runs the same `tumult_lake::lake::export` on an interval).
 
 use std::sync::{Arc, Mutex};
 
@@ -8,7 +8,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use kronika_store::lake::{self, LakeConfig};
+use tumult_lake::lake::{self, LakeConfig};
 use serde_json::{json, Value};
 
 use crate::{internal, with_reader, ApiState};
@@ -53,7 +53,7 @@ pub async fn export_now(State(state): State<ApiState>) -> Result<Json<Value>, Re
         let slot = Arc::new(Mutex::new(None));
         let slot2 = Arc::clone(&slot);
         ingest
-            .write(kronika_ingest::Batch::Exec(Box::new(move |writer| {
+            .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
                 *slot2.lock().unwrap_or_else(|e| e.into_inner()) =
                     Some(lake::enforce_retention(writer, &cfg).map_err(|e| e.to_string()));
                 Ok(())

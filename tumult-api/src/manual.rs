@@ -1,7 +1,7 @@
 //! Manual evidence endpoints (`/api/manual/*`).
 //!
 //! Mutations ride the daemon's single-writer channel via
-//! [`kronika_ingest::Batch::Exec`] — the API never opens a write connection
+//! [`tumult_ingest::Batch::Exec`] — the API never opens a write connection
 //! of its own. There is no auth yet: callers pass a plain "acting as" user
 //! string (`entered_by` / `by` / `reviewer`); the store enforces the
 //! lifecycle rules (draft mutability, attestation on submit, reviewer ≠
@@ -13,8 +13,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use kronika_ingest::Batch;
-use kronika_store::{
+use tumult_ingest::Batch;
+use tumult_lake::{
     AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Writer,
 };
 use serde::Deserialize;

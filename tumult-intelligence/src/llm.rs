@@ -1,15 +1,12 @@
-//! `kronika-ai` — Phase 1 groundwork for the AI analytics layer.
+//! OpenAI-compatible HTTP chat client for the Krönika analytics layer
+//! (imported from `kronika-ai`; sibling module to [`crate::sql_guard`]).
 //!
 //! * [`Llm`] / [`OpenAiCompatClient`]: one OpenAI-compatible chat interface.
 //!   Interactive paths can point at a direct API, LiteLLM or a local Ollama
 //!   (the default); batch/digest workloads can delegate to smedja later.
-//! * [`sql_guard`]: the guardrail pipeline every LLM-generated query must
-//!   pass before it is allowed near the (read-only) store.
 //!
 //! No live LLM calls happen anywhere in v1 — the client is only wired for
 //! configuration and request serialisation.
-
-pub mod sql_guard;
 
 use serde::{Deserialize, Serialize};
 

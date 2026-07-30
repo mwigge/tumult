@@ -2,8 +2,8 @@
 //! bounded `tokio::mpsc` channel onto the store's single [`Writer`], giving
 //! batching and backpressure for free.
 
-use kronika_otel::MetricRows;
-use kronika_store::{LogRow, SpanRow, Writer};
+use tumult_otlp::MetricRows;
+use tumult_lake::{LogRow, SpanRow, Writer};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::IngestError;

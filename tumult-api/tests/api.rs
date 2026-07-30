@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kronika_store::{LogRow, MetricSumRow, SpanRow, Store};
+use tumult_lake::{LogRow, MetricSumRow, SpanRow, Store};
 use serde_json::{json, Value};
 
 const NS: i64 = 1_000_000_000;
@@ -218,7 +218,7 @@ fn seed(db_path: &std::path::Path) -> i64 {
         .unwrap();
 
     writer
-        .insert_metric_gauges(&[kronika_store::MetricGaugeRow {
+        .insert_metric_gauges(&[tumult_lake::MetricGaugeRow {
             ts_ns: now - 300 * NS,
             metric_name: "demo.cpu.usage".into(),
             value: 0.5,
@@ -227,7 +227,7 @@ fn seed(db_path: &std::path::Path) -> i64 {
         .unwrap();
     // 4 observations: 1 below 100, 2 in [100,200), 1 at/above 200.
     writer
-        .insert_metric_histograms(&[kronika_store::MetricHistogramRow {
+        .insert_metric_histograms(&[tumult_lake::MetricHistogramRow {
             ts_ns: now - 400 * NS,
             metric_name: "demo.latency".into(),
             count: 4,
@@ -268,24 +268,24 @@ async fn spawn_server() -> TestServer {
         .unwrap();
     // An LLM client pointing at a closed port: connection refused, which the
     // ask endpoint must surface as `{configured: false}`.
-    let llm = Arc::new(kronika_ai::OpenAiCompatClient::new(
+    let llm = Arc::new(tumult_intelligence::llm::OpenAiCompatClient::new(
         "http://127.0.0.1:1".into(),
         None,
         "test-model".into(),
     ));
-    let state = kronika_api::ApiState::new(
+    let state = tumult_api::ApiState::new(
         db_path.clone(),
         metrics_dir,
         reports_dir.clone(),
         llm,
-        kronika_docs::OrgTree::from_yaml(ORG_YAML).unwrap(),
+        tumult_compliance::OrgTree::from_yaml(ORG_YAML).unwrap(),
         // A real single-writer channel so manual-evidence endpoints work.
-        Some(kronika_ingest::IngestWriter::spawn(Store::at(&db_path).writer().unwrap(), 16).0),
+        Some(tumult_ingest::IngestWriter::spawn(Store::at(&db_path).writer().unwrap(), 16).0),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, kronika_api::router(state))
+        axum::serve(listener, tumult_api::router(state))
             .await
             .unwrap();
     });

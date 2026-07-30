@@ -2,7 +2,7 @@
 
 Distilled research behind the v0.4.0 report pipeline (`kronika-docs`,
 `/api/reports/v2/*`, `/api/scores`). Companion ADR:
-[adr/0003-typst-report-pipeline.md](adr/0003-typst-report-pipeline.md).
+[../adr/ADR-008-typst-report-pipeline.md](../adr/ADR-008-typst-report-pipeline.md).
 
 ## 1. What an auditor actually needs
 

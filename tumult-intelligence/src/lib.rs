@@ -8,6 +8,9 @@ mod report;
 mod types;
 mod write;
 
+pub mod llm;
+pub mod sql_guard;
+
 #[cfg(test)]
 mod model;
 

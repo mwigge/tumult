@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kronika_store::{ImportBatch, SpanRow, Writer};
+use tumult_lake::{ImportBatch, SpanRow, Writer};
 use serde::Deserialize;
 
 use crate::error::IngestError;
@@ -237,7 +237,7 @@ impl<'a> ManualImporter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kronika_store::Store;
+    use tumult_lake::Store;
 
     fn temp_store() -> (tempfile::TempDir, Store) {
         let d = tempfile::TempDir::new().unwrap();

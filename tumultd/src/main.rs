@@ -1,4 +1,4 @@
-//! `kronikad` — the kronika daemon.
+//! `tumultd` — the kronika daemon.
 //!
 //! Default command (`serve`): open the store, spawn the single-writer
 //! channel, and run the OTLP/gRPC (`:4317`) and OTLP/HTTP (`:4318`, with
@@ -8,7 +8,7 @@
 //! the `report` subcommand which needs the daemon stopped.
 //!
 //! The same HTTP server mounts the read-only query API (`/api/*`, from
-//! `kronika-api`) that backs the web UI. When `KRONIKA_REPORT_INTERVAL`
+//! `tumult-api`) that backs the web UI. When `KRONIKA_REPORT_INTERVAL`
 //! (e.g. `1h`, `30m`) is set, a scheduler renders a metric digest per
 //! interval into `<db dir>/reports/report_<epoch>.html`; `/api/reports`
 //! lists them. Automatic reporting is off by default.
@@ -21,8 +21,8 @@
 //! deleted). `POST /api/lake/export` triggers the same job on demand.
 //!
 //! Subcommands:
-//! * `kronikad import <file>` — manual CSV / tumult journal JSON import.
-//! * `kronikad report --metric <name>` — print an HTML report to stdout.
+//! * `tumultd import <file>` — manual CSV / tumult journal JSON import.
+//! * `tumultd report --metric <name>` — print an HTML report to stdout.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -34,12 +34,12 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use clap::{Parser, Subcommand};
-use kronika_ingest::{Config, IngestWriter, ManualImporter};
-use kronika_store::Store;
+use tumult_ingest::{Config, IngestWriter, ManualImporter};
+use tumult_lake::Store;
 
 #[derive(Parser)]
 #[command(
-    name = "kronikad",
+    name = "tumultd",
     version,
     about = "Krönika — the chronicle of your resilience work"
 )]
@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "kronikad=info,kronika_ingest=info".into()),
+                .unwrap_or_else(|_| "tumultd=info,tumult_ingest=info".into()),
         )
         .init();
 
@@ -112,7 +112,7 @@ async fn serve() -> Result<()> {
         db = %config.db_path.display(),
         grpc = %config.otlp_grpc_addr,
         http = %config.otlp_http_addr,
-        "starting kronikad"
+        "starting tumultd"
     );
 
     let store = Store::open(&config.db_path).context("open store")?;
@@ -123,7 +123,7 @@ async fn serve() -> Result<()> {
     let grpc_addr = config.otlp_grpc_addr;
     let grpc_ingest = ingest.clone();
     let grpc_server = tokio::spawn(async move {
-        let result = kronika_ingest::grpc::router(grpc_ingest)
+        let result = tumult_ingest::grpc::router(grpc_ingest)
             .serve_with_shutdown(grpc_addr, shutdown_signal("grpc"))
             .await;
         tracing::info!("gRPC server future completed: {result:?}");
@@ -137,7 +137,7 @@ async fn serve() -> Result<()> {
         db_path: config.db_path.clone(),
         metrics_dir: config.metrics_dir.clone(),
     };
-    let api_state = kronika_api::ApiState::from_env_parts(
+    let api_state = tumult_api::ApiState::from_env_parts(
         config.db_path.clone(),
         config.metrics_dir.clone(),
         Some(ingest.clone()),
@@ -148,22 +148,22 @@ async fn serve() -> Result<()> {
             config.metrics_dir.clone(),
             api_state.reports_dir().clone(),
             interval,
-            std::sync::Arc::new(kronika_ai::OpenAiCompatClient::from_env()),
+            std::sync::Arc::new(tumult_intelligence::llm::OpenAiCompatClient::from_env()),
         );
     }
     if let Some(interval) = lake_interval_from_env() {
         spawn_lake_scheduler(
             config.db_path.clone(),
             ingest.clone(),
-            kronika_store::lake::LakeConfig::from_env(&config.db_path),
+            tumult_lake::lake::LakeConfig::from_env(&config.db_path),
             interval,
         );
     }
     let http_server = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
-        let app = kronika_ingest::http::router(ingest)
+        let app = tumult_ingest::http::router(ingest)
             .merge(report_router(report_state))
-            .merge(kronika_api::router(api_state))
+            .merge(tumult_api::router(api_state))
             // Everything that is not /v1, /report, /healthz or /api is the UI.
             .fallback(ui_handler);
         let result = axum::serve(listener, app)
@@ -185,7 +185,7 @@ async fn serve() -> Result<()> {
     // Both servers are down; drop their channel clones (moved into the tasks)
     // so the writer task sees the channel close and exits.
     writer_task.await.context("ingest writer task")?;
-    tracing::info!("kronikad stopped cleanly");
+    tracing::info!("tumultd stopped cleanly");
     Ok(())
 }
 
@@ -234,7 +234,7 @@ fn render_metric_report(
     metrics_dir: &std::path::Path,
     metric: &str,
 ) -> Result<ReportLookup> {
-    let defs = kronika_metrics::load_dir(metrics_dir)
+    let defs = tumult_metrics::load_dir(metrics_dir)
         .with_context(|| format!("load metrics from {}", metrics_dir.display()))?;
     let Some(def) = defs.iter().find(|d| d.name == metric) else {
         return Ok(ReportLookup::UnknownMetric(format!(
@@ -252,13 +252,13 @@ fn render_metric_report(
     // shares the in-process instance and coexists with the ingest writer.
     let store = Store::at(db_path);
     let reader = store.read_only().context("open store read-only")?;
-    let report = kronika_report::build_report(
+    let report = tumult_report::build_report(
         &reader,
         std::slice::from_ref(def),
         &format!("Krönika — {metric}"),
         None,
     )?;
-    Ok(ReportLookup::Html(kronika_report::render_html(&report)))
+    Ok(ReportLookup::Html(tumult_report::render_html(&report)))
 }
 
 /// State for the live report endpoint: where the store and metric
@@ -273,7 +273,7 @@ struct ReportState {
 /// `web/build/` must exist at compile time — run `npm ci && npm run build`
 /// in `web/` first (the Dockerfile does this in a node stage).
 #[derive(rust_embed::RustEmbed)]
-#[folder = "../../web/build/"]
+#[folder = "../web/build/"]
 struct UiAssets;
 
 /// Serve the embedded SPA: real files by path, `index.html` at `/`, and the
@@ -387,17 +387,17 @@ fn report_interval_from_env() -> Option<std::time::Duration> {
 
 /// Render one digest for the trailing `interval` window and write it to
 /// `reports_dir/report_<epoch>.html`. When the LLM is reachable, a grounded
-/// narrative section is prepended (see `kronika_report::narrative`).
+/// narrative section is prepended (see `tumult_report::narrative`).
 async fn write_digest(
     db_path: &std::path::Path,
     metrics_dir: &std::path::Path,
     reports_dir: &std::path::Path,
     interval: std::time::Duration,
-    llm: std::sync::Arc<dyn kronika_ai::Llm>,
+    llm: std::sync::Arc<dyn tumult_intelligence::llm::Llm>,
 ) -> Result<PathBuf> {
     let (db, mdir) = (db_path.to_path_buf(), metrics_dir.to_path_buf());
-    let report = tokio::task::spawn_blocking(move || -> Result<kronika_report::Report> {
-        let defs = kronika_metrics::load_dir(&mdir)
+    let report = tokio::task::spawn_blocking(move || -> Result<tumult_report::Report> {
+        let defs = tumult_metrics::load_dir(&mdir)
             .with_context(|| format!("load metrics from {}", mdir.display()))?;
         let store = Store::at(&db);
         let reader = store.read_only().context("open store read-only")?;
@@ -406,7 +406,7 @@ async fn write_digest(
             .map_or(0, |d| d.as_secs());
         let from_ns = (now_s - interval.as_secs()) as i64 * 1_000_000_000;
         let to_ns = now_s as i64 * 1_000_000_000;
-        Ok(kronika_report::build_report(
+        Ok(tumult_report::build_report(
             &reader,
             &defs,
             &format!("Krönika digest — last {}s", interval.as_secs()),
@@ -417,13 +417,13 @@ async fn write_digest(
     // Best-effort LLM narrative: unreachable LLM, timeout or a reply with no
     // grounded sentences leaves the digest unchanged.
     let report =
-        kronika_report::narrative::narrate(&llm, report, std::time::Duration::from_secs(30)).await;
+        tumult_report::narrative::narrate(&llm, report, std::time::Duration::from_secs(30)).await;
     let now_s = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     std::fs::create_dir_all(reports_dir)?;
     let path = reports_dir.join(format!("report_{now_s}.html"));
-    std::fs::write(&path, kronika_report::render_html(&report))
+    std::fs::write(&path, tumult_report::render_html(&report))
         .with_context(|| format!("write digest to {}", path.display()))?;
     Ok(path)
 }
@@ -436,7 +436,7 @@ fn spawn_report_scheduler(
     metrics_dir: PathBuf,
     reports_dir: PathBuf,
     interval: std::time::Duration,
-    llm: std::sync::Arc<dyn kronika_ai::Llm>,
+    llm: std::sync::Arc<dyn tumult_intelligence::llm::Llm>,
 ) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -493,13 +493,13 @@ fn lake_interval_from_env() -> Option<std::time::Duration> {
 async fn run_lake_job(
     db_path: &std::path::Path,
     ingest: &IngestWriter,
-    cfg: &kronika_store::lake::LakeConfig,
+    cfg: &tumult_lake::lake::LakeConfig,
 ) -> Result<()> {
     let (db, cfg2) = (db_path.to_path_buf(), cfg.clone());
     let report = tokio::task::spawn_blocking(move || -> Result<_> {
         let store = Store::at(&db);
         let reader = store.read_only().context("open store read-only")?;
-        Ok(kronika_store::lake::export(&reader, &cfg2)?)
+        Ok(tumult_lake::lake::export(&reader, &cfg2)?)
     })
     .await??;
     let total: u64 = report.tables.iter().map(|t| t.rows).sum();
@@ -514,9 +514,9 @@ async fn run_lake_job(
         let slot = std::sync::Arc::new(std::sync::Mutex::new(None));
         let slot2 = std::sync::Arc::clone(&slot);
         ingest
-            .write(kronika_ingest::Batch::Exec(Box::new(move |writer| {
+            .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
                 *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(
-                    kronika_store::lake::enforce_retention(writer, &cfg3)
+                    tumult_lake::lake::enforce_retention(writer, &cfg3)
                         .map_err(|e| e.to_string()),
                 );
                 Ok(())
@@ -543,7 +543,7 @@ async fn run_lake_job(
 fn spawn_lake_scheduler(
     db_path: PathBuf,
     ingest: IngestWriter,
-    cfg: kronika_store::lake::LakeConfig,
+    cfg: tumult_lake::lake::LakeConfig,
     interval: std::time::Duration,
 ) {
     tracing::info!(

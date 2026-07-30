@@ -1,4 +1,4 @@
-//! `kronika-docs` — compliance-grade report documents (v2 pipeline).
+//! `tumult-compliance` — compliance-grade report documents (v2 pipeline).
 //!
 //! A renderer-agnostic content model ([`ReportDoc`]) with two outputs: a
 //! print-styled HTML preview for the UI and a Typst-compiled PDF. Also home

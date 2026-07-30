@@ -24,10 +24,10 @@ pub enum DocsError {
 /// Vendored OFL fonts (Inter + Source Serif 4, variable TTFs), embedded
 /// into the binary so docker builds stay offline-reproducible.
 static FONT_FILES: &[&[u8]] = &[
-    include_bytes!("../../../assets/fonts/Inter-var.ttf"),
-    include_bytes!("../../../assets/fonts/Inter-Italic-var.ttf"),
-    include_bytes!("../../../assets/fonts/SourceSerif4-var.ttf"),
-    include_bytes!("../../../assets/fonts/SourceSerif4-Italic-var.ttf"),
+    include_bytes!("../../assets/fonts/Inter-var.ttf"),
+    include_bytes!("../../assets/fonts/Inter-Italic-var.ttf"),
+    include_bytes!("../../assets/fonts/SourceSerif4-var.ttf"),
+    include_bytes!("../../assets/fonts/SourceSerif4-Italic-var.ttf"),
 ];
 
 /// Loaded font faces + book, built once per compile (cheap enough: four

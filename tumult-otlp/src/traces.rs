@@ -1,6 +1,6 @@
 //! `ExportTraceServiceRequest` → `Vec<SpanRow>`.
 
-use kronika_store::SpanRow;
+use tumult_lake::SpanRow;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::tonic::trace::v1::span::SpanKind;
 use opentelemetry_proto::tonic::trace::v1::status::StatusCode;

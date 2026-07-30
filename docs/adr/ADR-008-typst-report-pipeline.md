@@ -1,4 +1,10 @@
-# ADR 0003: Embedded-Typst report pipeline with a renderer-agnostic content model
+---
+title: "ADR-008: Typst Report Pipeline"
+parent: Architecture Decisions
+nav_order: 8
+---
+
+# ADR-008: Typst Report Pipeline (imported from kronika ADR 0003)
 
 - Status: accepted (live in v0.4.0)
 - Date: 2026-07-28

@@ -1,14 +1,14 @@
 //! Render sample R1/R3/R2 PDFs from a seeded fixture store into
 //! `/tmp/krk/out/` — the visual-iteration loop for the report pipeline.
 //!
-//! Run: `cargo run -p kronika-docs --example render_samples`
+//! Run: `cargo run -p tumult-compliance --example render_samples`
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kronika_docs::builders;
-use kronika_docs::org::OrgTree;
-use kronika_docs::typst_pdf::render_pdf;
-use kronika_store::{ExerciseType, LogRow, ManualOutcome, NewManualExperiment, SpanRow, Store};
+use tumult_compliance::builders;
+use tumult_compliance::org::OrgTree;
+use tumult_compliance::typst_pdf::render_pdf;
+use tumult_lake::{ExerciseType, LogRow, ManualOutcome, NewManualExperiment, SpanRow, Store};
 
 const NS: i64 = 1_000_000_000;
 const DAY: i64 = 86_400 * NS;
@@ -411,7 +411,7 @@ fn main() {
         std::fs::write(&path, &pdf).unwrap();
         std::fs::write(
             dir.join(format!("{tag}.html")),
-            kronika_docs::html::render(doc),
+            tumult_compliance::html::render(doc),
         )
         .unwrap();
         println!(

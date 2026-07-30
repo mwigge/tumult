@@ -10,7 +10,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use kronika_ai::{Llm, Message, Role};
+use tumult_intelligence::llm::{Llm, Message, Role};
 use serde_json::{json, Value};
 
 use crate::{Report, Section};

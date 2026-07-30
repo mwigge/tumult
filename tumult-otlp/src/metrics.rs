@@ -1,6 +1,6 @@
 //! `ExportMetricsServiceRequest` → metric row batches.
 
-use kronika_store::{MetricGaugeRow, MetricHistogramRow, MetricSumRow};
+use tumult_lake::{MetricGaugeRow, MetricHistogramRow, MetricSumRow};
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::KeyValue;
 use opentelemetry_proto::tonic::metrics::v1::{metric, number_data_point};

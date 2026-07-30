@@ -13,8 +13,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use kronika_ai::{sql_guard, AiError, Message, Role};
-use kronika_store::Store;
+use tumult_intelligence::llm::{AiError, Message, Role};
+use tumult_intelligence::sql_guard;
+use tumult_lake::Store;
 use serde::Deserialize;
 use serde_json::json;
 

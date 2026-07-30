@@ -1,22 +1,21 @@
 [package]
-name = "kronikad"
+name = "tumultd"
 description = "Krönika daemon — OTLP ingest servers, manual import, ad-hoc reports"
-version.workspace = true
+version = "0.6.0"
 edition.workspace = true
 license.workspace = true
-authors.workspace = true
 
 [[bin]]
-name = "kronikad"
+name = "tumultd"
 path = "src/main.rs"
 
 [dependencies]
-kronika-ai.workspace = true
-kronika-store.workspace = true
-kronika-ingest.workspace = true
-kronika-metrics.workspace = true
-kronika-report.workspace = true
-kronika-api.workspace = true
+tumult-intelligence.workspace = true
+tumult-lake.workspace = true
+tumult-ingest.workspace = true
+tumult-metrics.workspace = true
+tumult-report.workspace = true
+tumult-api.workspace = true
 axum.workspace = true
 clap.workspace = true
 tokio.workspace = true

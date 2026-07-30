@@ -1,4 +1,4 @@
-//! `kronika-report` — report model, self-contained HTML renderer and a
+//! `tumult-report` — report model, self-contained HTML renderer and a
 //! tokio-interval scheduler producing reports from semantic metric
 //! definitions over a read-only store connection.
 
@@ -7,8 +7,8 @@ pub mod narrative;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use kronika_metrics::{to_sql, MetricDef, MetricsError};
-use kronika_store::{Reader, StoreError};
+use tumult_metrics::{to_sql, MetricDef, MetricsError};
+use tumult_lake::{Reader, StoreError};
 
 /// Report errors.
 #[derive(Debug, thiserror::Error)]
@@ -302,7 +302,7 @@ impl Scheduler {
     }
 
     fn produce_once(&self) -> Result<Report, ReportError> {
-        let store = kronika_store::Store::open(&self.store_path)?;
+        let store = tumult_lake::Store::open(&self.store_path)?;
         let reader = store.read_only()?;
         build_report(&reader, &self.defs, &self.title, None)
     }

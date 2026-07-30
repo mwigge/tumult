@@ -1,8 +1,8 @@
 # Research findings — Krönika
 
 Distilled research behind the product and architecture decisions. Companion
-ADRs: [adr/0001-stack.md](adr/0001-stack.md), [adr/0002-ai-layer.md](adr/0002-ai-layer.md),
-[adr/0003-typst-report-pipeline.md](adr/0003-typst-report-pipeline.md).
+ADRs: [../adr/ADR-006-kronika-stack.md](../adr/ADR-006-kronika-stack.md), [../adr/ADR-007-ai-layer.md](../adr/ADR-007-ai-layer.md),
+[../adr/ADR-008-typst-report-pipeline.md](../adr/ADR-008-typst-report-pipeline.md).
 
 ## 1. Presentation / BI landscape
 

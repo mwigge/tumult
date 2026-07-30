@@ -1,4 +1,10 @@
-# ADR 0005: Parquet lake export and retention
+---
+title: "ADR-010: Parquet Export and Retention"
+parent: Architecture Decisions
+nav_order: 10
+---
+
+# ADR-010: Parquet Export and Retention (imported from kronika ADR 0005)
 
 - Status: accepted (live in v0.6.0)
 - Date: 2026-07-29

@@ -61,6 +61,43 @@ analysis, observability, GameDays, and MCP usage.
 Run `tumult discover` to obtain the authoritative plugin and action catalog for
 the installed build.
 
+## Krönika
+
+*The chronicle of your resilience work.*
+
+Krönika is the graphical analytics & reporting platform served by the
+`tumultd` daemon — imported from the kronika project and folded into this
+repository (see `docs/adr/ADR-006-kronika-stack.md`). Tumult is the engine
+that executes experiments; Krönika is what their telemetry accumulates into.
+
+- **Automatic ingest** — OTLP/gRPC (`:4317`, tumult's exporter) and
+  OTLP/HTTP protobuf (`:4318`, `/v1/*`) on one daemon, plus manual import of
+  CSV files and tumult journal JSON (`tumultd import <file>`).
+- **Embedded DuckDB store + parquet lake** — wide,
+  ClickHouse-exporter-aligned tables; incremental, watermark-driven export
+  to immutable day-partitioned parquet (`KRONIKA_LAKE_DIR`,
+  `KRONIKA_LAKE_INTERVAL`, `POST /api/lake/export`), with optional retention
+  (`KRONIKA_RETENTION_DAYS`, default keep forever; the manual-evidence
+  tables are never deleted). Write-once parquet plus the hash-chained audit
+  trail form a WORM-shaped evidence trail (ADR-010).
+- **Semantic metrics layer** — YAML metric views (`metrics/*.yaml`) compiled
+  to strictly validated SQL.
+- **Compliance-grade reports** — R1 executive resilience digest (with
+  org-hierarchy rollups), R3 per-run game-day report and an R2 evidence pack
+  (DORA/NIS2/ISO 27001/SOC 2), rendered as embedded-Typst PDFs plus
+  print-HTML previews, with Gremlin-style resilience scoring and a draft →
+  verified manual-evidence lifecycle (reviewer ≠ enterer, append-only
+  hash-chained audit).
+- **Web UI + query API** — a SvelteKit SPA embedded into the `tumultd`
+  binary (Overview, experiment waterfall drill-down, Logs, Traces, Metrics,
+  Topology, Ask, Reports) backed by a read-only JSON API under `/api/*`,
+  including a guarded NL→SQL ask path (`tumult_intelligence::sql_guard`).
+
+Try it: `docker compose -f docker/kronika-legacy-staging/docker-compose.demo.yml up`
+(demo stack finalisation lands in a later fold task), then open
+http://localhost:14318/. Build the UI with `cd web && npm ci && npm run build`
+before compiling `tumultd` — the binary embeds `web/build/`.
+
 ## CLI
 
 ```bash

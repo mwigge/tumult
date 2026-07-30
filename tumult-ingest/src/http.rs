@@ -36,7 +36,7 @@ async fn healthz() -> &'static str {
 async fn traces(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
     match decode::<ExportTraceServiceRequest>(&body).await {
         Ok(request) => {
-            let spans = kronika_otel::trace_request_to_spans(&request);
+            let spans = tumult_otlp::trace_request_to_spans(&request);
             let count = spans.len();
             match ingest.write(Batch::Spans(spans)).await {
                 Ok(()) => (StatusCode::OK, format!("{count} spans ingested")).into_response(),
@@ -50,7 +50,7 @@ async fn traces(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoRes
 async fn metrics(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
     match decode::<ExportMetricsServiceRequest>(&body).await {
         Ok(request) => {
-            let rows = kronika_otel::metrics_request_to_rows(&request);
+            let rows = tumult_otlp::metrics_request_to_rows(&request);
             let count = rows.sums.len() + rows.gauges.len() + rows.histograms.len();
             match ingest.write(Batch::Metrics(rows)).await {
                 Ok(()) => (StatusCode::OK, format!("{count} data points ingested")).into_response(),
@@ -64,7 +64,7 @@ async fn metrics(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoRe
 async fn logs(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
     match decode::<ExportLogsServiceRequest>(&body).await {
         Ok(request) => {
-            let rows = kronika_otel::logs_request_to_rows(&request, crate::now_ns());
+            let rows = tumult_otlp::logs_request_to_rows(&request, crate::now_ns());
             let count = rows.len();
             match ingest.write(Batch::Logs(rows)).await {
                 Ok(()) => (StatusCode::OK, format!("{count} log records ingested")).into_response(),

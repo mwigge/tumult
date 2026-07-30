@@ -1,4 +1,10 @@
-# ADR 0001: Server-side Rust + axum/tonic + embedded DuckDB stack
+---
+title: "ADR-006: Krönika Platform Stack"
+parent: Architecture Decisions
+nav_order: 6
+---
+
+# ADR-006: Krönika Platform Stack (imported from kronika ADR 0001)
 
 - Status: accepted
 - Date: 2026-07-28

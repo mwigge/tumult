@@ -1,4 +1,4 @@
-//! `kronika-api` — the read-only JSON query API backing the kronika UI.
+//! `tumult-api` — the read-only JSON query API backing the kronika UI.
 //!
 //! Routes (all under `/api`, all read-only against the store):
 //!
@@ -35,7 +35,7 @@
 //!   `service_name` and tumult's `resilience.target.name` span attribute,
 //!   edges from parent→child span joins and service→target calls.
 //! * `POST /api/ask` — natural-language → SQL → rows, guarded by
-//!   `kronika_ai::sql_guard`; degrades to `{configured:false}` when no LLM
+//!   `tumult_intelligence::sql_guard`; degrades to `{configured:false}` when no LLM
 //!   is reachable.
 //! * `GET /api/reports` / `GET /api/reports/{name}` — HTML digests written
 //!   by the daemon's report scheduler; `POST /api/reports/generate` renders
@@ -66,7 +66,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use kronika_store::{Reader, Store};
+use tumult_lake::{Reader, Store};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -82,9 +82,9 @@ pub struct ApiState {
     db_path: Arc<PathBuf>,
     metrics_dir: Arc<PathBuf>,
     reports_dir: Arc<PathBuf>,
-    llm: Arc<dyn kronika_ai::Llm>,
-    org: Arc<kronika_docs::OrgTree>,
-    ingest: Option<kronika_ingest::IngestWriter>,
+    llm: Arc<dyn tumult_intelligence::llm::Llm>,
+    org: Arc<tumult_compliance::OrgTree>,
+    ingest: Option<tumult_ingest::IngestWriter>,
 }
 
 impl ApiState {
@@ -94,9 +94,9 @@ impl ApiState {
         db_path: PathBuf,
         metrics_dir: PathBuf,
         reports_dir: PathBuf,
-        llm: Arc<dyn kronika_ai::Llm>,
-        org: kronika_docs::OrgTree,
-        ingest: Option<kronika_ingest::IngestWriter>,
+        llm: Arc<dyn tumult_intelligence::llm::Llm>,
+        org: tumult_compliance::OrgTree,
+        ingest: Option<tumult_ingest::IngestWriter>,
     ) -> Self {
         Self {
             db_path: Arc::new(db_path),
@@ -117,7 +117,7 @@ impl ApiState {
     pub fn from_env_parts(
         db_path: PathBuf,
         metrics_dir: PathBuf,
-        ingest: Option<kronika_ingest::IngestWriter>,
+        ingest: Option<tumult_ingest::IngestWriter>,
     ) -> Self {
         let reports_dir = db_path
             .parent()
@@ -127,17 +127,17 @@ impl ApiState {
             .or_else(|| db_path.parent().map(|d| d.join("org.yaml")));
         let org = org_path
             .filter(|p| p.exists())
-            .map_or_else(kronika_docs::OrgTree::empty, |p| {
-                kronika_docs::OrgTree::load(&p).unwrap_or_else(|e| {
+            .map_or_else(tumult_compliance::OrgTree::empty, |p| {
+                tumult_compliance::OrgTree::load(&p).unwrap_or_else(|e| {
                     tracing::warn!(path = %p.display(), error = %e, "invalid org file; using empty tree");
-                    kronika_docs::OrgTree::empty()
+                    tumult_compliance::OrgTree::empty()
                 })
             });
         Self::new(
             db_path,
             metrics_dir,
             reports_dir,
-            Arc::new(kronika_ai::OpenAiCompatClient::from_env()),
+            Arc::new(tumult_intelligence::llm::OpenAiCompatClient::from_env()),
             org,
             ingest,
         )
@@ -151,7 +151,7 @@ impl ApiState {
 
     /// The ingest handle carrying manual-evidence writes (daemon only).
     #[must_use]
-    pub fn ingest_handle(&self) -> Option<&kronika_ingest::IngestWriter> {
+    pub fn ingest_handle(&self) -> Option<&tumult_ingest::IngestWriter> {
         self.ingest.as_ref()
     }
 }
@@ -682,7 +682,7 @@ async fn timeseries(
     };
 
     let metrics_dir = state.metrics_dir.as_ref().clone();
-    let defs = kronika_metrics::load_dir(&metrics_dir)
+    let defs = tumult_metrics::load_dir(&metrics_dir)
         .map_err(|e| internal(format!("load metrics: {e}")))?;
     let Some(def) = defs.iter().find(|d| d.name == metric) else {
         let available = defs
@@ -697,7 +697,7 @@ async fn timeseries(
             .into_response());
     };
     let sql =
-        kronika_metrics::to_sql_bucketed(def, bucket_s * 1_000_000_000, &[], Some((cur.0, cur.1)))
+        tumult_metrics::to_sql_bucketed(def, bucket_s * 1_000_000_000, &[], Some((cur.0, cur.1)))
             .map_err(|e| internal(e.to_string()))?;
     let description = def.description.clone();
     let body = with_reader(&state.db_path, move |reader| {
@@ -1031,7 +1031,7 @@ async fn dimensions(State(state): State<ApiState>) -> Result<Json<Value>, Respon
 }
 
 async fn list_metrics(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
-    let defs = kronika_metrics::load_dir(state.metrics_dir.as_ref())
+    let defs = tumult_metrics::load_dir(state.metrics_dir.as_ref())
         .map_err(|e| internal(format!("load metrics: {e}")))?;
     let metrics: Vec<Value> = defs
         .iter()
@@ -1882,11 +1882,11 @@ async fn generate_report(
     let metric_name = metric.clone();
     let body = with_reader(&state.db_path, move |reader| {
         let defs =
-            kronika_metrics::load_dir(&metrics_dir).map_err(|e| format!("load metrics: {e}"))?;
+            tumult_metrics::load_dir(&metrics_dir).map_err(|e| format!("load metrics: {e}"))?;
         let Some(def) = defs.iter().find(|d| d.name == metric_name) else {
             return Ok(None);
         };
-        let report = kronika_report::build_report(
+        let report = tumult_report::build_report(
             reader,
             std::slice::from_ref(def),
             &format!("Krönika — {metric_name}"),
@@ -1906,8 +1906,8 @@ async fn generate_report(
     // Best-effort LLM narrative: unreachable/unconfigured LLM or a reply
     // with no grounded sentences leaves the digest unchanged.
     let report =
-        kronika_report::narrative::narrate(&llm, report, std::time::Duration::from_secs(30)).await;
-    let html = kronika_report::render_html(&report);
+        tumult_report::narrative::narrate(&llm, report, std::time::Duration::from_secs(30)).await;
+    let html = tumult_report::render_html(&report);
     std::fs::create_dir_all(&reports_dir).map_err(|e| internal(e.to_string()))?;
     let now_s = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1942,7 +1942,7 @@ async fn scores(
             .into_response());
     };
     let card = with_reader(&state.db_path, move |reader| {
-        kronika_docs::scoring::compute(reader, to, Some(to - from))
+        tumult_compliance::scoring::compute(reader, to, Some(to - from))
     })
     .await?;
     Ok(Json(
@@ -1988,20 +1988,20 @@ async fn scores_tree(
         // records (expected but unscored). Pending status is read as of NOW
         // for every sample point — a documented approximation, since the
         // lifecycle has no history before the audit trail.
-        let leaves_at = |t: i64| -> Result<Vec<kronika_docs::ScoredLeaf>, String> {
-            let card = kronika_docs::scoring::compute(reader, t, None)?;
-            let mut leaves: Vec<kronika_docs::ScoredLeaf> = card
+        let leaves_at = |t: i64| -> Result<Vec<tumult_compliance::ScoredLeaf>, String> {
+            let card = tumult_compliance::scoring::compute(reader, t, None)?;
+            let mut leaves: Vec<tumult_compliance::ScoredLeaf> = card
                 .experiments
                 .iter()
-                .map(|e| kronika_docs::ScoredLeaf {
+                .map(|e| tumult_compliance::ScoredLeaf {
                     name: e.name.clone(),
                     score: Some(e.score),
                 })
                 .collect();
             leaves.extend(
-                kronika_docs::scoring::pending_manual_leaves(reader)?
+                tumult_compliance::scoring::pending_manual_leaves(reader)?
                     .into_iter()
-                    .map(|name| kronika_docs::ScoredLeaf { name, score: None }),
+                    .map(|name| tumult_compliance::ScoredLeaf { name, score: None }),
             );
             Ok(leaves)
         };
@@ -2060,7 +2060,7 @@ async fn generate_report_v2(
     Json(req): Json<GenerateV2Request>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
-    let Ok(kind) = serde_json::from_value::<kronika_docs::TemplateKind>(json!(req.kind)) else {
+    let Ok(kind) = serde_json::from_value::<tumult_compliance::TemplateKind>(json!(req.kind)) else {
         return Err(bad(format!(
             "unknown type {:?}; expected executive-digest|game-day|evidence-pack",
             req.kind
@@ -2073,16 +2073,16 @@ async fn generate_report_v2(
             None => return Err(bad("period must be one of 24h|7d|14d".into())),
         },
     };
-    if kind == kronika_docs::TemplateKind::GameDay
+    if kind == tumult_compliance::TemplateKind::GameDay
         && req.experiment_id.as_deref().is_none_or(str::is_empty)
     {
         return Err(bad("game-day requires experiment_id".into()));
     }
-    if kind == kronika_docs::TemplateKind::EvidencePack {
+    if kind == tumult_compliance::TemplateKind::EvidencePack {
         match req.framework.as_deref() {
             None => return Err(bad("evidence-pack requires framework".into())),
             Some(f)
-                if !kronika_docs::builders::FRAMEWORK_CLAUSES
+                if !tumult_compliance::builders::FRAMEWORK_CLAUSES
                     .iter()
                     .any(|(name, _)| *name == f.to_ascii_lowercase()) =>
             {
@@ -2099,7 +2099,7 @@ async fn generate_report_v2(
     let framework = req.framework.clone();
     let org = state.org.clone();
     let built = with_reader(&state.db_path, move |reader| match kind {
-        kronika_docs::TemplateKind::ExecutiveDigest => kronika_docs::builders::build_executive(
+        tumult_compliance::TemplateKind::ExecutiveDigest => tumult_compliance::builders::build_executive(
             reader,
             &org,
             generated_at,
@@ -2107,12 +2107,12 @@ async fn generate_report_v2(
             generated_at,
         )
         .map(Some),
-        kronika_docs::TemplateKind::GameDay => kronika_docs::builders::build_game_day(
+        tumult_compliance::TemplateKind::GameDay => tumult_compliance::builders::build_game_day(
             reader,
             exp_id.as_deref().unwrap_or_default(),
             generated_at,
         ),
-        kronika_docs::TemplateKind::EvidencePack => kronika_docs::builders::build_evidence_pack(
+        tumult_compliance::TemplateKind::EvidencePack => tumult_compliance::builders::build_evidence_pack(
             reader,
             framework.as_deref().unwrap_or_default(),
             Some(period_ns),
@@ -2129,8 +2129,8 @@ async fn generate_report_v2(
             .into_response());
     };
 
-    let pdf = kronika_docs::typst_pdf::render_pdf(&doc).map_err(|e| internal(e.to_string()))?;
-    let html = kronika_docs::html::render(&doc);
+    let pdf = tumult_compliance::typst_pdf::render_pdf(&doc).map_err(|e| internal(e.to_string()))?;
+    let html = tumult_compliance::html::render(&doc);
     let sha256: String = {
         use sha2::Digest as _;
         sha2::Sha256::digest(&pdf)

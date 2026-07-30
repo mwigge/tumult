@@ -1,7 +1,0 @@
-target/
-.git/
-web/node_modules/
-web/.svelte-kit/
-demo-out/
-*.duckdb
-*.duckdb.wal

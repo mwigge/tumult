@@ -1,4 +1,10 @@
-# ADR 0002: AI analytics layer — deterministic math, governed semantics, LLM narrates
+---
+title: "ADR-007: AI Analytics Layer"
+parent: Architecture Decisions
+nav_order: 7
+---
+
+# ADR-007: AI Analytics Layer (imported from kronika ADR 0002)
 
 - Status: accepted (Phases 1–2 live: NL query, narrative digests)
 - Date: 2026-07-28 (updated 2026-07-28 for Phase 2)

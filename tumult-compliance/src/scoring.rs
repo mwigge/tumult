@@ -10,7 +10,7 @@
 //! from scoring entirely). Draft/submitted manual records carry no score
 //! weight — they surface via [`pending_manual_leaves`] for coverage.
 
-use kronika_store::Reader;
+use tumult_lake::Reader;
 
 /// Staleness threshold: a pass older than this decays from 100 to 75.
 pub const STALE_NS: i64 = 30 * 86_400 * 1_000_000_000;

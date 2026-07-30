@@ -1,4 +1,4 @@
-//! `kronika-store` — embedded `DuckDB` store for chaos/resilience telemetry.
+//! `tumult-lake` — embedded `DuckDB` store for chaos/resilience telemetry.
 //!
 //! # Concurrency: the single-writer model
 //!

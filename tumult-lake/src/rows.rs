@@ -6,7 +6,7 @@
 /// One row of the `spans` table.
 ///
 /// The materialized `resilience.*` columns are promoted by the OTLP
-/// translation layer (`kronika-otel`); everything else lands in the maps.
+/// translation layer (`tumult-otlp`); everything else lands in the maps.
 #[derive(Debug, Clone, Default)]
 pub struct SpanRow {
     pub ts_ns: i64,

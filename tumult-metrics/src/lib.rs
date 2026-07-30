@@ -1,4 +1,4 @@
-//! `kronika-metrics` — a YAML semantic metric layer (Rill-style metrics
+//! `tumult-metrics` — a YAML semantic metric layer (Rill-style metrics
 //! views) compiled to SQL.
 //!
 //! A [`MetricDef`] names a source table, a measure and dimensions. [`to_sql`]

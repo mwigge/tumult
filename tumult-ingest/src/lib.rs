@@ -1,4 +1,4 @@
-//! `kronika-ingest` — telemetry ingestion into the kronika store.
+//! `tumult-ingest` — telemetry ingestion into the kronika store.
 //!
 //! * **OTLP/gRPC** ([`grpc`]): what tumult's exporter talks
 //!   (`OTEL_EXPORTER_OTLP_ENDPOINT=http://host:4317`, bare host, no path).

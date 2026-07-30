@@ -1,14 +1,13 @@
 [package]
-name = "kronika-ingest"
-description = "OTLP gRPC/HTTP ingest + manual importers writing into kronika-store"
-version.workspace = true
+name = "tumult-ingest"
+description = "OTLP gRPC/HTTP ingest + manual importers writing into tumult-lake"
+version = "0.6.0"
 edition.workspace = true
 license.workspace = true
-authors.workspace = true
 
 [dependencies]
-kronika-store.workspace = true
-kronika-otel.workspace = true
+tumult-lake.workspace = true
+tumult-otlp.workspace = true
 opentelemetry-proto.workspace = true
 tonic.workspace = true
 prost.workspace = true
