@@ -99,13 +99,7 @@
     generating = true;
     generateError = null;
     try {
-      const resp = await fetch('/api/reports/generate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ metric: selected })
-      });
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(body.error ?? `HTTP ${resp.status}`);
+      const body = await api.generateReport(selected);
       generated = body.name;
       await loadReports();
     } catch (e) {

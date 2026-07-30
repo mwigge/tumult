@@ -1,6 +1,7 @@
 // Fetch wrappers for the kronika query API (same origin when embedded in
 // kronikad; vite dev proxies /api to a local daemon).
 
+import { goto } from '$app/navigation';
 import type {
   AskResponse,
   Dimensions,
@@ -8,10 +9,12 @@ import type {
   ExperimentRow,
   ExperimentWindow,
   LogEntry,
+  LoginResponse,
   LogVolume,
   ManualDetail,
   ManualExperiment,
   ManualRecordInput,
+  MeResponse,
   MetricCatalogEntry,
   MetricDefInfo,
   MetricQueryResult,
@@ -28,10 +31,24 @@ import type {
   TraceRow
 } from './types';
 
+// A 401 on any non-auth endpoint means the session is gone (or absent) — send
+// the user to /login, unless we are already there. Auth endpoints themselves
+// (login failure, wrong current password) surface their 401 to the caller.
+function redirectOnUnauthorized(resp: Response, path: string): void {
+  if (
+    resp.status === 401 &&
+    !path.startsWith('/api/auth/') &&
+    window.location.pathname !== '/login'
+  ) {
+    void goto('/login');
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(path);
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) {
+    redirectOnUnauthorized(resp, path);
     throw new Error(body.error ?? `HTTP ${resp.status}`);
   }
   return body as T;
@@ -45,12 +62,26 @@ async function send<T>(method: string, path: string, payload: unknown): Promise<
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) {
+    redirectOnUnauthorized(resp, path);
     throw new Error(body.error ?? `HTTP ${resp.status}`);
   }
   return body as T;
 }
 
 export const api = {
+  login: (username: string, password: string) =>
+    send<LoginResponse>('POST', '/api/auth/login', { username, password }),
+
+  logout: () => send<{ ok: boolean }>('POST', '/api/auth/logout', {}),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    send<{ changed: boolean }>('POST', '/api/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword
+    }),
+
+  me: () => get<MeResponse>('/api/me'),
+
   overview: (range: string) => get<Overview>(`/api/overview?range=${range}`),
 
   timeseries: (metric: string, interval: string, range: string) =>
@@ -82,21 +113,15 @@ export const api = {
 
   reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),
 
-  generateReportV2: async (req: {
+  generateReportV2: (req: {
     type: ReportTemplate;
     period?: string;
     experiment_id?: string;
     framework?: string;
-  }): Promise<ReportMetaV2> => {
-    const resp = await fetch('/api/reports/v2/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(req)
-    });
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(body.error ?? `HTTP ${resp.status}`);
-    return body as ReportMetaV2;
-  },
+  }) => send<ReportMetaV2>('POST', '/api/reports/v2/generate', req),
+
+  generateReport: (metric: string) =>
+    send<{ name: string }>('POST', '/api/reports/generate', { metric }),
 
   logs: (params: Record<string, string>) => {
     const qs = new URLSearchParams(
@@ -135,6 +160,8 @@ export const api = {
   topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
 
   ask: async (question: string): Promise<AskResponse> => {
+    // Deliberately not routed through send(): a non-ok response whose body
+    // carries `configured` (LLM not set up) is a valid answer, not an error.
     const resp = await fetch('/api/ask', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -142,6 +169,7 @@ export const api = {
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok && !('configured' in body)) {
+      redirectOnUnauthorized(resp, '/api/ask');
       throw new Error(body.error ?? `HTTP ${resp.status}`);
     }
     return body as AskResponse;

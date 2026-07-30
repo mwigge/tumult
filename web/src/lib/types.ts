@@ -365,3 +365,27 @@ export interface ManualRecordInput {
   renewal_due_ns?: number | null;
   framework_refs?: string[];
 }
+
+// --- auth (tumultd session API) ---------------------------------------------
+
+export type Role = 'viewer' | 'operator' | 'approver' | 'admin';
+
+/** `POST /api/auth/login` 200 body. */
+export interface LoginResponse {
+  username: string;
+  role: Role;
+  must_change: boolean;
+}
+
+/**
+ * `GET /api/me` — always 200. `auth_required: false` means the daemon has no
+ * users (open local mode); the UI then behaves as if auth did not exist.
+ */
+export interface MeResponse {
+  auth_required: boolean;
+  authenticated: boolean;
+  username?: string;
+  role?: Role;
+  must_change?: boolean;
+  env_scopes?: string[];
+}
