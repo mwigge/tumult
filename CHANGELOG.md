@@ -6,9 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-The Krönika chronicle platform is folded into this repository: the kronika
-workspace (daemon, OTLP ingestion, DuckDB lake, compliance reports, query API
-and SvelteKit UI) now lives here as first-class tumult crates.
+**The Krönika merge.** The kronika workspace — daemon, OTLP ingestion,
+DuckDB lake, compliance reports, query API and SvelteKit UI — is folded
+into this repository as first-class `tumult-*` crates, and the two products
+are now one platform. One store: telemetry, run state, manual evidence and
+the journal-analytics family share a single DuckDB (`~/.tumult/lake.duckdb`,
+schema v3→v7) behind a single writer, with `tumult store import-legacy`
+migrating pre-merge databases. One execution path: the CLI's provider
+executor is shared (`tumult-exec`), so the daemon runs registered
+definitions itself — validated by the same pipeline, e-stoppable,
+crash-reconciled. One control plane: server-side auth with route-table
+RBAC, and risk-tiered approval workflows with hash-pinned, quorum- and
+TTL-bound decisions gate what the daemon dispatches. One surface: the
+embedded web UI drives the whole loop from definition registry to
+approval queue to compliance-grade R1/R2/R3 reports.
 
 ### Added
 - **Daemon-run experiments**: tumultd now executes experiments itself, not
