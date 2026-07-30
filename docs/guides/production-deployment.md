@@ -99,7 +99,7 @@ in production, point Tumult at whatever collector you already run
 
 ## 4. The analytics store — single-writer model
 
-The persistent store (`~/.tumult/analytics.duckdb`, DuckDB) allows **one writer**.
+The persistent store (`~/.tumult/lake.duckdb`, DuckDB) allows **one writer**.
 
 - **One writer:** the running server (it ingests runs and refreshes derived data).
 - **Readers coexist:** `tumult analyze`, `tumult chaosgraph query|neighbors`, and

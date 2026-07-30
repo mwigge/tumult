@@ -92,7 +92,7 @@ experiment suite in `demo/experiments/` and emits genuine OTLP/gRPC
 it into the HTML reports under `demo-out/`. Whatever tumult emits on the
 wire is exactly what Krönika's semantic layer computes over.
 
-## Single-writer model (mirrors tumult-analytics)
+## Single-writer model (mirrors tumult-lake)
 
 DuckDB is single-writer per file; a read-write open holds an exclusive lock.
 

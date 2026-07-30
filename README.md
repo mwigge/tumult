@@ -156,7 +156,7 @@ authentication, pagination, schemas, and client examples.
 | Variable | Purpose |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for traces and metrics. |
-| `TUMULT_ANALYTICS_PATH` | Override the persistent DuckDB store path. |
+| `TUMULT_LAKE_PATH` | Override the persistent DuckDB store path (default `~/.tumult/lake.duckdb`). |
 | `TUMULT_PLUGIN_PATH` | Add script-plugin discovery directories. |
 | `TUMULT_MCP_TOKEN` | Configure one MCP operator bearer token. |
 | `TUMULT_MCP_AUTH_CONFIG` | Configure multiple viewer/operator tokens. |

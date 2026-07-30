@@ -153,7 +153,7 @@ endpoint (default: `port + 1`).
 
 ChaosGraph collapses every accumulated run into a compact node/edge graph.
 Previously reachable only through MCP, it now has first-class CLI commands that
-read the analytics store (`~/.tumult/analytics.duckdb`, or `--store <path>`):
+read the analytics store (`~/.tumult/lake.duckdb`, or `--store <path>`):
 
 ```bash
 # List graph nodes of a kind (experiment, fault, service, journal, …)
