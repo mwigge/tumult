@@ -57,7 +57,7 @@
 //!   plan (hypothesis probes, method steps in order, guards, rollbacks)
 //!   with nothing executed.
 //! * `POST /api/runs {registry_id, vars?, env?, target?}` — classify the
-//!   definition into a risk tier (T0–T3, ADR-012) at request time: T0
+//!   definition into a risk tier (T0–T3, ADR-013) at request time: T0
 //!   enqueues onto the daemon's bounded run queue (202 + `run_id`, 429 on
 //!   overload, never silently queued); T1–T3 park in `pending_approval`
 //!   with a canonical pin. `POST /api/runs/{id}/stop` e-stops a run
@@ -133,7 +133,7 @@ pub struct ApiState {
     org: Arc<tumult_compliance::OrgTree>,
     ingest: Option<tumult_ingest::IngestWriter>,
     runs: Option<tumult_ingest::RunQueue>,
-    /// The autopilot policy gating T3 approvals (ADR-012); `None` fails the
+    /// The autopilot policy gating T3 approvals (ADR-013); `None` fails the
     /// gate closed (T3 approvals are refused 422).
     autopilot_policy: Option<Arc<tumult_autopilot::LoadedPolicy>>,
     /// Whether the API is served over TLS: session cookies get `; Secure`.

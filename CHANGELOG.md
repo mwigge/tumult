@@ -73,7 +73,33 @@ and SvelteKit UI) now lives here as first-class tumult crates.
   two-step e-stop (`POST /api/runs/{id}/stop`) with rollback status. Start
   and stop are role-aware (viewer is read-only); `POST /api/runs/validate`
   now records the principal as `registered_by`. The `pending_approval`
-  state badge is reserved for the upcoming approval flow.
+  state badge is wired for the approval flow below.
+- **Approval workflows and hash pinning** (schema v7, ADR-013): every
+  `POST /api/runs` now classifies the resolved definition into a risk tier
+  at request time — T0 (pre-approved catalog hash or probe-only) enqueues
+  directly; T1 (standard), T2 (staging-class env or destructive-named
+  fault) and T3 (production-class env, faults without rollback, or more
+  than one fault kind) park in `pending_approval`. Approvals carry a
+  canonical pin (SHA-256 over the resolution inputs — definition TOON,
+  params, env, target) that is re-verified at dispatch, so edited content
+  refuses to run even when fully approved; they expire (T1 72h / T2 24h /
+  T3 4h, swept to terminal `expired`) and are single-use. Segregation of
+  duties is enforced by the writer (approver ≠ requester, one decision per
+  approver). T3 approvals re-run the tumult-autopilot gate in-process
+  against current ambient facts (`KRONIKA_AUTOPILOT_POLICY`; fail-closed
+  when unset) — a gate Veto can never be approved past. Break-glass
+  (admin, mandatory ≥10-char justification) bypasses quorum and TTL but
+  never the pin, and opens a retrospective manual-evidence draft as
+  compliance debt. `run_audit` events are now hash-chained per run
+  (`verify_run_audit_chain` detects tampering) and record the
+  authenticated actor. New endpoints: `GET /api/approvals` (viewer),
+  `POST /api/runs/{id}/approve|reject` (approver), `POST
+  /api/runs/{id}/break-glass` (admin); run detail carries the full
+  approval chain. The R2 evidence pack gains an "Approval chain (change
+  management)" section (SOC 2 CC8.1), and the web UI gains an `/approvals`
+  queue page, the approval chain on run detail, and an admin break-glass
+  control. Invalid definitions now fail `POST /api/runs` with 400 at
+  request time instead of failing the run at dispatch.
 - **tumult-exec**: new crate — the CLI's provider executor
   (`ProviderExecutor` + the native plugin registry) extracted so the daemon
   and the CLI share one execution path.

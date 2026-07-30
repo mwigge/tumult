@@ -161,6 +161,34 @@ non-loopback bind refuses to start unauthenticated.
 clients authenticate with the standard `OTEL_EXPORTER_OTLP_HEADERS`, and
 the CLI sends `TUMULT_DAEMON_TOKEN` on journal import.
 
+## Approval workflows and hash pinning (schema v7)
+
+Run creation is change management (ADR-013). `POST /api/runs` resolves
+and validates the definition at request time and classifies it into a
+risk tier from frozen facts (env class, fault kinds, rollback presence,
+destructive-name heuristic, probe-only): T0 (catalog hash or probe-only)
+enqueues directly; T1/T2/T3 park in `pending_approval` behind an
+approval request that pins the resolution inputs (SHA-256 over
+`{definition_toon, params, env, target}` — the inputs, not the resolved
+artifact, whose `HashMap` fields serialize nondeterministically). Quorum
+is 1 approver (T1/T2) or 2 (T3) with writer-enforced segregation of
+duties (approver ≠ requester, one decision each); approvals lapse (T1
+72h, T2 24h, T3 4h — swept to terminal `expired`, re-request only) and
+are single-use (consumed at dispatch). T3 approvals re-run the
+tumult-autopilot gate in-process against current ambient facts
+(`KRONIKA_AUTOPILOT_POLICY`, fail-closed unset); a Veto is never
+approval-overridable. Break-glass (admin, mandatory justification)
+bypasses quorum and TTL — never the pin, which the worker re-verifies at
+the last moment (`dispatch_refused` on drift) — and opens a
+retrospective manual-evidence draft as compliance debt. `run_audit`
+gains a per-run hash chain (`prev_hash`/`new_hash`,
+`verify_run_audit_chain` for tamper detection) with the authenticated
+actor on every transition. Surfaces: `GET /api/approvals` +
+approve/reject/break-glass endpoints (route-table roles), the
+`/approvals` queue page and run-detail chain card in the UI, and an
+"Approval chain (change management)" section in the R2 evidence pack
+(SOC 2 CC8.1).
+
 ## Parquet lake + retention (durability story)
 
 Two tiers, one guarantee: **nothing leaves the hot store before an

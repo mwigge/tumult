@@ -86,7 +86,7 @@ pub type ExecutorFactory =
 /// A run accepted by `POST /api/runs`: the validated definition plus the
 /// template variables to resolve. `env` and `target` are the
 /// approval-relevant execution context — both are covered by the canonical
-/// pin (T10, ADR-012).
+/// pin (T10, ADR-013).
 pub struct RunRequest {
     pub registry_id: String,
     pub definition_toon: String,
@@ -351,7 +351,7 @@ impl RunQueue {
     /// Persist a gated run (tier T1–T3): the run row waits in
     /// `pending_approval` with its canonical pin, quorum and TTL recorded —
     /// nothing enters the worker channel until [`Self::dispatch_approved`]
-    /// (T10, ADR-012). Returns the run id.
+    /// (T10, ADR-013). Returns the run id.
     ///
     /// # Errors
     /// See [`EnqueueError`].
@@ -666,7 +666,7 @@ async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorFactory) {
             .await;
             return;
         }
-        // Single-use: one dispatch consumes one approval (ADR-012).
+        // Single-use: one dispatch consumes one approval (ADR-013).
         let id = run_id.clone();
         let pin = expected_pin.clone();
         let _ = exec_write(ingest, move |writer| {

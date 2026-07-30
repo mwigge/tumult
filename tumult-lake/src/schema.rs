@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS run_audit (
 -- metric_histograms ALTERs above.
 ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS actor VARCHAR;
 
--- v7: approval workflows (T10, ADR-012). `approval_requests` pins one run
+-- v7: approval workflows (T10, ADR-013). `approval_requests` pins one run
 -- to exactly one canonical content hash (definition + params + env +
 -- target) with a TTL and a quorum; `approval_decisions` holds one row per
 -- approver decision (T3's quorum 2 = two approved rows from distinct

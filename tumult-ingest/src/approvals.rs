@@ -1,5 +1,5 @@
 //! Risk-tier classification and the T3 autopilot gate for run approvals
-//! (ADR-012).
+//! (ADR-013).
 //!
 //! Every run requested via `POST /api/runs` is classified into exactly one
 //! tier from its environment, its definition's shape (fault count, rollback
@@ -55,7 +55,7 @@ impl Tier {
         }
     }
 
-    /// Approval time-to-live in nanoseconds (ADR-012): an approval is only
+    /// Approval time-to-live in nanoseconds (ADR-013): an approval is only
     /// as fresh as the system state it was granted against. T3's 4h bounds a
     /// production change to roughly half an operations shift; T1's 72h
     /// covers weekend-adjacent requests; single-use consumption bounds replay
@@ -93,7 +93,7 @@ fn matches_class_word(env: &str, word: &str) -> bool {
         })
 }
 
-/// Classify a target-environment name. Deterministic; documented in ADR-012.
+/// Classify a target-environment name. Deterministic; documented in ADR-013.
 #[must_use]
 pub fn env_class(env: &str) -> EnvClass {
     let env = env.trim().to_lowercase();
@@ -206,7 +206,7 @@ pub struct TierInput {
 }
 
 /// Classify a run request into its risk tier. Every rule is evaluated; the
-/// highest triggered tier wins. Rules (ADR-012):
+/// highest triggered tier wins. Rules (ADR-013):
 ///
 /// | # | rule                                                        | tier |
 /// |---|-------------------------------------------------------------|------|
@@ -259,7 +259,7 @@ pub enum GateOutcome {
     /// Downgrade / Propose — not an enact verdict; fail closed.
     NotEnact { verdict: String },
     /// No policy is loaded on the daemon (the integration boundary —
-    /// ADR-012); fail closed.
+    /// ADR-013); fail closed.
     Unavailable { reason: String },
 }
 

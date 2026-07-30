@@ -1,6 +1,6 @@
 //! Approval workflow endpoints (`/api/approvals`, `/api/runs/{id}/approve`,
 //! `/api/runs/{id}/reject`, `/api/runs/{id}/break-glass`) — the HTTP layer
-//! of the T10 gated-run flow (ADR-012).
+//! of the T10 gated-run flow (ADR-013).
 //!
 //! Gated runs (tiers T1–T3, classified at request time by `POST /api/runs`)
 //! wait in `pending_approval` with a canonical pin, a quorum and a TTL.
@@ -441,7 +441,7 @@ pub struct BreakGlassRequest {
 }
 
 /// `POST /api/runs/{id}/break-glass` — admin override of the approval
-/// quorum and TTL (ADR-012): stamps the request `break_glass`, audits the
+/// quorum and TTL (ADR-013): stamps the request `break_glass`, audits the
 /// override, opens a retrospective manual-evidence draft (unscored,
 /// status stays `draft`) as compliance debt, then dispatches — the pin
 /// re-verification in the worker still applies. 400 on a justification

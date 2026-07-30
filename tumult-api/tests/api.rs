@@ -1932,7 +1932,7 @@ async fn stop_unknown_terminal_and_running_runs() {
 }
 
 // ---------------------------------------------------------------------------
-// /api/approvals + /api/runs/{id}/approve|reject|break-glass (T10, ADR-012)
+// /api/approvals + /api/runs/{id}/approve|reject|break-glass (T10, ADR-013)
 
 /// POST a JSON body with a `kro_` bearer token; returns (status, body).
 async fn post_auth(base: &str, path: &str, token: &str, body: Value) -> (u16, Value) {

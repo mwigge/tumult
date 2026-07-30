@@ -30,7 +30,7 @@ pub mod decision {
 
 /// The exact content an approval approves: the definition source, the
 /// template params, the target environment, and the optional target
-/// selector (ADR-012).
+/// selector (ADR-013).
 ///
 /// The pin covers the resolution *inputs*, not the resolved artifact:
 /// `prepare_run` is a pure function of (`definition_toon`, `params`), so
@@ -234,7 +234,7 @@ impl Writer {
     }
 
     /// Stamp the approval consumed — single-use: one dispatch consumes one
-    /// approval, a second run needs a fresh approval (ADR-012).
+    /// approval, a second run needs a fresh approval (ADR-013).
     ///
     /// # Errors
     /// Returns an error if the update fails.
@@ -247,7 +247,7 @@ impl Writer {
     }
 
     /// Mark the request overridden by break-glass (admin override with
-    /// mandatory justification, ADR-012).
+    /// mandatory justification, ADR-013).
     ///
     /// # Errors
     /// Returns an error if the update fails.

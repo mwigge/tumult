@@ -156,7 +156,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
         Role::Approver,
     ),
     // Approvals: the queue is a read; decisions need the Approver role;
-    // break-glass is Admin-only (ADR-012).
+    // break-glass is Admin-only (ADR-013).
     ("GET", "/api/approvals", Role::Viewer),
     ("POST", "/api/runs/{id}/approve", Role::Approver),
     ("POST", "/api/runs/{id}/reject", Role::Approver),

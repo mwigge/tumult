@@ -249,7 +249,7 @@ fn default_env() -> String {
 }
 
 /// `POST /api/runs` — classify the definition into a risk tier (T0–T3,
-/// [`tumult_ingest::approvals::classify`], ADR-012) at request time. T0
+/// [`tumult_ingest::approvals::classify`], ADR-013) at request time. T0
 /// enqueues directly onto the daemon's bounded run queue: 202 with the run
 /// id, 429 when the waiting queue is at capacity (backpressure, never
 /// silent unbounded queueing). T1–T3 park in `pending_approval` (202 with
