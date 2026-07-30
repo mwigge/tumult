@@ -512,6 +512,27 @@ impl Writer {
         Ok(())
     }
 
+    /// Ingest an experiment journal into the analytics tables
+    /// (`experiments` / `activity_results` / `load_results` plus the
+    /// `ChaosGraph` nodes/edges), on this single-writer connection.
+    ///
+    /// Same semantics as
+    /// [`AnalyticsStore::ingest_journal_with_experiment`](crate::duckdb_store::AnalyticsStore::ingest_journal_with_experiment):
+    /// the whole journal commits atomically and an already-known
+    /// `experiment_id` is skipped as a duplicate. Pass `Some(experiment)` to
+    /// enrich the graph with the full fault/service model.
+    ///
+    /// # Errors
+    /// Returns an error if the insert or Arrow conversion fails.
+    pub fn ingest_journal(
+        &self,
+        journal: &tumult_core::types::Journal,
+        experiment: Option<&tumult_core::types::Experiment>,
+    ) -> Result<bool, StoreError> {
+        duckdb_store::ingest_journal_with_experiment(&self.conn, journal, experiment)
+            .map_err(|e| StoreError::Internal(e.to_string()))
+    }
+
     /// Raw parameterized statement returning affected-row count — crate-internal
     /// escape hatch (lake retention deletes, lake tests).
     pub(crate) fn execute(&self, sql: &str, p: impl duckdb::Params) -> Result<usize, StoreError> {
@@ -737,6 +758,33 @@ mod tests {
         w2.insert_spans(&[sample_span("exp-2")]).unwrap();
         let reader = store.read_only().unwrap();
         assert_eq!(reader.experiment_runs().unwrap().len(), 2);
+    }
+
+    /// `Writer::ingest_journal` writes through the single-writer connection;
+    /// the same rows are then readable through a read-only `Reader` and an
+    /// `AnalyticsStore` opened on the same file in-process.
+    #[test]
+    fn writer_ingests_journal_visible_to_reader() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+
+        let journal =
+            duckdb_store::sample_journal("wj-1", tumult_core::types::ExperimentStatus::Completed);
+        assert!(writer.ingest_journal(&journal, None).unwrap());
+        // Duplicate experiment_id: skipped, not duplicated.
+        assert!(!writer.ingest_journal(&journal, None).unwrap());
+
+        let reader = store.read_only().unwrap();
+        let rows = reader
+            .query_json_rows("SELECT experiment_id, status FROM experiments")
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["experiment_id"], serde_json::json!("wj-1"));
+        let activities = reader
+            .query_json_rows("SELECT count(*) AS n FROM activity_results")
+            .unwrap();
+        assert_eq!(activities[0]["n"], serde_json::json!(1));
     }
 
     #[test]

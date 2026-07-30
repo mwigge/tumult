@@ -102,6 +102,8 @@ mod types;
 
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
 
+pub(crate) use ingest::ingest_journal_with_experiment;
+
 /// Embedded `DuckDB` analytics store for experiment journals.
 ///
 /// **Not thread-safe.** Each instance holds a single `DuckDB` connection.

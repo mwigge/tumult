@@ -1,7 +1,7 @@
 //! Journal and agentic-run ingestion into the `DuckDB` analytics store.
 
 use arrow::record_batch::RecordBatch;
-use duckdb::params;
+use duckdb::{params, Connection};
 use tumult_core::types::{Experiment, Journal};
 
 use crate::arrow_convert::{
@@ -12,16 +12,85 @@ use crate::telemetry;
 
 use super::{AgenticRunAnalytics, AnalyticsStore};
 
-impl AnalyticsStore {
-    /// Check if an `experiment_id` already exists in the store.
-    fn experiment_exists(&self, experiment_id: &str) -> Result<bool, AnalyticsError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT count(*) FROM experiments WHERE experiment_id = ?")?;
-        let count: i64 = stmt.query_row(params![experiment_id], |row| row.get(0))?;
-        Ok(count > 0)
+/// Check if an `experiment_id` already exists in the store, on `conn`.
+pub(crate) fn experiment_exists(
+    conn: &Connection,
+    experiment_id: &str,
+) -> Result<bool, AnalyticsError> {
+    let mut stmt = conn.prepare("SELECT count(*) FROM experiments WHERE experiment_id = ?")?;
+    let count: i64 = stmt.query_row(params![experiment_id], |row| row.get(0))?;
+    Ok(count > 0)
+}
+
+/// Append an Arrow batch to `table`, on `conn`.
+pub(crate) fn insert_batch(
+    conn: &Connection,
+    table: &str,
+    batch: &RecordBatch,
+) -> Result<(), AnalyticsError> {
+    let mut appender = conn.appender(table)?;
+    appender.append_record_batch(batch.clone())?;
+    appender.flush()?;
+    Ok(())
+}
+
+/// Connection-based journal ingest shared by [`AnalyticsStore`] and
+/// [`crate::Writer`] (the single-writer connection behind the ingest daemon).
+/// See [`AnalyticsStore::ingest_journal_with_experiment`] for semantics.
+pub(crate) fn ingest_journal_with_experiment(
+    conn: &Connection,
+    journal: &Journal,
+    experiment: Option<&Experiment>,
+) -> Result<bool, AnalyticsError> {
+    let _span = telemetry::begin_ingest(&journal.experiment_id, &journal.experiment_title);
+
+    if experiment_exists(conn, &journal.experiment_id)? {
+        telemetry::event_journal_duplicate(&journal.experiment_id);
+        return Ok(false);
     }
 
+    // Atomic ingest: experiments + activities + load + graph rows commit
+    // together or not at all. Without the transaction a mid-ingest failure
+    // committed the experiments row, and re-ingest then skipped the
+    // experiment as a duplicate — permanently losing the remaining rows.
+    conn.execute_batch("BEGIN TRANSACTION")?;
+    match ingest_journal_inner(conn, journal, experiment) {
+        Ok(activity_count) => {
+            conn.execute_batch("COMMIT")?;
+            telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
+            Ok(true)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// The insert half of [`ingest_journal_with_experiment`], run inside the
+/// caller's transaction. Returns the number of activity rows written.
+fn ingest_journal_inner(
+    conn: &Connection,
+    journal: &Journal,
+    experiment: Option<&Experiment>,
+) -> Result<usize, AnalyticsError> {
+    let exp_batch = journal_to_experiment_batch(journal)?;
+    let act_batch = journal_to_activity_batch(journal)?;
+    let activity_count = act_batch.num_rows();
+    insert_batch(conn, "experiments", &exp_batch)?;
+    if activity_count > 0 {
+        insert_batch(conn, "activity_results", &act_batch)?;
+    }
+    if let Some(ref load_result) = journal.load_result {
+        let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
+        insert_batch(conn, "load_results", &load_batch)?;
+    }
+    // ChaosGraph: upsert this run's nodes/edges (schema v2).
+    super::graph::populate_graph(conn, journal, experiment)?;
+    Ok(activity_count)
+}
+
+impl AnalyticsStore {
     /// Ingest a single experiment journal into the analytics store.
     /// Skips ingestion if the `experiment_id` already exists (incremental/dedup).
     ///
@@ -89,52 +158,7 @@ impl AnalyticsStore {
         journal: &Journal,
         experiment: Option<&Experiment>,
     ) -> Result<bool, AnalyticsError> {
-        let _span = telemetry::begin_ingest(&journal.experiment_id, &journal.experiment_title);
-
-        if self.experiment_exists(&journal.experiment_id)? {
-            telemetry::event_journal_duplicate(&journal.experiment_id);
-            return Ok(false);
-        }
-
-        // Atomic ingest: experiments + activities + load + graph rows commit
-        // together or not at all. Without the transaction a mid-ingest failure
-        // committed the experiments row, and re-ingest then skipped the
-        // experiment as a duplicate — permanently losing the remaining rows.
-        self.conn.execute_batch("BEGIN TRANSACTION")?;
-        match self.ingest_journal_inner(journal, experiment) {
-            Ok(activity_count) => {
-                self.conn.execute_batch("COMMIT")?;
-                telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
-                Ok(true)
-            }
-            Err(e) => {
-                let _ = self.conn.execute_batch("ROLLBACK");
-                Err(e)
-            }
-        }
-    }
-
-    /// The insert half of [`Self::ingest_journal_with_experiment`], run inside
-    /// the caller's transaction. Returns the number of activity rows written.
-    fn ingest_journal_inner(
-        &self,
-        journal: &Journal,
-        experiment: Option<&Experiment>,
-    ) -> Result<usize, AnalyticsError> {
-        let exp_batch = journal_to_experiment_batch(journal)?;
-        let act_batch = journal_to_activity_batch(journal)?;
-        let activity_count = act_batch.num_rows();
-        self.insert_batch("experiments", &exp_batch)?;
-        if activity_count > 0 {
-            self.insert_batch("activity_results", &act_batch)?;
-        }
-        if let Some(ref load_result) = journal.load_result {
-            let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
-            self.insert_batch("load_results", &load_batch)?;
-        }
-        // ChaosGraph: upsert this run's nodes/edges (schema v2).
-        self.populate_graph(journal, experiment)?;
-        Ok(activity_count)
+        ingest_journal_with_experiment(&self.conn, journal, experiment)
     }
 
     /// Ingest multiple journals, skipping duplicates.
@@ -232,10 +256,7 @@ impl AnalyticsStore {
         table: &str,
         batch: &RecordBatch,
     ) -> Result<(), AnalyticsError> {
-        let mut appender = self.conn.appender(table)?;
-        appender.append_record_batch(batch.clone())?;
-        appender.flush()?;
-        Ok(())
+        insert_batch(&self.conn, table, batch)
     }
 }
 

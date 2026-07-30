@@ -5,7 +5,7 @@
 //! connection. The read side (`graph_query`, `graph_neighbors`, …) lives in
 //! `tumult-query`.
 
-use duckdb::params;
+use duckdb::{params, Connection};
 use tumult_core::types::{Experiment, Journal};
 use tumult_graph::{sql, GraphDelta};
 
@@ -13,50 +13,53 @@ use crate::error::AnalyticsError;
 
 use super::AnalyticsStore;
 
-impl AnalyticsStore {
-    /// Upsert the graph nodes/edges contributed by a run.
-    ///
-    /// Pass `Some(experiment)` for the full `Fault = plugin::function` +
-    /// `Service` model; `None` derives faults from the journal's action
-    /// results. Idempotent: a run's edges are cleared by `run_id` before
-    /// re-insert, and nodes upsert on their primary key.
-    pub(super) fn populate_graph(
-        &self,
-        journal: &Journal,
-        experiment: Option<&Experiment>,
-    ) -> Result<(), AnalyticsError> {
-        let delta = tumult_graph::journal_to_graph(journal, experiment);
+/// Upsert the graph nodes/edges contributed by a run, on `conn`.
+///
+/// Pass `Some(experiment)` for the full `Fault = plugin::function` +
+/// `Service` model; `None` derives faults from the journal's action
+/// results. Idempotent: a run's edges are cleared by `run_id` before
+/// re-insert, and nodes upsert on their primary key.
+///
+/// Connection-based so both [`AnalyticsStore`] and [`crate::Writer`] (the
+/// single-writer connection behind the ingest daemon) share one
+/// implementation.
+pub(crate) fn populate_graph(
+    conn: &Connection,
+    journal: &Journal,
+    experiment: Option<&Experiment>,
+) -> Result<(), AnalyticsError> {
+    let delta = tumult_graph::journal_to_graph(journal, experiment);
 
-        for node in &delta.nodes {
-            // `serde_json::Value`'s Display impl emits compact JSON text.
-            // Merge attrs rather than replace: a run's (usually empty)
-            // service attrs must never clobber declared-topology metadata.
-            let attrs = node.attrs.to_string();
-            self.conn.execute(
-                sql::UPSERT_NODE_MERGE_ATTRS,
-                params![node.id, node.kind.as_str(), node.label, attrs],
-            )?;
-        }
-
-        // Clear this run's edges first so re-ingesting never duplicates them.
-        self.conn
-            .execute(sql::DELETE_EDGES_FOR_RUN, params![journal.experiment_id])?;
-        for edge in &delta.edges {
-            self.conn.execute(
-                sql::INSERT_EDGE,
-                params![
-                    edge.src,
-                    edge.rel.as_str(),
-                    edge.dst,
-                    journal.experiment_id,
-                    journal.started_at_ns,
-                    edge.attrs.to_string()
-                ],
-            )?;
-        }
-        Ok(())
+    for node in &delta.nodes {
+        // `serde_json::Value`'s Display impl emits compact JSON text.
+        // Merge attrs rather than replace: a run's (usually empty)
+        // service attrs must never clobber declared-topology metadata.
+        let attrs = node.attrs.to_string();
+        conn.execute(
+            sql::UPSERT_NODE_MERGE_ATTRS,
+            params![node.id, node.kind.as_str(), node.label, attrs],
+        )?;
     }
 
+    // Clear this run's edges first so re-ingesting never duplicates them.
+    conn.execute(sql::DELETE_EDGES_FOR_RUN, params![journal.experiment_id])?;
+    for edge in &delta.edges {
+        conn.execute(
+            sql::INSERT_EDGE,
+            params![
+                edge.src,
+                edge.rel.as_str(),
+                edge.dst,
+                journal.experiment_id,
+                journal.started_at_ns,
+                edge.attrs.to_string()
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+impl AnalyticsStore {
     /// Replace the coverage-gap sub-graph with a freshly derived [`GraphDelta`].
     ///
     /// The whole `coverage_gap` node set and the sentinel-`run_id` `gap_in`
