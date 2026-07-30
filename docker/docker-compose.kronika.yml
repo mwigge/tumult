@@ -67,14 +67,17 @@ services:
     # Runs the real tumult experiment suite with the workspace-built tumult
     # binary. HOME=/tmp keeps tumult's state writable (the kronika user has
     # no writable home in this container); journals stay in /tmp (ephemeral —
-    # tumultd is the record). The suite must finish even when an experiment
-    # deviates or fails (tumult exits non-zero on both), so failures are
-    # tallied, not fatal.
+    # tumultd is the record). TUMULT_DAEMON_URL sends each journal to the
+    # daemon's /api/import/journal, so the analytics tables (experiments,
+    # activity_results, graph) fill in through the daemon's single writer.
+    # The suite must finish even when an experiment deviates or fails
+    # (tumult exits non-zero on both), so failures are tallied, not fatal.
     environment:
       HOME: /tmp
       TUMULT_OTEL_ENABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tumultd:4317
       OTEL_SERVICE_NAME: tumult
+      TUMULT_DAEMON_URL: http://tumultd:4318
     volumes:
       - ../demo/kronika/experiments:/experiments:ro
     command:
@@ -85,7 +88,7 @@ services:
         for f in /experiments/*.toon; do
           n=$$(basename "$$f" .toon)
           echo "=== seed: running $$n"
-          if tumult run "$$f" --journal-path "/tmp/journal-$$n.toon" --no-ingest; then
+          if tumult run "$$f" --journal-path "/tmp/journal-$$n.toon"; then
             passed=$$((passed + 1))
             echo "=== seed: $$n -> PASSED"
           else
