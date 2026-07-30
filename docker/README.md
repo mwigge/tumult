@@ -133,7 +133,10 @@ tumult run experiment.toon
 | `docker-compose.observability.yml` | SigNoz + OTel Collector + classic profile |
 | `docker-compose.tumult.yml` | Tumult MCP server |
 | `docker-compose.aqe.yml` | Agentic QE Fleet |
+| `docker-compose.kronika.yml` | tumultd demo stack (chronicle daemon + seed + report) |
+| `docker-compose.kronika-collector.yml` | tumultd dev pair with OTel Collector (`otel-collector-kronika.yaml`) |
 | `Dockerfile.tumult` | CLI + MCP image (both binaries) |
+| `Dockerfile.tumultd` | tumultd image (web UI build + daemon + CLI) |
 | `Dockerfile.tumult-mcp` | MCP server entrypoint variant |
 | `Dockerfile.sshd` | SSH test target |
 | `tumult-collector/config.yaml` | OTel Collector pipeline config |

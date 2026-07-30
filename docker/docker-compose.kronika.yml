@@ -1,16 +1,17 @@
-# One-command demo: kronikad + REAL tumult chaos experiments + the web UI.
+# One-command Krönika demo: tumultd + REAL tumult chaos experiments + the
+# web UI.
 #
-#   docker compose -f docker/docker-compose.demo.yml up
+#   docker compose -f docker/docker-compose.kronika.yml up
 #
 # Then open http://localhost:14318/ — the Krönika analytics UI (embedded in
-# the kronikad binary): Overview KPIs, experiment drill-down with the span
+# the tumultd binary): Overview KPIs, experiment drill-down with the span
 # waterfall, NL Ask, scheduled Reports.
 #
-# Flow: kronikad comes up → `seed` runs the tumult experiment suite in
-# ../demo/experiments/ with the pinned tumult release binary (v2.18.0,
-# checksum-verified at image build) — genuine chaos runs emitting real
+# Flow: tumultd comes up → `seed` runs the tumult experiment suite in
+# ../demo/kronika/experiments/ with the tumult CLI built from the same
+# workspace source (no release download) — genuine chaos runs emitting real
 # OTLP/gRPC traces, metrics and logs → `report` also pulls one HTML report
-# per semantic metric from kronikad's live `GET /report?metric=<name>`
+# per semantic metric from tumultd's live `GET /report?metric=<name>`
 # endpoint into ./demo-out/. The daemon itself renders a digest into
 # /data/reports/ every KRONIKA_REPORT_INTERVAL (1h here), browsable on the
 # UI's Reports page.
@@ -18,12 +19,8 @@
 # Two suite experiments are designed NOT to pass (one Deviated, one Failed,
 # both rolled back) so the reports show real deviations and rollbacks.
 #
-# Optional synthetic backfill (adds 40 generated experiments spread over the
-# past 14 days, for time-series shape):
-#   docker compose -f docker/docker-compose.demo.yml --profile synthetic up
-#
 # Re-run the suite later against the same store (data accumulates):
-#   docker compose -f docker/docker-compose.demo.yml run --rm seed
+#   docker compose -f docker/docker-compose.kronika.yml run --rm seed
 #
 # Point real tumult at localhost:14317 / smedja at localhost:14318 while the
 # stack is up to mix in telemetry from outside the demo. (Host ports are
@@ -31,14 +28,15 @@
 # already owns the OTLP-standard 4317/4318; container-internal traffic uses
 # the standard ports.)
 
-name: kronika-demo
+name: tumult-kronika
 
 services:
-  kronikad:
+  tumultd:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
-    image: kronika-demo:latest
+      dockerfile: docker/Dockerfile.tumultd
+    image: tumult-kronika:latest
+    container_name: tumult-kronika-tumultd
     ports:
       - "14317:4317"
       - "14318:4318"
@@ -54,8 +52,8 @@ services:
       # retention OFF — the demo accumulates, never deletes.
       KRONIKA_RETENTION_DAYS: "0"
     volumes:
-      - kronika-demo-data:/data
-      - ../demo/org.yaml:/data/org.yaml:ro
+      - tumult-kronika-data:/data
+      - ../demo/kronika/org.yaml:/data/org.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4318/healthz"]
       interval: 2s
@@ -64,19 +62,21 @@ services:
     restart: unless-stopped
 
   seed:
-    image: kronika-demo:latest
-    # Runs the real tumult experiment suite. HOME=/tmp keeps tumult's state
-    # writable (the kronika user has no writable home in this container);
-    # journals stay in /tmp (ephemeral — kronikad is the record). The suite
-    # must finish even when an experiment deviates or fails (tumult exits
-    # non-zero on both), so failures are tallied, not fatal.
+    image: tumult-kronika:latest
+    container_name: tumult-kronika-seed
+    # Runs the real tumult experiment suite with the workspace-built tumult
+    # binary. HOME=/tmp keeps tumult's state writable (the kronika user has
+    # no writable home in this container); journals stay in /tmp (ephemeral —
+    # tumultd is the record). The suite must finish even when an experiment
+    # deviates or fails (tumult exits non-zero on both), so failures are
+    # tallied, not fatal.
     environment:
       HOME: /tmp
       TUMULT_OTEL_ENABLED: "true"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://kronikad:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tumultd:4317
       OTEL_SERVICE_NAME: tumult
     volumes:
-      - ../demo/experiments:/experiments:ro
+      - ../demo/kronika/experiments:/experiments:ro
     command:
       - sh
       - -c
@@ -95,10 +95,10 @@ services:
           sleep 3
         done
         echo "=== seed: suite done — $$passed passed, $$notpassed deviated/failed"
-        # Manual evidence records (v0.5): one verified gameday (scores), one
+        # Manual evidence records: one verified gameday (scores), one
         # submitted (pending verification), one draft. Idempotent-ish: re-runs
         # add another generation of records; the demo volume is disposable.
-        API=http://kronikad:4318/api/manual/experiments
+        API=http://tumultd:4318/api/manual/experiments
         EXEC_NS="$$(( $$(date +%s) - 172800 ))000000000"
         echo "=== seed: manual evidence records"
         VID=$$(curl -sf -X POST "$$API" -H 'content-type: application/json' -d "{\"experiment_name\":\"cdn failover — edge PoP loss\",\"exercise_type\":\"gameday\",\"executed_at_ns\":$$EXEC_NS,\"hypothesis\":\"Edge PoP loss fails over within 60s\",\"method\":\"Disabled the primary PoP during a live game day; watched traffic shift and measured warm-up\",\"outcome_status\":\"passed\",\"hypothesis_met\":true,\"findings\":\"Failover worked; warm-up took 40s during which p95 spiked\",\"action_items\":[\"Pre-warm the secondary PoP\"],\"target_system\":\"cdn\",\"target_environment\":\"production\",\"blast_radius\":\"single-pop\",\"recovery_time_s\":40.0,\"duration_s\":3600.0,\"entered_by\":\"alice\",\"attestation\":\"I attest this record reflects the exercise as executed, and the findings are complete to the best of my knowledge.\",\"framework_refs\":[\"DORA Art. 24(7)\",\"ISO 27001 A.5.30\"]}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
@@ -111,34 +111,14 @@ services:
         curl -sf -X POST "$$API" -H 'content-type: application/json' -d "{\"experiment_name\":\"dns failover drill\",\"exercise_type\":\"drill\",\"executed_at_ns\":$$EXEC_NS,\"hypothesis\":\"Secondary DNS takes over transparently\",\"method\":\"Draft record — drill planned, not yet executed\",\"outcome_status\":\"inconclusive\",\"entered_by\":\"alice\",\"attestation\":\"I attest this record reflects the exercise as executed.\"}" > /dev/null
         echo "=== seed: draft manual drill (stays draft)"
     depends_on:
-      kronikad:
+      tumultd:
         condition: service_healthy
-    restart: "no"
-
-  # Optional synthetic backfill (kronika-demo generator) — only started with
-  # `--profile synthetic`. Adds time-spread history; the primary seed above
-  # is the real tumult suite.
-  synthetic:
-    image: kronika-demo:latest
-    profiles: ["synthetic"]
-    command:
-      - kronika-demo
-      - --endpoint
-      - http://kronikad:4317
-      - --experiments
-      - "40"
-      - --seed
-      - "7"
-    depends_on:
-      kronikad:
-        condition: service_healthy
-      seed:
-        condition: service_completed_successfully
     restart: "no"
 
   report:
-    image: kronika-demo:latest
-    # One-shot: fetches rendered reports from kronikad's live /report
+    image: tumult-kronika:latest
+    container_name: tumult-kronika-report
+    # One-shot: fetches rendered reports from tumultd's live /report
     # endpoint (DuckDB allows a single read-write process, so reports must be
     # served by the daemon, not by opening the store from this container).
     # Writes into the host bind-mounted ./demo-out; runs as root so the bind
@@ -153,18 +133,18 @@ services:
         sleep 5
         mkdir -p /out
         for m in experiment_count hypothesis_pass_rate deviation_rate experiment_duration_s experiment_coverage action_duration_s; do
-          curl -sf "http://kronikad:4318/report?metric=$$m" -o "/out/$$m.html"
+          curl -sf "http://tumultd:4318/report?metric=$$m" -o "/out/$$m.html"
         done
         chmod -R a+rwX /out
     volumes:
       # ../demo-out = repo root (bind sources resolve against this file's dir).
       - ../demo-out:/out
     depends_on:
-      kronikad:
+      tumultd:
         condition: service_healthy
       seed:
         condition: service_completed_successfully
     restart: "no"
 
 volumes:
-  kronika-demo-data:
+  tumult-kronika-data:

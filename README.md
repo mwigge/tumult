@@ -93,10 +93,12 @@ that executes experiments; Krönika is what their telemetry accumulates into.
   Topology, Ask, Reports) backed by a read-only JSON API under `/api/*`,
   including a guarded NL→SQL ask path (`tumult_intelligence::sql_guard`).
 
-Try it: `docker compose -f docker/kronika-legacy-staging/docker-compose.demo.yml up`
-(demo stack finalisation lands in a later fold task), then open
-http://localhost:14318/. Build the UI with `cd web && npm ci && npm run build`
-before compiling `tumultd` — the binary embeds `web/build/`.
+Try it: `docker compose -f docker/docker-compose.kronika.yml up -d --build`,
+then open http://localhost:14318/. The compose stack builds the UI and the
+`tumultd` binary in Docker, seeds a demo experiment suite plus manual-evidence
+records, and exports a report into `demo-out/`. To build locally instead, run
+`cd web && npm ci && npm run build` before compiling `tumultd` — the binary
+embeds `web/build/`.
 
 ## CLI
 
