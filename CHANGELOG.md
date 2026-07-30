@@ -11,6 +11,10 @@ workspace (daemon, OTLP ingestion, DuckDB lake, compliance reports, query API
 and SvelteKit UI) now lives here as first-class tumult crates.
 
 ### Added
+- **`tumult store import-legacy`**: merges pre-unification databases (an old
+  `tumult-analytics` store and/or a kronika lake, via `--analytics-db` /
+  `--kronika-db`) into the unified store. Idempotent natural-key dedupe;
+  older schemas missing later columns import via column intersection.
 - **tumult-query**: new crate holding the read-side domain queries over the
   unified store (`graph_query`/`graph_neighbors`/`tested_action_names`,
   topology edge/node readbacks + `NodeAttrs`, autopilot status/class-history/

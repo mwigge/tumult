@@ -29,8 +29,8 @@ pub use recommend::{cmd_agents, cmd_recommend, AgentArgs};
 pub use report::cmd_report;
 pub use run::cmd_run;
 pub use store::{
-    cmd_import, cmd_store_backup, cmd_store_migrate, cmd_store_path, cmd_store_purge,
-    cmd_store_stats,
+    cmd_import, cmd_store_backup, cmd_store_import_legacy, cmd_store_migrate, cmd_store_path,
+    cmd_store_purge, cmd_store_stats,
 };
 
 // Re-export the extracted command surface so the crate's public API and every

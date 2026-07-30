@@ -161,6 +161,15 @@ async fn main() -> anyhow::Result<()> {
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
             StoreAction::Migrate => commands::cmd_store_migrate().await?,
+            StoreAction::ImportLegacy {
+                analytics_db,
+                kronika_db,
+                store,
+            } => commands::cmd_store_import_legacy(
+                analytics_db.as_deref(),
+                kronika_db.as_deref(),
+                store.as_deref(),
+            )?,
         },
         Commands::Recommend {
             goal,

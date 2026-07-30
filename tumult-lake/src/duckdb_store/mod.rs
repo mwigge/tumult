@@ -94,6 +94,7 @@ fn open_with_retry(
 pub mod autopilot;
 mod graph;
 mod ingest;
+mod legacy;
 mod maintenance;
 mod query;
 mod topology;

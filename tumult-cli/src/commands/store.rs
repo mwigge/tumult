@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
@@ -163,6 +163,85 @@ pub fn cmd_store_path() -> Result<()> {
     } else {
         println!("(not yet created)");
     }
+    Ok(())
+}
+
+// ── Import-legacy command ───────────────────────────────────
+
+/// Merge pre-unification databases into the unified store.
+///
+/// Sources come from the explicit flags; with neither flag given, the legacy
+/// defaults that exist are picked up (`TUMULT_ANALYTICS_PATH`,
+/// `~/.tumult/analytics.duckdb`, `KRONIKA_DB`).
+///
+/// # Errors
+///
+/// Returns an error if no source is found, the target store cannot be
+/// opened, or a merge fails.
+#[must_use = "callers must handle import errors"]
+pub fn cmd_store_import_legacy(
+    analytics_db: Option<&Path>,
+    kronika_db: Option<&Path>,
+    store_path: Option<&Path>,
+) -> Result<()> {
+    use tumult_lake::AnalyticsStore;
+
+    let mut sources: Vec<PathBuf> = Vec::new();
+    if let Some(p) = analytics_db {
+        sources.push(p.to_path_buf());
+    }
+    if let Some(p) = kronika_db {
+        sources.push(p.to_path_buf());
+    }
+    if sources.is_empty() {
+        for candidate in [
+            std::env::var("TUMULT_ANALYTICS_PATH").ok(),
+            std::env::var("HOME")
+                .ok()
+                .map(|h| format!("{h}/.tumult/analytics.duckdb")),
+            std::env::var("KRONIKA_DB").ok(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if !candidate.is_empty() && Path::new(&candidate).exists() {
+                sources.push(PathBuf::from(candidate));
+            }
+        }
+    }
+    if sources.is_empty() {
+        bail!(
+            "no legacy stores found — pass --analytics-db and/or --kronika-db\n\
+             (the old tumult-analytics store defaults to ~/.tumult/analytics.duckdb; \
+             the kronika lake was $KRONIKA_DB)"
+        );
+    }
+
+    let db_path = store_path.map_or_else(
+        || AnalyticsStore::default_path().context("failed to determine analytics store path"),
+        |p| Ok(p.to_path_buf()),
+    )?;
+    let store = AnalyticsStore::open(&db_path)?;
+
+    for source in &sources {
+        validate_path_no_symlink(source)?;
+        // Never import a store into itself.
+        if source.canonicalize().ok() == db_path.canonicalize().ok() {
+            println!("Skipping {} — that IS the unified store", source.display());
+            continue;
+        }
+        let report = store
+            .import_legacy(source)
+            .with_context(|| format!("importing legacy store {}", source.display()))?;
+        println!("{}:", source.display());
+        if report.is_empty() {
+            println!("  (no known tables found)");
+        }
+        for (table, n) in &report {
+            println!("  {table}: {n} row(s) imported");
+        }
+    }
+    println!("Unified store: {}", db_path.display());
     Ok(())
 }
 
