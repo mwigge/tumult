@@ -26,6 +26,15 @@
 //! older than that many days (the manual-evidence tables are never
 //! deleted). `POST /api/lake/export` triggers the same job on demand.
 //!
+//! The daemon also executes experiments itself: `/api/runs*` (validate,
+//! dry-run, enqueue, e-stop) is backed by a bounded in-process run queue
+//! (`TUMULTD_RUN_CONCURRENCY` / `TUMULTD_RUN_QUEUE_DEPTH`). At startup,
+//! runs left active by a previous process lifetime are reconciled —
+//! marked orphaned, their rollbacks attempted — before the servers accept
+//! traffic. A telemetry loopback points the daemon's own OTel exporter at
+//! its own gRPC ingest, so daemon-run experiments land in the store (and
+//! the UI) exactly like CLI runs.
+//!
 //! Subcommands:
 //! * `tumultd import <file>` — manual CSV / tumult journal JSON import.
 //! * `tumultd report --metric <name>` — print an HTML report to stdout.
@@ -112,6 +121,17 @@ async fn shutdown_signal(name: &'static str) {
     }
 }
 
+/// Drop guard that flushes OpenTelemetry spans on every exit path from
+/// `serve` — including `?` early returns — so telemetry is not lost exactly
+/// on the failed runs where it matters most (mirrors the CLI's guard).
+struct TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry);
+
+impl Drop for TelemetryShutdown {
+    fn drop(&mut self) {
+        self.0.shutdown();
+    }
+}
+
 async fn serve() -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     tracing::info!(
@@ -121,9 +141,51 @@ async fn serve() -> Result<()> {
         "starting tumultd"
     );
 
+    // Telemetry loopback: the daemon's own OTel exporter points at its own
+    // gRPC ingest, so experiments the daemon executes (run queue, orphan
+    // rollbacks) land in the store exactly like CLI runs. An unspecified
+    // bind address (0.0.0.0) exports via localhost.
+    let loopback = if config.otlp_grpc_addr.ip().is_unspecified() {
+        format!("http://127.0.0.1:{}", config.otlp_grpc_addr.port())
+    } else {
+        format!("http://{}", config.otlp_grpc_addr)
+    };
+    let otel_config = tumult_otel::config::TelemetryConfig {
+        enabled: true,
+        otlp_endpoint: Some(loopback),
+        ..tumult_otel::config::TelemetryConfig::from_env()
+    };
+    let _telemetry_guard =
+        TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
+
     let store = Store::open(&config.db_path).context("open store")?;
     let writer = store.writer().context("open store writer")?;
     let (ingest, writer_task) = IngestWriter::spawn(writer, 1024);
+
+    // The run queue's executor: the CLI's providers with the run's
+    // resolved TUMULT_CONFIG_* / TUMULT_SECRET_* environment injected.
+    let run_factory: tumult_ingest::runs::ExecutorFactory = std::sync::Arc::new(|env| {
+        std::sync::Arc::new(tumult_exec::ProviderExecutor::with_injected_env(env))
+    });
+
+    // Reconcile runs left active by a previous process lifetime (crash,
+    // kill -9) before accepting traffic: mark orphaned, attempt rollbacks,
+    // record the outcome in each run's audit trail.
+    match tumult_ingest::runs::reconcile_orphans(&ingest, &config.db_path, &run_factory).await {
+        Ok(0) => {}
+        Ok(count) => tracing::warn!(
+            count,
+            "reconciled orphaned runs from a previous process lifetime"
+        ),
+        Err(e) => tracing::error!(error = %e, "orphan reconciliation failed"),
+    }
+
+    let run_queue = tumult_ingest::RunQueue::spawn(
+        ingest.clone(),
+        config.db_path.clone(),
+        tumult_ingest::RunQueueConfig::from_env(),
+        run_factory,
+    );
 
     // OTLP/gRPC server (tumult exporter target).
     let grpc_addr = config.otlp_grpc_addr;
@@ -147,7 +209,7 @@ async fn serve() -> Result<()> {
         config.db_path.clone(),
         config.metrics_dir.clone(),
         Some(ingest.clone()),
-        None,
+        Some(run_queue),
     );
     if let Some(interval) = report_interval_from_env() {
         spawn_report_scheduler(
