@@ -254,6 +254,8 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/api/manual/import", post(manual::import))
         .route("/api/import/journal", post(import::import_journal))
+        .route("/api/registry", get(runs::registry_list))
+        .route("/api/registry/{id}", get(runs::registry_detail))
         .route("/api/runs/validate", post(runs::validate))
         .route("/api/runs/dry-run", post(runs::dry_run))
         .route("/api/runs", get(runs::list).post(runs::create))

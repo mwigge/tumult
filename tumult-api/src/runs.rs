@@ -90,11 +90,32 @@ pub struct ValidateRequest {
     vars: HashMap<String, String>,
 }
 
+/// `GET /api/registry` — registered definitions (metadata only), newest
+/// first: the UI's registry picker.
+pub async fn registry_list(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+    let rows = with_reader(&state.db_path, |reader| {
+        reader.registry_list(500).map_err(|e| e.to_string())
+    })
+    .await?;
+    Ok(Json(json!({"count": rows.len(), "definitions": rows})))
+}
+
+/// `GET /api/registry/{id}` — one definition including the `.toon` source
+/// (the UI parses `${var}` placeholders from it for the parameter form).
+pub async fn registry_detail(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, Response> {
+    let def = registry_or_404(&state, &id).await?;
+    Ok(Json(json!({"definition": def})))
+}
+
 /// `POST /api/runs/validate` — run the full parse/resolve/validate pipeline
 /// and register the definition (content-hash dedup) so it can be dry-run or
 /// enqueued by `registry_id`.
 pub async fn validate(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<ValidateRequest>,
 ) -> Result<Json<Value>, Response> {
     if req.toon.chars().count() > 256_000 {
@@ -134,7 +155,8 @@ pub async fn validate(
         definition_toon: req.toon,
         content_hash: hash,
         registered_at_ns: now_ns(),
-        registered_by: Some("api".into()),
+        // The authenticated principal when auth is enabled; "api" while open.
+        registered_by: principal.actor().or_else(|| Some("api".into())),
     };
     let slot = Arc::new(Mutex::new(None));
     let slot2 = Arc::clone(&slot);

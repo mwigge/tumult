@@ -260,6 +260,19 @@ impl Reader {
         Ok(rows.first().map(row_to_definition))
     }
 
+    /// List registered definitions, newest first (metadata only — the UI's
+    /// registry picker; the `.toon` source comes from
+    /// [`Self::registry_definition`]).
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    pub fn registry_list(&self, limit: u32) -> Result<Vec<serde_json::Value>, StoreError> {
+        self.query_json_rows(&format!(
+            "SELECT id, name, content_hash, registered_at_ns, registered_by \
+             FROM run_registry ORDER BY registered_at_ns DESC LIMIT {limit}"
+        ))
+    }
+
     /// List runs, newest first; `state` filters to one state.
     ///
     /// # Errors

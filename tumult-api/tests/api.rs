@@ -1700,6 +1700,47 @@ async fn validate_registers_and_dedups_definitions() {
 }
 
 #[tokio::test]
+async fn registry_list_and_detail_roundtrip() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/api/registry", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let defs = body["definitions"].as_array().unwrap();
+    let entry = defs
+        .iter()
+        .find(|d| d["id"] == registry_id)
+        .expect("registered definition is listed");
+    assert_eq!(entry["name"], "api run test experiment");
+    assert!(entry["content_hash"].as_str().unwrap().len() == 64);
+    // The list carries metadata only; the TOON comes from the detail.
+    assert!(entry.get("definition_toon").is_none(), "{entry}");
+
+    let resp = client
+        .get(format!("{}/api/registry/{registry_id}", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["definition"]["id"], registry_id);
+    assert_eq!(body["definition"]["definition_toon"], RUN_TOON);
+
+    let resp = client
+        .get(format!("{}/api/registry/reg-nope", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+}
+
+#[tokio::test]
 async fn dry_run_returns_resolved_plan() {
     let srv = spawn_server().await;
     let registry_id = register_run_def(&srv.base).await;
