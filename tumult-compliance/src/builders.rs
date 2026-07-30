@@ -974,6 +974,92 @@ pub fn build_evidence_pack(
         });
     }
 
+    // SOC 2 CC8.1 change-management evidence: one row per approval-gated run.
+    blocks.push(Block::H2("Approval chain (change management)".into()));
+    blocks.push(Block::Paragraph(
+        "Approval-gated runs (tiers T1–T3) execute only after explicit human \
+         approval — the change-management evidence for SOC 2 CC8.1. Each request \
+         pins the exact change content by hash, enforces an approver quorum with \
+         segregation of duties, and lapses on a TTL; approvals are single-use and \
+         break-glass overrides carry a mandatory justification. Pin hashes are \
+         re-verified at dispatch, and the full per-run, hash-chained `run_audit` \
+         trail is available via the API."
+            .into(),
+    ));
+    let approvals = reader.approvals_list(500).map_err(|e| e.to_string())?;
+    let approvals: Vec<&serde_json::Value> = approvals
+        .iter()
+        .filter(|a| {
+            from_ns.is_none_or(|f| {
+                a.get("requested_at_ns")
+                    .and_then(serde_json::Value::as_i64)
+                    .is_some_and(|t| (f..=as_of_ns).contains(&t))
+            })
+        })
+        .collect();
+    if approvals.is_empty() {
+        blocks.push(Block::Paragraph(
+            "No approval-gated runs in the period.".into(),
+        ));
+    } else {
+        let ns_of =
+            |row: &serde_json::Value, key: &str| row.get(key).and_then(serde_json::Value::as_i64);
+        blocks.push(Block::Table {
+            headers: vec![
+                "Run".into(),
+                "Definition".into(),
+                "Tier".into(),
+                "Env".into(),
+                "Requested by".into(),
+                "Quorum".into(),
+                "Decisions".into(),
+                "Break-glass".into(),
+                "Consumed".into(),
+                "Run state".into(),
+            ],
+            rows: approvals
+                .iter()
+                .map(|a| {
+                    let approved = ns_of(a, "approved_count").unwrap_or(0);
+                    let rejected = ns_of(a, "rejected_count").unwrap_or(0);
+                    let break_glass = a
+                        .get("break_glass")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false);
+                    vec![
+                        Cell::text(cell(a, "run_id").unwrap_or("—")),
+                        Cell::text(cell(a, "definition_name").unwrap_or("—")),
+                        Cell::text(cell(a, "tier").unwrap_or("—")),
+                        Cell::text(cell(a, "env").unwrap_or("—")),
+                        Cell::text(format!(
+                            "{} on {}",
+                            cell(a, "requested_by").unwrap_or("—"),
+                            ns_of(a, "requested_at_ns").map_or("—".into(), fmt_date)
+                        )),
+                        Cell::text(format!(
+                            "{approved}/{}",
+                            ns_of(a, "quorum_required").unwrap_or(0)
+                        )),
+                        Cell::text(format!("approved×{approved}, rejected×{rejected}")),
+                        Cell::text(if break_glass {
+                            format!("yes — {}", cell(a, "break_glass_by").unwrap_or("?"))
+                        } else {
+                            "no".into()
+                        }),
+                        Cell::text(if ns_of(a, "consumed_at_ns").is_some() {
+                            "yes"
+                        } else {
+                            "no"
+                        }),
+                        Cell::status(cell(a, "run_state").unwrap_or("—")),
+                    ]
+                })
+                .collect(),
+            numeric_cols: vec![],
+            widths: Some(vec![1.0, 1.1, 0.5, 0.6, 1.4, 0.7, 1.4, 1.0, 0.8, 1.0]),
+        });
+    }
+
     // Attestation appendix: one entry per verified manual record.
     let attested = reader
         .query_json_rows(
@@ -1098,5 +1184,170 @@ mod tests {
         for (_, clauses) in FRAMEWORK_CLAUSES {
             assert!(!clauses.is_empty());
         }
+    }
+
+    const BASE_NS: i64 = 1_785_000_000_000_000_000;
+    const HOUR_NS: i64 = 3_600_000_000_000;
+
+    /// A store with two gated runs: `run-a` (T2, quorum 2, approved×2,
+    /// consumed) and `run-b` (T1, overridden by break-glass).
+    fn gated_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
+        use tumult_lake::approvals::{decision, ApprovalDecision, ApprovalRequest};
+        use tumult_lake::{NewRun, RegisteredDefinition};
+
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        writer
+            .register_definition(&RegisteredDefinition {
+                id: "reg-1".into(),
+                name: "cpu-burn".into(),
+                definition_toon: "title: cpu-burn".into(),
+                content_hash: "h".into(),
+                registered_at_ns: 1,
+                registered_by: None,
+            })
+            .unwrap();
+        let gated_run = |id: &str, actor: &str, queued_at_ns: i64| NewRun {
+            id: id.into(),
+            registry_id: "reg-1".into(),
+            params_json: None,
+            queued_at_ns,
+            actor: Some(actor.into()),
+        };
+        writer
+            .insert_gated_run(
+                &gated_run("run-a", "carol", BASE_NS),
+                &ApprovalRequest {
+                    run_id: "run-a".into(),
+                    tier: "T2".into(),
+                    pin_hash: "deadbeef".into(),
+                    env: "prod".into(),
+                    target: Some("svc-a".into()),
+                    quorum_required: 2,
+                    requested_by: "carol".into(),
+                    requested_at_ns: BASE_NS,
+                    expires_at_ns: BASE_NS + HOUR_NS,
+                },
+                Some("tier T2 quorum 2"),
+            )
+            .unwrap();
+        for approver in ["dave", "erin"] {
+            writer
+                .insert_approval_decision(&ApprovalDecision {
+                    run_id: "run-a".into(),
+                    approver: approver.into(),
+                    decision: decision::APPROVED.into(),
+                    note: None,
+                    decided_at_ns: BASE_NS + 60_000_000_000,
+                })
+                .unwrap();
+        }
+        writer
+            .consume_approval("run-a", BASE_NS + 120_000_000_000)
+            .unwrap();
+
+        writer
+            .insert_gated_run(
+                &gated_run("run-b", "frank", BASE_NS + DAY_NS),
+                &ApprovalRequest {
+                    run_id: "run-b".into(),
+                    tier: "T1".into(),
+                    pin_hash: "cafe".into(),
+                    env: "staging".into(),
+                    target: None,
+                    quorum_required: 1,
+                    requested_by: "frank".into(),
+                    requested_at_ns: BASE_NS + DAY_NS,
+                    expires_at_ns: BASE_NS + DAY_NS + HOUR_NS,
+                },
+                Some("tier T1 quorum 1"),
+            )
+            .unwrap();
+        writer
+            .mark_break_glass("run-b", "admin", "prod down")
+            .unwrap();
+        (d, store)
+    }
+
+    /// The approval-chain table after its H2 heading.
+    fn approval_table(doc: &ReportDoc) -> (&Vec<String>, &Vec<Vec<Cell>>) {
+        let pos = doc
+            .blocks
+            .iter()
+            .position(|b| matches!(b, Block::H2(t) if t.contains("Approval chain")))
+            .expect("approval chain H2");
+        doc.blocks[pos..]
+            .iter()
+            .find_map(|b| match b {
+                Block::Table { headers, rows, .. } => Some((headers, rows)),
+                _ => None,
+            })
+            .expect("approval chain table")
+    }
+
+    fn row_text(row: &[Cell]) -> String {
+        row.iter()
+            .map(|c| match c {
+                Cell::Text(s) | Cell::Status(s) => s.as_str(),
+            })
+            .collect::<Vec<_>>()
+            .join("|")
+    }
+
+    #[test]
+    fn evidence_pack_lists_approval_chain() {
+        let (_d, store) = gated_fixture();
+        let reader = store.read_only().unwrap();
+        let now = BASE_NS + DAY_NS + 12 * HOUR_NS;
+        let doc = build_evidence_pack(&reader, "soc2", None, now).unwrap();
+
+        let (headers, rows) = approval_table(&doc);
+        assert!(headers.iter().any(|h| h == "Tier"));
+        assert_eq!(rows.len(), 2, "rows: {rows:?}");
+        let rows: Vec<String> = rows.iter().map(|r| row_text(r)).collect();
+        let t2 = rows.iter().find(|r| r.contains("T2")).expect("T2 row");
+        assert!(t2.contains("carol"), "{t2}");
+        assert!(t2.contains("2/2"), "{t2}");
+        assert!(t2.contains("yes"), "{t2}"); // consumed
+        let t1 = rows.iter().find(|r| r.contains("T1")).expect("T1 row");
+        assert!(t1.contains("frank"), "{t1}");
+        assert!(t1.contains("yes — admin"), "{t1}"); // break-glass
+
+        let pdf = crate::typst_pdf::render_pdf(&doc).expect("pdf render");
+        assert!(pdf.starts_with(b"%PDF"), "missing magic bytes");
+    }
+
+    #[test]
+    fn evidence_pack_approval_chain_empty_message() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let reader = store.read_only().unwrap();
+        let doc = build_evidence_pack(&reader, "soc2", None, BASE_NS).unwrap();
+        assert!(doc.blocks.iter().any(|b| matches!(
+            b,
+            Block::Paragraph(p) if p == "No approval-gated runs in the period."
+        )));
+    }
+
+    #[test]
+    fn evidence_pack_approval_chain_respects_period() {
+        let (_d, store) = gated_fixture();
+        let reader = store.read_only().unwrap();
+        let now = BASE_NS + DAY_NS + 12 * HOUR_NS;
+
+        // A one-hour period excludes both requests.
+        let doc = build_evidence_pack(&reader, "soc2", Some(HOUR_NS), now).unwrap();
+        assert!(doc.blocks.iter().any(|b| matches!(
+            b,
+            Block::Paragraph(p) if p == "No approval-gated runs in the period."
+        )));
+
+        // A period reaching back past run-b but not run-a only keeps run-b.
+        let doc =
+            build_evidence_pack(&reader, "soc2", Some(DAY_NS + 12 * HOUR_NS - 1), now).unwrap();
+        let (_, rows) = approval_table(&doc);
+        assert_eq!(rows.len(), 1, "rows: {rows:?}");
+        assert!(row_text(&rows[0]).contains("T1"));
     }
 }
