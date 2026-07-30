@@ -136,3 +136,10 @@ admin is created, instead of locking itself out on first open.
   for exposed deployments.
 - Auth tables are index-free under the same crash-robustness rule as the
   v5 run tables; uniqueness is enforced in code behind the single writer.
+
+## Follow-ons
+
+- [ADR-013](ADR-013-approval-workflows-and-hash-pinning.md) builds the
+  approval workflow on this role model: the `approver` role exists for its
+  quorum decisions, and its break-glass override is Admin-only under this
+  route table.

@@ -142,3 +142,14 @@ follow-ons, shipped with the ADR's implementation:
   best-effort. A degraded store never skips a rollback — the fault may
   still be live in the target system; write failures are logged and the
   run keeps its active state so the next start retries.
+
+## Follow-ons
+
+- [ADR-012](ADR-012-authentication-and-rbac.md) authenticates every
+  mutating route introduced here (run creation, e-stop) and records the
+  principal as the run-audit actor.
+- [ADR-013](ADR-013-approval-workflows-and-hash-pinning.md) interposes the
+  approval workflow between run creation and the dispatch path designed
+  here: risk-tiered runs park in `pending_approval` (not an active state,
+  so orphan reconciliation is untouched) and enter the bounded queue only
+  through `dispatch_approved`.
