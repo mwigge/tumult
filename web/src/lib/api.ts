@@ -5,6 +5,7 @@ import { goto } from '$app/navigation';
 import type {
   AskResponse,
   Dimensions,
+  DryRunResponse,
   ExperimentDetail,
   ExperimentRow,
   ExperimentWindow,
@@ -19,9 +20,13 @@ import type {
   MetricDefInfo,
   MetricQueryResult,
   Overview,
+  RegistryDefinition,
+  RegistryEntry,
   ReportFile,
   ReportMetaV2,
   ReportTemplate,
+  RunDetail,
+  RunRow,
   Scorecard,
   ScoreTree,
   Timeseries,
@@ -218,7 +223,32 @@ export const api = {
     ),
 
   manualImport: (label: string | null, records: ManualRecordInput[]) =>
-    send<{ batch_id: string; ids: string[] }>('POST', '/api/manual/import', { label, records })
+    send<{ batch_id: string; ids: string[] }>('POST', '/api/manual/import', { label, records }),
+
+  // --- UI execution: registry + runs ----------------------------------------
+
+  registry: () => get<{ count: number; definitions: RegistryEntry[] }>('/api/registry'),
+
+  registryDefinition: (id: string) =>
+    get<{ definition: RegistryDefinition }>(`/api/registry/${encodeURIComponent(id)}`),
+
+  dryRun: (registry_id: string, vars: Record<string, string>) =>
+    send<DryRunResponse>('POST', '/api/runs/dry-run', { registry_id, vars }),
+
+  startRun: (registry_id: string, vars: Record<string, string>) =>
+    send<{ run_id: string; state: string }>('POST', '/api/runs', { registry_id, vars }),
+
+  runs: (state?: string, limit = 100) => {
+    const qs = new URLSearchParams();
+    if (state) qs.set('state', state);
+    qs.set('limit', String(limit));
+    return get<{ count: number; runs: RunRow[] }>(`/api/runs?${qs}`);
+  },
+
+  run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+
+  stopRun: (id: string) =>
+    send<{ run_id: string; stop: string }>('POST', `/api/runs/${encodeURIComponent(id)}/stop`, {})
 };
 
 // --- formatting helpers ----------------------------------------------------
@@ -276,13 +306,35 @@ export function statusClass(status: string | null): 'ok' | 'warn' | 'fail' | 'ne
   switch ((status ?? '').toLowerCase()) {
     case 'completed':
     case 'success':
+    case 'passed':
       return 'ok';
     case 'deviated':
+    case 'rollback_pending':
       return 'warn';
     case 'failed':
     case 'failure':
+    case 'aborted':
+    case 'orphaned':
       return 'fail';
+    // queued / validating / running / stopping → neutral.
+    // T10: approval flow lands here — pending_approval gets the neutral
+    // (info) tone until the approval UI exists.
     default:
       return 'neutral';
   }
 }
+
+/**
+ * Run states in which a run can still transition — keep polling. Anything
+ * not in this set is treated as terminal, so unknown future terminal states
+ * stop the poll loop automatically. `pending_approval` is T10's active-ish
+ * state (not yet emitted by the backend); it is classified as active so the
+ * UI keeps polling until the approval flow lands.
+ */
+export const ACTIVE_RUN_STATES: ReadonlySet<string> = new Set([
+  'queued',
+  'validating',
+  'running',
+  'stopping',
+  'pending_approval'
+]);

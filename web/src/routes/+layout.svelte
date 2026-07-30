@@ -11,6 +11,7 @@
     { href: '/', label: 'Overview', icon: '◧' },
     { href: '/scores', label: 'Scores', icon: '▦' },
     { href: '/experiments', label: 'Experiments', icon: '⚗' },
+    { href: '/runs', label: 'Runs', icon: '▶' },
     { href: '/manual', label: 'Manual', icon: '✎' },
     { href: '/logs', label: 'Logs', icon: '≣' },
     { href: '/traces', label: 'Traces', icon: '⌁' },

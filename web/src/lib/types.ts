@@ -389,3 +389,103 @@ export interface MeResponse {
   must_change?: boolean;
   env_scopes?: string[];
 }
+
+// --- UI execution: run registry + runs (tumultd run-control API) ------------
+
+/**
+ * `runs.state` values. Active (can still transition): queued / validating /
+ * running / stopping; everything else is terminal. `pending_approval` is
+ * T10's active-ish state — not yet emitted, classified as active by the UI.
+ * (`RunState` above is already taken by the score-freshness enum.)
+ */
+export type RunExecState =
+  | 'queued'
+  | 'validating'
+  | 'running'
+  | 'stopping'
+  | 'pending_approval' // T10: approval flow lands here
+  | 'passed'
+  | 'deviated'
+  | 'failed'
+  | 'aborted'
+  | 'orphaned'
+  | 'rollback_pending';
+
+/** `GET /api/registry` row. */
+export interface RegistryEntry {
+  id: string;
+  name: string;
+  content_hash: string;
+  registered_at_ns: number;
+  registered_by: string | null;
+}
+
+/** `GET /api/registry/{id}` — one definition including the TOON source. */
+export interface RegistryDefinition extends RegistryEntry {
+  definition_toon: string;
+}
+
+/** One method/rollback/probe step in a dry-run plan. `timeout_s` lives on
+    the provider for most provider types; both spots are tolerated. */
+export interface DryRunStep {
+  name: string;
+  activity_type: string;
+  provider: { type?: string; timeout_s?: number | null; [key: string]: unknown };
+  timeout_s?: number | null;
+  [key: string]: unknown;
+}
+
+/** `POST /api/runs/dry-run` plan (valid:true). Only the fields the UI
+    renders are typed in detail; the rest ride along. */
+export interface DryRunPlan {
+  title: string;
+  description: string;
+  tags: string[];
+  estimate: {
+    expected_outcome?: string;
+    expected_recovery_s?: number | null;
+    confidence?: string | null;
+    rationale?: string | null;
+  } | null;
+  baseline: unknown;
+  hypothesis: { title: string; probes: DryRunStep[] } | null;
+  guards: unknown;
+  method: DryRunStep[];
+  rollbacks: DryRunStep[];
+  controls: unknown;
+  regulatory: unknown;
+  blast_radius: unknown;
+}
+
+export type DryRunResponse =
+  | { valid: true; registry_id: string; plan: DryRunPlan }
+  | { valid: false; error: string };
+
+/** `GET /api/runs` / `GET /api/runs/{id}` run row. */
+export interface RunRow {
+  id: string;
+  registry_id: string;
+  state: RunExecState;
+  params_json: string | null;
+  experiment_id: string | null;
+  rollback_status: string | null;
+  error: string | null;
+  queued_at_ns: number;
+  started_at_ns: number | null;
+  ended_at_ns: number | null;
+  definition_name: string | null;
+}
+
+/** `GET /api/runs/{id}` audit entry (oldest first). */
+export interface RunAuditEntry {
+  run_id: string;
+  at_ns: number;
+  event: string;
+  detail: string | null;
+  actor: string | null;
+}
+
+export interface RunDetail {
+  run: RunRow;
+  audit: RunAuditEntry[];
+}
