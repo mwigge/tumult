@@ -203,7 +203,28 @@ pub struct Writer {
 impl Writer {
     fn migrate(&self) -> Result<(), StoreError> {
         self.conn.execute_batch(schema::CREATE_TABLES)?;
+        // ChaosGraph node/edge tables (part of schema v3): DDL lives in
+        // `tumult_graph::sql`. `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`
+        // make both the fresh-install DDL and the additive migration for
+        // pre-existing databases.
+        self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
+        self.conn
+            .execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
         self.conn.execute_batch(schema::CREATE_VIEWS)?;
+        // Static `ComplianceArticle` nodes from the citation registry:
+        // deterministic and run-independent, seeded at migrate time.
+        // Idempotent — nodes upsert on their primary key.
+        for node in tumult_graph::compliance_article_nodes() {
+            self.conn.execute(
+                tumult_graph::sql::UPSERT_NODE,
+                params![
+                    node.id,
+                    node.kind.as_str(),
+                    node.label,
+                    node.attrs.to_string()
+                ],
+            )?;
+        }
         let mut stmt = self
             .conn
             .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
@@ -702,5 +723,105 @@ mod tests {
         let reader = store.read_only().unwrap();
         assert_eq!(reader.experiment_runs().unwrap().len(), 1);
         drop(writer);
+    }
+
+    /// Schema v3: a fresh open creates the unified analytics family
+    /// (journal detail, agentic, autopilot, ChaosGraph) alongside the
+    /// telemetry tables, at the current version, with the static
+    /// compliance-article nodes seeded.
+    #[test]
+    fn v3_open_creates_unified_analytics_family() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        assert_eq!(writer.schema_version().unwrap(), 3);
+
+        let reader = store.read_only().unwrap();
+        for table in [
+            "experiments",
+            "activity_results",
+            "load_results",
+            "agentic_runs",
+            "agentic_contract_outcomes",
+            "agentic_fault_applications",
+            "agentic_replay_outcomes",
+            "autopilot_decisions",
+            "autopilot_events",
+            "autopilot_change_events",
+            "graph_nodes",
+            "graph_edges",
+        ] {
+            let rows = reader
+                .query_json_rows(&format!(
+                    "SELECT count(*) AS c FROM information_schema.tables \
+                     WHERE table_name = '{table}'"
+                ))
+                .unwrap();
+            assert_eq!(rows[0]["c"], serde_json::json!(1), "missing {table}");
+        }
+
+        let articles = reader
+            .query_json_rows(
+                "SELECT count(*) AS c FROM graph_nodes WHERE kind = 'compliance_article'",
+            )
+            .unwrap();
+        assert_eq!(
+            articles[0]["c"],
+            serde_json::json!(tumult_graph::compliance_article_nodes().len() as u64)
+        );
+        // The v3 edges attrs column exists.
+        reader
+            .query_json_rows("SELECT attrs FROM graph_edges LIMIT 0")
+            .unwrap();
+    }
+
+    /// A v2-shaped store (telemetry + manual tables only, version 2) gains
+    /// the analytics family on open, keeps its data, and advances to v3.
+    #[test]
+    fn v2_store_migrates_forward_without_data_loss() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db_path = d.path().join("lake.duckdb");
+
+        // Seed a v2-shaped store: current v2 DDL minus the v3 family, one
+        // span row, version recorded as 2.
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            let v2_ddl = schema::CREATE_TABLES
+                .split("-- v3: the tumult-analytics family")
+                .next()
+                .unwrap();
+            conn.execute_batch(v2_ddl).unwrap();
+            conn.execute(
+                "INSERT INTO schema_meta (key, value) VALUES ('version', 2)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO spans VALUES (
+                    1, 't', 's', NULL, 'resilience.experiment', 'Internal', 1,
+                    'Ok', '', 'tumult', NULL, 'legacy-exp', 'legacy', 'completed',
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                    CAST('{}' AS MAP(VARCHAR,VARCHAR)),
+                    CAST('{}' AS MAP(VARCHAR,VARCHAR)), '[]')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&db_path).unwrap();
+        let writer = store.writer().unwrap();
+        assert_eq!(writer.schema_version().unwrap(), 3);
+        let reader = store.read_only().unwrap();
+        // Prior data preserved; analytics family now queryable.
+        assert_eq!(reader.experiment_runs().unwrap().len(), 1);
+        reader
+            .query_json_rows("SELECT count(*) AS c FROM experiments")
+            .unwrap();
+        let articles = reader
+            .query_json_rows(
+                "SELECT count(*) AS c FROM graph_nodes WHERE kind = 'compliance_article'",
+            )
+            .unwrap();
+        assert!(articles[0]["c"].as_u64().unwrap() > 0);
     }
 }
