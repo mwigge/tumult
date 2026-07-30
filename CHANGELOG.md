@@ -30,6 +30,38 @@ and SvelteKit UI) now lives here as first-class tumult crates.
   faults applied. A telemetry loopback exports the daemon's own spans to
   its own gRPC ingest, so daemon-run experiments land in the store and UI
   exactly like CLI runs (ADR-011).
+- **Authentication and RBAC for the daemon API** (schema v6, ADR-012): once
+  any real user exists, every `/api/*` route requires a session cookie or a
+  `kro_`-prefixed bearer token. Browser sessions are opaque 256-bit ids
+  stored only as sha256 (`HttpOnly; SameSite=Strict`, 12 h, `Secure` off
+  loopback); passwords are argon2id at OWASP parameters; API tokens are
+  hashed at rest, individually revocable, and stamp `last_used_at_ns`.
+  Authorization is a middleware over a single route table — `viewer <
+  operator < approver < admin`, unmatched routes fail closed to admin —
+  plus optional per-user environment scopes that filter experiment and run
+  visibility. `POST /api/auth/login|logout|change-password`, `GET /api/me`,
+  and admin `GET|POST /api/users*` / `POST /api/tokens*` are new; the web
+  UI gains a login page (with forced one-time-password change), a 401 →
+  /login redirect, and a session user chip. Manual-evidence actors and
+  run-audit events record the authenticated username; pre-auth free-text
+  actors are attributed to a disabled `legacy` backfill user seeded by the
+  migration (it never counts as configured auth, so upgraded stores do not
+  lock themselves out). Until the first user exists the API behaves exactly
+  as before. The MCP server shares the same `Role` enum from the new
+  `tumult-auth` crate and now accepts `approver`/`admin` tokens.
+- **Auth bootstrap + bind guard**: `tumultd create-admin` creates the first
+  admin with a printed-once one-time password (`must_change` forces
+  rotation at first login) while the daemon is stopped. Ported from the MCP
+  server: a non-loopback HTTP bind with zero users and no
+  `KRONIKA_BOOTSTRAP_ADMIN_PASSWORD` refuses to start; that env var (plus
+  `KRONIKA_BOOTSTRAP_TOKEN`) is a loud demo/dev bootstrap path.
+- **Authenticated OTLP ingest**: with `KRONIKA_INGEST_TOKEN` set, the
+  `/v1/*` HTTP routes and gRPC export methods require
+  `Authorization: Bearer <token>` (constant-time compare; `/healthz` stays
+  open); an unauthenticated non-loopback ingest bind warns at startup.
+  Clients send the token via the standard `OTEL_EXPORTER_OTLP_HEADERS`
+  (tumult-otel now attaches it as gRPC metadata), and `tumult run` sends
+  `TUMULT_DAEMON_TOKEN` on the journal POST to the daemon.
 - **tumult-exec**: new crate — the CLI's provider executor
   (`ProviderExecutor` + the native plugin registry) extracted so the daemon
   and the CLI share one execution path.

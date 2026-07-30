@@ -21,3 +21,4 @@ Tumult's architectural decisions are captured as ADRs (Architecture Decision Rec
 | [ADR-009](ADR-009-org-hierarchy-and-manual-evidence.md) | Org hierarchy rollups and manual evidence lifecycle |
 | [ADR-010](ADR-010-parquet-export-and-retention.md) | Parquet lake export and watermark-gated retention |
 | [ADR-011](ADR-011-daemon-run-experiments.md) | Daemon-run experiments: embedded runner, bounded queue, e-stop, orphan reconciliation |
+| [ADR-012](ADR-012-authentication-and-rbac.md) | Authentication and RBAC: server-side sessions, argon2id, scoped tokens, route-table roles |

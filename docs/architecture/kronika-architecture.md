@@ -131,6 +131,29 @@ the failures for an operator). A telemetry loopback points the daemon's
 own OTel exporter at its own gRPC ingest, so daemon-run experiments land
 in the same tables and UI as CLI runs.
 
+## Authentication and RBAC (schema v6)
+
+The API authenticates once any real user exists (ADR-012) — until then it
+behaves exactly as before, so upgrades and loopback dev are unaffected.
+Primitives live in the shared `tumult-auth` crate (also used by the MCP
+server): argon2id password hashing at OWASP parameters, opaque ids, and
+the `host_is_loopback` bind policy. Browser sessions are 256-bit opaque
+cookies (`HttpOnly`, `SameSite=Strict`, `Secure` off loopback, 12h);
+automation uses `kro_`-prefixed bearer tokens. Both are stored only as
+sha256 hashes in the index-free v6 auth tables (`users`, `sessions`,
+`tokens`, `user_env_scopes`) behind the single writer. Authorization is a
+middleware over a single route table (`viewer < operator < approver <
+admin`; unmatched routes fail closed to admin) plus optional per-user
+environment scopes that filter experiment/run visibility. Run-audit
+events and manual-evidence mutations record the authenticated username;
+pre-auth free-text actors are attributed to a disabled `legacy` backfill
+user seeded by the migration. Bootstrap: `tumultd create-admin` (one-time
+password, `must_change` at first login) with the MCP-style guard — a
+non-loopback bind refuses to start unauthenticated.
+`KRONIKA_INGEST_TOKEN` guards OTLP `/v1/*` HTTP and gRPC ingest;
+clients authenticate with the standard `OTEL_EXPORTER_OTLP_HEADERS`, and
+the CLI sends `TUMULT_DAEMON_TOKEN` on journal import.
+
 ## Parquet lake + retention (durability story)
 
 Two tiers, one guarantee: **nothing leaves the hot store before an
