@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+tumult-core = { path = "../tumult-core" }
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
 tumult-intelligence.workspace = true

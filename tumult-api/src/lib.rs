@@ -46,6 +46,10 @@
 //! * `GET /api/reports` / `GET /api/reports/{name}` — HTML digests written
 //!   by the daemon's report scheduler; `POST /api/reports/generate` renders
 //!   one metric digest on demand into the same directory.
+//! * `POST /api/import/journal {journal, experiment?}` — daemon-first
+//!   journal ingest for the CLI (`TUMULT_DAEMON_URL`): rides the
+//!   single-writer channel into the analytics tables, idempotent on
+//!   `experiment_id`.
 //! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
 //! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?}`
@@ -59,6 +63,7 @@
 //! write lock.
 
 mod ask;
+pub mod import;
 pub mod lake;
 pub mod manual;
 
@@ -198,6 +203,7 @@ pub fn router(state: ApiState) -> Router {
             post(manual::attach),
         )
         .route("/api/manual/import", post(manual::import))
+        .route("/api/import/journal", post(import::import_journal))
         .route("/api/lake/status", get(lake::status))
         .route("/api/lake/export", post(lake::export_now))
         .route("/api/reports", get(list_reports))

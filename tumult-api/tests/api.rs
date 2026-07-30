@@ -1464,3 +1464,64 @@ async fn traces_attr_click_to_filter() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["traces"].as_array().unwrap().len(), 2, "{body}");
 }
+
+/// `POST /api/import/journal` ingests through the daemon's single-writer
+/// channel; the rows are then visible to a read-only connection, and a
+/// repeat POST dedups on `experiment_id`.
+#[tokio::test]
+async fn import_journal_roundtrip_and_dedup() {
+    let srv = spawn_server().await;
+    let journal = json!({
+        "experiment_title": "imported via api",
+        "experiment_id": "exp-imported",
+        "status": "completed",
+        "started_at_ns": 1_774_980_000_000_000_000_i64,
+        "ended_at_ns": 1_774_980_300_000_000_000_i64,
+        "duration_ms": 300_000,
+        "steady_state_before": null,
+        "steady_state_after": null,
+        "method_results": [],
+        "rollback_results": [],
+        "estimate": null,
+        "baseline_result": null,
+        "during_result": null,
+        "post_result": null,
+        "load_result": null,
+        "analysis": null,
+        "regulatory": null,
+    });
+    let client = reqwest::Client::new();
+    let post = |body: &Value| {
+        client
+            .post(format!("{}/api/import/journal", srv.base))
+            .json(body)
+            .send()
+    };
+
+    let resp = post(&json!({"journal": journal, "experiment": null}))
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["ingested"], true, "{body}");
+    assert_eq!(body["experiment_id"], "exp-imported");
+
+    // Duplicate: skipped, not an error, not a second row.
+    let resp = post(&json!({"journal": journal, "experiment": null}))
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["ingested"], false, "{body}");
+
+    // Readable through a read-only connection on the same store file.
+    let reader = Store::at(&srv._tmp.path().join("k.duckdb"))
+        .read_only()
+        .unwrap();
+    let rows = reader
+        .query_json_rows("SELECT experiment_id, status FROM experiments")
+        .unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["experiment_id"], json!("exp-imported"));
+    assert_eq!(rows[0]["status"], json!("completed"));
+}

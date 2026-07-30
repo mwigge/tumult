@@ -7483,6 +7483,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tumult-compliance",
+ "tumult-core",
  "tumult-ingest",
  "tumult-intelligence",
  "tumult-lake",
