@@ -14,17 +14,21 @@
 //! * **Single-writer channel** ([`writer`]): both servers funnel batches
 //!   through one bounded channel onto the store's single `DuckDB` writer.
 //! * **Manual import** ([`manual`]): CSV and tumult journal JSON files.
+//! * **Run queue** ([`runs`]): bounded in-process experiment execution for
+//!   tumultd, with e-stop tokens and startup orphan reconciliation.
 
 pub mod config;
 mod error;
 pub mod grpc;
 pub mod http;
 pub mod manual;
+pub mod runs;
 mod writer;
 
 pub use config::Config;
 pub use error::IngestError;
 pub use manual::{ImportSummary, ManualImporter};
+pub use runs::{RunQueue, RunQueueConfig, RunRequest};
 pub use writer::{Batch, IngestWriter};
 
 /// Current time as epoch nanoseconds — the receipt timestamp given to

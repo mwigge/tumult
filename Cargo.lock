@@ -7682,10 +7682,13 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "tokio-util",
  "tonic",
  "tracing",
+ "tumult-core",
  "tumult-lake",
  "tumult-otlp",
+ "uuid",
 ]
 
 [[package]]

@@ -8,11 +8,14 @@ license.workspace = true
 [dependencies]
 tumult-lake.workspace = true
 tumult-otlp.workspace = true
+tumult-core = { path = "../tumult-core" }
 opentelemetry-proto.workspace = true
 tonic.workspace = true
 prost.workspace = true
 axum.workspace = true
 tokio.workspace = true
+tokio-util = { workspace = true }
+uuid = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
 csv.workspace = true

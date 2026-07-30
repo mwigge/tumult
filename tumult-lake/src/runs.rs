@@ -148,21 +148,31 @@ impl Writer {
         })
     }
 
-    /// Mark a run `running`: stamps `started_at_ns` and links the journal's
-    /// `experiment_id` (the handle to the run's OTLP telemetry).
+    /// Mark a run `running` and stamp `started_at_ns`. `experiment_id` (the
+    /// journal's id, linking the run's OTLP telemetry) is known only after
+    /// execution begins, so callers pass `None` here and supply it to
+    /// [`Self::finish_run`]; `COALESCE` keeps whichever arrives first.
     ///
     /// # Errors
     /// Returns an error if the update fails.
-    pub fn mark_run_started(&self, run_id: &str, experiment_id: &str) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE runs SET state = ?, started_at_ns = ?, experiment_id = ? WHERE id = ?",
-            params![run_state::RUNNING, now_ns(), experiment_id, run_id],
-        )?;
-        self.insert_run_audit(run_id, "started", Some(experiment_id))
+    pub fn mark_run_started(
+        &self,
+        run_id: &str,
+        experiment_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            self.conn.execute(
+                "UPDATE runs SET state = ?, started_at_ns = ?, \
+                 experiment_id = COALESCE(?, experiment_id) WHERE id = ?",
+                params![run_state::RUNNING, now_ns(), experiment_id, run_id],
+            )?;
+            self.insert_run_audit(run_id, "started", experiment_id)
+        })
     }
 
-    /// Terminally finish a run: stamps `ended_at_ns`, records the rollback
-    /// outcome and/or error, and audits the terminal state.
+    /// Terminally finish a run: stamps `ended_at_ns`, links the journal's
+    /// `experiment_id` when supplied, records the rollback outcome and/or
+    /// error, and audits the terminal state.
     ///
     /// # Errors
     /// Returns an error if the update fails.
@@ -170,14 +180,23 @@ impl Writer {
         &self,
         run_id: &str,
         state: &str,
+        experiment_id: Option<&str>,
         rollback_status: Option<&str>,
         error: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             self.conn.execute(
-                "UPDATE runs SET state = ?, ended_at_ns = ?, rollback_status = ?, error = ? \
+                "UPDATE runs SET state = ?, ended_at_ns = ?, \
+                 experiment_id = COALESCE(?, experiment_id), rollback_status = ?, error = ? \
                  WHERE id = ?",
-                params![state, now_ns(), rollback_status, error, run_id],
+                params![
+                    state,
+                    now_ns(),
+                    experiment_id,
+                    rollback_status,
+                    error,
+                    run_id
+                ],
             )?;
             self.insert_run_audit(run_id, state, error)
         })
@@ -363,7 +382,7 @@ mod tests {
         writer
             .set_run_state("run-1", run_state::VALIDATING)
             .unwrap();
-        writer.mark_run_started("run-1", "exp-1").unwrap();
+        writer.mark_run_started("run-1", None).unwrap();
         writer
             .set_run_state_with("run-1", run_state::STOPPING, Some("stop_requested"), None)
             .unwrap();
@@ -371,6 +390,7 @@ mod tests {
             .finish_run(
                 "run-1",
                 run_state::ABORTED,
+                Some("exp-1"),
                 Some(rollback_status::COMPLETED),
                 None,
             )
@@ -424,7 +444,7 @@ mod tests {
                 queued_at_ns: 5,
             })
             .unwrap();
-        writer.mark_run_started("run-9", "exp-9").unwrap();
+        writer.mark_run_started("run-9", Some("exp-9")).unwrap();
 
         let reader = store.read_only().unwrap();
         let active = reader.active_runs().unwrap();
