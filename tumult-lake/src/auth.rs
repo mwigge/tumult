@@ -216,6 +216,19 @@ impl Reader {
         Ok(rows.first().and_then(|r| r["c"].as_u64()).unwrap_or(0) > 0)
     }
 
+    /// Whether any *real* (non-backfill) user exists — the check that decides
+    /// "is auth configured". The `legacy` row seeded by the v6 migration is a
+    /// backfill identity for pre-auth free-text actors, not a credential: a
+    /// store holding only that row must behave as unauthenticated, or every
+    /// upgraded pre-auth store would lock itself out on first open.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    pub fn real_users_exist(&self) -> Result<bool, StoreError> {
+        let rows = self.query_json_rows("SELECT count(*) AS c FROM users WHERE id != 'legacy'")?;
+        Ok(rows.first().and_then(|r| r["c"].as_u64()).unwrap_or(0) > 0)
+    }
+
     /// Fetch a user by username, or `None`.
     ///
     /// # Errors
@@ -592,6 +605,10 @@ mod tests {
         assert_eq!(legacy.password_hash, "!");
         assert_eq!(legacy.role, "viewer");
         assert!(legacy.disabled);
+        // The backfill identity alone does not count as configured auth.
+        let r = store.read_only().unwrap();
+        assert!(r.users_exist().unwrap());
+        assert!(!r.real_users_exist().unwrap());
 
         let d2 = tempfile::TempDir::new().unwrap();
         let fresh = Store::open(&d2.path().join("kronika.duckdb")).unwrap();
