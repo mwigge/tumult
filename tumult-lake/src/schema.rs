@@ -34,8 +34,17 @@
 //! — same additive index-free rule — plus the `run_audit` hash chain
 //! (`prev_hash` / `new_hash`), making the run trail tamper-evident like
 //! `manual_experiment_audit`. See `approvals.rs`.
+//!
+//! v8 rebuilds `manual_experiments` without a primary key or secondary
+//! indexes — the same v5 crash-robustness rule, closing a gap: the table
+//! receives UPDATEs throughout its draft → submitted → verified lifecycle,
+//! so a daemon killed mid-write could return with ART indexes desynced and
+//! every subsequent lifecycle UPDATE would fail fatally. The audit and
+//! attachment tables keep theirs: they are INSERT-only, so desynced indexes
+//! can never break a write. Uniqueness of `id` is enforced by uuid
+//! generation; lookups at this scale are free scans.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 7;
+pub const CURRENT_SCHEMA_VERSION: i64 = 8;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -150,8 +159,12 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 -- failovers, …) with attestation, a draft → submitted → verified/rejected
 -- review lifecycle, an append-only hash-chained audit trail, and external
 -- evidence links (no file storage — URIs only).
+-- v8: `manual_experiments` carries NO primary key and NO secondary indexes
+-- (same rule as the v5 run tables): the lifecycle UPDATEs it receives would
+-- die fatally on desynced ART indexes after a mid-write kill. The audit and
+-- attachment tables are INSERT-only, so their indexes are safe to keep.
 CREATE TABLE IF NOT EXISTS manual_experiments (
-    id VARCHAR PRIMARY KEY,
+    id VARCHAR NOT NULL,
     experiment_name VARCHAR NOT NULL,
     exercise_type VARCHAR NOT NULL,
     executed_at_ns BIGINT NOT NULL,
@@ -179,8 +192,6 @@ CREATE TABLE IF NOT EXISTS manual_experiments (
     batch_id VARCHAR,
     content_hash VARCHAR NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_manual_experiments_name ON manual_experiments (experiment_name);
-CREATE INDEX IF NOT EXISTS idx_manual_experiments_status ON manual_experiments (status);
 
 CREATE TABLE IF NOT EXISTS manual_experiment_audit (
     id VARCHAR PRIMARY KEY,
@@ -453,6 +464,48 @@ INSERT INTO run_registry_v5 SELECT * FROM run_registry;
 DROP TABLE run_registry;
 ALTER TABLE run_registry_v5 RENAME TO run_registry;
 DROP INDEX IF EXISTS idx_run_audit_run;
+COMMIT;
+";
+
+/// v2–v7 → v8: rebuild `manual_experiments` without the primary key /
+/// secondary indexes (see the comment above). Data copy is a plain table
+/// scan — safe even when the ART indexes are desynced, since reads never
+/// touch them. Atomic: any failure rolls back and the next open retries.
+/// The INSERT-only audit / attachment tables are untouched by design.
+pub const MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE: &str = "
+BEGIN TRANSACTION;
+CREATE TABLE manual_experiments_v8 (
+    id VARCHAR NOT NULL,
+    experiment_name VARCHAR NOT NULL,
+    exercise_type VARCHAR NOT NULL,
+    executed_at_ns BIGINT NOT NULL,
+    hypothesis VARCHAR NOT NULL,
+    method VARCHAR NOT NULL,
+    outcome_status VARCHAR NOT NULL,
+    hypothesis_met BOOLEAN,
+    findings VARCHAR,
+    action_items JSON,
+    target_system VARCHAR,
+    target_environment VARCHAR,
+    blast_radius VARCHAR,
+    recovery_time_s DOUBLE,
+    duration_s DOUBLE,
+    origin VARCHAR NOT NULL DEFAULT 'manual',
+    entered_by VARCHAR NOT NULL,
+    entered_at_ns BIGINT NOT NULL,
+    attestation VARCHAR NOT NULL,
+    status VARCHAR NOT NULL DEFAULT 'draft',
+    reviewed_by VARCHAR,
+    reviewed_at_ns BIGINT,
+    review_note VARCHAR,
+    renewal_due_ns BIGINT,
+    framework_refs VARCHAR[],
+    batch_id VARCHAR,
+    content_hash VARCHAR NOT NULL
+);
+INSERT INTO manual_experiments_v8 SELECT * FROM manual_experiments;
+DROP TABLE manual_experiments;
+ALTER TABLE manual_experiments_v8 RENAME TO manual_experiments;
 COMMIT;
 ";
 

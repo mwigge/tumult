@@ -287,6 +287,13 @@ table — it is `org.yaml` (`KRONIKA_ORG_FILE`, default `<db dir>/org.yaml`)
 loaded at daemon start; org rollups are computed at read time from the
 latest-run scoring SQL (see ADR-009).
 
+v8 extends the v5 index-free rule to `manual_experiments`: the table
+receives UPDATEs throughout its review lifecycle, so a primary key and
+secondary indexes left it exposed to the same post-SIGKILL ART-desync
+fatal-UPDATE bug class the v5 run-table rebuild fixed. The v8 migration
+rebuilds it index-free by table-scan copy; `manual_experiment_audit` and
+`evidence_attachments` keep their indexes because they are INSERT-only.
+
 ## Roadmap: external tooling on the lake
 
 The parquet lake (above) is the substrate for future external tooling —

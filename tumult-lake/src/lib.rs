@@ -284,6 +284,13 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     if stored == Some(4) {
         conn.execute_batch(schema::MIGRATE_V5_RUN_TABLES_INDEX_FREE)?;
     }
+    // v2–v7 → v8: rebuild `manual_experiments` index-free (same crash-
+    // robustness rule as v5 — see schema.rs). Conditional on the stored
+    // version actually being 2..=7: v0/v1 databases have no manual tables to
+    // rebuild, and fresh ones got the v8 shape from CREATE_TABLES above.
+    if stored.is_some_and(|v| (2..8).contains(&v)) {
+        conn.execute_batch(schema::MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE)?;
+    }
     // < v6: seed the `legacy` backfill identity so pre-auth free-text
     // `entered_by` / `reviewed_by` values on manual-experiment rows
     // semantically belong to a real (but un-loginable: password_hash '!',

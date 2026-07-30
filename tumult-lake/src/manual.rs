@@ -1040,6 +1040,112 @@ mod tests {
         assert!(matches!(err, ManualError::SelfReview));
     }
 
+    /// The v2–v7 `manual_experiments` shape (primary key + secondary
+    /// indexes) as a raw DDL fixture, so the v8 index-free rebuild can be
+    /// exercised end to end — the same crash-robustness amendment as the v5
+    /// run tables.
+    const V7_MANUAL_EXPERIMENTS_DDL: &str = "
+CREATE TABLE schema_meta (key VARCHAR PRIMARY KEY, value BIGINT NOT NULL);
+INSERT INTO schema_meta (key, value) VALUES ('version', 7);
+CREATE TABLE manual_experiments (
+    id VARCHAR PRIMARY KEY,
+    experiment_name VARCHAR NOT NULL,
+    exercise_type VARCHAR NOT NULL,
+    executed_at_ns BIGINT NOT NULL,
+    hypothesis VARCHAR NOT NULL,
+    method VARCHAR NOT NULL,
+    outcome_status VARCHAR NOT NULL,
+    hypothesis_met BOOLEAN,
+    findings VARCHAR,
+    action_items JSON,
+    target_system VARCHAR,
+    target_environment VARCHAR,
+    blast_radius VARCHAR,
+    recovery_time_s DOUBLE,
+    duration_s DOUBLE,
+    origin VARCHAR NOT NULL DEFAULT 'manual',
+    entered_by VARCHAR NOT NULL,
+    entered_at_ns BIGINT NOT NULL,
+    attestation VARCHAR NOT NULL,
+    status VARCHAR NOT NULL DEFAULT 'draft',
+    reviewed_by VARCHAR,
+    reviewed_at_ns BIGINT,
+    review_note VARCHAR,
+    renewal_due_ns BIGINT,
+    framework_refs VARCHAR[],
+    batch_id VARCHAR,
+    content_hash VARCHAR NOT NULL
+);
+CREATE INDEX idx_manual_experiments_name ON manual_experiments (experiment_name);
+CREATE INDEX idx_manual_experiments_status ON manual_experiments (status);
+";
+
+    #[test]
+    fn v7_store_migrates_to_index_free_manual_experiments() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db = d.path().join("kronika.duckdb");
+        // Build a v7-era store with a raw connection (Store::open would
+        // migrate immediately).
+        {
+            let conn = duckdb::Connection::open(&db).unwrap();
+            conn.execute_batch(V7_MANUAL_EXPERIMENTS_DDL).unwrap();
+            conn.execute_batch(
+                "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
+                 executed_at_ns, hypothesis, method, outcome_status, entered_by, \
+                 entered_at_ns, attestation, status, content_hash) \
+                 VALUES ('m-old', 'old gameday', 'gameday', 1, 'h', 'm', 'passed', \
+                 'alice', 1, 'att', 'submitted', 'hash-old');",
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&db).unwrap();
+        let writer = store.writer().unwrap();
+        assert_eq!(
+            writer.schema_version().unwrap(),
+            crate::CURRENT_SCHEMA_VERSION
+        );
+
+        // Data survived the rebuild…
+        let reader = store.read_only().unwrap();
+        let detail = reader.manual_experiment_detail("m-old").unwrap().unwrap();
+        assert_eq!(detail.experiment["status"], serde_json::json!("submitted"));
+        assert_eq!(detail.experiment["origin"], serde_json::json!("manual"));
+
+        // …and — the whole point — lifecycle UPDATEs work without any ART
+        // index (the T5 desync bug class).
+        writer.verify_manual("m-old", "bob", Some("reviewed")).unwrap();
+        let reader = store.read_only().unwrap();
+        let detail = reader.manual_experiment_detail("m-old").unwrap().unwrap();
+        assert_eq!(detail.experiment["status"], serde_json::json!("verified"));
+        assert_eq!(detail.experiment["reviewed_by"], serde_json::json!("bob"));
+
+        // No indexes remain on manual_experiments; the INSERT-only audit and
+        // attachment tables keep theirs (desynced indexes can never break an
+        // INSERT-only table's writes).
+        let index_rows = reader
+            .query_json_rows(
+                "SELECT index_name, table_name FROM duckdb_indexes() \
+                 WHERE table_name = 'manual_experiments'",
+            )
+            .unwrap();
+        assert!(index_rows.is_empty(), "{index_rows:?}");
+
+        // Re-opening is a no-op (version already current, no rebuild attempted).
+        drop(store);
+        let store = Store::open(&db).unwrap();
+        assert_eq!(
+            store.writer().unwrap().schema_version().unwrap(),
+            crate::CURRENT_SCHEMA_VERSION
+        );
+        assert!(store
+            .read_only()
+            .unwrap()
+            .manual_experiment_detail("m-old")
+            .unwrap()
+            .is_some());
+    }
+
     #[test]
     fn reject_requires_note_and_wrong_status_is_conflict() {
         let (_d, _store, writer) = temp_writer();
