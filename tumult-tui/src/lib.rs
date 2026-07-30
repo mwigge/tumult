@@ -1,7 +1,7 @@
 //! `tumult-tui` — a keyboard-driven, tabbed analytics TUI over the embedded
 //! `DuckDB` analytics store.
 //!
-//! The store is always opened **read-only** ([`tumult_analytics::AnalyticsStore::open_read_only`]),
+//! The store is always opened **read-only** ([`tumult_lake::AnalyticsStore::open_read_only`]),
 //! so the TUI coexists with a running MCP server or a concurrent `tumult run`
 //! ingest without contending for the exclusive write lock. In live mode it
 //! re-takes a fresh read-only snapshot every refresh interval, so
@@ -61,7 +61,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 pub fn run(store_path: Option<PathBuf>, refresh_secs: u64) -> Result<()> {
     let path = match store_path {
         Some(path) => path,
-        None => tumult_analytics::AnalyticsStore::default_path()
+        None => tumult_lake::AnalyticsStore::default_path()
             .map_err(|e| anyhow::anyhow!("cannot determine the default analytics store: {e}"))?,
     };
     if !path.exists() {

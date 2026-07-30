@@ -37,8 +37,10 @@ COPY --from=builder /build/target/release/tumult /usr/local/bin/tumult
 # Semantic metric definitions used by `tumultd report` and the /report endpoint.
 COPY metrics/ /etc/kronika/metrics/
 
-# Env var names stay KRONIKA_* (identifiers unchanged by the fold).
-ENV KRONIKA_DB=/data/kronika.duckdb \
+# The store path var is TUMULT_LAKE_PATH (unified DB); other env var names
+# stay KRONIKA_* (identifiers unchanged by the fold). KRONIKA_DB still works
+# as a deprecated alias.
+ENV TUMULT_LAKE_PATH=/data/lake.duckdb \
     KRONIKA_METRICS_DIR=/etc/kronika/metrics \
     KRONIKA_OTLP_GRPC_ADDR=0.0.0.0:4317 \
     KRONIKA_OTLP_HTTP_ADDR=0.0.0.0:4318

@@ -12,7 +12,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use tumult_analytics::{AnalyticsError, AnalyticsStore};
+use tumult_lake::{AnalyticsError, AnalyticsStore};
 
 /// Env var carrying the child's mode: `write` or `read`.
 const CHILD_MODE: &str = "TUMULT_STORE_CONCURRENCY_MODE";

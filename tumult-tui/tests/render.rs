@@ -14,10 +14,10 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use tempfile::TempDir;
 
-use tumult_analytics::AnalyticsStore;
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, ExperimentStatus, Journal,
 };
+use tumult_lake::AnalyticsStore;
 use tumult_tui::app::{App, Tab, View};
 use tumult_tui::ui;
 

@@ -58,26 +58,6 @@ impl AnalyticsStore {
         Ok(())
     }
 
-    /// Upsert the static `ComplianceArticle` nodes from the citation registry.
-    ///
-    /// These nodes are deterministic and independent of any run, so they are
-    /// seeded at store-open / schema-migration time. Idempotent — nodes upsert
-    /// on their primary key, so re-opening a store never duplicates them.
-    pub(super) fn populate_compliance_articles(&self) -> Result<(), AnalyticsError> {
-        for node in tumult_graph::compliance_article_nodes() {
-            self.conn.execute(
-                sql::UPSERT_NODE,
-                params![
-                    node.id,
-                    node.kind.as_str(),
-                    node.label,
-                    node.attrs.to_string()
-                ],
-            )?;
-        }
-        Ok(())
-    }
-
     /// Distinct tested action names — the `activity_results.name` values of
     /// `action` activities. This is the "tested" set the coverage-gap
     /// derivation subtracts the plugin catalog against.

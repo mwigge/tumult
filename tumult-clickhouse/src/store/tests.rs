@@ -97,7 +97,7 @@ fn purge_retention_overflow_is_checked_error_not_panic() {
         assert!(
             matches!(
                 err,
-                tumult_analytics::error::AnalyticsError::Internal(ref msg)
+                tumult_lake::error::AnalyticsError::Internal(ref msg)
                     if msg.contains("overflows")
             ),
             "expected Internal overflow error, got {err:?}"
@@ -115,7 +115,7 @@ fn purge_retention_overflow_is_checked_error_not_panic() {
 /// an `Err` (connection refused / timeout), but must NOT panic.
 #[test]
 fn analytics_backend_sync_methods_do_not_panic_inside_tokio_task() {
-    use tumult_analytics::backend::AnalyticsBackend as _;
+    use tumult_lake::backend::AnalyticsBackend as _;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

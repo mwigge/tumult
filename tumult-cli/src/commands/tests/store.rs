@@ -74,8 +74,8 @@ async fn cmd_run_dry_run_does_not_ingest() {
 
 #[test]
 fn store_backup_creates_parquet_files() {
-    use tumult_analytics::AnalyticsStore;
     use tumult_core::types::*;
+    use tumult_lake::AnalyticsStore;
 
     let d = TempDir::new().unwrap();
     let db_path = d.path().join("test.duckdb");
@@ -125,8 +125,8 @@ fn store_backup_creates_parquet_files() {
 
 #[test]
 fn store_purge_removes_old_data() {
-    use tumult_analytics::AnalyticsStore;
     use tumult_core::types::*;
+    use tumult_lake::AnalyticsStore;
 
     let d = TempDir::new().unwrap();
     let db_path = d.path().join("test.duckdb");
@@ -195,8 +195,8 @@ fn store_purge_removes_old_data() {
 
 #[test]
 fn store_stats_reports_counts() {
-    use tumult_analytics::AnalyticsStore;
     use tumult_core::types::*;
+    use tumult_lake::AnalyticsStore;
 
     let store = AnalyticsStore::in_memory().unwrap();
     let stats = store.stats().unwrap();

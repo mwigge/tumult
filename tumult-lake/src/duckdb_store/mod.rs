@@ -12,7 +12,7 @@
 //! `DuckDB` is **single-writer per file**. A read-write connection takes an
 //! *exclusive* lock on the database file, so at most one process may hold the
 //! store open read-write at a time. This matters because Tumult opens the same
-//! `~/.tumult/analytics.duckdb` from two places — the CLI (`tumult run` ingest,
+//! `~/.tumult/lake.duckdb` from two places — the CLI (`tumult run` ingest,
 //! `tumult analyze`, `tumult chaosgraph`, …) and the long-running MCP server.
 //!
 //! To keep these from sabotaging each other:
@@ -101,13 +101,6 @@ mod types;
 
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
 
-/// Schema history:
-/// * v1 — experiments, activity/load results, agentic tables.
-/// * v2 — `ChaosGraph` `graph_nodes` / `graph_edges` (additive, no data loss).
-/// * v3 — `ChaosGraph` Phase 2: `graph_edges.attrs` column plus static
-///   `ComplianceArticle` nodes seeded from the citation registry (additive).
-const CURRENT_SCHEMA_VERSION: i64 = 4;
-
 /// Embedded `DuckDB` analytics store for experiment journals.
 ///
 /// **Not thread-safe.** Each instance holds a single `DuckDB` connection.
@@ -116,7 +109,7 @@ const CURRENT_SCHEMA_VERSION: i64 = 4;
 /// # Security
 ///
 /// `DuckDB` does not encrypt data at rest by default. The database file at
-/// `~/.tumult/analytics.duckdb` is stored in plaintext on disk. For
+/// `~/.tumult/lake.duckdb` is stored in plaintext on disk. For
 /// environments where experiment data is sensitive, place the store on an
 /// encrypted volume:
 ///
@@ -130,7 +123,7 @@ const CURRENT_SCHEMA_VERSION: i64 = 4;
 /// for encryption — a privileged user or physical attacker can still access
 /// the file without encryption.
 ///
-/// Use the `TUMULT_STORE_PATH` environment variable to redirect the persistent
+/// Use the `TUMULT_LAKE_PATH` environment variable to redirect the persistent
 /// store to a path on an encrypted volume when the default location is not
 /// suitable.
 pub struct AnalyticsStore {
@@ -138,28 +131,44 @@ pub struct AnalyticsStore {
 }
 
 impl AnalyticsStore {
-    /// Returns the default persistent store path: `~/.tumult/analytics.duckdb`
+    /// Returns the default persistent store path: `~/.tumult/lake.duckdb`
+    ///
+    /// Resolution order:
+    /// 1. `TUMULT_LAKE_PATH` — the unified store path override.
+    /// 2. `TUMULT_ANALYTICS_PATH` — deprecated alias (one release of grace;
+    ///    a warning is printed when it takes effect).
+    /// 3. `~/.tumult/lake.duckdb`.
     ///
     /// # Errors
     ///
     /// Returns [`AnalyticsError::Internal`] if the home directory cannot be
-    /// determined and the `TUMULT_ANALYTICS_PATH` override is not set.
+    /// determined and no override is set.
     pub fn default_path() -> Result<PathBuf, AnalyticsError> {
         // Explicit override first — lets scripts and demos isolate a store
         // without threading a flag through every command.
+        if let Ok(path) = std::env::var("TUMULT_LAKE_PATH") {
+            if !path.is_empty() {
+                return Ok(PathBuf::from(path));
+            }
+        }
         if let Ok(path) = std::env::var("TUMULT_ANALYTICS_PATH") {
             if !path.is_empty() {
+                eprintln!(
+                    "warning: TUMULT_ANALYTICS_PATH is deprecated; the unified store now \
+                     lives at TUMULT_LAKE_PATH (default ~/.tumult/lake.duckdb). Migrate with \
+                     `tumult store import-legacy` and unset TUMULT_ANALYTICS_PATH."
+                );
                 return Ok(PathBuf::from(path));
             }
         }
         let home = dirs_next::home_dir().ok_or_else(|| {
             AnalyticsError::Internal(
-                "cannot determine home directory; set TUMULT_ANALYTICS_PATH to an explicit \
-                 analytics store path"
+                "cannot determine home directory; set TUMULT_LAKE_PATH to an explicit \
+                 store path"
                     .to_string(),
             )
         })?;
-        Ok(home.join(".tumult").join("analytics.duckdb"))
+        Ok(home.join(".tumult").join("lake.duckdb"))
     }
 
     /// # Errors
@@ -236,113 +245,11 @@ impl AnalyticsStore {
     }
 
     fn init_schema(&self) -> Result<(), AnalyticsError> {
-        self.create_tables()?;
-        self.populate_compliance_articles()?;
-        self.ensure_schema_version()?;
-        Ok(())
-    }
-
-    fn create_tables(&self) -> Result<(), AnalyticsError> {
-        self.conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS experiments (
-                experiment_id VARCHAR NOT NULL, title VARCHAR NOT NULL,
-                status VARCHAR NOT NULL, started_at_ns BIGINT NOT NULL,
-                ended_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL,
-                method_step_count BIGINT NOT NULL, rollback_count BIGINT NOT NULL,
-                hypothesis_before_met BOOLEAN, hypothesis_after_met BOOLEAN,
-                estimate_accuracy DOUBLE, resilience_score DOUBLE
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_experiments_id
-                ON experiments (experiment_id);
-            CREATE TABLE IF NOT EXISTS activity_results (
-                experiment_id VARCHAR NOT NULL, name VARCHAR NOT NULL,
-                activity_type VARCHAR NOT NULL, status VARCHAR NOT NULL,
-                started_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL,
-                output VARCHAR, error VARCHAR, phase VARCHAR NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_activities_experiment_id
-                ON activity_results (experiment_id);
-            CREATE TABLE IF NOT EXISTS load_results (
-                experiment_id VARCHAR NOT NULL, tool VARCHAR NOT NULL,
-                started_at_ns BIGINT NOT NULL, ended_at_ns BIGINT NOT NULL,
-                duration_s DOUBLE NOT NULL, vus INTEGER NOT NULL,
-                throughput_rps DOUBLE NOT NULL, latency_p50_ms DOUBLE NOT NULL,
-                latency_p95_ms DOUBLE NOT NULL, latency_p99_ms DOUBLE NOT NULL,
-                error_rate DOUBLE NOT NULL, total_requests UBIGINT NOT NULL,
-                thresholds_met BOOLEAN NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_load_experiment_id
-                ON load_results (experiment_id);
-            CREATE TABLE IF NOT EXISTS agentic_runs (
-                run_id VARCHAR PRIMARY KEY, experiment_id VARCHAR NOT NULL,
-                target_type VARCHAR NOT NULL, scenario VARCHAR NOT NULL,
-                resilience_score DOUBLE NOT NULL, trace_id VARCHAR, replay_id VARCHAR
-            );
-            CREATE INDEX IF NOT EXISTS idx_agentic_runs_experiment_id
-                ON agentic_runs (experiment_id);
-            CREATE TABLE IF NOT EXISTS agentic_contract_outcomes (
-                run_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL,
-                contract_type VARCHAR NOT NULL, passed BOOLEAN NOT NULL,
-                reason VARCHAR, severity DOUBLE NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_agentic_contracts_run_id
-                ON agentic_contract_outcomes (run_id);
-            CREATE TABLE IF NOT EXISTS agentic_fault_applications (
-                run_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL,
-                fault_type VARCHAR NOT NULL, applied BOOLEAN NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_agentic_faults_run_id
-                ON agentic_fault_applications (run_id);
-            CREATE TABLE IF NOT EXISTS agentic_replay_outcomes (
-                run_id VARCHAR NOT NULL, replay_id VARCHAR NOT NULL,
-                scenario VARCHAR NOT NULL, passed BOOLEAN NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_agentic_replay_run_id
-                ON agentic_replay_outcomes (run_id);
-            CREATE TABLE IF NOT EXISTS schema_meta (
-                key VARCHAR PRIMARY KEY, value BIGINT NOT NULL
-            );",
-        )?;
-        // ChaosGraph node/edge tables (schema v2). `IF NOT EXISTS` makes this
-        // both the fresh-install DDL and the additive v1 → v2 migration: an
-        // existing store simply gains the two tables, keeping all prior data.
-        self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
-        self.conn
-            .execute_batch(autopilot::CREATE_AUTOPILOT_TABLES)?;
-        // ChaosGraph Phase 2 (schema v3): add the edges `attrs` column to a
-        // pre-existing v2 `graph_edges` table. `ADD COLUMN IF NOT EXISTS` makes
-        // this a no-op on fresh v3 tables and idempotent on every open.
-        self.conn
-            .execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
-        Ok(())
-    }
-
-    fn ensure_schema_version(&self) -> Result<(), AnalyticsError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
-        // Read as i64 directly — the column is now BIGINT, no String round-trip.
-        let version: Option<i64> = stmt.query_row(params![], |row| row.get(0)).ok();
-
-        match version {
-            None => {
-                self.conn.execute(
-                    "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
-                    // Bind i64 directly — avoids a String allocation and type mismatch.
-                    params![CURRENT_SCHEMA_VERSION],
-                )?;
-            }
-            Some(stored) if stored < CURRENT_SCHEMA_VERSION => {
-                // Migrations are additive and already applied by
-                // `create_tables` (every DDL is `IF NOT EXISTS`); here we only
-                // advance the recorded version so the upgrade is observable.
-                self.conn.execute(
-                    "UPDATE schema_meta SET value = ? WHERE key = 'version'",
-                    params![CURRENT_SCHEMA_VERSION],
-                )?;
-            }
-            Some(_) => {}
-        }
+        // The unified v3 migration (telemetry + manual + analytics families,
+        // ChaosGraph tables, experiment_runs view, compliance-article seed,
+        // schema_meta version) — identical to what `Store::open` runs, so a
+        // database opened through either write path has the same schema.
+        crate::migrate(&self.conn)?;
         Ok(())
     }
 
@@ -409,7 +316,7 @@ pub(crate) fn sample_journal(
 mod tests {
     use super::sample_journal;
     use super::AnalyticsStore;
-    use super::CURRENT_SCHEMA_VERSION;
+    use crate::CURRENT_SCHEMA_VERSION;
     use tumult_core::types::*;
 
     #[test]
@@ -492,7 +399,7 @@ mod tests {
     #[test]
     fn default_path_returns_valid_path() {
         let path = AnalyticsStore::default_path().unwrap();
-        assert!(path.ends_with("analytics.duckdb"));
+        assert!(path.ends_with("lake.duckdb"));
         assert!(path.to_str().unwrap().contains(".tumult"));
     }
 

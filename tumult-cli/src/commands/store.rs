@@ -12,7 +12,7 @@ use super::validate_path_no_symlink;
 /// or the import operation fails.
 #[must_use = "callers must handle import errors"]
 pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
+    use tumult_lake::AnalyticsStore;
 
     validate_path_no_symlink(parquet_dir)?;
 
@@ -51,7 +51,7 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
 /// Returns an error if the store cannot be opened or the stats query fails.
 #[must_use = "callers must handle store stats errors"]
 pub fn cmd_store_stats() -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
+    use tumult_lake::AnalyticsStore;
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
@@ -86,7 +86,7 @@ pub fn cmd_store_stats() -> Result<()> {
 /// be created, or the export operation fails.
 #[must_use = "callers must handle backup errors"]
 pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
+    use tumult_lake::AnalyticsStore;
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
@@ -118,7 +118,7 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
 /// Returns an error if the store cannot be opened or the purge operation fails.
 #[must_use = "callers must handle purge errors"]
 pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
+    use tumult_lake::AnalyticsStore;
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
@@ -148,7 +148,7 @@ pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
 /// cannot be read.
 #[must_use = "callers must handle store path errors"]
 pub fn cmd_store_path() -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
+    use tumult_lake::AnalyticsStore;
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
@@ -174,7 +174,7 @@ pub fn cmd_store_path() -> Result<()> {
 /// cannot be opened, or the migration fails.
 #[must_use = "callers must handle migration errors"]
 pub async fn cmd_store_migrate() -> Result<()> {
-    use tumult_analytics::{AnalyticsBackend, AnalyticsStore};
+    use tumult_lake::{AnalyticsBackend, AnalyticsStore};
 
     if !tumult_clickhouse::ClickHouseConfig::is_configured() {
         bail!(

@@ -147,7 +147,10 @@ mod tests {
         // Use via trait
         let backend: &dyn AnalyticsBackend = &store;
         assert_eq!(backend.experiment_count().unwrap(), 0);
-        assert_eq!(backend.schema_version().unwrap(), 4);
+        assert_eq!(
+            backend.schema_version().unwrap(),
+            crate::CURRENT_SCHEMA_VERSION
+        );
         let stats = backend.stats().unwrap();
         assert_eq!(stats.experiment_count, 0);
         assert_eq!(stats.activity_count, 0);

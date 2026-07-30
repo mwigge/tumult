@@ -23,7 +23,7 @@ const TOPOLOGY_TOML: &str = r#"
 /// Create an empty analytics store and return its path.
 fn empty_store(dir: &std::path::Path) -> std::path::PathBuf {
     let db = dir.join("analytics.duckdb");
-    drop(tumult_analytics::AnalyticsStore::open(&db).unwrap());
+    drop(tumult_lake::AnalyticsStore::open(&db).unwrap());
     db
 }
 
@@ -32,7 +32,7 @@ fn empty_store(dir: &std::path::Path) -> std::path::PathBuf {
 /// service (`maps_to_compliance` + targets, but no evidences edge).
 fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
     let db = dir.join("analytics.duckdb");
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
     let exp = Experiment {
         title: "DB failover drill".into(),
         method: vec![Activity {

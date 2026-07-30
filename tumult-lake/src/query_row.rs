@@ -14,7 +14,7 @@ use std::ops::Deref;
 /// # Examples
 ///
 /// ```
-/// use tumult_analytics::QueryRow;
+/// use tumult_lake::QueryRow;
 ///
 /// let row = QueryRow::from(vec!["hello".to_string(), "world".to_string()]);
 /// assert_eq!(row[0], "hello");

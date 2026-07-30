@@ -176,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
             let options = tumult_intelligence::RecommendOptions {
                 store_path: match store_path {
                     Some(path) => path,
-                    None => tumult_analytics::AnalyticsStore::default_path()
+                    None => tumult_lake::AnalyticsStore::default_path()
                         .context("failed to determine analytics store path")?,
                 },
                 goal,

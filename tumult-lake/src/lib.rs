@@ -4,50 +4,104 @@
 // comparisons). CI still applies -D warnings to it.
 #![allow(clippy::pedantic)]
 
-//! `tumult-lake` — embedded `DuckDB` store for chaos/resilience telemetry.
+//! `tumult-lake` — the unified embedded `DuckDB` store: chaos/resilience
+//! telemetry (spans, logs, metrics), manual evidence, and the journal
+//! analytics family (experiments, activities, ChaosGraph, autopilot) in one
+//! database file, behind one writer.
 //!
 //! # Concurrency: the single-writer model
 //!
-//! Mirrors the `tumult-analytics` precedent: `DuckDB` is **single-writer per
-//! file**. A read-write open takes an exclusive lock on the database file, so:
+//! `DuckDB` is **single-writer per file**. A read-write open takes an
+//! exclusive lock on the database file, so:
 //!
 //! * **Writes** go through [`Store::writer`] (one per process; the ingest
-//!   daemon funnels all writes through a single channel onto it).
-//! * **Reads** go through [`Store::read_only`], opened with
+//!   daemon funnels all writes through a single channel onto it) or
+//!   [`AnalyticsStore::open`] for the journal-analytics family.
+//! * **Reads** go through [`Store::read_only`] /
+//!   [`AnalyticsStore::open_read_only`], opened with
 //!   `access_mode = READ_ONLY`, which does not take the exclusive write lock —
 //!   multiple readers coexist, including alongside an open writer.
 //! * A conflicting second opener gets the opaque `DuckDB` lock error mapped to
-//!   the clear [`StoreError::StoreLocked`].
+//!   the clear [`StoreError::StoreLocked`] / [`AnalyticsError::StoreLocked`].
 //!
 //! **Encryption limitation:** `DuckDB` does not encrypt at rest. The store
 //! directory is created with mode `0o700` (owner-only); place it on an
 //! encrypted volume for sensitive data.
+//!
+//! # Features
+//!
+//! * `duckdb` (default) — the embedded store. Disable default features to
+//!   get only the lightweight backend trait and shared types
+//!   ([`AnalyticsBackend`], [`AnalyticsError`], [`QueryRow`], [`StoreStats`],
+//!   [`telemetry`]) without compiling the bundled `DuckDB` C++ library —
+//!   this is what `tumult-clickhouse` does.
 
-mod error;
+#[cfg(feature = "duckdb")]
+pub mod arrow_convert;
+pub mod backend;
+#[cfg(feature = "duckdb")]
+pub mod duckdb_store;
+pub mod error;
+#[cfg(feature = "duckdb")]
+pub mod export;
+#[cfg(feature = "duckdb")]
 pub mod lake;
+#[cfg(feature = "duckdb")]
 mod manual;
+pub mod query_row;
+#[cfg(feature = "duckdb")]
 mod rows;
+#[cfg(feature = "duckdb")]
 mod schema;
+pub mod telemetry;
 
+#[cfg(feature = "duckdb")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "duckdb")]
 use std::time::Duration;
 
+#[cfg(feature = "duckdb")]
 use duckdb::{params, AccessMode, Config, Connection};
 
+pub use backend::{AnalyticsBackend, StoreStats};
+pub use error::AnalyticsError;
+#[cfg(feature = "duckdb")]
 pub use error::StoreError;
+#[cfg(feature = "duckdb")]
 pub use manual::{
     AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
 };
+pub use query_row::QueryRow;
+#[cfg(feature = "duckdb")]
 pub use rows::{
     ExperimentRun, ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow,
 };
+#[cfg(feature = "duckdb")]
 pub use schema::CURRENT_SCHEMA_VERSION;
 
+#[cfg(feature = "duckdb")]
+pub use arrow_convert::journal_to_record_batch;
+#[cfg(feature = "duckdb")]
+pub use duckdb_store::autopilot::{
+    ChangeEventRecord, ClassHistory, DecisionRecord, DecisionStatus,
+};
+#[cfg(feature = "duckdb")]
+pub use duckdb_store::topology::NodeAttrs;
+#[cfg(feature = "duckdb")]
+pub use duckdb_store::{
+    AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
+};
+#[cfg(feature = "duckdb")]
+pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
+
+#[cfg(feature = "duckdb")]
 /// Total attempts an open makes before reporting the store as locked.
 const OPEN_ATTEMPTS: u32 = 3;
+#[cfg(feature = "duckdb")]
 /// Backoff between open attempts while another process finishes a write.
 const OPEN_BACKOFF: Duration = Duration::from_millis(50);
 
+#[cfg(feature = "duckdb")]
 /// Whether a `DuckDB` error is the file-lock conflict raised when another
 /// process already holds the store open.
 fn is_lock_conflict(err: &duckdb::Error) -> bool {
@@ -58,6 +112,7 @@ fn is_lock_conflict(err: &duckdb::Error) -> bool {
     )
 }
 
+#[cfg(feature = "duckdb")]
 /// Open a `DuckDB` connection with a short bounded retry, mapping a persistent
 /// lock conflict to [`StoreError::StoreLocked`].
 fn open_with_retry(
@@ -82,6 +137,7 @@ fn open_with_retry(
     }
 }
 
+#[cfg(feature = "duckdb")]
 /// Serialise attribute pairs as a JSON object for binding into a
 /// `MAP(VARCHAR, VARCHAR)` column (`CAST(json(?) AS MAP(VARCHAR,VARCHAR))`).
 fn attrs_json(attrs: &[(String, String)]) -> Result<String, StoreError> {
@@ -92,12 +148,14 @@ fn attrs_json(attrs: &[(String, String)]) -> Result<String, StoreError> {
     Ok(serde_json::Value::Object(map).to_string())
 }
 
+#[cfg(feature = "duckdb")]
 /// A handle to the store file. Cheap to construct; connections are opened
 /// per role via [`Store::writer`] and [`Store::read_only`].
 pub struct Store {
     path: PathBuf,
 }
 
+#[cfg(feature = "duckdb")]
 impl Store {
     /// Open (creating if needed) the store at `path`, run schema migrations,
     /// and return a handle. The store directory is created with mode `0o700`.
@@ -174,6 +232,7 @@ impl Store {
     }
 }
 
+#[cfg(feature = "duckdb")]
 /// Run `f` inside a transaction on `conn` (single-writer, so a plain
 /// `BEGIN`/`COMMIT` batch is enough).
 fn with_tx<T, E: From<StoreError>>(
@@ -194,57 +253,66 @@ fn with_tx<T, E: From<StoreError>>(
     }
 }
 
+#[cfg(feature = "duckdb")]
+/// Shared schema migration: the full v3 DDL (telemetry + manual-evidence +
+/// analytics families), the ChaosGraph tables, the `experiment_runs` view,
+/// the static compliance-article seed, and the `schema_meta` version.
+/// Idempotent — every statement is `IF NOT EXISTS` / `ADD COLUMN IF NOT
+/// EXISTS` / upsert, and the version only advances. Used by both write
+/// paths ([`Writer::migrate`] and [`duckdb_store::AnalyticsStore`]).
+pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
+    conn.execute_batch(schema::CREATE_TABLES)?;
+    // ChaosGraph node/edge tables (part of schema v3): DDL lives in
+    // `tumult_graph::sql`. `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`
+    // make both the fresh-install DDL and the additive migration for
+    // pre-existing databases.
+    conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
+    conn.execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
+    conn.execute_batch(schema::CREATE_VIEWS)?;
+    // Static `ComplianceArticle` nodes from the citation registry:
+    // deterministic and run-independent, seeded at migrate time.
+    // Idempotent — nodes upsert on their primary key.
+    for node in tumult_graph::compliance_article_nodes() {
+        conn.execute(
+            tumult_graph::sql::UPSERT_NODE,
+            params![
+                node.id,
+                node.kind.as_str(),
+                node.label,
+                node.attrs.to_string()
+            ],
+        )?;
+    }
+    let mut stmt = conn.prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+    let version: Option<i64> = stmt.query_row(params![], |row| row.get(0)).ok();
+    match version {
+        None => {
+            conn.execute(
+                "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
+                params![schema::CURRENT_SCHEMA_VERSION],
+            )?;
+        }
+        Some(stored) if stored < schema::CURRENT_SCHEMA_VERSION => {
+            conn.execute(
+                "UPDATE schema_meta SET value = ? WHERE key = 'version'",
+                params![schema::CURRENT_SCHEMA_VERSION],
+            )?;
+        }
+        Some(_) => {}
+    }
+    Ok(())
+}
+
+#[cfg(feature = "duckdb")]
 /// The write side of the store. Hold at most one per process (the ingest
 /// daemon funnels every write through a channel onto a single `Writer`).
 pub struct Writer {
     conn: Connection,
 }
-
+#[cfg(feature = "duckdb")]
 impl Writer {
     fn migrate(&self) -> Result<(), StoreError> {
-        self.conn.execute_batch(schema::CREATE_TABLES)?;
-        // ChaosGraph node/edge tables (part of schema v3): DDL lives in
-        // `tumult_graph::sql`. `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`
-        // make both the fresh-install DDL and the additive migration for
-        // pre-existing databases.
-        self.conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
-        self.conn
-            .execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
-        self.conn.execute_batch(schema::CREATE_VIEWS)?;
-        // Static `ComplianceArticle` nodes from the citation registry:
-        // deterministic and run-independent, seeded at migrate time.
-        // Idempotent — nodes upsert on their primary key.
-        for node in tumult_graph::compliance_article_nodes() {
-            self.conn.execute(
-                tumult_graph::sql::UPSERT_NODE,
-                params![
-                    node.id,
-                    node.kind.as_str(),
-                    node.label,
-                    node.attrs.to_string()
-                ],
-            )?;
-        }
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
-        let version: Option<i64> = stmt.query_row(params![], |row| row.get(0)).ok();
-        match version {
-            None => {
-                self.conn.execute(
-                    "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
-                    params![schema::CURRENT_SCHEMA_VERSION],
-                )?;
-            }
-            Some(stored) if stored < schema::CURRENT_SCHEMA_VERSION => {
-                self.conn.execute(
-                    "UPDATE schema_meta SET value = ? WHERE key = 'version'",
-                    params![schema::CURRENT_SCHEMA_VERSION],
-                )?;
-            }
-            Some(_) => {}
-        }
-        Ok(())
+        migrate(&self.conn).map_err(StoreError::from)
     }
 
     /// Recorded schema version.
@@ -453,11 +521,13 @@ impl Writer {
     }
 }
 
+#[cfg(feature = "duckdb")]
 /// The read side of the store (read-only `DuckDB` connection).
 pub struct Reader {
     conn: Connection,
 }
 
+#[cfg(feature = "duckdb")]
 impl Reader {
     /// The experiment rollup view: one row per `resilience.experiment` span.
     ///
@@ -512,7 +582,7 @@ impl Reader {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "duckdb"))]
 mod tests {
     use super::*;
 

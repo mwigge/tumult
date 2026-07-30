@@ -20,43 +20,6 @@ use crate::error::AnalyticsError;
 
 use super::AnalyticsStore;
 
-pub(super) const CREATE_AUTOPILOT_TABLES: &str = "
-CREATE TABLE IF NOT EXISTS autopilot_decisions (
-    id              VARCHAR PRIMARY KEY,
-    decided_at_ns   BIGINT NOT NULL,
-    trigger         VARCHAR NOT NULL,
-    service_id      VARCHAR NOT NULL,
-    tier            VARCHAR,
-    plugin          VARCHAR NOT NULL,
-    action          VARCHAR NOT NULL,
-    article_id      VARCHAR NOT NULL,
-    score           DOUBLE NOT NULL,
-    reasons         JSON NOT NULL,
-    confidence      VARCHAR NOT NULL,
-    playbook        VARCHAR,
-    validator       JSON NOT NULL,
-    verdict         VARCHAR NOT NULL,
-    gate_rules      JSON NOT NULL,
-    gate_detail     JSON NOT NULL,
-    policy_hash     VARCHAR NOT NULL,
-    autonomy_score  DOUBLE
-);
-CREATE TABLE IF NOT EXISTS autopilot_events (
-    decision_id     VARCHAR NOT NULL,
-    at_ns           BIGINT NOT NULL,
-    kind            VARCHAR NOT NULL,
-    detail          JSON NOT NULL
-);
-CREATE INDEX IF NOT EXISTS autopilot_events_by_decision
-    ON autopilot_events (decision_id, at_ns);
-CREATE TABLE IF NOT EXISTS autopilot_change_events (
-    service_id      VARCHAR NOT NULL,
-    at_ns           BIGINT NOT NULL,
-    source          VARCHAR NOT NULL,
-    detail          VARCHAR
-);
-";
-
 /// One decision, as persisted. Field meanings mirror `tumult-autopilot`'s
 /// gate output; JSON columns carry the structured detail verbatim.
 #[derive(Debug, Clone)]

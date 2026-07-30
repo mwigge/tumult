@@ -10,28 +10,27 @@ use crate::tools::StructuredReport;
 /// Open the analytics store read-write at `store_path`, erroring cleanly if
 /// absent. Use only for paths that write (e.g. refreshing coverage gaps); it
 /// takes the exclusive lock and so contends with a running server.
-fn open_store(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+fn open_store(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     let path = Path::new(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
             "store not found: {store_path}"
         )));
     }
-    tumult_analytics::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// Open the analytics store read-only, erroring cleanly if absent. Read-only
 /// opens do not take the exclusive lock, so a query coexists with the running
 /// MCP server (and with a CLI `tumult chaosgraph` reading the same store).
-fn open_store_ro(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+fn open_store_ro(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     let path = Path::new(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
             "store not found: {store_path}"
         )));
     }
-    tumult_analytics::AnalyticsStore::open_read_only(path)
-        .map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open_read_only(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// `chaosgraph_query`: matching node ids + one-line summaries for a kind.
@@ -283,7 +282,7 @@ pub fn chaosgraph_coverage_gaps(
 /// The set of `ComplianceArticle` node ids that have at least one `evidences`
 /// edge pointing at them in the store.
 fn evidenced_article_ids(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
 ) -> Result<std::collections::HashSet<String>, ToolError> {
     let rows = store
         .query("SELECT DISTINCT dst FROM graph_edges WHERE rel = 'evidences'")
@@ -301,7 +300,7 @@ mod tests {
 
     fn seed_store(dir: &std::path::Path) -> std::path::PathBuf {
         let db = dir.join("analytics.duckdb");
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         let exp = Experiment {
             title: "Latency drill".into(),
             method: vec![Activity {
@@ -388,7 +387,7 @@ mod tests {
     fn process_provider_experiment_yields_service_node_and_targets_edge() {
         let dir = tempfile::TempDir::new().unwrap();
         let db = dir.path().join("analytics.duckdb");
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         let exp = Experiment {
             title: "Demo — PostgreSQL connection kill".into(),
             method: vec![Activity {
@@ -455,7 +454,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let db = dir.path().join("analytics.duckdb");
         // Create the store so the tool can open it.
-        drop(tumult_analytics::AnalyticsStore::open(&db).unwrap());
+        drop(tumult_lake::AnalyticsStore::open(&db).unwrap());
 
         let report = chaosgraph_coverage_gaps(db.to_str().unwrap(), None, None, false).unwrap();
         // Structured content conforms: count + gaps present.

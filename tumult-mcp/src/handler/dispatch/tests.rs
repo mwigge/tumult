@@ -543,7 +543,7 @@ async fn call_tool_run_experiment_persists_journal_and_ingests() {
     assert_eq!(journal.experiment_title, "MCP test experiment");
 
     // Auto-ingested into the analytics store.
-    let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&store_path).unwrap();
     assert_eq!(store.stats().unwrap().experiment_count, 1);
 
     // structuredContent present, conforming, and mirrored in the text.
@@ -685,7 +685,7 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
     let handler = open_handler(tmp.path());
     let store_path = tmp.path().join("analytics.duckdb");
     let missing_store = tmp.path().join("missing.duckdb");
-    drop(tumult_analytics::AnalyticsStore::open(&store_path).unwrap());
+    drop(tumult_lake::AnalyticsStore::open(&store_path).unwrap());
 
     // Autopilot fixtures: an enabled policy with no playbooks (a pass over
     // this store yields no candidates — an empty decisions array conforms),
@@ -695,9 +695,9 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
     std::fs::write(&policy_path, "[autopilot]\nenabled = true\n").unwrap();
     let export_dir = tmp.path().join("autopilot-export");
     {
-        let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&store_path).unwrap();
         store
-            .insert_autopilot_decision(&tumult_analytics::DecisionRecord {
+            .insert_autopilot_decision(&tumult_lake::DecisionRecord {
                 id: "conf-propose-1".into(),
                 decided_at_ns: 1_000,
                 trigger: "staleness".into(),
@@ -1869,7 +1869,7 @@ async fn viewer_rejected_on_operator_tools() {
 async fn viewer_rejected_on_topology_import() {
     let tmp = tempfile::tempdir().unwrap();
     let store = tmp.path().join("analytics.duckdb");
-    drop(tumult_analytics::AnalyticsStore::open(&store).unwrap());
+    drop(tumult_lake::AnalyticsStore::open(&store).unwrap());
     let handler = TumultHandler::with_auth(
         tmp.path().to_path_buf(),
         McpAuth::from_tokens(vec![
@@ -1918,7 +1918,7 @@ static ANALYTICS_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_ne
 async fn viewer_rejected_on_autopilot_run() {
     let tmp = tempfile::tempdir().unwrap();
     let store = tmp.path().join("analytics.duckdb");
-    drop(tumult_analytics::AnalyticsStore::open(&store).unwrap());
+    drop(tumult_lake::AnalyticsStore::open(&store).unwrap());
     // Viewer store reads ignore `store_path` and resolve through the
     // configured default store — point it at the tmp store so the test does
     // not depend on a real `~/.tumult/analytics.duckdb` existing.
@@ -2349,7 +2349,7 @@ async fn http_authorization_header_wrong_token_rejected() {
 async fn viewer_store_path_override_is_ignored() {
     let tmp = tempfile::tempdir().unwrap();
     let default_store = tmp.path().join("default.duckdb");
-    drop(tumult_analytics::AnalyticsStore::open(&default_store).unwrap());
+    drop(tumult_lake::AnalyticsStore::open(&default_store).unwrap());
     // The viewer's target deliberately does not exist: if the override were
     // honored the call would error on the missing store.
     let evil = tmp.path().join("evil.duckdb");
@@ -2416,8 +2416,8 @@ async fn overlapping_enact_attempt_is_vetoed() {
     std::fs::write(&policy, "[autopilot]\nenabled = true\n").unwrap();
     let hash = tumult_autopilot::policy_hash(&std::fs::read_to_string(&policy).unwrap());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
-        let record = tumult_analytics::DecisionRecord {
+        let store = tumult_lake::AnalyticsStore::open(&store_path).unwrap();
+        let record = tumult_lake::DecisionRecord {
             id: "d-conc".into(),
             decided_at_ns: 1_000,
             trigger: "staleness".into(),

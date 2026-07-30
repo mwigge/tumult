@@ -10,11 +10,11 @@
 
 use std::path::{Path, PathBuf};
 
-use tumult_analytics::AnalyticsStore;
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, ExperimentStatus, Journal, SpanId, TraceId,
 };
 use tumult_intelligence::{heuristic_report, recommend, OutputFormat, RecommendOptions};
+use tumult_lake::AnalyticsStore;
 
 const BASE_NS: i64 = 1_700_000_000_000_000_000;
 const HOUR_NS: i64 = 3_600_000_000_000;

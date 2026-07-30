@@ -198,7 +198,7 @@ async fn serve() -> Result<()> {
 fn import(file: PathBuf, label: Option<String>) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     let store = Store::open(&config.db_path)
-        .context("open store (stop the daemon first if it is running, or set KRONIKA_DB)")?;
+        .context("open store (stop the daemon first if it is running, or set TUMULT_LAKE_PATH)")?;
     let writer = store.writer()?;
     let summary = ManualImporter::new(&writer)
         .import_file(&file, label)

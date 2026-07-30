@@ -36,7 +36,9 @@ pub fn heuristic_report(store_path: &Path) -> String {
         return output;
     }
 
-    let Ok(store) = tumult_analytics::AnalyticsStore::open(store_path) else {
+    // Read-only open: coexists with a writer (tumultd / MCP server) holding
+    // the store, and never takes the exclusive write lock for a report read.
+    let Ok(store) = tumult_lake::AnalyticsStore::open_read_only(store_path) else {
         writeln!(output, "Analytics store could not be opened.").ok();
         return output;
     };

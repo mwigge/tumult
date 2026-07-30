@@ -196,7 +196,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
 }
 
 async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Result<bool> {
-    use tumult_analytics::AnalyticsBackend;
+    use tumult_lake::AnalyticsBackend;
 
     // Dual-mode: ClickHouse if configured, DuckDB otherwise
     if tumult_clickhouse::ClickHouseConfig::is_configured() {
@@ -209,9 +209,9 @@ async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Resu
     }
 
     // Default: DuckDB embedded
-    let db_path = tumult_analytics::AnalyticsStore::default_path()
+    let db_path = tumult_lake::AnalyticsStore::default_path()
         .context("failed to resolve analytics store path")?;
-    let store = tumult_analytics::AnalyticsStore::open(&db_path)
+    let store = tumult_lake::AnalyticsStore::open(&db_path)
         .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
     let ingested = store.ingest_journal_with_experiment(journal, Some(experiment))?;
 
@@ -220,10 +220,10 @@ async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Resu
     Ok(ingested)
 }
 
-fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) {
+fn emit_store_metrics(db_path: &Path, store: &tumult_lake::AnalyticsStore) {
     let size_bytes = std::fs::metadata(db_path).map(|m| m.len()).ok();
     if let Ok(stats) = store.stats() {
-        tumult_analytics::telemetry::record_store_gauges(
+        tumult_lake::telemetry::record_store_gauges(
             stats.experiment_count,
             stats.activity_count,
             size_bytes,

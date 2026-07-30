@@ -14,7 +14,6 @@ members = [
     # "tumult-containers",
     # "tumult-process",
     # Phase 2
-    "tumult-analytics",
     "tumult-graph",
     "tumult-tui",
     "tumult-kubernetes",
@@ -143,7 +142,7 @@ zeroize = { version = "1.8", features = ["derive"] }
 # ClickHouse client (used in tumult-clickhouse)
 clickhouse = { version = "0.15", features = ["time", "uuid"] }
 
-# SSH known-hosts path resolution (used in tumult-analytics, tumult-ssh)
+# SSH known-hosts path resolution (used in tumult-lake, tumult-ssh)
 dirs-next = "2"
 
 # Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend; both

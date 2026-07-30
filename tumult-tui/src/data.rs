@@ -1,4 +1,4 @@
-//! Read-only data access over [`tumult_analytics::AnalyticsStore`].
+//! Read-only data access over [`tumult_lake::AnalyticsStore`].
 //!
 //! Every function here opens (or reuses) a **read-only** store handle so the
 //! TUI coexists with a running MCP server or `tumult run` ingest — it never
@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use tumult_analytics::AnalyticsStore;
+use tumult_lake::AnalyticsStore;
 
 use crate::model::{ActivityRow, ExperimentRow, GraphNodeRow};
 

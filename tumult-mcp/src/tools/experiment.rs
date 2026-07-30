@@ -244,7 +244,7 @@ fn ingest_journal(
     experiment: &tumult_core::types::Experiment,
     store_path: &str,
 ) -> Result<bool, ToolError> {
-    let store = tumult_analytics::AnalyticsStore::open(Path::new(store_path))
+    let store = tumult_lake::AnalyticsStore::open(Path::new(store_path))
         .map_err(|e| ToolError::Store(e.to_string()))?;
     store
         .ingest_journal_with_experiment(journal, Some(experiment))
@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(journal.experiment_title, "MCP test experiment");
 
         // The run was ingested into the analytics store.
-        let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&store_path).unwrap();
         assert_eq!(store.stats().unwrap().experiment_count, 1);
     }
 

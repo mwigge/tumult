@@ -34,7 +34,7 @@ impl AnalyticsStore {
     /// # Examples
     ///
     /// ```
-    /// use tumult_analytics::AnalyticsStore;
+    /// use tumult_lake::AnalyticsStore;
     /// use tumult_core::types::*;
     ///
     /// let store = AnalyticsStore::in_memory().unwrap();

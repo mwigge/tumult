@@ -1,17 +1,44 @@
 [package]
 name = "tumult-lake"
-description = "Embedded DuckDB store for Krönika (single-writer + read-only readers)"
+description = "Unified embedded DuckDB store (telemetry, manual evidence, journal analytics) — one file, one writer"
 version = "0.6.0"
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["duckdb"]
+# Embedded DuckDB store plus the Arrow/Parquet ingest/export pipeline.
+# Disable default features to get only the lightweight backend trait and
+# shared types (AnalyticsBackend, AnalyticsError, QueryRow, StoreStats,
+# telemetry) without compiling the bundled DuckDB C++ library — this is
+# what tumult-clickhouse does.
+duckdb = [
+    "dep:duckdb",
+    "dep:arrow",
+    "dep:parquet",
+    "dep:chrono",
+    "dep:dirs-next",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:tumult-baseline",
+    "dep:tumult-graph",
+]
+
 [dependencies]
-tumult-graph = { path = "../tumult-graph" }
-duckdb.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
+tumult-core = { path = "../tumult-core" }
+tumult-baseline = { path = "../tumult-baseline", optional = true }
+tumult-graph = { path = "../tumult-graph", optional = true }
+arrow = { workspace = true, optional = true }
+parquet = { workspace = true, optional = true }
+duckdb = { workspace = true, optional = true }
 thiserror.workspace = true
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+dirs-next = { workspace = true, optional = true }
+opentelemetry.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

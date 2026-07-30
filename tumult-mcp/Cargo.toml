@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
-tumult-analytics = { path = "../tumult-analytics" }
+tumult-lake = { path = "../tumult-lake" }
 tumult-graph = { path = "../tumult-graph" }
 tumult-cypher = { path = "../tumult-cypher" }
 tumult-autopilot = { path = "../tumult-autopilot" }

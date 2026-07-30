@@ -115,7 +115,7 @@ fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64
 /// in flight it is 1, so the `ambient.no_concurrent_experiment` veto fires.
 #[allow(clippy::too_many_lines)]
 pub(super) fn assemble_candidates(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
     policy: &LoadedPolicy,
     now_ns: i64,
     within_business_hours: bool,
@@ -376,9 +376,9 @@ pub(super) fn assemble_candidates(
 /// The policy is supplied by the caller (the respond tool requires it on
 /// approve); the caller also verifies its hash against the decision record.
 pub(super) fn regate_decision(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
     policy: &LoadedPolicy,
-    record: &tumult_analytics::DecisionRecord,
+    record: &tumult_lake::DecisionRecord,
     now_ns: i64,
     within_business_hours: bool,
     concurrent_experiments: u32,
@@ -487,7 +487,7 @@ fn playbook_article(experiment_path: &str) -> Option<String> {
 
 /// Persist one decision (audit-before-act) and mirror it into the graph.
 pub(super) fn persist_decision(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
     policy: &LoadedPolicy,
     assembled: &Assembled,
     now_ns: i64,
@@ -508,7 +508,7 @@ pub(super) fn persist_decision(
     };
     let validator = validate(c);
 
-    let record = tumult_analytics::DecisionRecord {
+    let record = tumult_lake::DecisionRecord {
         id: c.id.clone(),
         decided_at_ns: now_ns,
         trigger: match &c.trigger {

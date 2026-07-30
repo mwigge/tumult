@@ -25,7 +25,7 @@ const LINEAGE_RELS: &[&str] = &[
 /// Open the analytics store read-write at `store_path`, erroring cleanly if
 /// absent. Used only by `topology_import`, which persists `depends_on` edges;
 /// it takes the exclusive lock and so contends with a running server.
-pub(super) fn open_store(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+pub(super) fn open_store(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     // Unlike the run-data tools, topology import is legitimately the FIRST
     // write a fresh deployment performs — create the store when absent
     // (parent directory must exist; that typo-guard stays).
@@ -38,23 +38,20 @@ pub(super) fn open_store(store_path: &str) -> Result<tumult_analytics::Analytics
             )));
         }
     }
-    tumult_analytics::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// Open the analytics store read-only, erroring cleanly if absent. Read-only
 /// opens do not take the exclusive lock, so map/lineage/recommend queries
 /// coexist with a running MCP server.
-pub(super) fn open_store_ro(
-    store_path: &str,
-) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+pub(super) fn open_store_ro(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     let path = Path::new(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
             "store not found: {store_path}"
         )));
     }
-    tumult_analytics::AnalyticsStore::open_read_only(path)
-        .map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open_read_only(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// Everything the lineage/map/recommend tools read back from the store.
@@ -83,7 +80,7 @@ impl TopologyInputs {
 
 /// Read every lineage/map input from the store in one pass.
 pub(crate) fn gather_inputs(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
 ) -> Result<TopologyInputs, ToolError> {
     let edges = store
         .graph_edges_by_rels(LINEAGE_RELS)
@@ -189,7 +186,7 @@ fn available_actions() -> Vec<AvailableAction> {
 
 /// Compute ranked recommendations for a lineage matrix.
 pub(crate) fn recommendations_for(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
     inputs: &TopologyInputs,
     lineage: &[LineageCell],
     limit: usize,

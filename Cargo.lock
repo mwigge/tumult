@@ -7471,24 +7471,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tumult-analytics"
-version = "2.18.0"
-dependencies = [
- "arrow",
- "chrono",
- "dirs-next",
- "duckdb",
- "opentelemetry",
- "parquet",
- "serde_json",
- "tempfile",
- "thiserror 2.0.19",
- "tumult-baseline",
- "tumult-core",
- "tumult-graph",
-]
-
-[[package]]
 name = "tumult-api"
 version = "0.6.0"
 dependencies = [
@@ -7561,13 +7543,13 @@ dependencies = [
  "tracing",
  "tumult-agent-cli",
  "tumult-agentic",
- "tumult-analytics",
  "tumult-authoring",
  "tumult-clickhouse",
  "tumult-cloud",
  "tumult-core",
  "tumult-intelligence",
  "tumult-kubernetes",
+ "tumult-lake",
  "tumult-mcp",
  "tumult-net",
  "tumult-otel",
@@ -7589,8 +7571,8 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tracing",
- "tumult-analytics",
  "tumult-core",
+ "tumult-lake",
  "tumult-otel",
 ]
 
@@ -7705,8 +7687,8 @@ dependencies = [
  "thiserror 2.0.19",
  "toon-format",
  "tumult-agent-cli",
- "tumult-analytics",
  "tumult-core",
+ "tumult-lake",
  "tumult-plugin",
 ]
 
@@ -7735,12 +7717,20 @@ dependencies = [
 name = "tumult-lake"
 version = "0.6.0"
 dependencies = [
+ "arrow",
+ "chrono",
+ "dirs-next",
  "duckdb",
+ "opentelemetry",
+ "parquet",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.19",
+ "tumult-baseline",
+ "tumult-core",
+ "tumult-graph",
 ]
 
 [[package]]
@@ -7764,7 +7754,6 @@ dependencies = [
  "tracing",
  "tumult-agent-cli",
  "tumult-agentic",
- "tumult-analytics",
  "tumult-authoring",
  "tumult-autopilot",
  "tumult-cloud",
@@ -7773,6 +7762,7 @@ dependencies = [
  "tumult-graph",
  "tumult-intelligence",
  "tumult-kubernetes",
+ "tumult-lake",
  "tumult-net",
  "tumult-otel",
  "tumult-plugin",
@@ -7895,8 +7885,8 @@ dependencies = [
  "crossterm",
  "ratatui",
  "tempfile",
- "tumult-analytics",
  "tumult-core",
+ "tumult-lake",
 ]
 
 [[package]]

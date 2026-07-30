@@ -30,28 +30,27 @@ fn now_ns() -> i64 {
     .unwrap_or(i64::MAX)
 }
 
-fn open_store(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+fn open_store(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     let path = Path::new(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
             "analytics store not found at {store_path}"
         )));
     }
-    tumult_analytics::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// Open the store read-only for the status/log view: Viewer-gated readback
 /// must never take the store's write lock (same pattern as the chaosgraph
 /// tools).
-fn open_store_ro(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+fn open_store_ro(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     let path = Path::new(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
             "analytics store not found at {store_path}"
         )));
     }
-    tumult_analytics::AnalyticsStore::open_read_only(path)
-        .map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open_read_only(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 fn load_policy(policy_path: &str) -> Result<LoadedPolicy, ToolError> {
@@ -106,7 +105,7 @@ fn line_col_of(text: &str, offset: usize) -> (usize, usize) {
 /// Run the playbook experiment for a decision, appending lifecycle events
 /// and the graph `enacted` edge. Returns the journal's terminal status.
 fn run_playbook(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
     store_path: &str,
     decision_id: &str,
     playbook: &str,
@@ -429,7 +428,7 @@ fn regate_refusal_detail(decision: &tumult_autopilot::GateDecision) -> String {
 /// Persist the re-gate outcome (pass or refusal) so the audit trail shows
 /// not just the human response but the gate's answer at execution time.
 fn record_regate_outcome(
-    store: &tumult_analytics::AnalyticsStore,
+    store: &tumult_lake::AnalyticsStore,
     decision_id: &str,
     kind: &str,
     detail: &str,
