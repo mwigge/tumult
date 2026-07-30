@@ -6,6 +6,8 @@ members = [
     "tumult-plugin",
     # Shared provider executor (used by tumult-cli and tumultd)
     "tumult-exec",
+    # Shared auth primitives: RBAC roles, argon2id password hashing, token generation
+    "tumult-auth",
     "tumult-authoring",
     "tumult-otel",
     "tumult-baseline",

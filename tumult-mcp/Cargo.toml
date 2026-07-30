@@ -29,6 +29,7 @@ tumult-otel = { path = "../tumult-otel" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-agent-cli = { path = "../tumult-agent-cli" }
 tumult-intelligence = { path = "../tumult-intelligence" }
+tumult-auth = { path = "../tumult-auth" }
 tumult-kubernetes = { path = "../tumult-kubernetes" }
 tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }

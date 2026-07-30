@@ -206,8 +206,8 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
             json!({
                 "role": {
                     "type": "string",
-                    "enum": ["viewer", "operator"],
-                    "description": "The caller's resolved access role: viewer (read-only tools) or operator (all tools).",
+                    "enum": ["viewer", "operator", "approver", "admin"],
+                    "description": "The caller's resolved access role: viewer (read-only tools) or operator-or-above (all tools).",
                 },
                 "authenticated": {
                     "type": "boolean",

@@ -4621,6 +4621,7 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aab41826031698d6ffcd9cff78ef56ef998e39dc7e5067cdfebe373842d4723b"
 dependencies = [
+ "getrandom 0.4.3",
  "phc",
 ]
 
@@ -4740,6 +4741,7 @@ checksum = "44dc769b75f93afdddd8c7fa12d685292ddeff1e66f7f0f3a234cf1818afe892"
 dependencies = [
  "base64ct",
  "ctutils",
+ "getrandom 0.4.3",
 ]
 
 [[package]]
@@ -7492,6 +7494,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tumult-auth"
+version = "2.18.0"
+dependencies = [
+ "argon2",
+ "getrandom 0.4.3",
+ "sha2 0.10.9",
+ "subtle",
+]
+
+[[package]]
 name = "tumult-authoring"
 version = "2.18.0"
 dependencies = [
@@ -7771,6 +7783,7 @@ dependencies = [
  "tracing",
  "tumult-agent-cli",
  "tumult-agentic",
+ "tumult-auth",
  "tumult-authoring",
  "tumult-autopilot",
  "tumult-cloud",
