@@ -52,6 +52,8 @@ pub mod query_row;
 #[cfg(feature = "duckdb")]
 mod rows;
 #[cfg(feature = "duckdb")]
+mod runs;
+#[cfg(feature = "duckdb")]
 mod schema;
 pub mod telemetry;
 
@@ -76,6 +78,8 @@ pub use query_row::QueryRow;
 pub use rows::{
     ExperimentRun, ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow,
 };
+#[cfg(feature = "duckdb")]
+pub use runs::{rollback_status, run_state, NewRun, RegisteredDefinition};
 #[cfg(feature = "duckdb")]
 pub use schema::CURRENT_SCHEMA_VERSION;
 
@@ -867,7 +871,7 @@ mod tests {
         let d = tempfile::TempDir::new().unwrap();
         let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
         let writer = store.writer().unwrap();
-        assert_eq!(writer.schema_version().unwrap(), 3);
+        assert_eq!(writer.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
 
         let reader = store.read_only().unwrap();
         for table in [
@@ -883,6 +887,9 @@ mod tests {
             "autopilot_change_events",
             "graph_nodes",
             "graph_edges",
+            "run_registry",
+            "runs",
+            "run_audit",
         ] {
             let rows = reader
                 .query_json_rows(&format!(
@@ -943,7 +950,7 @@ mod tests {
 
         let store = Store::open(&db_path).unwrap();
         let writer = store.writer().unwrap();
-        assert_eq!(writer.schema_version().unwrap(), 3);
+        assert_eq!(writer.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         let reader = store.read_only().unwrap();
         // Prior data preserved; analytics family now queryable.
         assert_eq!(reader.experiment_runs().unwrap().len(), 1);

@@ -14,8 +14,11 @@
 //! `autopilot_*` tables, and the ChaosGraph `graph_nodes` / `graph_edges`
 //! tables (DDL owned by `tumult_graph::sql`, executed at migrate time).
 //! One database file, one writer, one `schema_meta`.
+//!
+//! v4 adds the daemon-run tables (`run_registry`, `runs`, `run_audit`) —
+//! see `runs.rs`.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 3;
+pub const CURRENT_SCHEMA_VERSION: i64 = 4;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -282,6 +285,43 @@ CREATE TABLE IF NOT EXISTS autopilot_change_events (
     source          VARCHAR NOT NULL,
     detail          VARCHAR
 );
+
+-- v4: daemon-run tables. `run_registry` holds validated .toon definitions
+-- (content-hash deduped); `runs` is the run state machine
+-- (queued→validating→running→stopping→passed|deviated|failed|aborted, plus
+-- orphaned/rollback_pending for crash recovery; T10's pending_approval is
+-- a value-level addition, no schema change); `run_audit` is the append-only
+-- per-run event trail.
+CREATE TABLE IF NOT EXISTS run_registry (
+    id               VARCHAR PRIMARY KEY,
+    name             VARCHAR NOT NULL,
+    definition_toon  VARCHAR NOT NULL,
+    content_hash     VARCHAR NOT NULL,
+    registered_at_ns BIGINT NOT NULL,
+    registered_by    VARCHAR
+);
+CREATE INDEX IF NOT EXISTS idx_run_registry_hash ON run_registry (content_hash);
+CREATE TABLE IF NOT EXISTS runs (
+    id              VARCHAR PRIMARY KEY,
+    registry_id     VARCHAR NOT NULL,
+    state           VARCHAR NOT NULL,
+    params_json     JSON,
+    experiment_id   VARCHAR,
+    rollback_status VARCHAR,
+    error           VARCHAR,
+    queued_at_ns    BIGINT NOT NULL,
+    started_at_ns   BIGINT,
+    ended_at_ns     BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_runs_state ON runs (state);
+CREATE INDEX IF NOT EXISTS idx_runs_registry ON runs (registry_id);
+CREATE TABLE IF NOT EXISTS run_audit (
+    run_id  VARCHAR NOT NULL,
+    at_ns   BIGINT NOT NULL,
+    event   VARCHAR NOT NULL,
+    detail  VARCHAR
+);
+CREATE INDEX IF NOT EXISTS idx_run_audit_run ON run_audit (run_id, at_ns);
 ";
 
 /// Rollup view: one row per experiment run, over the experiment root spans
