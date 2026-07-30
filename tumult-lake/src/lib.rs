@@ -264,6 +264,17 @@ fn with_tx<T, E: From<StoreError>>(
 /// paths ([`Writer::migrate`] and [`duckdb_store::AnalyticsStore`]).
 pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     conn.execute_batch(schema::CREATE_TABLES)?;
+    // v4 → v5: rebuild the run tables index-free (crash-robustness — see
+    // schema.rs). Conditional on the stored version actually being 4: older
+    // databases have no run tables to rebuild, and fresh ones got the v5
+    // shape from CREATE_TABLES above.
+    let stored: Option<i64> = {
+        let mut stmt = conn.prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+        stmt.query_row(params![], |row| row.get(0)).ok()
+    };
+    if stored == Some(4) {
+        conn.execute_batch(schema::MIGRATE_V5_RUN_TABLES_INDEX_FREE)?;
+    }
     // ChaosGraph node/edge tables (part of schema v3): DDL lives in
     // `tumult_graph::sql`. `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`
     // make both the fresh-install DDL and the additive migration for

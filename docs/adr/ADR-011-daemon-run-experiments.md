@@ -119,3 +119,26 @@ analytics surface for both origins.
 - Runs executed while the daemon holds the store are reconciled on the
   next start, closing the crash gap — but reconciliation cannot re-resolve
   secrets (above), so `rollback_pending` needs an operator runbook.
+
+## Amendment (2026-07-30, schema v5)
+
+The live kill -9 proof on this design surfaced a DuckDB storage bug class:
+after SIGKILL mid-write, WAL replay can return ART indexes desynced from
+their table, and every UPDATE then fails fatally ("Failed to delete all
+rows from index") — invalidating the whole write connection and thereby
+poisoning the store exactly when orphan reconciliation must write. Two
+follow-ons, shipped with the ADR's implementation:
+
+- **Schema v5**: the run tables (`run_registry`, `runs`, `run_audit`)
+  carry no primary keys and no secondary indexes. At run-table scale
+  sequential scans are free; run-id uniqueness comes from uuid generation
+  and registry dedup is checked in code. The v4→v5 migration rebuilds the
+  tables via table scans (which never touch the desynced indexes), so a
+  store corrupted this way heals on open. The telemetry/manual-evidence
+  tables keep their indexes: they are INSERT-only, so the desync cannot
+  produce the fatal update path there (index-scan completeness after a
+  crash is a separate concern, tracked as follow-up).
+- **Reconciliation is rollback-first**: state/audit writes are
+  best-effort. A degraded store never skips a rollback — the fault may
+  still be live in the target system; write failures are logged and the
+  run keeps its active state so the next start retries.

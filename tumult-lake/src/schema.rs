@@ -17,8 +17,15 @@
 //!
 //! v4 adds the daemon-run tables (`run_registry`, `runs`, `run_audit`) —
 //! see `runs.rs`.
+//!
+//! v5 rebuilds the v4 run tables without primary keys or secondary indexes:
+//! a daemon killed mid-write can return with DuckDB's ART indexes desynced
+//! from the table after WAL replay, and every UPDATE then fails fatally
+//! ("Failed to delete all rows from index"), poisoning the store exactly
+//! when orphan reconciliation must write. Run tables are tiny; scans are
+//! free and uniqueness is enforced in code.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 4;
+pub const CURRENT_SCHEMA_VERSION: i64 = 5;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -292,17 +299,23 @@ CREATE TABLE IF NOT EXISTS autopilot_change_events (
 -- orphaned/rollback_pending for crash recovery; T10's pending_approval is
 -- a value-level addition, no schema change); `run_audit` is the append-only
 -- per-run event trail.
+-- v5: these tables carry NO primary keys and NO secondary indexes. A daemon
+-- killed mid-write (SIGKILL) can come back with DuckDB's ART indexes
+-- desynced from the table after WAL replay, and every subsequent UPDATE
+-- then dies fatally on 'Failed to delete all rows from index' — poisoning
+-- the store exactly when orphan reconciliation must write. At run-table
+-- scale (thousands of rows) sequential scans are free; run-id uniqueness
+-- comes from uuid generation and registry dedup is checked in code.
 CREATE TABLE IF NOT EXISTS run_registry (
-    id               VARCHAR PRIMARY KEY,
+    id               VARCHAR NOT NULL,
     name             VARCHAR NOT NULL,
     definition_toon  VARCHAR NOT NULL,
     content_hash     VARCHAR NOT NULL,
     registered_at_ns BIGINT NOT NULL,
     registered_by    VARCHAR
 );
-CREATE INDEX IF NOT EXISTS idx_run_registry_hash ON run_registry (content_hash);
 CREATE TABLE IF NOT EXISTS runs (
-    id              VARCHAR PRIMARY KEY,
+    id              VARCHAR NOT NULL,
     registry_id     VARCHAR NOT NULL,
     state           VARCHAR NOT NULL,
     params_json     JSON,
@@ -313,15 +326,48 @@ CREATE TABLE IF NOT EXISTS runs (
     started_at_ns   BIGINT,
     ended_at_ns     BIGINT
 );
-CREATE INDEX IF NOT EXISTS idx_runs_state ON runs (state);
-CREATE INDEX IF NOT EXISTS idx_runs_registry ON runs (registry_id);
 CREATE TABLE IF NOT EXISTS run_audit (
     run_id  VARCHAR NOT NULL,
     at_ns   BIGINT NOT NULL,
     event   VARCHAR NOT NULL,
     detail  VARCHAR
 );
-CREATE INDEX IF NOT EXISTS idx_run_audit_run ON run_audit (run_id, at_ns);
+";
+
+/// v4 → v5: rebuild the run tables without primary keys / secondary indexes
+/// (see the comment above). Data copy is a plain table scan — safe even when
+/// the v4 ART indexes are desynced, since reads never touch them. Atomic:
+/// any failure rolls back and the next open retries (version stays 4).
+pub const MIGRATE_V5_RUN_TABLES_INDEX_FREE: &str = "
+BEGIN TRANSACTION;
+CREATE TABLE runs_v5 (
+    id              VARCHAR NOT NULL,
+    registry_id     VARCHAR NOT NULL,
+    state           VARCHAR NOT NULL,
+    params_json     JSON,
+    experiment_id   VARCHAR,
+    rollback_status VARCHAR,
+    error           VARCHAR,
+    queued_at_ns    BIGINT NOT NULL,
+    started_at_ns   BIGINT,
+    ended_at_ns     BIGINT
+);
+INSERT INTO runs_v5 SELECT * FROM runs;
+DROP TABLE runs;
+ALTER TABLE runs_v5 RENAME TO runs;
+CREATE TABLE run_registry_v5 (
+    id               VARCHAR NOT NULL,
+    name             VARCHAR NOT NULL,
+    definition_toon  VARCHAR NOT NULL,
+    content_hash     VARCHAR NOT NULL,
+    registered_at_ns BIGINT NOT NULL,
+    registered_by    VARCHAR
+);
+INSERT INTO run_registry_v5 SELECT * FROM run_registry;
+DROP TABLE run_registry;
+ALTER TABLE run_registry_v5 RENAME TO run_registry;
+DROP INDEX IF EXISTS idx_run_audit_run;
+COMMIT;
 ";
 
 /// Rollup view: one row per experiment run, over the experiment root spans

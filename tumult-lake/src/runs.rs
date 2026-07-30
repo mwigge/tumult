@@ -1,4 +1,4 @@
-//! Daemon-run storage (schema v4): the `run_registry` of validated `.toon`
+//! Daemon-run storage (schema v5): the `run_registry` of validated `.toon`
 //! definitions, the `runs` state machine, and the append-only `run_audit`
 //! trail.
 //!
@@ -455,5 +455,100 @@ mod tests {
             active[0]["definition_toon"],
             serde_json::json!("title: latency drill")
         );
+    }
+
+    /// The v4 run tables (primary keys + secondary indexes) as a raw DDL
+    /// fixture, so the v4 → v5 rebuild can be exercised end to end.
+    const V4_RUN_TABLE_DDL: &str = "
+CREATE TABLE schema_meta (key VARCHAR PRIMARY KEY, value BIGINT NOT NULL);
+INSERT INTO schema_meta (key, value) VALUES ('version', 4);
+CREATE TABLE run_registry (
+    id               VARCHAR PRIMARY KEY,
+    name             VARCHAR NOT NULL,
+    definition_toon  VARCHAR NOT NULL,
+    content_hash     VARCHAR NOT NULL,
+    registered_at_ns BIGINT NOT NULL,
+    registered_by    VARCHAR
+);
+CREATE INDEX idx_run_registry_hash ON run_registry (content_hash);
+CREATE TABLE runs (
+    id              VARCHAR PRIMARY KEY,
+    registry_id     VARCHAR NOT NULL,
+    state           VARCHAR NOT NULL,
+    params_json     JSON,
+    experiment_id   VARCHAR,
+    rollback_status VARCHAR,
+    error           VARCHAR,
+    queued_at_ns    BIGINT NOT NULL,
+    started_at_ns   BIGINT,
+    ended_at_ns     BIGINT
+);
+CREATE INDEX idx_runs_state ON runs (state);
+CREATE INDEX idx_runs_registry ON runs (registry_id);
+CREATE TABLE run_audit (
+    run_id  VARCHAR NOT NULL,
+    at_ns   BIGINT NOT NULL,
+    event   VARCHAR NOT NULL,
+    detail  VARCHAR
+);
+CREATE INDEX idx_run_audit_run ON run_audit (run_id, at_ns);
+";
+
+    #[test]
+    fn v4_store_migrates_to_index_free_run_tables() {
+        let d = tempfile::TempDir::new().unwrap();
+        let db = d.path().join("kronika.duckdb");
+        // Build a v4-era store with a raw connection (Store::open would
+        // migrate immediately).
+        {
+            let conn = duckdb::Connection::open(&db).unwrap();
+            conn.execute_batch(V4_RUN_TABLE_DDL).unwrap();
+            conn.execute_batch(
+                "INSERT INTO run_registry VALUES ('reg-old','old exp','title: old','h',1,NULL);
+                 INSERT INTO runs (id, registry_id, state, queued_at_ns) \
+                 VALUES ('run-old', 'reg-old', 'running', 1);
+                 INSERT INTO run_audit VALUES ('run-old', 1, 'enqueued', NULL);",
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&db).unwrap();
+        let writer = store.writer().unwrap();
+        assert_eq!(writer.schema_version().unwrap(), 5);
+
+        // Data survived the rebuild…
+        let reader = store.read_only().unwrap();
+        let run = reader.run_get("run-old").unwrap().unwrap();
+        assert_eq!(run["state"], serde_json::json!("running"));
+        assert_eq!(
+            reader.registry_definition("reg-old").unwrap().unwrap().name,
+            "old exp"
+        );
+        assert_eq!(reader.run_audit_trail("run-old").unwrap().len(), 1);
+
+        // …and — the whole point — UPDATEs work without any ART index.
+        writer
+            .set_run_state("run-old", run_state::ORPHANED)
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        let run = reader.run_get("run-old").unwrap().unwrap();
+        assert_eq!(run["state"], serde_json::json!("orphaned"));
+
+        // No indexes remain on the run tables.
+        let index_rows = reader
+            .query_json_rows(
+                "SELECT index_name, table_name FROM duckdb_indexes() \
+                 WHERE table_name IN ('runs', 'run_registry', 'run_audit')",
+            )
+            .unwrap();
+        assert!(index_rows.is_empty(), "{index_rows:?}");
+
+        // Re-opening is a no-op (version already 5, no rebuild attempted).
+        drop(store);
+        let store = Store::open(&db).unwrap();
+        let writer = store.writer().unwrap();
+        assert_eq!(writer.schema_version().unwrap(), 5);
+        let reader = store.read_only().unwrap();
+        assert!(reader.run_get("run-old").unwrap().is_some());
     }
 }

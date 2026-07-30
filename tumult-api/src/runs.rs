@@ -1,5 +1,5 @@
 //! Run-control endpoints (`/api/runs*`) — validate, dry-run, enqueue,
-//! e-stop and inspect daemon-managed experiment runs (schema v4
+//! e-stop and inspect daemon-managed experiment runs (schema v5
 //! `run_registry` / `runs` / `run_audit`).
 //!
 //! Definitions register through `POST /api/runs/validate`: the exact

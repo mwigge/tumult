@@ -1,7 +1,7 @@
 //! Bounded in-process experiment run queue for tumultd.
 //!
 //! [`RunQueue`] accepts validated definitions from the API, persists every
-//! state transition through the daemon's single-writer channel (schema v4
+//! state transition through the daemon's single-writer channel (schema v5
 //! `runs` / `run_audit`), and executes runs on a fixed pool of worker tasks
 //! via [`tumult_core::runner::run_experiment`]. Both the worker count and
 //! the waiting-queue depth are bounded; overload is rejected, never queued
@@ -481,6 +481,11 @@ enum OrphanOutcome {
 /// daemon startup, before the servers accept traffic. Returns the number of
 /// orphaned runs processed.
 ///
+/// Fault cleanup is the primary duty: rollbacks are attempted even when the
+/// state/audit writes themselves fail (a store error never skips a rollback
+/// — the fault may still be live; write failures are logged and the run row
+/// keeps its active state so the next start retries).
+///
 /// # Errors
 /// Returns an error if the store cannot be read.
 pub async fn reconcile_orphans(
@@ -508,7 +513,10 @@ pub async fn reconcile_orphans(
         tracing::warn!(run_id = %run_id, prior_state = %prior, "orphaned run from previous process lifetime");
 
         let id = run_id.clone();
-        exec_write(ingest, move |writer| {
+        // Best-effort: a broken store must never skip the rollback — the
+        // fault may still be live in the target system. The run row keeps
+        // its active state, so the next daemon start retries.
+        if let Err(e) = exec_write(ingest, move |writer| {
             writer
                 .set_run_state_with(
                     &id,
@@ -518,7 +526,10 @@ pub async fn reconcile_orphans(
                 )
                 .map_err(|e| e.to_string())
         })
-        .await?;
+        .await
+        {
+            tracing::error!(run_id = %run_id, error = %e, "orphan state write failed; attempting rollback anyway");
+        }
 
         let outcome = if prior == run_state::RUNNING || prior == run_state::STOPPING {
             attempt_orphan_rollback(ingest, &run_id, &toon, factory).await
@@ -527,7 +538,7 @@ pub async fn reconcile_orphans(
         };
 
         let id = run_id.clone();
-        exec_write(ingest, move |writer| {
+        if let Err(e) = exec_write(ingest, move |writer| {
             let result = match &outcome {
                 OrphanOutcome::NothingExecuted => writer.finish_run(
                     &id,
@@ -553,7 +564,10 @@ pub async fn reconcile_orphans(
             };
             result.map_err(|e| e.to_string())
         })
-        .await?;
+        .await
+        {
+            tracing::error!(run_id = %run_id, error = %e, "orphan terminal state write failed");
+        }
     }
     Ok(count)
 }

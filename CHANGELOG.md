@@ -85,8 +85,16 @@ and SvelteKit UI) now lives here as first-class tumult crates.
 - Clippy pedantic stays enabled workspace-wide; the imported chronicle
   crates carry a documented, scoped `#![allow(clippy::pedantic)]` at their
   crate roots (183 pre-existing warnings, intentionally not churned).
-- Store schema is now v4: v3 unified telemetry + analytics in one file;
-  v4 adds the daemon-run tables (`run_registry`, `runs`, `run_audit`).
+- Store schema is now v5: v3 unified telemetry + analytics in one file;
+  v4 added the daemon-run tables (`run_registry`, `runs`, `run_audit`);
+  v5 rebuilds them without primary keys or secondary indexes — a daemon
+  killed mid-write (SIGKILL) can return with DuckDB's ART indexes desynced
+  after WAL replay, making every UPDATE fail fatally and poisoning the
+  store exactly when orphan reconciliation must write (found by the live
+  kill -9 proof). The v4→v5 migration copies data via table scans, which
+  never touch the desynced indexes. Orphan reconciliation also changed:
+  rollback is now attempted even when the state/audit writes fail — fault
+  cleanup is never skipped because the store is degraded.
 
 ## [2.18.0] — 2026-07-28
 
