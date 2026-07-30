@@ -1,14 +1,14 @@
 //! Integration test: POST a protobuf `ExportTraceServiceRequest` to the
 //! OTLP/HTTP server on an ephemeral port and assert the row lands in the store.
 
-use tumult_ingest::{http, IngestWriter};
-use tumult_lake::Store;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::tonic::common::v1::any_value::Value;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
 use prost::Message;
+use tumult_ingest::{http, IngestWriter};
+use tumult_lake::Store;
 
 fn kv(key: &str, value: Value) -> KeyValue {
     KeyValue {

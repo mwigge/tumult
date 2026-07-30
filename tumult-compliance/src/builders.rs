@@ -3,8 +3,8 @@
 //! All SQL values that flow from parameters go through [`q`] (single-quote
 //! doubling). Numbers (`i64` timestamps) are formatted directly.
 
-use tumult_lake::Reader;
 use sha2::{Digest, Sha256};
+use tumult_lake::Reader;
 
 use crate::html::{fmt_date, fmt_datetime};
 use crate::model::{Block, Cell, ChartSpec, DocMeta, ReportDoc, TemplateKind};

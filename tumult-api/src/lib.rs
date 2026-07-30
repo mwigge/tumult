@@ -66,9 +66,9 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use tumult_lake::{Reader, Store};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::{Reader, Store};
 
 /// Span-name predicate selecting one row per experiment run.
 const ROOT: &str = "span_name = 'resilience.experiment'";
@@ -2060,7 +2060,8 @@ async fn generate_report_v2(
     Json(req): Json<GenerateV2Request>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
-    let Ok(kind) = serde_json::from_value::<tumult_compliance::TemplateKind>(json!(req.kind)) else {
+    let Ok(kind) = serde_json::from_value::<tumult_compliance::TemplateKind>(json!(req.kind))
+    else {
         return Err(bad(format!(
             "unknown type {:?}; expected executive-digest|game-day|evidence-pack",
             req.kind
@@ -2099,26 +2100,30 @@ async fn generate_report_v2(
     let framework = req.framework.clone();
     let org = state.org.clone();
     let built = with_reader(&state.db_path, move |reader| match kind {
-        tumult_compliance::TemplateKind::ExecutiveDigest => tumult_compliance::builders::build_executive(
-            reader,
-            &org,
-            generated_at,
-            period_ns,
-            generated_at,
-        )
-        .map(Some),
+        tumult_compliance::TemplateKind::ExecutiveDigest => {
+            tumult_compliance::builders::build_executive(
+                reader,
+                &org,
+                generated_at,
+                period_ns,
+                generated_at,
+            )
+            .map(Some)
+        }
         tumult_compliance::TemplateKind::GameDay => tumult_compliance::builders::build_game_day(
             reader,
             exp_id.as_deref().unwrap_or_default(),
             generated_at,
         ),
-        tumult_compliance::TemplateKind::EvidencePack => tumult_compliance::builders::build_evidence_pack(
-            reader,
-            framework.as_deref().unwrap_or_default(),
-            Some(period_ns),
-            generated_at,
-        )
-        .map(Some),
+        tumult_compliance::TemplateKind::EvidencePack => {
+            tumult_compliance::builders::build_evidence_pack(
+                reader,
+                framework.as_deref().unwrap_or_default(),
+                Some(period_ns),
+                generated_at,
+            )
+            .map(Some)
+        }
     })
     .await?;
     let Some(doc) = built else {
@@ -2129,7 +2134,8 @@ async fn generate_report_v2(
             .into_response());
     };
 
-    let pdf = tumult_compliance::typst_pdf::render_pdf(&doc).map_err(|e| internal(e.to_string()))?;
+    let pdf =
+        tumult_compliance::typst_pdf::render_pdf(&doc).map_err(|e| internal(e.to_string()))?;
     let html = tumult_compliance::html::render(&doc);
     let sha256: String = {
         use sha2::Digest as _;

@@ -516,8 +516,7 @@ async fn run_lake_job(
         ingest
             .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
                 *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(
-                    tumult_lake::lake::enforce_retention(writer, &cfg3)
-                        .map_err(|e| e.to_string()),
+                    tumult_lake::lake::enforce_retention(writer, &cfg3).map_err(|e| e.to_string()),
                 );
                 Ok(())
             })))

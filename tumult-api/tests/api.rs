@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tumult_lake::{LogRow, MetricSumRow, SpanRow, Store};
 use serde_json::{json, Value};
+use tumult_lake::{LogRow, MetricSumRow, SpanRow, Store};
 
 const NS: i64 = 1_000_000_000;
 

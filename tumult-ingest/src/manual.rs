@@ -8,8 +8,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tumult_lake::{ImportBatch, SpanRow, Writer};
 use serde::Deserialize;
+use tumult_lake::{ImportBatch, SpanRow, Writer};
 
 use crate::error::IngestError;
 

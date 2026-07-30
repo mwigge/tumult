@@ -13,11 +13,11 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde::Deserialize;
+use serde_json::json;
 use tumult_intelligence::llm::{AiError, Message, Role};
 use tumult_intelligence::sql_guard;
 use tumult_lake::Store;
-use serde::Deserialize;
-use serde_json::json;
 
 use crate::ApiState;
 

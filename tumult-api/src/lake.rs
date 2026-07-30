@@ -8,8 +8,8 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use tumult_lake::lake::{self, LakeConfig};
 use serde_json::{json, Value};
+use tumult_lake::lake::{self, LakeConfig};
 
 use crate::{internal, with_reader, ApiState};
 

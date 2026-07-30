@@ -7,8 +7,8 @@ pub mod narrative;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tumult_metrics::{to_sql, MetricDef, MetricsError};
 use tumult_lake::{Reader, StoreError};
+use tumult_metrics::{to_sql, MetricDef, MetricsError};
 
 /// Report errors.
 #[derive(Debug, thiserror::Error)]

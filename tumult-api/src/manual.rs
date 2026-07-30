@@ -13,12 +13,12 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde::Deserialize;
+use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
     AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Writer,
 };
-use serde::Deserialize;
-use serde_json::{json, Value};
 
 use crate::{internal, with_reader, ApiState};
 

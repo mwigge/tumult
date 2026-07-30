@@ -1,9 +1,9 @@
 //! `ExportMetricsServiceRequest` → metric row batches.
 
-use tumult_lake::{MetricGaugeRow, MetricHistogramRow, MetricSumRow};
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::KeyValue;
 use opentelemetry_proto::tonic::metrics::v1::{metric, number_data_point};
+use tumult_lake::{MetricGaugeRow, MetricHistogramRow, MetricSumRow};
 
 use crate::common::{self, keys, ResourceCtx};
 

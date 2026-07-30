@@ -10,8 +10,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tumult_intelligence::llm::{Llm, Message, Role};
 use serde_json::{json, Value};
+use tumult_intelligence::llm::{Llm, Message, Role};
 
 use crate::{Report, Section};
 

@@ -1,8 +1,8 @@
 //! `ExportLogsServiceRequest` → `Vec<LogRow>`.
 
-use tumult_lake::LogRow;
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::logs::v1::LogRecord;
+use tumult_lake::LogRow;
 
 use crate::common::{self, ResourceCtx};
 
