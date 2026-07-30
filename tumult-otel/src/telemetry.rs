@@ -69,17 +69,16 @@ fn otlp_headers_from_env() -> Option<tonic::metadata::MetadataMap> {
     }
     let mut map = tonic::metadata::MetadataMap::new();
     for (key, value) in pairs {
-        match (
+        if let (Ok(k), Ok(v)) = (
             tonic::metadata::MetadataKey::from_bytes(key.as_bytes()),
             value.parse::<tonic::metadata::MetadataValue<_>>(),
         ) {
-            (Ok(k), Ok(v)) => {
-                map.append(k, v);
-            }
-            _ => tracing::warn!(
+            map.append(k, v);
+        } else {
+            tracing::warn!(
                 key,
                 "skipping OTEL_EXPORTER_OTLP_HEADERS entry invalid for gRPC metadata"
-            ),
+            );
         }
     }
     Some(map)
