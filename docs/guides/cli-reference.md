@@ -87,6 +87,8 @@ Undefined variables cause a hard error at startup, not at execution time.
 
 By default, `tumult run` writes the journal file **and** ingests experiment data into the persistent DuckDB store at `~/.tumult/lake.duckdb`. Pass `--no-ingest` to skip store ingestion (useful in CI pipelines that manage their own storage).
 
+When `TUMULT_DAEMON_URL` is set (e.g. `http://localhost:4318`), the journal is POSTed to the daemon's `/api/import/journal` instead, so the write rides the daemon's single-writer channel rather than racing its store lock. If the daemon is unreachable (no HTTP response), the CLI falls back to the direct store write; any HTTP answer — including an error — is treated as final.
+
 ## tumult validate
 
 Validate experiment syntax, structure, and plugin references.

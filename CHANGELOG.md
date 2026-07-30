@@ -11,6 +11,18 @@ workspace (daemon, OTLP ingestion, DuckDB lake, compliance reports, query API
 and SvelteKit UI) now lives here as first-class tumult crates.
 
 ### Added
+- **Daemon-first journal ingest**: with `TUMULT_DAEMON_URL` set, `tumult run`
+  POSTs the journal to the daemon's new `POST /api/import/journal` endpoint,
+  which rides the single-writer channel (`Writer::ingest_journal`) instead of
+  losing to the daemon's store lock. Falls back to the direct store write
+  only when the daemon gives no HTTP response at all.
+- **Lake export + retention for the analytics family**: `experiments`,
+  `activity_results` and `load_results` export incrementally on
+  `started_at_ns` with the telemetry watermark guard; the `autopilot_*`
+  history, `graph_nodes`/`graph_edges` and the `agentic_*` tables export as
+  fingerprint-gated full snapshots. Retention purges `autopilot_*` rows only
+  while the current fingerprint matches the last export (proving every row
+  is in the lake); graph, agentic, manual and audit tables stay exempt.
 - **`tumult store import-legacy`**: merges pre-unification databases (an old
   `tumult-analytics` store and/or a kronika lake, via `--analytics-db` /
   `--kronika-db`) into the unified store. Idempotent natural-key dedupe;

@@ -39,33 +39,47 @@ via `COPY (SELECT …) TO '…' (FORMAT PARQUET)` — one file per day directory
 a new uniquely-named file per run rather than partitioned-overwrite, so
 lake files are write-once and never mutated in place. Tables: `spans`,
 `logs`, `metric_sums`, `metric_gauges`, `metric_histograms`,
-`manual_experiment_audit`, and `manual_experiments`.
+`manual_experiment_audit`, `manual_experiments`, and — since the analytics
+fold — the journal-detail tables `experiments`, `activity_results`,
+`load_results`, the autopilot history `autopilot_decisions`,
+`autopilot_events`, `autopilot_change_events`, the `ChaosGraph` tables
+`graph_nodes`/`graph_edges`, and the four `agentic_*` tables.
 
 ### Incremental export with a persistent watermark
 
-- Telemetry and audit tables export only rows newer than the table's
-  watermark (`ts_ns`, resp. `changed_at_ns`); the watermark then advances
-  to the table's max event time.
+- Telemetry, audit and journal-detail tables export only rows newer than
+  the table's watermark (`ts_ns`, `changed_at_ns`, resp. `started_at_ns`);
+  the watermark then advances to the table's max event time.
 - The watermark lives in `<lake>/_meta.json`, written tmp+rename after
   *every* table exported successfully — a failed or crashed run retries
   from the last good watermark, making re-runs idempotent (no new rows,
   no new files).
-- `manual_experiments` is the exception: records mutate through the
-  draft → verified lifecycle, so each run writes a **full snapshot** (one
-  file, latest wins) instead of pretending event-time incrementality
-  applies to mutable rows. Snapshots are fingerprint-gated: a run compares
-  an md5 of all `content_hash` values against the one recorded in
-  `_meta.json` and skips the write when the register has not changed, so
-  an unchanged register produces no new file.
+- Mutable and event-sourced tables are the exception: each run writes a
+  **full snapshot** (one file, latest wins) instead of pretending
+  event-time incrementality applies to mutable rows. This covers
+  `manual_experiments` (records mutate through the draft → verified
+  lifecycle), the INSERT-ONLY `autopilot_*` history, `graph_nodes` /
+  `graph_edges` (topology refreshes rewrite edges with `ts = 0`, so a
+  watermark would lose updates) and the timestamp-less `agentic_*` tables.
+  Snapshots are fingerprint-gated: a run compares a content fingerprint
+  (md5 over the register's `content_hash` values for `manual_experiments`;
+  md5 over ordered per-row hashes of the full row JSON elsewhere) against
+  the one recorded per table in `_meta.json` and skips the write when the
+  table has not changed.
 
 ### Retention gated on the watermark
 
 `KRONIKA_RETENTION_DAYS=0` (default) keeps everything forever. When >0,
 the job deletes hot rows older than the cutoff **and at or below the
 table's watermark** — rows above the watermark are provably unexported and
-are never touched. `manual_experiment_audit` and `manual_experiments` are
-never deleted: append-only compliance evidence in hot and cold tiers
-alike.
+are never touched. The journal-detail tables follow the same watermark
+guard. Snapshot-exported tables have no trustworthy watermark, so the
+`autopilot_*` tables are purged only while their current fingerprint
+matches the last exported one (fingerprint equality proves every hot row
+is already in the lake; a single unexported row disables the purge).
+`manual_experiment_audit`, `manual_experiments`, `graph_*` and `agentic_*`
+are never deleted: append-only compliance evidence, or mutable /
+timestamp-less rows no watermark can protect.
 
 ### Scheduling and triggering
 
