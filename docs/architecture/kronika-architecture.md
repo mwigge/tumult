@@ -1,67 +1,109 @@
-# Architecture — Krönika
+# Architecture — Krönika (the tumult platform stack)
 
-Krönika ingests chaos/resilience telemetry (OTLP + manual files), stores it
-in embedded DuckDB, and serves a presentation-first UI plus scheduled
-reports. Companion to [tumult](https://github.com/mwigge/tumult) (chaos
-execution) and smedja.
+Krönika is the daemon-and-UI half of the merged tumult platform: it ingests
+chaos/resilience telemetry (OTLP + manual files), stores it in the unified
+embedded DuckDB lake, executes registered experiment definitions under an
+approval workflow, and serves the web UI plus compliance reports. It lives
+in this repository as first-class `tumult-*` crates — imported from the
+standalone kronika project and folded into the workspace (ADR-006); see
+[Merge mapping and migration](#merge-mapping-and-migration-kronika--tumult)
+for what became of each kronika crate and binary.
+
+## Merge mapping and migration (kronika → tumult)
+
+The standalone kronika repository was folded into this workspace (commits
+`1227d23`, `d8fa169`, `d922f0b`). Code names map onto the merged tree:
+
+| kronika (standalone) | tumult (this repository) |
+|---|---|
+| `kronikad` (package + binary) | `tumultd` (embeds `web/build/`) |
+| `kronika-otel` | `tumult-otlp` |
+| `kronika-store` | `tumult-lake` (unified store; tumult-analytics dissolved into it, schema v3+) |
+| `kronika-ingest` | `tumult-ingest` |
+| `kronika-metrics` | `tumult-metrics` |
+| `kronika-report` | `tumult-report` |
+| `kronika-docs` | `tumult-compliance` |
+| `kronika-api` | `tumult-api` |
+| `kronika-ai` | absorbed into `tumult-intelligence` as `llm` + `sql_guard` modules |
+| `kronika-demo` binary | deleted — the demo is `docker/docker-compose.kronika.yml` |
+| `web/` (SvelteKit SPA) | `web/` (unchanged location) |
+| imported ADRs 0001–0005 | renumbered ADR-006…ADR-010 |
+| `~/.kronika/kronika.duckdb` | `~/.tumult/lake.duckdb` |
+
+Migration of pre-merge databases: `tumult store import-legacy
+[--analytics-db <path>] [--kronika-db <path>]` merges an old
+tumult-analytics store and/or a standalone kronika lake into the unified
+store (idempotent natural-key dedupe; older schemas import via column
+intersection — see the [CLI reference](../guides/cli-reference.md)). Store
+path resolution: `TUMULT_LAKE_PATH` is canonical; `TUMULT_ANALYTICS_PATH`
+and `KRONIKA_DB` remain as deprecated aliases for one release. The
+`KRONIKA_*` daemon environment variables (`KRONIKA_HTTP_ADDR`,
+`KRONIKA_INGEST_TOKEN`, `KRONIKA_LAKE_DIR`, …) keep their names — they are
+the daemon's own configuration surface, not a store-location concern. The
+old `kronika-legacy/` import directory and the
+`docker/kronika-legacy-staging/` scaffold no longer exist; history
+preserves them.
 
 ## Component diagram
 
 ```
                         ┌────────────────────────────────────────────┐
-                        │                 kronikad                   │
+                        │                  tumultd                   │
                         │                                            │
- tumult ──OTLP/gRPC──▶  │  kronika-ingest (grpc :4317)               │
- (TUMULT_OTEL_ENABLED, │  kronika-ingest (http :4318, /v1/*,         │
-  OTEL_EXPORTER_       │                          /healthz)         │
+ tumult ──OTLP/gRPC──▶  │  tumult-ingest (grpc :4317)                │
+ (TUMULT_OTEL_ENABLED, │  tumult-ingest (http :4318, /v1/*,          │
+  OTEL_EXPORTER_       │                          /healthz)          │
   OTLP_ENDPOINT)       │        │ decode prost (opentelemetry-proto) │
                        │        ▼                                    │
- smedja ──OTLP/HTTP──▶ │  kronika-otel — pure translation:           │
- (SMEDJA_OTLP_         │  promote resilience.* + service.name to      │
-  ENDPOINT, /v1/*)     │  columns, rest into MAP attrs                │
-                       │        │ row batches                         │
+ smedja ──OTLP/HTTP──▶ │  tumult-otlp — pure translation:            │
+ (SMEDJA_OTLP_         │  promote resilience.* + service.name to     │
+  ENDPOINT, /v1/*)     │  columns, rest into MAP attrs               │
+                       │        │ row batches                        │
  files (CSV / tumult   │  ManualImporter ─────────────┐              │
-  journal JSON) ──────▶│  (kronikad import <file>)    │              │
+  journal JSON) ──────▶│  (tumultd import <file>)     │              │
                        │        ▼                     ▼              │
                         │  single bounded mpsc channel (backpressure) │
-                        │    ▲ Batch::Exec — manual-evidence lifecycle│
-                        │    │ closures from kronika-api ride the same│
-                        │    │ channel (the API opens no write conn)  │
+                        │    ▲ Batch::Exec — manual-evidence, run-    │
+                        │    │ queue and approval closures from       │
+                        │    │ tumult-api ride the same channel       │
+                        │    │ (the API opens no write conn)          │
                         │        ▼                                    │
-                        │  kronika-store WRITER (single DuckDB conn)  │
+                        │  tumult-lake WRITER (single DuckDB conn)    │
                         └────────┬───────────────────────────────────┘
                                  │ exclusive write lock
                                  ▼
                     ┌─────────────────────────┐
-                    │  ~/.kronika/kronika.duckdb  (dir mode 0o700)  │
+                    │  ~/.tumult/lake.duckdb  (dir mode 0o700)      │
                     │  spans · logs · metric_sums/gauges/histograms │
                     │  import_batches · view: experiment_runs       │
                     │  manual_experiments · manual_experiment_audit │
-                    │  evidence_attachments (schema v2)             │
+                    │  evidence_attachments · users/sessions/tokens │
+                    │  run_registry · runs · run_audit ·            │
+                    │  approval_requests · approval_decisions (v7)  │
                     └────────┬─────────────────┘
               read-only conns (AccessMode::ReadOnly, many, coexist)
               ┌──────────────┼───────────────────────────┐
               ▼              ▼                           ▼
-      kronika-metrics   kronika-report            kronika-api
-      YAML semantic     digest renderer           read-only JSON API
-      layer → SQL       (ad-hoc + scheduled)      (/api/*, spawn_blocking)
+      tumult-metrics    tumult-report             tumult-api
+      YAML semantic     digest renderer           JSON API (/api/*,
+      layer → SQL       (ad-hoc + scheduled)      spawn_blocking)
               │              │                    │  overview · series ·
-              │   kronika-docs                    │  experiments · logs ·
-              │   compliance reports              │  traces · metrics ·
-              │   (R1/R2/R3 → PDF +               ▼  topology · ask  ▲
+              │   tumult-compliance               │  experiments · runs ·
+              │   compliance reports              │  approvals · logs ·
+              │   (R1/R2/R3 → PDF +               ▼  traces · metrics ·
               │    HTML, scores)              web/ SPA (rust-embed, same
               │         │                     HTTP port) ──┘
-              ▼         ▼                        ▲  POST /api/ask ──▶ kronika-ai
-         <db dir>/reports/  (+ reports/v2/       │   Llm → sql_guard → read-only
-         report_<epoch>.html  KRK-*.pdf/.html/.json)  execution (guarded, LIMIT)
-         (store closed)                          │
+              ▼         ▼                        ▲  POST /api/ask ──▶ tumult-
+         <db dir>/reports/  (+ reports/v2/       │  intelligence::llm →
+         report_<epoch>.html  KRK-*.pdf/.html/.json)  sql_guard → read-only
+         (store closed)                          │  execution (guarded, LIMIT)
 ```
 
 ## Data flow
 
 1. **OTLP in** — gRPC (tonic) and HTTP (axum, `application/x-protobuf`)
    servers receive `Export{Trace,Metrics,Logs}ServiceRequest`s.
-2. **Normalize** — `kronika-otel` converts proto values to plain row structs,
+2. **Normalize** — `tumult-otlp` converts proto values to plain row structs,
    promoting the tumult metadata standard's (`resilience.*` v2.0)
    low-cardinality keys and `service.name`/`service.version` into wide-table
    columns; dynamic keys stay in `MAP(VARCHAR, VARCHAR)` columns.
@@ -69,30 +111,32 @@ execution) and smedja.
    backpressure) to the single writer connection.
 4. **Semantic layer** — `metrics/*.yaml` definitions compile to strictly
    validated SQL (`[a-z0-9_.]` identifiers only → injection-impossible).
-5. **UI / reports** — `kronika-api` answers the UI's queries through fresh
+5. **UI / reports** — `tumult-api` answers the UI's queries through fresh
    read-only connections (never touching the write lock); the SPA itself is
-   rust-embedded into kronikad and served from the same HTTP port. Beyond
+   rust-embedded into tumultd and served from the same HTTP port. Beyond
    Overview/Experiments it backs the explorer pages: `/api/logs[ /volume]`
    (raw log search + severity volume), `/api/traces[ /durations, /{id}]`
    (spans grouped into traces, duration percentiles, per-trace detail),
    `/api/metrics/catalog` + `/api/metrics/query` (raw sums/gauges/histograms
    with optional attribute grouping; histogram p95 interpolated in Rust) and
-   `/api/topology` (service/target call graph). Ad-hoc
-   digests come from `kronikad report` / `GET /report`; with
+   `/api/topology` (service/target call graph). Mutating routes exist but
+   stay read-only in spirit: they ride the single-writer channel (run
+   control below, manual-evidence lifecycle, approval decisions). Ad-hoc
+   digests come from `tumultd report` / `GET /report`; with
    `KRONIKA_REPORT_INTERVAL` set, the daemon additionally renders a digest
    per interval into `<db dir>/reports/` (surfaced by `/api/reports`). When
    an LLM is reachable, digests (scheduled and `POST /api/reports/generate`)
-   gain a narrative section via `kronika_report::narrative`, which keeps
+   gain a narrative section via `tumult_report::narrative`, which keeps
    only sentences whose numbers are grounded in the report's own facts.
 
-The docker demo (`docker/docker-compose.demo.yml`) is the **reference
-ingestion flow** end to end: the pinned tumult release binary runs the
-experiment suite in `demo/experiments/` and emits genuine OTLP/gRPC
-(traces, metrics, logs) into kronikad, which normalizes, stores and renders
-it into the HTML reports under `demo-out/`. Whatever tumult emits on the
-wire is exactly what Krönika's semantic layer computes over.
+The docker demo (`docker/docker-compose.kronika.yml`) is the **reference
+ingestion flow** end to end: a pinned tumult binary runs the
+experiment suite and emits genuine OTLP/gRPC (traces, metrics, logs) into
+tumultd, which normalizes, stores and renders it into the HTML reports
+under `demo-out/`. Whatever tumult emits on the wire is exactly what
+Krönika's semantic layer computes over.
 
-## Single-writer model (mirrors tumult-lake)
+## Single-writer model (tumult-lake)
 
 DuckDB is single-writer per file; a read-write open holds an exclusive lock.
 
@@ -102,7 +146,7 @@ DuckDB is single-writer per file; a read-write open holds an exclusive lock.
 - **Many readers** — `AccessMode::ReadOnly` connections do not take the write
   lock, so reports and the UI API coexist with the writer *inside the daemon
   process*. Cross-process, DuckDB permits only one process with the file open
-  read-write: `kronikad report` therefore requires the daemon to be stopped,
+  read-write: `tumultd report` therefore requires the daemon to be stopped,
   and the live `GET /report?metric=<name>` endpoint exists precisely so
   reports can be produced while the daemon holds the store.
 - **At rest** — DuckDB has no encryption at rest; the store directory is
@@ -222,7 +266,7 @@ immutable copy exists in the lake.**
 Caveat (event-time watermarking): rows arriving with `ts_ns` at or below
 the current watermark are invisible to incremental export — irrelevant for
 real-time telemetry; re-export from scratch after hand-backfills. See
-ADR 0005.
+ADR-010.
 
 ## Schema v2
 
@@ -237,7 +281,7 @@ verified/rejected lifecycle + provenance + `content_hash`),
 and `evidence_attachments` (external URIs only). The org hierarchy is not a
 table — it is `org.yaml` (`KRONIKA_ORG_FILE`, default `<db dir>/org.yaml`)
 loaded at daemon start; org rollups are computed at read time from the
-latest-run scoring SQL (see ADR 0004).
+latest-run scoring SQL (see ADR-009).
 
 ## Roadmap: external tooling on the lake
 

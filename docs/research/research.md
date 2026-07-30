@@ -1,5 +1,12 @@
 # Research findings — Krönika
 
+> **Historical context.** This is an import-time snapshot of the research
+> behind the standalone kronika project, preserved for the reasoning, not
+> the naming. Crate names below (`kronika-metrics`, `kronika-report`,
+> `kronika-ai`, `kronika-ingest`, …) refer to the pre-merge project; the
+> merged reality maps them to `tumult-*` crates — see
+> [../architecture/kronika-architecture.md](../architecture/kronika-architecture.md#merge-mapping-and-migration-kronika--tumult).
+
 Distilled research behind the product and architecture decisions. Companion
 ADRs: [../adr/ADR-006-kronika-stack.md](../adr/ADR-006-kronika-stack.md), [../adr/ADR-007-ai-layer.md](../adr/ADR-007-ai-layer.md),
 [../adr/ADR-008-typst-report-pipeline.md](../adr/ADR-008-typst-report-pipeline.md).
