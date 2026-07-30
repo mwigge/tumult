@@ -28,19 +28,30 @@ pub mod run_state {
     pub const ABORTED: &str = "aborted";
     pub const ORPHANED: &str = "orphaned";
     pub const ROLLBACK_PENDING: &str = "rollback_pending";
+    /// T10: gated runs wait here until the approval quorum dispatches them.
+    pub const PENDING_APPROVAL: &str = "pending_approval";
+    /// T10 terminal: an approver rejected the request.
+    pub const REJECTED: &str = "rejected";
+    /// T10 terminal: the approval TTL lapsed before dispatch.
+    pub const EXPIRED: &str = "expired";
 
     /// States in which a run from a previous process lifetime is an orphan:
     /// the daemon owning it is gone (only one daemon owns the store).
+    /// `pending_approval` is deliberately NOT active — no execution is in
+    /// flight, nothing to roll back, and the request survives the restart
+    /// (an approval after restart dispatches from the stored request row).
     pub const ACTIVE: [&str; 4] = [QUEUED, VALIDATING, RUNNING, STOPPING];
 
     /// Terminal states (a run in one of these can never transition again).
-    pub const TERMINAL: [&str; 6] = [
+    pub const TERMINAL: [&str; 8] = [
         PASSED,
         DEVIATED,
         FAILED,
         ABORTED,
         ORPHANED,
         ROLLBACK_PENDING,
+        REJECTED,
+        EXPIRED,
     ];
 }
 
@@ -209,7 +220,10 @@ impl Writer {
 
     /// Append one event to a run's audit trail. `actor` is the authenticated
     /// session identity behind the event (schema v6); `None` for system
-    /// events.
+    /// events. Every event is a link in the run's hash chain (schema v7):
+    /// `new_hash` covers the event content plus the previous link's hash, so
+    /// rewriting history breaks the chain — see
+    /// [`Reader::verify_run_audit_chain`](crate::Reader::verify_run_audit_chain).
     ///
     /// # Errors
     /// Returns an error if the row fails to insert.
@@ -220,9 +234,28 @@ impl Writer {
         detail: Option<&str>,
         actor: Option<&str>,
     ) -> Result<(), StoreError> {
+        let at_ns = now_ns();
+        let prev_hash: Option<String> = self
+            .conn
+            .prepare(&format!(
+                "SELECT new_hash FROM run_audit WHERE run_id = '{}' \
+                 ORDER BY at_ns DESC, rowid DESC LIMIT 1",
+                run_id.replace('\'', "''")
+            ))
+            .and_then(|mut stmt| stmt.query_row(params![], |row| row.get(0)))
+            .ok();
+        let new_hash = crate::approvals::audit_chain_hash(
+            run_id,
+            at_ns,
+            event,
+            detail,
+            actor,
+            prev_hash.as_deref(),
+        );
         self.conn.execute(
-            "INSERT INTO run_audit (run_id, at_ns, event, detail, actor) VALUES (?,?,?,?,?)",
-            params![run_id, now_ns(), event, detail, actor],
+            "INSERT INTO run_audit (run_id, at_ns, event, detail, actor, prev_hash, new_hash) \
+             VALUES (?,?,?,?,?,?,?)",
+            params![run_id, at_ns, event, detail, actor, prev_hash, new_hash],
         )?;
         Ok(())
     }

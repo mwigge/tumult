@@ -38,6 +38,8 @@
 //!   this is what `tumult-clickhouse` does.
 
 #[cfg(feature = "duckdb")]
+pub mod approvals;
+#[cfg(feature = "duckdb")]
 pub mod arrow_convert;
 #[cfg(feature = "duckdb")]
 pub mod auth;
@@ -68,6 +70,8 @@ use std::time::Duration;
 #[cfg(feature = "duckdb")]
 use duckdb::{params, AccessMode, Config, Connection};
 
+#[cfg(feature = "duckdb")]
+pub use approvals::{approval_pin, ApprovalDecision, ApprovalRequest, CanonicalPin};
 #[cfg(feature = "duckdb")]
 pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};

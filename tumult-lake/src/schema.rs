@@ -29,8 +29,13 @@
 //! `user_env_scopes`) — additive and index-free under the same rule as the
 //! v5 run tables — plus the `run_audit.actor` column carrying the session
 //! identity on run audit events (NULL for system events).
+//!
+//! v7 adds the approval tables (`approval_requests`, `approval_decisions`)
+//! — same additive index-free rule — plus the `run_audit` hash chain
+//! (`prev_hash` / `new_hash`), making the run trail tamper-evident like
+//! `manual_experiment_audit`. See `approvals.rs`.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 6;
+pub const CURRENT_SCHEMA_VERSION: i64 = 7;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -341,6 +346,43 @@ CREATE TABLE IF NOT EXISTS run_audit (
 -- (NULL for system events). Additive and idempotent, like the v1.1
 -- metric_histograms ALTERs above.
 ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS actor VARCHAR;
+
+-- v7: approval workflows (T10, ADR-012). `approval_requests` pins one run
+-- to exactly one canonical content hash (definition + params + env +
+-- target) with a TTL and a quorum; `approval_decisions` holds one row per
+-- approver decision (T3's quorum 2 = two approved rows from distinct
+-- approvers). T0 runs never gate and appear in neither table. Same
+-- index-free rule as the v5 run tables: sequential scans are free at this
+-- scale; one-decision-per-approver and approver≠requester are enforced in
+-- code (`Writer::insert_approval_decision`).
+CREATE TABLE IF NOT EXISTS approval_requests (
+    run_id VARCHAR NOT NULL,
+    tier VARCHAR NOT NULL,              -- T1|T2|T3
+    pin_hash VARCHAR NOT NULL,          -- sha256 hex of the canonical pin
+    env VARCHAR NOT NULL,
+    target VARCHAR,
+    quorum_required INTEGER NOT NULL,
+    requested_by VARCHAR NOT NULL,
+    requested_at_ns BIGINT NOT NULL,
+    expires_at_ns BIGINT NOT NULL,
+    consumed_at_ns BIGINT,              -- single-use: stamped at dispatch
+    break_glass BOOLEAN NOT NULL DEFAULT FALSE,
+    break_glass_by VARCHAR,
+    break_glass_justification VARCHAR
+);
+CREATE TABLE IF NOT EXISTS approval_decisions (
+    run_id VARCHAR NOT NULL,
+    approver VARCHAR NOT NULL,
+    decision VARCHAR NOT NULL,          -- approved|rejected
+    note VARCHAR,
+    decided_at_ns BIGINT NOT NULL
+);
+-- v7: the run audit hash chain. Every new event's `new_hash` covers the
+-- event content plus the previous link's hash (NULL for a run's first
+-- link); pre-v7 rows keep NULL hashes and are treated as legacy by
+-- `Reader::verify_run_audit_chain`.
+ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS prev_hash VARCHAR;
+ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS new_hash VARCHAR;
 
 -- v6: auth tables. Same index-free rule as the v5 run tables: a daemon
 -- killed mid-write can return with DuckDB's ART indexes desynced from the
