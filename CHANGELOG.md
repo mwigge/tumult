@@ -11,6 +11,28 @@ workspace (daemon, OTLP ingestion, DuckDB lake, compliance reports, query API
 and SvelteKit UI) now lives here as first-class tumult crates.
 
 ### Added
+- **Daemon-run experiments**: tumultd now executes experiments itself, not
+  just observes them. `POST /api/runs/validate` runs the CLI's exact
+  parse/resolve/validate pipeline as a service and registers the definition
+  (SHA-256 content-hash dedup, id `reg-<12 hex>`); `POST /api/runs/dry-run`
+  returns the resolved execution plan without executing; `POST /api/runs`
+  enqueues onto a bounded in-process queue (`TUMULTD_RUN_CONCURRENCY`,
+  `TUMULTD_RUN_QUEUE_DEPTH`; 429 on overload — never silently queued);
+  `POST /api/runs/{id}/stop` e-stops: a running experiment's cancellation
+  token fires (the runner halts before the next activity and rollbacks
+  unwind the fault), a still-queued run is cancelled before it starts;
+  `GET /api/runs[/{id}]` expose run state plus the full audit trail. Every
+  transition persists through the single-writer channel into schema v4's
+  `run_registry` / `runs` / `run_audit`. At startup the daemon reconciles
+  runs left active by a previous process lifetime (crash, `kill -9`):
+  marked `orphaned`, rollbacks attempted via `run_orphan_rollback`, the
+  outcome recorded in the audit trail — a killed daemon no longer leaves
+  faults applied. A telemetry loopback exports the daemon's own spans to
+  its own gRPC ingest, so daemon-run experiments land in the store and UI
+  exactly like CLI runs (ADR-011).
+- **tumult-exec**: new crate — the CLI's provider executor
+  (`ProviderExecutor` + the native plugin registry) extracted so the daemon
+  and the CLI share one execution path.
 - **Daemon-first journal ingest**: with `TUMULT_DAEMON_URL` set, `tumult run`
   POSTs the journal to the daemon's new `POST /api/import/journal` endpoint,
   which rides the single-writer channel (`Writer::ingest_journal`) instead of
@@ -63,6 +85,8 @@ and SvelteKit UI) now lives here as first-class tumult crates.
 - Clippy pedantic stays enabled workspace-wide; the imported chronicle
   crates carry a documented, scoped `#![allow(clippy::pedantic)]` at their
   crate roots (183 pre-existing warnings, intentionally not churned).
+- Store schema is now v4: v3 unified telemetry + analytics in one file;
+  v4 adds the daemon-run tables (`run_registry`, `runs`, `run_audit`).
 
 ## [2.18.0] — 2026-07-28
 

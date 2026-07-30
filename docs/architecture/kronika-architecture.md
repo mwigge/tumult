@@ -108,6 +108,27 @@ DuckDB is single-writer per file; a read-write open holds an exclusive lock.
 - **At rest** — DuckDB has no encryption at rest; the store directory is
   created `0o700` and should sit on an encrypted volume for sensitive data.
 
+## Daemon-run experiments (schema v4)
+
+The daemon executes experiments itself, not only ingests their telemetry
+(ADR-011). `POST /api/runs/validate` applies the CLI's exact
+parse/resolve/validate pipeline (`tumult_ingest::prepare_run`) and
+registers the definition content-hash-deduped in `run_registry`;
+`POST /api/runs/dry-run` previews the resolved plan; `POST /api/runs`
+enqueues onto a bounded in-process queue (`TUMULTD_RUN_CONCURRENCY` /
+`TUMULTD_RUN_QUEUE_DEPTH`, 429 on overload); `POST /api/runs/{id}/stop`
+cancels the runner's e-stop token mid-method (rollbacks unwind the fault)
+or cancels before start; `GET /api/runs[/{id}]` read state and audit
+trail. Execution goes through `tumult-exec`'s `ProviderExecutor` — the
+same crate the CLI uses — on a fixed worker pool, with every state
+transition persisted through the single-writer channel (`runs` +
+`run_audit`). At startup, runs left active by a previous process lifetime
+are reconciled: marked `orphaned`, rollbacks attempted
+(`run_orphan_rollback`), outcome recorded (`rollback_pending` flags the
+failures for an operator). A telemetry loopback points the daemon's own
+OTel exporter at its own gRPC ingest, so daemon-run experiments land in
+the same tables and UI as CLI runs.
+
 ## Parquet lake + retention (durability story)
 
 Two tiers, one guarantee: **nothing leaves the hot store before an

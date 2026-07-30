@@ -89,6 +89,8 @@ By default, `tumult run` writes the journal file **and** ingests experiment data
 
 When `TUMULT_DAEMON_URL` is set (e.g. `http://localhost:4318`), the journal is POSTed to the daemon's `/api/import/journal` instead, so the write rides the daemon's single-writer channel rather than racing its store lock. If the daemon is unreachable (no HTTP response), the CLI falls back to the direct store write; any HTTP answer — including an error — is treated as final.
 
+The daemon can also execute experiments itself via its run-control API — `POST /api/runs/validate` (register a definition), `POST /api/runs/dry-run` (resolved plan preview), `POST /api/runs` (enqueue, bounded queue with 429 backpressure), `POST /api/runs/{id}/stop` (e-stop with rollbacks), `GET /api/runs[/{id}]` (state + audit trail). See ADR-011.
+
 ## tumult validate
 
 Validate experiment syntax, structure, and plugin references.
