@@ -263,7 +263,7 @@ async fn spawn_server() -> TestServer {
     let pass_log_ts = seed(&db_path);
 
     let metrics_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../metrics")
+        .join("../metrics")
         .canonicalize()
         .unwrap();
     // An LLM client pointing at a closed port: connection refused, which the
