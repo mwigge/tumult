@@ -29,7 +29,7 @@ mod phases;
 mod sampler;
 mod telemetry;
 
-pub use experiment::{run_experiment, run_experiment_with_sampling};
+pub use experiment::{run_experiment, run_experiment_with_sampling, run_orphan_rollback};
 pub use gameday::{run_gameday, run_gameday_with_wiring, ExperimentWiring};
 pub use telemetry::epoch_nanos_now;
 
