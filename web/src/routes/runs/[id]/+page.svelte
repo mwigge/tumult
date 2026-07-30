@@ -45,12 +45,16 @@
   });
 
   // Poll the run (and, once linked, its experiment telemetry) every 2s while
-  // the state is active. Terminal — and any unknown non-active — states stop
-  // the loop; the cleanup clears the pending tick, so no intervals leak.
+  // the state is active. Telemetry lags the run record — the batch span
+  // exporter's final flush lands after the state flips — so a terminal run
+  // whose spans have not arrived yet keeps polling for a short grace window
+  // before the loop stops. The cleanup clears the pending tick, so no
+  // intervals leak.
   $effect(() => {
     const runId = id;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let lateTicks = 0;
     detail = null;
     telemetry = null;
     error = null;
@@ -69,7 +73,16 @@
             // Telemetry lags the run record; keep the previous snapshot.
           }
         }
-        if (!cancelled && ACTIVE_RUN_STATES.has(d.run.state)) {
+        if (cancelled) return;
+        if (ACTIVE_RUN_STATES.has(d.run.state)) {
+          timer = setTimeout(poll, 2000);
+        } else if (
+          d.run.experiment_id &&
+          (!telemetry || telemetry.spans.length === 0) &&
+          lateTicks < 10
+        ) {
+          // Terminal but spans not ingested yet: bounded grace polling.
+          lateTicks += 1;
           timer = setTimeout(poll, 2000);
         }
       } catch (e) {
