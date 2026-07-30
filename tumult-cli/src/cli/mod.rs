@@ -720,10 +720,10 @@ pub(crate) enum StoreAction {
     /// store. Idempotent — already-imported rows are skipped by natural key.
     ImportLegacy {
         /// Path to the legacy `tumult-analytics` store (e.g.
-        /// ~/.tumult/analytics.duckdb or $TUMULT_ANALYTICS_PATH)
+        /// ~/.tumult/analytics.duckdb or `TUMULT_ANALYTICS_PATH`)
         #[arg(long)]
         analytics_db: Option<PathBuf>,
-        /// Path to the legacy kronika store ($KRONIKA_DB)
+        /// Path to the legacy kronika store (`KRONIKA_DB`)
         #[arg(long)]
         kronika_db: Option<PathBuf>,
         /// Target store path (default: `TUMULT_LAKE_PATH` resolution)
