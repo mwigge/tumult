@@ -40,7 +40,7 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     validate_experiment(&experiment)?;
 
     // SRE-10: Warn when a native activity references an unknown plugin or function.
-    let native_registry = super::exec::native_registry();
+    let native_registry = tumult_exec::native_registry();
     // Same check for script providers, resolved through the discovery search
     // paths; discovery problems are surfaced so a skipped path or malformed
     // manifest does not silently shrink the available plugin set.
@@ -201,7 +201,7 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     // Native plugins come from the same composition-root registry the
     // experiment runner dispatches through, so discovery and execution
     // can never disagree.
-    let output = render_discover(plugin_filter, &registry, super::exec::native_registry())?;
+    let output = render_discover(plugin_filter, &registry, tumult_exec::native_registry())?;
     print!("{output}");
     Ok(())
 }

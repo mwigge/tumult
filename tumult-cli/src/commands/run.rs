@@ -12,7 +12,8 @@ use tumult_core::journal::write_journal;
 use tumult_core::runner::{run_experiment, RunConfig};
 use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
-use super::exec::ProviderExecutor;
+use tumult_exec::ProviderExecutor;
+
 use super::load::K6LoadExecutor;
 use super::print_dry_run;
 

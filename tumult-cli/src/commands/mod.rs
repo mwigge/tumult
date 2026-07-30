@@ -8,7 +8,6 @@ mod analyze;
 mod autopilot;
 mod chaosgraph;
 mod compliance;
-mod exec;
 mod gameday;
 mod init;
 mod load;
@@ -23,7 +22,6 @@ mod trend;
 mod types;
 mod validate;
 
-pub use exec::ProviderExecutor;
 pub use gameday::{cmd_gameday_analyze, cmd_gameday_create, cmd_gameday_run};
 pub use recommend::{cmd_agents, cmd_recommend, AgentArgs};
 pub use report::cmd_report;
@@ -32,6 +30,7 @@ pub use store::{
     cmd_import, cmd_store_backup, cmd_store_import_legacy, cmd_store_migrate, cmd_store_path,
     cmd_store_purge, cmd_store_stats,
 };
+pub use tumult_exec::ProviderExecutor;
 
 // Re-export the extracted command surface so the crate's public API and every
 // existing call site (including sibling submodules that reference `super::…`)
@@ -68,7 +67,7 @@ pub(crate) use init::print_dry_run;
 pub(crate) use validate::validate_path_no_symlink;
 
 #[cfg(test)]
-pub(crate) use exec::native_registry;
+pub(crate) use tumult_exec::native_registry;
 #[cfg(test)]
 pub(crate) use validate::render_discover;
 

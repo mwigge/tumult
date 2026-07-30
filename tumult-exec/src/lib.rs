@@ -1,3 +1,13 @@
+//! Tumult Exec — the provider-dispatch activity executor shared by the
+//! tumult CLI and `tumultd`.
+//!
+//! [`ProviderExecutor`] implements [`tumult_core::runner::ActivityExecutor`]
+//! by dispatching each activity to its declared provider: external processes
+//! (`process`), filesystem-discovered script plugins (`script`), and
+//! in-process Rust plugins (`native`). The native composition root built by
+//! [`native_registry`] registers every native provider crate, so both the CLI
+//! and the daemon execute experiments with the identical plugin set.
+
 use std::collections::HashMap;
 
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
@@ -11,7 +21,7 @@ use native::execute_native;
 use process::execute_process;
 use script::execute_script_provider;
 
-pub(crate) use native::registry as native_registry;
+pub use native::registry as native_registry;
 
 // ── Provider-based executor ───────────────────────────────────
 

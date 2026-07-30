@@ -16,16 +16,13 @@ path = "src/main.rs"
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
+tumult-exec = { path = "../tumult-exec" }
 tumult-lake = { path = "../tumult-lake" }
 tumult-clickhouse = { path = "../tumult-clickhouse" }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-authoring = { path = "../tumult-authoring" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-kubernetes = { path = "../tumult-kubernetes" }
-tumult-ssh = { path = "../tumult-ssh" }
-tumult-net = { path = "../tumult-net" }
-tumult-cloud = { path = "../tumult-cloud" }
-tumult-windows = { path = "../tumult-windows" }
 tumult-agent-cli = { path = "../tumult-agent-cli" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-intelligence = { path = "../tumult-intelligence" }
@@ -42,7 +39,6 @@ reqwest = { workspace = true }
 opentelemetry = { workspace = true }
 tokio-util = { workspace = true }
 indexmap = { workspace = true }
-libc = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }

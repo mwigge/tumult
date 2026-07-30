@@ -4,6 +4,8 @@ members = [
     "tumult-cli",
     "tumult-core",
     "tumult-plugin",
+    # Shared provider executor (used by tumult-cli and tumultd)
+    "tumult-exec",
     "tumult-authoring",
     "tumult-otel",
     "tumult-baseline",

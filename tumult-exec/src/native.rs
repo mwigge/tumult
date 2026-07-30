@@ -4,15 +4,15 @@ use tumult_core::runner::ActivityOutcome;
 use tumult_core::sync_bridge::sync_await;
 use tumult_plugin::native::NativeExecutorRegistry;
 
-/// The CLI's composition root for native plugin dispatch and discovery.
+/// The shared composition root for native plugin dispatch and discovery.
 ///
 /// Each native crate implements [`tumult_plugin::native::NativeExecutor`]
-/// for its own functions; registering the trait object here is the only CLI
+/// for its own functions; registering the trait object here is the only
 /// change needed to expose a new plugin. Lookup and function validation are
 /// handled by the registry, which returns typed errors listing what is
 /// available. `tumult discover` reads the same registry, so registered
 /// plugins are discoverable automatically.
-pub(crate) fn registry() -> &'static NativeExecutorRegistry {
+pub fn registry() -> &'static NativeExecutorRegistry {
     static REGISTRY: OnceLock<NativeExecutorRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let mut registry = NativeExecutorRegistry::new();

@@ -7534,7 +7534,6 @@ dependencies = [
  "chrono",
  "clap",
  "indexmap",
- "libc",
  "opentelemetry",
  "reqwest 0.12.28",
  "serde_json",
@@ -7547,18 +7546,15 @@ dependencies = [
  "tumult-agentic",
  "tumult-authoring",
  "tumult-clickhouse",
- "tumult-cloud",
  "tumult-core",
+ "tumult-exec",
  "tumult-intelligence",
  "tumult-kubernetes",
  "tumult-lake",
  "tumult-mcp",
- "tumult-net",
  "tumult-otel",
  "tumult-plugin",
- "tumult-ssh",
  "tumult-tui",
- "tumult-windows",
 ]
 
 [[package]]
@@ -7643,6 +7639,22 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "tumult-exec"
+version = "2.18.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "tokio",
+ "tumult-cloud",
+ "tumult-core",
+ "tumult-kubernetes",
+ "tumult-net",
+ "tumult-plugin",
+ "tumult-ssh",
+ "tumult-windows",
 ]
 
 [[package]]
