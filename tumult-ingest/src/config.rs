@@ -65,10 +65,11 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// One test for the whole env surface: env vars are process-global, so
+    /// parallel tests setting/removing them race. Keep every `set_var` /
+    /// `remove_var` in this single sequential test.
     #[test]
-    fn defaults_apply() {
-        // Env isolation: only safe because the test binary is single-purpose
-        // here; assert on a Config built from explicit values instead.
+    fn db_path_resolution_order() {
         std::env::remove_var("KRONIKA_OTLP_GRPC_ADDR");
         std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
         std::env::remove_var("TUMULT_LAKE_PATH");
@@ -77,10 +78,7 @@ mod tests {
         assert_eq!(cfg.otlp_grpc_addr.port(), 4317);
         assert_eq!(cfg.otlp_http_addr.port(), 4318);
         assert!(cfg.db_path.ends_with("lake.duckdb"));
-    }
 
-    #[test]
-    fn tumult_lake_path_wins_over_kronika_db_alias() {
         std::env::set_var("TUMULT_LAKE_PATH", "/tmp/unified.duckdb");
         std::env::set_var("KRONIKA_DB", "/tmp/legacy.duckdb");
         let cfg = Config::from_env().unwrap();
