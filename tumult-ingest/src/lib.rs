@@ -17,6 +17,7 @@
 //! * **Run queue** ([`runs`]): bounded in-process experiment execution for
 //!   tumultd, with e-stop tokens and startup orphan reconciliation.
 
+pub mod approvals;
 pub mod config;
 mod error;
 pub mod grpc;

@@ -7700,6 +7700,7 @@ dependencies = [
  "tonic",
  "tracing",
  "tumult-auth",
+ "tumult-autopilot",
  "tumult-core",
  "tumult-lake",
  "tumult-otlp",

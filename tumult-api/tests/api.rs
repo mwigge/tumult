@@ -353,6 +353,7 @@ async fn spawn_server() -> TestServer {
         tumult_ingest::RunQueueConfig {
             concurrency: 1,
             queue_depth: 4,
+            sweep_interval: std::time::Duration::from_secs(3600),
         },
         factory,
     );

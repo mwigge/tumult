@@ -253,6 +253,10 @@ pub async fn create(
         registry_id: def.id,
         definition_toon: def.definition_toon,
         vars: req.vars,
+        // T10 wires env/target through the request body and classifies the
+        // tier here; until then the defaults keep every run T0-eligible.
+        env: "dev".into(),
+        target: None,
     };
     match queue.enqueue(request, principal.actor()).await {
         Ok(run_id) => Ok((

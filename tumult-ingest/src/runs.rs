@@ -15,7 +15,7 @@
 //! attempted via [`tumult_core::runner::run_orphan_rollback`], and the
 //! outcome is recorded in the run audit trail.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -23,18 +23,23 @@ use tokio::sync::{mpsc, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, RunConfig};
 use tumult_core::types::{Experiment, ExperimentStatus, Journal};
-use tumult_lake::{rollback_status, run_state, NewRun, Store, Writer};
+use tumult_lake::{
+    approval_pin, rollback_status, run_state, ApprovalRequest, CanonicalPin, NewRun, Store, Writer,
+};
 
+use crate::approvals::Tier;
 use crate::{Batch, IngestWriter};
 
 /// Queue sizing. `TUMULTD_RUN_CONCURRENCY` (default 2) bounds concurrently
 /// executing experiments; `TUMULTD_RUN_QUEUE_DEPTH` (default 32) bounds
 /// runs waiting for a worker — enqueue beyond that is rejected (429 at the
-/// API), never silently queued.
+/// API), never silently queued. `TUMULTD_APPROVAL_SWEEP_S` (default 60) is
+/// the approval-TTL sweeper interval (T10).
 #[derive(Clone, Copy, Debug)]
 pub struct RunQueueConfig {
     pub concurrency: usize,
     pub queue_depth: usize,
+    pub sweep_interval: std::time::Duration,
 }
 
 impl Default for RunQueueConfig {
@@ -42,13 +47,15 @@ impl Default for RunQueueConfig {
         Self {
             concurrency: 2,
             queue_depth: 32,
+            sweep_interval: std::time::Duration::from_secs(60),
         }
     }
 }
 
 impl RunQueueConfig {
-    /// From `TUMULTD_RUN_CONCURRENCY` / `TUMULTD_RUN_QUEUE_DEPTH`, falling
-    /// back to defaults on unset/invalid values.
+    /// From `TUMULTD_RUN_CONCURRENCY` / `TUMULTD_RUN_QUEUE_DEPTH` /
+    /// `TUMULTD_APPROVAL_SWEEP_S`, falling back to defaults on unset/invalid
+    /// values.
     #[must_use]
     pub fn from_env() -> Self {
         let default = Self::default();
@@ -62,6 +69,10 @@ impl RunQueueConfig {
         Self {
             concurrency: parse("TUMULTD_RUN_CONCURRENCY", default.concurrency),
             queue_depth: parse("TUMULTD_RUN_QUEUE_DEPTH", default.queue_depth),
+            sweep_interval: std::time::Duration::from_secs(parse(
+                "TUMULTD_APPROVAL_SWEEP_S",
+                default.sweep_interval.as_secs().max(1) as usize,
+            ) as u64),
         }
     }
 }
@@ -73,11 +84,19 @@ pub type ExecutorFactory =
     Arc<dyn Fn(HashMap<String, String>) -> Arc<dyn ActivityExecutor> + Send + Sync>;
 
 /// A run accepted by `POST /api/runs`: the validated definition plus the
-/// template variables to resolve.
+/// template variables to resolve. `env` and `target` are the
+/// approval-relevant execution context — both are covered by the canonical
+/// pin (T10, ADR-012).
 pub struct RunRequest {
     pub registry_id: String,
     pub definition_toon: String,
     pub vars: HashMap<String, String>,
+    /// Target environment name (tier-classified by
+    /// [`crate::approvals::env_class`]); `"dev"` when the caller omits it.
+    pub env: String,
+    /// Optional target selector (service/host/…), pinning what the fault
+    /// aims at.
+    pub target: Option<String>,
 }
 
 /// Why an enqueue was rejected.
@@ -98,6 +117,20 @@ pub enum StopError {
     Store(String),
 }
 
+/// Why dispatching an approved run failed.
+#[derive(Debug)]
+pub enum DispatchError {
+    /// The run does not exist or is not waiting for approval.
+    NotPending,
+    /// Waiting queue is at capacity — retry before the approval TTL lapses.
+    Full,
+    /// The approval itself does not clear dispatch (reason included):
+    /// rejected, quorum short, consumed, or expired.
+    Approval(String),
+    /// Reading or writing the store failed.
+    Store(String),
+}
+
 struct Shared {
     db_path: PathBuf,
     ingest: IngestWriter,
@@ -108,6 +141,9 @@ struct Shared {
 struct WorkItem {
     run_id: String,
     request: RunRequest,
+    /// The approved canonical pin for gated runs (`None` for T0 direct
+    /// enqueues): re-verified by the worker before the run starts (T10).
+    approval_pin: Option<String>,
     /// Held until the worker dequeues: bounds the waiting queue.
     _permit: tokio::sync::OwnedSemaphorePermit,
 }
@@ -236,6 +272,26 @@ impl RunQueue {
                 tracing::info!("run queue worker exiting (channel closed)");
             });
         }
+        // Approval TTL sweeper (T10): gated runs whose approval lapses
+        // before dispatch transition to the terminal `expired` state. The
+        // approve path also checks the TTL lazily; this task is what makes
+        // a lapsed request terminal rather than merely undispatchable.
+        {
+            let shared = Arc::clone(&shared);
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(config.sweep_interval);
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                // interval's first tick fires immediately; consume it so the
+                // first sweep runs one full interval after boot (approve and
+                // break-glass also check the TTL lazily — nothing is
+                // dispatchable in the gap either way).
+                interval.tick().await;
+                loop {
+                    interval.tick().await;
+                    sweep_expired_approvals(&shared).await;
+                }
+            });
+        }
         Self {
             tx,
             waiting: Arc::new(Semaphore::new(config.queue_depth.max(1))),
@@ -281,6 +337,7 @@ impl RunQueue {
         let item = WorkItem {
             run_id: run_id.clone(),
             request,
+            approval_pin: None,
             _permit: permit,
         };
         // The channel capacity matches the semaphore, so this cannot block
@@ -289,6 +346,173 @@ impl RunQueue {
             return Err(EnqueueError::Store("run queue stopped".into()));
         }
         Ok(run_id)
+    }
+
+    /// Persist a gated run (tier T1–T3): the run row waits in
+    /// `pending_approval` with its canonical pin, quorum and TTL recorded —
+    /// nothing enters the worker channel until [`Self::dispatch_approved`]
+    /// (T10, ADR-012). Returns the run id.
+    ///
+    /// # Errors
+    /// See [`EnqueueError`].
+    pub async fn request_gated(
+        &self,
+        request: RunRequest,
+        tier: Tier,
+        actor: Option<String>,
+    ) -> Result<String, EnqueueError> {
+        let run_id = uuid::Uuid::new_v4().to_string();
+        let params: BTreeMap<String, String> = request.vars.clone().into_iter().collect();
+        let pin = approval_pin(&CanonicalPin {
+            definition_toon: &request.definition_toon,
+            params: &params,
+            env: &request.env,
+            target: request.target.as_deref(),
+        });
+        let now = now_ns();
+        let approval = ApprovalRequest {
+            run_id: run_id.clone(),
+            tier: tier.as_str().to_string(),
+            pin_hash: pin.clone(),
+            env: request.env.clone(),
+            target: request.target.clone(),
+            quorum_required: tier.quorum_required(),
+            requested_by: actor.clone().unwrap_or_else(|| "synthetic".into()),
+            requested_at_ns: now,
+            expires_at_ns: now + tier.ttl_ns(),
+        };
+        let params_json = if request.vars.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&request.vars).unwrap_or_default())
+        };
+        let new_run = NewRun {
+            id: run_id.clone(),
+            registry_id: request.registry_id.clone(),
+            params_json,
+            queued_at_ns: now,
+            actor,
+        };
+        let detail = format!(
+            "tier {} quorum {} ttl {}h pin {}",
+            approval.tier,
+            approval.quorum_required,
+            tier.ttl_ns() / 3_600_000_000_000,
+            pin
+        );
+        exec_write(&self.shared.ingest, move |writer| {
+            writer
+                .insert_gated_run(&new_run, &approval, Some(&detail))
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(EnqueueError::Store)?;
+        Ok(run_id)
+    }
+
+    /// Dispatch a run whose approval cleared: flips `pending_approval` back
+    /// to `queued` and hands the worker a [`WorkItem`] carrying the approved
+    /// pin (re-verified before execution). All approval checks are re-read
+    /// from the store here — the approve endpoint and break-glass both funnel
+    /// through this one gate. Break-glass requests bypass quorum and TTL (the
+    /// override's whole point) but never the pin re-verification in the
+    /// worker.
+    ///
+    /// # Errors
+    /// See [`DispatchError`].
+    pub async fn dispatch_approved(&self, run_id: &str) -> Result<(), DispatchError> {
+        let (request, approval_pin) = {
+            let reader = Store::at(&self.shared.db_path)
+                .read_only()
+                .map_err(|e| DispatchError::Store(e.to_string()))?;
+            let run = reader
+                .run_get(run_id)
+                .map_err(|e| DispatchError::Store(e.to_string()))?
+                .ok_or(DispatchError::NotPending)?;
+            if run["state"].as_str() != Some(run_state::PENDING_APPROVAL) {
+                return Err(DispatchError::NotPending);
+            }
+            let approval = reader
+                .approval_request(run_id)
+                .map_err(|e| DispatchError::Store(e.to_string()))?
+                .ok_or_else(|| DispatchError::Approval("no approval request".into()))?;
+            let break_glass = approval["break_glass"].as_bool().unwrap_or(false);
+            if approval["consumed_at_ns"].is_number() {
+                return Err(DispatchError::Approval(
+                    "approval already consumed — a second run needs a fresh approval".into(),
+                ));
+            }
+            if !break_glass {
+                let decisions = reader
+                    .approval_decisions(run_id)
+                    .map_err(|e| DispatchError::Store(e.to_string()))?;
+                if decisions.iter().any(|d| d["decision"] == "rejected") {
+                    return Err(DispatchError::Approval("request was rejected".into()));
+                }
+                let approved = decisions
+                    .iter()
+                    .filter(|d| d["decision"] == "approved")
+                    .count() as i64;
+                let quorum = approval["quorum_required"].as_i64().unwrap_or(1);
+                if approved < quorum {
+                    return Err(DispatchError::Approval(format!(
+                        "quorum short: {approved}/{quorum} approvals"
+                    )));
+                }
+                if now_ns() > approval["expires_at_ns"].as_i64().unwrap_or(0) {
+                    return Err(DispatchError::Approval(
+                        "approval expired before dispatch".into(),
+                    ));
+                }
+            }
+            let definition = reader
+                .registry_definition(run["registry_id"].as_str().unwrap_or_default())
+                .map_err(|e| DispatchError::Store(e.to_string()))?
+                .ok_or_else(|| DispatchError::Store("registry row missing".into()))?;
+            let vars: HashMap<String, String> = run["params_json"]
+                .as_object()
+                .map(|obj| {
+                    obj.iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let request = RunRequest {
+                registry_id: definition.id,
+                definition_toon: definition.definition_toon,
+                vars,
+                env: approval["env"].as_str().unwrap_or("dev").to_string(),
+                target: approval["target"].as_str().map(str::to_string),
+            };
+            let pin = approval["pin_hash"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            (request, pin)
+        };
+        let permit = self
+            .waiting
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| DispatchError::Full)?;
+        let id = run_id.to_string();
+        exec_write(&self.shared.ingest, move |writer| {
+            writer
+                .set_run_state_with(&id, run_state::QUEUED, Some("dispatch_queued"), None, None)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(DispatchError::Store)?;
+        let item = WorkItem {
+            run_id: run_id.to_string(),
+            request,
+            approval_pin: Some(approval_pin),
+            _permit: permit,
+        };
+        self.tx
+            .send(item)
+            .await
+            .map_err(|_| DispatchError::Store("run queue stopped".into()))
     }
 
     /// E-stop a run: cancel its token (the runner stops before the next
@@ -353,11 +577,35 @@ impl RunQueue {
     }
 }
 
+/// Terminal-flip every gated run whose approval TTL has lapsed.
+async fn sweep_expired_approvals(shared: &Shared) {
+    let ids = Store::at(&shared.db_path)
+        .read_only()
+        .and_then(|r| r.expired_pending_approvals(now_ns()));
+    let Ok(ids) = ids else { return };
+    for id in ids {
+        tracing::info!(run_id = %id, "approval expired before dispatch");
+        let _ = exec_write(&shared.ingest, move |writer| {
+            writer
+                .finish_run(
+                    &id,
+                    run_state::EXPIRED,
+                    None,
+                    Some(rollback_status::NOT_NEEDED),
+                    Some("approval TTL lapsed"),
+                )
+                .map_err(|e| e.to_string())
+        })
+        .await;
+    }
+}
+
 /// One worker pass over a dequeued run: validate, execute, record.
 async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorFactory) {
     let WorkItem {
         run_id,
         request,
+        approval_pin: expected_pin_opt,
         _permit: permit,
     } = item;
     // Dequeued: the waiting-queue slot frees now, not when the run ends.
@@ -367,6 +615,67 @@ async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorFactory) {
     // The run may have been cancelled while waiting.
     if read_run_state(&shared.db_path, &run_id).as_deref() != Some(run_state::QUEUED) {
         return;
+    }
+
+    // T10: a gated run reaches the worker only via dispatch_approved and
+    // carries the approved canonical pin. Re-verify here — at the last
+    // moment before execution — that what is about to run is bit-identical
+    // to what was approved (any edit after approval breaks the pin), and
+    // that the approval is unconsumed and (unless break-glass) unexpired.
+    // Every failure refuses dispatch terminally.
+    if let Some(expected_pin) = &expected_pin_opt {
+        let params: BTreeMap<String, String> = request.vars.clone().into_iter().collect();
+        let actual = approval_pin(&CanonicalPin {
+            definition_toon: &request.definition_toon,
+            params: &params,
+            env: &request.env,
+            target: request.target.as_deref(),
+        });
+        let mut refusal = (actual != *expected_pin).then(|| {
+            format!("approval pin mismatch (approved {expected_pin}, resolves to {actual}) — definition, params, env or target edited after approval")
+        });
+        if refusal.is_none() {
+            match Store::at(&shared.db_path)
+                .read_only()
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.approval_request(&run_id).map_err(|e| e.to_string()))
+            {
+                Ok(Some(req)) => {
+                    let break_glass = req["break_glass"].as_bool().unwrap_or(false);
+                    if req["consumed_at_ns"].is_number() {
+                        refusal = Some("approval already consumed — single-use".into());
+                    } else if !break_glass && now_ns() > req["expires_at_ns"].as_i64().unwrap_or(0)
+                    {
+                        refusal = Some("approval expired before dispatch".into());
+                    }
+                }
+                Ok(None) => refusal = Some("approval request missing".into()),
+                Err(e) => refusal = Some(format!("approval re-read failed: {e}")),
+            }
+        }
+        if let Some(reason) = refusal {
+            let id = run_id.clone();
+            let _ = exec_write(ingest, move |writer| {
+                writer
+                    .insert_run_audit(&id, "dispatch_refused", Some(&reason), None)
+                    .and_then(|()| {
+                        writer.finish_run(&id, run_state::FAILED, None, None, Some(&reason))
+                    })
+                    .map_err(|e| e.to_string())
+            })
+            .await;
+            return;
+        }
+        // Single-use: one dispatch consumes one approval (ADR-012).
+        let id = run_id.clone();
+        let pin = expected_pin.clone();
+        let _ = exec_write(ingest, move |writer| {
+            writer
+                .consume_approval(&id, now_ns())
+                .and_then(|()| writer.insert_run_audit(&id, "consumed", Some(&pin), None))
+                .map_err(|e| e.to_string())
+        })
+        .await;
     }
 
     let id = run_id.clone();
@@ -766,7 +1075,29 @@ rollbacks[1]:
             registry_id: "reg-1".into(),
             definition_toon: TEST_TOON.into(),
             vars: HashMap::new(),
+            env: "dev".into(),
+            target: None,
         }
+    }
+
+    /// Record an approval decision directly on the store (the API handler's
+    /// write, minus the HTTP layer).
+    async fn approve(fx: &Fixture, run_id: &str, approver: &str) {
+        let id = run_id.to_string();
+        let who = approver.to_string();
+        exec_write(&fx.ingest, move |writer| {
+            writer
+                .insert_approval_decision(&tumult_lake::ApprovalDecision {
+                    run_id: id,
+                    approver: who,
+                    decision: tumult_lake::approvals::decision::APPROVED.into(),
+                    note: None,
+                    decided_at_ns: now_ns(),
+                })
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .unwrap();
     }
 
     /// Poll the run's state until `want` or timeout (5s).
@@ -823,6 +1154,7 @@ rollbacks[1]:
             RunQueueConfig {
                 concurrency: 1,
                 queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
             },
             recording_factory(&fx.executed, Duration::from_millis(5)),
         );
@@ -873,6 +1205,7 @@ rollbacks[1]:
             RunQueueConfig {
                 concurrency: 1,
                 queue_depth: 1,
+                sweep_interval: Duration::from_secs(3600),
             },
             recording_factory(&fx.executed, Duration::from_millis(200)),
         );
@@ -907,6 +1240,7 @@ rollbacks[1]:
             RunQueueConfig {
                 concurrency: 1,
                 queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
             },
             recording_factory(&fx.executed, Duration::from_millis(250)),
         );
@@ -956,6 +1290,7 @@ rollbacks[1]:
             RunQueueConfig {
                 concurrency: 1,
                 queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
             },
             recording_factory(&fx.executed, Duration::from_millis(150)),
         );
@@ -982,6 +1317,7 @@ rollbacks[1]:
             RunQueueConfig {
                 concurrency: 1,
                 queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
             },
             recording_factory(&fx.executed, Duration::from_millis(5)),
         );
@@ -1076,5 +1412,226 @@ rollbacks[1]:
         let events = audit_events(&fx, "run-queued");
         assert!(events.contains(&"orphan_detected".to_string()));
         assert!(!events.contains(&"rollback_started".to_string()));
+    }
+
+    /// Insert a gated run directly on the store (bypassing `request_gated`'s
+    /// clock so TTL edge cases can be tested).
+    async fn insert_gated(fx: &Fixture, run_id: &str, expires_at_ns: i64) {
+        let id = run_id.to_string();
+        exec_write(&fx.ingest, move |writer| {
+            let params = std::collections::BTreeMap::new();
+            writer
+                .insert_gated_run(
+                    &NewRun {
+                        id: id.clone(),
+                        registry_id: "reg-1".into(),
+                        params_json: None,
+                        queued_at_ns: now_ns(),
+                        actor: Some("alice".into()),
+                    },
+                    &tumult_lake::ApprovalRequest {
+                        run_id: id.clone(),
+                        tier: "T1".into(),
+                        pin_hash: tumult_lake::approval_pin(&tumult_lake::CanonicalPin {
+                            definition_toon: TEST_TOON,
+                            params: &params,
+                            env: "dev",
+                            target: None,
+                        }),
+                        env: "dev".into(),
+                        target: None,
+                        quorum_required: 1,
+                        requested_by: "alice".into(),
+                        requested_at_ns: now_ns(),
+                        expires_at_ns,
+                    },
+                    Some("test gated run"),
+                )
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .unwrap();
+    }
+
+    fn shared(fx: &Fixture) -> Shared {
+        Shared {
+            db_path: fx.db_path.clone(),
+            ingest: fx.ingest.clone(),
+            tokens: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[tokio::test]
+    async fn gated_run_waits_for_quorum_then_executes_once() {
+        let fx = fixture().await;
+        let queue = RunQueue::spawn(
+            fx.ingest.clone(),
+            fx.db_path.clone(),
+            RunQueueConfig {
+                concurrency: 1,
+                queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
+            },
+            recording_factory(&fx.executed, Duration::from_millis(5)),
+        );
+
+        let run_id = queue
+            .request_gated(request(), crate::approvals::Tier::T3, Some("alice".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            read_run_state(&fx.db_path, &run_id).as_deref(),
+            Some(run_state::PENDING_APPROVAL)
+        );
+        assert!(fx.executed.lock().unwrap().is_empty());
+
+        // Quorum 2: one approval is not enough.
+        approve(&fx, &run_id, "bob").await;
+        assert!(matches!(
+            queue.dispatch_approved(&run_id).await,
+            Err(DispatchError::Approval(_))
+        ));
+        assert_eq!(
+            read_run_state(&fx.db_path, &run_id).as_deref(),
+            Some(run_state::PENDING_APPROVAL)
+        );
+
+        approve(&fx, &run_id, "carol").await;
+        queue.dispatch_approved(&run_id).await.unwrap();
+        assert_eq!(await_terminal(&fx, &run_id).await, run_state::PASSED);
+        assert_eq!(
+            fx.executed.lock().unwrap().as_slice(),
+            ["action-1", "action-2", "action-3"]
+        );
+
+        // Single-use: the approval was consumed by the dispatch; the run is
+        // no longer pending, so a second dispatch is refused.
+        assert!(matches!(
+            queue.dispatch_approved(&run_id).await,
+            Err(DispatchError::NotPending)
+        ));
+        let req = Store::at(&fx.db_path)
+            .read_only()
+            .unwrap()
+            .approval_request(&run_id)
+            .unwrap()
+            .unwrap();
+        assert!(req["consumed_at_ns"].is_number(), "{req}");
+        assert_eq!(req["quorum_required"], serde_json::json!(2));
+
+        let events = audit_events(&fx, &run_id);
+        for want in ["requested", "dispatch_queued", "consumed"] {
+            assert!(events.contains(&want.to_string()), "{events:?}");
+        }
+        // The full trail verifies against the hash chain.
+        assert!(Store::at(&fx.db_path)
+            .read_only()
+            .unwrap()
+            .verify_run_audit_chain(&run_id)
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn dispatch_is_refused_when_content_changes_after_approval() {
+        let fx = fixture().await;
+        // A queued run whose approved pin does not match the content the
+        // worker is handed (definition/params/env edited after approval).
+        exec_write(&fx.ingest, move |writer| {
+            writer
+                .insert_run(&NewRun {
+                    id: "run-tampered".into(),
+                    registry_id: "reg-1".into(),
+                    params_json: None,
+                    queued_at_ns: now_ns(),
+                    actor: Some("alice".into()),
+                })
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .unwrap();
+        let semaphore = Arc::new(Semaphore::new(1));
+        let permit = semaphore.try_acquire_owned().unwrap();
+        let item = WorkItem {
+            run_id: "run-tampered".into(),
+            request: request(),
+            approval_pin: Some("0".repeat(64)),
+            _permit: permit,
+        };
+        let factory = recording_factory(&fx.executed, Duration::from_millis(5));
+        process(item, &shared(&fx), &factory).await;
+
+        let run = run_row(&fx, "run-tampered");
+        assert_eq!(run["state"], serde_json::json!(run_state::FAILED));
+        assert!(
+            run["error"].as_str().unwrap().contains("pin mismatch"),
+            "{}",
+            run["error"]
+        );
+        let events = audit_events(&fx, "run-tampered");
+        assert!(
+            events.contains(&"dispatch_refused".to_string()),
+            "{events:?}"
+        );
+        assert!(fx.executed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn expired_approval_refuses_dispatch_and_sweeps_terminal() {
+        let fx = fixture().await;
+        let queue = RunQueue::spawn(
+            fx.ingest.clone(),
+            fx.db_path.clone(),
+            RunQueueConfig {
+                concurrency: 1,
+                queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
+            },
+            recording_factory(&fx.executed, Duration::from_millis(5)),
+        );
+
+        // TTL already lapsed at request time.
+        insert_gated(&fx, "run-stale", now_ns() - 1).await;
+        approve(&fx, "run-stale", "bob").await;
+        let err = queue.dispatch_approved("run-stale").await.unwrap_err();
+        assert!(
+            matches!(&err, DispatchError::Approval(r) if r.contains("expired")),
+            "{err:?}"
+        );
+
+        // The sweeper flips it terminal.
+        sweep_expired_approvals(&shared(&fx)).await;
+        let run = run_row(&fx, "run-stale");
+        assert_eq!(run["state"], serde_json::json!(run_state::EXPIRED));
+        let events = audit_events(&fx, "run-stale");
+        assert!(events.contains(&"expired".to_string()), "{events:?}");
+        assert!(fx.executed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn break_glass_bypasses_quorum_and_ttl_but_not_the_pin() {
+        let fx = fixture().await;
+        let queue = RunQueue::spawn(
+            fx.ingest.clone(),
+            fx.db_path.clone(),
+            RunQueueConfig {
+                concurrency: 1,
+                queue_depth: 4,
+                sweep_interval: Duration::from_secs(3600),
+            },
+            recording_factory(&fx.executed, Duration::from_millis(5)),
+        );
+
+        // Expired, zero approvals — but overridden by break-glass.
+        insert_gated(&fx, "run-override", now_ns() - 1).await;
+        exec_write(&fx.ingest, move |writer| {
+            writer
+                .mark_break_glass("run-override", "admin", "prod down; restore now")
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .unwrap();
+        queue.dispatch_approved("run-override").await.unwrap();
+        assert_eq!(await_terminal(&fx, "run-override").await, run_state::PASSED);
+        assert_eq!(fx.executed.lock().unwrap().len(), 3);
     }
 }

@@ -124,6 +124,36 @@ pub struct ApprovalDecision {
 }
 
 impl Writer {
+    /// Persist a gated run: the run row in `pending_approval` state, its
+    /// approval request, and the `requested` audit event (carrying tier,
+    /// quorum, TTL and pin in `detail`), in one transaction. No work item is
+    /// queued — dispatch happens via the approval flow (T10).
+    ///
+    /// # Errors
+    /// Returns an error if any row fails to insert.
+    pub fn insert_gated_run(
+        &self,
+        run: &crate::NewRun,
+        req: &ApprovalRequest,
+        detail: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            self.conn.execute(
+                "INSERT INTO runs (id, registry_id, state, params_json, queued_at_ns) \
+                 VALUES (?,?,?,CAST(? AS JSON),?)",
+                params![
+                    run.id,
+                    run.registry_id,
+                    crate::run_state::PENDING_APPROVAL,
+                    run.params_json,
+                    run.queued_at_ns
+                ],
+            )?;
+            self.insert_approval_request(req)?;
+            self.insert_run_audit(&run.id, "requested", detail, run.actor.as_deref())
+        })
+    }
+
     /// Record an approval request for a gated run.
     ///
     /// # Errors
