@@ -9,6 +9,11 @@ nav_order: 9
 - Status: accepted (live in v0.5.0)
 - Date: 2026-07-29
 
+> *Merge note (T11): this ADR is a point-in-time record and cites the old
+> `kronika-*` crate names throughout; the current names are in the mapping
+> table under "Merge mapping and migration" in
+> [kronika-architecture.md](../architecture/kronika-architecture.md).*
+
 ## Context
 
 v0.4.0 gave Krönika per-experiment resilience scores and compliance-grade

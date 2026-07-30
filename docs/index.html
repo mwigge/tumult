@@ -345,6 +345,45 @@ Running Q2 PostgreSQL Resilience GameDay...
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
+<!-- Krönika platform                                      -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="arch-section">
+  <h2>Krönika: The Resilience Record, Built In</h2>
+  <p style="color: var(--text-muted); max-width: 700px; margin: 0 auto 1.5rem;">
+    Tumult now ships Krönika — the resilience-records platform the experiments feed.
+    One embedded DuckDB store, one daemon (<code>tumultd</code>): OTLP ingest, a web UI,
+    resilience scoring, a manual-evidence lifecycle, approval workflows, and
+    compliance-grade PDF reports. No external services to run.
+  </p>
+</section>
+<section class="features" style="padding-top: 0;">
+  <div class="feature-card">
+    <h3><span class="icon">📥</span> OTLP Ingest Daemon</h3>
+    <p><code>tumultd</code> receives traces, metrics and logs over OTLP gRPC/HTTP into one embedded DuckDB store — single-writer, WAL-backed, crash-robust. Experiment journals flow in over the same wire.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🖥️</span> Web UI</h3>
+    <p>Overview KPIs, experiments, scores, logs/traces/metrics explorers, and run control with a live waterfall and two-step e-stop — served from the same binary, role-aware (viewer / operator / approver / admin).</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">✅</span> Approval Workflows</h3>
+    <p>Risk-tiered runs (T0–T3) gate behind approval quorums with content-hash pinning, segregation of duties, expiry, and audited break-glass. Every state transition joins a per-run tamper-evident hash chain.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🗂️</span> Manual Evidence</h3>
+    <p>Game days, tabletops and vendor failovers enter as attested records with a draft → submitted → verified review lifecycle and an append-only hash-chained audit trail — DORA Art. 24 evidence without telemetry.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">📈</span> Resilience Scores</h3>
+    <p>Per-experiment scores roll up by target, environment, and org hierarchy — pass rate, coverage, MTTR — computed from the store, not from opinion.</p>
+  </div>
+  <div class="feature-card">
+    <h3><span class="icon">🧾</span> Evidence-Grade Reports</h3>
+    <p>R1 executive digests, R2 evidence packs, and R3 game-day reports rendered as A4 PDFs with document control and hash-chain verification — artifacts an auditor can file.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
 <!-- Architecture                                         -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section">

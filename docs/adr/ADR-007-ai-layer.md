@@ -9,6 +9,11 @@ nav_order: 7
 - Status: accepted (Phases 1–2 live: NL query, narrative digests)
 - Date: 2026-07-28 (updated 2026-07-28 for Phase 2)
 
+> *Merge note (T11): this ADR is a point-in-time record and cites the old
+> `kronika-*` crate names throughout; the current names are in the mapping
+> table under "Merge mapping and migration" in
+> [kronika-architecture.md](../architecture/kronika-architecture.md).*
+
 ## Context
 
 Krönika's AI layer will offer NL-query, narrative digests and anomaly

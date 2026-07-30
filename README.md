@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.17.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.18.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.91.1%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
