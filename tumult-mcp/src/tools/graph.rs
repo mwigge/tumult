@@ -48,8 +48,7 @@ pub fn chaosgraph_query(
 ) -> Result<StructuredReport, ToolError> {
     let store = open_store_ro(store_path)?;
     let kind = kind.trim().to_ascii_lowercase();
-    let nodes = store
-        .graph_query(&kind, filter)
+    let nodes = tumult_query::graph_query(&store, &kind, filter)
         .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let node_values: Vec<serde_json::Value> = nodes
@@ -91,8 +90,7 @@ pub fn chaosgraph_neighbors(
 ) -> Result<StructuredReport, ToolError> {
     let store = open_store_ro(store_path)?;
     let depth = i64::from(depth.max(1));
-    let ego = store
-        .graph_neighbors(node_id, rel, depth)
+    let ego = tumult_query::graph_neighbors(&store, node_id, rel, depth)
         .map_err(|e| ToolError::Store(e.to_string()))?
         .ok_or_else(|| ToolError::NotFound(format!("node not found: {node_id}")))?;
 
@@ -178,9 +176,8 @@ pub fn chaosgraph_coverage_gaps(
     // Tested actions from the store, then derive the gap sub-graph in memory.
     // The response is built entirely from `delta` below; persisting it (so
     // `chaosgraph_query`/`_neighbors` can navigate the gap nodes) is opt-in.
-    let tested = store
-        .tested_action_names()
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let tested =
+        tumult_query::tested_action_names(&store).map_err(|e| ToolError::Store(e.to_string()))?;
     let delta = tumult_graph::coverage_gap_delta(&available, &tested);
     if refresh {
         store

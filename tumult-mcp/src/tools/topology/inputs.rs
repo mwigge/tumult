@@ -82,8 +82,7 @@ impl TopologyInputs {
 pub(crate) fn gather_inputs(
     store: &tumult_lake::AnalyticsStore,
 ) -> Result<TopologyInputs, ToolError> {
-    let edges = store
-        .graph_edges_by_rels(LINEAGE_RELS)
+    let edges = tumult_query::graph_edges_by_rels(store, LINEAGE_RELS)
         .map_err(|e| ToolError::Store(e.to_string()))?;
     let depends_on: Vec<(String, String)> = edges
         .iter()
@@ -91,47 +90,47 @@ pub(crate) fn gather_inputs(
         .map(|e| (e.src.clone(), e.dst.clone()))
         .collect();
 
-    let services_with_attrs: Vec<(NodeSummary, serde_json::Value)> = store
-        .graph_nodes_with_attrs("service")
-        .map_err(|e| ToolError::Store(e.to_string()))?
-        .into_iter()
-        .map(|n| {
-            let attrs = serde_json::from_str(&n.attrs).unwrap_or(serde_json::json!({}));
-            (
-                NodeSummary {
-                    id: n.id,
-                    kind: "service".into(),
-                    label: n.label,
-                },
-                attrs,
-            )
-        })
-        .collect();
+    let services_with_attrs: Vec<(NodeSummary, serde_json::Value)> =
+        tumult_query::graph_nodes_with_attrs(store, "service")
+            .map_err(|e| ToolError::Store(e.to_string()))?
+            .into_iter()
+            .map(|n| {
+                let attrs = serde_json::from_str(&n.attrs).unwrap_or(serde_json::json!({}));
+                (
+                    NodeSummary {
+                        id: n.id,
+                        kind: "service".into(),
+                        label: n.label,
+                    },
+                    attrs,
+                )
+            })
+            .collect();
     let services: Vec<NodeSummary> = services_with_attrs
         .iter()
         .map(|(node, _)| node.clone())
         .collect();
 
-    let articles: Vec<NodeSummary> = store
-        .graph_nodes_with_attrs("compliance_article")
-        .map_err(|e| ToolError::Store(e.to_string()))?
-        .into_iter()
-        .map(|n| NodeSummary {
-            id: n.id,
-            kind: "compliance_article".into(),
-            label: n.label,
-        })
-        .collect();
+    let articles: Vec<NodeSummary> =
+        tumult_query::graph_nodes_with_attrs(store, "compliance_article")
+            .map_err(|e| ToolError::Store(e.to_string()))?
+            .into_iter()
+            .map(|n| NodeSummary {
+                id: n.id,
+                kind: "compliance_article".into(),
+                label: n.label,
+            })
+            .collect();
 
-    let deviation_attrs: HashMap<String, serde_json::Value> = store
-        .graph_nodes_with_attrs("deviation")
-        .map_err(|e| ToolError::Store(e.to_string()))?
-        .into_iter()
-        .map(|n| {
-            let attrs = serde_json::from_str(&n.attrs).unwrap_or(serde_json::json!({}));
-            (n.id, attrs)
-        })
-        .collect();
+    let deviation_attrs: HashMap<String, serde_json::Value> =
+        tumult_query::graph_nodes_with_attrs(store, "deviation")
+            .map_err(|e| ToolError::Store(e.to_string()))?
+            .into_iter()
+            .map(|n| {
+                let attrs = serde_json::from_str(&n.attrs).unwrap_or(serde_json::json!({}));
+                (n.id, attrs)
+            })
+            .collect();
 
     Ok(TopologyInputs {
         edges,
@@ -192,9 +191,8 @@ pub(crate) fn recommendations_for(
     limit: usize,
 ) -> Result<Vec<Recommendation>, ToolError> {
     let available = available_actions();
-    let tested: HashSet<String> = store
-        .tested_action_names()
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let tested: HashSet<String> =
+        tumult_query::tested_action_names(store).map_err(|e| ToolError::Store(e.to_string()))?;
     let strength = article_strength();
     Ok(recommend(
         &RecommendationInput {

@@ -126,12 +126,11 @@ pub(super) fn assemble_candidates(
     let lineage = compute_lineage(&inputs.lineage_input(), None, None);
     let recommendations = recommendations_for(store, &inputs, &lineage, limit)?;
 
-    let class_history = store
-        .autopilot_class_history()
+    let class_history = tumult_query::autopilot_class_history(store)
         .map_err(|e| ToolError::Store(e.to_string()))?;
-    let runs_today = store
-        .autopilot_decisions_since(now_ns - 24 * 3_600_000_000_000)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let runs_today =
+        tumult_query::autopilot_decisions_since(store, now_ns - 24 * 3_600_000_000_000)
+            .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let tier_of = |service_id: &str| -> Option<String> {
         inputs
@@ -196,10 +195,10 @@ pub(super) fn assemble_candidates(
 
         // Ambient: the target has an "open deviation" when its most recent
         // relevant lineage state is Broken and nothing clean ran since.
-        let hours_since_last = store
-            .autopilot_last_enacted_on(&candidate.service_id)
-            .map_err(|e| ToolError::Store(e.to_string()))?
-            .map(|ts| elapsed_hours(now_ns, ts));
+        let hours_since_last =
+            tumult_query::autopilot_last_enacted_on(store, &candidate.service_id)
+                .map_err(|e| ToolError::Store(e.to_string()))?
+                .map(|ts| elapsed_hours(now_ns, ts));
         let open_deviation = lineage.iter().any(|c| {
             c.service_id == candidate.service_id
                 && c.status == ControlServiceStatus::Broken
@@ -263,8 +262,7 @@ pub(super) fn assemble_candidates(
         out.iter().map(|a| a.candidate.service_id.clone()).collect();
     let week_ago = now_ns - 7 * 24 * 3_600_000_000_000;
     let mut seen_change: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for event in store
-        .change_events_since(week_ago)
+    for event in tumult_query::change_events_since(store, week_ago)
         .map_err(|e| ToolError::Store(e.to_string()))?
     {
         let service_id = if event.service_id.starts_with("svc:") {
@@ -308,10 +306,10 @@ pub(super) fn assemble_candidates(
                     detail: event.detail.clone(),
                 },
             };
-            let hours_since_last = store
-                .autopilot_last_enacted_on(&candidate.service_id)
-                .map_err(|e| ToolError::Store(e.to_string()))?
-                .map(|ts| elapsed_hours(now_ns, ts));
+            let hours_since_last =
+                tumult_query::autopilot_last_enacted_on(store, &candidate.service_id)
+                    .map_err(|e| ToolError::Store(e.to_string()))?
+                    .map(|ts| elapsed_hours(now_ns, ts));
             let open_deviation = lineage.iter().any(|c| {
                 c.service_id == candidate.service_id && c.status == ControlServiceStatus::Broken
             });
@@ -414,16 +412,15 @@ pub(super) fn regate_decision(
         trigger: Trigger::Manual,
     };
 
-    let hours_since_last = store
-        .autopilot_last_enacted_on(&candidate.service_id)
+    let hours_since_last = tumult_query::autopilot_last_enacted_on(store, &candidate.service_id)
         .map_err(|e| ToolError::Store(e.to_string()))?
         .map(|ts| elapsed_hours(now_ns, ts));
     let open_deviation = lineage
         .iter()
         .any(|c| c.service_id == candidate.service_id && c.status == ControlServiceStatus::Broken);
-    let runs_today = store
-        .autopilot_decisions_since(now_ns - 24 * 3_600_000_000_000)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let runs_today =
+        tumult_query::autopilot_decisions_since(store, now_ns - 24 * 3_600_000_000_000)
+            .map_err(|e| ToolError::Store(e.to_string()))?;
     let ambient = AmbientContext {
         open_deviation_for_target: open_deviation,
         runs_today,
@@ -445,8 +442,7 @@ pub(super) fn regate_decision(
         &candidate.action,
         candidate.tier.as_deref(),
     );
-    let autonomy = store
-        .autopilot_class_history()
+    let autonomy = tumult_query::autopilot_class_history(store)
         .map_err(|e| ToolError::Store(e.to_string()))?
         .into_iter()
         .find(|h| h.class_key == key)

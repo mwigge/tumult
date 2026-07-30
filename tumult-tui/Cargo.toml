@@ -8,6 +8,7 @@ description = "Keyboard-driven analytics TUI over the Tumult DuckDB analytics st
 
 [dependencies]
 tumult-lake = { path = "../tumult-lake" }
+tumult-query = { path = "../tumult-query" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 chrono = { workspace = true }

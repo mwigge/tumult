@@ -206,9 +206,9 @@ fn once_without_execute_records_decisions_and_graph_lineage() {
 
     // Audit-before-act: rows persisted and mirrored into the graph.
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
-    let rows = store.autopilot_decisions(None, 100).unwrap();
+    let rows = tumult_query::autopilot_decisions(&store, None, 100).unwrap();
     assert_eq!(rows.len(), decisions.len(), "every decision must persist");
-    let recs = store.graph_query("recommendation", None).unwrap();
+    let recs = tumult_query::graph_query(&store, "recommendation", None).unwrap();
     assert!(
         !recs.is_empty(),
         "each decision must mirror a recommendation node"
@@ -285,7 +285,9 @@ fn respond_deny_appends_the_veto_feedback_event() {
     assert_eq!(report.structured["action"], "human_denied");
 
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("human_denied"));
     drop(store);
 
@@ -388,7 +390,9 @@ fn respond_approve_requires_policy_path() {
     // The usage error is validated before any event is appended: the
     // decision must remain unanswered.
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert!(
         !matches!(
             status.last_event.as_deref(),
@@ -426,7 +430,9 @@ fn respond_approve_refused_when_policy_changed() {
 
     // The refusal is part of the audit trail, after the human response.
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("re_gate_refused"));
     drop(store);
     assert!(
@@ -471,7 +477,9 @@ fn respond_approve_refused_when_gate_now_vetoes() {
     );
 
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("re_gate_refused"));
     drop(store);
     assert!(
@@ -603,7 +611,9 @@ fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
 
     // Audit order: approved → re-gate passed → run completed.
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("run_completed"));
     drop(store);
     assert!(

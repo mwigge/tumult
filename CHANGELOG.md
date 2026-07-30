@@ -11,6 +11,11 @@ workspace (daemon, OTLP ingestion, DuckDB lake, compliance reports, query API
 and SvelteKit UI) now lives here as first-class tumult crates.
 
 ### Added
+- **tumult-query**: new crate holding the read-side domain queries over the
+  unified store (`graph_query`/`graph_neighbors`/`tested_action_names`,
+  topology edge/node readbacks + `NodeAttrs`, autopilot status/class-history/
+  budget/cooldown reads) as free functions over `&tumult_lake::AnalyticsStore`.
+  Writes stay on the store; the TUI and MCP server re-point to `tumult-query`.
 - **tumultd daemon + web UI**: the kronikad HTTP daemon is now the `tumultd`
   workspace member, embedding the SvelteKit SPA from `web/` (built with
   `cd web && npm ci && npm run build` — the binary requires `web/build/` at
@@ -32,6 +37,13 @@ and SvelteKit UI) now lives here as first-class tumult crates.
   alongside `tumult-cli` for all targets.
 
 ### Changed
+- **One DuckDB store**: `tumult-analytics` is dissolved into `tumult-lake`
+  (schema v3: telemetry + manual evidence + the journal-analytics family —
+  experiments, agentic, autopilot, ChaosGraph — in one database file behind
+  one writer). The unified store lives at `~/.tumult/lake.duckdb`
+  (`TUMULT_LAKE_PATH` override; `TUMULT_ANALYTICS_PATH` and `KRONIKA_DB`
+  remain as deprecated aliases for one release). Migrate existing stores with
+  `tumult store import-legacy`.
 - Clippy pedantic stays enabled workspace-wide; the imported chronicle
   crates carry a documented, scoped `#![allow(clippy::pedantic)]` at their
   crate roots (183 pre-existing warnings, intentionally not churned).

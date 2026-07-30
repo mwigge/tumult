@@ -300,8 +300,7 @@ pub fn autopilot_respond(
     concurrent_experiments: u32,
 ) -> Result<StructuredReport, ToolError> {
     let store = open_store(store_path)?;
-    let Some(status) = store
-        .autopilot_decision(decision_id)
+    let Some(status) = tumult_query::autopilot_decision(&store, decision_id)
         .map_err(|e| ToolError::Store(e.to_string()))?
     else {
         return Err(ToolError::NotFound(format!("decision {decision_id}")));
@@ -478,8 +477,7 @@ pub fn autopilot_status(
     limit: Option<u32>,
 ) -> Result<StructuredReport, ToolError> {
     let store = open_store_ro(store_path)?;
-    let rows = store
-        .autopilot_decisions(verdict, u64::from(limit.unwrap_or(20)))
+    let rows = tumult_query::autopilot_decisions(&store, verdict, u64::from(limit.unwrap_or(20)))
         .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let mut lines = Vec::new();

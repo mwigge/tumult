@@ -1,0 +1,17 @@
+[package]
+name = "tumult-query"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Read-side domain queries over the unified tumult-lake store (ChaosGraph, topology, autopilot)"
+
+[dependencies]
+tumult-lake = { path = "../tumult-lake" }
+tumult-graph = { path = "../tumult-graph" }
+duckdb = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tumult-core = { path = "../tumult-core" }
+tempfile = { workspace = true }

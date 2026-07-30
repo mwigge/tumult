@@ -21,7 +21,7 @@
 //!   `access_mode = READ_ONLY`. Read-only opens do not take the exclusive write
 //!   lock, so **multiple read-only processes coexist** — the CLI can query the
 //!   store while the MCP server also holds it open for reads. Use this for every
-//!   read path (`query`, `stats`, coverage, `graph_neighbors`, `graph_query`, …).
+//!   read path (`query`, `stats`, coverage, and the `tumult-query` domain reads).
 //! * **Writes open read-write.** [`AnalyticsStore::open`] keeps the read-write
 //!   open used by ingest and other write paths, and it also initialises/migrates
 //!   the schema.
@@ -96,7 +96,7 @@ mod graph;
 mod ingest;
 mod maintenance;
 mod query;
-pub mod topology;
+mod topology;
 mod types;
 
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
@@ -221,8 +221,8 @@ impl AnalyticsStore {
     /// exclusive write lock, so multiple read-only openers coexist across
     /// processes: the CLI can query the store while the MCP server also holds it
     /// open. Use this for every read operation — [`AnalyticsStore::query`],
-    /// [`AnalyticsStore::stats`], [`AnalyticsStore::graph_neighbors`],
-    /// [`AnalyticsStore::graph_query`], coverage, and so on.
+    /// [`AnalyticsStore::stats`], coverage, the `tumult-query` domain reads
+    /// (`graph_query`, `graph_neighbors`, …), and so on.
     ///
     /// The store must already exist and have been initialised by a writer;
     /// read-only opens neither create nor migrate the schema. If the open fails
@@ -264,6 +264,15 @@ impl AnalyticsStore {
         // Column is BIGINT — no String parse round-trip needed.
         stmt.query_row(params![], |row| row.get(0))
             .map_err(AnalyticsError::from)
+    }
+
+    /// Borrow the underlying connection — crate-crossing escape hatch for
+    /// `tumult-query`'s read-only domain queries. Not public API; the stable
+    /// surface is the typed accessor methods plus `tumult-query`.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __connection(&self) -> &Connection {
+        &self.conn
     }
 }
 

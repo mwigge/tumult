@@ -7766,6 +7766,7 @@ dependencies = [
  "tumult-net",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-query",
  "tumult-ssh",
  "uuid",
 ]
@@ -7837,6 +7838,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tumult-query"
+version = "2.18.0"
+dependencies = [
+ "duckdb",
+ "serde_json",
+ "tempfile",
+ "tumult-core",
+ "tumult-graph",
+ "tumult-lake",
+]
+
+[[package]]
 name = "tumult-report"
 version = "0.6.0"
 dependencies = [
@@ -7887,6 +7900,7 @@ dependencies = [
  "tempfile",
  "tumult-core",
  "tumult-lake",
+ "tumult-query",
 ]
 
 [[package]]

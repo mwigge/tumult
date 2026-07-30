@@ -86,8 +86,6 @@ pub use duckdb_store::autopilot::{
     ChangeEventRecord, ClassHistory, DecisionRecord, DecisionStatus,
 };
 #[cfg(feature = "duckdb")]
-pub use duckdb_store::topology::NodeAttrs;
-#[cfg(feature = "duckdb")]
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
 };

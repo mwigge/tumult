@@ -93,7 +93,7 @@ pub fn load_activities(path: &Path, experiment_id: &str) -> Result<Vec<ActivityR
 }
 
 /// Load `ChaosGraph` nodes of a given kind (optionally filtered by a label
-/// substring) via the store's `graph_query` API.
+/// substring) via `tumult_query`'s `graph_query`.
 ///
 /// # Errors
 ///
@@ -104,8 +104,7 @@ pub fn load_graph_nodes(
     filter: Option<&str>,
 ) -> Result<Vec<GraphNodeRow>> {
     let store = AnalyticsStore::open_read_only(path)?;
-    let nodes = store
-        .graph_query(kind, filter)
+    let nodes = tumult_query::graph_query(&store, kind, filter)
         .with_context(|| format!("querying ChaosGraph nodes of kind {kind}"))?;
     Ok(nodes
         .into_iter()
@@ -124,8 +123,7 @@ pub fn load_graph_nodes(
 /// Returns an error if the store cannot be opened read-only or the query fails.
 pub fn load_graph_neighbors(path: &Path, node_id: &str) -> Result<Vec<String>> {
     let store = AnalyticsStore::open_read_only(path)?;
-    let ego = store
-        .graph_neighbors(node_id, None, 1)
+    let ego = tumult_query::graph_neighbors(&store, node_id, None, 1)
         .context("querying ChaosGraph neighbours")?;
     Ok(ego
         .map(|g| {

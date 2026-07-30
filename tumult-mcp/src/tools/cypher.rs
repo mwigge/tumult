@@ -54,8 +54,7 @@ fn open_store_ro(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolEr
 fn snapshot(store: &tumult_lake::AnalyticsStore) -> Result<GraphSnapshot, ToolError> {
     let mut nodes = Vec::new();
     for kind in NODE_KINDS {
-        for node in store
-            .graph_nodes_with_attrs(kind)
+        for node in tumult_query::graph_nodes_with_attrs(store, kind)
             .map_err(|e| ToolError::Store(e.to_string()))?
         {
             nodes.push(SnapshotNode {
@@ -67,8 +66,7 @@ fn snapshot(store: &tumult_lake::AnalyticsStore) -> Result<GraphSnapshot, ToolEr
             });
         }
     }
-    let edges = store
-        .graph_edges_by_rels(EDGE_RELS)
+    let edges = tumult_query::graph_edges_by_rels(store, EDGE_RELS)
         .map_err(|e| ToolError::Store(e.to_string()))?
         .into_iter()
         .map(|e| SnapshotEdge {

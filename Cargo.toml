@@ -41,6 +41,7 @@ members = [
     # Krönika platform (imported from kronika; crates keep their 0.6.x versions)
     "tumult-otlp",
     "tumult-lake",
+    "tumult-query",
     "tumult-ingest",
     "tumult-metrics",
     "tumult-compliance",
