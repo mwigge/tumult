@@ -2,17 +2,20 @@
 //!
 //! Mutations ride the daemon's single-writer channel via
 //! [`tumult_ingest::Batch::Exec`] — the API never opens a write connection
-//! of its own. There is no auth yet: callers pass a plain "acting as" user
-//! string (`entered_by` / `by` / `reviewer`); the store enforces the
-//! lifecycle rules (draft mutability, attestation on submit, reviewer ≠
-//! enterer) regardless.
+//! of its own. The acting identity (`entered_by` on create/update, `by` on
+//! submit, `reviewer` on verify/reject, `added_by` on attach) comes from the
+//! authenticated [`Principal`]: when auth is enabled the request-body fields
+//! are ignored; while auth is open (the synthetic principal, see
+//! [`crate::auth`]) the body fields are required, exactly as before auth
+//! existed. The store enforces the lifecycle rules (draft mutability,
+//! attestation on submit, reviewer ≠ enterer) regardless.
 
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_ingest::Batch;
@@ -20,7 +23,24 @@ use tumult_lake::{
     AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Writer,
 };
 
+use crate::auth::Principal;
 use crate::{internal, with_reader, ApiState};
+
+/// The acting identity for a mutation: the authenticated principal's
+/// username when auth is enabled, else the request-supplied field (required,
+/// as before auth existed).
+fn actor_or(
+    principal: &Principal,
+    field: Option<String>,
+    name: &str,
+) -> Result<String, ManualError> {
+    if !principal.synthetic {
+        return Ok(principal.username.clone());
+    }
+    field
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| ManualError::Invalid(format!("'{name}' must not be empty")))
+}
 
 /// Map a lifecycle error to an HTTP response.
 fn manual_error(err: &ManualError) -> Response {
@@ -68,7 +88,9 @@ where
 }
 
 /// JSON body for create/update: content fields of a manual test record.
-/// Enum-typed fields arrive as their lowercase string forms.
+/// Enum-typed fields arrive as their lowercase string forms. `entered_by` is
+/// ignored when auth is enabled (the principal's username wins); while auth
+/// is open it is required.
 #[derive(Debug, Deserialize)]
 pub struct ManualRecordRequest {
     experiment_name: String,
@@ -86,7 +108,7 @@ pub struct ManualRecordRequest {
     blast_radius: Option<String>,
     recovery_time_s: Option<f64>,
     duration_s: Option<f64>,
-    entered_by: String,
+    entered_by: Option<String>,
     attestation: String,
     renewal_due_ns: Option<i64>,
     #[serde(default)]
@@ -94,7 +116,7 @@ pub struct ManualRecordRequest {
 }
 
 impl ManualRecordRequest {
-    fn into_new(self) -> Result<NewManualExperiment, ManualError> {
+    fn into_new(self, entered_by: String) -> Result<NewManualExperiment, ManualError> {
         Ok(NewManualExperiment {
             experiment_name: self.experiment_name,
             exercise_type: ExerciseType::parse(&self.exercise_type)?,
@@ -110,7 +132,7 @@ impl ManualRecordRequest {
             blast_radius: self.blast_radius,
             recovery_time_s: self.recovery_time_s,
             duration_s: self.duration_s,
-            entered_by: self.entered_by,
+            entered_by,
             attestation: self.attestation,
             renewal_due_ns: self.renewal_due_ns,
             framework_refs: self.framework_refs,
@@ -125,9 +147,12 @@ fn bad_request(err: ManualError) -> Response {
 /// `POST /api/manual/experiments` — create a draft record.
 pub async fn create(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<ManualRecordRequest>,
 ) -> Result<(StatusCode, Json<Value>), Response> {
-    let new = req.into_new().map_err(bad_request)?;
+    let entered_by =
+        actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
+    let new = req.into_new(entered_by).map_err(bad_request)?;
     let id = exec_manual(&state, move |w| w.create_manual_draft(&new)).await?;
     Ok((StatusCode::CREATED, Json(json!({"id": id}))))
 }
@@ -153,8 +178,11 @@ pub async fn list(
 }
 
 /// `GET /api/manual/experiments/{id}` — one record with audit + attachments.
+/// Records in an environment outside the principal's scopes 404 (no
+/// existence leak across scopes).
 pub async fn detail(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Response> {
     let detail = with_reader(&state.db_path, move |reader| {
@@ -163,13 +191,22 @@ pub async fn detail(
             .map_err(|e| e.to_string())
     })
     .await?;
-    let Some(detail) = detail else {
-        return Err((
+    let not_found = || {
+        (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "manual experiment not found"})),
         )
-            .into_response());
+            .into_response()
     };
+    let Some(detail) = detail else {
+        return Err(not_found());
+    };
+    if !principal.env_scopes.is_empty() {
+        let env = detail.experiment["target_environment"].as_str();
+        if !env.is_some_and(|e| principal.env_scopes.iter().any(|s| s == e)) {
+            return Err(not_found());
+        }
+    }
     Ok(Json(
         serde_json::to_value(detail).map_err(|e| internal(e.to_string()))?,
     ))
@@ -178,11 +215,13 @@ pub async fn detail(
 /// `PUT /api/manual/experiments/{id}` — replace a draft's content.
 pub async fn update(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<ManualRecordRequest>,
 ) -> Result<Json<Value>, Response> {
-    let changed_by = req.entered_by.clone();
-    let new = req.into_new().map_err(bad_request)?;
+    let changed_by =
+        actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
+    let new = req.into_new(changed_by.clone()).map_err(bad_request)?;
     exec_manual(&state, move |w| {
         w.update_manual_draft(&id, &new, &changed_by)
     })
@@ -192,18 +231,20 @@ pub async fn update(
 
 #[derive(Deserialize)]
 pub struct SubmitRequest {
-    by: String,
+    by: Option<String>,
     attestation: Option<String>,
 }
 
 /// `POST /api/manual/experiments/{id}/submit` — lock a draft for review.
 pub async fn submit(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<SubmitRequest>,
 ) -> Result<Json<Value>, Response> {
+    let by = actor_or(&principal, req.by.clone(), "by").map_err(bad_request)?;
     exec_manual(&state, move |w| {
-        w.submit_manual(&id, req.attestation.as_deref(), &req.by)
+        w.submit_manual(&id, req.attestation.as_deref(), &by)
     })
     .await?;
     Ok(Json(json!({"ok": true})))
@@ -211,18 +252,20 @@ pub async fn submit(
 
 #[derive(Deserialize)]
 pub struct VerifyRequest {
-    reviewer: String,
+    reviewer: Option<String>,
     note: Option<String>,
 }
 
 /// `POST /api/manual/experiments/{id}/verify` — reviewer ≠ enterer.
 pub async fn verify(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<Value>, Response> {
+    let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
     exec_manual(&state, move |w| {
-        w.verify_manual(&id, &req.reviewer, req.note.as_deref())
+        w.verify_manual(&id, &reviewer, req.note.as_deref())
     })
     .await?;
     Ok(Json(json!({"ok": true})))
@@ -230,20 +273,19 @@ pub async fn verify(
 
 #[derive(Deserialize)]
 pub struct RejectRequest {
-    reviewer: String,
+    reviewer: Option<String>,
     note: String,
 }
 
 /// `POST /api/manual/experiments/{id}/reject` — note is mandatory.
 pub async fn reject(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<Value>, Response> {
-    exec_manual(&state, move |w| {
-        w.reject_manual(&id, &req.reviewer, &req.note)
-    })
-    .await?;
+    let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
+    exec_manual(&state, move |w| w.reject_manual(&id, &reviewer, &req.note)).await?;
     Ok(Json(json!({"ok": true})))
 }
 
@@ -252,13 +294,14 @@ pub struct AttachmentRequest {
     kind: String,
     uri: String,
     label: Option<String>,
-    added_by: String,
+    added_by: Option<String>,
 }
 
 /// `POST /api/manual/experiments/{id}/attachments` — external evidence
 /// links. Only `url` and `ticket` are accepted: there is no file storage.
 pub async fn attach(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<AttachmentRequest>,
 ) -> Result<(StatusCode, Json<Value>), Response> {
@@ -275,15 +318,9 @@ pub async fn attach(
                 .into_response());
         }
     };
+    let added_by = actor_or(&principal, req.added_by.clone(), "added_by").map_err(bad_request)?;
     let attachment_id = exec_manual(&state, move |w| {
-        w.add_manual_attachment(
-            &id,
-            kind,
-            &req.uri,
-            req.label.as_deref(),
-            None,
-            &req.added_by,
-        )
+        w.add_manual_attachment(&id, kind, &req.uri, req.label.as_deref(), None, &added_by)
     })
     .await?;
     Ok((StatusCode::CREATED, Json(json!({"id": attachment_id}))))
@@ -300,11 +337,14 @@ pub struct ImportRequest {
 /// score.
 pub async fn import(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<ImportRequest>,
 ) -> Result<(StatusCode, Json<Value>), Response> {
     let mut items = Vec::with_capacity(req.records.len());
     for record in req.records {
-        items.push(record.into_new().map_err(bad_request)?);
+        let entered_by =
+            actor_or(&principal, record.entered_by.clone(), "entered_by").map_err(bad_request)?;
+        items.push(record.into_new(entered_by).map_err(bad_request)?);
     }
     let label = req.label.clone();
     let (batch_id, ids) =

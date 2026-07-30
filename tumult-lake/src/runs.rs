@@ -69,6 +69,9 @@ pub struct NewRun {
     pub registry_id: String,
     pub params_json: Option<String>,
     pub queued_at_ns: i64,
+    /// The authenticated identity that enqueued the run (schema v6
+    /// `run_audit.actor`); `None` when unauthenticated/system.
+    pub actor: Option<String>,
 }
 
 fn now_ns() -> i64 {
@@ -114,7 +117,7 @@ impl Writer {
                     run.queued_at_ns
                 ],
             )?;
-            self.insert_run_audit(&run.id, "enqueued", None, None)
+            self.insert_run_audit(&run.id, "enqueued", None, run.actor.as_deref())
         })
     }
 
@@ -124,11 +127,12 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_run_state(&self, run_id: &str, state: &str) -> Result<(), StoreError> {
-        self.set_run_state_with(run_id, state, None, None)
+        self.set_run_state_with(run_id, state, None, None, None)
     }
 
     /// Like [`Self::set_run_state`] with an explicit audit event + detail
-    /// (e.g. `stop_requested`, `orphan_detected`).
+    /// (e.g. `stop_requested`, `orphan_detected`) and the authenticated
+    /// identity behind the transition (`actor`; `None` for system events).
     ///
     /// # Errors
     /// Returns an error if the update fails.
@@ -138,13 +142,14 @@ impl Writer {
         state: &str,
         audit_event: Option<&str>,
         audit_detail: Option<&str>,
+        actor: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             self.conn.execute(
                 "UPDATE runs SET state = ? WHERE id = ?",
                 params![state, run_id],
             )?;
-            self.insert_run_audit(run_id, audit_event.unwrap_or(state), audit_detail, None)
+            self.insert_run_audit(run_id, audit_event.unwrap_or(state), audit_detail, actor)
         })
     }
 
@@ -380,6 +385,7 @@ mod tests {
                 registry_id: "reg-1".into(),
                 params_json: Some(r#"{"env":"staging"}"#.into()),
                 queued_at_ns: 10,
+                actor: Some("alice".into()),
             })
             .unwrap();
         writer
@@ -387,7 +393,13 @@ mod tests {
             .unwrap();
         writer.mark_run_started("run-1", None).unwrap();
         writer
-            .set_run_state_with("run-1", run_state::STOPPING, Some("stop_requested"), None)
+            .set_run_state_with(
+                "run-1",
+                run_state::STOPPING,
+                Some("stop_requested"),
+                None,
+                Some("alice"),
+            )
             .unwrap();
         writer
             .finish_run(
@@ -423,6 +435,14 @@ mod tests {
                 "aborted"
             ]
         );
+        // The user-initiated transitions carry the actor; system events don't.
+        let by_event = |e: &str| audit.iter().find(|r| r["event"] == e).unwrap();
+        assert_eq!(by_event("enqueued")["actor"], serde_json::json!("alice"));
+        assert_eq!(
+            by_event("stop_requested")["actor"],
+            serde_json::json!("alice")
+        );
+        assert!(by_event("started")["actor"].is_null());
 
         // Active listing is empty for a terminal run; runs() lists it.
         assert!(reader.active_runs().unwrap().is_empty());
@@ -445,6 +465,7 @@ mod tests {
                 registry_id: "reg-1".into(),
                 params_json: None,
                 queued_at_ns: 5,
+                actor: None,
             })
             .unwrap();
         writer.mark_run_started("run-9", Some("exp-9")).unwrap();

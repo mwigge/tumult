@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
+tumult-auth = { path = "../tumult-auth" }
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
 tumult-intelligence.workspace = true
@@ -14,6 +15,7 @@ tumult-report.workspace = true
 tumult-compliance.workspace = true
 tumult-ingest.workspace = true
 sha2.workspace = true
+uuid.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

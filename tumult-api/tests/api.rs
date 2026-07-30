@@ -303,6 +303,20 @@ struct TestServer {
     _tmp: tempfile::TempDir,
     reports_dir: PathBuf,
     pass_log_ts: i64,
+    db_path: PathBuf,
+    ingest: tumult_ingest::IngestWriter,
+}
+
+/// Run one write on the test store through the harness's single-writer
+/// channel (a second direct writer would lose the DuckDB single-writer lock).
+async fn exec_write(
+    srv: &TestServer,
+    f: impl FnOnce(&tumult_lake::Writer) -> Result<(), String> + Send + 'static,
+) {
+    srv.ingest
+        .write(tumult_ingest::Batch::Exec(Box::new(f)))
+        .await
+        .unwrap();
 }
 
 async fn spawn_server() -> TestServer {
@@ -348,8 +362,9 @@ async fn spawn_server() -> TestServer {
         reports_dir.clone(),
         llm,
         tumult_compliance::OrgTree::from_yaml(ORG_YAML).unwrap(),
-        Some(ingest),
+        Some(ingest.clone()),
         Some(run_queue),
+        false,
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -363,6 +378,8 @@ async fn spawn_server() -> TestServer {
         _tmp: tmp,
         reports_dir,
         pass_log_ts,
+        db_path,
+        ingest,
     }
 }
 
@@ -1854,4 +1871,758 @@ async fn stop_unknown_terminal_and_running_runs() {
         .filter_map(|e| e["event"].as_str())
         .collect();
     assert!(events.contains(&"stop_requested"), "{events:?}");
+}
+
+// ---------------------------------------------------------------------------
+// Auth: middleware, RBAC, sessions, tokens, env scoping
+
+/// Create a user directly through the writer channel; returns the user id.
+/// (The API's own `POST /api/users` is exercised separately; fixtures go
+/// straight to the store.)
+async fn add_user(
+    srv: &TestServer,
+    username: &str,
+    password: &str,
+    role: &str,
+    must_change: bool,
+) -> String {
+    let hash = tumult_auth::hash_password(password).unwrap();
+    let row = tumult_lake::UserRow {
+        id: format!("u-{username}"),
+        username: username.into(),
+        password_hash: hash,
+        role: role.into(),
+        must_change,
+        disabled: false,
+        created_at_ns: now_ns(),
+    };
+    let id = row.id.clone();
+    exec_write(srv, move |w| w.create_user(&row).map_err(|e| e.to_string())).await;
+    id
+}
+
+/// Mint a `kro_` token for a user directly in the store; returns
+/// `(plaintext_token, token_hash)`.
+async fn add_token(srv: &TestServer, user_id: &str, name: &str) -> (String, String) {
+    let token = tumult_auth::new_token();
+    let row = tumult_lake::TokenRow {
+        id: format!("t-{name}"),
+        user_id: user_id.into(),
+        name: name.into(),
+        token_hash: tumult_auth::sha256_hex(&token),
+        created_at_ns: now_ns(),
+        last_used_at_ns: None,
+        revoked: false,
+    };
+    let hash = row.token_hash.clone();
+    exec_write(srv, move |w| {
+        w.create_token(&row).map_err(|e| e.to_string())
+    })
+    .await;
+    (token, hash)
+}
+
+/// POST /api/auth/login; returns (status, body, session cookie value).
+async fn login(base: &str, username: &str, password: &str) -> (u16, Value, Option<String>) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/auth/login"))
+        .json(&json!({"username": username, "password": password}))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let cookie = resp
+        .headers()
+        .get("set-cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("kro_session="))
+        .map(|v| v.split(';').next().unwrap().to_string())
+        .filter(|c| !c.is_empty());
+    let body: Value = resp.json().await.unwrap();
+    (status, body, cookie)
+}
+
+/// One root experiment span in a specific target environment.
+fn env_root(id: &str, name: &str, env: &str, ts: i64) -> SpanRow {
+    SpanRow {
+        ts_ns: ts,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}-root"),
+        parent_span_id: None,
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: 5 * NS,
+        status_code: "Unset".into(),
+        status_message: String::new(),
+        service_name: "tumult".into(),
+        service_version: None,
+        experiment_id: Some(id.into()),
+        experiment_name: Some(name.into()),
+        outcome_status: None,
+        fault_type: None,
+        fault_subtype: None,
+        fault_severity: None,
+        blast_radius: None,
+        target_system: Some("database".into()),
+        target_technology: None,
+        target_environment: Some(env.into()),
+        plugin_name: None,
+        hypothesis_met: None,
+        recovery_time_s: None,
+        span_attrs: vec![],
+        resource_attrs: vec![],
+        events: "[]".into(),
+    }
+}
+
+/// Every non-GET route in the table (plus the admin user list) rejects a
+/// request without credentials — the table is fail-closed, so a mutating
+/// route missing from the table still 401s (at Admin).
+#[tokio::test]
+async fn route_table_sweep_rejects_unauthenticated() {
+    let srv = spawn_server().await;
+    add_user(&srv, "admin", "admin-password-1", "admin", false).await;
+    let client = reqwest::Client::new();
+    let mut swept = 0;
+    for (method, template, _role) in tumult_api::auth::ROUTE_TABLE {
+        if *method == "GET" && *template != "/api/users" {
+            continue;
+        }
+        if *template == "/api/auth/login" || *template == "/api/me" {
+            continue;
+        }
+        // Concrete path: "x" for each {…} placeholder segment.
+        let path = template
+            .split('/')
+            .map(|s| if s.starts_with('{') { "x" } else { s })
+            .collect::<Vec<_>>()
+            .join("/");
+        let builder = client.request(
+            reqwest::Method::from_bytes(method.as_bytes()).unwrap(),
+            format!("{}{path}", srv.base),
+        );
+        let builder = if *method == "GET" {
+            builder
+        } else {
+            builder.json(&json!({}))
+        };
+        let resp = builder.send().await.unwrap();
+        assert_eq!(
+            resp.status().as_u16(),
+            401,
+            "{method} {path} must 401 without credentials"
+        );
+        swept += 1;
+    }
+    assert!(swept >= 25, "sweep covered {swept} routes");
+}
+
+/// The role ladder: each role can do its own level and is 403'd above it.
+#[tokio::test]
+async fn route_role_matrix() {
+    let srv = spawn_server().await;
+    for (name, role) in [
+        ("vicky", "viewer"),
+        ("olga", "operator"),
+        ("anna", "approver"),
+        ("root", "admin"),
+    ] {
+        add_user(&srv, name, &format!("{name}-password-1"), role, false).await;
+    }
+    let client = reqwest::Client::new();
+    let base = srv.base.clone();
+    let cookie_of = |name: &str| {
+        let base = base.clone();
+        let name = name.to_string();
+        async move {
+            let (status, _, cookie) = login(&base, &name, &format!("{name}-password-1")).await;
+            assert_eq!(status, 200, "login {name}");
+            cookie.unwrap()
+        }
+    };
+    let with_cookie = |method: &str, path: &str, cookie: &str, body: Option<Value>| {
+        let b = client
+            .request(
+                reqwest::Method::from_bytes(method.as_bytes()).unwrap(),
+                format!("{base}{path}"),
+            )
+            .header("Cookie", format!("kro_session={cookie}"));
+        match body {
+            Some(v) => b.json(&v),
+            None => b,
+        }
+    };
+
+    let viewer = cookie_of("vicky").await;
+    let operator = cookie_of("olga").await;
+    let approver = cookie_of("anna").await;
+    let admin = cookie_of("root").await;
+
+    // Viewer: reads pass, execution is 403.
+    let resp = with_cookie("GET", "/api/experiments", &viewer, None)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let resp = with_cookie(
+        "POST",
+        "/api/runs",
+        &viewer,
+        Some(json!({"registry_id": "reg-x"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+    // …and admin territory is 403 too.
+    let resp = with_cookie("GET", "/api/users", &viewer, None)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+
+    // Operator: validate passes, approval and user admin are 403.
+    let resp = with_cookie(
+        "POST",
+        "/api/runs/validate",
+        &operator,
+        Some(json!({"toon": "title: x"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "{}",
+        resp.text().await.unwrap()
+    );
+    let resp = with_cookie(
+        "POST",
+        "/api/manual/experiments/nope/verify",
+        &operator,
+        Some(json!({"reviewer": "x"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+    let resp = with_cookie(
+        "POST",
+        "/api/users",
+        &operator,
+        Some(json!({"username": "mallory", "role": "viewer"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+
+    // Approver: verify passes the role gate (404: no such record), user
+    // admin is still 403.
+    let resp = with_cookie(
+        "POST",
+        "/api/manual/experiments/nope/verify",
+        &approver,
+        Some(json!({"reviewer": "x"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+    let resp = with_cookie(
+        "POST",
+        "/api/users",
+        &approver,
+        Some(json!({"username": "mallory", "role": "viewer"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+
+    // Admin: user management works — create (one-time password, must_change
+    // always), list without hashes, duplicate 409, self-disable 400, token
+    // mint + revoke.
+    let resp = with_cookie(
+        "POST",
+        "/api/users",
+        &admin,
+        Some(json!({"username": "carol", "role": "viewer", "env_scopes": ["staging"]})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["username"], "carol");
+    assert_eq!(body["must_change"], true);
+    assert!(body["one_time_password"].as_str().unwrap().len() >= 12);
+    let carol_id = body["id"].as_str().unwrap().to_string();
+
+    let resp = with_cookie("GET", "/api/users", &admin, None)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let carol = body["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["username"] == "carol")
+        .unwrap();
+    assert_eq!(carol["role"], "viewer");
+    assert_eq!(carol["env_scopes"], json!(["staging"]));
+    assert!(
+        carol.get("password_hash").is_none(),
+        "never serialize hashes"
+    );
+
+    let resp = with_cookie(
+        "POST",
+        "/api/users",
+        &admin,
+        Some(json!({"username": "carol", "role": "viewer"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 409);
+
+    let resp = with_cookie(
+        "POST",
+        "/api/users/u-root/disable",
+        &admin,
+        Some(json!({"disabled": true})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 400, "cannot disable yourself");
+
+    let resp = with_cookie(
+        "POST",
+        &format!("/api/users/{carol_id}/role"),
+        &admin,
+        Some(json!({"role": "operator"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let resp = with_cookie(
+        "POST",
+        &format!("/api/users/{carol_id}/role"),
+        &admin,
+        Some(json!({"role": "superuser"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let resp = with_cookie(
+        "POST",
+        "/api/users/u-nope/role",
+        &admin,
+        Some(json!({"role": "viewer"})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    let resp = with_cookie("POST", "/api/tokens", &admin, Some(json!({"name": "ci"})))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["token"].as_str().unwrap().starts_with("kro_"));
+    let token_id = body["id"].as_str().unwrap().to_string();
+    let resp = with_cookie(
+        "POST",
+        &format!("/api/tokens/{token_id}/revoke"),
+        &admin,
+        Some(json!({})),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+/// Login → cookie → authenticated call; failure modes share one generic 401.
+#[tokio::test]
+async fn login_cookie_flow_and_failures() {
+    let srv = spawn_server().await;
+    add_user(&srv, "alice", "alice-password-1", "operator", false).await;
+    add_user(&srv, "bob", "bob-password-123", "viewer", false).await;
+    let client = reqwest::Client::new();
+
+    // Wrong password and unknown user: identical generic 401 (no enumeration).
+    let (s1, b1, _) = login(&srv.base, "alice", "not-the-password").await;
+    assert_eq!(s1, 401);
+    let (s2, b2, _) = login(&srv.base, "no-such-user", "not-the-password").await;
+    assert_eq!(s2, 401);
+    assert_eq!(b1, b2, "{b1} vs {b2}");
+    assert_eq!(b1["error"], "invalid credentials");
+
+    // Disabled user: same generic 401.
+    exec_write(&srv, move |w| {
+        w.set_user_disabled("u-bob", true)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (s3, b3, _) = login(&srv.base, "bob", "bob-password-123").await;
+    assert_eq!(s3, 401);
+    assert_eq!(b3, b1);
+
+    // Good login: identity payload + cookie attributes (no Secure — the
+    // harness runs plain HTTP).
+    let resp = client
+        .post(format!("{}/api/auth/login", srv.base))
+        .json(&json!({"username": "alice", "password": "alice-password-1"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let set_cookie = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(set_cookie.starts_with("kro_session="), "{set_cookie}");
+    assert!(set_cookie.contains("HttpOnly"), "{set_cookie}");
+    assert!(set_cookie.contains("SameSite=Strict"), "{set_cookie}");
+    assert!(set_cookie.contains("Max-Age=43200"), "{set_cookie}");
+    assert!(!set_cookie.contains("Secure"), "{set_cookie}");
+    let cookie = set_cookie
+        .strip_prefix("kro_session=")
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["username"], "alice");
+    assert_eq!(body["role"], "operator");
+    assert_eq!(body["must_change"], false);
+
+    // The session cookie authenticates a mutating call.
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .json(&json!({"toon": "title: x"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // Logout expires the cookie and deletes the session server-side.
+    let resp = client
+        .post(format!("{}/api/auth/logout", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let cleared = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["ok"], true);
+    assert!(cleared.contains("Max-Age=0"), "{cleared}");
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .json(&json!({"toon": "title: x"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401, "session is gone after logout");
+}
+
+/// `kro_` bearer tokens authenticate at the owner's role; revocation kills
+/// them; use stamps `last_used_at_ns`.
+#[tokio::test]
+async fn bearer_token_flow() {
+    let srv = spawn_server().await;
+    add_user(&srv, "alice", "alice-password-1", "viewer", false).await;
+    add_user(&srv, "olga", "olga-password-12", "operator", false).await;
+    let (viewer_token, viewer_hash) = add_token(&srv, "u-alice", "ci-viewer").await;
+    let (operator_token, _) = add_token(&srv, "u-olga", "ci-operator").await;
+    let client = reqwest::Client::new();
+
+    let bearer = |token: &str| format!("Bearer {token}");
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Authorization", bearer(&viewer_token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    // Viewer token may not execute.
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .header("Authorization", bearer(&viewer_token))
+        .json(&json!({"toon": "title: x"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+    // Operator token may.
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .header("Authorization", bearer(&operator_token))
+        .json(&json!({"toon": "title: x"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // Usage was stamped (best-effort, on the writer channel).
+    let (token_row, _) = Store::at(&srv.db_path)
+        .read_only()
+        .unwrap()
+        .token_with_user(&viewer_hash)
+        .unwrap()
+        .unwrap();
+    assert!(token_row.last_used_at_ns.is_some());
+
+    // Revoked → 401.
+    exec_write(&srv, move |w| {
+        w.revoke_token("t-ci-viewer").map_err(|e| e.to_string())
+    })
+    .await;
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Authorization", bearer(&viewer_token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+/// A `must_change` principal is 403'd everywhere except logout /
+/// change-password / me — until it changes the password.
+#[tokio::test]
+async fn must_change_gates_until_password_change() {
+    let srv = spawn_server().await;
+    add_user(&srv, "carol", "carol-password-1", "viewer", true).await;
+    let client = reqwest::Client::new();
+
+    let (status, body, cookie) = login(&srv.base, "carol", "carol-password-1").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["must_change"], true);
+    let cookie = cookie.unwrap();
+
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "password_change_required");
+
+    // Too short → 400; wrong current → 401.
+    let resp = client
+        .post(format!("{}/api/auth/change-password", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .json(&json!({"current_password": "carol-password-1", "new_password": "short"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let resp = client
+        .post(format!("{}/api/auth/change-password", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .json(&json!({"current_password": "nope-nope-nope", "new_password": "carol-new-password"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+
+    let resp = client
+        .post(format!("{}/api/auth/change-password", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .json(
+            &json!({"current_password": "carol-password-1", "new_password": "carol-new-password"}),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["changed"], true);
+
+    // The same session is ungated now, and the new password logs in.
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let (status, body, _) = login(&srv.base, "carol", "carol-new-password").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["must_change"], false);
+}
+
+/// Environment scopes filter the experiment reads: list, detail.
+#[tokio::test]
+async fn env_scoping_filters_experiment_reads() {
+    let srv = spawn_server().await;
+    add_user(&srv, "scoped", "scoped-password", "viewer", false).await;
+    exec_write(&srv, move |w| {
+        w.set_user_env_scopes("u-scoped", &["staging".to_string()])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[
+            env_root("exp-staging", "stg-exp", "staging", now - 100 * NS),
+            env_root("exp-prod", "prod-exp", "prod", now - 90 * NS),
+        ])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    let (_, _, cookie) = login(&srv.base, "scoped", "scoped-password").await;
+    let cookie = cookie.unwrap();
+    let scoped_get = |path: &str| {
+        client
+            .get(format!("{}{path}", srv.base))
+            .header("Cookie", format!("kro_session={cookie}"))
+            .send()
+    };
+
+    // The list shows only the staging experiment (the demo-env seed and the
+    // prod experiment are outside scope).
+    let resp = scoped_get("/api/experiments").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let rows = body["experiments"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["id"], "exp-staging");
+
+    // Detail of an out-of-scope experiment 404s; in-scope resolves.
+    let resp = scoped_get("/api/experiments/exp-prod").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+    let resp = scoped_get("/api/experiments/exp-staging").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // Runs without an experiment stay visible to a scoped user (queued);
+    // a run linked to an out-of-scope experiment is hidden.
+    let registry = tumult_lake::RegisteredDefinition {
+        id: "reg-scope".into(),
+        name: "scope test".into(),
+        definition_toon: "title: scope test".into(),
+        content_hash: "scope-hash".into(),
+        registered_at_ns: 1,
+        registered_by: None,
+    };
+    exec_write(&srv, move |w| {
+        w.register_definition(&registry)
+            .map_err(|e| e.to_string())?;
+        w.insert_run(&tumult_lake::NewRun {
+            id: "run-queued".into(),
+            registry_id: "reg-scope".into(),
+            params_json: None,
+            queued_at_ns: 10,
+            actor: None,
+        })
+        .map_err(|e| e.to_string())?;
+        w.insert_run(&tumult_lake::NewRun {
+            id: "run-prod".into(),
+            registry_id: "reg-scope".into(),
+            params_json: None,
+            queued_at_ns: 11,
+            actor: None,
+        })
+        .map_err(|e| e.to_string())?;
+        w.mark_run_started("run-prod", Some("exp-prod"))
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let resp = scoped_get("/api/runs").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let ids: Vec<&str> = body["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["id"].as_str())
+        .collect();
+    assert_eq!(ids, ["run-queued"], "{ids:?}");
+    let resp = scoped_get("/api/runs/run-prod").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+    let resp = scoped_get("/api/runs/run-queued").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // An unscoped viewer sees everything: the two seed experiments plus the
+    // two env experiments.
+    add_user(&srv, "full", "full-password-1", "viewer", false).await;
+    let (_, _, full_cookie) = login(&srv.base, "full", "full-password-1").await;
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={}", full_cookie.unwrap()))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["experiments"].as_array().unwrap().len(), 4);
+}
+
+/// `GET /api/me` reports the auth state in all three modes.
+#[tokio::test]
+async fn me_reports_auth_state() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // Open (no users): not required, not authenticated.
+    let (status, body) = get(&srv.base, "/api/me").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body,
+        json!({"auth_required": false, "authenticated": false})
+    );
+
+    // Users exist but no credential: required, not authenticated.
+    add_user(&srv, "admin", "admin-password-1", "admin", false).await;
+    let (status, body) = get(&srv.base, "/api/me").await;
+    assert_eq!(status, 200);
+    assert_eq!(body, json!({"auth_required": true, "authenticated": false}));
+
+    // Valid session: full identity.
+    let (_, _, cookie) = login(&srv.base, "admin", "admin-password-1").await;
+    let resp = client
+        .get(format!("{}/api/me", srv.base))
+        .header("Cookie", format!("kro_session={}", cookie.unwrap()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body,
+        json!({
+            "auth_required": true,
+            "authenticated": true,
+            "username": "admin",
+            "role": "admin",
+            "must_change": false,
+            "env_scopes": [],
+        })
+    );
 }

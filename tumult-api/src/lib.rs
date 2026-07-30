@@ -70,11 +70,21 @@
 //!   `reports/v2/`; `GET /api/reports/v2` lists metas and
 //!   `GET /api/reports/v2/{id}/pdf|html` serves the artifacts.
 //!
+//! * `POST /api/auth/login` / `POST /api/auth/logout` /
+//!   `POST /api/auth/change-password` / `GET /api/me` — session auth. Once
+//!   the store has any real user (the v6 `legacy` backfill identity does not
+//!   count), every route requires a session cookie or a `kro_` bearer
+//!   token; `tumult_api::auth::ROUTE_TABLE` maps
+//!   `(method, path)` to a minimum RBAC role, and per-user environment
+//!   scopes filter the experiment/run reads. `GET|POST /api/users*` and
+//!   `POST /api/tokens*` are the admin endpoints.
+//!
 //! Every query runs on a fresh read-only connection inside `spawn_blocking`,
 //! so the API coexists with the daemon's single writer and never touches the
 //! write lock.
 
 mod ask;
+pub mod auth;
 pub mod import;
 pub mod lake;
 pub mod manual;
@@ -89,10 +99,12 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_lake::{Reader, Store};
+
+use auth::Principal;
 
 /// Span-name predicate selecting one row per experiment run.
 const ROOT: &str = "span_name = 'resilience.experiment'";
@@ -111,11 +123,14 @@ pub struct ApiState {
     org: Arc<tumult_compliance::OrgTree>,
     ingest: Option<tumult_ingest::IngestWriter>,
     runs: Option<tumult_ingest::RunQueue>,
+    /// Whether the API is served over TLS: session cookies get `; Secure`.
+    secure_cookies: bool,
 }
 
 impl ApiState {
     /// Full constructor (tests inject a stub LLM and a scratch reports dir).
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db_path: PathBuf,
         metrics_dir: PathBuf,
@@ -124,6 +139,7 @@ impl ApiState {
         org: tumult_compliance::OrgTree,
         ingest: Option<tumult_ingest::IngestWriter>,
         runs: Option<tumult_ingest::RunQueue>,
+        secure_cookies: bool,
     ) -> Self {
         Self {
             db_path: Arc::new(db_path),
@@ -133,6 +149,7 @@ impl ApiState {
             org: Arc::new(org),
             ingest,
             runs,
+            secure_cookies,
         }
     }
 
@@ -147,6 +164,7 @@ impl ApiState {
         metrics_dir: PathBuf,
         ingest: Option<tumult_ingest::IngestWriter>,
         runs: Option<tumult_ingest::RunQueue>,
+        secure_cookies: bool,
     ) -> Self {
         let reports_dir = db_path
             .parent()
@@ -170,6 +188,7 @@ impl ApiState {
             org,
             ingest,
             runs,
+            secure_cookies,
         )
     }
 
@@ -189,6 +208,12 @@ impl ApiState {
     #[must_use]
     pub fn runs_handle(&self) -> Option<&tumult_ingest::RunQueue> {
         self.runs.as_ref()
+    }
+
+    /// Whether session cookies are marked `Secure` (TLS deployments).
+    #[must_use]
+    pub fn secure_cookies(&self) -> bool {
+        self.secure_cookies
     }
 }
 
@@ -244,6 +269,20 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/reports/v2/{id}/html", get(get_report_v2_html))
         .route("/api/scores", get(scores))
         .route("/api/reports/{name}", get(get_report))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/change-password", post(auth::change_password))
+        .route("/api/me", get(auth::me))
+        .route("/api/users", get(auth::list_users).post(auth::create_user))
+        .route("/api/users/{id}/role", post(auth::set_role))
+        .route("/api/users/{id}/disable", post(auth::set_disabled))
+        .route("/api/users/{id}/scopes", post(auth::set_scopes))
+        .route("/api/tokens", post(auth::create_token))
+        .route("/api/tokens/{id}/revoke", post(auth::revoke_token))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth::auth_middleware,
+        ))
         .with_state(state)
 }
 
@@ -315,6 +354,22 @@ fn sql_ieq(s: &str) -> String {
 /// Time-window predicate on `ts_ns`.
 fn w(from: i64, to: i64) -> String {
     format!("ts_ns >= {from} AND ts_ns < {to}")
+}
+
+/// `col IN ('a', 'b')` predicate restricting reads to a principal's
+/// environment scopes, or `None` when the set is empty (all environments —
+/// also the synthetic open-auth principal's case). Scoping is read-side
+/// filtering only; mutations are role-gated by the auth middleware.
+fn env_scope_where(col: &str, scopes: &[String]) -> Option<String> {
+    if scopes.is_empty() {
+        return None;
+    }
+    let list = scopes
+        .iter()
+        .map(|s| sql_string(s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!("{col} IN ({list})"))
 }
 
 /// Parse a click-to-filter `k=v` parameter into (key, value); the key must
@@ -783,10 +838,15 @@ const EXPERIMENT_COLS: &str = "s.experiment_id AS id, s.experiment_name AS name,
 
 async fn experiments(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<ExperimentParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
     let mut wheres = vec!["s.span_name = 'resilience.experiment'".to_string()];
+    // Per-user environment scoping (empty scopes = all environments).
+    if let Some(env) = env_scope_where("s.target_environment", &principal.env_scopes) {
+        wheres.push(env);
+    }
     if let Some(range) = &params.range {
         let Some((cur, _)) = windows(range) else {
             return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
@@ -864,6 +924,9 @@ async fn experiments(
         // The manual branch mirrors the span columns; range/target/q filters
         // map onto the manual columns.
         let mut mwheres = vec!["1=1".to_string()];
+        if let Some(env) = env_scope_where("m.target_environment", &principal.env_scopes) {
+            mwheres.push(env);
+        }
         if let Some(range) = &params.range {
             let Some((cur, _)) = windows(range) else {
                 return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
@@ -952,6 +1015,7 @@ async fn experiment_windows(
 
 async fn experiment_detail(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Response> {
     if id.chars().count() > 100 {
@@ -961,12 +1025,16 @@ async fn experiment_detail(
         )
             .into_response());
     }
+    // Environments outside the principal's scopes look exactly like a
+    // missing experiment (404 — no existence leak across scopes).
+    let env_where = env_scope_where("s.target_environment", &principal.env_scopes)
+        .map_or(String::new(), |e| format!(" AND {e}"));
     let body = with_reader(&state.db_path, move |reader| {
         let id_sql = sql_string(&id);
         let info = reader
             .query_json_rows(&format!(
                 "SELECT {EXPERIMENT_COLS} {EXPERIMENT_FROM} \
-                 WHERE s.span_name = 'resilience.experiment' AND s.experiment_id = {id_sql}"
+                 WHERE s.span_name = 'resilience.experiment' AND s.experiment_id = {id_sql}{env_where}"
             ))
             .map_err(|e| e.to_string())?;
         let Some(info) = info.into_iter().next() else {

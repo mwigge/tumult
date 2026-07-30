@@ -210,6 +210,8 @@ async fn serve() -> Result<()> {
         config.metrics_dir.clone(),
         Some(ingest.clone()),
         Some(run_queue),
+        // Secure cookies whenever the API is served beyond loopback.
+        !tumult_auth::host_is_loopback(&http_addr.ip().to_string()),
     );
     if let Some(interval) = report_interval_from_env() {
         spawn_report_scheduler(

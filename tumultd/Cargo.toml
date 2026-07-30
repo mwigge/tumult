@@ -18,6 +18,7 @@ tumult-report.workspace = true
 tumult-api.workspace = true
 tumult-exec = { path = "../tumult-exec" }
 tumult-otel = { path = "../tumult-otel" }
+tumult-auth = { path = "../tumult-auth" }
 axum.workspace = true
 clap.workspace = true
 tokio.workspace = true

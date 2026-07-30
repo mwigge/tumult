@@ -17,13 +17,14 @@ use std::sync::{Arc, Mutex};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_ingest::{Batch, EnqueueError, RunRequest, StopError};
 use tumult_lake::{run_state, RegisteredDefinition, Writer};
 
-use crate::{internal, now_ns, with_reader, ApiState};
+use crate::auth::Principal;
+use crate::{internal, now_ns, sql_string, with_reader, ApiState};
 
 /// Every valid `runs.state` value (active + terminal), for `?state=`.
 const STATES: &[&str] = &[
@@ -215,9 +216,11 @@ pub struct CreateRunRequest {
 
 /// `POST /api/runs` — enqueue a registered definition onto the daemon's
 /// bounded run queue. 202 with the run id; 429 when the waiting queue is at
-/// capacity (backpressure, never silent unbounded queueing).
+/// capacity (backpressure, never silent unbounded queueing). The
+/// `enqueued` audit event records the authenticated principal as actor.
 pub async fn create(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<CreateRunRequest>,
 ) -> Result<Response, Response> {
     let Some(queue) = state.runs_handle() else {
@@ -229,7 +232,7 @@ pub async fn create(
         definition_toon: def.definition_toon,
         vars: req.vars,
     };
-    match queue.enqueue(request).await {
+    match queue.enqueue(request, principal.actor()).await {
         Ok(run_id) => Ok((
             StatusCode::ACCEPTED,
             Json(json!({"run_id": run_id, "state": run_state::QUEUED})),
@@ -250,12 +253,13 @@ pub async fn create(
 /// the run is unknown, 409 when it already reached a terminal state.
 pub async fn stop(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Response> {
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
-    match queue.stop(&id).await {
+    match queue.stop(&id, principal.actor().as_deref()).await {
         Ok(()) => Ok(Json(json!({"run_id": id, "stop": "requested"}))),
         Err(StopError::NotFound) => Err(not_found(format!("unknown run id {id:?}"))),
         Err(StopError::Terminal(state)) => Err((
@@ -277,9 +281,13 @@ pub struct ListParams {
 }
 
 /// `GET /api/runs?state=&limit=` — runs, newest first (limit defaults to
-/// 100, capped at 500).
+/// 100, capped at 500). Runs whose experiment's environment is outside the
+/// principal's scopes are hidden; runs without an experiment yet (still
+/// queued) stay visible to everyone — the environment is known only once
+/// execution links the journal's `experiment_id` (documented behaviour).
 pub async fn list(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
 ) -> Result<Json<Value>, Response> {
     if let Some(state) = params.state.as_deref().filter(|s| !s.is_empty()) {
@@ -292,9 +300,31 @@ pub async fn list(
     }
     let limit = params.limit.unwrap_or(100).clamp(1, 500);
     let state_filter = params.state.filter(|s| !s.is_empty());
+    let scopes = principal.env_scopes.clone();
     let rows = with_reader(&state.db_path, move |reader| {
+        if scopes.is_empty() {
+            return reader
+                .runs(state_filter.as_deref(), limit)
+                .map_err(|e| e.to_string());
+        }
+        // The `experiments` analytics table has no env column; spans do.
+        let env_list = scopes
+            .iter()
+            .map(|s| sql_string(s))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let state_clause = state_filter.as_deref().map_or(String::new(), |s| {
+            format!("AND r.state = {}", sql_string(s))
+        });
         reader
-            .runs(state_filter.as_deref(), limit)
+            .query_json_rows(&format!(
+                "SELECT r.*, g.name AS definition_name FROM runs r \
+                 LEFT JOIN run_registry g ON g.id = r.registry_id \
+                 LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                            FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+                 WHERE (e.env IN ({env_list}) OR r.experiment_id IS NULL) {state_clause} \
+                 ORDER BY r.queued_at_ns DESC LIMIT {limit}"
+            ))
             .map_err(|e| e.to_string())
     })
     .await?;
@@ -302,16 +332,41 @@ pub async fn list(
 }
 
 /// `GET /api/runs/{id}` — one run plus its audit trail, oldest first.
+/// Runs in an environment outside the principal's scopes 404 (same rule as
+/// the list; runs without an experiment stay visible).
 pub async fn detail(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Response> {
     if id.chars().count() > 100 {
         return Err(bad_request("run id too long".into()));
     }
+    let scopes = principal.env_scopes.clone();
     let lookup = id.clone();
     let body = with_reader(&state.db_path, move |reader| {
-        let run = reader.run_get(&lookup).map_err(|e| e.to_string())?;
+        let run = if scopes.is_empty() {
+            reader.run_get(&lookup).map_err(|e| e.to_string())?
+        } else {
+            let env_list = scopes
+                .iter()
+                .map(|s| sql_string(s))
+                .collect::<Vec<_>>()
+                .join(", ");
+            reader
+                .query_json_rows(&format!(
+                    "SELECT r.*, g.name AS definition_name FROM runs r \
+                     LEFT JOIN run_registry g ON g.id = r.registry_id \
+                     LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                                FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+                     WHERE r.id = {} \
+                       AND (e.env IN ({env_list}) OR r.experiment_id IS NULL)",
+                    sql_string(&lookup)
+                ))
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .next()
+        };
         let audit = reader.run_audit_trail(&lookup).map_err(|e| e.to_string())?;
         Ok(run.map(|run| json!({"run": run, "audit": audit})))
     })

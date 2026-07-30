@@ -244,11 +244,17 @@ impl RunQueue {
     }
 
     /// Persist and queue a run. Rejects with [`EnqueueError::Full`] when the
-    /// waiting queue is at capacity — before anything is persisted.
+    /// waiting queue is at capacity — before anything is persisted. `actor`
+    /// is the authenticated identity behind the enqueue, recorded on the
+    /// `enqueued` audit event (`None` when unauthenticated).
     ///
     /// # Errors
     /// See [`EnqueueError`].
-    pub async fn enqueue(&self, request: RunRequest) -> Result<String, EnqueueError> {
+    pub async fn enqueue(
+        &self,
+        request: RunRequest,
+        actor: Option<String>,
+    ) -> Result<String, EnqueueError> {
         let permit = self
             .waiting
             .clone()
@@ -265,6 +271,7 @@ impl RunQueue {
             registry_id: request.registry_id.clone(),
             params_json,
             queued_at_ns: now_ns(),
+            actor,
         };
         exec_write(&self.shared.ingest, move |writer| {
             writer.insert_run(&new_run).map_err(|e| e.to_string())
@@ -286,11 +293,13 @@ impl RunQueue {
 
     /// E-stop a run: cancel its token (the runner stops before the next
     /// activity and runs rollbacks) and record `stopping`. Runs still
-    /// waiting are cancelled before they start.
+    /// waiting are cancelled before they start. `actor` is the authenticated
+    /// identity behind the stop request, recorded on the `stop_requested`
+    /// audit event (`None` when unauthenticated).
     ///
     /// # Errors
     /// See [`StopError`].
-    pub async fn stop(&self, run_id: &str) -> Result<(), StopError> {
+    pub async fn stop(&self, run_id: &str, actor: Option<&str>) -> Result<(), StopError> {
         let token = self
             .shared
             .tokens
@@ -301,9 +310,16 @@ impl RunQueue {
         if let Some(token) = token {
             token.cancel();
             let id = run_id.to_string();
+            let actor = actor.map(str::to_string);
             exec_write(&self.shared.ingest, move |writer| {
                 writer
-                    .set_run_state_with(&id, run_state::STOPPING, Some("stop_requested"), None)
+                    .set_run_state_with(
+                        &id,
+                        run_state::STOPPING,
+                        Some("stop_requested"),
+                        None,
+                        actor.as_deref(),
+                    )
                     .map_err(|e| e.to_string())
             })
             .await
@@ -523,6 +539,7 @@ pub async fn reconcile_orphans(
                     run_state::ORPHANED,
                     Some("orphan_detected"),
                     Some("daemon restarted; run was owned by a previous process"),
+                    None,
                 )
                 .map_err(|e| e.to_string())
         })
@@ -810,7 +827,10 @@ rollbacks[1]:
             recording_factory(&fx.executed, Duration::from_millis(5)),
         );
 
-        let run_id = queue.enqueue(request()).await.unwrap();
+        let run_id = queue
+            .enqueue(request(), Some("tester".to_string()))
+            .await
+            .unwrap();
         assert_eq!(await_terminal(&fx, &run_id).await, run_state::PASSED);
 
         let run = run_row(&fx, &run_id);
@@ -818,6 +838,16 @@ rollbacks[1]:
             run["rollback_status"],
             serde_json::json!(rollback_status::NOT_NEEDED)
         );
+        // The enqueued audit event carries the enqueueing actor; the
+        // system-driven transitions (started, passed) carry none.
+        let trail = Store::at(&fx.db_path)
+            .read_only()
+            .unwrap()
+            .run_audit_trail(&run_id)
+            .unwrap();
+        let by_event = |e: &str| trail.iter().find(|r| r["event"] == e).unwrap();
+        assert_eq!(by_event("enqueued")["actor"], serde_json::json!("tester"));
+        assert!(by_event("passed")["actor"].is_null());
         let experiment_id = run["experiment_id"].as_str().unwrap();
         assert!(!experiment_id.is_empty());
         assert_eq!(
@@ -847,12 +877,12 @@ rollbacks[1]:
             recording_factory(&fx.executed, Duration::from_millis(200)),
         );
 
-        let r1 = queue.enqueue(request()).await.unwrap();
+        let r1 = queue.enqueue(request(), None).await.unwrap();
         await_state(&fx, &r1, run_state::RUNNING).await;
         // r2 takes the only waiting permit; r3 must be rejected, not queued.
-        let r2 = queue.enqueue(request()).await.unwrap();
+        let r2 = queue.enqueue(request(), None).await.unwrap();
         assert!(matches!(
-            queue.enqueue(request()).await,
+            queue.enqueue(request(), None).await,
             Err(EnqueueError::Full)
         ));
 
@@ -881,7 +911,7 @@ rollbacks[1]:
             recording_factory(&fx.executed, Duration::from_millis(250)),
         );
 
-        let run_id = queue.enqueue(request()).await.unwrap();
+        let run_id = queue.enqueue(request(), None).await.unwrap();
         // Wait until the first activity finished (second is sleeping).
         for _ in 0..100 {
             if !fx.executed.lock().unwrap().is_empty() {
@@ -889,11 +919,22 @@ rollbacks[1]:
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        queue.stop(&run_id).await.unwrap();
+        queue.stop(&run_id, Some("tester")).await.unwrap();
         assert_eq!(await_terminal(&fx, &run_id).await, run_state::ABORTED);
 
         let events = audit_events(&fx, &run_id);
         assert!(events.contains(&"stop_requested".to_string()), "{events:?}");
+        // The stop_requested audit event carries the requesting actor.
+        let trail = Store::at(&fx.db_path)
+            .read_only()
+            .unwrap()
+            .run_audit_trail(&run_id)
+            .unwrap();
+        let stop_event = trail
+            .iter()
+            .find(|r| r["event"] == "stop_requested")
+            .unwrap();
+        assert_eq!(stop_event["actor"], serde_json::json!("tester"));
         // The e-stop unwound the active fault via the rollback path.
         let executed = fx.executed.lock().unwrap();
         assert!(executed.contains(&"rollback-1".to_string()), "{executed:?}");
@@ -919,10 +960,10 @@ rollbacks[1]:
             recording_factory(&fx.executed, Duration::from_millis(150)),
         );
 
-        let r1 = queue.enqueue(request()).await.unwrap();
+        let r1 = queue.enqueue(request(), None).await.unwrap();
         await_state(&fx, &r1, run_state::RUNNING).await;
-        let r2 = queue.enqueue(request()).await.unwrap();
-        queue.stop(&r2).await.unwrap();
+        let r2 = queue.enqueue(request(), None).await.unwrap();
+        queue.stop(&r2, None).await.unwrap();
 
         assert_eq!(await_terminal(&fx, &r2).await, run_state::ABORTED);
         let run = run_row(&fx, &r2);
@@ -944,12 +985,15 @@ rollbacks[1]:
             },
             recording_factory(&fx.executed, Duration::from_millis(5)),
         );
-        assert!(matches!(queue.stop("nope").await, Err(StopError::NotFound)));
+        assert!(matches!(
+            queue.stop("nope", None).await,
+            Err(StopError::NotFound)
+        ));
 
-        let run_id = queue.enqueue(request()).await.unwrap();
+        let run_id = queue.enqueue(request(), None).await.unwrap();
         await_terminal(&fx, &run_id).await;
         assert!(matches!(
-            queue.stop(&run_id).await,
+            queue.stop(&run_id, None).await,
             Err(StopError::Terminal(_))
         ));
     }
@@ -965,6 +1009,7 @@ rollbacks[1]:
                     registry_id: "reg-1".into(),
                     params_json: None,
                     queued_at_ns: 1,
+                    actor: None,
                 })
                 .map_err(|e| e.to_string())
         })
@@ -1008,6 +1053,7 @@ rollbacks[1]:
                     registry_id: "reg-1".into(),
                     params_json: None,
                     queued_at_ns: 1,
+                    actor: None,
                 })
                 .map_err(|e| e.to_string())
         })
