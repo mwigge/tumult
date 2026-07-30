@@ -50,6 +50,18 @@
 //!   journal ingest for the CLI (`TUMULT_DAEMON_URL`): rides the
 //!   single-writer channel into the analytics tables, idempotent on
 //!   `experiment_id`.
+//! * `POST /api/runs/validate {toon, vars?}` — the CLI's full
+//!   parse/resolve/validate pipeline as a service; registers the definition
+//!   (content-hash dedup) and returns its `registry_id`.
+//! * `POST /api/runs/dry-run {registry_id, vars?}` — the resolved execution
+//!   plan (hypothesis probes, method steps in order, guards, rollbacks)
+//!   with nothing executed.
+//! * `POST /api/runs {registry_id, vars?}` — enqueue onto the daemon's
+//!   bounded run queue: 202 + `run_id`, 429 on overload (never silently
+//!   queued). `POST /api/runs/{id}/stop` e-stops a run (mid-method cancel
+//!   with rollbacks, or cancel-before-start when still queued).
+//! * `GET /api/runs?state=&limit=` / `GET /api/runs/{id}` — run list and
+//!   one run with its audit trail.
 //! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
 //! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?}`
@@ -66,6 +78,7 @@ mod ask;
 pub mod import;
 pub mod lake;
 pub mod manual;
+pub mod runs;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -86,8 +99,9 @@ const ROOT: &str = "span_name = 'resilience.experiment'";
 
 /// Shared handler state: where the store, metric definitions and rendered
 /// reports live, plus the LLM client for `/api/ask`, the org tree for
-/// `/api/scores/tree` and R1's "By domain", and the ingest handle that
-/// carries manual-evidence mutations onto the daemon's single writer.
+/// `/api/scores/tree` and R1's "By domain", the ingest handle that
+/// carries manual-evidence mutations onto the daemon's single writer, and
+/// the bounded run queue behind `/api/runs*`.
 #[derive(Clone)]
 pub struct ApiState {
     db_path: Arc<PathBuf>,
@@ -96,6 +110,7 @@ pub struct ApiState {
     llm: Arc<dyn tumult_intelligence::llm::Llm>,
     org: Arc<tumult_compliance::OrgTree>,
     ingest: Option<tumult_ingest::IngestWriter>,
+    runs: Option<tumult_ingest::RunQueue>,
 }
 
 impl ApiState {
@@ -108,6 +123,7 @@ impl ApiState {
         llm: Arc<dyn tumult_intelligence::llm::Llm>,
         org: tumult_compliance::OrgTree,
         ingest: Option<tumult_ingest::IngestWriter>,
+        runs: Option<tumult_ingest::RunQueue>,
     ) -> Self {
         Self {
             db_path: Arc::new(db_path),
@@ -116,6 +132,7 @@ impl ApiState {
             llm,
             org: Arc::new(org),
             ingest,
+            runs,
         }
     }
 
@@ -129,6 +146,7 @@ impl ApiState {
         db_path: PathBuf,
         metrics_dir: PathBuf,
         ingest: Option<tumult_ingest::IngestWriter>,
+        runs: Option<tumult_ingest::RunQueue>,
     ) -> Self {
         let reports_dir = db_path
             .parent()
@@ -151,6 +169,7 @@ impl ApiState {
             Arc::new(tumult_intelligence::llm::OpenAiCompatClient::from_env()),
             org,
             ingest,
+            runs,
         )
     }
 
@@ -164,6 +183,12 @@ impl ApiState {
     #[must_use]
     pub fn ingest_handle(&self) -> Option<&tumult_ingest::IngestWriter> {
         self.ingest.as_ref()
+    }
+
+    /// The bounded run queue behind `/api/runs*` (daemon only).
+    #[must_use]
+    pub fn runs_handle(&self) -> Option<&tumult_ingest::RunQueue> {
+        self.runs.as_ref()
     }
 }
 
@@ -204,6 +229,11 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/api/manual/import", post(manual::import))
         .route("/api/import/journal", post(import::import_journal))
+        .route("/api/runs/validate", post(runs::validate))
+        .route("/api/runs/dry-run", post(runs::dry_run))
+        .route("/api/runs", get(runs::list).post(runs::create))
+        .route("/api/runs/{id}", get(runs::detail))
+        .route("/api/runs/{id}/stop", post(runs::stop))
         .route("/api/lake/status", get(lake::status))
         .route("/api/lake/export", post(lake::export_now))
         .route("/api/reports", get(list_reports))

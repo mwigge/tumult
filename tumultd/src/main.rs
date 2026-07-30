@@ -147,6 +147,7 @@ async fn serve() -> Result<()> {
         config.db_path.clone(),
         config.metrics_dir.clone(),
         Some(ingest.clone()),
+        None,
     );
     if let Some(interval) = report_interval_from_env() {
         spawn_report_scheduler(

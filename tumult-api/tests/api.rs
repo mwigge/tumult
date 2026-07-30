@@ -33,6 +33,57 @@ fn now_ns() -> i64 {
         .as_nanos() as i64
 }
 
+/// Every activity succeeds after a 200ms sleep: slow enough that an HTTP
+/// test can catch a run mid-method for the e-stop endpoint.
+struct SlowNoopExecutor;
+impl tumult_core::runner::ActivityExecutor for SlowNoopExecutor {
+    fn execute(
+        &self,
+        activity: &tumult_core::types::Activity,
+    ) -> tumult_core::runner::ActivityOutcome {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        tumult_core::runner::ActivityOutcome {
+            success: true,
+            output: Some(format!("ok: {}", activity.name)),
+            error: None,
+            duration_ms: 200,
+        }
+    }
+}
+
+/// Three method steps plus one rollback, native providers (the test executor
+/// intercepts everything regardless of provider).
+const RUN_TOON: &str = r#"
+title: api run test experiment
+description: exercises the run endpoints
+method[3]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+  - name: action-2
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+  - name: action-3
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+rollbacks[1]:
+  - name: rollback-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+"#;
+
 /// Two experiments: `exp-pass` (Completed, 30 min ago) and `exp-fail`
 /// (Deviated, 10 min ago), with tumult-style outcome logs and counters.
 /// Returns the timestamp of exp-pass's `experiment.started` log so tests can
@@ -277,14 +328,28 @@ async fn spawn_server() -> TestServer {
         None,
         "test-model".into(),
     ));
+    // A real single-writer channel so manual-evidence and run endpoints work,
+    // plus a real bounded run queue over a slow noop executor (HTTP tests can
+    // catch a run mid-method for the e-stop endpoint).
+    let ingest = tumult_ingest::IngestWriter::spawn(Store::at(&db_path).writer().unwrap(), 16).0;
+    let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(|_env| Arc::new(SlowNoopExecutor));
+    let run_queue = tumult_ingest::RunQueue::spawn(
+        ingest.clone(),
+        db_path.clone(),
+        tumult_ingest::RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+        },
+        factory,
+    );
     let state = tumult_api::ApiState::new(
         db_path.clone(),
         metrics_dir,
         reports_dir.clone(),
         llm,
         tumult_compliance::OrgTree::from_yaml(ORG_YAML).unwrap(),
-        // A real single-writer channel so manual-evidence endpoints work.
-        Some(tumult_ingest::IngestWriter::spawn(Store::at(&db_path).writer().unwrap(), 16).0),
+        Some(ingest),
+        Some(run_queue),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -1524,4 +1589,269 @@ async fn import_journal_roundtrip_and_dedup() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["experiment_id"], json!("exp-imported"));
     assert_eq!(rows[0]["status"], json!("completed"));
+}
+
+// ---------------------------------------------------------------------------
+// /api/runs* — validate, dry-run, enqueue, e-stop, inspect
+
+/// Register RUN_TOON via the validate endpoint; returns its registry id.
+async fn register_run_def(base: &str) -> String {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/runs/validate"))
+        .json(&json!({"toon": RUN_TOON}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+    body["registry_id"].as_str().unwrap().to_string()
+}
+
+/// Poll a run's detail until it reaches a terminal state (10s budget).
+async fn await_terminal_run(base: &str, run_id: &str) -> Value {
+    const TERMINAL: [&str; 6] = [
+        "passed",
+        "deviated",
+        "failed",
+        "aborted",
+        "orphaned",
+        "rollback_pending",
+    ];
+    for _ in 0..200 {
+        let resp = reqwest::Client::new()
+            .get(format!("{base}/api/runs/{run_id}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 200);
+        let body: Value = resp.json().await.unwrap();
+        let state = body["run"]["state"].as_str().unwrap_or_default();
+        if TERMINAL.contains(&state) {
+            return body;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("run {run_id} never reached a terminal state");
+}
+
+#[tokio::test]
+async fn validate_registers_and_dedups_definitions() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .json(&json!({"toon": RUN_TOON}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+    assert_eq!(body["registered"], true, "{body}");
+    assert_eq!(body["name"], "api run test experiment");
+    let registry_id = body["registry_id"].as_str().unwrap();
+    assert!(registry_id.starts_with("reg-"), "{registry_id}");
+
+    // Same TOON again: deduped onto the same registry row.
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .json(&json!({"toon": RUN_TOON}))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+    assert_eq!(body["registered"], false, "{body}");
+    assert_eq!(body["registry_id"], registry_id);
+
+    // Empty method: parses but fails validation — diagnostics, no 5xx.
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .json(&json!({"toon": "title: no method here"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], false, "{body}");
+    assert!(
+        body["error"].as_str().unwrap().starts_with("validate:"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn dry_run_returns_resolved_plan() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("{}/api/runs/dry-run", srv.base))
+        .json(&json!({"registry_id": registry_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+    assert_eq!(body["plan"]["title"], "api run test experiment");
+    let method = body["plan"]["method"].as_array().unwrap();
+    assert_eq!(method.len(), 3);
+    assert_eq!(method[0]["name"], "action-1");
+    assert_eq!(body["plan"]["rollbacks"].as_array().unwrap().len(), 1);
+
+    // Unknown registry id: 404.
+    let resp = client
+        .post(format!("{}/api/runs/dry-run", srv.base))
+        .json(&json!({"registry_id": "reg-does-not-exist"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn run_lifecycle_end_to_end() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+    let client = reqwest::Client::new();
+
+    // Unknown registry id: 404, nothing enqueued.
+    let resp = client
+        .post(format!("{}/api/runs", srv.base))
+        .json(&json!({"registry_id": "reg-does-not-exist"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    let resp = client
+        .post(format!("{}/api/runs", srv.base))
+        .json(&json!({"registry_id": registry_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "queued");
+    let run_id = body["run_id"].as_str().unwrap().to_string();
+
+    // The run executes to passed; the audit trail records the transitions.
+    let detail = await_terminal_run(&srv.base, &run_id).await;
+    assert_eq!(detail["run"]["state"], "passed", "{detail}");
+    assert_eq!(detail["run"]["rollback_status"], "not_needed");
+    assert!(!detail["run"]["experiment_id"].as_str().unwrap().is_empty());
+    let events: Vec<&str> = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["event"].as_str())
+        .collect();
+    assert!(events.contains(&"enqueued"), "{events:?}");
+    assert!(events.contains(&"passed"), "{events:?}");
+
+    // List filter finds it under passed; a bogus state is a 400.
+    let resp = client
+        .get(format!("{}/api/runs?state=passed", srv.base))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["count"], 1, "{body}");
+    assert_eq!(body["runs"][0]["id"], json!(run_id));
+    assert_eq!(
+        body["runs"][0]["definition_name"],
+        "api run test experiment"
+    );
+
+    let resp = client
+        .get(format!("{}/api/runs?state=bogus", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+
+    // Unknown run id: 404.
+    let resp = client
+        .get(format!("{}/api/runs/run-does-not-exist", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn stop_unknown_terminal_and_running_runs() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+    let client = reqwest::Client::new();
+    let enqueue = || {
+        client
+            .post(format!("{}/api/runs", srv.base))
+            .json(&json!({"registry_id": registry_id}))
+            .send()
+    };
+
+    // Unknown run: 404.
+    let resp = client
+        .post(format!("{}/api/runs/run-does-not-exist/stop", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    // A finished run: 409 with its terminal state.
+    let resp = enqueue().await.unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    let done_id = body["run_id"].as_str().unwrap().to_string();
+    let detail = await_terminal_run(&srv.base, &done_id).await;
+    assert_eq!(detail["run"]["state"], "passed");
+    let resp = client
+        .post(format!("{}/api/runs/{done_id}/stop", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 409);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "passed");
+
+    // A running run: e-stop cancels mid-method, the runner's rollback path
+    // unwinds, terminal state is aborted with the audit trail to prove it.
+    let resp = enqueue().await.unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    let stop_id = body["run_id"].as_str().unwrap().to_string();
+    // Wait for the run to actually start (running, not just queued).
+    for _ in 0..100 {
+        let resp = client
+            .get(format!("{}/api/runs/{stop_id}", srv.base))
+            .send()
+            .await
+            .unwrap();
+        let body: Value = resp.json().await.unwrap();
+        if body["run"]["state"] == "running" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let resp = client
+        .post(format!("{}/api/runs/{stop_id}/stop", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let detail = await_terminal_run(&srv.base, &stop_id).await;
+    assert_eq!(detail["run"]["state"], "aborted", "{detail}");
+    assert_eq!(detail["run"]["rollback_status"], "completed");
+    let events: Vec<&str> = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["event"].as_str())
+        .collect();
+    assert!(events.contains(&"stop_requested"), "{events:?}");
 }

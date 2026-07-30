@@ -147,20 +147,28 @@ fn terminal_state(status: &ExperimentStatus) -> &'static str {
 /// Parse, resolve and validate a run request: the exact pipeline the CLI's
 /// `tumult run` applies (config/secrets resolve against the daemon's
 /// environment). Returns the resolved experiment and the
-/// `TUMULT_CONFIG_*` / `TUMULT_SECRET_*` environment to inject.
-fn prepare(req: &RunRequest) -> Result<(Experiment, HashMap<String, String>), String> {
+/// `TUMULT_CONFIG_*` / `TUMULT_SECRET_*` environment to inject. Shared by
+/// the worker (enqueue path) and the API (validate / dry-run).
+///
+/// # Errors
+/// Returns a stage-prefixed message (`parse:` / `config:` / `secrets:` /
+/// `template:` / `validate:`) on any failure.
+pub fn prepare_run(
+    definition_toon: &str,
+    vars: &HashMap<String, String>,
+) -> Result<(Experiment, HashMap<String, String>), String> {
     use tumult_core::engine::{
         apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
         resolve_config, resolve_secrets, validate_experiment,
     };
-    let experiment = parse_experiment(&req.definition_toon).map_err(|e| format!("parse: {e}"))?;
+    let experiment = parse_experiment(definition_toon).map_err(|e| format!("parse: {e}"))?;
     let config = resolve_config(&experiment.configuration).map_err(|e| format!("config: {e}"))?;
     let secrets = resolve_secrets(&experiment.secrets).map_err(|e| format!("secrets: {e}"))?;
     let secrets_flat = flatten_secrets(&secrets);
-    let experiment = if req.vars.is_empty() && config.is_empty() && secrets_flat.is_empty() {
+    let experiment = if vars.is_empty() && config.is_empty() && secrets_flat.is_empty() {
         experiment
     } else {
-        apply_template_vars(&experiment, &req.vars, &config, &secrets_flat)
+        apply_template_vars(&experiment, vars, &config, &secrets_flat)
             .map_err(|e| format!("template: {e}"))?
     };
     validate_experiment(&experiment).map_err(|e| format!("validate: {e}"))?;
@@ -353,7 +361,7 @@ async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorFactory) {
     })
     .await;
 
-    let (experiment, injected_env) = match prepare(&request) {
+    let (experiment, injected_env) = match prepare_run(&request.definition_toon, &request.vars) {
         Ok(prepared) => prepared,
         Err(e) => {
             let id = run_id.clone();

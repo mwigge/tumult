@@ -28,7 +28,7 @@ mod writer;
 pub use config::Config;
 pub use error::IngestError;
 pub use manual::{ImportSummary, ManualImporter};
-pub use runs::{RunQueue, RunQueueConfig, RunRequest};
+pub use runs::{prepare_run, EnqueueError, RunQueue, RunQueueConfig, RunRequest, StopError};
 pub use writer::{Batch, IngestWriter};
 
 /// Current time as epoch nanoseconds — the receipt timestamp given to
