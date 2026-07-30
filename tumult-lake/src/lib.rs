@@ -301,6 +301,24 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     Ok(())
 }
 
+/// Shared JSON-rows query: each row as a JSON object (`{column: value}`)
+/// via DuckDB's `row_to_json`. Backs [`Reader::query_json_rows`] (public)
+/// and [`Writer::query_json_rows`] (crate-internal retention checks).
+#[cfg(feature = "duckdb")]
+pub(crate) fn query_json_rows(
+    conn: &Connection,
+    sql: &str,
+) -> Result<Vec<serde_json::Value>, StoreError> {
+    let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
+    let mut stmt = conn.prepare(&wrapped)?;
+    let rows = stmt.query_map([], |r| r.get::<usize, String>(0))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(serde_json::from_str(&row?)?);
+    }
+    Ok(out)
+}
+
 #[cfg(feature = "duckdb")]
 /// The write side of the store. Hold at most one per process (the ingest
 /// daemon funnels every write through a channel onto a single `Writer`).
@@ -538,6 +556,12 @@ impl Writer {
     pub(crate) fn execute(&self, sql: &str, p: impl duckdb::Params) -> Result<usize, StoreError> {
         Ok(self.conn.execute(sql, p)?)
     }
+
+    /// JSON-rows query on the write connection — crate-internal, used by
+    /// snapshot-retention fingerprint checks in the lake.
+    pub(crate) fn query_json_rows(&self, sql: &str) -> Result<Vec<serde_json::Value>, StoreError> {
+        query_json_rows(&self.conn, sql)
+    }
 }
 
 #[cfg(feature = "duckdb")]
@@ -583,14 +607,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails to prepare or execute.
     pub fn query_json_rows(&self, sql: &str) -> Result<Vec<serde_json::Value>, StoreError> {
-        let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
-        let mut stmt = self.conn.prepare(&wrapped)?;
-        let rows = stmt.query_map([], |r| r.get::<usize, String>(0))?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(serde_json::from_str(&row?)?);
-        }
-        Ok(out)
+        query_json_rows(&self.conn, sql)
     }
 
     /// Raw batch execution on the read connection — crate-internal, used by

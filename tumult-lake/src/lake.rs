@@ -52,6 +52,51 @@ const AUDIT_TS_COL: &str = "changed_at_ns";
 /// draft → submitted → verified lifecycle), never deleted.
 const MANUAL_TABLE: &str = "manual_experiments";
 
+/// Journal-detail tables: incremental on `started_at_ns` and
+/// retention-eligible under the same watermark guard as telemetry.
+const JOURNAL_TABLES: [&str; 3] = ["experiments", "activity_results", "load_results"];
+const JOURNAL_TS_COL: &str = "started_at_ns";
+
+/// INSERT-ONLY autopilot history: snapshot-exported (rows are few and the
+/// tables are event-sourced), retention-eligible ONLY while the current
+/// fingerprint matches the last exported one — fingerprint equality proves
+/// every hot row is already in the lake.
+const AUTOPILOT_SNAPSHOT_TABLES: [(&str, &str); 3] = [
+    ("autopilot_decisions", "decided_at_ns"),
+    ("autopilot_events", "at_ns"),
+    ("autopilot_change_events", "at_ns"),
+];
+
+/// Mutable or timestamp-less tables: snapshot-exported, never deleted.
+/// `graph_edges` rows are rewritten with `ts = 0` by topology refreshes, so
+/// a watermark would lose updates and retention would delete fresh rows;
+/// the `agentic_*` tables have no timestamp column at all.
+const SNAPSHOT_ONLY_TABLES: [&str; 6] = [
+    "graph_nodes",
+    "graph_edges",
+    "agentic_runs",
+    "agentic_contract_outcomes",
+    "agentic_fault_applications",
+    "agentic_replay_outcomes",
+];
+
+/// Content fingerprint for a snapshot table: md5 over the ordered per-row
+/// hashes of the full row JSON. Manual evidence uses its cheaper, stable
+/// `content_hash` column instead.
+fn fingerprint_sql(table: &str) -> String {
+    if table == MANUAL_TABLE {
+        format!(
+            "SELECT md5(COALESCE(string_agg(content_hash, ',' ORDER BY id), '')) AS fp \
+             FROM {table}"
+        )
+    } else {
+        format!(
+            "SELECT md5(COALESCE(string_agg(h, ',' ORDER BY h), '')) AS fp \
+             FROM (SELECT md5(CAST(row_to_json(t) AS VARCHAR)) AS h FROM {table} t)"
+        )
+    }
+}
+
 /// Day-partition expression for a watermark column (UTC, `YYYY-MM-DD`).
 fn day_expr(ts_col: &str) -> String {
     format!("strftime(to_timestamp({ts_col} / 1000000000.0), '%Y-%m-%d')")
@@ -134,10 +179,15 @@ struct LakeMeta {
     last_export_ns: Option<i64>,
     #[serde(default)]
     tables: BTreeMap<String, i64>,
-    /// Hash of the ordered manual-evidence content hashes; the snapshot is
-    /// rewritten only when this changes.
-    #[serde(default)]
+    /// Legacy field: the pre-generalization fingerprint for
+    /// `manual_experiments`. Seeded into `fingerprints` on read and never
+    /// written again.
+    #[serde(default, skip_serializing)]
     manual_fingerprint: Option<String>,
+    /// Per-table content fingerprint for snapshot-exported tables; a
+    /// snapshot is rewritten only when its fingerprint changes.
+    #[serde(default)]
+    fingerprints: BTreeMap<String, String>,
 }
 
 fn meta_path(dir: &Path) -> PathBuf {
@@ -145,12 +195,19 @@ fn meta_path(dir: &Path) -> PathBuf {
 }
 
 fn read_meta(dir: &Path) -> Result<LakeMeta, StoreError> {
-    match std::fs::read_to_string(meta_path(dir)) {
-        Ok(raw) => serde_json::from_str(&raw)
-            .map_err(|e| StoreError::Internal(format!("corrupt lake watermark file: {e}"))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(LakeMeta::default()),
-        Err(e) => Err(StoreError::from(e)),
+    let mut meta = match std::fs::read_to_string(meta_path(dir)) {
+        Ok(raw) => serde_json::from_str::<LakeMeta>(&raw)
+            .map_err(|e| StoreError::Internal(format!("corrupt lake watermark file: {e}")))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => LakeMeta::default(),
+        Err(e) => return Err(StoreError::from(e)),
+    };
+    // Migrate the legacy manual-only fingerprint field into the generic map.
+    if let Some(fp) = meta.manual_fingerprint.take() {
+        meta.fingerprints
+            .entry(MANUAL_TABLE.to_string())
+            .or_insert(fp);
     }
+    Ok(meta)
 }
 
 /// Write the watermark file atomically (tmp + rename) so a crash mid-export
@@ -236,27 +293,25 @@ fn export_incremental(
     })
 }
 
-/// Full-snapshot export for the mutable evidence register: latest snapshot
-/// wins; consumers take the newest file. Rewritten only when the register's
-/// content hashes change (`fingerprint`), so idempotent re-runs write
-/// nothing here either.
+/// Full-snapshot export for a mutable or event-sourced table: latest
+/// snapshot wins; consumers take the newest file. Rewritten only when the
+/// table's content fingerprint changes, so idempotent re-runs write nothing
+/// here either.
 fn export_snapshot(
     reader: &Reader,
     cfg: &LakeConfig,
+    table: &str,
     run_ns: i64,
     prior_fingerprint: Option<&str>,
 ) -> Result<(TableExport, String), StoreError> {
     let fp = reader
-        .query_json_rows(&format!(
-            "SELECT md5(COALESCE(string_agg(content_hash, ',' ORDER BY id), '')) AS fp \
-             FROM {MANUAL_TABLE}"
-        ))?
+        .query_json_rows(&fingerprint_sql(table))?
         .first()
         .and_then(|r| r.get("fp"))
         .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_default();
     let unchanged = prior_fingerprint == Some(fp.as_str());
-    let count = reader.query_json_rows(&format!("SELECT count(*) AS n FROM {MANUAL_TABLE}"))?;
+    let count = reader.query_json_rows(&format!("SELECT count(*) AS n FROM {table}"))?;
     let n = count
         .first()
         .and_then(|r| r.get("n"))
@@ -273,13 +328,13 @@ fn export_snapshot(
             .and_then(|r| r.get("d"))
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_else(|| "unknown".to_string());
-        let rel = format!("{MANUAL_TABLE}/date={day}/data-{run_ns}.parquet");
+        let rel = format!("{table}/date={day}/data-{run_ns}.parquet");
         let path = cfg.dir.join(&rel);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         reader.execute_batch(&format!(
-            "COPY (SELECT * FROM {MANUAL_TABLE}) TO '{}' (FORMAT PARQUET)",
+            "COPY (SELECT * FROM {table}) TO '{}' (FORMAT PARQUET)",
             path.display()
         ))?;
         files.push(rel);
@@ -287,7 +342,7 @@ fn export_snapshot(
     }
     Ok((
         TableExport {
-            name: MANUAL_TABLE.to_string(),
+            name: table.to_string(),
             rows,
             watermark_ns: run_ns,
             files,
@@ -320,11 +375,28 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
         .insert(AUDIT_TABLE.to_string(), audit.watermark_ns);
     tables.push(audit);
 
-    let (manual, fp) = export_snapshot(reader, cfg, run_ns, meta.manual_fingerprint.as_deref())?;
-    meta.tables
-        .insert(MANUAL_TABLE.to_string(), manual.watermark_ns);
-    meta.manual_fingerprint = Some(fp);
-    tables.push(manual);
+    for table in JOURNAL_TABLES {
+        let wm = meta.tables.get(table).copied().unwrap_or(0);
+        let t = export_incremental(reader, cfg, table, JOURNAL_TS_COL, wm, run_ns)?;
+        meta.tables.insert(table.to_string(), t.watermark_ns);
+        tables.push(t);
+    }
+
+    for table in std::iter::once(&MANUAL_TABLE)
+        .chain(AUTOPILOT_SNAPSHOT_TABLES.iter().map(|(t, _)| t))
+        .chain(SNAPSHOT_ONLY_TABLES.iter())
+    {
+        let (t, fp) = export_snapshot(
+            reader,
+            cfg,
+            table,
+            run_ns,
+            meta.fingerprints.get(*table).map(String::as_str),
+        )?;
+        meta.tables.insert((*table).to_string(), t.watermark_ns);
+        meta.fingerprints.insert((*table).to_string(), fp);
+        tables.push(t);
+    }
 
     meta.last_export_ns = Some(run_ns);
     write_meta(&cfg.dir, &meta)?;
@@ -336,9 +408,13 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
     })
 }
 
-/// Delete hot-store telemetry rows older than `retention_days` that the
-/// watermark proves were already exported. Audit and manual-evidence tables
-/// are never touched (append-only compliance evidence). No-op when
+/// Delete hot-store rows older than `retention_days` that the lake provably
+/// holds. Telemetry and journal-detail tables use the watermark guard (rows
+/// above the watermark survive); autopilot snapshot tables are purged only
+/// while the current fingerprint matches the last exported one (equality
+/// proves every row is in the lake). Audit, manual-evidence, graph and
+/// agentic tables are never touched (append-only compliance evidence, or
+/// mutable/timestamp-less rows a watermark cannot protect). No-op when
 /// `retention_days == 0`.
 ///
 /// # Errors
@@ -357,6 +433,37 @@ pub fn enforce_retention(
         let wm = meta.tables.get(table).copied().unwrap_or(0);
         let n = writer.execute(
             &format!("DELETE FROM {table} WHERE ts_ns < {cutoff} AND ts_ns <= {wm}"),
+            [],
+        )?;
+        deleted.insert(table.to_string(), n as u64);
+    }
+    for table in JOURNAL_TABLES {
+        let wm = meta.tables.get(table).copied().unwrap_or(0);
+        let n = writer.execute(
+            &format!(
+                "DELETE FROM {table} WHERE {JOURNAL_TS_COL} < {cutoff} AND {JOURNAL_TS_COL} <= {wm}"
+            ),
+            [],
+        )?;
+        deleted.insert(table.to_string(), n as u64);
+    }
+    for (table, ts_col) in AUTOPILOT_SNAPSHOT_TABLES {
+        let Some(exported_fp) = meta.fingerprints.get(table) else {
+            // Never exported: nothing in the lake, nothing may be deleted.
+            continue;
+        };
+        let current_fp = writer
+            .query_json_rows(&fingerprint_sql(table))?
+            .first()
+            .and_then(|r| r.get("fp"))
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        if &current_fp != exported_fp {
+            // Rows exist that are not in the lake yet: keep everything.
+            continue;
+        }
+        let n = writer.execute(
+            &format!("DELETE FROM {table} WHERE {ts_col} < {cutoff}"),
             [],
         )?;
         deleted.insert(table.to_string(), n as u64);
@@ -633,5 +740,258 @@ mod tests {
         assert_eq!(manual.rows, 2);
         assert_eq!(manual.files.len(), 1);
         assert_eq!(parquet_count(&reader2, &cfg, MANUAL_TABLE), 3);
+    }
+
+    fn journal(id: &str, started_at_ns: i64) -> tumult_core::types::Journal {
+        let mut j = crate::duckdb_store::sample_journal(
+            id,
+            tumult_core::types::ExperimentStatus::Completed,
+        );
+        j.started_at_ns = started_at_ns;
+        j.method_results[0].started_at_ns = started_at_ns + 1;
+        j
+    }
+
+    #[test]
+    fn journal_tables_export_incrementally() {
+        let (_d, store, cfg) = fixture();
+        let writer = store.writer().unwrap();
+        writer
+            .ingest_journal(&journal("j1", BASE_NS), None)
+            .unwrap();
+        let reader = store.read_only().unwrap();
+
+        let first = export(&reader, &cfg).unwrap();
+        let exp = first
+            .tables
+            .iter()
+            .find(|t| t.name == "experiments")
+            .unwrap();
+        assert_eq!(exp.rows, 1);
+        assert_eq!(exp.watermark_ns, BASE_NS);
+        let acts = first
+            .tables
+            .iter()
+            .find(|t| t.name == "activity_results")
+            .unwrap();
+        assert_eq!(acts.rows, 1);
+        assert_eq!(parquet_count(&reader, &cfg, "experiments"), 1);
+        assert_eq!(parquet_count(&reader, &cfg, "activity_results"), 1);
+
+        // Idempotent re-run: nothing new anywhere (journal tables above their
+        // watermark, graph snapshots unchanged).
+        let second = export(&reader, &cfg).unwrap();
+        assert!(second
+            .tables
+            .iter()
+            .all(|t| t.rows == 0 && t.files.is_empty()));
+
+        // A new journal exports only its own rows.
+        writer
+            .ingest_journal(&journal("j2", BASE_NS + DAY_NS), None)
+            .unwrap();
+        let reader2 = store.read_only().unwrap();
+        let third = export(&reader2, &cfg).unwrap();
+        let exp = third
+            .tables
+            .iter()
+            .find(|t| t.name == "experiments")
+            .unwrap();
+        assert_eq!(exp.rows, 1);
+        assert_eq!(exp.watermark_ns, BASE_NS + DAY_NS);
+        assert_eq!(parquet_count(&reader2, &cfg, "experiments"), 2);
+    }
+
+    fn insert_decision(writer: &Writer, id: &str, decided_at_ns: i64) {
+        writer
+            .execute(
+                "INSERT INTO autopilot_decisions VALUES \
+                 (?, ?, 'trigger', 'svc', NULL, 'plug', 'act', 'art', 0.9, \
+                 '[]', 'high', NULL, '{}', 'ok', '[]', '{}', 'ph', NULL)",
+                duckdb::params![id, decided_at_ns],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn snapshot_tables_skip_unchanged_and_rewrite_on_change() {
+        let (_d, store, cfg) = fixture();
+        let writer = store.writer().unwrap();
+        insert_decision(&writer, "d1", BASE_NS);
+        writer
+            .execute(
+                "INSERT INTO graph_nodes VALUES ('svc:a', 'service', 'a', '{}')",
+                [],
+            )
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        // The schema seeds graph_nodes (compliance articles, fault domains),
+        // so assert against the actual baseline rather than a constant.
+        let baseline_nodes = reader
+            .query_json_rows("SELECT count(*) AS n FROM graph_nodes")
+            .unwrap()[0]["n"]
+            .as_u64()
+            .unwrap();
+
+        let first = export(&reader, &cfg).unwrap();
+        let ad = first
+            .tables
+            .iter()
+            .find(|t| t.name == "autopilot_decisions")
+            .unwrap();
+        assert_eq!(ad.rows, 1);
+        assert_eq!(ad.files.len(), 1);
+        let gn = first
+            .tables
+            .iter()
+            .find(|t| t.name == "graph_nodes")
+            .unwrap();
+        assert_eq!(gn.rows, baseline_nodes);
+        assert_eq!(gn.files.len(), 1);
+
+        // Unchanged: both snapshots skipped.
+        let second = export(&reader, &cfg).unwrap();
+        for name in ["autopilot_decisions", "graph_nodes"] {
+            let t = second.tables.iter().find(|t| t.name == name).unwrap();
+            assert_eq!(t.rows, 0, "{name}");
+            assert!(t.files.is_empty(), "{name}");
+        }
+
+        // A new decision rewrites only that table's snapshot.
+        insert_decision(&writer, "d2", BASE_NS + 1);
+        let reader2 = store.read_only().unwrap();
+        let third = export(&reader2, &cfg).unwrap();
+        let ad = third
+            .tables
+            .iter()
+            .find(|t| t.name == "autopilot_decisions")
+            .unwrap();
+        assert_eq!(ad.rows, 2);
+        assert_eq!(ad.files.len(), 1);
+        let gn = third
+            .tables
+            .iter()
+            .find(|t| t.name == "graph_nodes")
+            .unwrap();
+        assert_eq!(gn.rows, 0);
+        assert_eq!(parquet_count(&reader2, &cfg, "autopilot_decisions"), 3);
+    }
+
+    #[test]
+    fn autopilot_retention_purges_only_after_fingerprinted_export() {
+        let (_d, store, mut cfg) = fixture();
+        cfg.retention_days = 1;
+        let writer = store.writer().unwrap();
+        let old = now_ns() - 3 * DAY_NS;
+        insert_decision(&writer, "d1", old);
+
+        let decision_count = |store: &Store| {
+            store
+                .read_only()
+                .unwrap()
+                .query_json_rows("SELECT count(*) AS n FROM autopilot_decisions")
+                .unwrap()[0]["n"]
+                .as_i64()
+                .unwrap()
+        };
+
+        // Never exported: no fingerprint on record → nothing may be deleted.
+        let deleted = enforce_retention(&writer, &cfg).unwrap();
+        assert!(!deleted.contains_key("autopilot_decisions"));
+        assert_eq!(decision_count(&store), 1);
+
+        let reader = store.read_only().unwrap();
+        export(&reader, &cfg).unwrap();
+
+        // d2 lands after the export: the fingerprint no longer covers the
+        // hot store, so even old-enough rows survive.
+        insert_decision(&writer, "d2", old);
+        let deleted = enforce_retention(&writer, &cfg).unwrap();
+        assert!(!deleted.contains_key("autopilot_decisions"));
+        assert_eq!(decision_count(&store), 2);
+
+        // After a covering export, old rows are purged.
+        let reader2 = store.read_only().unwrap();
+        export(&reader2, &cfg).unwrap();
+        let deleted = enforce_retention(&writer, &cfg).unwrap();
+        assert_eq!(deleted.get("autopilot_decisions"), Some(&2));
+        assert_eq!(decision_count(&store), 0);
+    }
+
+    #[test]
+    fn snapshot_only_tables_are_retention_exempt() {
+        let (_d, store, mut cfg) = fixture();
+        cfg.retention_days = 1;
+        let writer = store.writer().unwrap();
+        writer
+            .execute(
+                "INSERT INTO graph_nodes VALUES ('svc:a', 'service', 'a', '{}')",
+                [],
+            )
+            .unwrap();
+        writer
+            .execute(
+                "INSERT INTO agentic_runs VALUES \
+                 ('r1', 'e1', 'http', 'scenario', 0.0, NULL, NULL)",
+                [],
+            )
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        export(&reader, &cfg).unwrap();
+        // graph_nodes is seeded by the schema; assert it survives intact,
+        // whatever the baseline was.
+        let baseline_nodes = reader
+            .query_json_rows("SELECT count(*) AS n FROM graph_nodes")
+            .unwrap()[0]["n"]
+            .clone();
+
+        let deleted = enforce_retention(&writer, &cfg).unwrap();
+        assert!(!deleted.contains_key("graph_nodes"));
+        assert!(!deleted.contains_key("agentic_runs"));
+        let n = reader
+            .query_json_rows("SELECT count(*) AS n FROM graph_nodes")
+            .unwrap();
+        assert_eq!(n[0]["n"], baseline_nodes);
+        let n = reader
+            .query_json_rows("SELECT count(*) AS n FROM agentic_runs")
+            .unwrap();
+        assert_eq!(n[0]["n"], serde_json::json!(1));
+    }
+
+    #[test]
+    fn legacy_manual_fingerprint_migrates_into_fingerprints() {
+        let (_d, store, cfg) = fixture();
+        let writer = store.writer().unwrap();
+        insert_manual(&writer, "m1", "hash1");
+        let reader = store.read_only().unwrap();
+        let fp = reader
+            .query_json_rows(&fingerprint_sql(MANUAL_TABLE))
+            .unwrap()[0]["fp"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // A pre-generalization meta file carries only the legacy field; the
+        // first export under the new code must treat the snapshot as current.
+        std::fs::create_dir_all(&cfg.dir).unwrap();
+        std::fs::write(
+            meta_path(&cfg.dir),
+            format!(r#"{{"manual_fingerprint": "{fp}"}}"#),
+        )
+        .unwrap();
+        let report = export(&reader, &cfg).unwrap();
+        let manual = report
+            .tables
+            .iter()
+            .find(|t| t.name == MANUAL_TABLE)
+            .unwrap();
+        assert_eq!(manual.rows, 0);
+        assert!(manual.files.is_empty());
+
+        // The rewritten meta carries the generic map, not the legacy field.
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(meta_path(&cfg.dir)).unwrap()).unwrap();
+        assert!(raw.get("manual_fingerprint").is_none());
+        assert_eq!(raw["fingerprints"][MANUAL_TABLE], serde_json::json!(fp));
     }
 }
