@@ -1,0 +1,27 @@
+# Build
+target/
+
+# Frontend
+node_modules/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+
+# Demo output
+demo-out/
+
+# Local DuckDB stores
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# Environment
+.env
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp

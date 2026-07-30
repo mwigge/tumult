@@ -1,0 +1,21 @@
+[package]
+name = "kronika-docs"
+description = "Compliance-grade report documents: content model, HTML preview, Typst PDF pipeline, resilience scoring"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+kronika-store.workspace = true
+typst.workspace = true
+typst-pdf.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,88 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kronika-store",
+    "crates/kronika-otel",
+    "crates/kronika-ingest",
+    "crates/kronika-metrics",
+    "crates/kronika-report",
+    "crates/kronika-ai",
+    "crates/kronika-api",
+    "crates/kronika-docs",
+    "bin/kronikad",
+    "bin/kronika-demo",
+]
+
+[workspace.package]
+version = "0.6.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Morgan Wigge"]
+description = "The chronicle of your resilience work — analytics & reporting for chaos-engineering data"
+
+[workspace.dependencies]
+# Internal crates
+kronika-store = { path = "crates/kronika-store" }
+kronika-otel = { path = "crates/kronika-otel" }
+kronika-ingest = { path = "crates/kronika-ingest" }
+kronika-metrics = { path = "crates/kronika-metrics" }
+kronika-report = { path = "crates/kronika-report" }
+kronika-ai = { path = "crates/kronika-ai" }
+kronika-api = { path = "crates/kronika-api" }
+kronika-docs = { path = "crates/kronika-docs" }
+
+# Storage — same major as tumult-analytics
+duckdb = { version = "1.10503", features = ["bundled"] }
+
+# OTLP wire format — matches opentelemetry-otlp 0.32 in tumult
+opentelemetry-proto = { version = "0.32", features = ["gen-tonic"] }
+tonic = "0.14"
+prost = "0.14"
+
+# HTTP server
+axum = "0.8"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Manual import
+csv = "1"
+
+# LLM client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+async-trait = "0.1"
+
+# PDF report pipeline
+typst = "0.15"
+typst-pdf = "0.15"
+sha2 = "0.10"
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Embedded web UI
+rust-embed = "8"
+mime_guess = "2"
+
+# Paths
+dirs-next = "2"
+
+# Test utilities
+tempfile = "3"
+
+# Speed up dev builds for the heavy bundled DuckDB C++ dependency.
+[profile.dev.package."*"]
+opt-level = 2

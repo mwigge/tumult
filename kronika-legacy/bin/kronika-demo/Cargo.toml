@@ -1,0 +1,19 @@
+[package]
+name = "kronika-demo"
+description = "Synthetic chaos-experiment generator speaking real OTLP (demo/seed tool)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "kronika-demo"
+path = "src/main.rs"
+
+[dependencies]
+opentelemetry-proto.workspace = true
+tonic.workspace = true
+prost.workspace = true
+clap.workspace = true
+tokio.workspace = true
+anyhow.workspace = true

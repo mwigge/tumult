@@ -1,0 +1,25 @@
+[package]
+name = "kronika-api"
+description = "Read-only JSON query API backing the Krönika analytics UI (overview, series, experiments, NL ask)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+kronika-store.workspace = true
+kronika-metrics.workspace = true
+kronika-ai.workspace = true
+kronika-report.workspace = true
+kronika-docs.workspace = true
+kronika-ingest.workspace = true
+sha2.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile.workspace = true

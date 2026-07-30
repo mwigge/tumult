@@ -1,0 +1,25 @@
+{
+  "name": "kronika-web",
+  "version": "0.3.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "echarts": "^5.5.1"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.5",
+    "@sveltejs/kit": "^2.8.1",
+    "@sveltejs/vite-plugin-svelte": "^4.0.2",
+    "svelte": "^5.2.7",
+    "svelte-check": "^4.1.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

@@ -1,0 +1,12 @@
+# Coverage: distinct experiments exercised in the window (real tumult
+# does not categorize target systems on spans; the experiment name —
+# resilience.experiment.title — is what its root spans carry).
+name: experiment_coverage
+description: Number of distinct experiments run in the window.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: count_distinct
+  column: experiment_name
+dimensions: []
+condition: { column: span_name, equals: "resilience.experiment" }

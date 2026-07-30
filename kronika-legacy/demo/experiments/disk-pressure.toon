@@ -1,0 +1,55 @@
+title: disk pressure — usage detected and reclaimed
+description: Fill a chunk of the scratch filesystem, verify the pressure is observed, then reclaim it; rollback reclaims on deviation
+
+tags[2]: resource, resilience
+
+steady_state_hypothesis:
+  title: Scratch filesystem usage is below 90 percent
+  probes[1]:
+    - name: disk-usage-ok
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/disk; df -P /tmp | awk 'NR==2{print $5}' | tr -d '%'"
+        timeout_s: 5.0
+      tolerance:
+        type: range
+        from: 0.0
+        to: 90.0
+
+method[3]:
+  - name: fill-disk
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "dd if=/dev/zero of=/tmp/kd-demo/disk/fill.bin bs=1M count=40 2>/dev/null; echo filled"
+      timeout_s: 20.0
+  - name: verify-usage-observed
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "df -P /tmp | awk 'NR==2{print $5}' | tr -d '%'"
+      timeout_s: 5.0
+    tolerance:
+      type: range
+      from: 0.0
+      to: 95.0
+  - name: reclaim-disk
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -f /tmp/kd-demo/disk/fill.bin; echo reclaimed"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: reclaim-disk-on-deviation
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -f /tmp/kd-demo/disk/fill.bin; echo reclaimed"
+      timeout_s: 5.0
