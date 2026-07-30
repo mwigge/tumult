@@ -108,7 +108,10 @@ preserves them.
    low-cardinality keys and `service.name`/`service.version` into wide-table
    columns; dynamic keys stay in `MAP(VARCHAR, VARCHAR)` columns.
 3. **Store** — batches travel a bounded tokio mpsc channel (batching +
-   backpressure) to the single writer connection.
+   backpressure) to the single writer connection. A FATAL persist error
+   (DuckDB invalidates the connection) makes the writer task rebuild the
+   connection with bounded retries instead of acking errors forever; the
+   failed batch is reported, never retried.
 4. **Semantic layer** — `metrics/*.yaml` definitions compile to strictly
    validated SQL (`[a-z0-9_.]` identifiers only → injection-impossible).
 5. **UI / reports** — `tumult-api` answers the UI's queries through fresh
