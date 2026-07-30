@@ -365,6 +365,7 @@ async fn spawn_server() -> TestServer {
         tumult_compliance::OrgTree::from_yaml(ORG_YAML).unwrap(),
         Some(ingest.clone()),
         Some(run_queue),
+        None,
         false,
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1628,13 +1629,15 @@ async fn register_run_def(base: &str) -> String {
 
 /// Poll a run's detail until it reaches a terminal state (10s budget).
 async fn await_terminal_run(base: &str, run_id: &str) -> Value {
-    const TERMINAL: [&str; 6] = [
+    const TERMINAL: [&str; 8] = [
         "passed",
         "deviated",
         "failed",
         "aborted",
         "orphaned",
         "rollback_pending",
+        "rejected",
+        "expired",
     ];
     for _ in 0..200 {
         let resp = reqwest::Client::new()
@@ -1651,6 +1654,36 @@ async fn await_terminal_run(base: &str, run_id: &str) -> Value {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached a terminal state");
+}
+
+/// Create a run from a registered definition and clear its T1 approval,
+/// returning the run id once queued. Open auth: the synthetic admin's
+/// "anonymous" approver differs from the "synthetic" requester, so the
+/// segregation-of-duties check passes (RUN_TOON — one fault kind with a
+/// rollback on the default "dev" env — classifies T1 and gates).
+async fn enqueue_approved(base: &str, registry_id: &str) -> String {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base}/api/runs"))
+        .json(&json!({"registry_id": registry_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "pending_approval", "{body}");
+    assert_eq!(body["tier"], "T1", "{body}");
+    let run_id = body["run_id"].as_str().unwrap().to_string();
+    let resp = client
+        .post(format!("{base}/api/runs/{run_id}/approve"))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "queued", "{body}");
+    run_id
 }
 
 #[tokio::test]
@@ -1787,16 +1820,9 @@ async fn run_lifecycle_end_to_end() {
         .unwrap();
     assert_eq!(resp.status().as_u16(), 404);
 
-    let resp = client
-        .post(format!("{}/api/runs", srv.base))
-        .json(&json!({"registry_id": registry_id}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status().as_u16(), 202);
-    let body: Value = resp.json().await.unwrap();
-    assert_eq!(body["state"], "queued");
-    let run_id = body["run_id"].as_str().unwrap().to_string();
+    // RUN_TOON (one fault kind with rollback, default "dev" env) classifies
+    // T1: the create gates, one approval dispatches.
+    let run_id = enqueue_approved(&srv.base, &registry_id).await;
 
     // The run executes to passed; the audit trail records the transitions.
     let detail = await_terminal_run(&srv.base, &run_id).await;
@@ -1809,7 +1835,7 @@ async fn run_lifecycle_end_to_end() {
         .iter()
         .filter_map(|e| e["event"].as_str())
         .collect();
-    assert!(events.contains(&"enqueued"), "{events:?}");
+    assert!(events.contains(&"requested"), "{events:?}");
     assert!(events.contains(&"passed"), "{events:?}");
 
     // List filter finds it under passed; a bogus state is a 400.
@@ -1847,12 +1873,8 @@ async fn stop_unknown_terminal_and_running_runs() {
     let srv = spawn_server().await;
     let registry_id = register_run_def(&srv.base).await;
     let client = reqwest::Client::new();
-    let enqueue = || {
-        client
-            .post(format!("{}/api/runs", srv.base))
-            .json(&json!({"registry_id": registry_id}))
-            .send()
-    };
+    // Every enqueue gates (T1) and clears through the approval flow.
+    let enqueue = || enqueue_approved(&srv.base, &registry_id);
 
     // Unknown run: 404.
     let resp = client
@@ -1863,10 +1885,7 @@ async fn stop_unknown_terminal_and_running_runs() {
     assert_eq!(resp.status().as_u16(), 404);
 
     // A finished run: 409 with its terminal state.
-    let resp = enqueue().await.unwrap();
-    assert_eq!(resp.status().as_u16(), 202);
-    let body: Value = resp.json().await.unwrap();
-    let done_id = body["run_id"].as_str().unwrap().to_string();
+    let done_id = enqueue().await;
     let detail = await_terminal_run(&srv.base, &done_id).await;
     assert_eq!(detail["run"]["state"], "passed");
     let resp = client
@@ -1880,10 +1899,7 @@ async fn stop_unknown_terminal_and_running_runs() {
 
     // A running run: e-stop cancels mid-method, the runner's rollback path
     // unwinds, terminal state is aborted with the audit trail to prove it.
-    let resp = enqueue().await.unwrap();
-    assert_eq!(resp.status().as_u16(), 202);
-    let body: Value = resp.json().await.unwrap();
-    let stop_id = body["run_id"].as_str().unwrap().to_string();
+    let stop_id = enqueue().await;
     // Wait for the run to actually start (running, not just queued).
     for _ in 0..100 {
         let resp = client
@@ -1913,6 +1929,351 @@ async fn stop_unknown_terminal_and_running_runs() {
         .filter_map(|e| e["event"].as_str())
         .collect();
     assert!(events.contains(&"stop_requested"), "{events:?}");
+}
+
+// ---------------------------------------------------------------------------
+// /api/approvals + /api/runs/{id}/approve|reject|break-glass (T10, ADR-012)
+
+/// POST a JSON body with a `kro_` bearer token; returns (status, body).
+async fn post_auth(base: &str, path: &str, token: &str, body: Value) -> (u16, Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}{path}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
+}
+
+/// GET with a `kro_` bearer token; returns (status, body).
+async fn get_auth(base: &str, path: &str, token: &str) -> (u16, Value) {
+    let resp = reqwest::Client::new()
+        .get(format!("{base}{path}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
+}
+
+/// The five roles involved in the approval workflow; returns
+/// (admin, approver, approver2, viewer, operator) bearer tokens.
+async fn approval_tokens(srv: &TestServer) -> (String, String, String, String, String) {
+    for (name, role) in [
+        ("root", "admin"),
+        ("anna", "approver"),
+        ("boris", "approver"),
+        ("vicky", "viewer"),
+        ("olga", "operator"),
+    ] {
+        add_user(srv, name, &format!("{name}-password-1"), role, false).await;
+    }
+    let (admin, _) = add_token(srv, "u-root", "t-admin").await;
+    let (anna, _) = add_token(srv, "u-anna", "t-anna").await;
+    let (boris, _) = add_token(srv, "u-boris", "t-boris").await;
+    let (vicky, _) = add_token(srv, "u-vicky", "t-vicky").await;
+    let (olga, _) = add_token(srv, "u-olga", "t-olga").await;
+    (admin, anna, boris, vicky, olga)
+}
+
+/// Register RUN_TOON with a bearer token; returns its registry id.
+async fn register_run_def_auth(base: &str, token: &str) -> String {
+    let (status, body) =
+        post_auth(base, "/api/runs/validate", token, json!({"toon": RUN_TOON})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["valid"], true, "{body}");
+    body["registry_id"].as_str().unwrap().to_string()
+}
+
+/// Create a gated run as `token`; returns (run_id, tier).
+async fn create_gated(base: &str, token: &str, registry_id: &str, env: &str) -> (String, String) {
+    let (status, body) = post_auth(
+        base,
+        "/api/runs",
+        token,
+        json!({"registry_id": registry_id, "env": env}),
+    )
+    .await;
+    assert_eq!(status, 202, "{body}");
+    assert_eq!(body["state"], "pending_approval", "{body}");
+    (
+        body["run_id"].as_str().unwrap().to_string(),
+        body["tier"].as_str().unwrap().to_string(),
+    )
+}
+
+/// Poll a run's detail (authenticated) until it reaches a terminal state.
+async fn await_terminal_run_auth(base: &str, token: &str, run_id: &str) -> Value {
+    for _ in 0..200 {
+        let (status, body) = get_auth(base, &format!("/api/runs/{run_id}"), token).await;
+        assert_eq!(status, 200, "{body}");
+        let state = body["run"]["state"].as_str().unwrap_or_default();
+        if [
+            "passed",
+            "deviated",
+            "failed",
+            "aborted",
+            "orphaned",
+            "rollback_pending",
+            "rejected",
+            "expired",
+        ]
+        .contains(&state)
+        {
+            return body;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("run {run_id} never reached a terminal state");
+}
+
+/// The full T1 flow: create gates, the queue lists it, the requester cannot
+/// self-approve, a second approver dispatches, and the run detail carries
+/// the whole approval chain.
+#[tokio::test]
+async fn approval_t1_flow_end_to_end() {
+    let srv = spawn_server().await;
+    let (admin, anna, _, vicky, _) = approval_tokens(&srv).await;
+    let registry_id = register_run_def_auth(&srv.base, &admin).await;
+
+    let (run_id, tier) = create_gated(&srv.base, &admin, &registry_id, "dev").await;
+    assert_eq!(tier, "T1");
+
+    // The queue lists the pending request (a viewer can read it).
+    let (status, body) = get_auth(&srv.base, "/api/approvals", &vicky).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 1, "{body}");
+    assert_eq!(body["queue"][0]["run_id"], json!(run_id));
+    assert_eq!(body["queue"][0]["tier"], "T1");
+    assert_eq!(body["queue"][0]["requested_by"], "root");
+
+    // Run detail carries the approval chain: the request, no decisions yet.
+    let (status, body) = get_auth(&srv.base, &format!("/api/runs/{run_id}"), &admin).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["approval"]["request"]["run_id"], json!(run_id));
+    assert_eq!(body["approval"]["request"]["tier"], "T1");
+    assert!(body["approval"]["request"]["consumed_at_ns"].is_null());
+    assert_eq!(body["approval"]["decisions"], json!([]));
+
+    // Segregation of duties: the requester (an admin, role-wise allowed to
+    // approve) cannot approve their own run.
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/approve"),
+        &admin,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("self-approval"),
+        "{body}"
+    );
+
+    // A second approver clears the quorum and dispatches.
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/approve"),
+        &anna,
+        json!({"note": "looks safe"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["state"], "queued", "{body}");
+
+    // The run executes to a terminal state; the audit trail and the
+    // approval chain tell the whole story.
+    let detail = await_terminal_run_auth(&srv.base, &admin, &run_id).await;
+    assert_eq!(detail["run"]["state"], "passed", "{detail}");
+    let events: Vec<&str> = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["event"].as_str())
+        .collect();
+    for event in ["requested", "approved", "dispatch_queued", "consumed"] {
+        assert!(events.contains(&event), "{event} missing from {events:?}");
+    }
+    assert!(
+        detail["approval"]["request"]["consumed_at_ns"].is_number(),
+        "{detail}"
+    );
+    let decisions = detail["approval"]["decisions"].as_array().unwrap();
+    assert_eq!(decisions.len(), 1, "{decisions:?}");
+    assert_eq!(decisions[0]["approver"], "anna");
+    assert_eq!(decisions[0]["decision"], "approved");
+    assert_eq!(decisions[0]["note"], "looks safe");
+}
+
+/// Rejection by a second approver flips the run terminal `rejected`.
+#[tokio::test]
+async fn approval_reject_makes_run_terminal() {
+    let srv = spawn_server().await;
+    let (admin, anna, _, _, _) = approval_tokens(&srv).await;
+    let registry_id = register_run_def_auth(&srv.base, &admin).await;
+    let (run_id, _) = create_gated(&srv.base, &admin, &registry_id, "dev").await;
+
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/reject"),
+        &anna,
+        json!({"note": "too risky this week"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["state"], "rejected", "{body}");
+
+    let detail = await_terminal_run_auth(&srv.base, &admin, &run_id).await;
+    assert_eq!(detail["run"]["state"], "rejected", "{detail}");
+    let events: Vec<&str> = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["event"].as_str())
+        .collect();
+    assert!(events.contains(&"rejected"), "{events:?}");
+    let decisions = detail["approval"]["decisions"].as_array().unwrap();
+    assert_eq!(decisions.len(), 1);
+    assert_eq!(decisions[0]["decision"], "rejected");
+    assert_eq!(decisions[0]["approver"], "anna");
+
+    // A rejected run cannot be approved afterwards.
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/approve"),
+        &anna,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["state"], "rejected", "{body}");
+}
+
+/// RBAC on the approval endpoints: viewer and operator cannot decide,
+/// break-glass is admin-only.
+#[tokio::test]
+async fn approval_endpoints_enforce_roles() {
+    let srv = spawn_server().await;
+    let (admin, anna, _, vicky, olga) = approval_tokens(&srv).await;
+    let registry_id = register_run_def_auth(&srv.base, &admin).await;
+    let (run_id, _) = create_gated(&srv.base, &admin, &registry_id, "dev").await;
+
+    for (name, token) in [("viewer", &vicky), ("operator", &olga)] {
+        let (status, _) = post_auth(
+            &srv.base,
+            &format!("/api/runs/{run_id}/approve"),
+            token,
+            json!({}),
+        )
+        .await;
+        assert_eq!(status, 403, "{name} must not approve");
+    }
+    // Break-glass by a non-admin approver: 403 at the role gate.
+    let (status, _) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/break-glass"),
+        &anna,
+        json!({"justification": "prod is down, need signal now"}),
+    )
+    .await;
+    assert_eq!(status, 403, "approver must not break glass");
+}
+
+/// Break-glass: short justification 400s, a proper one dispatches and
+/// leaves a retrospective manual-evidence draft as compliance debt.
+#[tokio::test]
+async fn break_glass_dispatches_and_opens_retrospective_debt() {
+    let srv = spawn_server().await;
+    let (admin, _, _, _, _) = approval_tokens(&srv).await;
+    let registry_id = register_run_def_auth(&srv.base, &admin).await;
+    let (run_id, _) = create_gated(&srv.base, &admin, &registry_id, "dev").await;
+
+    let (status, _) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/break-glass"),
+        &admin,
+        json!({"justification": "short"}),
+    )
+    .await;
+    assert_eq!(status, 400, "justification under 10 chars");
+
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/break-glass"),
+        &admin,
+        json!({"justification": "prod is down, need signal now"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["state"], "queued", "{body}");
+    assert_eq!(body["break_glass"], true, "{body}");
+
+    let detail = await_terminal_run_auth(&srv.base, &admin, &run_id).await;
+    assert_eq!(detail["run"]["state"], "passed", "{detail}");
+    let events: Vec<&str> = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["event"].as_str())
+        .collect();
+    assert!(events.contains(&"overridden"), "{events:?}");
+    assert_eq!(detail["approval"]["request"]["break_glass"], true);
+    assert_eq!(detail["approval"]["request"]["break_glass_by"], "root");
+
+    // The retrospective compliance-debt draft exists, entered by the admin.
+    let reader = Store::at(&srv.db_path).read_only().unwrap();
+    let drafts = reader.manual_experiments(Some("draft")).unwrap();
+    let retro = drafts
+        .iter()
+        .find(|d| {
+            d["experiment_name"] == json!(format!("Break-glass retrospective — run {run_id}"))
+        })
+        .unwrap_or_else(|| panic!("no retrospective draft in {drafts:?}"));
+    assert_eq!(retro["entered_by"], "root");
+    assert_eq!(retro["status"], "draft");
+    assert_eq!(
+        retro["action_items"],
+        json!([format!(
+            "Retrospective review of break-glass dispatch for run {run_id}"
+        )])
+    );
+}
+
+/// T3 without a configured autopilot policy fails closed: the approval is
+/// refused 422 and the run stays pending.
+#[tokio::test]
+async fn t3_approval_fails_closed_without_policy() {
+    let srv = spawn_server().await;
+    let (admin, anna, boris, _, _) = approval_tokens(&srv).await;
+    let registry_id = register_run_def_auth(&srv.base, &admin).await;
+
+    let (run_id, tier) = create_gated(&srv.base, &admin, &registry_id, "prod").await;
+    assert_eq!(tier, "T3");
+
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/approve"),
+        &anna,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 422, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("autopilot gate unavailable"),
+        "{body}"
+    );
+
+    // Still pending — a second approver hits the same wall, nothing leaked.
+    let (status, body) = get_auth(&srv.base, &format!("/api/runs/{run_id}"), &boris).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["run"]["state"], "pending_approval", "{body}");
+    assert_eq!(body["approval"]["decisions"], json!([]));
 }
 
 // ---------------------------------------------------------------------------

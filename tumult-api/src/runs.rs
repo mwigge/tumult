@@ -38,6 +38,9 @@ const STATES: &[&str] = &[
     run_state::ABORTED,
     run_state::ORPHANED,
     run_state::ROLLBACK_PENDING,
+    run_state::PENDING_APPROVAL,
+    run_state::REJECTED,
+    run_state::EXPIRED,
 ];
 
 fn bad_request(msg: String) -> Response {
@@ -228,18 +231,33 @@ pub async fn dry_run(
 // ---------------------------------------------------------------------------
 // POST /api/runs (+ /{id}/stop)
 
-/// JSON body: which registered definition to run, plus template variables.
+/// JSON body: which registered definition to run, plus template variables
+/// and the approval-relevant execution context (`env` defaults to `"dev"`).
 #[derive(Debug, Deserialize)]
 pub struct CreateRunRequest {
     registry_id: String,
     #[serde(default)]
     vars: HashMap<String, String>,
+    #[serde(default = "default_env")]
+    env: String,
+    #[serde(default)]
+    target: Option<String>,
 }
 
-/// `POST /api/runs` — enqueue a registered definition onto the daemon's
-/// bounded run queue. 202 with the run id; 429 when the waiting queue is at
-/// capacity (backpressure, never silent unbounded queueing). The
-/// `enqueued` audit event records the authenticated principal as actor.
+fn default_env() -> String {
+    "dev".into()
+}
+
+/// `POST /api/runs` — classify the definition into a risk tier (T0–T3,
+/// [`tumult_ingest::approvals::classify`], ADR-012) at request time. T0
+/// enqueues directly onto the daemon's bounded run queue: 202 with the run
+/// id, 429 when the waiting queue is at capacity (backpressure, never
+/// silent unbounded queueing). T1–T3 park in `pending_approval` (202 with
+/// the tier) until the approval quorum dispatches them — see
+/// [`crate::approvals`]. The definition is re-validated here, so an invalid
+/// definition now fails with 400 at request time instead of failing the run
+/// at dispatch. The `enqueued`/`requested` audit event records the
+/// authenticated principal as actor.
 pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -249,15 +267,41 @@ pub async fn create(
         return Err(unavailable("run queue is not wired"));
     };
     let def = registry_or_404(&state, &req.registry_id).await?;
+    let (experiment, _env) =
+        tumult_ingest::prepare_run(&def.definition_toon, &req.vars).map_err(bad_request)?;
+    let introspection = tumult_ingest::approvals::introspect(&experiment);
+    let tier = tumult_ingest::approvals::classify(&tumult_ingest::approvals::TierInput {
+        env: req.env.clone(),
+        // No T0 pre-approved catalog is configured yet.
+        catalog_matched: false,
+        introspection,
+    });
     let request = RunRequest {
         registry_id: def.id,
         definition_toon: def.definition_toon,
         vars: req.vars,
-        // T10 wires env/target through the request body and classifies the
-        // tier here; until then the defaults keep every run T0-eligible.
-        env: "dev".into(),
-        target: None,
+        env: req.env,
+        target: req.target,
     };
+    if tier != tumult_ingest::approvals::Tier::T0 {
+        return match queue.request_gated(request, tier, principal.actor()).await {
+            Ok(run_id) => Ok((
+                StatusCode::ACCEPTED,
+                Json(json!({
+                    "run_id": run_id,
+                    "state": run_state::PENDING_APPROVAL,
+                    "tier": tier.as_str(),
+                })),
+            )
+                .into_response()),
+            Err(EnqueueError::Full) => Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": "run queue full; retry later"})),
+            )
+                .into_response()),
+            Err(EnqueueError::Store(e)) => Err(internal(e)),
+        };
+    }
     match queue.enqueue(request, principal.actor()).await {
         Ok(run_id) => Ok((
             StatusCode::ACCEPTED,
@@ -357,7 +401,9 @@ pub async fn list(
     Ok(Json(json!({"count": rows.len(), "runs": rows})))
 }
 
-/// `GET /api/runs/{id}` — one run plus its audit trail, oldest first.
+/// `GET /api/runs/{id}` — one run plus its audit trail (oldest first) and
+/// its approval chain: `approval.request` (the pinned request, `null` for
+/// T0 runs that never gate) and `approval.decisions` (oldest first).
 /// Runs in an environment outside the principal's scopes 404 (same rule as
 /// the list; runs without an experiment stay visible).
 pub async fn detail(
@@ -394,7 +440,19 @@ pub async fn detail(
                 .next()
         };
         let audit = reader.run_audit_trail(&lookup).map_err(|e| e.to_string())?;
-        Ok(run.map(|run| json!({"run": run, "audit": audit})))
+        let request = reader
+            .approval_request(&lookup)
+            .map_err(|e| e.to_string())?;
+        let decisions = reader
+            .approval_decisions(&lookup)
+            .map_err(|e| e.to_string())?;
+        Ok(run.map(|run| {
+            json!({
+                "run": run,
+                "audit": audit,
+                "approval": {"request": request, "decisions": decisions},
+            })
+        }))
     })
     .await?;
     match body {

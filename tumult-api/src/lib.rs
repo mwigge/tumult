@@ -56,12 +56,21 @@
 //! * `POST /api/runs/dry-run {registry_id, vars?}` — the resolved execution
 //!   plan (hypothesis probes, method steps in order, guards, rollbacks)
 //!   with nothing executed.
-//! * `POST /api/runs {registry_id, vars?}` — enqueue onto the daemon's
-//!   bounded run queue: 202 + `run_id`, 429 on overload (never silently
-//!   queued). `POST /api/runs/{id}/stop` e-stops a run (mid-method cancel
-//!   with rollbacks, or cancel-before-start when still queued).
+//! * `POST /api/runs {registry_id, vars?, env?, target?}` — classify the
+//!   definition into a risk tier (T0–T3, ADR-012) at request time: T0
+//!   enqueues onto the daemon's bounded run queue (202 + `run_id`, 429 on
+//!   overload, never silently queued); T1–T3 park in `pending_approval`
+//!   with a canonical pin. `POST /api/runs/{id}/stop` e-stops a run
+//!   (mid-method cancel with rollbacks, or cancel-before-start when still
+//!   queued).
 //! * `GET /api/runs?state=&limit=` / `GET /api/runs/{id}` — run list and
-//!   one run with its audit trail.
+//!   one run with its audit trail and approval chain (request + decisions).
+//! * `GET /api/approvals` — the pending approval queue;
+//!   `POST /api/runs/{id}/approve` / `POST /api/runs/{id}/reject` record an
+//!   approver's decision (Approver role, approver ≠ requester, T3 re-runs
+//!   the autopilot gate fail-closed); `POST /api/runs/{id}/break-glass`
+//!   (Admin) overrides with a mandatory justification and opens a
+//!   retrospective manual-evidence draft as compliance debt.
 //! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
 //! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?}`
@@ -83,6 +92,7 @@
 //! so the API coexists with the daemon's single writer and never touches the
 //! write lock.
 
+pub mod approvals;
 mod ask;
 pub mod auth;
 pub mod import;
@@ -123,6 +133,9 @@ pub struct ApiState {
     org: Arc<tumult_compliance::OrgTree>,
     ingest: Option<tumult_ingest::IngestWriter>,
     runs: Option<tumult_ingest::RunQueue>,
+    /// The autopilot policy gating T3 approvals (ADR-012); `None` fails the
+    /// gate closed (T3 approvals are refused 422).
+    autopilot_policy: Option<Arc<tumult_autopilot::LoadedPolicy>>,
     /// Whether the API is served over TLS: session cookies get `; Secure`.
     secure_cookies: bool,
 }
@@ -139,6 +152,7 @@ impl ApiState {
         org: tumult_compliance::OrgTree,
         ingest: Option<tumult_ingest::IngestWriter>,
         runs: Option<tumult_ingest::RunQueue>,
+        autopilot_policy: Option<Arc<tumult_autopilot::LoadedPolicy>>,
         secure_cookies: bool,
     ) -> Self {
         Self {
@@ -149,6 +163,7 @@ impl ApiState {
             org: Arc::new(org),
             ingest,
             runs,
+            autopilot_policy,
             secure_cookies,
         }
     }
@@ -157,7 +172,10 @@ impl ApiState {
     /// from `KRONIKA_LLM_*` env vars. The org tree loads from
     /// `KRONIKA_ORG_FILE`, defaulting to `<db dir>/org.yaml`; a missing file
     /// means an empty tree (everything rolls up under `(unassigned)`) and an
-    /// invalid file logs a warning and falls back to empty.
+    /// invalid file logs a warning and falls back to empty. The autopilot
+    /// policy gating T3 approvals loads from `KRONIKA_AUTOPILOT_POLICY`
+    /// (path to a policy TOML); unset or unreadable/invalid means `None` —
+    /// fail closed, T3 approvals are refused.
     #[must_use]
     pub fn from_env_parts(
         db_path: PathBuf,
@@ -180,6 +198,21 @@ impl ApiState {
                     tumult_compliance::OrgTree::empty()
                 })
             });
+        let autopilot_policy = std::env::var_os("KRONIKA_AUTOPILOT_POLICY").and_then(|p| {
+            let path = PathBuf::from(p);
+            let loaded = std::fs::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| {
+                    tumult_autopilot::LoadedPolicy::parse(&text).map_err(|e| e.to_string())
+                });
+            match loaded {
+                Ok(policy) => Some(Arc::new(policy)),
+                Err(e) => {
+                    tracing::error!(path = %path.display(), error = %e, "autopilot policy failed to load; T3 approvals fail closed");
+                    None
+                }
+            }
+        });
         Self::new(
             db_path,
             metrics_dir,
@@ -188,6 +221,7 @@ impl ApiState {
             org,
             ingest,
             runs,
+            autopilot_policy,
             secure_cookies,
         )
     }
@@ -208,6 +242,12 @@ impl ApiState {
     #[must_use]
     pub fn runs_handle(&self) -> Option<&tumult_ingest::RunQueue> {
         self.runs.as_ref()
+    }
+
+    /// The autopilot policy gating T3 approvals (`None` fails closed).
+    #[must_use]
+    pub fn autopilot_policy(&self) -> Option<Arc<tumult_autopilot::LoadedPolicy>> {
+        self.autopilot_policy.clone()
     }
 
     /// Whether session cookies are marked `Secure` (TLS deployments).
@@ -261,6 +301,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/runs", get(runs::list).post(runs::create))
         .route("/api/runs/{id}", get(runs::detail))
         .route("/api/runs/{id}/stop", post(runs::stop))
+        .route("/api/approvals", get(approvals::queue))
+        .route("/api/runs/{id}/approve", post(approvals::approve))
+        .route("/api/runs/{id}/reject", post(approvals::reject))
+        .route("/api/runs/{id}/break-glass", post(approvals::break_glass))
         .route("/api/lake/status", get(lake::status))
         .route("/api/lake/export", post(lake::export_now))
         .route("/api/reports", get(list_reports))

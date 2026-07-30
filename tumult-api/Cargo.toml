@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 tumult-core = { path = "../tumult-core" }
 tumult-auth = { path = "../tumult-auth" }
+tumult-autopilot = { path = "../tumult-autopilot" }
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
 tumult-intelligence.workspace = true
