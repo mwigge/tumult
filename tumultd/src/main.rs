@@ -158,15 +158,28 @@ async fn serve() -> Result<()> {
     // Telemetry loopback: the daemon's own OTel exporter points at its own
     // gRPC ingest, so experiments the daemon executes (run queue, orphan
     // rollbacks) land in the store exactly like CLI runs. An unspecified
-    // bind address (0.0.0.0) exports via localhost.
+    // bind address (0.0.0.0) exports via localhost. When the ingest is
+    // token-guarded the loopback must authenticate too — otherwise its spans
+    // are rejected (UNAUTHENTICATED) and silently dropped.
     let loopback = if config.otlp_grpc_addr.ip().is_unspecified() {
         format!("http://127.0.0.1:{}", config.otlp_grpc_addr.port())
     } else {
         format!("http://{}", config.otlp_grpc_addr)
     };
+    let loopback_headers = config.ingest_token.as_deref().map(|token| {
+        let mut map = tonic::metadata::MetadataMap::new();
+        map.insert(
+            "authorization",
+            format!("Bearer {token}")
+                .parse()
+                .expect("ingest token is valid gRPC metadata"),
+        );
+        map
+    });
     let otel_config = tumult_otel::config::TelemetryConfig {
         enabled: true,
         otlp_endpoint: Some(loopback),
+        otlp_headers: loopback_headers,
         ..tumult_otel::config::TelemetryConfig::from_env()
     };
     let _telemetry_guard =

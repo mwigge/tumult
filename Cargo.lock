@@ -7958,6 +7958,7 @@ dependencies = [
  "mime_guess",
  "rust-embed",
  "tokio",
+ "tonic",
  "tracing",
  "tracing-subscriber",
  "tumult-api",

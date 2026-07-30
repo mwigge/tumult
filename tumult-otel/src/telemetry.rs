@@ -84,6 +84,14 @@ fn otlp_headers_from_env() -> Option<tonic::metadata::MetadataMap> {
     Some(map)
 }
 
+/// The gRPC request metadata the OTLP exporters should send: explicit config
+/// headers win, falling back to `OTEL_EXPORTER_OTLP_HEADERS`.
+fn effective_otlp_headers(
+    configured: Option<&tonic::metadata::MetadataMap>,
+) -> Option<tonic::metadata::MetadataMap> {
+    configured.cloned().or_else(otlp_headers_from_env)
+}
+
 /// The human-readable fmt layer, directed to **stderr** — never stdout.
 ///
 /// stdout is reserved for machine-readable output: the MCP stdio transport
@@ -134,7 +142,7 @@ pub fn init_meter_provider(config: &TelemetryConfig) -> Option<SdkMeterProvider>
     let builder = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint.as_str());
-    let builder = match otlp_headers_from_env() {
+    let builder = match effective_otlp_headers(config.otlp_headers.as_ref()) {
         Some(metadata) => builder.with_metadata(metadata),
         None => builder,
     };
@@ -183,7 +191,7 @@ pub fn init_logger_provider(config: &TelemetryConfig) -> Option<SdkLoggerProvide
     let builder = opentelemetry_otlp::LogExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint.as_str());
-    let builder = match otlp_headers_from_env() {
+    let builder = match effective_otlp_headers(config.otlp_headers.as_ref()) {
         Some(metadata) => builder.with_metadata(metadata),
         None => builder,
     };
@@ -264,7 +272,7 @@ impl TumultTelemetry {
             let builder = opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
                 .with_endpoint(endpoint.as_str());
-            let builder = match otlp_headers_from_env() {
+            let builder = match effective_otlp_headers(config.otlp_headers.as_ref()) {
                 Some(metadata) => builder.with_metadata(metadata),
                 None => builder,
             };
@@ -417,7 +425,7 @@ impl TumultTelemetry {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_otlp_headers;
+    use super::{effective_otlp_headers, parse_otlp_headers};
 
     fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
@@ -459,5 +467,13 @@ mod tests {
     fn empty_input_yields_nothing() {
         assert!(parse_otlp_headers("").is_empty());
         assert!(parse_otlp_headers("  , ,").is_empty());
+    }
+
+    #[test]
+    fn explicit_config_headers_take_precedence() {
+        let mut map = tonic::metadata::MetadataMap::new();
+        map.insert("authorization", "Bearer kro_test".parse().unwrap());
+        let resolved = effective_otlp_headers(Some(&map)).unwrap();
+        assert_eq!(resolved.get("authorization").unwrap(), "Bearer kro_test");
     }
 }

@@ -20,6 +20,7 @@ tumult-exec = { path = "../tumult-exec" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-auth = { path = "../tumult-auth" }
 axum.workspace = true
+tonic.workspace = true
 clap.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
