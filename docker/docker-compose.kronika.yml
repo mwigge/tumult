@@ -124,7 +124,9 @@ services:
         # enforces reviewer != enterer. bob is provisioned via the admin API
         # (one-time password -> immediate change, exercising the login +
         # must_change flow); on re-runs bob already exists with his changed
-        # password.
+        # password, and a drifted store (bob exists with a third password,
+        # e.g. from an earlier seed generation) is recovered via the admin
+        # password-reset endpoint, which re-arms must_change.
         API=http://tumultd:4318/api
         AUTH="Authorization: Bearer $$TUMULT_DAEMON_TOKEN"
         CT='content-type: application/json'
@@ -132,7 +134,12 @@ services:
         BOB_PW2="demo-bob-permanent-pw"
         curl -sf -X POST "$$API/users" -H "$$AUTH" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\",\"role\":\"approver\"}" > /dev/null || true
         if ! curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW2\"}" > /dev/null; then
-          curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\"}" > /dev/null
+          if ! curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\"}" > /dev/null; then
+            echo "=== seed: bob password drifted — admin-reset to the one-time password"
+            BOB_ID=$$(curl -sf "$$API/users" -H "$$AUTH" | sed -n 's/.*"id":"\([^"]*\)"[^}]*"username":"bob".*/\1/p')
+            curl -sf -X POST "$$API/users/$$BOB_ID/password" -H "$$AUTH" -H "$$CT" -d "{\"password\":\"$$BOB_PW\"}" > /dev/null
+            curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\"}" > /dev/null
+          fi
           curl -sf -b /tmp/bob.jar -c /tmp/bob.jar -X POST "$$API/auth/change-password" -H "$$CT" -d "{\"current_password\":\"$$BOB_PW\",\"new_password\":\"$$BOB_PW2\"}" > /dev/null
         fi
         echo "=== seed: manual evidence records (author: admin, reviewer: bob)"

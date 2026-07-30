@@ -2901,6 +2901,83 @@ async fn must_change_gates_until_password_change() {
     assert_eq!(body["must_change"], false);
 }
 
+/// Admin password reset: a user locked out (password unknown — the demo
+/// seed's bob-drift case) gets a one-time password forced through the
+/// must_change flow, then changes to a permanent one.
+#[tokio::test]
+async fn admin_reset_password_recovers_a_locked_out_user() {
+    let srv = spawn_server().await;
+    add_user(&srv, "root", "root-password-1", "admin", false).await;
+    let (root_token, _) = add_token(&srv, "u-root", "root").await;
+    add_user(&srv, "dave", "dave-lost-password", "approver", false).await;
+    let client = reqwest::Client::new();
+
+    // Too short → 400; unknown user → 404.
+    let (status, _body) = post_auth(
+        &srv.base,
+        "/api/users/u-dave/password",
+        &root_token,
+        json!({"password": "short"}),
+    )
+    .await;
+    assert_eq!(status, 400);
+    let (status, _body) = post_auth(
+        &srv.base,
+        "/api/users/u-nope/password",
+        &root_token,
+        json!({"password": "dave-one-time-pw"}),
+    )
+    .await;
+    assert_eq!(status, 404);
+
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/users/u-dave/password",
+        &root_token,
+        json!({"password": "dave-one-time-pw"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["must_change"], true);
+
+    // The old password is dead; the one-time password logs in but is gated
+    // until changed.
+    let (status, _body, _) = login(&srv.base, "dave", "dave-lost-password").await;
+    assert_eq!(status, 401);
+    let (status, body, cookie) = login(&srv.base, "dave", "dave-one-time-pw").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["must_change"], true);
+    let cookie = cookie.unwrap();
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+
+    // Change to the permanent password: the same session is ungated and the
+    // new password logs in clean.
+    let resp = client
+        .post(format!("{}/api/auth/change-password", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .json(&json!({"current_password": "dave-one-time-pw", "new_password": "dave-permanent-pw"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let (status, body, _) = login(&srv.base, "dave", "dave-permanent-pw").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["must_change"], false);
+}
+
 /// Environment scopes filter the experiment reads: list, detail.
 #[tokio::test]
 async fn env_scoping_filters_experiment_reads() {

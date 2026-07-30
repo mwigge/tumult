@@ -85,6 +85,25 @@ impl Writer {
         Ok(())
     }
 
+    /// Admin-driven password reset: set the hash and force a change at next
+    /// login (`must_change = true`) — the inverse of
+    /// [`Writer::set_user_password`], which clears the flag on self-service
+    /// change.
+    ///
+    /// # Errors
+    /// Returns an error if the update fails.
+    pub fn reset_user_password(
+        &self,
+        user_id: &str,
+        password_hash: &str,
+    ) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE users SET password_hash = ?, must_change = true WHERE id = ?",
+            params![password_hash, user_id],
+        )?;
+        Ok(())
+    }
+
     /// Set a user's role (`viewer|operator|approver|admin`).
     ///
     /// # Errors
@@ -440,6 +459,16 @@ mod tests {
         assert!(!u.must_change, "set_user_password clears must_change");
         assert_eq!(u.role, "admin");
         assert!(u.disabled);
+
+        writer.reset_user_password("u-1", "resethash").unwrap();
+        let u = store
+            .read_only()
+            .unwrap()
+            .user_by_id("u-1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(u.password_hash, "resethash");
+        assert!(u.must_change, "reset_user_password forces must_change");
 
         writer.create_user(&user("u-2", "bob")).unwrap();
         let names: Vec<String> = store

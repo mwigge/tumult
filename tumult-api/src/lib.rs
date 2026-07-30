@@ -322,6 +322,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/me", get(auth::me))
         .route("/api/users", get(auth::list_users).post(auth::create_user))
         .route("/api/users/{id}/role", post(auth::set_role))
+        .route("/api/users/{id}/password", post(auth::reset_password))
         .route("/api/users/{id}/disable", post(auth::set_disabled))
         .route("/api/users/{id}/scopes", post(auth::set_scopes))
         .route("/api/tokens", post(auth::create_token))

@@ -202,6 +202,9 @@ pre-auth free-text actors are attributed to a disabled `legacy` backfill
 user seeded by the migration. Bootstrap: `tumultd create-admin` (one-time
 password, `must_change` at first login) with the MCP-style guard — a
 non-loopback bind refuses to start unauthenticated.
+`POST /api/users/{id}/password` is the admin recovery path for a
+locked-out user: a supplied one-time password with `must_change`
+re-armed.
 `KRONIKA_INGEST_TOKEN` guards OTLP `/v1/*` HTTP and gRPC ingest;
 clients authenticate with the standard `OTEL_EXPORTER_OTLP_HEADERS`, and
 the CLI sends `TUMULT_DAEMON_TOKEN` on journal import.

@@ -165,6 +165,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     // Admin: user and token management.
     ("POST", "/api/users", Role::Admin),
     ("POST", "/api/users/{id}/role", Role::Admin),
+    ("POST", "/api/users/{id}/password", Role::Admin),
     ("POST", "/api/users/{id}/disable", Role::Admin),
     ("POST", "/api/users/{id}/scopes", Role::Admin),
     ("POST", "/api/tokens", Role::Admin),
@@ -776,6 +777,37 @@ pub async fn set_scopes(
     })
     .await?;
     Ok(Json(json!({"ok": true})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    password: String,
+}
+
+/// `POST /api/users/{id}/password {password}` — admin-driven reset: set a
+/// supplied one-time password and force `must_change` at next login (the
+/// recovery path for a user who can no longer authenticate; unlike
+/// `/api/auth/change-password`, which is self-service and clears the flag).
+pub async fn reset_password(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+    Json(req): Json<ResetPasswordRequest>,
+) -> Result<Json<Value>, Response> {
+    if req.password.chars().count() < 12 {
+        return Err(bad_request(
+            "password must be at least 12 characters".into(),
+        ));
+    }
+    user_or_404(&state, &id).await?;
+    let hash = tokio::task::spawn_blocking(move || tumult_auth::hash_password(&req.password))
+        .await
+        .map_err(|e| internal(format!("hash task failed: {e}")))?
+        .map_err(|e| internal(e.to_string()))?;
+    exec_auth_write(&state, move |w| {
+        w.reset_user_password(&id, &hash).map_err(|e| e.to_string())
+    })
+    .await?;
+    Ok(Json(json!({"ok": true, "must_change": true})))
 }
 
 /// 404 unless the user id exists.
