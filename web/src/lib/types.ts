@@ -394,22 +394,24 @@ export interface MeResponse {
 
 /**
  * `runs.state` values. Active (can still transition): queued / validating /
- * running / stopping; everything else is terminal. `pending_approval` is
- * T10's active-ish state — not yet emitted, classified as active by the UI.
- * (`RunState` above is already taken by the score-freshness enum.)
+ * running / stopping / pending_approval (T10); everything else is terminal,
+ * including T10's `rejected` (quorum refused) and `expired` (approval TTL
+ * lapsed). (`RunState` above is already taken by the score-freshness enum.)
  */
 export type RunExecState =
   | 'queued'
   | 'validating'
   | 'running'
   | 'stopping'
-  | 'pending_approval' // T10: approval flow lands here
+  | 'pending_approval'
   | 'passed'
   | 'deviated'
   | 'failed'
   | 'aborted'
   | 'orphaned'
-  | 'rollback_pending';
+  | 'rollback_pending'
+  | 'rejected'
+  | 'expired';
 
 /** `GET /api/registry` row. */
 export interface RegistryEntry {
@@ -485,7 +487,56 @@ export interface RunAuditEntry {
   actor: string | null;
 }
 
+// --- T10: approval workflow --------------------------------------------------
+
+export type ApprovalTier = 'T1' | 'T2' | 'T3';
+
+/**
+ * Approval request for a gated run — the shape embedded in
+ * `GET /api/runs/{id}` (`approval.request`) and returned per row by
+ * `GET /api/approvals`.
+ */
+export interface ApprovalRequest {
+  run_id: string;
+  state: string;
+  queued_at_ns: number;
+  params_json: string | null;
+  definition_name: string | null;
+  tier: ApprovalTier;
+  /** SHA-256 pin of the approved definition bytes (64 hex chars). */
+  pin_hash: string;
+  env: string;
+  target: string | null;
+  quorum_required: number;
+  requested_by: string;
+  requested_at_ns: number;
+  expires_at_ns: number;
+  /** Null while pending; set once the request was consumed (run dispatched). */
+  consumed_at_ns: number | null;
+  break_glass: boolean;
+  break_glass_by: string | null;
+  break_glass_justification: string | null;
+  approved_count: number;
+}
+
+/** `GET /api/approvals` queue row — same shape as the embedded request. */
+export type ApprovalQueueRow = ApprovalRequest;
+
+/** One approver decision, oldest first in `approval.decisions`. */
+export interface ApprovalDecision {
+  run_id: string;
+  approver: string;
+  decision: 'approved' | 'rejected';
+  note: string | null;
+  decided_at_ns: number;
+}
+
 export interface RunDetail {
   run: RunRow;
   audit: RunAuditEntry[];
+  /** T10: always present; `request` is null when the run never gated. */
+  approval: {
+    request: ApprovalRequest | null;
+    decisions: ApprovalDecision[];
+  };
 }

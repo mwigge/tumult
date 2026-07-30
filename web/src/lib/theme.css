@@ -214,6 +214,7 @@ table.data tr.clickable:hover {
   color: #fff;
 }
 select,
+textarea,
 input[type="text"],
 input[type="search"],
 input[type="number"] {
@@ -226,6 +227,7 @@ input[type="number"] {
   outline: none;
 }
 select:focus,
+textarea:focus,
 input:focus {
   border-color: var(--accent);
 }

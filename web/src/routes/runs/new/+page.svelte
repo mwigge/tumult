@@ -120,7 +120,10 @@
     try {
       const payload = Object.fromEntries(placeholders.map((p) => [p, vars[p] ?? '']));
       const r = await api.startRun(selectedId, payload);
-      await goto(`/runs/${r.run_id}`);
+      // Gated runs land in pending_approval instead of starting; the detail
+      // page shows the "awaiting approval" notice with a link to the queue.
+      const qs = r.state === 'pending_approval' ? `?awaiting=${r.tier ?? ''}` : '';
+      await goto(`/runs/${r.run_id}${qs}`);
     } catch (e) {
       startError = String(e);
       starting = false;

@@ -3,6 +3,8 @@
 
 import { goto } from '$app/navigation';
 import type {
+  ApprovalQueueRow,
+  ApprovalTier,
   AskResponse,
   Dimensions,
   DryRunResponse,
@@ -236,7 +238,10 @@ export const api = {
     send<DryRunResponse>('POST', '/api/runs/dry-run', { registry_id, vars }),
 
   startRun: (registry_id: string, vars: Record<string, string>) =>
-    send<{ run_id: string; state: string }>('POST', '/api/runs', { registry_id, vars }),
+    send<{ run_id: string; state: string; tier?: ApprovalTier }>('POST', '/api/runs', {
+      registry_id,
+      vars
+    }),
 
   runs: (state?: string, limit = 100) => {
     const qs = new URLSearchParams();
@@ -248,7 +253,32 @@ export const api = {
   run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
 
   stopRun: (id: string) =>
-    send<{ run_id: string; stop: string }>('POST', `/api/runs/${encodeURIComponent(id)}/stop`, {})
+    send<{ run_id: string; stop: string }>('POST', `/api/runs/${encodeURIComponent(id)}/stop`, {}),
+
+  // --- T10: approval workflow -------------------------------------------------
+
+  approvals: () => get<{ count: number; queue: ApprovalQueueRow[] }>('/api/approvals'),
+
+  approveRun: (id: string, note?: string) =>
+    send<{ run_id: string; state: 'queued' | 'pending_approval' }>(
+      'POST',
+      `/api/runs/${encodeURIComponent(id)}/approve`,
+      { note: note ?? null }
+    ),
+
+  rejectRun: (id: string, note?: string) =>
+    send<{ run_id: string; state: 'rejected' }>(
+      'POST',
+      `/api/runs/${encodeURIComponent(id)}/reject`,
+      { note: note ?? null }
+    ),
+
+  breakGlass: (id: string, justification: string) =>
+    send<{ run_id: string; state: 'queued'; break_glass: boolean }>(
+      'POST',
+      `/api/runs/${encodeURIComponent(id)}/break-glass`,
+      { justification }
+    )
 };
 
 // --- formatting helpers ----------------------------------------------------
@@ -310,15 +340,17 @@ export function statusClass(status: string | null): 'ok' | 'warn' | 'fail' | 'ne
       return 'ok';
     case 'deviated':
     case 'rollback_pending':
+    // T10: rejected (quorum refused) and expired (approval TTL lapsed) are
+    // terminal but not execution failures — the run never started.
+    case 'rejected':
+    case 'expired':
       return 'warn';
     case 'failed':
     case 'failure':
     case 'aborted':
     case 'orphaned':
       return 'fail';
-    // queued / validating / running / stopping → neutral.
-    // T10: approval flow lands here — pending_approval gets the neutral
-    // (info) tone until the approval UI exists.
+    // queued / validating / running / stopping / pending_approval → neutral.
     default:
       return 'neutral';
   }
@@ -327,9 +359,9 @@ export function statusClass(status: string | null): 'ok' | 'warn' | 'fail' | 'ne
 /**
  * Run states in which a run can still transition — keep polling. Anything
  * not in this set is treated as terminal, so unknown future terminal states
- * stop the poll loop automatically. `pending_approval` is T10's active-ish
- * state (not yet emitted by the backend); it is classified as active so the
- * UI keeps polling until the approval flow lands.
+ * stop the poll loop automatically. `pending_approval` (T10) is active: the
+ * run is parked until the quorum is met, the request is rejected, or its TTL
+ * lapses.
  */
 export const ACTIVE_RUN_STATES: ReadonlySet<string> = new Set([
   'queued',
