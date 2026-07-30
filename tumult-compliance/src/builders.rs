@@ -983,7 +983,8 @@ pub fn build_evidence_pack(
          segregation of duties, and lapses on a TTL; approvals are single-use and \
          break-glass overrides carry a mandatory justification. Pin hashes are \
          re-verified at dispatch, and the full per-run, hash-chained `run_audit` \
-         trail is available via the API."
+         trail is available via the API. Runs are shown by their id prefix; the \
+         full id and pin hash are available via the run-detail API."
             .into(),
     ));
     let approvals = reader.approvals_list(500).map_err(|e| e.to_string())?;
@@ -1027,7 +1028,14 @@ pub fn build_evidence_pack(
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or(false);
                     vec![
-                        Cell::text(cell(a, "run_id").unwrap_or("—")),
+                        // Id prefix only: the full 36-char id overflows a
+                        // table cell (no wrap points); the intro names the
+                        // run-detail API for the full id.
+                        Cell::text(
+                            cell(a, "run_id")
+                                .map(|id| id.chars().take(8).collect::<String>())
+                                .unwrap_or_else(|| "—".into()),
+                        ),
                         Cell::text(cell(a, "definition_name").unwrap_or("—")),
                         Cell::text(cell(a, "tier").unwrap_or("—")),
                         Cell::text(cell(a, "env").unwrap_or("—")),
@@ -1056,7 +1064,7 @@ pub fn build_evidence_pack(
                 })
                 .collect(),
             numeric_cols: vec![],
-            widths: Some(vec![1.0, 1.1, 0.5, 0.6, 1.4, 0.7, 1.4, 1.0, 0.8, 1.0]),
+            widths: Some(vec![0.9, 1.3, 0.45, 0.5, 1.15, 0.75, 1.2, 0.9, 0.85, 0.95]),
         });
     }
 
