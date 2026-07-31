@@ -122,10 +122,14 @@ services:
         # the credential, not the request body: admin's token authors and
         # submits; the verify step needs a SECOND identity because the store
         # enforces reviewer != enterer. bob is provisioned via the admin API
-        # (one-time password -> immediate change, exercising the login +
-        # must_change flow); on re-runs bob already exists with his changed
-        # password, and a drifted store (bob exists with a third password,
-        # e.g. from an earlier seed generation) is recovered via the admin
+        # (one-time password -> immediate change). Cookie sessions cannot
+        # carry this flow inside the compose network: libcurl's cookie
+        # engine rejects Set-Cookie from a single-label host like `tumultd`
+        # (public-suffix rule), so bob authenticates with a minted API token
+        # instead. (The browser login + must_change flow is covered by the
+        # UI e2e.) On re-runs bob already exists with his changed password,
+        # and a drifted store (bob exists with a third password, e.g. from
+        # an earlier seed generation) is recovered via the admin
         # password-reset endpoint, which re-arms must_change.
         API=http://tumultd:4318/api
         AUTH="Authorization: Bearer $$TUMULT_DAEMON_TOKEN"
@@ -133,20 +137,24 @@ services:
         BOB_PW="demo-bob-one-time-pw"
         BOB_PW2="demo-bob-permanent-pw"
         curl -sf -X POST "$$API/users" -H "$$AUTH" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\",\"role\":\"approver\"}" > /dev/null || true
-        if ! curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW2\"}" > /dev/null; then
-          if ! curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\"}" > /dev/null; then
+        BOB_ID=$$(curl -sf "$$API/users" -H "$$AUTH" | sed -n 's/.*"id":"\([^"]*\)"[^}]*"username":"bob".*/\1/p')
+        if ! curl -sf -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW2\"}" > /dev/null; then
+          if ! curl -sf -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\"}" > /dev/null; then
             echo "=== seed: bob password drifted — admin-reset to the one-time password"
-            BOB_ID=$$(curl -sf "$$API/users" -H "$$AUTH" | sed -n 's/.*"id":"\([^"]*\)"[^}]*"username":"bob".*/\1/p')
             curl -sf -X POST "$$API/users/$$BOB_ID/password" -H "$$AUTH" -H "$$CT" -d "{\"password\":\"$$BOB_PW\"}" > /dev/null
-            curl -sf -c /tmp/bob.jar -X POST "$$API/auth/login" -H "$$CT" -d "{\"username\":\"bob\",\"password\":\"$$BOB_PW\"}" > /dev/null
           fi
-          curl -sf -b /tmp/bob.jar -c /tmp/bob.jar -X POST "$$API/auth/change-password" -H "$$CT" -d "{\"current_password\":\"$$BOB_PW\",\"new_password\":\"$$BOB_PW2\"}" > /dev/null
+          # change-password is exempt from the must_change gate; a bearer
+          # token authenticates it (cookies do not work here, see above).
+          BOB_TOKEN=$$(curl -sf -X POST "$$API/tokens" -H "$$AUTH" -H "$$CT" -d "{\"name\":\"seed-bob\",\"user_id\":\"$$BOB_ID\"}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+          curl -sf -X POST "$$API/auth/change-password" -H "Authorization: Bearer $$BOB_TOKEN" -H "$$CT" -d "{\"current_password\":\"$$BOB_PW\",\"new_password\":\"$$BOB_PW2\"}" > /dev/null
         fi
+        BOB_TOKEN=$$(curl -sf -X POST "$$API/tokens" -H "$$AUTH" -H "$$CT" -d "{\"name\":\"seed-bob\",\"user_id\":\"$$BOB_ID\"}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+        BOB_AUTH="Authorization: Bearer $$BOB_TOKEN"
         echo "=== seed: manual evidence records (author: admin, reviewer: bob)"
         EXEC_NS="$$(( $$(date +%s) - 172800 ))000000000"
         VID=$$(curl -sf -X POST "$$API/manual/experiments" -H "$$AUTH" -H "$$CT" -d "{\"experiment_name\":\"cdn failover — edge PoP loss\",\"exercise_type\":\"gameday\",\"executed_at_ns\":$$EXEC_NS,\"hypothesis\":\"Edge PoP loss fails over within 60s\",\"method\":\"Disabled the primary PoP during a live game day; watched traffic shift and measured warm-up\",\"outcome_status\":\"passed\",\"hypothesis_met\":true,\"findings\":\"Failover worked; warm-up took 40s during which p95 spiked\",\"action_items\":[\"Pre-warm the secondary PoP\"],\"target_system\":\"cdn\",\"target_environment\":\"production\",\"blast_radius\":\"single-pop\",\"recovery_time_s\":40.0,\"duration_s\":3600.0,\"attestation\":\"I attest this record reflects the exercise as executed, and the findings are complete to the best of my knowledge.\",\"framework_refs\":[\"DORA Art. 24(7)\",\"ISO 27001 A.5.30\"]}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
         curl -sf -X POST "$$API/manual/experiments/$$VID/submit" -H "$$AUTH" -H "$$CT" -d '{}' > /dev/null
-        curl -sf -b /tmp/bob.jar -X POST "$$API/manual/experiments/$$VID/verify" -H "$$CT" -d '{"note":"evidence reviewed on call"}' > /dev/null
+        curl -sf -X POST "$$API/manual/experiments/$$VID/verify" -H "$$BOB_AUTH" -H "$$CT" -d '{"note":"evidence reviewed on call"}' > /dev/null
         echo "=== seed: verified manual gameday $$VID (admin -> bob)"
         SID=$$(curl -sf -X POST "$$API/manual/experiments" -H "$$AUTH" -H "$$CT" -d "{\"experiment_name\":\"vpn concentrator tabletop\",\"exercise_type\":\"tabletop\",\"executed_at_ns\":$$EXEC_NS,\"hypothesis\":\"VPN concentrator loss reroutes within 5 minutes\",\"method\":\"Tabletop walkthrough of the runbook with the network team\",\"outcome_status\":\"partial\",\"hypothesis_met\":true,\"findings\":\"Runbook covers the path but two steps are outdated\",\"action_items\":[\"Update the runbook\",\"Re-run as a live drill\"],\"target_system\":\"vpn\",\"target_environment\":\"production\",\"attestation\":\"I attest this record reflects the tabletop as executed.\",\"framework_refs\":[\"DORA Art. 24(7)\"]}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
         curl -sf -X POST "$$API/manual/experiments/$$SID/submit" -H "$$AUTH" -H "$$CT" -d '{}' > /dev/null
