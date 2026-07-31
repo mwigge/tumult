@@ -33,20 +33,26 @@ fn now_ns() -> i64 {
         .as_nanos() as i64
 }
 
-/// Every activity succeeds after a 200ms sleep: slow enough that an HTTP
-/// test can catch a run mid-method for the e-stop endpoint.
+/// Every activity succeeds after a sleep: 200ms for ordinary steps, 1s for
+/// the `hold-*` steps of STOP_TOON — slow enough that an HTTP test can catch
+/// a run mid-method for the e-stop endpoint, even on a loaded CI runner.
 struct SlowNoopExecutor;
 impl tumult_core::runner::ActivityExecutor for SlowNoopExecutor {
     fn execute(
         &self,
         activity: &tumult_core::types::Activity,
     ) -> tumult_core::runner::ActivityOutcome {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        let ms: u64 = if activity.name.starts_with("hold-") {
+            1_000
+        } else {
+            200
+        };
+        std::thread::sleep(std::time::Duration::from_millis(ms));
         tumult_core::runner::ActivityOutcome {
             success: true,
             output: Some(format!("ok: {}", activity.name)),
             error: None,
-            duration_ms: 200,
+            duration_ms: ms,
         }
     }
 }
@@ -70,6 +76,41 @@ method[3]:
       plugin: test
       function: noop
   - name: action-3
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+rollbacks[1]:
+  - name: rollback-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+"#;
+
+/// Same shape as RUN_TOON, but the SlowNoopExecutor holds each `hold-*`
+/// step for 1s: the run stays in `running` for ~3s instead of ~600ms, so
+/// the e-stop test's stop request cannot race the method's end on a loaded
+/// CI runner (it did exactly that — stop landed after `passed` → 409).
+const STOP_TOON: &str = r#"
+title: api run stop test experiment
+description: exercises e-stop against a genuinely running run
+method[3]:
+  - name: hold-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+  - name: hold-2
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+  - name: hold-3
     activity_type: action
     provider:
       type: native
@@ -1635,9 +1676,15 @@ async fn import_journal_roundtrip_and_dedup() {
 
 /// Register RUN_TOON via the validate endpoint; returns its registry id.
 async fn register_run_def(base: &str) -> String {
+    register_toon(base, RUN_TOON).await
+}
+
+/// Register an experiment TOON via the validate endpoint; returns its
+/// registry id.
+async fn register_toon(base: &str, toon: &str) -> String {
     let resp = reqwest::Client::new()
         .post(format!("{base}/api/runs/validate"))
-        .json(&json!({"toon": RUN_TOON}))
+        .json(&json!({"toon": toon}))
         .send()
         .await
         .unwrap();
@@ -2009,9 +2056,13 @@ async fn stop_unknown_terminal_and_running_runs() {
 
     // A running run: e-stop cancels mid-method, the runner's rollback path
     // unwinds, terminal state is aborted with the audit trail to prove it.
-    let stop_id = enqueue().await;
+    // STOP_TOON's `hold-*` steps keep the run in `running` for ~3s, so the
+    // stop request lands mid-method even on a loaded CI runner.
+    let stop_registry = register_toon(&srv.base, STOP_TOON).await;
+    let stop_id = enqueue_approved(&srv.base, &stop_registry).await;
     // Wait for the run to actually start (running, not just queued).
-    for _ in 0..100 {
+    let mut running = false;
+    for _ in 0..400 {
         let resp = client
             .get(format!("{}/api/runs/{stop_id}", srv.base))
             .send()
@@ -2019,10 +2070,12 @@ async fn stop_unknown_terminal_and_running_runs() {
             .unwrap();
         let body: Value = resp.json().await.unwrap();
         if body["run"]["state"] == "running" {
+            running = true;
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
+    assert!(running, "run {stop_id} never reached `running`");
     let resp = client
         .post(format!("{}/api/runs/{stop_id}/stop", srv.base))
         .send()

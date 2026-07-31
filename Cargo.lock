@@ -7879,7 +7879,6 @@ version = "2.19.0"
 dependencies = [
  "duckdb",
  "serde_json",
- "tempfile",
  "tumult-core",
  "tumult-graph",
  "tumult-lake",

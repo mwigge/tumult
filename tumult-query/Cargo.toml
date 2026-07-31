@@ -14,4 +14,3 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 tumult-core = { path = "../tumult-core" }
-tempfile = { workspace = true }
