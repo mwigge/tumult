@@ -1942,31 +1942,37 @@ async fn run_create_backpressure_returns_429_on_overload() {
     assert_eq!(body["valid"], true, "{body}");
     let registry_id = body["registry_id"].as_str().unwrap();
 
-    // The harness queue: concurrency 1, depth 4 → at most 5 runs accepted
-    // (1 running + 4 waiting); the rest must be rejected 429, never
-    // silently queued. 7 requests race a ~400ms run, so at least the last
-    // one overloads.
+    // The harness queue: concurrency 1, depth 4 → capacity 5. Fire the
+    // whole burst concurrently so every request lands within the first
+    // run's ~400ms lifetime (two 200ms noop probes): at most 5 accepted,
+    // the rest rejected 429 — never silently queued. A sequential burst is
+    // racy: under suite load it can outlive a run and free a permit.
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let client = client.clone();
+        let base = srv.base.clone();
+        let rid = registry_id.to_string();
+        handles.push(tokio::spawn(async move {
+            client
+                .post(format!("{base}/api/runs"))
+                .json(&json!({"registry_id": rid}))
+                .send()
+                .await
+                .unwrap()
+        }));
+    }
     let mut accepted = 0;
     let mut overloaded = 0;
-    for _ in 0..7 {
-        let resp = client
-            .post(format!("{}/api/runs", srv.base))
-            .json(&json!({"registry_id": registry_id}))
-            .send()
-            .await
-            .unwrap();
+    for handle in handles {
+        let resp = handle.await.unwrap();
         match resp.status().as_u16() {
-            202 => {
-                let body: Value = resp.json().await.unwrap();
-                assert_eq!(body["state"], "queued", "{body}");
-                accepted += 1;
-            }
+            202 => accepted += 1,
             429 => overloaded += 1,
             other => panic!("unexpected status {other}"),
         }
     }
     assert!(accepted <= 5, "{accepted} accepted beyond queue capacity");
-    assert!(overloaded >= 1, "no 429 backpressure observed");
+    assert!(overloaded >= 3, "only {overloaded} × 429 from a burst of 8 against capacity 5");
 }
 
 #[tokio::test]
