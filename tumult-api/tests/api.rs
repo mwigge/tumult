@@ -1909,6 +1909,66 @@ async fn run_audit_verify_reports_chain_validity() {
     assert_eq!(status, 404);
 }
 
+/// A probe-only definition classifies T0 (no faults, no rollback), so it
+/// enqueues directly — the shape needed to exercise queue backpressure.
+const PROBE_ONLY_TOON: &str = r#"
+title: probe-only health check
+method[2]:
+  - name: probe-1
+    activity_type: probe
+    provider:
+      type: native
+      plugin: test
+      function: noop
+  - name: probe-2
+    activity_type: probe
+    provider:
+      type: native
+      plugin: test
+      function: noop
+"#;
+
+#[tokio::test]
+async fn run_create_backpressure_returns_429_on_overload() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/runs/validate", srv.base))
+        .json(&json!({"toon": PROBE_ONLY_TOON}))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+    let registry_id = body["registry_id"].as_str().unwrap();
+
+    // The harness queue: concurrency 1, depth 4 → at most 5 runs accepted
+    // (1 running + 4 waiting); the rest must be rejected 429, never
+    // silently queued. 7 requests race a ~400ms run, so at least the last
+    // one overloads.
+    let mut accepted = 0;
+    let mut overloaded = 0;
+    for _ in 0..7 {
+        let resp = client
+            .post(format!("{}/api/runs", srv.base))
+            .json(&json!({"registry_id": registry_id}))
+            .send()
+            .await
+            .unwrap();
+        match resp.status().as_u16() {
+            202 => {
+                let body: Value = resp.json().await.unwrap();
+                assert_eq!(body["state"], "queued", "{body}");
+                accepted += 1;
+            }
+            429 => overloaded += 1,
+            other => panic!("unexpected status {other}"),
+        }
+    }
+    assert!(accepted <= 5, "{accepted} accepted beyond queue capacity");
+    assert!(overloaded >= 1, "no 429 backpressure observed");
+}
+
 #[tokio::test]
 async fn stop_unknown_terminal_and_running_runs() {
     let srv = spawn_server().await;
