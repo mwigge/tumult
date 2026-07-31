@@ -481,7 +481,10 @@ pub async fn audit_verify(
     let lookup = id.clone();
     let result = with_reader(&state.db_path, move |reader| {
         let exists = if scopes.is_empty() {
-            reader.run_get(&lookup).map_err(|e| e.to_string())?.is_some()
+            reader
+                .run_get(&lookup)
+                .map_err(|e| e.to_string())?
+                .is_some()
         } else {
             let env_list = scopes
                 .iter()

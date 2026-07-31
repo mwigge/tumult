@@ -193,8 +193,7 @@ async fn serve() -> Result<()> {
     // admin/token on the zero-users path. Runs before any server binds.
     enforce_bind_guard(&writer, &store, &config)?;
 
-    let (ingest, writer_task) =
-        IngestWriter::spawn_reconnect(writer, config.db_path.clone(), 1024);
+    let (ingest, writer_task) = IngestWriter::spawn_reconnect(writer, config.db_path.clone(), 1024);
 
     // The run queue's executor: the CLI's providers with the run's
     // resolved TUMULT_CONFIG_* / TUMULT_SECRET_* environment injected.

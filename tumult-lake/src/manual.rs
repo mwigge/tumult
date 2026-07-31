@@ -1114,7 +1114,9 @@ CREATE INDEX idx_manual_experiments_status ON manual_experiments (status);
 
         // …and — the whole point — lifecycle UPDATEs work without any ART
         // index (the T5 desync bug class).
-        writer.verify_manual("m-old", "bob", Some("reviewed")).unwrap();
+        writer
+            .verify_manual("m-old", "bob", Some("reviewed"))
+            .unwrap();
         let reader = store.read_only().unwrap();
         let detail = reader.manual_experiment_detail("m-old").unwrap().unwrap();
         assert_eq!(detail.experiment["status"], serde_json::json!("verified"));

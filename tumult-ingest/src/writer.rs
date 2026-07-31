@@ -121,7 +121,11 @@ fn should_reconnect(error: &str) -> bool {
 /// connection re-attaches to the live DuckDB instance (same process) or
 /// reopens the file, so later batches can proceed.
 async fn reconnect(path: &Path, attempts: u32) -> Result<Writer, String> {
-    reconnect_with(|| Store::at(path).writer().map_err(|e| e.to_string()), attempts).await
+    reconnect_with(
+        || Store::at(path).writer().map_err(|e| e.to_string()),
+        attempts,
+    )
+    .await
 }
 
 /// The retry/backoff core of [`reconnect`], generic over the writer factory
@@ -137,8 +141,7 @@ async fn reconnect_with(
             Err(e) => {
                 last_err = e;
                 tracing::warn!(attempt, error = %last_err, "ingest writer reconnect attempt failed");
-                tokio::time::sleep(std::time::Duration::from_millis(50 * u64::from(attempt)))
-                    .await;
+                tokio::time::sleep(std::time::Duration::from_millis(50 * u64::from(attempt))).await;
             }
         }
     }
@@ -158,7 +161,6 @@ fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
