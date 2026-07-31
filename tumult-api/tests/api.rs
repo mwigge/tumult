@@ -828,7 +828,9 @@ async fn metrics_catalog_lists_names_types_and_dimensions() {
 async fn metrics_query_aggregates_by_type() {
     let srv = spawn_server().await;
 
-    // Sum over a 1d bucket: both tumult counters land in one point.
+    // Sum over 1d buckets: both tumult counters total 2 regardless of how
+    // the day-aligned bucket boundary falls relative to the fixture rows
+    // (a run within ~30 min of UTC midnight splits them across buckets).
     let (status, body) = get(
         &srv.base,
         "/api/metrics/query?name=tumult.experiments.total&interval=1d",
@@ -840,16 +842,19 @@ async fn metrics_query_aggregates_by_type() {
     assert_eq!(series.len(), 1);
     assert!(series[0]["group"].is_null());
     let points = series[0]["points"].as_array().unwrap();
-    assert_eq!(points.len(), 1);
-    assert_eq!(points[0]["v"], 2.0);
+    let total: f64 = points.iter().map(|p| p["v"].as_f64().unwrap()).sum();
+    assert_eq!(total, 2.0, "{points:?}");
 
-    // Gauge averages instead of summing.
+    // Gauge averages instead of summing (one fixture row, so every bucket
+    // carries the same average).
     let (_, body) = get(
         &srv.base,
         "/api/metrics/query?name=demo.cpu.usage&interval=1d",
     )
     .await;
-    assert_eq!(body["series"][0]["points"][0]["v"], 0.5);
+    for p in body["series"][0]["points"].as_array().unwrap() {
+        assert_eq!(p["v"], 0.5, "{p:?}");
+    }
 
     // Histogram: avg = sum/count, p95 clamps into the overflow bucket.
     let (_, body) = get(
@@ -858,9 +863,10 @@ async fn metrics_query_aggregates_by_type() {
     )
     .await;
     assert_eq!(body["type"], "histogram");
-    let point = &body["series"][0]["points"][0];
-    assert_eq!(point["avg"], 150.0);
-    assert_eq!(point["p95"], 200.0);
+    for point in body["series"][0]["points"].as_array().unwrap() {
+        assert_eq!(point["avg"], 150.0, "{point:?}");
+        assert_eq!(point["p95"], 200.0, "{point:?}");
+    }
 
     let (status, _) = get(&srv.base, "/api/metrics/query?name=no.such.metric").await;
     assert_eq!(status, 404);
@@ -879,11 +885,25 @@ async fn metrics_query_splits_by_attribute_key() {
     assert_eq!(status, 200, "{body}");
     let series = body["series"].as_array().unwrap();
     assert_eq!(series.len(), 2, "{series:?}");
-    // Groups sort by label: /api before /web; /api sums 10 + 5.
+    // Groups sort by label: /api before /web; /api sums 10 + 5. Sum across
+    // points: near UTC midnight the fixture rows straddle two day-aligned
+    // buckets, so no single point carries the total.
     assert_eq!(series[0]["group"], "/api");
-    assert_eq!(series[0]["points"][0]["v"], 15.0);
+    let api_total: f64 = series[0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["v"].as_f64().unwrap())
+        .sum();
+    assert_eq!(api_total, 15.0, "{series:?}");
     assert_eq!(series[1]["group"], "/web");
-    assert_eq!(series[1]["points"][0]["v"], 20.0);
+    let web_total: f64 = series[1]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["v"].as_f64().unwrap())
+        .sum();
+    assert_eq!(web_total, 20.0, "{series:?}");
 
     // Attribute keys become SQL — the charset is strict.
     let (status, _) = get(
