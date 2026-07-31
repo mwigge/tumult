@@ -10,7 +10,7 @@ use super::enums::ContainerRuntime;
 // ── Execution Target ───────────────────────────────────────────
 
 /// Where a provider executes: locally, over SSH, in a container, or in a
-/// Kubernetes pod. Serialized with a `type` tag (snake_case).
+/// Kubernetes pod. Serialized with a `type` tag (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExecutionTarget {
@@ -48,7 +48,7 @@ pub enum ExecutionTarget {
 // ── Provider ───────────────────────────────────────────────────
 
 /// How an activity is executed: native plugin, script plugin, or local
-/// process. Serialized with a `type` tag (snake_case).
+/// process. Serialized with a `type` tag (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Provider {
@@ -87,7 +87,7 @@ pub enum Provider {
 // ── Tolerance ──────────────────────────────────────────────────
 
 /// Expected-output check for a probe or guard. Serialized with a `type` tag
-/// (snake_case).
+/// (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Tolerance {
@@ -103,7 +103,7 @@ pub enum Tolerance {
 
 /// Source of a configuration value: an environment variable or an inline
 /// literal. Resolved by the engine at load time. Serialized with a `type`
-/// tag (snake_case).
+/// tag (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigValue {
@@ -117,7 +117,7 @@ pub enum ConfigValue {
 /// experiment — only where to find it. The engine resolves the reference at
 /// load time and injects the value into provider subprocesses as a
 /// `TUMULT_SECRET_*` environment variable; resolved values are never written
-/// to the journal. Serialized with a `type` tag (snake_case).
+/// to the journal. Serialized with a `type` tag (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SecretValue {

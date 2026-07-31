@@ -43,7 +43,7 @@ pub(super) fn query_traces(handler: &TumultHandler, params: &CallToolRequestPara
     Ok(tokio::task::block_in_place(|| tools::query_traces(&path)).map(ToolOutput::from))
 }
 
-/// Dispatch `tumult_report`: render a journal as a report (JSON or JUnit XML).
+/// Dispatch `tumult_report`: render a journal as a report (JSON or `JUnit` XML).
 /// With `output_path` the report is written inside the workspace and returned
 /// as a resource link; otherwise the content is returned inline.
 pub(super) fn report(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
