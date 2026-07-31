@@ -1972,7 +1972,10 @@ async fn run_create_backpressure_returns_429_on_overload() {
         }
     }
     assert!(accepted <= 5, "{accepted} accepted beyond queue capacity");
-    assert!(overloaded >= 3, "only {overloaded} × 429 from a burst of 8 against capacity 5");
+    assert!(
+        overloaded >= 3,
+        "only {overloaded} × 429 from a burst of 8 against capacity 5"
+    );
 }
 
 #[tokio::test]
