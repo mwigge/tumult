@@ -70,7 +70,7 @@ pub struct ValidateTool {
 pub struct AnalyzeTool {
     /// Journal `.toon` file or directory of journals to query.
     pub journals_path: String,
-    /// SQL query executed over the journals via DuckDB.
+    /// SQL query executed over the journals via `DuckDB`.
     pub query: String,
 }
 
