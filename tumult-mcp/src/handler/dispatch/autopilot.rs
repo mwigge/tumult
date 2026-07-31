@@ -11,6 +11,10 @@ use crate::tools;
 
 use super::{parse_args, store_path_for, Dispatched, ToolOutput};
 
+/// Dispatch `tumult_autopilot_run`: run one autopilot decision-loop pass over
+/// a policy TOML. With `execute=true` this is an enact path and must hold the
+/// server-wide `EnactLock` slot; without the slot the gate evaluation reads
+/// the in-flight count so concurrent enactments are vetoed, never queued.
 pub(super) fn autopilot_run(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: AutopilotRunTool = parse_args(params)?;
     let execute = args.execute.unwrap_or(false);
@@ -44,6 +48,9 @@ pub(super) fn autopilot_run(handler: &TumultHandler, params: &CallToolRequestPar
     Ok(result.map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_autopilot_status`: list recorded autopilot decisions with
+/// their latest lifecycle event. Viewer-role callers are pinned to the
+/// default store path (see `store_path_for`).
 pub(super) fn autopilot_status(params: &CallToolRequestParams, role: Option<Role>) -> Dispatched {
     let args: AutopilotStatusTool = parse_args(params)?;
     let store_path = store_path_for(role, &args.store_path);
@@ -53,6 +60,10 @@ pub(super) fn autopilot_status(params: &CallToolRequestParams, role: Option<Role
     .map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_autopilot_respond`: record the human response to a
+/// proposed/downgraded decision. `approve=true` is an enact path and takes
+/// the same `EnactLock` slot as `autopilot_run`, so a stale approval is
+/// re-gated against current state and vetoed while another enactment runs.
 pub(super) fn autopilot_respond(
     handler: &TumultHandler,
     params: &CallToolRequestParams,
@@ -85,6 +96,8 @@ pub(super) fn autopilot_respond(
     Ok(result.map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_autopilot_export`: export the autopilot decision and
+/// event tables as a Parquet archive into the given directory.
 pub(super) fn autopilot_export(params: &CallToolRequestParams) -> Dispatched {
     let args: AutopilotExportTool = parse_args(params)?;
     Ok(
@@ -93,6 +106,8 @@ pub(super) fn autopilot_export(params: &CallToolRequestParams) -> Dispatched {
     )
 }
 
+/// Dispatch `tumult_autopilot_notify`: record an external change event
+/// against a service so the next pass proposes revalidation. Insert-only.
 pub(super) fn autopilot_notify(params: &CallToolRequestParams) -> Dispatched {
     let args: crate::handler::schema::AutopilotNotifyTool = parse_args(params)?;
     Ok(tokio::task::block_in_place(|| {

@@ -136,6 +136,8 @@ services:
     ports:
       - "13000:3000"
     environment:
+      # LOCAL TESTING ONLY — do not expose. Hardcoded demo credential for the
+      # throwaway classic-profile Grafana; never reuse outside this stack.
       - GF_SECURITY_ADMIN_PASSWORD=tumult
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer

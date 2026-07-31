@@ -53,8 +53,8 @@
 <div class="login-wrap">
   <div class="panel login-panel">
     <div class="brand">
-      <div class="name">Krönika</div>
-      <div class="tag">the chronicle of your resilience work</div>
+      <div class="name">Tumult</div>
+      <div class="tag">analytics for your resilience work</div>
     </div>
 
     {#if !mustChange}

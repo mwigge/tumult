@@ -61,7 +61,9 @@ pub(crate) fn event_script_timed_out(script_path: &str, timeout_s: f64) {
 /// Record script execution counter.
 pub(crate) fn record_execution(success: bool) {
     let meter = global::meter(TRACER);
-    let counter = meter.u64_counter("script.executions_total").build();
+    let counter = meter
+        .u64_counter("tumult.plugin.script.executions.total")
+        .build();
     counter.add(1, &[KeyValue::new("script.success", success)]);
 }
 

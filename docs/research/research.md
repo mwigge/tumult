@@ -1,14 +1,7 @@
-# Research findings — Krönika
+# Research findings — the analytics layer
 
-> **Historical context.** This is an import-time snapshot of the research
-> behind the standalone kronika project, preserved for the reasoning, not
-> the naming. Crate names below (`kronika-metrics`, `kronika-report`,
-> `kronika-ai`, `kronika-ingest`, …) refer to the pre-merge project; the
-> merged reality maps them to `tumult-*` crates — see
-> [../architecture/kronika-architecture.md](../architecture/kronika-architecture.md#merge-mapping-and-migration-kronika--tumult).
-
-Distilled research behind the product and architecture decisions. Companion
-ADRs: [../adr/ADR-006-kronika-stack.md](../adr/ADR-006-kronika-stack.md), [../adr/ADR-007-ai-layer.md](../adr/ADR-007-ai-layer.md),
+Distilled research behind the analytics layer's product and architecture
+decisions. Companion ADRs: [../adr/ADR-006-kronika-stack.md](../adr/ADR-006-kronika-stack.md), [../adr/ADR-007-ai-layer.md](../adr/ADR-007-ai-layer.md),
 [../adr/ADR-008-typst-report-pipeline.md](../adr/ADR-008-typst-report-pipeline.md).
 
 ## 1. Presentation / BI landscape
@@ -17,16 +10,16 @@ What to steal, and what to position against:
 
 - **Rill** (https://github.com/rilldata/rill) — KPI + delta + sparkline rows,
   automatic time comparisons, metrics-as-YAML semantic layer. Our
-  `metrics/*.yaml` + `kronika-metrics` crate is directly modeled on Rill's
-  metrics views.
+  `metrics/*.yaml` files and the `tumult-metrics` crate are directly
+  modeled on Rill's metrics views.
 - **Evidence** (https://github.com/evidence-dev/evidence) — report-as-code,
-  scheduled email digests, sparkline tables. Our `kronika-report` digest
+  scheduled email digests, sparkline tables. Our `tumult-report` digest
   model follows this.
 - **Grafana** (https://grafana.com/grafana/) — trace waterfall UX, URL-encoded
   time-range/view state, annotations on charts. The waterfall and URL state
   are adopted; the "everything is a panel grid" aesthetic is not.
 - **Metabase / Superset / Lightdash** — the generic-BI aesthetic this product
-  positions *against*: Krönika is presentation-first, opinionated, and
+  positions *against*: Tumult is presentation-first, opinionated, and
   chaos-domain-specific rather than a general chart warehouse.
 - **Mosaic** (https://github.com/uwdata/mosaic, TVCG'24,
   https://idl.cs.washington.edu/papers/mosaic) — state-of-the-art
@@ -66,9 +59,9 @@ What to steal, and what to position against:
   https://bird-bench.github.io/): 60–75 % first-shot accuracy, 85–95 % with
   grounding. Grounding ROI order: **semantic layer > golden Q→SQL few-shot >
   schema linking > self-correction with execution feedback > constrained
-  decoding**. The governed semantic layer (`kronika-metrics`) is therefore
+  decoding**. The governed semantic layer (`tumult-metrics`) is therefore
   the primary grounding artifact.
-- **Guardrails are mandatory** (implemented in `kronika-ai::sql_guard` +
+- **Guardrails are mandatory** (implemented in `tumult_intelligence::sql_guard` +
   read-only connections): read-only connection, allow-listed views, single
   `SELECT` parse check, `EXPLAIN` validation, injected `LIMIT` + statement
   timeout, ≤ 3 self-correction retries, always show the generated SQL, a
@@ -83,7 +76,7 @@ What to steal, and what to position against:
   comparisons are the chaos-specific core. The LLM explains anomalies only
   from an evidence package with mandatory citations.
 - **LLM access**: one OpenAI-compatible interface
-  (`kronika_ai::OpenAiCompatClient`). Interactive paths → direct API /
+  (`tumult_intelligence::OpenAiCompatClient`). Interactive paths → direct API /
   LiteLLM / Ollama (default); batch digests → can delegate to smedja.
 - **Phase plan**: 1. NL query → 2. narrative digests → 3. anomaly
   explanation → 4. suggested insights.
@@ -93,8 +86,8 @@ What to steal, and what to position against:
 - **tumult** emits OTLP/gRPC (bare `host:4317`, no path;
   `TUMULT_OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT`, service name
   `tumult`). **smedja** emits OTLP/HTTP protobuf with `/v1/*` paths
-  (`SMEDJA_OTLP_ENDPOINT`, service name `smdjad`). Krönika must accept both —
-  hence two servers in `kronika-ingest`.
+  (`SMEDJA_OTLP_ENDPOINT`, service name `smdjad`). The analytics layer must
+  accept both — hence two servers in `tumult-ingest`.
 - **tumult span vocabulary**: `resilience.experiment`,
   `resilience.hypothesis.before|after`, `resilience.action|probe|rollback|load|gameday`
   plus `k8s.*`, `ssh.*`, `net.*` spans. Metrics include

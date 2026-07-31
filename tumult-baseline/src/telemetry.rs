@@ -59,23 +59,23 @@ pub(crate) fn record_baseline_gauges(
 ) {
     let meter = global::meter(TRACER);
 
-    // probes_total and samples_total are monotonically increasing counters
+    // probes and samples are monotonically increasing counters
     let c = meter
-        .u64_counter("baseline.probes_total")
+        .u64_counter("tumult.baseline.probes.total")
         .with_description("Total baseline probes executed")
         .build();
     c.add(probe_count as u64, &[]);
 
     let c = meter
-        .u64_counter("baseline.samples_total")
+        .u64_counter("tumult.baseline.samples.total")
         .with_description("Total baseline samples collected")
         .build();
     c.add(samples_total as u64, &[]);
 
-    let g = meter.f64_gauge("baseline.tolerance.lower").build();
+    let g = meter.f64_gauge("tumult.baseline.tolerance.lower").build();
     g.record(tolerance_lower, &[]);
 
-    let g = meter.f64_gauge("baseline.tolerance.upper").build();
+    let g = meter.f64_gauge("tumult.baseline.tolerance.upper").build();
     g.record(tolerance_upper, &[]);
 }
 

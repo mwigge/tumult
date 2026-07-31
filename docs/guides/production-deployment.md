@@ -59,12 +59,77 @@ like any control-plane API.
   nginx/Caddy/an Ingress in front to terminate TLS and, ideally, add a second
   auth layer (mTLS or an OIDC proxy). Never expose `:3100` directly to the
   internet.
+- **TLS for the `tumultd` analytics daemon.** `tumultd` (OTLP/gRPC `:4317`,
+  HTTP API/UI/OTLP `:4318`) can serve TLS directly — see §1a below. Without
+  TLS configured it serves plaintext and logs a loud startup warning on any
+  non-loopback bind; front it with a TLS-terminating proxy in that case.
+- **SSH targets: never use `accept-any` in production.** tumult-ssh's
+  `accept-any` host-key policy disables MITM protection and exists for
+  throwaway lab targets only. Production experiments must use the default
+  `verify` policy with a populated `known_hosts` (see
+  [../plugins/tumult-ssh.md](../plugins/tumult-ssh.md)).
 - **Rotate tokens by editing the config (or the secret) and restarting.** Issue
   a distinct token per principal so you can revoke one without disturbing the
   rest; rotate on a schedule and on any suspected exposure. Keep the file
   `600`-permissioned and out of version control.
 - Clients pass the token as `Authorization: Bearer <token>` **and** in
   `_meta.authorization` on each `tools/call` (stdio clients rely on the latter).
+
+## 1a. TLS for the `tumultd` analytics daemon
+
+`tumultd` serves two listeners: OTLP/gRPC (`KRONIKA_OTLP_GRPC_ADDR`, default
+`0.0.0.0:4317`) and HTTP — OTLP/HTTP ingest, the query API, and the web UI
+(`KRONIKA_OTLP_HTTP_ADDR`, default `0.0.0.0:4318`). Both carry bearer tokens
+and telemetry, so on any network-exposed bind they must be encrypted.
+
+**Direct TLS (recommended for single-node).** Point both servers at a PEM
+certificate chain and private key:
+
+```bash
+KRONIKA_TLS_CERT=/etc/tumult/tls.crt   # PEM certificate chain
+KRONIKA_TLS_KEY=/etc/tumult/tls.key    # PEM private key (mode 600)
+```
+
+When both are set, the HTTP listener serves HTTPS (rustls) and the gRPC
+listener serves TLS (tonic) with the same pair; the daemon validates the pair
+at startup and **refuses to boot** on a missing file, malformed PEM, or
+mismatched key. Setting only one of the two vars is also a startup error —
+there is no silent fallback to plaintext. With direct TLS enabled, exporters
+must use the `https://` scheme, and the daemon's own telemetry loopback is
+moved to a plaintext listener on an ephemeral `127.0.0.1` port (loopback
+only; nothing network-facing is plaintext).
+
+Any CA-issued certificate works. For a lab/internal CA, or a throwaway
+self-signed cert for evaluation:
+
+```bash
+openssl req -x509 -newkey rsa:2048 -nodes -days 90 \
+  -keyout /etc/tumult/tls.key -out /etc/tumult/tls.crt \
+  -subj "/CN=tumultd.internal" \
+  -addext "subjectAltName=DNS:tumultd.internal,IP:127.0.0.1"
+chmod 600 /etc/tumult/tls.key
+```
+
+**Reverse-proxy alternative.** If you already run nginx/Caddy/an Ingress,
+leave `KRONIKA_TLS_*` unset, bind both listeners to `127.0.0.1`, and
+terminate TLS at the proxy (gRPC needs HTTP/2 passthrough — e.g.
+`grpc_pass` in nginx). This is also the answer when you want mTLS or an
+OIDC proxy in front. With TLS unset, any non-loopback bind logs a loud
+`TLS is OFF` warning at startup.
+
+One caveat with a proxy: `tumultd` rate-limits logins by client IP, and
+behind a proxy every request arrives from the proxy's address — so all
+users share a single rate-limit bucket. That's the conservative option
+(one slow brute-force lockout for everyone), and it's fine to accept. If
+per-user limits matter, run without a proxy or let the proxy handle auth
+itself. Note that `tumultd` deliberately does **not** trust
+`X-Forwarded-For` — clients can spoof that header, which would let an
+attacker reset their own bucket or pin the limit on someone else.
+
+**Fail-closed ingest auth.** Independent of TLS: `tumultd` **refuses to
+start** when either OTLP listener binds a non-loopback address without
+`KRONIKA_INGEST_TOKEN` — an unauthenticated network ingest would accept
+spoofed telemetry from anyone. Loopback binds stay open for local dev.
 
 ## 2. Deploy
 
@@ -142,6 +207,7 @@ Two distinct fields:
 - [ ] Auth configured — an auth config file (per-token roles) or `TUMULT_MCP_TOKEN`; each token a strong secret; rotation plan documented
 - [ ] Least privilege: automation and read-only users hold **viewer** tokens; only operators hold **operator** tokens
 - [ ] Server bound to localhost or behind a TLS-terminating proxy with auth required
+- [ ] `tumultd`: `KRONIKA_TLS_CERT`/`KRONIKA_TLS_KEY` set (or a TLS reverse proxy in front) and `KRONIKA_INGEST_TOKEN` set on any non-loopback bind
 - [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at your collector
 - [ ] Store volume persisted, encrypted, and on a backup schedule; single writer
 - [ ] Experiments set `max_concurrent_faults` and attach guard probes to real SLOs

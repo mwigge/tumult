@@ -1,48 +1,15 @@
-# Architecture — Krönika (the tumult platform stack)
+# Architecture — Tumult analytics and daemon stack
 
-Krönika is the daemon-and-UI half of the merged tumult platform: it ingests
-chaos/resilience telemetry (OTLP + manual files), stores it in the unified
+This is the architecture of Tumult's analytics half: the `tumultd` daemon,
+its embedded web UI, and the crates behind them. The daemon ingests
+chaos/resilience telemetry (OTLP + manual files), stores it in the
 embedded DuckDB lake, executes registered experiment definitions under an
-approval workflow, and serves the web UI plus compliance reports. It lives
-in this repository as first-class `tumult-*` crates — imported from the
-standalone kronika project and folded into the workspace (ADR-006); see
-[Merge mapping and migration](#merge-mapping-and-migration-kronika--tumult)
-for what became of each kronika crate and binary.
+approval workflow, and serves the web UI plus compliance reports.
+Everything lives in this repository as first-class `tumult-*` crates.
 
-## Merge mapping and migration (kronika → tumult)
-
-The standalone kronika repository was folded into this workspace (commits
-`1227d23`, `d8fa169`, `d922f0b`). Code names map onto the merged tree:
-
-| kronika (standalone) | tumult (this repository) |
-|---|---|
-| `kronikad` (package + binary) | `tumultd` (embeds `web/build/`) |
-| `kronika-otel` | `tumult-otlp` |
-| `kronika-store` | `tumult-lake` (unified store; tumult-analytics dissolved into it, schema v3+) |
-| `kronika-ingest` | `tumult-ingest` |
-| `kronika-metrics` | `tumult-metrics` |
-| `kronika-report` | `tumult-report` |
-| `kronika-docs` | `tumult-compliance` |
-| `kronika-api` | `tumult-api` |
-| `kronika-ai` | absorbed into `tumult-intelligence` as `llm` + `sql_guard` modules |
-| `kronika-demo` binary | deleted — the demo is `docker/docker-compose.kronika.yml` |
-| `web/` (SvelteKit SPA) | `web/` (unchanged location) |
-| imported ADRs 0001–0005 | renumbered ADR-006…ADR-010 |
-| `~/.kronika/kronika.duckdb` | `~/.tumult/lake.duckdb` |
-
-Migration of pre-merge databases: `tumult store import-legacy
-[--analytics-db <path>] [--kronika-db <path>]` merges an old
-tumult-analytics store and/or a standalone kronika lake into the unified
-store (idempotent natural-key dedupe; older schemas import via column
-intersection — see the [CLI reference](../guides/cli-reference.md)). Store
-path resolution: `TUMULT_LAKE_PATH` is canonical; `TUMULT_ANALYTICS_PATH`
-and `KRONIKA_DB` remain as deprecated aliases for one release. The
-`KRONIKA_*` daemon environment variables (`KRONIKA_HTTP_ADDR`,
-`KRONIKA_INGEST_TOKEN`, `KRONIKA_LAKE_DIR`, …) keep their names — they are
-the daemon's own configuration surface, not a store-location concern. The
-old `kronika-legacy/` import directory and the
-`docker/kronika-legacy-staging/` scaffold no longer exist; history
-preserves them.
+The daemon's configuration surface keeps `KRONIKA_*` environment variable
+names (`KRONIKA_HTTP_ADDR`, `KRONIKA_INGEST_TOKEN`, `KRONIKA_LAKE_DIR`,
+…) — those are stable identifiers, not product names.
 
 ## Component diagram
 
@@ -127,7 +94,7 @@ preserves them.
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with
    `KRONIKA_REPORT_INTERVAL` set, the daemon additionally renders a digest
-   per interval into `<db dir>/reports/` (surfaced by `/api/reports`). When
+   per interval into `<db dir>/reports/` (listed by `/api/reports`). When
    an LLM is reachable, digests (scheduled and `POST /api/reports/generate`)
    gain a narrative section via `tumult_report::narrative`, which keeps
    only sentences whose numbers are grounded in the report's own facts.
@@ -136,8 +103,8 @@ The docker demo (`docker/docker-compose.kronika.yml`) is the **reference
 ingestion flow** end to end: a pinned tumult binary runs the
 experiment suite and emits genuine OTLP/gRPC (traces, metrics, logs) into
 tumultd, which normalizes, stores and renders it into the HTML reports
-under `demo-out/`. Whatever tumult emits on the wire is exactly what
-Krönika's semantic layer computes over.
+under `demo-out/`. Whatever tumult emits on the wire is exactly what the
+semantic layer computes over.
 
 ## Single-writer model (tumult-lake)
 
@@ -258,7 +225,7 @@ immutable copy exists in the lake.**
   `<db dir>/lake`): per table, one write-once file per day-partition
   (`spans/date=2026-07-29/data-<run>.parquet`). Files are never rewritten —
   *immutability as a compliance feature*: next to the v0.5.0 hash-chained
-  manual-evidence audit, the trail of what Krönika recorded is
+  manual-evidence audit, the trail of what the daemon recorded is
   WORM-shaped and tamper-evident, and readable by any parquet-capable
   tool (`read_parquet('lake/spans/date=*/*.parquet')`).
 - **Export** — incremental against a per-table event-time watermark in
@@ -306,5 +273,5 @@ rebuilds it index-free by table-scan copy; `manual_experiment_audit` and
 ## Roadmap: external tooling on the lake
 
 The parquet lake (above) is the substrate for future external tooling —
-any parquet-capable engine can query Krönika's history without touching
-the hot store.
+any parquet-capable engine can query the recorded history without
+touching the hot store.

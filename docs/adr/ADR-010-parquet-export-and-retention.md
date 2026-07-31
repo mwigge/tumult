@@ -4,22 +4,22 @@ parent: Architecture Decisions
 nav_order: 10
 ---
 
-# ADR-010: Parquet Export and Retention (imported from kronika ADR 0005)
+# ADR-010: Parquet Export and Retention
 
 - Status: accepted (live in v0.6.0)
 - Date: 2026-07-29
 
 ## Context
 
-Krönika's embedded DuckDB store has no lifecycle story: it grows forever,
+The daemon's embedded DuckDB store has no lifecycle story: it grows forever,
 and there is no durable, tool-agnostic copy of the telemetry outside the
 proprietary database file. The OpenObserve gap analysis
 (`docs/research-openobserve-gap.md`) identified retention and a columnar
 lake export as the two highest-priority gaps, with "immutability as a
-compliance feature" as the framing that ties them to Krönika's existing
+compliance feature" as the framing that ties them to the existing
 hash-chained manual-evidence audit.
 
-**License boundary.** OpenObserve is AGPL-3.0; Krönika is Apache-2.0.
+**License boundary.** OpenObserve is AGPL-3.0; Tumult is Apache-2.0.
 This design borrows *ideas* (hot store + immutable columnar cold tier,
 write-once files as a compliance property, documented durability
 guarantees) and is a clean-room implementation against DuckDB's documented
@@ -39,11 +39,11 @@ via `COPY (SELECT …) TO '…' (FORMAT PARQUET)` — one file per day directory
 a new uniquely-named file per run rather than partitioned-overwrite, so
 lake files are write-once and never mutated in place. Tables: `spans`,
 `logs`, `metric_sums`, `metric_gauges`, `metric_histograms`,
-`manual_experiment_audit`, `manual_experiments`, and — since the analytics
-fold — the journal-detail tables `experiments`, `activity_results`,
-`load_results`, the autopilot history `autopilot_decisions`,
-`autopilot_events`, `autopilot_change_events`, the `ChaosGraph` tables
-`graph_nodes`/`graph_edges`, and the four `agentic_*` tables.
+`manual_experiment_audit`, `manual_experiments`, the journal-detail tables
+`experiments`, `activity_results`, `load_results`, the autopilot history
+`autopilot_decisions`, `autopilot_events`, `autopilot_change_events`, the
+`ChaosGraph` tables `graph_nodes`/`graph_edges`, and the four `agentic_*`
+tables.
 
 ### Incremental export with a persistent watermark
 

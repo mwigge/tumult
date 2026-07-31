@@ -220,7 +220,7 @@ fn render_block(block: &Block) -> String {
         }
         Block::Chart(spec) => {
             format!(
-                "<figure>{}<figcaption>Source: Krönika · data as of {}</figcaption></figure>",
+                "<figure>{}<figcaption>Source: Tumult · data as of {}</figcaption></figure>",
                 render_svg(spec),
                 "{{DATA_AS_OF}}"
             )

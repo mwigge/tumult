@@ -20,6 +20,8 @@ services:
       - "15432:5432"
     environment:
       POSTGRES_USER: tumult
+      # LOCAL TESTING ONLY — do not expose. Hardcoded demo credential for the
+      # throwaway e2e target container; never reuse outside this compose stack.
       POSTGRES_PASSWORD: tumult_test
       POSTGRES_DB: tumult_test
     volumes:
@@ -53,6 +55,8 @@ services:
     ports:
       - "13306:3306"
     environment:
+      # LOCAL TESTING ONLY — do not expose. Hardcoded demo credential for the
+      # throwaway e2e target container; never reuse outside this compose stack.
       MYSQL_ROOT_PASSWORD: tumult_test
       MYSQL_DATABASE: tumult_test
     healthcheck:

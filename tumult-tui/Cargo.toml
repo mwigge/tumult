@@ -12,7 +12,7 @@ tumult-query = { path = "../tumult-query" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 chrono = { workspace = true }
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

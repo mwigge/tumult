@@ -4,10 +4,13 @@ use crate::types::{Activity, ActivityResult, ActivityStatus, ActivityType, SpanI
 
 use thiserror::Error;
 
-// Retained for future provider-level error propagation.
+/// Errors produced while executing a method or rollback activity.
+///
+/// Retained for future provider-level error propagation.
 #[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum ExecutionError {
+    /// An activity's provider reported a failure.
     #[error("activity '{name}' failed: {reason}")]
     ActivityFailed { name: String, reason: String },
 }
@@ -39,13 +42,21 @@ pub fn should_rollback(strategy: &RollbackStrategy, needs_rollback: bool) -> boo
 
 /// Parameters for creating an `ActivityResult`.
 pub struct ResultParams<'a> {
+    /// The activity that was executed.
     pub activity: &'a Activity,
+    /// Epoch-nanosecond timestamp at which execution started.
     pub started_at_ns: i64,
+    /// Execution duration in milliseconds.
     pub duration_ms: u64,
+    /// Whether the activity succeeded.
     pub success: bool,
+    /// Provider output captured on success, if any.
     pub output: Option<String>,
+    /// Failure reason captured on error, if any.
     pub error: Option<String>,
+    /// Trace the execution span belongs to (empty when uninstrumented).
     pub trace_id: TraceId,
+    /// Span recorded for this execution (empty when uninstrumented).
     pub span_id: SpanId,
 }
 

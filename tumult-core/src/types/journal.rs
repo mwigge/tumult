@@ -7,24 +7,35 @@ use super::enums::{ActivityStatus, ActivityType, ExperimentStatus};
 use super::ids::{SpanId, TraceId};
 use super::results::{AnalysisResult, BaselineResult, DuringResult, LoadResult, PostResult};
 
+/// Recorded outcome of a single executed activity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActivityResult {
+    /// Name of the activity as declared in the experiment.
     pub name: String,
     pub activity_type: ActivityType,
     pub status: ActivityStatus,
+    /// Epoch-nanosecond timestamp at which execution started.
     pub started_at_ns: i64,
+    /// Execution duration in milliseconds.
     pub duration_ms: u64,
+    /// Provider output captured on success, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    /// Failure reason captured on error, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Trace the execution span belongs to (empty when uninstrumented).
     pub trace_id: TraceId,
+    /// Span recorded for this execution (empty when uninstrumented).
     pub span_id: SpanId,
 }
 
+/// Outcome of evaluating a steady-state hypothesis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HypothesisResult {
+    /// Title of the hypothesis as declared in the experiment.
     pub title: String,
+    /// Whether every probe in `probe_results` succeeded.
     pub met: bool,
     pub probe_results: Vec<ActivityResult>,
 }
@@ -69,21 +80,30 @@ pub struct BlastRadiusRecord {
     pub peak_concurrent_faults: u32,
 }
 
+/// Complete record of an experiment run, serialized to TOON as the run's
+/// journal. `Option` result fields are `None` when the corresponding phase
+/// did not run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Journal {
     pub experiment_title: String,
     pub experiment_id: String,
     pub status: ExperimentStatus,
+    /// Epoch-nanosecond timestamp at which the run started.
     pub started_at_ns: i64,
+    /// Epoch-nanosecond timestamp at which the run ended.
     pub ended_at_ns: i64,
+    /// Total run duration in milliseconds.
     pub duration_ms: u64,
+    /// Pre-method hypothesis evaluation, if a hypothesis was declared.
     pub steady_state_before: Option<HypothesisResult>,
+    /// Post-method hypothesis evaluation, if a hypothesis was declared.
     pub steady_state_after: Option<HypothesisResult>,
     pub method_results: Vec<ActivityResult>,
     pub rollback_results: Vec<ActivityResult>,
     /// Number of rollback activities that failed during execution.
     #[serde(default)]
     pub rollback_failures: u32,
+    /// Phase 0 prediction, copied from the experiment definition.
     pub estimate: Option<Estimate>,
     pub baseline_result: Option<BaselineResult>,
     pub during_result: Option<DuringResult>,

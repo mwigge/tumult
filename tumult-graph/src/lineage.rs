@@ -23,12 +23,12 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{EdgeRecord, NodeSummary};
 
 /// The status of one regulatory control on one service.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ControlServiceStatus {
     /// The latest relevant run produced an `evidences` edge.
@@ -42,7 +42,7 @@ pub enum ControlServiceStatus {
 
 /// Why a control is broken on a service: the deviation the latest run
 /// exhibited, plus whatever attribution the graph carries for it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BreakCause {
     /// The deviation node id (`dev:<experiment_id>`). Empty when the run
     /// produced no evidence but exhibited no deviation either.
@@ -58,7 +58,7 @@ pub struct BreakCause {
 }
 
 /// One cell of the lineage matrix: a control × service verdict.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LineageCell {
     /// Compliance article node id (`compliance:<FW>/<control>`).
     pub article_id: String,

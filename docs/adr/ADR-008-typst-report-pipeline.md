@@ -4,22 +4,17 @@ parent: Architecture Decisions
 nav_order: 8
 ---
 
-# ADR-008: Typst Report Pipeline (imported from kronika ADR 0003)
+# ADR-008: Typst Report Pipeline
 
 - Status: accepted (live in v0.4.0)
 - Date: 2026-07-28
-
-> *Merge note (T11): this ADR is a point-in-time record and cites the old
-> `kronika-*` crate names throughout; the current names are in the mapping
-> table under "Merge mapping and migration" in
-> [kronika-architecture.md](../architecture/kronika-architecture.md).*
 
 ## Context
 
 v0.4.0 adds compliance-grade reports (R1 executive digest, R3 game-day
 report, R2 evidence pack) that must hold up as filed evidence: A4 layout,
 document control, page headers/footers, vector charts, reproducible output.
-The v1 digest pipeline (`kronika-report`) renders HTML strings by hand —
+The v1 digest pipeline (`tumult-report`) renders HTML strings by hand —
 fine for a browser digest, not for a document an auditor prints.
 
 Options considered:
@@ -35,11 +30,11 @@ Options considered:
 
 ## Decision
 
-**Embed Typst (0.15) in a new `kronika-docs` crate, behind a
+**Embed Typst (0.15) in the `tumult-compliance` crate, behind a
 renderer-agnostic content model.**
 
 - `ReportDoc` (`DocMeta` + `Vec<Block>`) is the single source of truth.
-  Builders (`kronika_docs::builders`) query the store and produce it;
+  Builders (`tumult_compliance::builders`) query the store and produce it;
   renderers consume it. Adding R4/R5 or a notebook composer later touches
   only builders.
 - Two renderers: `typst_pdf` (Typst markup → in-memory `World` → PDF) and
@@ -57,7 +52,7 @@ renderer-agnostic content model.**
 - Artifacts are persisted as `{doc_id}.pdf` / `.html` / `.json` under
   `reports/v2/`; the JSON meta carries the PDF's SHA-256 for tamper
   evidence. Document IDs are `KRK-<code>-<yyyymmdd>-<hash6>`.
-- Scoring (`kronika_docs::scoring`) lives in the same crate because both
+- Scoring (`tumult_compliance::scoring`) lives in the same crate because both
   the executive digest and `/api/scores` consume it.
 
 ## Consequences

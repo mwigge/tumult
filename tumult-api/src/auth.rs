@@ -8,18 +8,23 @@
 //! as before auth existed.
 //!
 //! Credentials resolve in order: an `Authorization: Bearer kro_…` API token
-//! (stored as its sha256), then the `kro_session` cookie (also stored as its
-//! sha256; sessions live 12 h). Failure is always the same generic 401, and
-//! authorization then maps `(method, path)` through [`ROUTE_TABLE`] — any
-//! route missing from the table fails closed at [`Role::Admin`].
+//! (stored as its sha256, optionally expiring at `expires_at_ns`), then the
+//! `kro_session` cookie (also stored as its sha256; sessions live 12 h).
+//! Failure is always the same generic 401, and authorization then maps
+//! `(method, path)` through [`ROUTE_TABLE`] — any route missing from the
+//! table fails closed at [`Role::Admin`]. Failed logins are rate-limited
+//! per `ip|username` (429 once the bucket is empty) and logged.
 //!
 //! All mutations ride the daemon's single-writer channel via
 //! [`tumult_ingest::Batch::Exec`], like every other write endpoint; reads
 //! run on a fresh read-only connection.
 
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex, Once, OnceLock};
+use std::time::Instant;
 
-use axum::extract::{Path, Request, State};
+use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::header::{AUTHORIZATION, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
@@ -229,6 +234,11 @@ fn not_found(msg: &str) -> Response {
     (StatusCode::NOT_FOUND, Json(json!({"error": msg}))).into_response()
 }
 
+/// 429 JSON response (login throttling; generic body like the 401s).
+fn too_many_requests(msg: &str) -> Response {
+    (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg}))).into_response()
+}
+
 /// 503 JSON response (mutating endpoint without the daemon's writer).
 fn unavailable(msg: &str) -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
@@ -294,7 +304,7 @@ fn resolve(
         if let Some(token) = bearer.filter(|t| t.starts_with("kro_")) {
             let hash = tumult_auth::sha256_hex(token);
             reader
-                .token_with_user(&hash)
+                .token_with_user(&hash, now)
                 .map_err(|e| e.to_string())?
                 .map(|(_, user)| (user, Some(hash)))
         } else if let Some(session_id) = cookie {
@@ -336,6 +346,20 @@ fn resolve(
 /// which pass through before this check).
 const PASSWORD_CHANGE_EXEMPT: &[&str] = &["/api/auth/logout", "/api/auth/change-password"];
 
+/// One prominent warning per process while auth runs open (zero real
+/// users): the synthetic admin principal means anyone who can reach the API
+/// is admin. The bind guard already refuses non-loopback binds in this
+/// state; this makes the state visible in the logs too.
+fn warn_open_auth_once() {
+    static WARNED: Once = Once::new();
+    WARNED.call_once(|| {
+        tracing::warn!(
+            "authentication is disabled (zero users): anyone with network access is admin; \
+             create a user (`tumultd create-admin`) to enable authentication"
+        );
+    });
+}
+
 /// Authentication + authorization middleware covering every `/api/*` route.
 ///
 /// Exempt from the credential requirement: `POST /api/auth/login` (it does
@@ -369,6 +393,7 @@ pub async fn auth_middleware(
     match resolved {
         Resolve::Open => {
             // Zero users: the API behaves exactly as before auth existed.
+            warn_open_auth_once();
             req.extensions_mut().insert(Principal::synthetic());
         }
         Resolve::Rejected => {
@@ -438,6 +463,114 @@ async fn exec_auth_write(
 }
 
 // ---------------------------------------------------------------------------
+// Login rate limiting (POST /api/auth/login)
+
+/// Failed-login attempts allowed per key before throttling kicks in.
+const LOGIN_BURST: f64 = 5.0;
+/// Bucket refill rate (tokens/second): one fresh attempt every 10 s.
+const LOGIN_RPS: f64 = 0.1;
+/// Bound on tracked buckets; beyond it the map resets rather than growing
+/// without limit under username churn.
+const MAX_LOGIN_BUCKETS: usize = 4096;
+
+struct LoginBucket {
+    tokens: f64,
+    last_refill: Instant,
+}
+
+/// Token-bucket limiter for failed logins, keyed by `ip|username` — the same
+/// pattern as the MCP server's `RateLimiter`
+/// (tumult-mcp/src/handler/rate_limit.rs), but a token is consumed only on a
+/// *failed* attempt and a success resets the key, so a legitimate user is
+/// never throttled by their own successful logins. Cheap and synchronous:
+/// buckets are touched for microseconds per attempt, so a plain `Mutex`
+/// suffices.
+struct LoginRateLimiter {
+    rps: f64,
+    burst: f64,
+    buckets: Mutex<HashMap<String, LoginBucket>>,
+}
+
+impl LoginRateLimiter {
+    fn new() -> Self {
+        Self::with_params(LOGIN_RPS, LOGIN_BURST)
+    }
+
+    /// A limiter with explicit parameters.
+    fn with_params(rps: f64, burst: f64) -> Self {
+        Self {
+            rps,
+            burst,
+            buckets: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Refill `bucket` up to the burst cap at the configured rate.
+    fn refill(&self, bucket: &mut LoginBucket, now: Instant) {
+        let elapsed = now.duration_since(bucket.last_refill).as_secs_f64();
+        bucket.tokens = (bucket.tokens + elapsed * self.rps).min(self.burst);
+        bucket.last_refill = now;
+    }
+
+    /// Whether an attempt for `key` must be refused right now (no token
+    /// consumed — [`LoginRateLimiter::penalize`] does that on failure). A
+    /// poisoned lock fails open: login stays available and the argon2 cost
+    /// still bounds attempts.
+    fn throttled(&self, key: &str) -> bool {
+        let now = Instant::now();
+        let Ok(mut buckets) = self.buckets.lock() else {
+            return false;
+        };
+        if buckets.len() >= MAX_LOGIN_BUCKETS {
+            buckets.clear();
+        }
+        let bucket = buckets
+            .entry(key.to_string())
+            .or_insert_with(|| LoginBucket {
+                tokens: self.burst,
+                last_refill: now,
+            });
+        self.refill(bucket, now);
+        bucket.tokens < 1.0
+    }
+
+    /// Consume one token after a failed attempt.
+    fn penalize(&self, key: &str) {
+        let now = Instant::now();
+        let Ok(mut buckets) = self.buckets.lock() else {
+            return;
+        };
+        if buckets.len() >= MAX_LOGIN_BUCKETS {
+            buckets.clear();
+        }
+        let bucket = buckets
+            .entry(key.to_string())
+            .or_insert_with(|| LoginBucket {
+                tokens: self.burst,
+                last_refill: now,
+            });
+        self.refill(bucket, now);
+        bucket.tokens = (bucket.tokens - 1.0).max(0.0);
+    }
+
+    /// A successful login clears the key's penalty history.
+    fn reset(&self, key: &str) {
+        let Ok(mut buckets) = self.buckets.lock() else {
+            return;
+        };
+        buckets.remove(key);
+    }
+}
+
+/// Process-wide login limiter (one daemon, one API surface; state stays
+/// inside tumult-api).
+static LOGIN_LIMITER: OnceLock<LoginRateLimiter> = OnceLock::new();
+
+fn login_limiter() -> &'static LoginRateLimiter {
+    LOGIN_LIMITER.get_or_init(LoginRateLimiter::new)
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/login + /logout + /change-password, GET /api/me
 
 #[derive(Debug, Deserialize)]
@@ -449,15 +582,34 @@ pub struct LoginRequest {
 /// `POST /api/auth/login {username, password}` — verify against the stored
 /// argon2id hash (a dummy hash for unknown usernames, so both cost the same
 /// ~50 ms), then issue a 12 h session cookie. Every failure is the same
-/// generic 401: no user enumeration.
+/// generic 401: no user enumeration. Failed attempts are rate-limited per
+/// `ip|username` (429 with a generic body once the bucket is empty) and
+/// logged for the audit trail — never the password.
 pub async fn login(
     State(state): State<ApiState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Response, Response> {
     let Some(_) = state.ingest_handle() else {
         return Err(unavailable("auth writes are not wired (no ingest handle)"));
     };
     let username = req.username.trim().to_string();
+    // Best available client identity for the throttle key: the peer address
+    // when the server wires `ConnectInfo`, else a shared "unknown" bucket
+    // (per-username throttling still applies).
+    let client = connect_info.map_or_else(
+        || "unknown".to_string(),
+        |Extension(ConnectInfo(addr))| addr.ip().to_string(),
+    );
+    let key = format!("{client}|{username}");
+    if login_limiter().throttled(&key) {
+        tracing::warn!(
+            username = %username,
+            client = %client,
+            "login throttled: too many failed attempts"
+        );
+        return Err(too_many_requests("too many attempts; slow down"));
+    }
     let lookup = username.clone();
     let user = with_reader(&state.db_path, move |reader| {
         reader.user_by_username(&lookup).map_err(|e| e.to_string())
@@ -473,11 +625,18 @@ pub async fn login(
         .await
         .map_err(|e| internal(format!("verify task failed: {e}")))?;
     let Some(user) = user.filter(|u| ok && !u.disabled) else {
+        login_limiter().penalize(&key);
+        tracing::warn!(
+            username = %username,
+            client = %client,
+            "login failed: invalid credentials"
+        );
         return Err(unauthorized("invalid credentials"));
     };
     let Some(role) = Role::parse(&user.role) else {
         return Err(unauthorized("invalid credentials"));
     };
+    login_limiter().reset(&key);
 
     let session_id = tumult_auth::new_session_id();
     let now = now_ns();
@@ -824,11 +983,13 @@ async fn user_or_404(state: &ApiState, id: &str) -> Result<UserRow, Response> {
 pub struct CreateTokenRequest {
     name: String,
     user_id: Option<String>,
+    /// Optional absolute expiry (ns since epoch); omitted = never expires.
+    expires_at_ns: Option<i64>,
 }
 
-/// `POST /api/tokens {name, user_id?}` — mint a `kro_` API token (default
-/// owner: the caller). The plaintext token appears only in this response;
-/// the store keeps its sha256.
+/// `POST /api/tokens {name, user_id?, expires_at_ns?}` — mint a `kro_` API
+/// token (default owner: the caller, default expiry: never). The plaintext
+/// token appears only in this response; the store keeps its sha256.
 pub async fn create_token(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -837,6 +998,10 @@ pub async fn create_token(
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(bad_request("name must not be empty".into()));
+    }
+    let now = now_ns();
+    if req.expires_at_ns.is_some_and(|t| t <= now) {
+        return Err(bad_request("expires_at_ns must be in the future".into()));
     }
     let user_id = req
         .user_id
@@ -849,16 +1014,21 @@ pub async fn create_token(
         user_id,
         name,
         token_hash: tumult_auth::sha256_hex(&token),
-        created_at_ns: now_ns(),
+        created_at_ns: now,
         last_used_at_ns: None,
         revoked: false,
+        expires_at_ns: req.expires_at_ns,
     };
     let id = row.id.clone();
+    let expires_at_ns = row.expires_at_ns;
     exec_auth_write(&state, move |w| {
         w.create_token(&row).map_err(|e| e.to_string())
     })
     .await?;
-    Ok((StatusCode::CREATED, Json(json!({"id": id, "token": token}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": id, "token": token, "expires_at_ns": expires_at_ns})),
+    ))
 }
 
 /// `POST /api/tokens/{id}/revoke` — revoke a token by its record id.
@@ -948,5 +1118,35 @@ mod tests {
         assert_eq!(session_cookie(&headers).as_deref(), Some("xyz"));
         let empty = HeaderMap::new();
         assert_eq!(session_cookie(&empty), None);
+    }
+
+    #[test]
+    fn login_limiter_throttles_after_burst_and_resets_on_success() {
+        let l = LoginRateLimiter::with_params(0.001, 3.0);
+        assert!(!l.throttled("k"));
+        l.penalize("k");
+        l.penalize("k");
+        assert!(!l.throttled("k"), "one token left");
+        l.penalize("k");
+        assert!(l.throttled("k"), "bucket exhausted");
+        l.reset("k");
+        assert!(!l.throttled("k"), "success clears the penalty history");
+    }
+
+    #[test]
+    fn login_limiter_buckets_are_per_key() {
+        let l = LoginRateLimiter::with_params(0.001, 1.0);
+        l.penalize("a");
+        assert!(l.throttled("a"));
+        assert!(!l.throttled("b"), "b has its own bucket");
+    }
+
+    #[test]
+    fn login_limiter_refills_over_time() {
+        let l = LoginRateLimiter::with_params(1000.0, 1.0);
+        l.penalize("k");
+        assert!(l.throttled("k"));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        assert!(!l.throttled("k"), "bucket refills at the rps rate");
     }
 }

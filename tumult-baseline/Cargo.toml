@@ -10,10 +10,12 @@ description = "Baseline acquisition and statistical methods for Tumult experimen
 tumult-otel = { path = "../tumult-otel" }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1"
+serde_json = { workspace = true }
 
 [[bench]]
 name = "stats_bench"

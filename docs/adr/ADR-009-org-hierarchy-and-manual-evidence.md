@@ -4,19 +4,14 @@ parent: Architecture Decisions
 nav_order: 9
 ---
 
-# ADR-009: Org Hierarchy and Manual Evidence (imported from kronika ADR 0004)
+# ADR-009: Org Hierarchy and Manual Evidence
 
 - Status: accepted (live in v0.5.0)
 - Date: 2026-07-29
 
-> *Merge note (T11): this ADR is a point-in-time record and cites the old
-> `kronika-*` crate names throughout; the current names are in the mapping
-> table under "Merge mapping and migration" in
-> [kronika-architecture.md](../architecture/kronika-architecture.md).*
-
 ## Context
 
-v0.4.0 gave Krönika per-experiment resilience scores and compliance-grade
+v0.4.0 gave Tumult per-experiment resilience scores and compliance-grade
 reports. Two gaps remained for programme-level resilience management:
 
 1. **No organisational axis.** Scores roll up by target system and
@@ -112,7 +107,7 @@ The full analysis is in `docs/research-org-rollups.md` and
 - The hash chain is tamper-*evidence* against quiet edits, not proof
   against a store admin rewriting history — the right model for an
   embedded single-tenant store.
-- kronika-api now depends on kronika-ingest (for `Batch::Exec`); the
+- tumult-api now depends on tumult-ingest (for `Batch::Exec`); the
   layering stays acyclic.
 - Deferred: org file hot-reload, un-reject / revision flows, file-blob
   attachments, auth, origin-aware dedupe.

@@ -2,6 +2,7 @@
 
 use crate::tolerance::Method;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -13,7 +14,7 @@ pub enum AcquisitionError {
 }
 
 /// Per-probe statistics derived from baseline samples.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProbeStats {
     pub name: String,
     pub mean: f64,
@@ -36,7 +37,7 @@ pub struct ProbeStats {
 }
 
 /// Result of a complete baseline acquisition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AcquisitionResult {
     pub probes: Vec<ProbeStats>,
     /// Representative tolerance lower bound.
@@ -56,7 +57,7 @@ pub struct AcquisitionResult {
 }
 
 /// Configuration for baseline acquisition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AcquisitionConfig {
     pub method: Method,
     /// Minimum number of samples required before declaring anomaly.
@@ -64,7 +65,7 @@ pub struct AcquisitionConfig {
 }
 
 /// Samples collected for a single probe during baseline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProbeSamples {
     pub name: String,
     /// Numeric values collected (e.g., response time in ms).

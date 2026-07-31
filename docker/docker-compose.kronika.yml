@@ -1,9 +1,10 @@
-# One-command Krönika demo: tumultd + REAL tumult chaos experiments + the
+# One-command Tumult analytics demo: tumultd + REAL tumult chaos experiments + the
 # web UI.
 #
+#   cp .env.example .env   # fill in the three KRONIKA_* values (required)
 #   docker compose -f docker/docker-compose.kronika.yml up
 #
-# Then open http://localhost:14318/ — the Krönika analytics UI (embedded in
+# Then open http://localhost:14318/ — the Tumult analytics UI (embedded in
 # the tumultd binary): Overview KPIs, experiment drill-down with the span
 # waterfall, NL Ask, scheduled Reports.
 #
@@ -56,11 +57,12 @@ services:
       # start (fail-closed guard, ADR-012); the bootstrap env vars create the
       # demo's admin (must_change=false here; the real `tumultd create-admin`
       # path forces a password change) and the seed's API token on first boot.
-      KRONIKA_BOOTSTRAP_ADMIN_PASSWORD: "kr0nika-demo-admin"
-      KRONIKA_BOOTSTRAP_TOKEN: "kro_demo_seed_7f3a9c1e5b2d84f06a1c3e597bfd4208e6a91d4c0f2b5e83a7d6c1940f2e"
+      # Values come from .env (see ../.env.example) — no credentials in git.
+      KRONIKA_BOOTSTRAP_ADMIN_PASSWORD: ${KRONIKA_BOOTSTRAP_ADMIN_PASSWORD:?required - copy .env.example to .env and set a value}
+      KRONIKA_BOOTSTRAP_TOKEN: ${KRONIKA_BOOTSTRAP_TOKEN:?required - copy .env.example to .env and set a value}
       # OTLP ingest (/v1/* HTTP + gRPC) requires this bearer token; /healthz
       # stays open so the healthcheck above keeps working.
-      KRONIKA_INGEST_TOKEN: "kro_demo_ingest_9e1f4b7a2c5d8063f1a4b7d0e3c6f9a2b5d8e1f4a7c0d3e6b9f2a5c8d1e4"
+      KRONIKA_INGEST_TOKEN: ${KRONIKA_INGEST_TOKEN:?required - copy .env.example to .env and set a value}
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
@@ -88,13 +90,13 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tumultd:4317
       # Authenticated OTLP: the daemon's ingest requires KRONIKA_INGEST_TOKEN
       # (see the tumultd service); the standard OTEL headers env carries it.
-      OTEL_EXPORTER_OTLP_HEADERS: "authorization=Bearer kro_demo_ingest_9e1f4b7a2c5d8063f1a4b7d0e3c6f9a2b5d8e1f4a7c0d3e6b9f2a5c8d1e4"
+      OTEL_EXPORTER_OTLP_HEADERS: "authorization=Bearer ${KRONIKA_INGEST_TOKEN:?required}"
       OTEL_SERVICE_NAME: tumult
       TUMULT_DAEMON_URL: http://tumultd:4318
       # Daemon API token (provisioned by KRONIKA_BOOTSTRAP_TOKEN on the
       # tumultd service) for the CLI's journal import and the manual-evidence
       # curls below.
-      TUMULT_DAEMON_TOKEN: "kro_demo_seed_7f3a9c1e5b2d84f06a1c3e597bfd4208e6a91d4c0f2b5e83a7d6c1940f2e"
+      TUMULT_DAEMON_TOKEN: ${KRONIKA_BOOTSTRAP_TOKEN:?required}
     volumes:
       - ../demo/kronika/experiments:/experiments:ro
     command:

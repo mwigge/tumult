@@ -19,6 +19,7 @@ use tumult_agent_cli::{run_prompt, AgentCliAdapter, AgentCliError, PromptRequest
 
 use crate::render::render_text;
 use crate::report::plugin_catalog;
+use crate::sanitise;
 use crate::types::RecommendationOutput;
 
 /// Compact `.toon` experiment example embedded in the prompt so the model
@@ -108,6 +109,15 @@ pub fn build_agent_prompt(
     plugin_catalog: &str,
     generate_experiments: bool,
 ) -> String {
+    // Operator- and journal-controlled fields are sanitised (invisible and
+    // control characters stripped, length capped — prompt-injection hygiene)
+    // before ANY interpolation: the goal is rendered both standalone and via
+    // `render_text`, so sanitising a cloned output covers every site at once.
+    let mut sanitised = heuristic.clone();
+    sanitised.goal = sanitised.goal.as_deref().map(sanitise::goal);
+    sanitised.heuristic_context = sanitise::journal_context(&heuristic.heuristic_context);
+    let heuristic = &sanitised;
+
     let mut prompt = String::new();
     writeln!(
         prompt,
@@ -341,6 +351,43 @@ mod tests {
         );
         assert!(prompt.contains("steady_state_hypothesis:"));
         assert!(prompt.contains("Zero or more fenced code blocks tagged `toon`"));
+    }
+
+    #[test]
+    fn prompt_sanitises_goal_and_journal_signals() {
+        let mut fixture = heuristic_fixture();
+        fixture.goal = Some("harden \u{202E}the\u{200B} cache tier".to_string());
+        fixture.heuristic_context = "Coverage: 5%\u{0007}\u{FEFF}".to_string();
+        let prompt = build_agent_prompt(&fixture, "catalog", false);
+
+        assert!(prompt.contains("Operator goal: harden the cache tier"));
+        assert!(prompt.contains("Coverage: 5%"));
+        assert!(
+            !prompt.contains('\u{202E}'),
+            "bidi override must be stripped"
+        );
+        assert!(
+            !prompt.contains('\u{200B}'),
+            "zero-width space must be stripped"
+        );
+        assert!(
+            !prompt.contains('\u{0007}'),
+            "control char must be stripped"
+        );
+        assert!(!prompt.contains('\u{FEFF}'), "BOM must be stripped");
+    }
+
+    #[test]
+    fn prompt_truncates_oversized_goal() {
+        let mut fixture = heuristic_fixture();
+        fixture.goal = Some("g".repeat(5000));
+        let prompt = build_agent_prompt(&fixture, "catalog", false);
+
+        assert!(prompt.contains("… [truncated]"));
+        assert!(
+            !prompt.contains(&"g".repeat(5000)),
+            "the full oversized goal must not reach the prompt"
+        );
     }
 
     #[test]

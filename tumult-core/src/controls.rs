@@ -87,6 +87,8 @@ pub struct ProviderControl {
 }
 
 impl ProviderControl {
+    /// Creates a control that dispatches lifecycle events to `control`'s
+    /// provider via `executor`.
     #[must_use]
     pub fn new(control: Control, executor: Arc<dyn ActivityExecutor>) -> Self {
         Self { control, executor }
@@ -207,6 +209,7 @@ pub struct ControlRegistry {
 }
 
 impl ControlRegistry {
+    /// Creates an empty registry.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -214,6 +217,7 @@ impl ControlRegistry {
         }
     }
 
+    /// Adds a handler that will receive every emitted lifecycle event.
     pub fn register(&mut self, handler: Box<dyn ControlHandler>) {
         self.handlers.push(handler);
     }
@@ -239,11 +243,13 @@ impl ControlRegistry {
         }
     }
 
+    /// Number of registered handlers.
     #[must_use]
     pub fn handler_count(&self) -> usize {
         self.handlers.len()
     }
 
+    /// Names of all registered handlers, in registration order.
     #[must_use]
     pub fn handler_names(&self) -> Vec<&str> {
         self.handlers.iter().map(|h| h.name()).collect()

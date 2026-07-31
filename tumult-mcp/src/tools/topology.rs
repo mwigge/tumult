@@ -12,6 +12,7 @@ use tumult_graph::{parse_topology, topology_delta};
 use crate::error::ToolError;
 use crate::tools::StructuredReport;
 
+/// Store access and input gathering shared by the topology tools.
 pub(crate) mod inputs;
 
 use inputs::{canonical_framework, gather_inputs, open_store, open_store_ro, recommendations_for};

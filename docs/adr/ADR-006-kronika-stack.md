@@ -1,20 +1,21 @@
 ---
-title: "ADR-006: Krönika Platform Stack"
+title: "ADR-006: Analytics Platform Stack"
 parent: Architecture Decisions
 nav_order: 6
 ---
 
-# ADR-006: Krönika Platform Stack (imported from kronika ADR 0001)
+# ADR-006: Analytics Platform Stack
 
 - Status: accepted
 - Date: 2026-07-28
 
 ## Context
 
-Krönika is the analytics & reporting companion to tumult and smedja. It must
-ingest OTLP from both exporters (gRPC and HTTP/protobuf), store telemetry
-locally with strong ad-hoc query capability, and serve a presentation-first
-web UI. The question is where the query engine lives and what serves the API.
+The analytics layer of Tumult sits next to the tumult CLI and smedja. It
+must ingest OTLP from both exporters (gRPC and HTTP/protobuf), store
+telemetry locally with strong ad-hoc query capability, and serve a
+presentation-first web UI. The question is where the query engine lives
+and what serves the API.
 
 Options considered:
 
@@ -25,7 +26,7 @@ Options considered:
 ## Decision
 
 Option 1 — Rust server-side with axum (OTLP/HTTP + API), tonic (OTLP/gRPC)
-and embedded DuckDB, mirroring tumult-analytics' single-writer pattern.
+and embedded DuckDB, mirroring `tumult-lake`'s single-writer pattern.
 
 ## Rationale
 
@@ -35,8 +36,8 @@ and embedded DuckDB, mirroring tumult-analytics' single-writer pattern.
   that owns the file — at which point the server might as well own queries
   too.
 - **DuckDB-WASM trade-offs.** WASM shines for client-heavy, offline-first BI
-  over static files. Krönika's data is continuously appended by a daemon,
-  and the single-writer file model means a browser cannot open the live
+  over static files. Our data is continuously appended by a daemon, and
+  the single-writer file model means a browser cannot open the live
   store. Shipping snapshots to the browser duplicates the lake-export
   roadmap item for no interactive win.
 - **Perspective-centered trade-offs.** Perspective is an excellent streaming
@@ -46,10 +47,10 @@ and embedded DuckDB, mirroring tumult-analytics' single-writer pattern.
   span-waterfall. Perspective remains an *optional* ad-hoc exploration
   widget (see `web/README.md`).
 - **Ecosystem alignment.** axum 0.8, tonic 0.14, prost 0.14 and
-  opentelemetry-proto 0.32 match the versions already resolved in tumult's
-  lockfile; duckdb 1.10503 (bundled) matches tumult-analytics. One toolchain,
-  one vocabulary (`resilience.*`), shared patterns (single-writer,
-  `StoreLocked`, 0o700 store dir).
+  opentelemetry-proto 0.32 match the versions already resolved in the
+  workspace lockfile; duckdb 1.10503 (bundled) matches `tumult-lake`. One
+  toolchain, one vocabulary (`resilience.*`), shared patterns
+  (single-writer, `StoreLocked`, 0o700 store dir).
 
 ## Consequences
 

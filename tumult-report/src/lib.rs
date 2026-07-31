@@ -178,9 +178,54 @@ fn fmt_value(value: &serde_json::Value) -> String {
     }
 }
 
+/// Environment predicate confining a metric query to a principal's
+/// environment scopes, mirroring the API layer: `spans` binds
+/// `target_environment` directly (it lives on the root span), the
+/// `metric_*` tables reach it through `experiment_name` correlation against
+/// the root spans. `None` when unscoped (empty set = all environments).
+fn env_predicate(table: &str, envs: &[String]) -> Option<String> {
+    if envs.is_empty() {
+        return None;
+    }
+    let list = envs
+        .iter()
+        .map(|e| format!("'{}'", e.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(if table == "spans" {
+        format!("target_environment IN ({list})")
+    } else {
+        format!(
+            "EXISTS (SELECT 1 FROM spans se \
+             WHERE se.experiment_name = {table}.experiment_name \
+               AND se.target_environment IN ({list}))"
+        )
+    })
+}
+
+/// Insert an environment predicate into SQL compiled by
+/// `tumult_metrics::to_sql` (`SELECT … FROM <table>` + optional `WHERE` +
+/// optional `GROUP BY … ORDER BY …`): appended to the existing WHERE clause
+/// or added as a fresh one, always before any GROUP BY. Unchanged when
+/// `envs` is empty (unscoped).
+fn confine_sql(sql: &str, table: &str, envs: &[String]) -> String {
+    let Some(pred) = env_predicate(table, envs) else {
+        return sql.to_string();
+    };
+    let (head, tail) = match sql.find("\nGROUP BY") {
+        Some(pos) => sql.split_at(pos),
+        None => (sql, ""),
+    };
+    if head.contains("\nWHERE ") {
+        format!("{head}\n  AND ({pred}){tail}")
+    } else {
+        format!("{head}\nWHERE ({pred}){tail}")
+    }
+}
+
 /// Build a KPI report from metric definitions over `time_range`
-/// (`[start_ns, end_ns)`). Every number is computed deterministically by the
-/// store; nothing here invents data.
+/// (`[start_ns, end_ns)`), unscoped (all environments). Every number is
+/// computed deterministically by the store; nothing here invents data.
 ///
 /// # Errors
 /// Returns an error if a metric fails to compile or its query fails.
@@ -190,9 +235,25 @@ pub fn build_report(
     title: &str,
     time_range: Option<(i64, i64)>,
 ) -> Result<Report, ReportError> {
+    build_report_scoped(reader, defs, title, time_range, &[])
+}
+
+/// Scoped variant of [`build_report`]: `envs` confines every metric query to
+/// the given environments (empty = unscoped). A scoped principal gets a
+/// digest of its own environments only.
+///
+/// # Errors
+/// Returns an error if a metric fails to compile or its query fails.
+pub fn build_report_scoped(
+    reader: &Reader,
+    defs: &[MetricDef],
+    title: &str,
+    time_range: Option<(i64, i64)>,
+    envs: &[String],
+) -> Result<Report, ReportError> {
     let mut sections = Vec::new();
     for def in defs {
-        let sql = to_sql(def, &[], time_range)?;
+        let sql = confine_sql(&to_sql(def, &[], time_range)?, &def.source_table, envs);
         let rows = reader.query_json_rows(&sql)?;
         // The headline number must describe the whole window, so for
         // dimensioned defs it comes from an ungrouped query (the grouped
@@ -202,7 +263,11 @@ pub fn build_report(
         } else {
             let mut ungrouped = def.clone();
             ungrouped.dimensions = Vec::new();
-            let ungrouped_sql = to_sql(&ungrouped, &[], time_range)?;
+            let ungrouped_sql = confine_sql(
+                &to_sql(&ungrouped, &[], time_range)?,
+                &ungrouped.source_table,
+                envs,
+            );
             reader.query_json_rows(&ungrouped_sql)?.into_iter().next()
         };
         let value = value_row
@@ -317,6 +382,94 @@ impl Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tumult_metrics::{Measure, MetricDef};
+
+    fn count_def(table: &str, dimensions: Vec<String>) -> MetricDef {
+        MetricDef {
+            name: "experiment_count".into(),
+            description: None,
+            source_table: table.into(),
+            measure: Measure::Count,
+            dimensions,
+            time_col: "ts_ns".into(),
+            condition: None,
+        }
+    }
+
+    #[test]
+    fn confine_sql_is_identity_when_unscoped() {
+        let sql = to_sql(&count_def("spans", vec![]), &[], None).unwrap();
+        assert_eq!(confine_sql(&sql, "spans", &[]), sql);
+    }
+
+    #[test]
+    fn confine_sql_adds_where_before_group_by() {
+        let envs = vec!["dev".to_string()];
+        // No existing WHERE: a fresh one appears ahead of GROUP BY.
+        let sql = to_sql(&count_def("spans", vec!["target_system".into()]), &[], None).unwrap();
+        let confined = confine_sql(&sql, "spans", &envs);
+        assert!(
+            confined.contains("\nWHERE (target_environment IN ('dev'))\nGROUP BY"),
+            "{confined}"
+        );
+        // Existing WHERE (time range): the predicate joins it with AND.
+        let sql = to_sql(&count_def("spans", vec![]), &[], Some((1, 2))).unwrap();
+        let confined = confine_sql(&sql, "spans", &envs);
+        assert!(
+            confined.contains("\n  AND (target_environment IN ('dev'))"),
+            "{confined}"
+        );
+    }
+
+    #[test]
+    fn confine_sql_correlates_metric_tables_through_root_spans() {
+        let envs = vec!["dev".to_string(), "staging".to_string()];
+        let sql = to_sql(&count_def("metric_sums", vec![]), &[], None).unwrap();
+        let confined = confine_sql(&sql, "metric_sums", &envs);
+        assert!(
+            confined.contains(
+                "EXISTS (SELECT 1 FROM spans se \
+                 WHERE se.experiment_name = metric_sums.experiment_name \
+                   AND se.target_environment IN ('dev', 'staging'))"
+            ),
+            "{confined}"
+        );
+    }
+
+    #[test]
+    fn build_report_scoped_counts_only_in_scope_rows() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let root = |id: &str, env: &str, ts: i64| tumult_lake::SpanRow {
+            ts_ns: ts,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}-root"),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            service_name: "tumult".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some(id.into()),
+            target_environment: Some(env.into()),
+            events: "[]".into(),
+            ..Default::default()
+        };
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[root("exp-dev", "dev", 1), root("exp-prd", "prod", 2)])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        let defs = vec![count_def("spans", vec![])];
+
+        let kpi_value = |report: &Report| match &report.sections[0] {
+            Section::Kpi { value, .. } => value.clone(),
+            other => panic!("expected KPI section, got {other:?}"),
+        };
+        let global = build_report(&reader, &defs, "t", None).unwrap();
+        assert_eq!(kpi_value(&global), "2");
+        let scoped = build_report_scoped(&reader, &defs, "t", None, &["dev".to_string()]).unwrap();
+        assert_eq!(kpi_value(&scoped), "1");
+    }
 
     #[test]
     fn render_contains_kpi_value_and_escapes_html() {

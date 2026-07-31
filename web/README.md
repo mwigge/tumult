@@ -1,16 +1,17 @@
-# kronika-web
+# Tumult analytics UI
 
-The Krönika analytics UI — a static SvelteKit SPA embedded into `kronikad`
+The analytics UI for Tumult — a static SvelteKit SPA embedded into `tumultd`
 (via `rust-embed`) and served on the daemon's HTTP port alongside `/api/*`.
+The npm package is named `kronika-web`.
 
 ## Build
 
 ```sh
 npm ci
-npm run build   # writes build/ — required before `cargo build -p kronikad`
+npm run build   # writes build/ — required before `cargo build -p tumultd`
 ```
 
-`kronikad` embeds `web/build/` at **compile time**, so a local `cargo build`
+`tumultd` embeds `web/build/` at **compile time**, so a local `cargo build`
 fails until the UI has been built once. The Dockerfile handles this ordering
 with a dedicated node stage. `npm run check` runs svelte-check (0 errors is
 the bar); `npm run dev` starts vite with `/api` proxied to
@@ -20,7 +21,7 @@ the bar); `npm run dev` starts vite with `/api` proxied to
 
 | Choice | Why |
 |---|---|
-| **SvelteKit 2 + Svelte 5 (runes), adapter-static SPA** | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by kronikad for client-side routes. |
+| **SvelteKit 2 + Svelte 5 (runes), adapter-static SPA** | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by tumultd for client-side routes. |
 | **ECharts, tree-shaken** (`echarts/core`, `web/src/lib/echarts.ts`) | Time-series bar, calendar heatmap (experiments/day) and donut (fault breakdown) with zoom/tooltip — only the registered chart types ship. |
 | **Custom span waterfall** (`Waterfall.svelte`) | The signature piece: ruler, indented span tree, status-coloured duration bars (Ok emerald / Error red / Unset slate), click → drawer with attributes, events and correlated logs. Owning it lets us encode `resilience.*` semantics directly. |
 | **Hand-rolled CSS** (`lib/theme.css`) | Near-black Grafana-caliber theme; saturated colour is reserved for status and data. No UI framework — fewer moving parts in the embedded build. |

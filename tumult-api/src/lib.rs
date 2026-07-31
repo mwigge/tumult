@@ -45,7 +45,10 @@
 //!   is reachable.
 //! * `GET /api/reports` / `GET /api/reports/{name}` — HTML digests written
 //!   by the daemon's report scheduler; `POST /api/reports/generate` renders
-//!   one metric digest on demand into the same directory.
+//!   one metric digest on demand into the same directory. A scoped
+//!   principal's digest is confined to its environments; a `<name>.meta.json`
+//!   sidecar records that coverage, and global/legacy digests fail closed
+//!   for scoped principals (hidden, 404).
 //! * `POST /api/import/journal {journal, experiment?}` — daemon-first
 //!   journal ingest for the CLI (`TUMULT_DAEMON_URL`): rides the
 //!   single-writer channel into the analytics tables, idempotent on
@@ -77,7 +80,10 @@
 //!   — build a compliance-grade report (R1 executive digest, R3 game-day,
 //!   R2 evidence pack) as PDF + print-HTML + JSON meta under
 //!   `reports/v2/`; `GET /api/reports/v2` lists metas and
-//!   `GET /api/reports/v2/{id}/pdf|html` serves the artifacts.
+//!   `GET /api/reports/v2/{id}/pdf|html` serves the artifacts. A scoped
+//!   principal's build is confined to its environments; the meta records
+//!   that coverage (`env_scopes`), and list/pdf/html fail closed on
+//!   global or legacy artifacts for scoped principals.
 //!
 //! * `POST /api/auth/login` / `POST /api/auth/logout` /
 //!   `POST /api/auth/change-password` / `GET /api/me` — session auth. Once
@@ -85,8 +91,9 @@
 //!   count), every route requires a session cookie or a `kro_` bearer
 //!   token; `tumult_api::auth::ROUTE_TABLE` maps
 //!   `(method, path)` to a minimum RBAC role, and per-user environment
-//!   scopes filter the experiment/run reads. `GET|POST /api/users*` and
-//!   `POST /api/tokens*` are the admin endpoints.
+//!   scopes filter the experiment, run and telemetry reads (logs, traces,
+//!   metrics, scores) — a scoped principal sees only its own environments.
+//!   `GET|POST /api/users*` and `POST /api/tokens*` are the admin endpoints.
 //!
 //! Every query runs on a fresh read-only connection inside `spawn_blocking`,
 //! so the API coexists with the daemon's single writer and never touches the
@@ -420,6 +427,116 @@ fn env_scope_where(col: &str, scopes: &[String]) -> Option<String> {
     Some(format!("{col} IN ({list})"))
 }
 
+/// `" AND <predicate>"` suffix for a WHERE clause, or empty when the
+/// principal is unscoped (the predicate is `None`).
+fn and_pred(pred: Option<String>) -> String {
+    pred.map_or_else(String::new, |p| format!(" AND {p}"))
+}
+
+/// EXISTS predicate scoping spans/logs rows to an in-scope experiment
+/// trace: `target_environment` lives only on the root span, so child spans
+/// and log rows reach it through `trace_id` correlation. Rows with no
+/// in-scope linkage are hidden from scoped principals (fail closed).
+fn env_trace_exists(alias: &str, scopes: &[String]) -> Option<String> {
+    env_scope_where("se.target_environment", scopes).map(|env| {
+        format!("EXISTS (SELECT 1 FROM spans se WHERE se.trace_id = {alias}.trace_id AND {env})")
+    })
+}
+
+/// Environment predicate for one of the `metric_*` tables: metric points
+/// carry no environment column, so they reach the root span's
+/// `target_environment` through `experiment_name` correlation.
+fn env_metric_exists(table: &str, scopes: &[String]) -> Option<String> {
+    env_scope_where("se.target_environment", scopes).map(|env| {
+        format!(
+            "EXISTS (SELECT 1 FROM spans se WHERE se.experiment_name = {table}.experiment_name AND {env})"
+        )
+    })
+}
+
+/// Environment predicate for a metric definition's source table: `spans`
+/// binds its own column, the metric tables bind through `experiment_name`.
+fn env_table_predicate(table: &str, scopes: &[String]) -> Option<String> {
+    if table == "spans" {
+        env_scope_where("target_environment", scopes)
+    } else {
+        env_metric_exists(table, scopes)
+    }
+}
+
+/// Names of the experiments visible under the scopes (automated and manual
+/// evidence); `None` when the principal is unscoped.
+fn scoped_experiment_names(
+    reader: &Reader,
+    scopes: &[String],
+) -> Result<Option<std::collections::HashSet<String>>, String> {
+    let Some(env) = env_scope_where("target_environment", scopes) else {
+        return Ok(None);
+    };
+    let rows = reader
+        .query_json_rows(&format!(
+            "SELECT experiment_name AS name FROM spans \
+             WHERE span_name = 'resilience.experiment' AND {env} \
+             UNION SELECT experiment_name AS name FROM manual_experiments WHERE {env}"
+        ))
+        .map_err(|e| e.to_string())?;
+    Ok(Some(
+        rows.iter()
+            .filter_map(|r| r.get("name").and_then(Value::as_str).map(str::to_owned))
+            .collect(),
+    ))
+}
+
+/// Restrict a scorecard to in-scope experiments, recomputing the target and
+/// portfolio rollups with scoring's equal-weight algorithm (the scoring
+/// crate has no scope hook, so the rollup is replayed here).
+fn scope_scorecard(
+    reader: &Reader,
+    mut card: tumult_compliance::scoring::Scorecard,
+    scopes: &[String],
+) -> Result<tumult_compliance::scoring::Scorecard, String> {
+    let Some(in_scope) = scoped_experiment_names(reader, scopes)? else {
+        return Ok(card);
+    };
+    card.experiments.retain(|e| in_scope.contains(&e.name));
+    let mut by_target: std::collections::BTreeMap<
+        String,
+        Vec<&tumult_compliance::scoring::ExperimentScore>,
+    > = std::collections::BTreeMap::new();
+    for e in &card.experiments {
+        by_target
+            .entry(e.target.clone().unwrap_or_else(|| "(untargeted)".into()))
+            .or_default()
+            .push(e);
+    }
+    let mut targets: Vec<tumult_compliance::scoring::TargetScore> = by_target
+        .into_iter()
+        .map(|(target, exps)| {
+            let score = exps.iter().map(|e| f64::from(e.score)).sum::<f64>() / exps.len() as f64;
+            tumult_compliance::scoring::TargetScore {
+                target,
+                score,
+                band: tumult_compliance::scoring::band(score).to_string(),
+                runs: exps.iter().map(|e| e.runs).sum(),
+                last_run_ns: exps.iter().filter_map(|e| e.last_run_ns).max(),
+            }
+        })
+        .collect();
+    targets.sort_by(|a, b| {
+        a.score
+            .partial_cmp(&b.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    card.portfolio = if targets.is_empty() {
+        0.0
+    } else {
+        targets.iter().map(|t| t.score).sum::<f64>() / targets.len() as f64
+    };
+    card.band = tumult_compliance::scoring::band(card.portfolio).to_string();
+    card.targets = targets;
+    Ok(card)
+}
+
 /// Parse a click-to-filter `k=v` parameter into (key, value); the key must
 /// be non-empty (the value may be, to filter for empty attrs).
 fn attr_kv(s: &str) -> Option<(&str, &str)> {
@@ -468,17 +585,20 @@ fn attr_wheres(
     Ok(wheres)
 }
 
-/// 500 JSON error response.
+/// 500 JSON error response. The full error is logged server-side — store
+/// errors carry schema, file paths and internal state that must not reach
+/// clients, so the body is a fixed generic message.
 fn internal(msg: String) -> Response {
+    tracing::error!(error = %msg, "internal error");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": msg})),
+        Json(json!({"error": "internal error"})),
     )
         .into_response()
 }
 
 /// Run `f` with a fresh read-only reader on a blocking thread; map any
-/// failure to a 500 JSON error.
+/// failure to a 500 JSON error (details logged, never returned).
 async fn with_reader<T>(
     db_path: &std::path::Path,
     f: impl FnOnce(&Reader) -> Result<T, String> + Send + 'static,
@@ -493,14 +613,8 @@ where
         f(&reader)
     })
     .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("query task failed: {e}")})),
-        )
-            .into_response()
-    })?
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response())
+    .map_err(|e| internal(format!("query task failed: {e}")))?
+    .map_err(internal)
 }
 
 /// First row's `v` column as `f64` (`None` when no rows or NULL).
@@ -556,16 +670,23 @@ struct OverviewParams {
     range: Option<String>,
 }
 
+/// KPI single-value query builder: (from_ns, to_ns, env scopes) → SQL.
+type KpiValueSql = fn(i64, i64, &[String]) -> String;
+
+/// KPI sparkline query builder: (from_ns, to_ns, bucket_s, env scopes) → SQL.
+type KpiSparkSql = fn(i64, i64, i64, &[String]) -> String;
+
 /// SQL building blocks for one KPI card: single-value query per window, and
-/// a bucketed sparkline query (either one series or a num/den pair).
+/// a bucketed sparkline query (either one series or a num/den pair). Every
+/// query takes the principal's environment scopes and filters its rows.
 struct Kpi {
     name: &'static str,
     label: &'static str,
     /// `"count"`, `"ratio"` or `"seconds"` — the UI formats accordingly.
     unit: &'static str,
-    value: fn(i64, i64) -> String,
-    spark_num: fn(i64, i64, i64) -> String,
-    spark_den: Option<fn(i64, i64, i64) -> String>,
+    value: KpiValueSql,
+    spark_num: KpiSparkSql,
+    spark_den: Option<KpiSparkSql>,
 }
 
 fn bucket_expr(bucket_s: i64) -> String {
@@ -573,96 +694,108 @@ fn bucket_expr(bucket_s: i64) -> String {
     format!("(ts_ns // {ns}) * {ns} // 1000000000")
 }
 
-fn sql_experiments_value(f: i64, t: i64) -> String {
+fn sql_experiments_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT COUNT(*) AS v FROM spans WHERE {ROOT} AND {}",
-        w(f, t)
+        "SELECT COUNT(*) AS v FROM spans WHERE {ROOT} AND {}{}",
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
     )
 }
 
-fn sql_experiments_spark(f: i64, t: i64, b: i64) -> String {
+fn sql_experiments_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {ROOT} AND {} GROUP BY 1 ORDER BY 1",
+        "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {ROOT} AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
-        w(f, t)
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
     )
 }
 
-fn sql_pass_rate_value(f: i64, t: i64) -> String {
+fn sql_pass_rate_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
         "SELECT SUM(CAST(value AS DOUBLE)) FILTER (WHERE outcome_status = 'success') \
          / NULLIF(SUM(CAST(value AS DOUBLE)), 0) AS v \
-         FROM metric_sums WHERE metric_name = 'tumult.experiments.total' AND {}",
-        w(f, t)
+         FROM metric_sums WHERE metric_name = 'tumult.experiments.total' AND {}{}",
+        w(f, t),
+        and_pred(env_metric_exists("metric_sums", scopes))
     )
 }
 
-fn sql_pass_num(f: i64, t: i64, b: i64) -> String {
+fn sql_pass_num(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
         "SELECT {} AS ts, SUM(CAST(value AS DOUBLE)) AS v FROM metric_sums \
-         WHERE metric_name = 'tumult.experiments.total' AND outcome_status = 'success' AND {} \
+         WHERE metric_name = 'tumult.experiments.total' AND outcome_status = 'success' AND {}{} \
          GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
-        w(f, t)
+        w(f, t),
+        and_pred(env_metric_exists("metric_sums", scopes))
     )
 }
 
-fn sql_pass_den(f: i64, t: i64, b: i64) -> String {
+fn sql_pass_den(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
         "SELECT {} AS ts, SUM(CAST(value AS DOUBLE)) AS v FROM metric_sums \
-         WHERE metric_name = 'tumult.experiments.total' AND {} GROUP BY 1 ORDER BY 1",
+         WHERE metric_name = 'tumult.experiments.total' AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
-        w(f, t)
+        w(f, t),
+        and_pred(env_metric_exists("metric_sums", scopes))
     )
 }
 
-fn sql_deviation_value(f: i64, t: i64) -> String {
+fn sql_deviation_value(f: i64, t: i64, scopes: &[String]) -> String {
+    let window = w(f, t);
+    let metrics_env = and_pred(env_metric_exists("metric_sums", scopes));
+    let spans_env = and_pred(env_trace_exists("spans", scopes));
     format!(
         "SELECT (SELECT COALESCE(SUM(CAST(value AS DOUBLE)), 0) FROM metric_sums \
-         WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {w}) \
-         / NULLIF((SELECT COUNT(*) FROM spans WHERE {ROOT} AND {w}), 0) AS v",
-        w = w(f, t)
+         WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {window}{metrics_env}) \
+         / NULLIF((SELECT COUNT(*) FROM spans WHERE {ROOT} AND {window}{spans_env}), 0) AS v"
     )
 }
 
-fn sql_deviation_num(f: i64, t: i64, b: i64) -> String {
+fn sql_deviation_num(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
         "SELECT {} AS ts, COALESCE(SUM(CAST(value AS DOUBLE)), 0) AS v FROM metric_sums \
-         WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {} GROUP BY 1 ORDER BY 1",
+         WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
-        w(f, t)
+        w(f, t),
+        and_pred(env_metric_exists("metric_sums", scopes))
     )
 }
 
-fn sql_mttr_value(f: i64, t: i64) -> String {
+fn sql_mttr_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT AVG(recovery_time_s) AS v FROM spans WHERE recovery_time_s IS NOT NULL AND {}",
-        w(f, t)
+        "SELECT AVG(recovery_time_s) AS v FROM spans WHERE recovery_time_s IS NOT NULL AND {}{}",
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
     )
 }
 
-fn sql_mttr_spark(f: i64, t: i64, b: i64) -> String {
+fn sql_mttr_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
         "SELECT {} AS ts, AVG(recovery_time_s) AS v FROM spans \
-         WHERE recovery_time_s IS NOT NULL AND {} GROUP BY 1 ORDER BY 1",
+         WHERE recovery_time_s IS NOT NULL AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
-        w(f, t)
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
     )
 }
 
-fn sql_coverage_value(f: i64, t: i64) -> String {
+fn sql_coverage_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT COUNT(DISTINCT target_system) AS v FROM spans WHERE target_system IS NOT NULL AND {}",
-        w(f, t)
+        "SELECT COUNT(DISTINCT target_system) AS v FROM spans WHERE target_system IS NOT NULL AND {}{}",
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
     )
 }
 
-fn sql_coverage_spark(f: i64, t: i64, b: i64) -> String {
+fn sql_coverage_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
         "SELECT {} AS ts, COUNT(DISTINCT target_system) AS v FROM spans \
-         WHERE target_system IS NOT NULL AND {} GROUP BY 1 ORDER BY 1",
+         WHERE target_system IS NOT NULL AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
-        w(f, t)
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
     )
 }
 
@@ -711,6 +844,7 @@ const KPIS: &[Kpi] = &[
 
 async fn overview(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<OverviewParams>,
 ) -> Result<Json<Value>, Response> {
     let range = params.range.unwrap_or_else(|| "24h".into());
@@ -723,17 +857,18 @@ async fn overview(
     };
     // Short ranges get hourly sparkline buckets, longer ones daily.
     let bucket_s: i64 = if range == "24h" { 3_600 } else { 86_400 };
+    let scopes = principal.env_scopes.clone();
 
     let body = with_reader(&state.db_path, move |reader| {
         let mut kpis = Vec::new();
         for kpi in KPIS {
-            let value = scalar(reader, &(kpi.value)(cur.0, cur.1))?;
-            let prev_value = scalar(reader, &(kpi.value)(prev.0, prev.1))?;
+            let value = scalar(reader, &(kpi.value)(cur.0, cur.1, &scopes))?;
+            let prev_value = scalar(reader, &(kpi.value)(prev.0, prev.1, &scopes))?;
             let delta = value.zip(prev_value).map(|(v, p)| v - p);
-            let num = series(reader, &(kpi.spark_num)(cur.0, cur.1, bucket_s))?;
+            let num = series(reader, &(kpi.spark_num)(cur.0, cur.1, bucket_s, &scopes))?;
             let spark = match kpi.spark_den {
                 Some(den_fn) => {
-                    let den = series(reader, &den_fn(cur.0, cur.1, bucket_s))?;
+                    let den = series(reader, &den_fn(cur.0, cur.1, bucket_s, &scopes))?;
                     ratio_series(&num, &den)
                 }
                 None => num,
@@ -751,10 +886,11 @@ async fn overview(
         let per_day = series(
             reader,
             &format!(
-                "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {ROOT} AND {} \
+                "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {ROOT} AND {}{} \
                  GROUP BY 1 ORDER BY 1",
                 bucket_expr(86_400),
-                w(cur.0, cur.1)
+                w(cur.0, cur.1),
+                and_pred(env_trace_exists("spans", &scopes))
             ),
         )?;
 
@@ -768,18 +904,21 @@ async fn overview(
                   AND l.body = 'experiment.completed' \
                  WHERE s.span_name = 'resilience.experiment' \
                    AND s.target_system IS NOT NULL \
-                   AND s.ts_ns >= {} AND s.ts_ns < {} \
+                   AND s.ts_ns >= {} AND s.ts_ns < {}{} \
                  GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
-                cur.0, cur.1
+                cur.0,
+                cur.1,
+                and_pred(env_scope_where("s.target_environment", &scopes))
             ))
             .map_err(|e| e.to_string())?;
 
         let faults = reader
             .query_json_rows(&format!(
                 "SELECT fault_type, fault_subtype, COUNT(*) AS count FROM spans \
-                 WHERE fault_type IS NOT NULL AND {} \
+                 WHERE fault_type IS NOT NULL AND {}{} \
                  GROUP BY 1, 2 ORDER BY count DESC LIMIT 10",
-                w(cur.0, cur.1)
+                w(cur.0, cur.1),
+                and_pred(env_trace_exists("spans", &scopes))
             ))
             .map_err(|e| e.to_string())?;
 
@@ -809,6 +948,7 @@ struct TimeseriesParams {
 
 async fn timeseries(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<TimeseriesParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -844,6 +984,17 @@ async fn timeseries(
     let sql =
         tumult_metrics::to_sql_bucketed(def, bucket_s * 1_000_000_000, &[], Some((cur.0, cur.1)))
             .map_err(|e| internal(e.to_string()))?;
+    // Scope the source rows before aggregation: the SQL generator has no
+    // predicate hook, so the table reference becomes a filtered subquery
+    // (the source table is a validated `[a-z0-9_.]` identifier).
+    let sql = match env_table_predicate(&def.source_table, &principal.env_scopes) {
+        Some(pred) => sql.replacen(
+            &format!("FROM {}", def.source_table),
+            &format!("FROM (SELECT * FROM {} WHERE {pred})", def.source_table),
+            1,
+        ),
+        None => sql,
+    };
     let description = def.description.clone();
     let body = with_reader(&state.db_path, move |reader| {
         let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
@@ -1031,6 +1182,7 @@ struct ExperimentWindowsParams {
 /// list endpoint: one row per run from the `experiment_runs` rollup view.
 async fn experiment_windows(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<ExperimentWindowsParams>,
 ) -> Result<Json<Value>, Response> {
     let (Some(from), Some(to)) = (params.from, params.to) else {
@@ -1047,11 +1199,22 @@ async fn experiment_windows(
         )
             .into_response());
     }
+    // The rollup view has no environment column; scope binds through the
+    // root span's `target_environment` by experiment_id.
+    let env = env_scope_where("se.target_environment", &principal.env_scopes).map_or_else(
+        String::new,
+        |env| {
+            format!(
+                " AND EXISTS (SELECT 1 FROM spans se \
+                 WHERE se.experiment_id = experiment_runs.experiment_id AND {env})"
+            )
+        },
+    );
     let sql = format!(
         "SELECT experiment_id AS id, experiment_name AS name, \
          started_at_ns AS start_ns, ended_at_ns AS end_ns, outcome_status AS outcome \
          FROM experiment_runs \
-         WHERE started_at_ns < {to} AND ended_at_ns > {from} \
+         WHERE started_at_ns < {to} AND ended_at_ns > {from}{env} \
          ORDER BY started_at_ns LIMIT 200"
     );
     let rows = with_reader(&state.db_path, move |reader| {
@@ -1159,8 +1322,24 @@ async fn experiment_detail(
 // ---------------------------------------------------------------------------
 // GET /api/dimensions + /api/metrics
 
-async fn dimensions(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+async fn dimensions(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<Value>, Response> {
+    let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
+        // targets/experiments bind the root span's own environment column;
+        // outcomes (logs) and faults (child spans) reach it by correlation.
+        let and_root = and_pred(env_scope_where("target_environment", &scopes));
+        let and_trace = and_pred(env_trace_exists("spans", &scopes));
+        let and_logs = and_pred(
+            env_scope_where("se.target_environment", &scopes).map(|env| {
+                format!(
+                    "EXISTS (SELECT 1 FROM spans se \
+                 WHERE se.experiment_id = logs.log_attrs['experiment_id'] AND {env})"
+                )
+            }),
+        );
         let distinct = |sql: &str| -> Result<Vec<Value>, String> {
             let rows = reader.query_json_rows(sql).map_err(|e| e.to_string())?;
             Ok(rows
@@ -1169,19 +1348,20 @@ async fn dimensions(State(state): State<ApiState>) -> Result<Json<Value>, Respon
                 .collect())
         };
         Ok(json!({
-            "outcomes": distinct(
+            "outcomes": distinct(&format!(
                 "SELECT DISTINCT log_attrs['status'] AS v FROM logs \
-                 WHERE body = 'experiment.completed' AND log_attrs['status'] IS NOT NULL ORDER BY 1")?,
-            "targets": distinct(
+                 WHERE body = 'experiment.completed' AND log_attrs['status'] IS NOT NULL{and_logs} \
+                 ORDER BY 1"))?,
+            "targets": distinct(&format!(
                 "SELECT DISTINCT target_system AS v FROM spans \
-                 WHERE target_system IS NOT NULL ORDER BY 1")?,
-            "faults": distinct(
+                 WHERE target_system IS NOT NULL{and_root} ORDER BY 1"))?,
+            "faults": distinct(&format!(
                 "SELECT DISTINCT fault_type AS v FROM spans \
-                 WHERE fault_type IS NOT NULL ORDER BY 1")?,
-            "experiments": distinct(
+                 WHERE fault_type IS NOT NULL{and_trace} ORDER BY 1"))?,
+            "experiments": distinct(&format!(
                 "SELECT DISTINCT experiment_name AS v FROM spans \
                  WHERE span_name = 'resilience.experiment' \
-                   AND experiment_name IS NOT NULL ORDER BY 1")?,
+                   AND experiment_name IS NOT NULL{and_root} ORDER BY 1"))?,
         }))
     })
     .await?;
@@ -1224,7 +1404,8 @@ struct LogsVolumeParams {
 }
 
 /// WHERE clauses shared by the logs list and volume endpoints (range always
-/// applies, so the list is never empty).
+/// applies, so the list is never empty). Scoped principals see only logs
+/// correlated with an in-scope experiment (via trace or experiment_id).
 #[allow(clippy::too_many_arguments)]
 fn log_wheres(
     range: Option<&str>,
@@ -1233,12 +1414,20 @@ fn log_wheres(
     q: Option<&str>,
     attr: Option<&str>,
     attr_not: Option<&str>,
+    scopes: &[String],
 ) -> Result<Vec<String>, String> {
     let range = range.unwrap_or("24h");
     let Some((cur, _)) = windows(range) else {
         return Err(format!("invalid range {range:?}; expected 24h|7d|14d"));
     };
     let mut wheres = vec![w(cur.0, cur.1)];
+    if let Some(env) = env_scope_where("se.target_environment", scopes) {
+        wheres.push(format!(
+            "EXISTS (SELECT 1 FROM spans se WHERE {env} AND (\
+             se.trace_id = logs.trace_id \
+             OR se.experiment_id = logs.log_attrs['experiment_id']))"
+        ));
+    }
     if let Some(sev) = severity.filter(|s| !s.is_empty()) {
         // Severity texts are short tokens (INFO/WARN/ERROR…): case-insensitive
         // exact match, not a contains search.
@@ -1263,6 +1452,7 @@ fn log_wheres(
 
 async fn logs(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<LogsParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -1273,6 +1463,7 @@ async fn logs(
         params.q.as_deref(),
         params.attr.as_deref(),
         params.attr_not.as_deref(),
+        &principal.env_scopes,
     )
     .map_err(bad)?;
     let limit = params.limit.unwrap_or(200).clamp(1, 1000);
@@ -1291,6 +1482,7 @@ async fn logs(
 
 async fn logs_volume(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<LogsVolumeParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -1307,6 +1499,7 @@ async fn logs_volume(
         params.q.as_deref(),
         params.attr.as_deref(),
         params.attr_not.as_deref(),
+        &principal.env_scopes,
     )
     .map_err(bad)?;
     // One row per (bucket, severity); the UI pivots into stacked series.
@@ -1368,6 +1561,7 @@ fn outcome_where(outcome: Option<&str>) -> Result<Option<String>, String> {
 
 async fn traces(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<TracesParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -1388,6 +1582,10 @@ async fn traces(
 
     // Trace-level filters (they must not shrink the span set being grouped).
     let mut trace_wheres = Vec::new();
+    // Scoped principals see only traces carrying an in-scope environment.
+    if let Some(exists) = env_trace_exists("t", &principal.env_scopes) {
+        trace_wheres.push(exists);
+    }
     if let Some(service) = params.service.as_deref().filter(|s| !s.is_empty()) {
         trace_wheres.push(format!(
             "EXISTS (SELECT 1 FROM spans sx WHERE sx.trace_id = t.trace_id \
@@ -1472,10 +1670,14 @@ struct TraceDurationsParams {
 
 async fn trace_durations(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<TraceDurationsParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
     let mut span_where = "parent_span_id IS NULL".to_string();
+    if let Some(exists) = env_trace_exists("spans", &principal.env_scopes) {
+        span_where.push_str(&format!(" AND {exists}"));
+    }
     if let Some(range) = &params.range {
         let Some((cur, _)) = windows(range) else {
             return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
@@ -1511,6 +1713,7 @@ async fn trace_durations(
 
 async fn trace_detail(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, Response> {
     if id.chars().count() > 200 {
@@ -1520,6 +1723,9 @@ async fn trace_detail(
         )
             .into_response());
     }
+    // Traces outside the principal's scopes look exactly like a missing
+    // trace (404 — no existence leak across scopes).
+    let env = and_pred(env_trace_exists("spans", &principal.env_scopes));
     let body = with_reader(&state.db_path, move |reader| {
         let id_sql = sql_string(&id);
         let spans = reader
@@ -1528,7 +1734,7 @@ async fn trace_detail(
                  duration_ns, status_code, status_message, service_name, \
                  experiment_id, experiment_name, fault_type, fault_subtype, \
                  span_attrs, events \
-                 FROM spans WHERE trace_id = {id_sql} ORDER BY ts_ns LIMIT 2000"
+                 FROM spans WHERE trace_id = {id_sql}{env} ORDER BY ts_ns LIMIT 2000"
             ))
             .map_err(|e| e.to_string())?;
         if spans.is_empty() {
@@ -1569,16 +1775,19 @@ const METRIC_TABLES: [(&str, &str); 3] = [
 ];
 
 /// Catalog of raw metrics: name → table types it appears in + attribute
-/// keys seen on its points (sampled, capped per table).
-fn load_catalog(reader: &Reader) -> Result<Vec<Value>, String> {
+/// keys seen on its points (sampled, capped per table). Scoped principals
+/// see only metrics of experiments inside their environments.
+fn load_catalog(reader: &Reader, scopes: &[String]) -> Result<Vec<Value>, String> {
     let mut names: std::collections::BTreeMap<
         String,
         (Vec<String>, std::collections::BTreeSet<String>),
     > = std::collections::BTreeMap::new();
     for (table, kind) in METRIC_TABLES {
+        let env = env_metric_exists(table, scopes)
+            .map_or_else(String::new, |pred| format!(" WHERE {pred}"));
         let rows = reader
             .query_json_rows(&format!(
-                "SELECT metric_name, map_keys(attrs) AS k FROM {table} LIMIT 5000"
+                "SELECT metric_name, map_keys(attrs) AS k FROM {table}{env} LIMIT 5000"
             ))
             .map_err(|e| e.to_string())?;
         for row in rows {
@@ -1609,8 +1818,12 @@ fn load_catalog(reader: &Reader) -> Result<Vec<Value>, String> {
         .collect())
 }
 
-async fn metrics_catalog(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
-    let metrics = with_reader(&state.db_path, load_catalog).await?;
+async fn metrics_catalog(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<Value>, Response> {
+    let scopes = principal.env_scopes.clone();
+    let metrics = with_reader(&state.db_path, move |reader| load_catalog(reader, &scopes)).await?;
     Ok(Json(json!({"metrics": metrics})))
 }
 
@@ -1676,6 +1889,7 @@ struct HistAcc {
 
 async fn metrics_query(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<MetricQueryParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -1706,8 +1920,9 @@ async fn metrics_query(
     };
 
     let metric_name = name.clone();
+    let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
-        let catalog = load_catalog(reader)?;
+        let catalog = load_catalog(reader, &scopes)?;
         let Some(entry) = catalog
             .iter()
             .find(|m| m.get("name").and_then(Value::as_str) == Some(metric_name.as_str()))
@@ -1727,6 +1942,7 @@ async fn metrics_query(
         });
         let window = w(cur.0, cur.1);
         let name_sql = sql_string(&metric_name);
+        let env = and_pred(env_metric_exists(table, &scopes));
 
         // Pivot (bucket, group) rows into one series per group.
         let mut groups: std::collections::BTreeMap<Option<String>, Vec<Value>> =
@@ -1738,7 +1954,7 @@ async fn metrics_query(
             let rows = reader
                 .query_json_rows(&format!(
                     "SELECT {} AS ts, count, sum, bucket_counts, explicit_bounds{grp_sel} \
-                     FROM {table} WHERE metric_name = {name_sql} AND {window} \
+                     FROM {table} WHERE metric_name = {name_sql} AND {window}{env} \
                      ORDER BY 1 LIMIT 10000",
                     bucket_expr(bucket_s)
                 ))
@@ -1789,7 +2005,7 @@ async fn metrics_query(
             let rows = reader
                 .query_json_rows(&format!(
                     "SELECT {} AS ts, {agg} AS v{grp_sel} FROM {table} \
-                     WHERE metric_name = {name_sql} AND {window} GROUP BY 1{grp_by} ORDER BY 1",
+                     WHERE metric_name = {name_sql} AND {window}{env} GROUP BY 1{grp_by} ORDER BY 1",
                     bucket_expr(bucket_s)
                 ))
                 .map_err(|e| e.to_string())?;
@@ -1845,6 +2061,7 @@ const TARGET_ATTR: &str = "span_attrs['resilience.target.name']";
 
 async fn topology(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<TopologyParams>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -1858,6 +2075,9 @@ async fn topology(
         // Edge queries join spans to itself — qualify the window there.
         cwindow = format!(" AND c.ts_ns >= {} AND c.ts_ns < {}", cur.0, cur.1);
     }
+    // Scoped principals see only the graph of their own environments.
+    window.push_str(&and_pred(env_trace_exists("spans", &principal.env_scopes)));
+    cwindow.push_str(&and_pred(env_trace_exists("c", &principal.env_scopes)));
     let body = with_reader(&state.db_path, move |reader| {
         let query = |sql: &str| reader.query_json_rows(sql).map_err(|e| e.to_string());
         // Nodes: one per service and one per tumult target, with health
@@ -1964,17 +2184,76 @@ mod tests {
         assert!(!valid_attr_key("x';DROP"));
         assert!(!valid_attr_key("a b"));
     }
+
+    /// 500 bodies are generic: store internals (schema, paths, DuckDB error
+    /// text) are logged server-side, never returned to the client.
+    #[tokio::test]
+    async fn internal_error_hides_store_details() {
+        let resp = internal("duckdb: IO Error: cannot open /var/lib/tumult/k.duckdb".into());
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body, json!({"error": "internal error"}));
+    }
 }
 
 // ---------------------------------------------------------------------------
 // GET /api/reports + /api/reports/{name}
 
-async fn list_reports(State(state): State<ApiState>) -> Json<Value> {
+/// May a principal with `scopes` see a report artifact whose generation-time
+/// coverage is `coverage` (`Some(envs)` = built from those environments
+/// only, `None` = global artifact or legacy file with no metadata)?
+/// Unscoped principals (empty set) see everything; scoped principals only
+/// see artifacts whose recorded coverage lies fully inside their scopes —
+/// global and legacy artifacts fail closed (hidden in lists, 404 on fetch,
+/// no existence leak).
+fn artifact_visible(scopes: &[String], coverage: Option<Vec<String>>) -> bool {
+    scopes.is_empty() || coverage.is_some_and(|envs| envs.iter().all(|e| scopes.contains(e)))
+}
+
+/// The `env_scopes` array of an artifact's metadata JSON (`null`/absent =
+/// global or legacy coverage).
+fn meta_coverage(meta: &Value) -> Option<Vec<String>> {
+    meta.get("env_scopes")?.as_array().map(|a| {
+        a.iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    })
+}
+
+/// Coverage sidecar of a v1 digest (`<name>.meta.json` next to the `.html`).
+fn digest_coverage(dir: &std::path::Path, name: &str) -> Option<Vec<String>> {
+    let text = std::fs::read_to_string(dir.join(format!("{name}.meta.json"))).ok()?;
+    meta_coverage(&serde_json::from_str::<Value>(&text).ok()?)
+}
+
+/// The coverage to record for a freshly generated artifact: the principal's
+/// scopes, or `Value::Null` for an unscoped (global) generation.
+fn generation_coverage(scopes: &[String]) -> Value {
+    if scopes.is_empty() {
+        Value::Null
+    } else {
+        json!(scopes)
+    }
+}
+
+async fn list_reports(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Json<Value> {
     let mut reports = Vec::new();
     if let Ok(entries) = std::fs::read_dir(state.reports_dir.as_ref()) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "html") {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !artifact_visible(
+                    &principal.env_scopes,
+                    digest_coverage(&state.reports_dir, &name),
+                ) {
+                    continue;
+                }
                 let meta = entry.metadata().ok();
                 let modified_s = meta
                     .as_ref()
@@ -1982,7 +2261,7 @@ async fn list_reports(State(state): State<ApiState>) -> Json<Value> {
                     .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                     .map_or(0, |d| d.as_secs() as i64);
                 reports.push(json!({
-                    "name": entry.file_name().to_string_lossy(),
+                    "name": name,
                     "bytes": meta.map_or(0, |m| m.len()),
                     "modified_s": modified_s,
                 }));
@@ -1995,7 +2274,11 @@ async fn list_reports(State(state): State<ApiState>) -> Json<Value> {
     Json(json!({"reports": reports}))
 }
 
-async fn get_report(State(state): State<ApiState>, Path(name): Path<String>) -> Response {
+async fn get_report(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(name): Path<String>,
+) -> Response {
     // No path traversal: a report name is a flat file name only.
     if name.contains('/')
         || name.contains('\\')
@@ -2004,6 +2287,14 @@ async fn get_report(State(state): State<ApiState>, Path(name): Path<String>) -> 
         || name.len() > 200
     {
         return (StatusCode::BAD_REQUEST, "invalid report name").into_response();
+    }
+    // Scoped principals cannot open global or legacy digests (404 — no
+    // existence leak, matching the trace/metric behaviour).
+    if !artifact_visible(
+        &principal.env_scopes,
+        digest_coverage(&state.reports_dir, &name),
+    ) {
+        return (StatusCode::NOT_FOUND, "report not found").into_response();
     }
     match std::fs::read_to_string(state.reports_dir.join(&name)) {
         Ok(html) => Html(html).into_response(),
@@ -2021,9 +2312,12 @@ struct GenerateRequest {
 /// `GET /report?metric=`), write it into the reports dir so it appears in
 /// `GET /api/reports`, and return its name. Manual digests carry a
 /// `manual_<metric>_<epoch>.html` name, distinct from the scheduler's
-/// `report_<epoch>.html`.
+/// `report_<epoch>.html`. A scoped principal's digest is confined to its
+/// environments, and a `<name>.meta.json` sidecar records that coverage so
+/// the list/get endpoints can enforce it on later reads.
 async fn generate_report(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<GenerateRequest>,
 ) -> Result<Json<Value>, Response> {
     let metric = req.metric.trim().to_string();
@@ -2038,17 +2332,19 @@ async fn generate_report(
     let reports_dir = state.reports_dir.as_ref().clone();
     let llm = state.llm.clone();
     let metric_name = metric.clone();
+    let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
         let defs =
             tumult_metrics::load_dir(&metrics_dir).map_err(|e| format!("load metrics: {e}"))?;
         let Some(def) = defs.iter().find(|d| d.name == metric_name) else {
             return Ok(None);
         };
-        let report = tumult_report::build_report(
+        let report = tumult_report::build_report_scoped(
             reader,
             std::slice::from_ref(def),
-            &format!("Krönika — {metric_name}"),
+            &format!("Tumult — {metric_name}"),
             None,
+            &scopes,
         )
         .map_err(|e| e.to_string())?;
         Ok(Some(report))
@@ -2071,6 +2367,11 @@ async fn generate_report(
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let name = format!("manual_{metric}_{now_s}.html");
+    std::fs::write(
+        reports_dir.join(format!("{name}.meta.json")),
+        json!({"env_scopes": generation_coverage(&principal.env_scopes)}).to_string(),
+    )
+    .map_err(|e| internal(e.to_string()))?;
     std::fs::write(reports_dir.join(&name), &html).map_err(|e| internal(e.to_string()))?;
     Ok(Json(
         json!({"name": name, "metric": metric, "bytes": html.len()}),
@@ -2086,9 +2387,12 @@ struct ScoresQuery {
 }
 
 /// `GET /api/scores?range=24h|7d|14d` — resilience scorecard as of now,
-/// with the portfolio delta against the previous equal window.
+/// with the portfolio delta against the previous equal window. Scoped
+/// principals get the card of their own environments only (rollups
+/// recomputed over the visible experiments).
 async fn scores(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(q): Query<ScoresQuery>,
 ) -> Result<Json<Value>, Response> {
     let range = q.range.as_deref().unwrap_or("7d");
@@ -2099,8 +2403,20 @@ async fn scores(
         )
             .into_response());
     };
+    let scopes = principal.env_scopes.clone();
     let card = with_reader(&state.db_path, move |reader| {
-        tumult_compliance::scoring::compute(reader, to, Some(to - from))
+        let mut card = scope_scorecard(
+            reader,
+            tumult_compliance::scoring::compute(reader, to, None)?,
+            &scopes,
+        )?;
+        let prev = scope_scorecard(
+            reader,
+            tumult_compliance::scoring::compute(reader, from, None)?,
+            &scopes,
+        )?;
+        card.delta = Some(card.portfolio - prev.portfolio);
+        Ok(card)
     })
     .await?;
     Ok(Json(
@@ -2119,6 +2435,7 @@ struct TreeParams {
 /// subtree, coverage, a period sparkline, and one level of child rollups.
 async fn scores_tree(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<TreeParams>,
 ) -> Result<Json<Value>, Response> {
     let node = params.node.unwrap_or_default();
@@ -2140,8 +2457,11 @@ async fn scores_tree(
     let period_ns = secs * 1_000_000_000;
     let as_of = now_ns();
     let org = state.org.clone();
+    let scopes = principal.env_scopes.clone();
 
     let payload = with_reader(&state.db_path, move |reader| {
+        // Scoped principals roll up only the experiments they can see.
+        let in_scope = scoped_experiment_names(reader, &scopes)?;
         // Leaves at an instant: every scored experiment plus pending manual
         // records (expected but unscored). Pending status is read as of NOW
         // for every sample point — a documented approximation, since the
@@ -2161,6 +2481,9 @@ async fn scores_tree(
                     .into_iter()
                     .map(|name| tumult_compliance::ScoredLeaf { name, score: None }),
             );
+            if let Some(names) = &in_scope {
+                leaves.retain(|l| names.contains(&l.name));
+            }
             Ok(leaves)
         };
 
@@ -2215,6 +2538,7 @@ struct GenerateV2Request {
 /// persist `{id}.pdf`, `{id}.html` and `{id}.json` under `reports/v2/`.
 async fn generate_report_v2(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<GenerateV2Request>,
 ) -> Result<Json<Value>, Response> {
     let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
@@ -2257,6 +2581,7 @@ async fn generate_report_v2(
     let exp_id = req.experiment_id.clone();
     let framework = req.framework.clone();
     let org = state.org.clone();
+    let scopes = principal.env_scopes.clone();
     let built = with_reader(&state.db_path, move |reader| match kind {
         tumult_compliance::TemplateKind::ExecutiveDigest => {
             tumult_compliance::builders::build_executive(
@@ -2265,20 +2590,28 @@ async fn generate_report_v2(
                 generated_at,
                 period_ns,
                 generated_at,
+                &scopes,
             )
             .map(Some)
         }
-        tumult_compliance::TemplateKind::GameDay => tumult_compliance::builders::build_game_day(
-            reader,
-            exp_id.as_deref().unwrap_or_default(),
-            generated_at,
-        ),
+        tumult_compliance::TemplateKind::GameDay => {
+            // The builder confines the run's root span to the principal's
+            // environments; an out-of-scope id comes back as `None` (404 —
+            // no existence leak across scopes).
+            tumult_compliance::builders::build_game_day(
+                reader,
+                exp_id.as_deref().unwrap_or_default(),
+                generated_at,
+                &scopes,
+            )
+        }
         tumult_compliance::TemplateKind::EvidencePack => {
             tumult_compliance::builders::build_evidence_pack(
                 reader,
                 framework.as_deref().unwrap_or_default(),
                 Some(period_ns),
                 generated_at,
+                &scopes,
             )
             .map(Some)
         }
@@ -2314,6 +2647,9 @@ async fn generate_report_v2(
         "data_as_of_ns": doc.meta.data_as_of_ns,
         "bytes": pdf.len(),
         "sha256": sha256,
+        // Generation-time environment coverage: the list/pdf/html endpoints
+        // confine scoped principals to artifacts inside their scopes.
+        "env_scopes": generation_coverage(&principal.env_scopes),
         "params": {
             "period": req.period,
             "experiment_id": req.experiment_id,
@@ -2332,7 +2668,13 @@ async fn generate_report_v2(
 }
 
 /// `GET /api/reports/v2` — metas of every generated v2 report, newest first.
-async fn list_reports_v2(State(state): State<ApiState>) -> Json<Value> {
+/// Scoped principals see only reports whose recorded environment coverage
+/// lies inside their scopes; global and legacy (pre-coverage) reports fail
+/// closed for them.
+async fn list_reports_v2(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Json<Value> {
     let mut reports = Vec::new();
     if let Ok(entries) = std::fs::read_dir(state.reports_dir.join("v2")) {
         for entry in entries.flatten() {
@@ -2340,7 +2682,9 @@ async fn list_reports_v2(State(state): State<ApiState>) -> Json<Value> {
             if path.extension().is_some_and(|e| e == "json") {
                 if let Ok(text) = std::fs::read_to_string(&path) {
                     if let Ok(meta) = serde_json::from_str::<Value>(&text) {
-                        reports.push(meta);
+                        if artifact_visible(&principal.env_scopes, meta_coverage(&meta)) {
+                            reports.push(meta);
+                        }
                     }
                 }
             }
@@ -2358,9 +2702,30 @@ fn valid_doc_id(id: &str) -> bool {
         && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-async fn get_report_v2_pdf(State(state): State<ApiState>, Path(id): Path<String>) -> Response {
+/// Whether the principal may open the v2 artifact `id`, per the coverage
+/// recorded in its `{id}.json` meta (missing meta = legacy = fail closed
+/// for scoped principals).
+fn v2_artifact_visible(dir: &std::path::Path, id: &str, scopes: &[String]) -> bool {
+    if scopes.is_empty() {
+        return true;
+    }
+    let coverage = std::fs::read_to_string(dir.join("v2").join(format!("{id}.json")))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|meta| meta_coverage(&meta));
+    artifact_visible(scopes, coverage)
+}
+
+async fn get_report_v2_pdf(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Response {
     if !valid_doc_id(&id) {
         return (StatusCode::BAD_REQUEST, "invalid document id").into_response();
+    }
+    if !v2_artifact_visible(&state.reports_dir, &id, &principal.env_scopes) {
+        return (StatusCode::NOT_FOUND, "report not found").into_response();
     }
     match std::fs::read(state.reports_dir.join("v2").join(format!("{id}.pdf"))) {
         Ok(bytes) => (
@@ -2372,9 +2737,16 @@ async fn get_report_v2_pdf(State(state): State<ApiState>, Path(id): Path<String>
     }
 }
 
-async fn get_report_v2_html(State(state): State<ApiState>, Path(id): Path<String>) -> Response {
+async fn get_report_v2_html(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Response {
     if !valid_doc_id(&id) {
         return (StatusCode::BAD_REQUEST, "invalid document id").into_response();
+    }
+    if !v2_artifact_visible(&state.reports_dir, &id, &principal.env_scopes) {
+        return (StatusCode::NOT_FOUND, "report not found").into_response();
     }
     match std::fs::read_to_string(state.reports_dir.join("v2").join(format!("{id}.html"))) {
         Ok(html) => Html(html).into_response(),

@@ -27,6 +27,8 @@ services:
     environment:
       POSTGRES_DB: orders
       POSTGRES_USER: demo
+      # LOCAL TESTING ONLY — do not expose. Hardcoded demo credential for the
+      # throwaway demo container; never reuse outside this compose stack.
       POSTGRES_PASSWORD: demo
     volumes:
       - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro

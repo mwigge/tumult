@@ -4,11 +4,12 @@
 //! stays on [`tumult_lake::AnalyticsStore`].
 
 use duckdb::params;
+use serde::{Deserialize, Serialize};
 use tumult_graph::{sql, EdgeRecord};
 use tumult_lake::{AnalyticsError, AnalyticsStore};
 
 /// A node id/label with its raw attrs JSON, as read back for lineage.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeAttrs {
     pub id: String,
     pub label: String,

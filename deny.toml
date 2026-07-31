@@ -7,12 +7,18 @@ ignore = [
     { id = "RUSTSEC-2024-0436", reason = "transitive through maintained dependencies including parquet and ratatui" },
     { id = "RUSTSEC-2025-0134", reason = "transitive through axum-server/rust-mcp-sdk" },
     { id = "RUSTSEC-2025-0141", reason = "both versions are transitive through syntect and grafeo; no safe compatible upgrade is available" },
-    # quick-xml 0.38 is pinned by citationberg -> hayagriva -> typst 0.15.
-    # tumult-compliance renders bundled, trusted Typst templates only and
-    # never parses untrusted XML; no 0.38.x backport exists, so this stands
-    # until typst/hayagriva move to quick-xml >= 0.41.
-    { id = "RUSTSEC-2026-0194", reason = "transitive via typst/hayagriva; only trusted bundled templates are rendered, no untrusted XML parsed" },
-    { id = "RUSTSEC-2026-0195", reason = "transitive via typst/hayagriva; only trusted bundled templates are rendered, no untrusted XML parsed" },
+    # quick-xml 0.38 is pinned by citationberg 0.7 -> hayagriva 0.10 -> typst 0.15.
+    # All three are already at their latest crates.io releases (verified
+    # 2026-07-31: typst 0.15.1, hayagriva 0.10.1, citationberg 0.7.0 — the
+    # latter still depends on quick-xml 0.38), so NO upgrade path exists
+    # upstream yet. Exposure is nil: tumult-compliance renders bundled,
+    # trusted Typst templates only and never parses untrusted XML — the
+    # vulnerable quick-xml reader paths are reachable only through CSL /
+    # citation input, which this workspace never takes from users.
+    # TODO(security): re-check on every typst/hayagriva/citationberg release
+    # and drop these ignores as soon as the chain moves to quick-xml >= 0.41.
+    { id = "RUSTSEC-2026-0194", reason = "transitive via typst/hayagriva/citationberg (all latest); only trusted bundled templates rendered, no untrusted XML parsed; no upstream fix released yet" },
+    { id = "RUSTSEC-2026-0195", reason = "transitive via typst/hayagriva/citationberg (all latest); only trusted bundled templates rendered, no untrusted XML parsed; no upstream fix released yet" },
     # Unmaintained font-stack crates pinned by typst 0.15 / krilla; no safe
     # upgrade is available until typst moves to skrifa/fontations.
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser transitive via typst; no safe upgrade available" },

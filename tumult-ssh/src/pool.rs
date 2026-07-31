@@ -112,15 +112,22 @@ impl SshPool {
         Self::default()
     }
 
+    /// Lock the entries map, recovering from mutex poisoning.
+    ///
+    /// The map is only mutated in short, infallible critical sections, so a
+    /// panic elsewhere while the lock was held cannot leave the entries
+    /// inconsistent. Recovering the guard keeps one panicking thread from
+    /// turning into a persistent pool outage.
+    fn lock_entries(&self) -> std::sync::MutexGuard<'_, HashMap<PoolKey, PoolEntry>> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Return the number of cached sessions.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex has been poisoned (a previous thread panicked
-    /// while holding the lock).
     #[must_use]
     pub fn len(&self) -> usize {
-        self.entries.lock().expect("pool lock poisoned").len()
+        self.lock_entries().len()
     }
 
     /// Return `true` if no sessions are cached.
@@ -138,10 +145,6 @@ impl SshPool {
     ///
     /// Returns [`SshError`] if the connection cannot be established or the
     /// command execution fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex has been poisoned.
     #[must_use = "the command result or error must be handled"]
     pub async fn execute(
         &self,
@@ -153,7 +156,7 @@ impl SshPool {
         // Take the entry out of the pool (if any) so we can call async methods
         // on it without holding the Mutex across await points.
         let entry = {
-            let mut guard = self.entries.lock().expect("pool lock poisoned");
+            let mut guard = self.lock_entries();
             guard.remove(&key)
         };
 
@@ -188,7 +191,7 @@ impl SshPool {
         // so future calls can reuse the connection.  If the command itself errored
         // the session may be stale; the next probe will catch it.
         {
-            let mut guard = self.entries.lock().expect("pool lock poisoned");
+            let mut guard = self.lock_entries();
             guard.insert(
                 key,
                 PoolEntry {
@@ -206,26 +209,18 @@ impl SshPool {
     /// Calling this does **not** send a disconnect message to the remote hosts.
     /// The underlying `russh` handles will be dropped, which closes the TCP
     /// connections.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex has been poisoned.
     pub fn clear(&self) {
-        let mut guard = self.entries.lock().expect("pool lock poisoned");
+        let mut guard = self.lock_entries();
         guard.clear();
     }
 
     /// Evict the cached session for the given config, if any.
     ///
     /// Returns `true` if an entry was removed.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex has been poisoned.
     #[must_use]
     pub fn evict(&self, config: &SshConfig) -> bool {
         let key = PoolKey::from_config(config);
-        let mut guard = self.entries.lock().expect("pool lock poisoned");
+        let mut guard = self.lock_entries();
         guard.remove(&key).is_some()
     }
 }
@@ -326,6 +321,26 @@ mod tests {
     #[test]
     fn default_creates_empty_pool() {
         let pool = SshPool::default();
+        assert!(pool.is_empty());
+    }
+
+    #[test]
+    fn poisoned_lock_does_not_kill_pool_operations() {
+        let pool = SshPool::new();
+
+        // Poison the mutex: a panic while the guard is held marks it poisoned.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = pool.entries.lock().unwrap();
+            panic!("simulated panic while holding the pool lock");
+        }));
+        assert!(result.is_err());
+        assert!(pool.entries.is_poisoned());
+
+        // Every pool operation must keep working off the recovered guard.
+        assert!(pool.is_empty());
+        assert_eq!(pool.len(), 0);
+        assert!(!pool.evict(&dummy_config("host-a")));
+        pool.clear();
         assert!(pool.is_empty());
     }
 }

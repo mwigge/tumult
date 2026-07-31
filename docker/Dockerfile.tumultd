@@ -1,4 +1,4 @@
-# Multi-stage build for tumultd (the Krönika platform daemon) plus the
+# Multi-stage build for tumultd (the analytics platform daemon) plus the
 # workspace-built tumult CLI the demo seed uses to run real experiments.
 # Everything builds from workspace source — no pinned release downloads,
 # no checksum verification dance.
@@ -38,7 +38,7 @@ COPY --from=builder /build/target/release/tumult /usr/local/bin/tumult
 COPY metrics/ /etc/kronika/metrics/
 
 # The store path var is TUMULT_LAKE_PATH (unified DB); other env var names
-# stay KRONIKA_* (identifiers unchanged by the fold). KRONIKA_DB still works
+# stay KRONIKA_* (stable identifiers, kept for compatibility). KRONIKA_DB still works
 # as a deprecated alias.
 ENV TUMULT_LAKE_PATH=/data/lake.duckdb \
     KRONIKA_METRICS_DIR=/etc/kronika/metrics \

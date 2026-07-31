@@ -1,6 +1,9 @@
 name: Coverage
 
 on:
+  # Merge-blocking gate: CLAUDE.md mandates >= 90% workspace coverage, so the
+  # tarpaulin run below must pass before a PR can land.
+  pull_request:
   schedule:
     # Runs nightly at 02:00 UTC
     - cron: "0 2 * * *"
@@ -24,7 +27,7 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Run tarpaulin
-        run: cargo tarpaulin --workspace --out xml --timeout 300 --fail-under 80
+        run: cargo tarpaulin --workspace --out xml --timeout 300 --fail-under 90
       - name: Upload coverage report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:

@@ -1,24 +1,28 @@
 //! `POST /api/ask` — natural-language analytics over the store.
 //!
 //! Flow: exact **golden** question → curated SQL (no LLM needed); otherwise
-//! LLM → [`sql_guard`] validation → `LIMIT` injection → execution on a
-//! read-only connection. When no LLM is reachable the endpoint degrades to
-//! `{ "configured": false }` so the UI can show a setup hint instead of an
-//! error. DuckDB has no statement-timeout setting, so execution is bounded
-//! by a wall-clock timeout around the blocking task instead.
+//! LLM → [`sql_guard`] validation → per-user **environment scoping** →
+//! `LIMIT` injection → execution on a **locked-down** connection (read-only
+//! *and* `enable_external_access = false`, so even guard bypasses cannot
+//! reach the server file system or network). When no LLM is reachable the
+//! endpoint degrades to `{ "configured": false }` so the UI can show a setup
+//! hint instead of an error. DuckDB has no statement-timeout setting, so
+//! execution is bounded by a wall-clock timeout around the blocking task
+//! instead.
 
 use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::json;
 use tumult_intelligence::llm::{AiError, Message, Role};
+use tumult_intelligence::locked_reader::LockedReader;
 use tumult_intelligence::sql_guard;
-use tumult_lake::Store;
 
+use crate::auth::Principal;
 use crate::ApiState;
 
 /// Tables LLM-generated SQL may touch (enforced by [`sql_guard`]).
@@ -166,12 +170,41 @@ fn extract_sql(reply: &str) -> String {
     inner.trim().trim_end_matches(';').trim().to_string()
 }
 
+/// Quote a string literal for inline SQL (single-quote doubling) — mirrors
+/// `sql_string` in `crate::lib`.
+fn sql_string(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// Confine a validated query to the principal's environment scopes (same
+/// contract as `env_scope_where` in `crate::lib`): every `spans` reference —
+/// the only allow-listed table with an environment column — is wrapped in a
+/// `target_environment IN (…)` subquery. Any other referenced table cannot
+/// be scope-filtered, so [`sql_guard::scope_tables`] fails closed on it.
+/// Empty scopes mean every environment (the query passes through untouched).
+fn apply_env_scopes(sql: &str, scopes: &[String]) -> Result<String, sql_guard::SqlGuardError> {
+    if scopes.is_empty() {
+        return Ok(sql.to_string());
+    }
+    let envs = scopes
+        .iter()
+        .map(|s| sql_string(s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let predicate = format!("target_environment IN ({envs})");
+    sql_guard::scope_tables(sql, &[("spans", predicate.as_str())])
+}
+
 #[derive(Deserialize)]
 pub struct AskRequest {
     question: String,
 }
 
-pub async fn ask(State(state): State<ApiState>, Json(req): Json<AskRequest>) -> Response {
+pub async fn ask(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Json(req): Json<AskRequest>,
+) -> Response {
     let question = req.question.trim();
     if question.is_empty() {
         return (
@@ -236,13 +269,32 @@ pub async fn ask(State(state): State<ApiState>, Json(req): Json<AskRequest>) -> 
     if let Err(e) = sql_guard::validate_generated_sql(&sql, ALLOWED_TABLES) {
         return internal(format!("internal SQL failed the guard: {e}"), &sql);
     }
+    // Per-user environment scoping: confine `spans` to the principal's
+    // environments; tables without an environment column fail closed for
+    // scoped principals (no cross-environment existence leak).
+    let sql = match apply_env_scopes(&sql, &principal.env_scopes) {
+        Ok(sql) => sql,
+        Err(e) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "configured": true,
+                    "error": format!("query cannot be confined to your environment scopes: {e}"),
+                    "sql": sql,
+                })),
+            )
+                .into_response();
+        }
+    };
     let sql = sql_guard::inject_limit(&sql, ROW_LIMIT);
 
     let db = state.db_path.as_ref().clone();
     let run_sql = sql.clone();
     let run = tokio::task::spawn_blocking(move || {
-        let store = Store::at(&db);
-        let reader = store.read_only().map_err(|e| e.to_string())?;
+        // Locked-down reader: read-only AND external access disabled, so a
+        // query that somehow passed the guard still cannot read server files
+        // (`read_text` works even under access_mode=READ_ONLY without this).
+        let reader = LockedReader::open(&db).map_err(|e| e.to_string())?;
         reader.query_json_rows(&run_sql).map_err(|e| e.to_string())
     });
     match tokio::time::timeout(QUERY_TIMEOUT, run).await {
@@ -295,5 +347,139 @@ mod tests {
         assert_eq!(extract_sql("SELECT 1;"), "SELECT 1");
         assert_eq!(extract_sql("```sql\nSELECT 1;\n```"), "SELECT 1");
         assert_eq!(extract_sql("```\nSELECT 1\n```"), "SELECT 1");
+    }
+
+    #[test]
+    fn guard_rejects_read_text_exfiltration() {
+        // The reported attack: env secrets via DuckDB file functions over an
+        // allow-listed table.
+        let sql = "SELECT read_text('/proc/self/environ') FROM spans";
+        assert!(matches!(
+            sql_guard::validate_generated_sql(sql, ALLOWED_TABLES),
+            Err(sql_guard::SqlGuardError::FunctionNotAllowed(_))
+        ));
+    }
+
+    #[test]
+    fn guard_accepts_legit_aggregate_query() {
+        let sql = "SELECT fault_type, COUNT(*) AS count FROM spans \
+                   WHERE fault_type IS NOT NULL GROUP BY fault_type ORDER BY count DESC";
+        sql_guard::validate_generated_sql(sql, ALLOWED_TABLES).unwrap();
+    }
+
+    #[test]
+    fn env_scopes_pass_through_when_empty() {
+        let sql = "SELECT COUNT(*) FROM spans";
+        assert_eq!(apply_env_scopes(sql, &[]).unwrap(), sql);
+    }
+
+    #[test]
+    fn env_scopes_wrap_spans_and_escape_values() {
+        let scoped = apply_env_scopes(
+            "SELECT COUNT(*) FROM spans",
+            &["dev".to_string(), "it's".to_string()],
+        )
+        .unwrap();
+        assert_eq!(
+            scoped,
+            "SELECT COUNT(*) FROM (SELECT * FROM spans WHERE \
+             target_environment IN ('dev', 'it''s')) AS spans"
+        );
+    }
+
+    #[test]
+    fn env_scopes_fail_closed_on_unscopable_tables() {
+        // logs/metric_sums carry no environment column: a scoped principal
+        // must not reach them at all.
+        for sql in [
+            "SELECT COUNT(*) FROM logs",
+            "SELECT AVG(value) FROM metric_sums",
+            "SELECT * FROM spans s JOIN logs l ON true",
+        ] {
+            assert!(
+                matches!(
+                    apply_env_scopes(sql, &["dev".to_string()]),
+                    Err(sql_guard::SqlGuardError::TableNotScopable(_))
+                ),
+                "{sql} must fail closed for a scoped principal"
+            );
+        }
+    }
+
+    /// One root experiment span in a specific target environment.
+    fn env_span(id: &str, env: &str, ts: i64) -> tumult_lake::SpanRow {
+        tumult_lake::SpanRow {
+            ts_ns: ts,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}"),
+            parent_span_id: None,
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: 1_000_000_000,
+            status_code: "Unset".into(),
+            status_message: String::new(),
+            service_name: "tumult".into(),
+            service_version: None,
+            experiment_id: Some(id.into()),
+            experiment_name: Some(format!("{id}-name")),
+            outcome_status: None,
+            fault_type: None,
+            fault_subtype: None,
+            fault_severity: None,
+            blast_radius: None,
+            target_system: Some("database".into()),
+            target_technology: None,
+            target_environment: Some(env.into()),
+            plugin_name: None,
+            hypothesis_met: None,
+            recovery_time_s: None,
+            span_attrs: vec![],
+            resource_attrs: vec![],
+            events: "[]".into(),
+        }
+    }
+
+    #[test]
+    fn scoped_query_returns_only_in_scope_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("lake.duckdb");
+        let store = tumult_lake::Store::open(&db).unwrap();
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[
+                env_span("exp-dev", "dev", 1_000_000_000),
+                env_span("exp-prod", "prod", 2_000_000_000),
+            ])
+            .unwrap();
+        drop(store);
+
+        let sql = apply_env_scopes(
+            "SELECT experiment_id FROM spans ORDER BY ts_ns",
+            &["dev".to_string()],
+        )
+        .unwrap();
+        let reader = LockedReader::open(&db).unwrap();
+        let rows = reader.query_json_rows(&sql).unwrap();
+        assert_eq!(rows, vec![json!({"experiment_id": "exp-dev"})]);
+
+        // The unscoped principal sees both environments.
+        let rows = reader
+            .query_json_rows("SELECT experiment_id FROM spans ORDER BY ts_ns")
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn execution_path_blocks_file_reads() {
+        // Even if the guard were bypassed, the locked-down connection itself
+        // refuses external access.
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("lake.duckdb");
+        drop(tumult_lake::Store::open(&db).unwrap());
+        let reader = LockedReader::open(&db).unwrap();
+        assert!(reader
+            .query_json_rows("SELECT read_text('/proc/self/environ') AS v")
+            .is_err());
     }
 }

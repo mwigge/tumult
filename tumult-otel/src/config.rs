@@ -7,7 +7,9 @@ const DEFAULT_SERVICE_NAME: &str = "tumult";
 pub struct TelemetryConfig {
     pub enabled: bool,
     pub service_name: String,
+    /// Also write spans to stdout, in addition to any OTLP endpoint.
     pub console_export: bool,
+    /// OTLP gRPC endpoint to export to; `None` means no OTLP export.
     pub otlp_endpoint: Option<String>,
     /// Explicit gRPC request metadata for the OTLP exporters (e.g. an
     /// `authorization` header). When set, this takes precedence over the

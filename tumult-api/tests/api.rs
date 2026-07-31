@@ -2470,6 +2470,16 @@ async fn add_user(
 /// Mint a `kro_` token for a user directly in the store; returns
 /// `(plaintext_token, token_hash)`.
 async fn add_token(srv: &TestServer, user_id: &str, name: &str) -> (String, String) {
+    add_token_with_expiry(srv, user_id, name, None).await
+}
+
+/// Mint a `kro_` token with an explicit expiry (`None` = never expires).
+async fn add_token_with_expiry(
+    srv: &TestServer,
+    user_id: &str,
+    name: &str,
+    expires_at_ns: Option<i64>,
+) -> (String, String) {
     let token = tumult_auth::new_token();
     let row = tumult_lake::TokenRow {
         id: format!("t-{name}"),
@@ -2479,6 +2489,7 @@ async fn add_token(srv: &TestServer, user_id: &str, name: &str) -> (String, Stri
         created_at_ns: now_ns(),
         last_used_at_ns: None,
         revoked: false,
+        expires_at_ns,
     };
     let hash = row.token_hash.clone();
     exec_write(srv, move |w| {
@@ -2957,7 +2968,7 @@ async fn bearer_token_flow() {
     let (token_row, _) = Store::at(&srv.db_path)
         .read_only()
         .unwrap()
-        .token_with_user(&viewer_hash)
+        .token_with_user(&viewer_hash, now_ns())
         .unwrap()
         .unwrap();
     assert!(token_row.last_used_at_ns.is_some());
@@ -3268,4 +3279,561 @@ async fn me_reports_auth_state() {
             "env_scopes": [],
         })
     );
+}
+
+/// A burst of failed logins for one `ip|username` key is throttled (429,
+/// generic body); other keys keep their own bucket, so a legit login on a
+/// different account still works. (The test server wires no `ConnectInfo`,
+/// so every request shares the "unknown" ip bucket component and the key
+/// differs only by username.)
+#[tokio::test]
+async fn login_rate_limit_throttles_failed_burst() {
+    let srv = spawn_server().await;
+    add_user(&srv, "rl-target", "rl-target-password", "admin", false).await;
+    add_user(&srv, "rl-other", "rl-other-password", "viewer", false).await;
+
+    // Burst of failures (limiter capacity is 5): all generic 401s.
+    for attempt in 1..=5 {
+        let (status, body, _) = login(&srv.base, "rl-target", "not-the-password").await;
+        assert_eq!(status, 401, "attempt {attempt}");
+        assert_eq!(body["error"], "invalid credentials");
+    }
+    // Bucket exhausted: throttled, even with the right password.
+    let (status, body, _) = login(&srv.base, "rl-target", "not-the-password").await;
+    assert_eq!(status, 429);
+    assert_eq!(body["error"], "too many attempts; slow down");
+    let (status, _, _) = login(&srv.base, "rl-target", "rl-target-password").await;
+    assert_eq!(status, 429, "throttled until the bucket refills");
+
+    // A different username has its own bucket: legit login still works.
+    let (status, _, cookie) = login(&srv.base, "rl-other", "rl-other-password").await;
+    assert_eq!(status, 200);
+    assert!(cookie.is_some());
+}
+
+/// Expired `kro_` tokens authenticate exactly like revoked ones (401);
+/// unexpired and no-expiry tokens keep working.
+#[tokio::test]
+async fn expired_tokens_are_rejected_unexpired_and_no_expiry_work() {
+    let srv = spawn_server().await;
+    let uid = add_user(&srv, "tok-admin", "tok-admin-password", "admin", false).await;
+    let (expired, _) = add_token_with_expiry(&srv, &uid, "expired", Some(1)).await;
+    let (live, _) = add_token_with_expiry(&srv, &uid, "live", Some(now_ns() + 3600 * NS)).await;
+    let (forever, _) = add_token(&srv, &uid, "forever").await;
+
+    let client = reqwest::Client::new();
+    for (token, expected) in [(&expired, 401), (&live, 200), (&forever, 200)] {
+        let resp = client
+            .get(format!("{}/api/users", srv.base))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), expected, "token {token}");
+    }
+}
+
+/// `POST /api/tokens` accepts an optional `expires_at_ns` (must be in the
+/// future); the minted token then stops authenticating once expired, while
+/// a token minted without expiry keeps working.
+#[tokio::test]
+async fn create_token_with_optional_expiry() {
+    let srv = spawn_server().await;
+    add_user(&srv, "minter", "minter-password", "admin", false).await;
+    let (_, _, cookie) = login(&srv.base, "minter", "minter-password").await;
+    let cookie = cookie.unwrap();
+    let client = reqwest::Client::new();
+    let mint = |body: Value| {
+        client
+            .post(format!("{}/api/tokens", srv.base))
+            .header("Cookie", format!("kro_session={cookie}"))
+            .json(&body)
+    };
+
+    // Past expiry → 400.
+    let resp = mint(json!({"name": "past", "expires_at_ns": 1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+
+    // Future expiry → 201, expiry echoed, token works now.
+    let expires = now_ns() + 3600 * NS;
+    let resp = mint(json!({"name": "expiring", "expires_at_ns": expires}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["expires_at_ns"], json!(expires));
+    let token = body["token"].as_str().unwrap();
+    let resp = client
+        .get(format!("{}/api/users", srv.base))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // No expiry → null in the response, token works.
+    let resp = mint(json!({"name": "forever"})).send().await.unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["expires_at_ns"], Value::Null);
+}
+
+/// Environment scopes filter the telemetry reads — logs, traces, metrics,
+/// timeseries, scores — and the game-day report path hides experiments
+/// outside the principal's environments.
+#[tokio::test]
+async fn env_scoping_filters_telemetry_reads() {
+    let srv = spawn_server().await;
+    add_user(&srv, "tele", "tele-password-1", "viewer", false).await;
+    exec_write(&srv, move |w| {
+        w.set_user_env_scopes("u-tele", &["staging".to_string()])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[
+            env_root("exp-stg", "stg-exp", "staging", now - 100 * NS),
+            env_root("exp-prd", "prd-exp", "prod", now - 90 * NS),
+        ])
+        .map_err(|e| e.to_string())?;
+        w.insert_logs(&[
+            LogRow {
+                ts_ns: now - 99 * NS,
+                severity_text: "INFO".into(),
+                body: "staging log body".into(),
+                trace_id: Some("trace-exp-stg".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![("experiment_id".to_string(), "exp-stg".to_string())],
+                resource_attrs: vec![],
+            },
+            LogRow {
+                ts_ns: now - 89 * NS,
+                severity_text: "INFO".into(),
+                body: "prod log body with secret".into(),
+                trace_id: Some("trace-exp-prd".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![("experiment_id".to_string(), "exp-prd".to_string())],
+                resource_attrs: vec![],
+            },
+        ])
+        .map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[
+            MetricSumRow {
+                ts_ns: now - 98 * NS,
+                metric_name: "demo.env.requests".into(),
+                value: 1.0,
+                experiment_name: Some("stg-exp".into()),
+                ..MetricSumRow::default()
+            },
+            MetricSumRow {
+                ts_ns: now - 88 * NS,
+                metric_name: "demo.env.requests".into(),
+                value: 100.0,
+                experiment_name: Some("prd-exp".into()),
+                ..MetricSumRow::default()
+            },
+        ])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (_, _, cookie) = login(&srv.base, "tele", "tele-password-1").await;
+    let cookie = cookie.unwrap();
+    let client = reqwest::Client::new();
+    let scoped_get = |path: &str| {
+        client
+            .get(format!("{}{path}", srv.base))
+            .header("Cookie", format!("kro_session={cookie}"))
+            .send()
+    };
+
+    // Logs: only the staging log body is visible.
+    let resp = scoped_get("/api/logs?range=24h").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let bodies: Vec<&str> = body["logs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|l| l["body"].as_str())
+        .collect();
+    assert_eq!(bodies, ["staging log body"], "{bodies:?}");
+
+    // Log volume aggregates the same scoped rows (one log, one bucket).
+    let resp = scoped_get("/api/logs/volume?range=24h&interval=1h")
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    let total: f64 = body["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["count"].as_f64())
+        .sum();
+    assert_eq!(total, 1.0, "{body}");
+
+    // Traces: only the staging trace is listed; the durations scatter too.
+    let resp = scoped_get("/api/traces").await.unwrap();
+    let body: Value = resp.json().await.unwrap();
+    let ids: Vec<&str> = body["traces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|t| t["trace_id"].as_str())
+        .collect();
+    assert_eq!(ids, ["trace-exp-stg"], "{ids:?}");
+    let resp = scoped_get("/api/traces/durations").await.unwrap();
+    let body: Value = resp.json().await.unwrap();
+    let points = body["points"].as_array().unwrap();
+    assert_eq!(points.len(), 1, "{points:?}");
+    assert_eq!(points[0]["trace_id"], "trace-exp-stg");
+
+    // Trace detail: in-scope resolves, out-of-scope 404s (no existence leak).
+    let resp = scoped_get("/api/traces/trace-exp-stg").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let resp = scoped_get("/api/traces/trace-exp-prd").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    // Metrics query: only the staging experiment's points come back.
+    let resp = scoped_get("/api/metrics/query?name=demo.env.requests&interval=1d")
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let total: f64 = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .sum();
+    assert_eq!(total, 1.0, "{body}");
+
+    // Timeseries (spans-sourced definition): only the staging experiment
+    // is counted.
+    let resp = scoped_get("/api/timeseries?metric=experiment_count&interval=1h&range=24h")
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let total: f64 = body["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|p| p["value"].as_f64())
+        .sum();
+    assert_eq!(total, 1.0, "{body}");
+
+    // Scores: the scorecard holds only the staging experiment.
+    let resp = scoped_get("/api/scores").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let names: Vec<&str> = body["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["name"].as_str())
+        .collect();
+    assert_eq!(names, ["stg-exp"], "{names:?}");
+
+    // Scores tree: only the in-scope leaf rolls up.
+    let resp = scoped_get("/api/scores/tree").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["scored"], 1, "{body}");
+    assert_eq!(body["expected"], 1, "{body}");
+
+    // Reports: a scoped operator cannot render a game-day report for an
+    // out-of-scope experiment (404 — no existence leak).
+    add_user(&srv, "tele-op", "tele-op-password", "operator", false).await;
+    exec_write(&srv, move |w| {
+        w.set_user_env_scopes("u-tele-op", &["staging".to_string()])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (_, _, op_cookie) = login(&srv.base, "tele-op", "tele-op-password").await;
+    let resp = client
+        .post(format!("{}/api/reports/v2/generate", srv.base))
+        .header("Cookie", format!("kro_session={}", op_cookie.unwrap()))
+        .json(&json!({"type": "game-day", "experiment_id": "exp-prd"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    // An unscoped viewer still sees everything: both env logs plus the seed
+    // telemetry.
+    add_user(&srv, "tele-full", "tele-full-password", "viewer", false).await;
+    let (_, _, full_cookie) = login(&srv.base, "tele-full", "tele-full-password").await;
+    let resp = client
+        .get(format!("{}/api/logs?range=24h", srv.base))
+        .header("Cookie", format!("kro_session={}", full_cookie.unwrap()))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["body"] == "prod log body with secret"),
+        "{body}"
+    );
+}
+
+/// Scoped report generation is confined to the principal's environments, and
+/// pre-rendered artifacts carry generation-time coverage metadata that the
+/// list/serve endpoints enforce: global and legacy (no-metadata) artifacts
+/// fail closed for scoped principals (hidden, 404) while unscoped
+/// principals see everything.
+#[tokio::test]
+async fn env_scoping_confines_report_generation_and_artifacts() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+    let now = now_ns();
+    // One experiment in each of staging and prod (the seed's two are env
+    // "demo"); the completion log gives the staging run a green outcome.
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[
+            env_root("exp-stg", "stg-exp", "staging", now - 100 * NS),
+            env_root("exp-prd", "prd-exp", "prod", now - 90 * NS),
+        ])
+        .map_err(|e| e.to_string())?;
+        w.insert_logs(&[LogRow {
+            ts_ns: now - 99 * NS,
+            severity_text: "INFO".into(),
+            body: "experiment.completed".into(),
+            trace_id: Some("trace-exp-stg".into()),
+            span_id: None,
+            service_name: "tumult".into(),
+            log_attrs: vec![
+                ("experiment_id".to_string(), "exp-stg".to_string()),
+                ("status".to_string(), "Completed".to_string()),
+            ],
+            resource_attrs: vec![],
+        }])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    // A scoped operator (staging only) and an unscoped viewer.
+    add_user(&srv, "rep-op", "rep-op-password", "operator", false).await;
+    exec_write(&srv, move |w| {
+        w.set_user_env_scopes("u-rep-op", &["staging".to_string()])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (_, _, op_cookie) = login(&srv.base, "rep-op", "rep-op-password").await;
+    let op_cookie = op_cookie.unwrap();
+    add_user(&srv, "rep-full", "rep-full-password", "viewer", false).await;
+    let (_, _, full_cookie) = login(&srv.base, "rep-full", "rep-full-password").await;
+    let full_cookie = full_cookie.unwrap();
+    // An unscoped operator for the global generation (generate is
+    // Operator-gated).
+    add_user(&srv, "rep-admin", "rep-admin-password", "operator", false).await;
+    let (_, _, admin_cookie) = login(&srv.base, "rep-admin", "rep-admin-password").await;
+    let admin_cookie = admin_cookie.unwrap();
+    let authed = |method: &str, path: &str, cookie: &str, body: Option<Value>| {
+        let req = client
+            .request(method.parse().unwrap(), format!("{}{path}", srv.base))
+            .header("Cookie", format!("kro_session={cookie}"));
+        match body {
+            Some(b) => req.json(&b),
+            None => req,
+        }
+        .send()
+    };
+
+    // --- v2 generation is confined -------------------------------------
+    let resp = authed(
+        "POST",
+        "/api/reports/v2/generate",
+        &op_cookie,
+        Some(json!({"type": "executive-digest", "period": "7d"})),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let meta: Value = resp.json().await.unwrap();
+    assert_eq!(meta["env_scopes"], json!(["staging"]), "{meta}");
+    let scoped_id = meta["doc_id"].as_str().unwrap().to_string();
+    let resp = authed(
+        "GET",
+        &format!("/api/reports/v2/{scoped_id}/html"),
+        &op_cookie,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let html = resp.text().await.unwrap();
+    assert!(html.contains("stg-exp"), "{html}");
+    assert!(!html.contains("prd-exp"), "{html}");
+
+    // An unscoped generation covers everything and records null coverage.
+    let resp = authed(
+        "POST",
+        "/api/reports/v2/generate",
+        &admin_cookie,
+        Some(json!({"type": "executive-digest", "period": "7d"})),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // --- v2 list + artifact fetch honour coverage ----------------------
+    // Find the global (null-coverage) report in the unscoped list.
+    let resp = authed("GET", "/api/reports/v2", &full_cookie, None)
+        .await
+        .unwrap();
+    let list: Value = resp.json().await.unwrap();
+    let metas = list["reports"].as_array().unwrap();
+    let global_id = metas
+        .iter()
+        .find(|m| m["env_scopes"].is_null())
+        .and_then(|m| m["doc_id"].as_str())
+        .expect("a global (null-coverage) report exists")
+        .to_string();
+    assert!(metas.iter().any(|m| m["doc_id"] == scoped_id));
+
+    // The scoped principal's list hides the global report.
+    let resp = authed("GET", "/api/reports/v2", &op_cookie, None)
+        .await
+        .unwrap();
+    let list: Value = resp.json().await.unwrap();
+    let ids: Vec<&str> = list["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m["doc_id"].as_str())
+        .collect();
+    assert_eq!(ids, [scoped_id.as_str()], "{ids:?}");
+
+    // Scoped fetch of the global artifact 404s (pdf and html); unscoped 200s.
+    for (cookie, want) in [(&op_cookie, 404), (&full_cookie, 200)] {
+        let resp = authed(
+            "GET",
+            &format!("/api/reports/v2/{global_id}/pdf"),
+            cookie,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(resp.status().as_u16(), want, "pdf as scoped/unscoped");
+        let resp = authed(
+            "GET",
+            &format!("/api/reports/v2/{global_id}/html"),
+            cookie,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(resp.status().as_u16(), want, "html as scoped/unscoped");
+    }
+
+    // A legacy v2 report (meta without env_scopes, as written before this
+    // change) fails closed for the scoped principal.
+    let v2_dir = srv.reports_dir.join("v2");
+    std::fs::write(
+        v2_dir.join("KRK-R1-20200101-1egacy.html"),
+        "<html>legacy</html>",
+    )
+    .unwrap();
+    std::fs::write(
+        v2_dir.join("KRK-R1-20200101-1egacy.json"),
+        r#"{"doc_id":"KRK-R1-20200101-1egacy","type":"executive-digest","created_ns":1}"#,
+    )
+    .unwrap();
+    let resp = authed(
+        "GET",
+        "/api/reports/v2/KRK-R1-20200101-1egacy/html",
+        &op_cookie,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 404, "legacy hidden from scoped");
+    let resp = authed(
+        "GET",
+        "/api/reports/v2/KRK-R1-20200101-1egacy/html",
+        &full_cookie,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "legacy visible to unscoped");
+
+    // --- v1 digest generation is confined --------------------------------
+    let resp = authed(
+        "POST",
+        "/api/reports/generate",
+        &op_cookie,
+        Some(json!({"metric": "experiment_count"})),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let name = body["name"].as_str().unwrap().to_string();
+    let resp = authed("GET", &format!("/api/reports/{name}"), &op_cookie, None)
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let html = resp.text().await.unwrap();
+    // Only the staging experiment counts (global would be 4: 2 seed + 2 new).
+    assert!(html.contains(r#"<div class="kpi-value">1</div>"#), "{html}");
+
+    // The scoped principal's v1 list shows its own digest but not the
+    // pre-seeded legacy digest (no sidecar); the unscoped list shows both.
+    let resp = authed("GET", "/api/reports", &op_cookie, None)
+        .await
+        .unwrap();
+    let list: Value = resp.json().await.unwrap();
+    let names: Vec<&str> = list["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["name"].as_str())
+        .collect();
+    assert_eq!(names, [name.as_str()], "{names:?}");
+    let resp = authed("GET", "/api/reports", &full_cookie, None)
+        .await
+        .unwrap();
+    let list: Value = resp.json().await.unwrap();
+    let names: Vec<&str> = list["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["name"].as_str())
+        .collect();
+    assert!(names.contains(&name.as_str()), "{names:?}");
+    assert!(names.contains(&"2026-01-01T00-00_digest.html"), "{names:?}");
+
+    // The legacy digest 404s for the scoped principal, 200s unscoped.
+    let resp = authed(
+        "GET",
+        "/api/reports/2026-01-01T00-00_digest.html",
+        &op_cookie,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+    let resp = authed(
+        "GET",
+        "/api/reports/2026-01-01T00-00_digest.html",
+        &full_cookie,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
 }

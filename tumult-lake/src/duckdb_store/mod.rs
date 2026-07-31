@@ -156,8 +156,8 @@ impl AnalyticsStore {
         }
         if let Ok(path) = std::env::var("TUMULT_ANALYTICS_PATH") {
             if !path.is_empty() {
-                eprintln!(
-                    "warning: TUMULT_ANALYTICS_PATH is deprecated; the unified store now \
+                tracing::warn!(
+                    "TUMULT_ANALYTICS_PATH is deprecated; the unified store now \
                      lives at TUMULT_LAKE_PATH (default ~/.tumult/lake.duckdb). Migrate with \
                      `tumult store import-legacy` and unset TUMULT_ANALYTICS_PATH."
                 );

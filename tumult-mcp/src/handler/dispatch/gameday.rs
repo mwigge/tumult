@@ -11,6 +11,8 @@ use crate::tools;
 
 use super::{parse_args, validate_page, Dispatched, ToolOutput};
 
+/// Dispatch `tumult_gameday_create`: write a `<name>.gameday.toon` campaign
+/// file into the workspace root and link it as a `tumult://gameday/…` resource.
 pub(super) fn gameday_create(
     handler: &TumultHandler,
     params: &CallToolRequestParams,
@@ -39,6 +41,9 @@ pub(super) fn gameday_create(
     }))
 }
 
+/// Dispatch `tumult_gameday_run`: execute every experiment in a `.gameday.toon`
+/// campaign under shared load. An enact path: the whole campaign runs under one
+/// `EnactLock` slot and is refused while another enactment is in flight.
 pub(super) fn gameday_run(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: GameDayRunTool = parse_args(params)?;
     let path = handler.resolve_path(&args.gameday_path)?;
@@ -56,6 +61,8 @@ pub(super) fn gameday_run(handler: &TumultHandler, params: &CallToolRequestParam
     Ok(result.map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_gameday_analyze`: analyze a completed `GameDay` journal —
+/// resilience score, per-experiment results, and compliance article mapping.
 pub(super) fn gameday_analyze(
     handler: &TumultHandler,
     params: &CallToolRequestParams,
@@ -65,6 +72,8 @@ pub(super) fn gameday_analyze(
     Ok(tokio::task::block_in_place(|| tools::gameday_analyze(&path)).map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_gameday_list`: list `.gameday.toon` campaign files in the
+/// workspace (or a validated subdirectory), paginated.
 pub(super) fn gameday_list(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: GameDayListTool = parse_args(params)?;
     let (limit, offset) = validate_page(args.limit, args.offset)?;

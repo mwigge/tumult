@@ -62,8 +62,8 @@
   <div class="shell">
     <aside class="side">
       <div class="brand">
-        <div class="name">Krönika</div>
-        <div class="tag">the chronicle of your resilience work</div>
+        <div class="name">Tumult</div>
+        <div class="tag">analytics for your resilience work</div>
       </div>
       <nav class="nav">
         {#each NAV as item (item.href)}

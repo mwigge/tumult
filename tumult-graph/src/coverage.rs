@@ -14,10 +14,12 @@
 use std::collections::HashSet;
 use std::hash::BuildHasher;
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::{Edge, EdgeRel, GraphDelta, Node, NodeKind};
 
 /// A fault primitive advertised by a plugin's manifest.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AvailableAction {
     /// The owning plugin / fault domain (e.g. `tumult-net`).
     pub plugin: String,

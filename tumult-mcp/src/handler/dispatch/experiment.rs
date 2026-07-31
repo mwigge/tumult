@@ -13,6 +13,11 @@ use crate::tools;
 
 use super::{parse_args, validate_page, Dispatched, ToolOutput, DEFAULT_JOURNAL_PATH};
 
+/// Dispatch `tumult_run_experiment`: execute a chaos experiment and persist
+/// its journal. An enact path: refuses (as a tool-level error, not a protocol
+/// error) while another enactment holds the `EnactLock` slot — a queued fault
+/// is a stale fault. The captured MCP span context is passed through as the
+/// parent of the experiment trace.
 pub(super) fn run_experiment(
     handler: &TumultHandler,
     params: &CallToolRequestParams,
@@ -55,12 +60,16 @@ pub(super) fn run_experiment(
     }))
 }
 
+/// Dispatch `tumult_validate`: validate an experiment file for syntax and
+/// provider support. Read-only.
 pub(super) fn validate(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: ValidateTool = parse_args(params)?;
     let path = handler.resolve_path(&args.experiment_path)?;
     Ok(tokio::task::block_in_place(|| tools::validate_experiment(&path)).map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_create_experiment`: scaffold a new experiment file from a
+/// template. The output path is validated against the workspace root.
 pub(super) fn create_experiment(
     handler: &TumultHandler,
     params: &CallToolRequestParams,
@@ -73,6 +82,8 @@ pub(super) fn create_experiment(
     )
 }
 
+/// Dispatch `tumult_list_experiments`: list `.toon` experiment files under
+/// the workspace (or a validated subdirectory), paginated.
 pub(super) fn list_experiments(
     handler: &TumultHandler,
     params: &CallToolRequestParams,
@@ -90,6 +101,8 @@ pub(super) fn list_experiments(
     )
 }
 
+/// Dispatch `tumult_scaffold_experiment`: generate a validated experiment
+/// from a chosen fault action. Pure generation — read-only w.r.t. the store.
 pub(super) fn scaffold_experiment(params: &CallToolRequestParams) -> Dispatched {
     let args: ScaffoldExperimentTool = parse_args(params)?;
     Ok(tokio::task::block_in_place(|| {

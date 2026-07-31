@@ -23,6 +23,7 @@ pub(crate) struct EnactLock {
 }
 
 impl EnactLock {
+    /// Create an empty ledger with the slot free and no enactments in flight.
     pub(crate) fn new() -> Self {
         Self {
             slot: tokio::sync::Mutex::new(()),

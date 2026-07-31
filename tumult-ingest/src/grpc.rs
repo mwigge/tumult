@@ -23,6 +23,7 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
 use tonic::transport::server::Router;
+use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{Request, Response, Status};
 
 use crate::writer::{Batch, IngestWriter};
@@ -36,8 +37,25 @@ pub fn router(ingest: IngestWriter) -> Router {
 /// Build the tonic gRPC router; when `ingest_token` is `Some`, every export
 /// call requires an `authorization: Bearer <token>` metadata entry.
 pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> Router {
+    router_with_token_tls(ingest, ingest_token, None)
+        .expect("router without a TLS identity cannot fail")
+}
+
+/// Build the tonic gRPC router with an optional TLS identity (PEM certificate
+/// chain + private key from `KRONIKA_TLS_CERT` / `KRONIKA_TLS_KEY`). An
+/// invalid identity fails here, at startup, before the server binds.
+pub fn router_with_token_tls(
+    ingest: IngestWriter,
+    ingest_token: Option<String>,
+    identity: Option<Identity>,
+) -> Result<Router, tonic::transport::Error> {
     let token = ingest_token.map(std::sync::Arc::new);
-    tonic::transport::Server::builder()
+    let builder = tonic::transport::Server::builder();
+    let mut builder = match identity {
+        Some(identity) => builder.tls_config(ServerTlsConfig::new().identity(identity))?,
+        None => builder,
+    };
+    Ok(builder
         .add_service(TraceServiceServer::new(OtlpGrpc {
             ingest: ingest.clone(),
             ingest_token: token.clone(),
@@ -49,7 +67,7 @@ pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> 
         .add_service(LogsServiceServer::new(OtlpGrpc {
             ingest,
             ingest_token: token,
-        }))
+        })))
 }
 
 /// Bearer-token check for one incoming call: `None` token accepts

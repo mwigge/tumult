@@ -48,7 +48,9 @@ pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> 
 }
 
 /// Bearer-token guard for the `/v1/*` OTLP routes; every other path passes
-/// through (`/healthz` stays open for load-balancer probes).
+/// through (`/healthz` stays open for load-balancer probes). The fail-closed
+/// startup guard that refuses a token-less non-loopback bind lives on
+/// [`crate::Config::ensure_ingest_auth`].
 async fn require_bearer(
     State(expected): State<std::sync::Arc<String>>,
     req: Request,
@@ -69,18 +71,6 @@ async fn require_bearer(
         }
     }
     next.run(req).await
-}
-
-/// Startup posture warning: with no ingest token, a non-loopback OTLP/HTTP
-/// bind accepts telemetry from anywhere on the network.
-pub fn warn_if_unauthenticated(addr: &std::net::SocketAddr, ingest_token: Option<&str>) {
-    if ingest_token.is_none() && !addr.ip().is_loopback() {
-        tracing::warn!(
-            addr = %addr,
-            "OTLP ingest is unauthenticated on a network interface; set \
-             KRONIKA_INGEST_TOKEN to require a bearer token on /v1/*"
-        );
-    }
 }
 
 async fn healthz() -> &'static str {

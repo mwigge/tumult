@@ -1,4 +1,4 @@
-// Tree-shaken ECharts: only the charts/components kronika uses.
+// Tree-shaken ECharts: only the charts/components the UI uses.
 import * as echarts from 'echarts/core';
 import { BarChart, GraphChart, HeatmapChart, LineChart, PieChart, ScatterChart, TreemapChart } from 'echarts/charts';
 import {

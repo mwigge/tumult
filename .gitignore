@@ -5,7 +5,8 @@ target/
 serve.out
 
 # Environment
-.env
+.env*
+!.env.example
 
 # macOS
 .DS_Store
@@ -50,7 +51,7 @@ demo/proof/topology/store.duckdb
 demo/topology/hosts
 demo/topology/nsswitch.conf
 
-# Krönika platform (imported from kronika)
+# Analytics platform / web UI artifacts
 node_modules/
 web/node_modules/
 web/.svelte-kit/

@@ -1,4 +1,4 @@
-# OPTIONAL dev tooling — not required to run Krönika.
+# OPTIONAL dev tooling — not required to run tumultd.
 #
 # tumultd already speaks OTLP natively on :4317 (gRPC) and :4318 (HTTP).
 # This collector is only useful when you want a real OpenTelemetry Collector

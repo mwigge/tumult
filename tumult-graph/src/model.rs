@@ -196,7 +196,7 @@ pub struct Edge {
 ///
 /// The delta is deduplicated: mapping the same journal twice yields the same
 /// nodes/edges with no duplicates, so persistence is idempotent.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GraphDelta {
     /// Nodes to upsert (deduplicated by id).
     pub nodes: Vec<Node>,

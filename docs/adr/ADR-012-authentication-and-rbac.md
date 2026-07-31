@@ -11,7 +11,7 @@ nav_order: 12
 
 ## Context
 
-Krönika's API, UI, and ingest endpoints were unauthenticated: anyone who
+The daemon's API, UI, and ingest endpoints were unauthenticated: anyone who
 could reach the HTTP port could read telemetry, mutate manual evidence,
 generate reports, and — after ADR-011 — enqueue and stop chaos experiments.
 The MCP server already had a token + role model (`viewer`/`operator`) and a

@@ -4,19 +4,14 @@ parent: Architecture Decisions
 nav_order: 7
 ---
 
-# ADR-007: AI Analytics Layer (imported from kronika ADR 0002)
+# ADR-007: AI Analytics Layer
 
 - Status: accepted (Phases 1–2 live: NL query, narrative digests)
 - Date: 2026-07-28 (updated 2026-07-28 for Phase 2)
 
-> *Merge note (T11): this ADR is a point-in-time record and cites the old
-> `kronika-*` crate names throughout; the current names are in the mapping
-> table under "Merge mapping and migration" in
-> [kronika-architecture.md](../architecture/kronika-architecture.md).*
-
 ## Context
 
-Krönika's AI layer will offer NL-query, narrative digests and anomaly
+The analytics UI's AI layer offers NL-query, narrative digests and anomaly
 explanation over resilience data. Realistic text-to-SQL accuracy (BIRD
 benchmark) is 60–75 % first-shot and 85–95 % with grounding; unguarded LLM
 SQL against the store is a correctness *and* safety hazard, and log/span
@@ -32,10 +27,10 @@ Concretely:
 
 1. **Semantic layer first.** The grounding ROI order (semantic layer >
    golden Q→SQL few-shot > schema linking > self-correction > constrained
-   decoding) puts `kronika-metrics` at the center: the LLM is steered to
+   decoding) puts `tumult-metrics` at the center: the LLM is steered to
    metric definitions and allow-listed views, not raw tables.
-2. **Guardrail pipeline** (`kronika_ai::sql_guard`, best-effort tokenizer,
-   documented as such):
+2. **Guardrail pipeline** (`tumult_intelligence::sql_guard`, best-effort
+   tokenizer, documented as such):
    - queries run on a **read-only connection**;
    - **allow-listed tables/views** only;
    - **single statement**, must start with `SELECT`/`WITH`, no `;`, no
@@ -52,7 +47,7 @@ Concretely:
    evidence package and must cite it.
 5. **Eval harness**: a golden-set Q→SQL eval runs in CI before any prompt
    or model change ships.
-6. **One LLM interface**: `kronika_ai::Llm` + `OpenAiCompatClient`
+6. **One LLM interface**: `tumult_intelligence::Llm` + `OpenAiCompatClient`
    (`KRONIKA_LLM_BASE_URL`/`KRONIKA_LLM_API_KEY`/`KRONIKA_LLM_MODEL`;
    defaults to local Ollama). Batch digests may delegate to smedja later.
 
@@ -61,7 +56,7 @@ Concretely:
 1. **NL query** — question → governed SQL (guardrails above) → result + SQL shown.
    *Landed:* `/api/ask` (golden answers + LLM path with sql_guard).
 2. **Narrative digests** — scheduled reports verbalized from facts packages.
-   *Landed:* `kronika_report::narrative` builds a facts package from the
+   *Landed:* `tumult_report::narrative` builds a facts package from the
    report's own KPI/table numbers, asks the LLM for a short summary, and
    mechanically keeps only sentences whose numerals are grounded in those
    facts (percent values match in `x` and `x/100` forms; 1% tolerance for

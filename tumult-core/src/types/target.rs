@@ -9,16 +9,23 @@ use super::enums::ContainerRuntime;
 
 // ── Execution Target ───────────────────────────────────────────
 
+/// Where a provider executes: locally, over SSH, in a container, or in a
+/// Kubernetes pod. Serialized with a `type` tag (snake_case).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExecutionTarget {
+    /// Execute on the local host.
     Local,
+    /// Execute on a remote host over SSH.
     Ssh {
         host: String,
         port: u16,
         user: String,
+        /// Private key for authentication; `None` uses the SSH default
+        /// (agent or default key paths).
         key_path: Option<PathBuf>,
     },
+    /// Execute inside a container via its runtime.
     Container {
         runtime: ContainerRuntime,
         container_id: String,
@@ -26,9 +33,11 @@ pub enum ExecutionTarget {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         label_selector: Option<HashMap<String, String>>,
     },
+    /// Execute inside a Kubernetes pod.
     KubeExec {
         namespace: String,
         pod: String,
+        /// Container within the pod; `None` targets the pod's default container.
         container: Option<String>,
         /// Optional label selector for targeting pods by Kubernetes labels.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,9 +47,12 @@ pub enum ExecutionTarget {
 
 // ── Provider ───────────────────────────────────────────────────
 
+/// How an activity is executed: native plugin, script plugin, or local
+/// process. Serialized with a `type` tag (snake_case).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Provider {
+    /// Dispatch to a native (in-process) plugin function.
     Native {
         plugin: String,
         function: String,
@@ -59,39 +71,59 @@ pub enum Provider {
         #[serde(default)]
         timeout_s: Option<f64>,
     },
+    /// Execute a local process; success is judged by exit code unless a
+    /// tolerance is set on the activity.
     Process {
         path: String,
         #[serde(default)]
         arguments: Vec<String>,
         #[serde(default)]
         env: HashMap<String, String>,
+        /// Execution timeout in seconds; `None` means no timeout.
         timeout_s: Option<f64>,
     },
 }
 
 // ── Tolerance ──────────────────────────────────────────────────
 
+/// Expected-output check for a probe or guard. Serialized with a `type` tag
+/// (snake_case).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Tolerance {
+    /// The actual value must equal `value` (compared as JSON).
     Exact { value: serde_json::Value },
+    /// The actual value, parsed as a number, must fall within `[from, to]`.
     Range { from: f64, to: f64 },
+    /// The actual value's text form must match `pattern`.
     Regex { pattern: String },
 }
 
 // ── Config and Secrets ─────────────────────────────────────────
 
+/// Source of a configuration value: an environment variable or an inline
+/// literal. Resolved by the engine at load time. Serialized with a `type`
+/// tag (snake_case).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigValue {
+    /// Resolved from the environment variable named `key`.
     Env { key: String },
+    /// A literal value used as-is.
     Inline { value: String },
 }
 
+/// Reference to a secret. The secret value itself is never stored in the
+/// experiment — only where to find it. The engine resolves the reference at
+/// load time and injects the value into provider subprocesses as a
+/// `TUMULT_SECRET_*` environment variable; resolved values are never written
+/// to the journal. Serialized with a `type` tag (snake_case).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SecretValue {
+    /// Read from the environment variable named `key`.
     Env { key: String },
+    /// Read from the file at `path`.
     File { path: PathBuf },
 }
 

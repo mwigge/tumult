@@ -9,11 +9,10 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-
 use tumult_core::engine::{parse_experiment, validate_experiment};
 
 use crate::agent::AgentEnhancement;
+use crate::error::RecommendError;
 use crate::types::RecommendationOutput;
 
 /// Result of gating agent-proposed experiments through validation.
@@ -34,11 +33,16 @@ pub struct WriteOutcome {
 /// Returns an error when the output directory cannot be created or a
 /// validated experiment cannot be written. Invalid experiments are not
 /// errors; they are reported via [`WriteOutcome::rejected`].
-pub fn write_validated_experiments(dir: &Path, blocks: &[String]) -> Result<WriteOutcome> {
+pub fn write_validated_experiments(
+    dir: &Path,
+    blocks: &[String],
+) -> Result<WriteOutcome, RecommendError> {
     let mut outcome = WriteOutcome::default();
     if !blocks.is_empty() {
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("create experiment output dir {}", dir.display()))?;
+        std::fs::create_dir_all(dir).map_err(|source| RecommendError::CreateOutputDir {
+            path: dir.to_path_buf(),
+            source,
+        })?;
     }
     for block in blocks {
         let experiment =
@@ -46,8 +50,10 @@ pub fn write_validated_experiments(dir: &Path, blocks: &[String]) -> Result<Writ
         match experiment {
             Ok(experiment) => {
                 let path = unique_path(dir, &slugify(&experiment.title));
-                std::fs::write(&path, block)
-                    .with_context(|| format!("write experiment {}", path.display()))?;
+                std::fs::write(&path, block).map_err(|source| RecommendError::WriteExperiment {
+                    path: path.clone(),
+                    source,
+                })?;
                 outcome.written.push(path);
             }
             Err(err) => outcome.rejected.push(err.to_string()),
@@ -135,8 +141,8 @@ pub fn json_with_agent(
     heuristic: &RecommendationOutput,
     enhancement: &AgentEnhancement,
     outcome: &WriteOutcome,
-) -> Result<serde_json::Value> {
-    let mut value = serde_json::to_value(heuristic).context("encode JSON")?;
+) -> Result<serde_json::Value, RecommendError> {
+    let mut value = serde_json::to_value(heuristic)?;
     value["agent"] = serde_json::json!({
         "adapter": enhancement.adapter,
         "model": enhancement.model,

@@ -263,10 +263,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "script.executions_total--float64--Sum--true",
+                "id": "tumult.plugin.script.executions.total--float64--Sum--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "script.executions_total",
+                "key": "tumult.plugin.script.executions.total",
                 "type": "Sum"
               },
               "aggregateOperator": "sum",
@@ -328,10 +328,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "script.executions_total--float64--Sum--true",
+                "id": "tumult.plugin.script.executions.total--float64--Sum--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "script.executions_total",
+                "key": "tumult.plugin.script.executions.total",
                 "type": "Sum"
               },
               "aggregateOperator": "sum",
@@ -407,10 +407,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "baseline.probes_total--float64--Gauge--true",
+                "id": "tumult.baseline.probes.total--float64--Gauge--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "baseline.probes_total",
+                "key": "tumult.baseline.probes.total",
                 "type": "Sum"
               },
               "aggregateOperator": "rate",
@@ -472,10 +472,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "baseline.samples_total--float64--Gauge--true",
+                "id": "tumult.baseline.samples.total--float64--Gauge--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "baseline.samples_total",
+                "key": "tumult.baseline.samples.total",
                 "type": "Sum"
               },
               "aggregateOperator": "rate",
@@ -551,10 +551,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "script.executions_total--float64--Sum--true",
+                "id": "tumult.plugin.script.executions.total--float64--Sum--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "script.executions_total",
+                "key": "tumult.plugin.script.executions.total",
                 "type": "Sum"
               },
               "aggregateOperator": "rate",
@@ -775,10 +775,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "baseline.tolerance.lower--float64--Gauge--true",
+                "id": "tumult.baseline.tolerance.lower--float64--Gauge--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "baseline.tolerance.lower",
+                "key": "tumult.baseline.tolerance.lower",
                 "type": "Gauge"
               },
               "aggregateOperator": "latest",
@@ -804,10 +804,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "baseline.tolerance.upper--float64--Gauge--true",
+                "id": "tumult.baseline.tolerance.upper--float64--Gauge--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "baseline.tolerance.upper",
+                "key": "tumult.baseline.tolerance.upper",
                 "type": "Gauge"
               },
               "aggregateOperator": "latest",
@@ -976,10 +976,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "baseline.tolerance.lower--float64--Gauge--true",
+                "id": "tumult.baseline.tolerance.lower--float64--Gauge--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "baseline.tolerance.lower",
+                "key": "tumult.baseline.tolerance.lower",
                 "type": "Gauge"
               },
               "aggregateOperator": "latest",
@@ -1005,10 +1005,10 @@
             {
               "aggregateAttribute": {
                 "dataType": "float64",
-                "id": "baseline.tolerance.upper--float64--Gauge--true",
+                "id": "tumult.baseline.tolerance.upper--float64--Gauge--true",
                 "isColumn": true,
                 "isJSON": false,
-                "key": "baseline.tolerance.upper",
+                "key": "tumult.baseline.tolerance.upper",
                 "type": "Gauge"
               },
               "aggregateOperator": "latest",

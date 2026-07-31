@@ -27,6 +27,9 @@ use crate::tools;
 /// Maximum concurrent tool calls allowed.
 pub(crate) const MAX_CONCURRENT_TOOL_CALLS: usize = 10;
 
+/// MCP request handler: lists the tool surface and dispatches `tools/call`
+/// requests to the per-family dispatch bodies, enforcing rate limiting,
+/// bearer-token auth, role gating, and a concurrency cap along the way.
 pub struct TumultHandler {
     /// Semaphore limiting concurrent tool execution.
     pub(crate) semaphore: tokio::sync::Semaphore,

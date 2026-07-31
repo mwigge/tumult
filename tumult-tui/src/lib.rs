@@ -34,15 +34,17 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
 use crossterm::event::{self, Event, KeyEventKind};
 
 pub mod app;
 pub mod data;
+pub mod error;
 pub mod logic;
 pub mod model;
 pub mod theme;
 pub mod ui;
+
+pub use error::TuiError;
 
 use app::App;
 
@@ -58,19 +60,13 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 ///
 /// Returns an error if the store does not exist, cannot be opened read-only,
 /// or the terminal cannot be driven.
-pub fn run(store_path: Option<PathBuf>, refresh_secs: u64) -> Result<()> {
+pub fn run(store_path: Option<PathBuf>, refresh_secs: u64) -> Result<(), TuiError> {
     let path = match store_path {
         Some(path) => path,
-        None => tumult_lake::AnalyticsStore::default_path()
-            .map_err(|e| anyhow::anyhow!("cannot determine the default analytics store: {e}"))?,
+        None => tumult_lake::AnalyticsStore::default_path().map_err(TuiError::DefaultStorePath)?,
     };
     if !path.exists() {
-        bail!(
-            "no analytics store at {}\n\
-             Run an experiment first (e.g. `tumult run experiment.toon`) to create it, \
-             or pass --store <path>.",
-            path.display()
-        );
+        return Err(TuiError::StoreMissing(path));
     }
 
     let mut app = App::new(path, refresh_secs)?;
@@ -84,7 +80,7 @@ pub fn run(store_path: Option<PathBuf>, refresh_secs: u64) -> Result<()> {
 }
 
 /// The draw/input/refresh loop. Returns `Ok(())` on a clean quit.
-fn event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()> {
+fn event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<(), TuiError> {
     loop {
         terminal.draw(|f| ui::render(app, f))?;
 
