@@ -15,3 +15,11 @@ Tumult's architectural decisions are captured as ADRs (Architecture Decision Rec
 | [ADR-003](ADR-003-experiment-model.md) | Five-phase experiment lifecycle with statistical baselines and load integration |
 | [ADR-004](ADR-004-extensibility.md) | Two-tier plugin model: script-based community + native Rust (K8s, SSH, MCP) |
 | [ADR-005](ADR-005-analytics.md) | Embedded DuckDB + Arrow analytics with persistent store and Parquet export |
+| [ADR-006](ADR-006-kronika-stack.md) | Krönika platform stack: axum/tonic + embedded DuckDB, folded in from kronika |
+| [ADR-007](ADR-007-ai-layer.md) | AI analytics layer: deterministic math, governed semantics, LLM narrates |
+| [ADR-008](ADR-008-typst-report-pipeline.md) | Embedded-Typst report pipeline with renderer-agnostic content model |
+| [ADR-009](ADR-009-org-hierarchy-and-manual-evidence.md) | Org hierarchy rollups and manual evidence lifecycle |
+| [ADR-010](ADR-010-parquet-export-and-retention.md) | Parquet lake export and watermark-gated retention |
+| [ADR-011](ADR-011-daemon-run-experiments.md) | Daemon-run experiments: embedded runner, bounded queue, e-stop, orphan reconciliation |
+| [ADR-012](ADR-012-authentication-and-rbac.md) | Authentication and RBAC: server-side sessions, argon2id, scoped tokens, route-table roles |
+| [ADR-013](ADR-013-approval-workflows-and-hash-pinning.md) | Approval workflows: risk tiers, quorum + TTL, hash pinning, autopilot gate, break-glass |

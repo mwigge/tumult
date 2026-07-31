@@ -1,14 +1,14 @@
 //! Synchronous `AnalyticsBackend` trait implementation for [`ClickHouseStore`].
 
-use tumult_analytics::backend::{AnalyticsBackend, StoreStats};
-use tumult_analytics::error::AnalyticsError;
-use tumult_analytics::query_row::QueryRow;
 use tumult_core::sync_bridge::sync_await;
 use tumult_core::types::Journal;
+use tumult_lake::backend::{AnalyticsBackend, StoreStats};
+use tumult_lake::error::AnalyticsError;
+use tumult_lake::query_row::QueryRow;
 
 use super::ClickHouseStore;
 
-impl tumult_analytics::backend::private::Sealed for ClickHouseStore {}
+impl tumult_lake::backend::private::Sealed for ClickHouseStore {}
 
 // Synchronous wrapper for AnalyticsBackend trait; see
 // `tumult_core::sync_bridge::sync_await` for the multi-thread-runtime caveat.

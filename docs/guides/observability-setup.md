@@ -121,7 +121,7 @@ resilience.experiment                    (root — tumult-core runner)
 │   └── resilience.action
 ├── baseline.acquire                     (tumult-baseline)
 │   └── baseline.sample                 (repeated per interval)
-├── resilience.analytics.ingest         (tumult-analytics → DuckDB or ClickHouse)
+├── resilience.analytics.ingest         (tumult-lake → DuckDB or ClickHouse)
 │   ├── resilience.analytics.query
 │   └── resilience.analytics.export
 └── mcp.tool.call                        (tumult-mcp — when run via MCP)

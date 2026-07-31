@@ -10,11 +10,11 @@ use crate::tools::StructuredReport;
 
 /// Report the caller's resolved role and whether the request was authenticated.
 ///
-/// `role` is the canonical role name (`viewer` or `operator`) the auth layer
-/// mapped this request's bearer token to. `authenticated` is `true` when a
-/// configured token validated the request, and `false` in loopback open mode
-/// (no auth configured) — where every caller has full operator access without
-/// presenting a token.
+/// `role` is the canonical role name (`viewer`, `operator`, `approver`, or
+/// `admin`) the auth layer mapped this request's bearer token to.
+/// `authenticated` is `true` when a configured token validated the request,
+/// and `false` in loopback open mode (no auth configured) — where every
+/// caller has full operator access without presenting a token.
 #[must_use]
 pub fn whoami(role: &str, authenticated: bool) -> StructuredReport {
     let mut structured = serde_json::Map::new();

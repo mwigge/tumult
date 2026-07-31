@@ -49,3 +49,13 @@ demo/proof/topology/cast-store.duckdb
 demo/proof/topology/store.duckdb
 demo/topology/hosts
 demo/topology/nsswitch.conf
+
+# Krönika platform (imported from kronika)
+node_modules/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+demo-out/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp

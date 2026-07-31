@@ -17,9 +17,9 @@ pub fn cmd_compliance(
     framework: ComplianceFramework,
     sources: bool,
 ) -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
     use tumult_core::compliance::{ComplianceSignals, DEFAULT_MTTR_TARGET_S as MTTR_TARGET_S};
     use tumult_core::journal::read_journal;
+    use tumult_lake::AnalyticsStore;
 
     let core_framework = framework.to_core();
 

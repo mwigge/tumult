@@ -86,7 +86,7 @@ fn validate_select_only(query: &str) -> Result<()> {
 /// Shows experiment title, status, duration, method timeline with activity
 /// names and durations, hypothesis results, and load test metrics if present.
 #[allow(clippy::too_many_lines)] // Timeline rendering requires verbose formatting
-fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: usize) -> Result<()> {
+fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) -> Result<()> {
     let experiments = store.query(&format!(
         "SELECT experiment_id, title, status, duration_ms \
          FROM experiments ORDER BY started_at_ns DESC LIMIT {last_n}"
@@ -223,7 +223,7 @@ fn print_experiment_summary(store: &tumult_analytics::AnalyticsStore, last_n: us
 }
 
 /// Prints a store-wide aggregate summary.
-fn print_store_aggregate(store: &tumult_analytics::AnalyticsStore) -> Result<()> {
+fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
     let total = store.experiment_count()?;
 
     // An empty store makes every aggregate NULL (e.g. `avg(duration_ms)`),
@@ -332,8 +332,8 @@ pub fn cmd_analyze(
     last: Option<usize>,
     all: bool,
 ) -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
+    use tumult_lake::AnalyticsStore;
 
     let (store, count) = if let Some(path) = journals_path {
         let store = AnalyticsStore::in_memory()?;

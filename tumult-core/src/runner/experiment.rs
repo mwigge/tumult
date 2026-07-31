@@ -23,6 +23,26 @@ use super::sampler::{finish_during_sampler, spawn_during_sampler};
 use super::telemetry::{epoch_nanos_now, make_interrupted_journal};
 use super::{load, ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
 
+/// Execute only the rollback phase of `experiment` — orphan recovery for a
+/// run whose owning process died mid-fault (e.g. tumultd killed with
+/// `SIGKILL`). Always rolls back (`RollbackStrategy::Always`,
+/// `needs_rollback = true`), since an orphaned `running`/`stopping` run may
+/// have a fault active. Rollback failures are recorded on the returned
+/// results, not raised — the caller audits them per activity.
+pub fn run_orphan_rollback(
+    experiment: &Experiment,
+    executor: &Arc<dyn ActivityExecutor>,
+    controls: &Arc<ControlRegistry>,
+) -> Vec<crate::types::ActivityResult> {
+    run_rollbacks(
+        experiment,
+        executor,
+        controls,
+        &crate::execution::RollbackStrategy::Always,
+        true,
+    )
+}
+
 /// Run an experiment through the five-phase lifecycle with the default
 /// probe-sampling cadence (see [`SamplingConfig::default`]).
 ///

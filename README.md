@@ -2,13 +2,14 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.17.0-brightgreen)
-![Rust](https://img.shields.io/badge/rust-1.91.1%2B-orange)
+![Version](https://img.shields.io/badge/version-2.19.0-brightgreen)
+![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 Tumult is a Rust-native chaos engineering platform for running observable,
 repeatable resilience experiments from a CLI or Model Context Protocol (MCP)
-client.
+client — and for governing, storing and reporting them from the bundled
+Krönika daemon and web UI.
 
 ```mermaid
 flowchart LR
@@ -27,7 +28,7 @@ flowchart LR
 
 ## Quick start
 
-Prerequisites: Rust 1.91.1 or newer and Docker with Compose.
+Prerequisites: Rust 1.92.0 or newer and Docker with Compose.
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult
@@ -60,6 +61,104 @@ analysis, observability, GameDays, and MCP usage.
 
 Run `tumult discover` to obtain the authoritative plugin and action catalog for
 the installed build.
+
+## Krönika — the daemon, lake and web UI
+
+*The chronicle of your resilience work.*
+
+Krönika is the platform half of this repository: the `tumultd` daemon, the
+unified DuckDB lake, and the embedded SvelteKit web UI. It was imported from
+the kronika project and folded into this workspace as first-class `tumult-*`
+crates (see `docs/adr/ADR-006-kronika-stack.md`; the crate/binary mapping and
+migration story live in
+[docs/architecture/kronika-architecture.md](docs/architecture/kronika-architecture.md)).
+Tumult is the engine that executes experiments; Krönika is where they are
+registered, approved, executed under guardrails, stored and reported.
+
+```mermaid
+flowchart LR
+    accTitle: Merged tumult and Krönika platform
+    accDescr: The CLI and MCP clients execute experiments through the tumult engine and emit OTLP telemetry. The tumultd daemon ingests that telemetry into one DuckDB lake, executes registered definitions itself behind an approval workflow, and serves the web UI, JSON API and compliance reports from the same store.
+    operator[Operator] --> cli[Tumult CLI / TUI]
+    client[MCP client] --> mcp[Tumult MCP server]
+    cli --> engine[tumult-core engine]
+    mcp --> engine
+    engine --> otel[OTLP exporter]
+    otel -->|gRPC :4317 / HTTP :4318| daemon[tumultd daemon]
+    operator -->|registry, dry-run, start, approve| ui[Web UI :4318]
+    ui --> daemon
+    daemon --> runs[Run queue: validate, execute,<br>e-stop, orphan reconcile]
+    daemon --> approvals[Approvals: risk tiers T0-T3,<br>quorum, TTL, hash pin, break-glass]
+    runs --> lake[(Unified DuckDB lake<br>~/.tumult/lake.duckdb)]
+    approvals --> lake
+    engine -->|journal import| lake
+    lake --> reports[Compliance reports R1/R2/R3,<br>scores, parquet lake export]
+```
+
+- **Run registry and daemon-run execution** — definitions are validated
+  through the CLI's exact pipeline and content-hash-deduped
+  (`POST /api/runs/validate`), dry-run-previewable, and executed by the
+  daemon itself on a bounded worker pool with e-stop and crash-time orphan
+  rollback reconciliation (ADR-011).
+- **Approval workflows** — every run is classified into a risk tier (T0–T3)
+  at request time; gated runs wait behind a hash-pinned, quorum- and
+  TTL-bound approval with segregation of duties, a fail-closed autopilot
+  gate for production-tier runs, and an evidence-leaving break-glass
+  override (ADR-013).
+- **Authentication and RBAC** — server-side sessions (argon2id, opaque
+  cookies) or revocable `kro_`-prefixed API tokens; a single route table
+  with `viewer < operator < approver < admin` roles and optional
+  per-environment scopes (ADR-012).
+- **Automatic ingest** — OTLP/gRPC (`:4317`, tumult's exporter) and
+  OTLP/HTTP protobuf (`:4318`, `/v1/*`) on one daemon, plus manual import of
+  CSV files and tumult journal JSON (`tumultd import <file>`).
+- **Unified DuckDB store + parquet lake** — telemetry, run state, manual
+  evidence and the analytics family in one store behind one writer;
+  incremental, watermark-driven export to immutable day-partitioned parquet
+  (`KRONIKA_LAKE_DIR`, `KRONIKA_LAKE_INTERVAL`, `POST /api/lake/export`),
+  with optional retention (`KRONIKA_RETENTION_DAYS`, default keep forever;
+  the manual-evidence tables are never deleted). Write-once parquet plus
+  hash-chained audit trails form a WORM-shaped evidence trail (ADR-010).
+- **Semantic metrics layer** — YAML metric views (`metrics/*.yaml`) compiled
+  to strictly validated SQL.
+- **Compliance-grade reports** — R1 executive resilience digest (with
+  org-hierarchy rollups), R3 per-run game-day report and an R2 evidence pack
+  (DORA/NIS2/ISO 27001/SOC 2, including the approval-chain change-management
+  section), rendered as embedded-Typst PDFs plus print-HTML previews, with
+  Gremlin-style resilience scoring and a draft → verified manual-evidence
+  lifecycle (reviewer ≠ enterer, append-only hash-chained audit).
+- **Web UI + query API** — a SvelteKit SPA embedded into the `tumultd`
+  binary (Overview, Scores, Experiments, Runs, Approvals, Manual evidence,
+  Logs, Traces, Metrics, Topology, Ask, Reports) backed by a JSON API under
+  `/api/*`, including a guarded NL→SQL ask path
+  (`tumult_intelligence::sql_guard`).
+
+Try it (full platform, demo seed included):
+
+```bash
+docker compose -f docker/docker-compose.kronika.yml up -d --build
+# open http://localhost:14318/ (demo credentials are in the compose file)
+```
+
+The compose stack builds the UI and the `tumultd` binary in Docker, seeds a
+demo experiment suite plus manual-evidence records, and exports a report
+into `demo-out/`. To build locally instead, run
+`cd web && npm ci && npm run build` before compiling `tumultd` — the binary
+embeds `web/build/`. The CLI-only path above needs none of this: `tumult
+run` writes its journal and ingests into the same unified store
+(`tumult store import-legacy` migrates pre-merge databases — see the
+[CLI reference](docs/guides/cli-reference.md)).
+
+### Screenshots
+
+All captured on the seeded demo stack above; the full click path (login →
+register → approve → run → e-stop → evidence pack) is in the
+[platform walkthrough](docs/guides/platform-walkthrough.md).
+
+| | |
+|---|---|
+| ![Overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown](docs/assets/overview-dashboard.png) | ![Org rollup scores — company score with coverage and a domain treemap](docs/assets/scores-rollup.png) |
+| ![Run detail — live telemetry waterfall, consumed approval chain, hash-chained audit trail](docs/assets/run-detail-waterfall.png) | ![Approvals queue — an approver reviews a pending T2 run with its content-hash pin](docs/assets/approvals-queue-review.png) |
 
 ## CLI
 
@@ -117,7 +216,7 @@ authentication, pagination, schemas, and client examples.
 | Variable | Purpose |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for traces and metrics. |
-| `TUMULT_ANALYTICS_PATH` | Override the persistent DuckDB store path. |
+| `TUMULT_LAKE_PATH` | Override the persistent DuckDB store path (default `~/.tumult/lake.duckdb`). |
 | `TUMULT_PLUGIN_PATH` | Add script-plugin discovery directories. |
 | `TUMULT_MCP_TOKEN` | Configure one MCP operator bearer token. |
 | `TUMULT_MCP_AUTH_CONFIG` | Configure multiple viewer/operator tokens. |

@@ -20,9 +20,77 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::TelemetryConfig;
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
 const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Parse `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`): split on `,`, then on
+/// the FIRST `=`; keys are trimmed and lowercased (tonic metadata keys are
+/// lowercase); malformed pairs are skipped with a warning. This is how
+/// seeds/CLIs pass `authorization=Bearer kro_...` to the ingest gRPC
+/// endpoint.
+fn parse_otlp_headers(raw: &str) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    for pair in raw.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = pair.split_once('=') else {
+            tracing::warn!(
+                pair,
+                "skipping malformed OTEL_EXPORTER_OTLP_HEADERS entry (want k=v)"
+            );
+            continue;
+        };
+        let key = key.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            tracing::warn!(
+                pair,
+                "skipping OTEL_EXPORTER_OTLP_HEADERS entry with empty key"
+            );
+            continue;
+        }
+        pairs.push((key, value.trim().to_string()));
+    }
+    pairs
+}
+
+/// The `OTEL_EXPORTER_OTLP_HEADERS` env var as tonic request metadata, or
+/// `None` when unset/empty. Entries that are not valid gRPC metadata (bad
+/// key or value characters) are skipped with a warning.
+fn otlp_headers_from_env() -> Option<tonic::metadata::MetadataMap> {
+    let raw = std::env::var("OTEL_EXPORTER_OTLP_HEADERS")
+        .ok()
+        .filter(|v| !v.trim().is_empty())?;
+    let pairs = parse_otlp_headers(&raw);
+    if pairs.is_empty() {
+        return None;
+    }
+    let mut map = tonic::metadata::MetadataMap::new();
+    for (key, value) in pairs {
+        if let (Ok(k), Ok(v)) = (
+            tonic::metadata::MetadataKey::from_bytes(key.as_bytes()),
+            value.parse::<tonic::metadata::MetadataValue<_>>(),
+        ) {
+            map.append(k, v);
+        } else {
+            tracing::warn!(
+                key,
+                "skipping OTEL_EXPORTER_OTLP_HEADERS entry invalid for gRPC metadata"
+            );
+        }
+    }
+    Some(map)
+}
+
+/// The gRPC request metadata the OTLP exporters should send: explicit config
+/// headers win, falling back to `OTEL_EXPORTER_OTLP_HEADERS`.
+fn effective_otlp_headers(
+    configured: Option<&tonic::metadata::MetadataMap>,
+) -> Option<tonic::metadata::MetadataMap> {
+    configured.cloned().or_else(otlp_headers_from_env)
+}
 
 /// The human-readable fmt layer, directed to **stderr** — never stdout.
 ///
@@ -71,11 +139,14 @@ pub fn init_meter_provider(config: &TelemetryConfig) -> Option<SdkMeterProvider>
         .with_attribute(KeyValue::new("service.version", SERVICE_VERSION))
         .build();
 
-    match opentelemetry_otlp::MetricExporter::builder()
+    let builder = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
-        .with_endpoint(endpoint.as_str())
-        .build()
-    {
+        .with_endpoint(endpoint.as_str());
+    let builder = match effective_otlp_headers(config.otlp_headers.as_ref()) {
+        Some(metadata) => builder.with_metadata(metadata),
+        None => builder,
+    };
+    match builder.build() {
         Ok(exporter) => {
             let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(exporter).build();
             let provider = SdkMeterProvider::builder()
@@ -117,11 +188,14 @@ pub fn init_logger_provider(config: &TelemetryConfig) -> Option<SdkLoggerProvide
         .with_attribute(KeyValue::new("service.version", SERVICE_VERSION))
         .build();
 
-    match opentelemetry_otlp::LogExporter::builder()
+    let builder = opentelemetry_otlp::LogExporter::builder()
         .with_tonic()
-        .with_endpoint(endpoint.as_str())
-        .build()
-    {
+        .with_endpoint(endpoint.as_str());
+    let builder = match effective_otlp_headers(config.otlp_headers.as_ref()) {
+        Some(metadata) => builder.with_metadata(metadata),
+        None => builder,
+    };
+    match builder.build() {
         Ok(exporter) => {
             let provider = SdkLoggerProvider::builder()
                 .with_resource(resource)
@@ -195,11 +269,14 @@ impl TumultTelemetry {
         // Move the endpoint out of the Option so it can be passed by value to
         // `with_endpoint`, avoiding a `.clone()` on the full String.
         let provider = if let Some(endpoint) = config.otlp_endpoint {
-            match opentelemetry_otlp::SpanExporter::builder()
+            let builder = opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
-                .with_endpoint(endpoint.as_str())
-                .build()
-            {
+                .with_endpoint(endpoint.as_str());
+            let builder = match effective_otlp_headers(config.otlp_headers.as_ref()) {
+                Some(metadata) => builder.with_metadata(metadata),
+                None => builder,
+            };
+            match builder.build() {
                 Ok(exporter) => {
                     let mut builder = SdkTracerProvider::builder()
                         .with_resource(resource)
@@ -343,5 +420,60 @@ impl TumultTelemetry {
                 tracing::warn!(error = %e, "logger provider shutdown error");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{effective_otlp_headers, parse_otlp_headers};
+
+    fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn parses_standard_pairs() {
+        assert_eq!(
+            parse_otlp_headers("authorization=Bearer kro_abc,x-tenant=dev"),
+            owned(&[("authorization", "Bearer kro_abc"), ("x-tenant", "dev")])
+        );
+    }
+
+    #[test]
+    fn splits_on_first_equals_only() {
+        assert_eq!(parse_otlp_headers("key=a=b=c"), owned(&[("key", "a=b=c")]));
+    }
+
+    #[test]
+    fn trims_whitespace_and_lowercases_keys() {
+        assert_eq!(
+            parse_otlp_headers("  Authorization = Bearer x  , X-Tenant= dev"),
+            owned(&[("authorization", "Bearer x"), ("x-tenant", "dev")])
+        );
+    }
+
+    #[test]
+    fn skips_malformed_pairs() {
+        assert_eq!(
+            parse_otlp_headers("no-equals-here,=empty-key,ok=1"),
+            owned(&[("ok", "1")])
+        );
+    }
+
+    #[test]
+    fn empty_input_yields_nothing() {
+        assert!(parse_otlp_headers("").is_empty());
+        assert!(parse_otlp_headers("  , ,").is_empty());
+    }
+
+    #[test]
+    fn explicit_config_headers_take_precedence() {
+        let mut map = tonic::metadata::MetadataMap::new();
+        map.insert("authorization", "Bearer kro_test".parse().unwrap());
+        let resolved = effective_otlp_headers(Some(&map)).unwrap();
+        assert_eq!(resolved.get("authorization").unwrap(), "Bearer kro_test");
     }
 }

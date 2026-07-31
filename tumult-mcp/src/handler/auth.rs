@@ -10,47 +10,12 @@
 
 use subtle::ConstantTimeEq;
 
+pub use tumult_auth::Role;
+
 /// Environment variable naming the TOML auth config file.
 const AUTH_CONFIG_ENV: &str = "TUMULT_MCP_AUTH_CONFIG";
 /// Legacy single-token environment variable (maps to the `operator` role).
 const TOKEN_ENV: &str = "TUMULT_MCP_TOKEN";
-
-/// Access role for an authenticated principal.
-///
-/// The ordering is meaningful: `Operator` ⊇ `Viewer`. A principal may call a
-/// tool when its role is `>=` the tool's required role. `Viewer` is declared
-/// first so the derived `Ord` yields `Viewer < Operator`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Role {
-    /// May call read-only tools only.
-    Viewer,
-    /// May call every tool (read-only + fault injection / execution).
-    Operator,
-}
-
-impl Role {
-    /// Parse a role name (`viewer` or `operator`), case-insensitively.
-    ///
-    /// Returns `None` for any other value — a fail-closed decision: an
-    /// unrecognised role is rejected at config-load time, never elevated.
-    #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "viewer" => Some(Self::Viewer),
-            "operator" => Some(Self::Operator),
-            _ => None,
-        }
-    }
-
-    /// The canonical lower-case name for this role.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Viewer => "viewer",
-            Self::Operator => "operator",
-        }
-    }
-}
 
 /// Internal authentication state.
 enum AuthMode {
@@ -261,7 +226,7 @@ fn default_config_path() -> Option<std::path::PathBuf> {
 /// ```toml
 /// [[tokens]]
 /// token = "<secret>"
-/// role  = "viewer"   # or "operator"
+/// role  = "viewer"   # or "operator" / "approver" / "admin"
 /// ```
 #[derive(serde::Deserialize)]
 struct AuthConfigFile {
@@ -292,7 +257,8 @@ fn parse_auth_config(contents: &str) -> std::result::Result<Vec<(String, Role)>,
         }
         let role = Role::parse(&entry.role).ok_or_else(|| {
             format!(
-                "MCP auth config has an unknown role '{}' (expected 'viewer' or 'operator')",
+                "MCP auth config has an unknown role '{}' (expected 'viewer', 'operator', \
+                 'approver', or 'admin')",
                 entry.role
             )
         })?;
@@ -306,17 +272,14 @@ fn parse_auth_config(contents: &str) -> std::result::Result<Vec<(String, Role)>,
 
 /// Whether a bind host is loopback-only (safe to serve without a token).
 ///
-/// Recognises the common loopback spellings. Anything else (including
-/// `0.0.0.0`, `::`, or a routable address) is treated as network-exposed, which
-/// the server refuses to do without configured authentication.
+/// Thin wrapper over [`tumult_auth::host_is_loopback`], kept so existing
+/// callers (and the `handler::host_is_loopback` re-export) don't move.
+/// Anything that is not loopback (including `0.0.0.0`, `::`, or a routable
+/// address) is treated as network-exposed, which the server refuses to do
+/// without configured authentication.
 #[must_use]
 pub fn host_is_loopback(host: &str) -> bool {
-    match host.trim().trim_matches(|c| c == '[' || c == ']') {
-        "localhost" => true,
-        h => h
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback()),
-    }
+    tumult_auth::host_is_loopback(host)
 }
 
 #[cfg(test)]
@@ -340,8 +303,19 @@ mod tests {
         assert_eq!(Role::parse("viewer"), Some(Role::Viewer));
         assert_eq!(Role::parse("OPERATOR"), Some(Role::Operator));
         assert_eq!(Role::parse(" Operator "), Some(Role::Operator));
-        assert_eq!(Role::parse("admin"), None);
+        assert_eq!(Role::parse("approver"), Some(Role::Approver));
+        assert_eq!(Role::parse("admin"), Some(Role::Admin));
+        assert_eq!(Role::parse("superuser"), None);
         assert_eq!(Role::parse(""), None);
+    }
+
+    #[test]
+    fn approver_and_admin_satisfy_operator_requirement() {
+        // The MCP gate has two tiers (viewer / operator); approver and admin
+        // tokens pass every operator-gated tool by the derived ordering.
+        assert!(Role::Approver >= Role::Operator);
+        assert!(Role::Admin >= Role::Operator);
+        assert!(Role::Viewer < Role::Operator);
     }
 
     // ── Open (no auth) ────────────────────────────────────────────
@@ -431,7 +405,7 @@ mod tests {
     // ── Config parsing ────────────────────────────────────────────
 
     #[test]
-    fn parse_config_valid_two_roles() {
+    fn parse_config_valid_four_roles() {
         let toml = r#"
             [[tokens]]
             token = "viewer-secret"
@@ -440,11 +414,21 @@ mod tests {
             [[tokens]]
             token = "operator-secret"
             role  = "operator"
+
+            [[tokens]]
+            token = "approver-secret"
+            role  = "approver"
+
+            [[tokens]]
+            token = "admin-secret"
+            role  = "admin"
         "#;
         let tokens = parse_auth_config(toml).expect("valid config must parse");
-        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens.len(), 4);
         assert_eq!(tokens[0], ("viewer-secret".into(), Role::Viewer));
         assert_eq!(tokens[1], ("operator-secret".into(), Role::Operator));
+        assert_eq!(tokens[2], ("approver-secret".into(), Role::Approver));
+        assert_eq!(tokens[3], ("admin-secret".into(), Role::Admin));
     }
 
     #[test]

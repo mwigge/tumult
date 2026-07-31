@@ -436,3 +436,40 @@ fn failed_rollback_continues_and_counts_failures() {
     assert_eq!(journal.rollback_results.len(), 2);
     assert_eq!(journal.rollback_failures, 2);
 }
+
+/// Orphan recovery: `run_orphan_rollback` executes only the rollback phase,
+/// regardless of strategy, so a daemon restarting after a crash can unwind
+/// an orphaned run's faults without re-running the experiment.
+#[test]
+fn orphan_rollback_runs_rollbacks_only() {
+    let mut exp = minimal_experiment();
+    exp.rollbacks = vec![test_action("rollback-1")];
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let counting: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor {
+        call_count: Arc::clone(&call_count),
+        ..MockExecutor::always_succeed()
+    });
+    let controls = Arc::new(ControlRegistry::new());
+
+    let results = run_orphan_rollback(&exp, &counting, &controls);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].name, "rollback-1");
+    assert_eq!(results[0].status, ActivityStatus::Succeeded);
+    // Exactly the rollback ran — no method/probe activities.
+    assert_eq!(call_count.load(Ordering::Relaxed), 1);
+}
+
+/// A definition without rollbacks recovers as a no-op (nothing to unwind).
+#[test]
+fn orphan_rollback_without_rollbacks_is_a_noop() {
+    let exp = minimal_experiment();
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let counting: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor {
+        call_count: Arc::clone(&call_count),
+        ..MockExecutor::always_succeed()
+    });
+    let controls = Arc::new(ControlRegistry::new());
+    let results = run_orphan_rollback(&exp, &counting, &controls);
+    assert!(results.is_empty());
+    assert_eq!(call_count.load(Ordering::Relaxed), 0);
+}

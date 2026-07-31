@@ -89,7 +89,7 @@ reason: invalid_json
 resilience_score: 0.000
 trace_id: trace-smoke-http
 journal: target/agentic/smoke-journal.toon
-analytics_store: /home/morgan/.tumult/analytics.duckdb
+analytics_store: /home/morgan/.tumult/lake.duckdb
 analytics_ingested: true
 trace_assertions: trace_id_present=true span_id_present=true capture_policy=metadata_only
 network: not required

@@ -1,0 +1,55 @@
+# Multi-stage build for tumultd (the Krönika platform daemon) plus the
+# workspace-built tumult CLI the demo seed uses to run real experiments.
+# Everything builds from workspace source — no pinned release downloads,
+# no checksum verification dance.
+#
+# The bundled DuckDB dependency needs a C toolchain — the official rust
+# image ships one, so no extra packages are needed in the builder.
+
+# Stage 1: web UI (SvelteKit static SPA). tumultd rust-embeds web/build/
+# at compile time, so this stage must run before the cargo build.
+FROM node:22-bookworm-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+# Stage 2: cargo builder — tumultd and tumult-cli from the same workspace
+# source tree, so the daemon and the experiment engine can never drift
+# apart. The release profile (thin LTO) is set in the workspace Cargo.toml.
+FROM rust:1-bookworm AS builder
+WORKDIR /build
+COPY . .
+COPY --from=web /web/build ./web/build
+RUN cargo build --release -p tumultd -p tumult-cli \
+    && strip target/release/tumultd target/release/tumult
+
+# Stage 3: slim runtime.
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 kronika
+
+COPY --from=builder /build/target/release/tumultd /usr/local/bin/tumultd
+COPY --from=builder /build/target/release/tumult /usr/local/bin/tumult
+# Semantic metric definitions used by `tumultd report` and the /report endpoint.
+COPY metrics/ /etc/kronika/metrics/
+
+# The store path var is TUMULT_LAKE_PATH (unified DB); other env var names
+# stay KRONIKA_* (identifiers unchanged by the fold). KRONIKA_DB still works
+# as a deprecated alias.
+ENV TUMULT_LAKE_PATH=/data/lake.duckdb \
+    KRONIKA_METRICS_DIR=/etc/kronika/metrics \
+    KRONIKA_OTLP_GRPC_ADDR=0.0.0.0:4317 \
+    KRONIKA_OTLP_HTTP_ADDR=0.0.0.0:4318
+
+RUN mkdir -p /data && chown kronika:kronika /data
+VOLUME /data
+USER kronika
+EXPOSE 4317 4318
+
+# Default: run the daemon. The demo's seed/report containers override the
+# command (tumult experiment suite / sh -c '… curl /report …').
+CMD ["tumultd"]

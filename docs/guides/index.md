@@ -30,4 +30,5 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Autopilot](autopilot.md) | Policy-gated autonomous fault injection with audit-before-act decisions |
 | [Experiment Scheduling](scheduling.md) | Recurring experiments and GameDays on a schedule |
 | [Production Deployment](production-deployment.md) | Deploy Tumult in production: binaries, containers, hardening |
+| [Platform Walkthrough](platform-walkthrough.md) | Click-through of the Krönika web UI on the seeded demo: login → register → approve → run → e-stop → evidence pack, with screenshots |
 | [Windows Faults](windows-faults.md) | `tumult-windows`: native process-kill, CPU-stress, and firewall-blackhole faults, validated live against a Windows 11 guest |

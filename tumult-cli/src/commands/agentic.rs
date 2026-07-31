@@ -374,9 +374,9 @@ fn render_agentic_report(
     );
     let journal = tumult_agentic::journal::write_metadata_journal_file(journal_path, &evidence)?;
     let analytics = agentic_analytics_from_result(&run_id, &evidence.experiment_id, result);
-    let store_path = tumult_analytics::AnalyticsStore::default_path()
+    let store_path = tumult_lake::AnalyticsStore::default_path()
         .context("failed to determine analytics store path")?;
-    let ingested = match tumult_analytics::AnalyticsStore::open(&store_path) {
+    let ingested = match tumult_lake::AnalyticsStore::open(&store_path) {
         Ok(store) => store.ingest_agentic_run(&analytics).unwrap_or(false),
         Err(_) => false,
     };
@@ -420,8 +420,8 @@ fn agentic_analytics_from_result(
     run_id: &str,
     experiment_id: &str,
     result: &tumult_agentic::AgenticRunResult,
-) -> tumult_analytics::AgenticRunAnalytics {
-    tumult_analytics::AgenticRunAnalytics {
+) -> tumult_lake::AgenticRunAnalytics {
+    tumult_lake::AgenticRunAnalytics {
         run_id: run_id.to_string(),
         experiment_id: experiment_id.to_string(),
         target_type: result.target_type.clone(),
@@ -432,7 +432,7 @@ fn agentic_analytics_from_result(
         contracts: result
             .contracts
             .iter()
-            .map(|contract| tumult_analytics::AgenticContractAnalytics {
+            .map(|contract| tumult_lake::AgenticContractAnalytics {
                 contract_type: contract.contract_type.clone(),
                 scenario: contract.scenario.clone(),
                 passed: contract.passed,
@@ -443,7 +443,7 @@ fn agentic_analytics_from_result(
         faults: result
             .faults
             .iter()
-            .map(|fault| tumult_analytics::AgenticFaultAnalytics {
+            .map(|fault| tumult_lake::AgenticFaultAnalytics {
                 fault_type: fault.fault_type.clone(),
                 scenario: fault.scenario.clone(),
                 applied: fault.applied,

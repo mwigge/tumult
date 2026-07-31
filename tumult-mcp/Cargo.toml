@@ -16,7 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
-tumult-analytics = { path = "../tumult-analytics" }
+tumult-lake = { path = "../tumult-lake" }
+tumult-query = { path = "../tumult-query" }
 tumult-graph = { path = "../tumult-graph" }
 tumult-cypher = { path = "../tumult-cypher" }
 tumult-autopilot = { path = "../tumult-autopilot" }
@@ -28,6 +29,7 @@ tumult-otel = { path = "../tumult-otel" }
 tumult-agentic = { path = "../tumult-agentic" }
 tumult-agent-cli = { path = "../tumult-agent-cli" }
 tumult-intelligence = { path = "../tumult-intelligence" }
+tumult-auth = { path = "../tumult-auth" }
 tumult-kubernetes = { path = "../tumult-kubernetes" }
 tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }

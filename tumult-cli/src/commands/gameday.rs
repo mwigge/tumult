@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 
-use super::exec::ProviderExecutor;
+use tumult_exec::ProviderExecutor;
+
 use super::load::K6LoadExecutor;
 use super::{ComplianceFramework, LoadToolArg};
 

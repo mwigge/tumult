@@ -166,7 +166,7 @@ mod tests {
 
     fn seeded_store(dir: &Path) -> std::path::PathBuf {
         let db = dir.join("analytics.duckdb");
-        drop(tumult_analytics::AnalyticsStore::open(&db).unwrap());
+        drop(tumult_lake::AnalyticsStore::open(&db).unwrap());
         db
     }
 

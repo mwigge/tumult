@@ -1,0 +1,46 @@
+title: worker-process kill — disruption detected and removed
+description: Start a background worker, confirm it runs, kill it, and verify the absence is detected (tumult process-kill pattern, procps-free)
+
+tags[2]: process, resilience
+
+steady_state_hypothesis:
+  title: A background worker can be started and is running
+  probes[1]:
+    - name: start-and-check-worker
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "[ -f /tmp/kd-demo/proc/worker.pid ] && kill $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null; mkdir -p /tmp/kd-demo/proc; sleep 300 >/dev/null 2>&1 < /dev/null & echo $! > /tmp/kd-demo/proc/worker.pid; sleep 0.3; kill -0 $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null && echo running || echo missing"
+        timeout_s: 10.0
+      tolerance:
+        type: regex
+        pattern: "^running$"
+
+method[2]:
+  - name: kill-worker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "kill $(cat /tmp/kd-demo/proc/worker.pid) && echo killed"
+      timeout_s: 5.0
+  - name: verify-worker-gone
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "kill -0 $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null && echo present || echo gone"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "^gone$"
+
+rollbacks[1]:
+  - name: cleanup-worker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "kill $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null; rm -f /tmp/kd-demo/proc/worker.pid; echo cleaned"
+      timeout_s: 5.0

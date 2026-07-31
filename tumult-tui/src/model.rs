@@ -1,5 +1,5 @@
 //! Typed row structs mapped from the analytics store's stringly-typed
-//! [`tumult_analytics::QueryRow`] results.
+//! [`tumult_lake::QueryRow`] results.
 //!
 //! Every field here corresponds to a real column in the `experiments` /
 //! `activity_results` tables (see `tumult-analytics/src/duckdb_store/mod.rs`).

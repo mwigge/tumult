@@ -61,8 +61,8 @@ pub fn trend(
         String::new()
     };
 
-    let store = tumult_analytics::AnalyticsStore::in_memory()
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let store =
+        tumult_lake::AnalyticsStore::in_memory().map_err(|e| ToolError::Store(e.to_string()))?;
     let (loaded, skipped) = for_each_journal(journals_path, |journal| {
         // Ingest failures surface as missing points, not tool failures.
         let _ = store.ingest_journal(&journal);

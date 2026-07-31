@@ -7,11 +7,11 @@
 //! one manifest written below. Env vars are process-wide, so this binary
 //! deliberately contains a single test.
 
-use tumult_analytics::AnalyticsStore;
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, ExperimentStatus, Journal, SpanId, TraceId,
 };
 use tumult_intelligence::heuristic_report;
+use tumult_lake::AnalyticsStore;
 use tumult_plugin::manifest::{ScriptAction, ScriptPluginManifest};
 
 #[test]

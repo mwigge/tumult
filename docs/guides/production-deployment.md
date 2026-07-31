@@ -35,10 +35,14 @@ like any control-plane API.
     execution (`tumult_run_experiment`, `tumult_gameday_run`,
     `tumult_create_experiment`, `tumult_report`, `tumult_gameday_create`,
     `tumult_recommend`).
+  - **approver** / **admin** — higher-privilege roles shared with the wider
+    platform; at the MCP gate they satisfy every operator requirement and
+    therefore also call all tools.
 
-  `operator` ⊇ `viewer`. A token absent from the config is **rejected, never
-  elevated**; a missing or unknown role is a startup error; and a malformed
-  config refuses every request rather than running open.
+  `admin` ⊇ `approver` ⊇ `operator` ⊇ `viewer`. A token absent from the
+  config is **rejected, never elevated**; a missing or unknown role is a
+  startup error; and a malformed config refuses every request rather than
+  running open.
 - **Auth config file format** (`~/.tumult/mcp-auth.toml`, mode `600`):
 
   ```toml
@@ -99,7 +103,7 @@ in production, point Tumult at whatever collector you already run
 
 ## 4. The analytics store — single-writer model
 
-The persistent store (`~/.tumult/analytics.duckdb`, DuckDB) allows **one writer**.
+The persistent store (`~/.tumult/lake.duckdb`, DuckDB) allows **one writer**.
 
 - **One writer:** the running server (it ingests runs and refreshes derived data).
 - **Readers coexist:** `tumult analyze`, `tumult chaosgraph query|neighbors`, and

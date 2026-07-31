@@ -1,0 +1,16 @@
+# Mean end-to-end experiment lifecycle duration in seconds, from the
+# tumult.experiment.duration histogram (sum / count over the window).
+# Each tumult run is its own process, so cumulative-temporality data
+# points do not overlap and summing across runs is exact.
+name: experiment_duration_s
+description: Mean experiment lifecycle duration in seconds.
+source_table: metric_histograms
+time_col: ts_ns
+measure:
+  type: rate
+  num:
+    column: sum
+  den:
+    column: count
+dimensions: []
+condition: { column: metric_name, equals: "tumult.experiment.duration" }

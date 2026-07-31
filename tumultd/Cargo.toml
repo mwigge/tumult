@@ -1,0 +1,31 @@
+[package]
+name = "tumultd"
+description = "Krönika daemon — OTLP ingest servers, manual import, ad-hoc reports"
+version = "0.6.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tumultd"
+path = "src/main.rs"
+
+[dependencies]
+tumult-intelligence.workspace = true
+tumult-lake.workspace = true
+tumult-ingest.workspace = true
+tumult-metrics.workspace = true
+tumult-report.workspace = true
+tumult-api.workspace = true
+tumult-exec = { path = "../tumult-exec" }
+tumult-otel = { path = "../tumult-otel" }
+tumult-auth = { path = "../tumult-auth" }
+axum.workspace = true
+tonic.workspace = true
+clap.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rust-embed.workspace = true
+mime_guess.workspace = true
+uuid.workspace = true

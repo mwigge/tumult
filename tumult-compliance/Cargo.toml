@@ -1,0 +1,20 @@
+[package]
+name = "tumult-compliance"
+description = "Compliance-grade report documents: content model, HTML preview, Typst PDF pipeline, resilience scoring"
+version = "0.6.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tumult-lake.workspace = true
+typst.workspace = true
+typst-pdf.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

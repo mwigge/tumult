@@ -8,14 +8,14 @@ pub enum ClickHouseError {
     Client(#[from] clickhouse::error::Error),
 
     #[error("analytics error: {0}")]
-    Analytics(#[from] tumult_analytics::AnalyticsError),
+    Analytics(#[from] tumult_lake::AnalyticsError),
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
 
-impl From<ClickHouseError> for tumult_analytics::AnalyticsError {
+impl From<ClickHouseError> for tumult_lake::AnalyticsError {
     fn from(e: ClickHouseError) -> Self {
-        tumult_analytics::AnalyticsError::ClickHouse(e.to_string())
+        tumult_lake::AnalyticsError::ClickHouse(e.to_string())
     }
 }

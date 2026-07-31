@@ -12,7 +12,8 @@ use tumult_core::journal::write_journal;
 use tumult_core::runner::{run_experiment, RunConfig};
 use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
-use super::exec::ProviderExecutor;
+use tumult_exec::ProviderExecutor;
+
 use super::load::K6LoadExecutor;
 use super::print_dry_run;
 
@@ -181,8 +182,11 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     // Auto-ingest into persistent analytics store
     if auto_ingest {
         match auto_ingest_journal(&journal, &experiment).await {
-            Ok(true) => println!("Ingested into persistent analytics store"),
-            Ok(false) => println!("Already in analytics store (duplicate)"),
+            Ok((true, via)) => println!(
+                "Ingested into persistent analytics store{}",
+                via.map_or_else(String::new, |url| format!(" via daemon ({url})"))
+            ),
+            Ok((false, _)) => println!("Already in analytics store (duplicate)"),
             Err(e) => eprintln!("warning: auto-ingest failed: {e}"),
         }
     }
@@ -195,8 +199,35 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     Ok(())
 }
 
-async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Result<bool> {
-    use tumult_analytics::AnalyticsBackend;
+/// Env var pointing the CLI at a running tumultd: when set, auto-ingest
+/// POSTs the journal to the daemon's `/api/import/journal` so the write
+/// rides the daemon's single-writer channel instead of racing its
+/// `DuckDB` lock.
+const DAEMON_URL_ENV: &str = "TUMULT_DAEMON_URL";
+
+/// Env var with the daemon API token (`kro_...`): when set, the journal
+/// POST sends `Authorization: Bearer <token>`. Unset means no header
+/// (loopback dev daemon).
+const DAEMON_TOKEN_ENV: &str = "TUMULT_DAEMON_TOKEN";
+
+/// Why a daemon import attempt did not succeed.
+enum DaemonPostError {
+    /// No HTTP response at all (connect refused, timeout): the journal
+    /// never reached the daemon, so a direct store write cannot double-write.
+    Unreachable(String),
+    /// The daemon answered but did not ingest: honored as final — retrying
+    /// directly could double-write if the daemon persisted despite the
+    /// error response.
+    Rejected(String),
+}
+
+/// Returns `(ingested, daemon_url)`: `daemon_url` is `Some` when the journal
+/// went through the daemon (used for the user-facing confirmation line).
+async fn auto_ingest_journal(
+    journal: &Journal,
+    experiment: &Experiment,
+) -> Result<(bool, Option<String>)> {
+    use tumult_lake::AnalyticsBackend;
 
     // Dual-mode: ClickHouse if configured, DuckDB otherwise
     if tumult_clickhouse::ClickHouseConfig::is_configured() {
@@ -205,25 +236,85 @@ async fn auto_ingest_journal(journal: &Journal, experiment: &Experiment) -> Resu
             .await
             .context("failed to connect to ClickHouse analytics backend")?;
         let ingested = store.ingest_journal(journal)?;
-        return Ok(ingested);
+        return Ok((ingested, None));
+    }
+
+    // Daemon-first: a running tumultd holds the store's single-writer lock,
+    // so a direct open would fail. Fall back to the direct write ONLY when
+    // the daemon never answered (no HTTP response at all).
+    if let Ok(base) = std::env::var(DAEMON_URL_ENV) {
+        match post_journal_to_daemon(&base, journal, experiment).await {
+            Ok(ingested) => return Ok((ingested, Some(base))),
+            Err(DaemonPostError::Unreachable(reason)) => {
+                eprintln!(
+                    "warning: daemon at {base} unreachable ({reason}); writing the store directly"
+                );
+            }
+            Err(DaemonPostError::Rejected(reason)) => {
+                bail!("daemon rejected journal import: {reason}");
+            }
+        }
     }
 
     // Default: DuckDB embedded
-    let db_path = tumult_analytics::AnalyticsStore::default_path()
+    let db_path = tumult_lake::AnalyticsStore::default_path()
         .context("failed to resolve analytics store path")?;
-    let store = tumult_analytics::AnalyticsStore::open(&db_path)
+    let store = tumult_lake::AnalyticsStore::open(&db_path)
         .with_context(|| format!("failed to open analytics store: {}", db_path.display()))?;
     let ingested = store.ingest_journal_with_experiment(journal, Some(experiment))?;
 
     emit_store_metrics(&db_path, &store);
 
-    Ok(ingested)
+    Ok((ingested, None))
 }
 
-fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) {
+/// POST `{journal, experiment}` to `{base}/api/import/journal`. The daemon
+/// dedups on `experiment_id`; the response's `ingested` flag says whether
+/// this call wrote anything.
+async fn post_journal_to_daemon(
+    base: &str,
+    journal: &Journal,
+    experiment: &Experiment,
+) -> std::result::Result<bool, DaemonPostError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .map_err(|e| DaemonPostError::Unreachable(e.to_string()))?;
+    let url = format!("{}/api/import/journal", base.trim_end_matches('/'));
+    let mut request = client
+        .post(&url)
+        .json(&serde_json::json!({"journal": journal, "experiment": experiment}));
+    if let Ok(token) = std::env::var(DAEMON_TOKEN_ENV) {
+        if !token.is_empty() {
+            request = request.bearer_auth(token);
+        }
+    }
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| DaemonPostError::Unreachable(e.to_string()))?;
+    let status = resp.status();
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| DaemonPostError::Rejected(format!("HTTP {status}, unreadable body: {e}")))?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown error");
+        return Err(DaemonPostError::Rejected(format!("HTTP {status}: {msg}")));
+    }
+    Ok(body
+        .get("ingested")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false))
+}
+
+fn emit_store_metrics(db_path: &Path, store: &tumult_lake::AnalyticsStore) {
     let size_bytes = std::fs::metadata(db_path).map(|m| m.len()).ok();
     if let Ok(stats) = store.stats() {
-        tumult_analytics::telemetry::record_store_gauges(
+        tumult_lake::telemetry::record_store_gauges(
             stats.experiment_count,
             stats.activity_count,
             size_bytes,
@@ -257,5 +348,68 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_analytics::AnalyticsStore) 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Env vars are process-global; serialize every test that touches them.
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn test_journal(id: &str) -> Journal {
+        Journal {
+            experiment_title: format!("Test {id}"),
+            experiment_id: id.into(),
+            status: ExperimentStatus::Completed,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_300_000_000_000,
+            duration_ms: 300_000,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            halt: None,
+            blast_radius: None,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: None,
+        }
+    }
+
+    /// An unreachable daemon must fall back to the direct `DuckDB` write: a
+    /// connection-level failure means the journal never left the process, so
+    /// writing the store directly cannot double-write.
+    // The env guard must cover the awaited ingest (env vars are read inside
+    // it). Only tests serialized on ENV_MUTEX can block on it, so holding a
+    // std guard across the await cannot deadlock the test runtime.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn unreachable_daemon_falls_back_to_direct_write() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("lake.duckdb");
+        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
+        // Port 1 is never listening: connection refused, no HTTP response.
+        std::env::set_var(DAEMON_URL_ENV, "http://127.0.0.1:1");
+        std::env::remove_var("TUMULT_CLICKHOUSE_URL");
+
+        let journal = test_journal("fallback-e1");
+        let experiment = Experiment::default();
+        let (ingested, via) = auto_ingest_journal(&journal, &experiment).await.unwrap();
+        assert!(ingested);
+        assert_eq!(via, None, "unreachable daemon must not claim the ingest");
+
+        std::env::remove_var(DAEMON_URL_ENV);
+        std::env::remove_var("TUMULT_LAKE_PATH");
+
+        let store = tumult_lake::AnalyticsStore::open_read_only(&db_path).unwrap();
+        assert_eq!(store.experiment_count().unwrap(), 1);
     }
 }

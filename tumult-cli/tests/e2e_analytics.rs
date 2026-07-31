@@ -100,7 +100,7 @@ async fn e2e_run_analyze_export() {
     tumult_core::journal::write_journal(&journal, &journal_path).unwrap();
 
     // Ingest into DuckDB and query
-    let store = tumult_analytics::AnalyticsStore::in_memory().unwrap();
+    let store = tumult_lake::AnalyticsStore::in_memory().unwrap();
     store.ingest_journal(&journal).unwrap();
 
     // Verify experiments table
@@ -127,20 +127,20 @@ async fn e2e_run_analyze_export() {
     // Export to Parquet
     let parquet_path = dir.path().join("test.parquet");
     let (exp_batch, _) =
-        tumult_analytics::journal_to_record_batch(std::slice::from_ref(&journal)).unwrap();
-    tumult_analytics::export_parquet(&exp_batch, &parquet_path).unwrap();
+        tumult_lake::journal_to_record_batch(std::slice::from_ref(&journal)).unwrap();
+    tumult_lake::export_parquet(&exp_batch, &parquet_path).unwrap();
     assert!(parquet_path.exists());
     assert!(std::fs::metadata(&parquet_path).unwrap().len() > 0);
 
     // Export to CSV
     let csv_path = dir.path().join("test.csv");
-    tumult_analytics::export_csv(&exp_batch, &csv_path).unwrap();
+    tumult_lake::export_csv(&exp_batch, &csv_path).unwrap();
     let csv_content = std::fs::read_to_string(&csv_path).unwrap();
     assert!(csv_content.contains("Analytics E2E test"));
 
     // Export to Arrow IPC
     let arrow_path = dir.path().join("test.arrow");
-    tumult_analytics::export_arrow_ipc(&exp_batch, &arrow_path).unwrap();
+    tumult_lake::export_arrow_ipc(&exp_batch, &arrow_path).unwrap();
     assert!(arrow_path.exists());
 }
 

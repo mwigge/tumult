@@ -27,7 +27,7 @@ pub(crate) fn default_list_limit() -> u64 {
 /// Default persistent analytics store path, shared by every tool that reads
 /// or writes the store.
 pub(crate) fn default_store_path() -> String {
-    let path = tumult_analytics::AnalyticsStore::default_path()
+    let path = tumult_lake::AnalyticsStore::default_path()
         .unwrap_or_else(|_| std::path::PathBuf::from(".tumult/analytics.db"));
     path.to_str().map_or_else(
         || ".tumult/analytics.db".to_string(),

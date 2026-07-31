@@ -5,7 +5,7 @@
 //! database, alongside `SigNoz`'s `OTel` data for cross-correlation.
 
 use clickhouse::Client;
-use tumult_analytics::error::AnalyticsError;
+use tumult_lake::error::AnalyticsError;
 
 use crate::config::ClickHouseConfig;
 

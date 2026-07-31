@@ -7,7 +7,8 @@ license.workspace = true
 description = "Keyboard-driven analytics TUI over the Tumult DuckDB analytics store"
 
 [dependencies]
-tumult-analytics = { path = "../tumult-analytics" }
+tumult-lake = { path = "../tumult-lake" }
+tumult-query = { path = "../tumult-query" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 chrono = { workspace = true }

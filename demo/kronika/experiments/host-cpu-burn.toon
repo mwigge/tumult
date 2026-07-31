@@ -1,0 +1,39 @@
+title: host cpu burn — shell stays responsive
+description: Inject a bounded CPU busy-loop and verify the host shell stays responsive (stress-ng-free variant of tumult's cpu-stress example)
+
+tags[2]: stress, resilience
+
+steady_state_hypothesis:
+  title: Host shell is responsive
+  probes[1]:
+    - name: host-alive
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "echo alive"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^alive$"
+
+method[2]:
+  - name: cpu-burn
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "timeout 3 sh -c 'while :; do :; done'; echo burn-complete"
+      timeout_s: 15.0
+  - name: verify-responsive
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo alive"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "^alive$"
+
+rollbacks[0]:

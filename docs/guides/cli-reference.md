@@ -85,7 +85,13 @@ Undefined variables cause a hard error at startup, not at execution time.
 
 ### Auto-Ingest
 
-By default, `tumult run` writes the journal file **and** ingests experiment data into the persistent DuckDB store at `~/.tumult/analytics.duckdb`. Pass `--no-ingest` to skip store ingestion (useful in CI pipelines that manage their own storage).
+By default, `tumult run` writes the journal file **and** ingests experiment data into the persistent DuckDB store at `~/.tumult/lake.duckdb`. Pass `--no-ingest` to skip store ingestion (useful in CI pipelines that manage their own storage).
+
+When `TUMULT_DAEMON_URL` is set (e.g. `http://localhost:4318`), the journal is POSTed to the daemon's `/api/import/journal` instead, so the write rides the daemon's single-writer channel rather than racing its store lock. If the daemon is unreachable (no HTTP response), the CLI falls back to the direct store write; any HTTP answer — including an error — is treated as final.
+
+When `TUMULT_DAEMON_TOKEN` is set (a `kro_...` API token), the journal POST to the daemon sends `Authorization: Bearer <token>`. Unset means no header is sent, which matches a loopback dev daemon running without authentication.
+
+The daemon can also execute experiments itself via its run-control API — `POST /api/runs/validate` (register a definition), `POST /api/runs/dry-run` (resolved plan preview), `POST /api/runs` (enqueue, bounded queue with 429 backpressure), `POST /api/runs/{id}/stop` (e-stop with rollbacks), `GET /api/runs[/{id}]` (state + audit trail), `GET /api/runs/{id}/audit/verify` (re-verify the audit hash chain). See ADR-011.
 
 ## tumult validate
 
@@ -212,7 +218,7 @@ tumult analyze [journals-dir] [OPTIONS]
 |--------|-------------|
 | `--query <sql>` | Custom SQL query |
 
-If `journals-dir` is omitted, queries the persistent store at `~/.tumult/analytics.duckdb`.
+If `journals-dir` is omitted, queries the persistent store at `~/.tumult/lake.duckdb`.
 
 `--query` is read-only: only `SELECT` and `WITH` statements are accepted; anything else is rejected before execution.
 
@@ -317,6 +323,7 @@ tumult store <subcommand>
 | `purge --older-than-days <N>` | Delete experiments older than N days |
 | `path` | Print the store file path |
 | `migrate` | Migrate data from DuckDB to ClickHouse backend |
+| `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Merge pre-unification databases (old analytics store and/or kronika lake) into the unified store; idempotent |
 
 ### Examples
 
@@ -325,6 +332,7 @@ tumult store stats
 tumult store backup --output ~/tumult-backup-2026-03
 tumult store purge --older-than-days 90
 tumult store migrate   # requires TUMULT_CLICKHOUSE_URL
+tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb
 ```
 
 ## tumult recommend
@@ -457,7 +465,7 @@ tumult chaosgraph coverage-gaps [--framework <fw>] [--domain <plugin>]
 | `--framework <fw>` | Annotate gaps with a framework's still-unevidenced articles (coverage-gaps) |
 | `--domain <plugin>` | Filter gaps to a fault domain / plugin (coverage-gaps) |
 | `--format <text\|json>` | Output format (all; default `text`) |
-| `--store <path>` | Analytics store path (all; default `~/.tumult/analytics.duckdb`) |
+| `--store <path>` | Analytics store path (all; default `~/.tumult/lake.duckdb`) |
 
 ### Examples
 

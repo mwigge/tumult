@@ -1,0 +1,30 @@
+[package]
+name = "tumult-ingest"
+description = "OTLP gRPC/HTTP ingest + manual importers writing into tumult-lake"
+version = "0.6.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tumult-lake.workspace = true
+tumult-otlp.workspace = true
+tumult-core = { path = "../tumult-core" }
+tumult-auth = { path = "../tumult-auth" }
+tumult-autopilot = { path = "../tumult-autopilot" }
+opentelemetry-proto.workspace = true
+tonic.workspace = true
+prost.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true }
+uuid = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
+csv.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+dirs-next.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile.workspace = true

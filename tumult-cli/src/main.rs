@@ -161,6 +161,15 @@ async fn main() -> anyhow::Result<()> {
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
             StoreAction::Migrate => commands::cmd_store_migrate().await?,
+            StoreAction::ImportLegacy {
+                analytics_db,
+                kronika_db,
+                store,
+            } => commands::cmd_store_import_legacy(
+                analytics_db.as_deref(),
+                kronika_db.as_deref(),
+                store.as_deref(),
+            )?,
         },
         Commands::Recommend {
             goal,
@@ -176,7 +185,7 @@ async fn main() -> anyhow::Result<()> {
             let options = tumult_intelligence::RecommendOptions {
                 store_path: match store_path {
                     Some(path) => path,
-                    None => tumult_analytics::AnalyticsStore::default_path()
+                    None => tumult_lake::AnalyticsStore::default_path()
                         .context("failed to determine analytics store path")?,
                 },
                 goal,

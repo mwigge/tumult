@@ -1,0 +1,19 @@
+# Share of experiment runs that deviated from expected behaviour:
+# tumult increments tumult.hypothesis.deviations.total exactly when a run
+# finishes Deviated, so the rate is deviations over all experiment runs
+# (tumult.experiments.total).
+name: deviation_rate
+description: Fraction of experiment runs whose outcome status was 'deviated'.
+source_table: metric_sums
+time_col: ts_ns
+measure:
+  type: rate
+  num:
+    column: "*"
+    conditions:
+      - { column: metric_name, equals: "tumult.hypothesis.deviations.total" }
+  den:
+    column: "*"
+    conditions:
+      - { column: metric_name, equals: "tumult.experiments.total" }
+dimensions: []

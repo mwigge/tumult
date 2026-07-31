@@ -37,3 +37,16 @@ This project uses the following notable open-source components:
 
 - Agentic QE Framework — https://agentic-qe.dev/
   Quality engineering framework by Dragan Spiridonov.
+
+================================================================================
+
+PROVENANCE
+
+The Krönika platform components (tumultd, tumult-otlp, tumult-lake,
+tumult-ingest, tumult-metrics, tumult-report, tumult-compliance, tumult-api,
+the web/ UI, metrics/, assets/fonts, and the llm/sql_guard modules in
+tumult-intelligence) were imported from the kronika project
+(https://github.com/mwigge/kronika, ≤ v0.6.0) by the same author,
+Morgan Wigge, and folded into this repository with full git history.
+kronika is licensed under the Apache License, Version 2.0 — the same
+license as this project.

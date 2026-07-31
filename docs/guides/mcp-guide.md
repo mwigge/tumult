@@ -26,9 +26,9 @@ TUMULT_MCP_TOKEN='replace-with-a-secret' tumult-mcp --transport http --port 3100
 ```
 
 Without authentication, HTTP is restricted to loopback. For multiple tokens
-and viewer/operator roles, use `TUMULT_MCP_AUTH_CONFIG`. File arguments are
-resolved against the configured workspace root; traversal outside that root is
-rejected.
+and viewer/operator/approver/admin roles, use `TUMULT_MCP_AUTH_CONFIG`. File
+arguments are resolved against the configured workspace root; traversal
+outside that root is rejected.
 
 ```mermaid
 flowchart LR
@@ -54,10 +54,11 @@ Two credential channels are supported:
 
 Once any token is configured (`TUMULT_MCP_AUTH_CONFIG` or `TUMULT_MCP_TOKEN`),
 every request must authenticate — including `tools/list`, `resources/list`,
-and `resources/read`. Viewer tokens may call read-only tools; operator tokens
-call everything. When no token is configured the server runs open, intended
-for loopback local development, and the bind guard refuses a network-exposed
-HTTP address in that mode.
+and `resources/read`. Viewer tokens may call read-only tools; operator,
+approver, and admin tokens call everything (the MCP gate has two tiers —
+viewer, and operator-or-above). When no token is configured the server runs
+open, intended for loopback local development, and the bind guard refuses a
+network-exposed HTTP address in that mode.
 
 The HTTP transport rate-limits per client session with a token bucket
 (default 20 requests/second sustained, burst 60). Tune or disable it via

@@ -18,8 +18,8 @@ pub fn analyze(journals_path: &str, query: &str) -> Result<String, ToolError> {
 
     validate_select_only(query)?;
 
-    let store = tumult_analytics::AnalyticsStore::in_memory()
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let store =
+        tumult_lake::AnalyticsStore::in_memory().map_err(|e| ToolError::Store(e.to_string()))?;
 
     let path = Path::new(journals_path);
     if path.is_file() {
@@ -72,7 +72,7 @@ pub fn store_stats(store_path: &str) -> Result<StructuredReport, ToolError> {
         )));
     }
 
-    let store = tumult_analytics::AnalyticsStore::open_read_only(&path)
+    let store = tumult_lake::AnalyticsStore::open_read_only(&path)
         .map_err(|e| ToolError::Store(e.to_string()))?;
     let stats = store.stats().map_err(|e| ToolError::Store(e.to_string()))?;
     let version = store
@@ -123,7 +123,7 @@ pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, ToolE
         )));
     }
 
-    let store = tumult_analytics::AnalyticsStore::open_read_only(&path)
+    let store = tumult_lake::AnalyticsStore::open_read_only(&path)
         .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let columns = store
@@ -180,7 +180,7 @@ mod tests {
     fn store_stats_with_temp_store() {
         let dir = TempDir::new().unwrap();
         let db_path = dir.path().join("analytics.duckdb");
-        let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db_path).unwrap();
         // Read the schema version back from the store itself so this test
         // tracks migrations instead of hardcoding the current number.
         let schema_version = store.schema_version().unwrap();
@@ -211,7 +211,7 @@ mod tests {
     fn analyze_persistent_rejects_non_select_query() {
         let dir = TempDir::new().unwrap();
         let db_path = dir.path().join("analytics.duckdb");
-        let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db_path).unwrap();
         drop(store);
 
         let result = analyze_persistent(db_path.to_str().unwrap(), "DROP TABLE experiments");
@@ -226,7 +226,7 @@ mod tests {
 
         // Pre-populate a persistent store
         {
-            let store = tumult_analytics::AnalyticsStore::open(&db_path).unwrap();
+            let store = tumult_lake::AnalyticsStore::open(&db_path).unwrap();
             let journal_file = write_run_journal(dir.path());
             let journal = tumult_core::journal::read_journal(&journal_file).unwrap();
             store.ingest_journal(&journal).unwrap();

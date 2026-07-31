@@ -1,6 +1,10 @@
 # Quickstart
 
-Get Tumult running in 5 minutes.
+Get Tumult running in 5 minutes. This is the CLI-only path; for the full
+platform (daemon, web UI, approvals, compliance reports) see the Krönika
+section of [README.md](README.md) — or jump straight to the
+[platform walkthrough](docs/guides/platform-walkthrough.md) for a guided
+click-through of the web UI on the seeded demo stack.
 
 ```mermaid
 flowchart LR
@@ -153,7 +157,7 @@ endpoint (default: `port + 1`).
 
 ChaosGraph collapses every accumulated run into a compact node/edge graph.
 Previously reachable only through MCP, it now has first-class CLI commands that
-read the analytics store (`~/.tumult/analytics.duckdb`, or `--store <path>`):
+read the analytics store (`~/.tumult/lake.duckdb`, or `--store <path>`):
 
 ```bash
 # List graph nodes of a kind (experiment, fault, service, journal, …)

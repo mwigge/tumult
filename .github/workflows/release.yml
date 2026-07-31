@@ -45,7 +45,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
         with:
-          toolchain: 1.91.1
+          toolchain: 1.92.0
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
@@ -56,25 +56,34 @@ jobs:
         if: matrix.cross
         run: cargo install cross --locked
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # tumultd rust-embeds web/build/ at compile time.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
+
       - name: Run tests before release
         if: ${{ !matrix.cross }}
         run: cargo test --workspace
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p tumult-cli
+        run: cargo build --release --target ${{ matrix.target }} -p tumult-cli -p tumultd
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }} -p tumult-cli
+        run: cross build --release --target ${{ matrix.target }} -p tumult-cli -p tumultd
 
-      - name: Strip binary (Linux)
+      - name: Strip binaries (Linux)
         if: contains(matrix.target, 'linux') && !matrix.cross
-        run: strip target/${{ matrix.target }}/release/tumult
+        run: strip target/${{ matrix.target }}/release/tumult target/${{ matrix.target }}/release/tumultd
 
-      - name: Strip binary (macOS)
+      - name: Strip binaries (macOS)
         if: contains(matrix.target, 'apple')
-        run: strip target/${{ matrix.target }}/release/tumult
+        run: strip target/${{ matrix.target }}/release/tumult target/${{ matrix.target }}/release/tumultd
 
       - name: Package
         shell: bash
@@ -86,12 +95,24 @@ jobs:
           cp README.md CHANGELOG.md LICENSE "${ARCHIVE}/" 2>/dev/null || true
           tar czf "${ARCHIVE}.tar.gz" "${ARCHIVE}"
           echo "ARCHIVE=${ARCHIVE}.tar.gz" >> $GITHUB_ENV
+          ARCHIVE_D="tumultd-${TAG}-${{ matrix.target }}"
+          mkdir -p "${ARCHIVE_D}"
+          cp target/${{ matrix.target }}/release/tumultd "${ARCHIVE_D}/"
+          cp README.md CHANGELOG.md LICENSE "${ARCHIVE_D}/" 2>/dev/null || true
+          tar czf "${ARCHIVE_D}.tar.gz" "${ARCHIVE_D}"
+          echo "ARCHIVE_D=${ARCHIVE_D}.tar.gz" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: tumult-${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
+
+      - name: Upload tumultd artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: tumultd-${{ matrix.target }}
+          path: ${{ env.ARCHIVE_D }}
 
   docker:
     name: Publish tumult image
@@ -185,7 +206,9 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: artifacts/
-          pattern: 'tumult-*'
+          pattern: |
+            tumult-*
+            tumultd-*
 
       - name: Collect tarballs
         run: |

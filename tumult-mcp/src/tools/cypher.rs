@@ -40,23 +40,21 @@ const EDGE_RELS: &[&str] = &[
     "caused_by",
 ];
 
-fn open_store_ro(store_path: &str) -> Result<tumult_analytics::AnalyticsStore, ToolError> {
+fn open_store_ro(store_path: &str) -> Result<tumult_lake::AnalyticsStore, ToolError> {
     let path = std::path::Path::new(store_path);
     if !path.exists() {
         return Err(ToolError::NotFound(format!(
             "analytics store not found at {store_path}"
         )));
     }
-    tumult_analytics::AnalyticsStore::open_read_only(path)
-        .map_err(|e| ToolError::Store(e.to_string()))
+    tumult_lake::AnalyticsStore::open_read_only(path).map_err(|e| ToolError::Store(e.to_string()))
 }
 
 /// Snapshot the entire `ChaosGraph` from the analytics store.
-fn snapshot(store: &tumult_analytics::AnalyticsStore) -> Result<GraphSnapshot, ToolError> {
+fn snapshot(store: &tumult_lake::AnalyticsStore) -> Result<GraphSnapshot, ToolError> {
     let mut nodes = Vec::new();
     for kind in NODE_KINDS {
-        for node in store
-            .graph_nodes_with_attrs(kind)
+        for node in tumult_query::graph_nodes_with_attrs(store, kind)
             .map_err(|e| ToolError::Store(e.to_string()))?
         {
             nodes.push(SnapshotNode {
@@ -68,8 +66,7 @@ fn snapshot(store: &tumult_analytics::AnalyticsStore) -> Result<GraphSnapshot, T
             });
         }
     }
-    let edges = store
-        .graph_edges_by_rels(EDGE_RELS)
+    let edges = tumult_query::graph_edges_by_rels(store, EDGE_RELS)
         .map_err(|e| ToolError::Store(e.to_string()))?
         .into_iter()
         .map(|e| SnapshotEdge {
@@ -138,7 +135,7 @@ mod tests {
 
     fn seeded_store(dir: &std::path::Path) -> String {
         let store_path = dir.join("analytics.duckdb");
-        let store = tumult_analytics::AnalyticsStore::open(&store_path).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&store_path).unwrap();
         let doc = tumult_graph::parse_topology(
             "[[service]]\nname = \"api\"\ndepends_on = [\"db\"]\n\n[[service]]\nname = \"db\"\n",
         )

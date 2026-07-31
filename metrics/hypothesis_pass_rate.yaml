@@ -1,0 +1,19 @@
+# Fraction of experiment runs whose hypothesis held. Real tumult (v2.18)
+# reports per-run outcome through the tumult.experiments.total counter
+# (resilience.outcome.status = success|failure); a run only counts as
+# "success" when it Completed, which requires the post-fault hypothesis
+# to hold. The span-based variant (resilience.outcome.hypothesis_met) is
+# populated by the synthetic backfill only.
+name: hypothesis_pass_rate
+description: Share of experiment runs that completed without deviation or failure.
+source_table: metric_sums
+time_col: ts_ns
+measure:
+  type: rate
+  num:
+    column: "*"
+    condition: { column: outcome_status, equals: "success" }
+  den:
+    column: "*"
+dimensions: []
+condition: { column: metric_name, equals: "tumult.experiments.total" }

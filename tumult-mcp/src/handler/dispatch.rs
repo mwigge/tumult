@@ -213,7 +213,9 @@ impl TumultHandler {
 pub(super) fn store_path_for(role: Option<Role>, requested: &str) -> String {
     match role {
         Some(Role::Viewer) => super::schema::default_store_path(),
-        Some(Role::Operator) | None => requested.to_string(),
+        // Operator-or-above (approver, admin) and open-mode local callers may
+        // point the store anywhere.
+        Some(Role::Operator | Role::Approver | Role::Admin) | None => requested.to_string(),
     }
 }
 

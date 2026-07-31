@@ -1,0 +1,35 @@
+# OPTIONAL dev tooling — OpenTelemetry Collector in front of tumultd.
+# Receives OTLP on :4317/:4318, forwards to tumultd on the host, and tees
+# everything to /tmp/export/telemetry.jsonl for debugging what exporters send.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
+exporters:
+  otlp:
+    endpoint: tumultd.host:4317
+    tls:
+      insecure: true
+  file:
+    path: /tmp/export/telemetry.jsonl
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp, file]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp, file]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp, file]

@@ -1,8 +1,8 @@
 //! Aggregate statistics, retention purge, and schema-version queries.
 
-use tumult_analytics::backend::StoreStats;
-use tumult_analytics::error::AnalyticsError;
-use tumult_analytics::telemetry;
+use tumult_lake::backend::StoreStats;
+use tumult_lake::error::AnalyticsError;
+use tumult_lake::telemetry;
 
 use super::rows::{CountRow, ValueRow};
 use super::ClickHouseStore;

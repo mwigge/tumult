@@ -65,7 +65,13 @@ FROM experiments;
 
 ## Persistent Store
 
-Every `tumult run` automatically ingests the journal into a persistent DuckDB store at `~/.tumult/analytics.duckdb`. This enables cross-run analytics without manually specifying journal paths.
+Every `tumult run` automatically ingests the journal into a persistent DuckDB store at `~/.tumult/lake.duckdb`. This enables cross-run analytics without manually specifying journal paths.
+
+Upgrading from a pre-unification install? Merge the old analytics store (and a kronika lake, if you ran Krönika) into the unified store — the import is idempotent:
+
+```bash
+tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb
+```
 
 ```bash
 # Query the persistent store (no path needed)
@@ -104,7 +110,7 @@ tumult run experiment.toon --no-ingest
 
 ## Security
 
-DuckDB does not encrypt data at rest by default. The persistent store at `~/.tumult/analytics.duckdb` is written as plaintext on disk. For environments where experiment data is sensitive, take the following steps:
+DuckDB does not encrypt data at rest by default. The persistent store at `~/.tumult/lake.duckdb` is written as plaintext on disk. For environments where experiment data is sensitive, take the following steps:
 
 ### Filesystem-level encryption
 
@@ -118,10 +124,10 @@ Place the store on an encrypted volume appropriate for your OS:
 
 ### Redirect the store path
 
-Use the `TUMULT_STORE_PATH` environment variable to point the persistent store at a location on an encrypted volume:
+Use the `TUMULT_LAKE_PATH` environment variable to point the persistent store at a location on an encrypted volume:
 
 ```bash
-export TUMULT_STORE_PATH=/mnt/encrypted/tumult/analytics.duckdb
+export TUMULT_LAKE_PATH=/mnt/encrypted/tumult/lake.duckdb
 tumult run experiment.toon
 ```
 

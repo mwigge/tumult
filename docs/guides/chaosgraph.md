@@ -91,7 +91,7 @@ RETURN e.id, f.id, s.id
 
 ## The fixed-shape MCP tools
 
-Both tools are read-only, idempotent, and return `structuredContent` with an advertised `outputSchema`. They read the persistent analytics store (`~/.tumult/analytics.duckdb` by default; override with `store_path`).
+Both tools are read-only, idempotent, and return `structuredContent` with an advertised `outputSchema`. They read the persistent analytics store (`~/.tumult/lake.duckdb` by default; override with `store_path`).
 
 ### `tumult_chaosgraph_query`
 

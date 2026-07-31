@@ -1,0 +1,39 @@
+title: batch worker pool — all jobs complete without strays
+description: Fan out a small batch of background jobs and verify every one of them completes
+
+tags[2]: process, resilience
+
+steady_state_hypothesis:
+  title: Batch scratch area is clean and ready
+  probes[1]:
+    - name: batch-ready
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/batch; rm -f /tmp/kd-demo/batch/done-*; echo ready"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ready$"
+
+method[2]:
+  - name: run-batch
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "for i in 1 2 3 4 5 6 7 8 9 10; do (sleep 0.2; touch /tmp/kd-demo/batch/done-$i) & done; wait; echo batch-finished"
+      timeout_s: 15.0
+  - name: verify-all-done
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "ls /tmp/kd-demo/batch/done-* 2>/dev/null | wc -l"
+      timeout_s: 5.0
+    tolerance:
+      type: exact
+      value: 10
+
+rollbacks[0]:

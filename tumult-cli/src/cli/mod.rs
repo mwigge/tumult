@@ -715,6 +715,21 @@ pub(crate) enum StoreAction {
     Path,
     /// Migrate data from `DuckDB` to `ClickHouse`
     Migrate,
+    /// Import rows from legacy pre-unification databases (an old
+    /// `tumult-analytics` store and/or a kronika lake) into the unified
+    /// store. Idempotent — already-imported rows are skipped by natural key.
+    ImportLegacy {
+        /// Path to the legacy `tumult-analytics` store (e.g.
+        /// ~/.tumult/analytics.duckdb or `TUMULT_ANALYTICS_PATH`)
+        #[arg(long)]
+        analytics_db: Option<PathBuf>,
+        /// Path to the legacy kronika store (`KRONIKA_DB`)
+        #[arg(long)]
+        kronika_db: Option<PathBuf>,
+        /// Target store path (default: `TUMULT_LAKE_PATH` resolution)
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
 }
 
 #[derive(clap::Subcommand, Debug)]

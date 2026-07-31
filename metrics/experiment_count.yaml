@@ -1,0 +1,11 @@
+# Number of experiment runs (resilience.experiment spans) in the window,
+# broken down by experiment (tumult sets the name via
+# resilience.experiment.title, promoted to experiment_name at ingest).
+name: experiment_count
+description: Count of experiment runs in the window, per experiment.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: count
+dimensions: [experiment_name]
+condition: { column: span_name, equals: "resilience.experiment" }

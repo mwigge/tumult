@@ -1,0 +1,20 @@
+[package]
+name = "tumult-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared authentication primitives for the Tumult platform: RBAC roles, argon2id password hashing, and token generation"
+
+[lib]
+name = "tumult_auth"
+path = "src/lib.rs"
+
+[dependencies]
+# Pinned to the release candidate already resolved in the workspace lockfile
+# (via ssh-key) so the tree keeps exactly one argon2 build.
+argon2 = "0.6.0-rc.8"
+# OS randomness for salts, session ids, and tokens (same single copy argon2 uses).
+getrandom = "0.4"
+sha2 = { workspace = true }
+subtle = { workspace = true }

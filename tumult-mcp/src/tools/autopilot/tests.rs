@@ -1,11 +1,11 @@
 use super::*;
 
 use crate::error::ToolError;
-use tumult_analytics::DecisionRecord;
 use tumult_core::types::{
     Activity, ActivityType, Experiment, ExperimentStatus, HaltRecord, Journal, Provider,
     RegulatoryMapping, RegulatoryRequirement,
 };
+use tumult_lake::DecisionRecord;
 
 const TOPOLOGY_TOML: &str = r#"
     [[service]]
@@ -26,7 +26,7 @@ const TOPOLOGY_TOML: &str = r#"
 /// Create an empty analytics store and return its path.
 fn empty_store(dir: &std::path::Path) -> std::path::PathBuf {
     let db = dir.join("analytics.duckdb");
-    drop(tumult_analytics::AnalyticsStore::open(&db).unwrap());
+    drop(tumult_lake::AnalyticsStore::open(&db).unwrap());
     db
 }
 
@@ -36,7 +36,7 @@ fn empty_store(dir: &std::path::Path) -> std::path::PathBuf {
 /// the topology tool tests).
 fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
     let db = dir.join("analytics.duckdb");
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
     let exp = Experiment {
         title: "DB failover drill".into(),
         method: vec![Activity {
@@ -205,10 +205,10 @@ fn once_without_execute_records_decisions_and_graph_lineage() {
     assert!(report.text.contains("autopilot pass:"), "{}", report.text);
 
     // Audit-before-act: rows persisted and mirrored into the graph.
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-    let rows = store.autopilot_decisions(None, 100).unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let rows = tumult_query::autopilot_decisions(&store, None, 100).unwrap();
     assert_eq!(rows.len(), decisions.len(), "every decision must persist");
-    let recs = store.graph_query("recommendation", None).unwrap();
+    let recs = tumult_query::graph_query(&store, "recommendation", None).unwrap();
     assert!(
         !recs.is_empty(),
         "each decision must mirror a recommendation node"
@@ -238,7 +238,7 @@ fn status_filters_by_verdict_and_honors_limit() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision("d-prop", "propose"))
             .unwrap();
@@ -266,7 +266,7 @@ fn respond_deny_appends_the_veto_feedback_event() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision("d-prop", "propose"))
             .unwrap();
@@ -284,8 +284,10 @@ fn respond_deny_appends_the_veto_feedback_event() {
     assert_eq!(report.structured["decision_id"], "d-prop");
     assert_eq!(report.structured["action"], "human_denied");
 
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("human_denied"));
     drop(store);
 
@@ -308,7 +310,7 @@ fn export_writes_both_parquet_tables() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision("d-exp", "enact"))
             .unwrap();
@@ -376,7 +378,7 @@ fn respond_approve_requires_policy_path() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = empty_store(dir.path());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision("d-prop", "propose"))
             .unwrap();
@@ -387,8 +389,10 @@ fn respond_approve_requires_policy_path() {
 
     // The usage error is validated before any event is appended: the
     // decision must remain unanswered.
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert!(
         !matches!(
             status.last_event.as_deref(),
@@ -405,7 +409,7 @@ fn respond_approve_refused_when_policy_changed() {
     let db = empty_store(dir.path());
     let playbook = crate::tools::test_support::write_valid_experiment(dir.path());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, "old-hash"))
             .unwrap();
@@ -425,8 +429,10 @@ fn respond_approve_refused_when_policy_changed() {
     assert!(err.to_string().contains("policy changed"), "{err}");
 
     // The refusal is part of the audit trail, after the human response.
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("re_gate_refused"));
     drop(store);
     assert!(
@@ -443,7 +449,7 @@ fn respond_approve_refused_when_gate_now_vetoes() {
     let policy_path = write_enabled_policy(dir.path());
     let hash = tumult_autopilot::policy_hash(&std::fs::read_to_string(&policy_path).unwrap());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, &hash))
             .unwrap();
@@ -470,8 +476,10 @@ fn respond_approve_refused_when_gate_now_vetoes() {
         "{err}"
     );
 
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("re_gate_refused"));
     drop(store);
     assert!(
@@ -583,7 +591,7 @@ fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
     .unwrap();
     let hash = tumult_autopilot::policy_hash(&std::fs::read_to_string(&policy_path).unwrap());
     {
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
             .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, &hash))
             .unwrap();
@@ -602,8 +610,10 @@ fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
     assert!(report.text.contains("ran "), "{}", report.text);
 
     // Audit order: approved → re-gate passed → run completed.
-    let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
-    let status = store.autopilot_decision("d-prop").unwrap().unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
     assert_eq!(status.last_event.as_deref(), Some("run_completed"));
     drop(store);
     assert!(

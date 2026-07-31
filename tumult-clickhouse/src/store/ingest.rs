@@ -1,9 +1,9 @@
 //! Journal ingest and raw query execution for [`ClickHouseStore`].
 
-use tumult_analytics::error::AnalyticsError;
-use tumult_analytics::query_row::QueryRow;
-use tumult_analytics::telemetry;
 use tumult_core::types::Journal;
+use tumult_lake::error::AnalyticsError;
+use tumult_lake::query_row::QueryRow;
+use tumult_lake::telemetry;
 
 use super::rows::{ActivityRow, CountRow, ExperimentRow};
 use super::ClickHouseStore;

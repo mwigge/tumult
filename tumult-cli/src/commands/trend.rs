@@ -14,9 +14,9 @@ use super::ExportFormat;
 /// Returns an error if the journal cannot be read or the export operation fails.
 #[must_use = "callers must handle export errors"]
 pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
-    use tumult_analytics::arrow_convert::journal_to_record_batch;
-    use tumult_analytics::export::{export_arrow_ipc, export_csv, export_parquet};
     use tumult_core::journal::read_journal;
+    use tumult_lake::arrow_convert::journal_to_record_batch;
+    use tumult_lake::export::{export_arrow_ipc, export_csv, export_parquet};
 
     let journal = read_journal(journal_path)
         .with_context(|| format!("failed to read journal: {}", journal_path.display()))?;
@@ -66,8 +66,8 @@ pub fn cmd_trend(
     last: Option<&str>,
     target: Option<&str>,
 ) -> Result<()> {
-    use tumult_analytics::AnalyticsStore;
     use tumult_core::journal::read_journal;
+    use tumult_lake::AnalyticsStore;
 
     let store = AnalyticsStore::in_memory()?;
     let mut count = 0;

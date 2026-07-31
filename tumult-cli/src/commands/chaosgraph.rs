@@ -24,7 +24,7 @@ use tumult_mcp::tools::StructuredReport;
 pub(crate) fn resolve_store(store: Option<&Path>) -> Result<PathBuf> {
     store.map_or_else(
         || {
-            tumult_analytics::AnalyticsStore::default_path()
+            tumult_lake::AnalyticsStore::default_path()
                 .map_err(|e| anyhow!("failed to determine analytics store path: {e}"))
         },
         |path| Ok(path.to_path_buf()),
@@ -117,7 +117,7 @@ mod tests {
 
     fn seed_store(dir: &Path) -> PathBuf {
         let db = dir.join("analytics.duckdb");
-        let store = tumult_analytics::AnalyticsStore::open(&db).unwrap();
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         let exp = Experiment {
             title: "Latency drill".into(),
             method: vec![Activity {
