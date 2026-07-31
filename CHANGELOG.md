@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.19.0] — 2026-07-31
+
 **The Krönika merge.** The kronika workspace — daemon, OTLP ingestion,
 DuckDB lake, compliance reports, query API and SvelteKit UI — is folded
 into this repository as first-class `tumult-*` crates, and the two products
