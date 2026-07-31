@@ -2,7 +2,7 @@
 title: Tumult — Rust-Native Chaos Engineering
 layout: default
 nav_exclude: true
-description: "Rust-native chaos engineering: GameDay orchestration with resilience scoring, DORA/NIS2 evidence mapping, an MCP server for agent fleets, and DuckDB analytics on every result."
+description: "Tumult is one platform for chaos engineering: define experiments in TOON, run them with OpenTelemetry, store results in the analytics lake, explore them in the web UI, and report compliance evidence."
 image: /images/tumult-banner.png
 ---
 
@@ -96,6 +96,40 @@ image: /images/tumult-banner.png
   .stat .num { font-size: 2rem; font-weight: 800; color: var(--copper); }
   .stat .label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
+  /* ── Flow diagram ─────────────────────────────────── */
+  .flow-section {
+    max-width: 1000px; margin: 0 auto; padding: 3rem 2rem 1rem;
+    text-align: center;
+  }
+  .flow-section h2 { color: #fff; margin-bottom: 0.75rem; }
+  .flow-section .lead {
+    color: var(--text-muted); max-width: 700px;
+    margin: 0 auto 2rem; line-height: 1.6;
+  }
+  .flow {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    align-items: stretch; gap: 0.75rem;
+  }
+  .flow-step {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem 1.25rem;
+    min-width: 130px; flex: 1; max-width: 170px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .flow-step .step-name {
+    color: var(--copper-light); font-weight: 700; font-size: 0.95rem;
+    margin-bottom: 0.35rem;
+  }
+  .flow-step .step-desc { color: var(--text-muted); font-size: 0.8rem; line-height: 1.45; }
+  .flow-arrow {
+    color: var(--copper); font-size: 1.5rem; font-weight: 700;
+    align-self: center;
+  }
+  .flow-loop {
+    margin-top: 1.5rem; color: var(--text-muted); font-size: 0.85rem;
+  }
+  .flow-loop .loop-arrow { color: var(--copper); }
+
   /* ── Features grid ────────────────────────────────── */
   .features {
     max-width: 1100px; margin: 0 auto;
@@ -103,17 +137,25 @@ image: /images/tumult-banner.png
     display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1.5rem;
   }
+  .section-heading {
+    max-width: 1100px; margin: 0 auto; padding: 2rem 2rem 0;
+  }
+  .section-heading h2 { color: #fff; margin-bottom: 0.5rem; }
+  .section-heading p { color: var(--text-muted); line-height: 1.6; }
   .feature-card {
     background: var(--card-bg); border: 1px solid var(--border);
     border-radius: 10px; padding: 1.5rem;
     transition: border-color 0.2s, transform 0.2s;
   }
   .feature-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+  .feature-card .piece {
+    display: inline-block; font-size: 0.7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--copper); margin-bottom: 0.5rem;
+  }
   .feature-card h3 {
     font-size: 1.1rem; color: #fff; margin: 0 0 0.5rem;
-    display: flex; align-items: center; gap: 0.5rem;
   }
-  .feature-card .icon { font-size: 1.3rem; }
   .feature-card p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; margin: 0; }
 
   /* ── Terminal demo ────────────────────────────────── */
@@ -199,9 +241,8 @@ image: /images/tumult-banner.png
   <img src="/images/tumult.png" alt="Tumult" class="hero-logo">
   <h1>Embrace the <span>Tumult</span></h1>
   <p class="tagline">
-    Rust-native chaos engineering. GameDay orchestration with resilience scoring.
-    DORA/NIS2 compliance mapping. MCP server for agent fleets.
-    Every result flows into DuckDB analytics — queryable, exportable, audit-ready.
+    Rust-native chaos engineering, end to end. Define experiments, run them with
+    real telemetry, keep every result, and turn it into evidence.
   </p>
 
   <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
@@ -244,51 +285,107 @@ image: /images/tumult-banner.png
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
-<!-- Features                                             -->
+<!-- One platform, end to end                              -->
 <!-- ════════════════════════════════════════════════════ -->
-<section class="features">
+<section class="flow-section">
+  <h2>One Platform, End to End</h2>
+  <p class="lead">
+    Tumult is a single platform, not a pile of tools. Every part feeds the next,
+    and the loop closes when what you learn shapes the next experiment.
+  </p>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="step-name">Define</div>
+      <div class="step-desc">Experiments in TOON, driven from the CLI</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Run</div>
+      <div class="step-desc">Real OpenTelemetry traces on every action</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Store</div>
+      <div class="step-desc">Journals and telemetry in the DuckDB analytics lake</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Explore</div>
+      <div class="step-desc">Web UI, SQL, or plain questions in natural language</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Report</div>
+      <div class="step-desc">Compliance evidence as document-controlled PDFs</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Recommend</div>
+      <div class="step-desc">AI agents over MCP suggest the next experiment</div>
+    </div>
+  </div>
+  <p class="flow-loop"><span class="loop-arrow">↺</span> Recommendations feed back into the next experiment definition.</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- The parts                                              -->
+<!-- ════════════════════════════════════════════════════ -->
+<div class="section-heading">
+  <h2>The Parts of the Platform</h2>
+  <p>Each piece does one job and hands off to the next. Here's what fits where.</p>
+</div>
+<section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
-    <h3><span class="icon">⚡</span> Single Binary</h3>
+    <span class="piece">Define &amp; run</span>
+    <h3>CLI &amp; Plugins</h3>
+    <p>Write experiments in TOON and run them from one static binary. 16 plugins, 91 chaos actions: PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH, CPU/memory/IO stress. Write your own plugin in any language — it's just scripts and a manifest.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Store &amp; explore</span>
+    <h3>Analytics UI</h3>
+    <p>The daemon (<code>tumultd</code>) ingests OTLP traces, metrics, and logs into an embedded DuckDB store, then serves the web UI from the same binary. KPIs, experiment history, log/trace/metric explorers, run control with a live waterfall and a two-step e-stop. Or just ask a question in plain language over the store.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Prove it</span>
+    <h3>Reports &amp; Compliance</h3>
+    <p>Map experiments to DORA (EU 2022/2554), NIS2, PCI-DSS 4.0, ISO 22301, ISO 27001, SOC 2, and Basel III. R1 executive digests, R2 evidence packs, and R3 game-day reports render as A4 PDFs with document control and hash-chain verification.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Close the loop</span>
+    <h3>MCP Server</h3>
+    <p>40 MCP tools over stdio or Streamable HTTP, with tool annotations, structured output schemas, and <code>tumult://</code> resources. Any MCP-compatible agent can discover plugins, run experiments, query the analytics lake, and recommend what to test next.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Why it works well                                       -->
+<!-- ════════════════════════════════════════════════════ -->
+<div class="section-heading">
+  <h2>Built to Run Anywhere</h2>
+</div>
+<section class="features" style="padding-top: 1.5rem;">
+  <div class="feature-card">
+    <h3>Single Binary</h3>
     <p>One static binary — no Python, no runtime dependencies. Pre-built for macOS (x86_64/aarch64) and Linux (x86_64 gnu/musl, aarch64 musl). Copy it to your PATH and run experiments.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">📡</span> Native OpenTelemetry</h3>
-    <p>Every experiment emits real OTel spans across SSH, Kubernetes, plugins, baselines, analytics, and MCP dispatch. Traces appear in Jaeger, SigNoz, or any OTLP backend — no configuration.</p>
+    <h3>Native OpenTelemetry</h3>
+    <p>Every experiment emits real OTel spans across SSH, Kubernetes, plugins, baselines, analytics, and MCP dispatch. Traces show up in Jaeger, SigNoz, or any OTLP backend — no configuration.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🔍</span> Embedded Analytics</h3>
-    <p>Journals flow through Apache Arrow into DuckDB. SQL over your chaos history, export to Parquet, trend analysis across hundreds of runs. The data pipeline is built in, not bolted on.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🔌</span> 16 Plugins, 91 Actions</h3>
-    <p>PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH remote execution, userspace TCP chaos proxy, CPU/memory/IO stress. Write your own in any language — just scripts + a manifest.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">📋</span> Regulatory Compliance</h3>
-    <p>Map experiments to DORA (EU 2022/2554), NIS2, PCI-DSS 4.0, ISO 22301, ISO 27001, SOC 2, and Basel III. Journals are audit artifacts. Evidence reports generated from data.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🛡️</span> Memory Safe</h3>
+    <h3>Memory Safe</h3>
     <p>100% safe Rust across all 22 crates. Zero <code>unsafe</code> blocks in production code. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🎯</span> GameDay Orchestration</h3>
+    <h3>GameDay Orchestration</h3>
     <p>Coordinated campaigns of experiments with shared load, resilience scoring, and compliance article mapping. One command: 4 experiments, DORA/NIS2 evidence, audit-ready journal.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">🌐</span> MCP Server</h3>
-    <p>40 MCP tools over stdio or Streamable HTTP, with tool annotations, structured output schemas, and <code>tumult://</code> resources. Agent fleets, CI/CD pipelines, and quality engineering systems connect through the standard protocol.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🔌</span> Agent-Ready</h3>
-    <p>TOON format is 40-50% more token-efficient than JSON. Pre-built Docker images on GHCR. Any MCP-compatible agent can discover plugins, run experiments, query analytics, and generate compliance reports.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🐳</span> Docker Images</h3>
+    <h3>Docker Images</h3>
     <p>Pre-built on GHCR — no Rust toolchain needed. <code>docker pull ghcr.io/mwigge/tumult</code>. Composable bundles: infra, observability, MCP server, agent fleet. Full e2e in one command.</p>
   </div>
   <div class="feature-card">
-    <h3><span class="icon">📡</span> SigNoz Observability</h3>
+    <h3>SigNoz Observability</h3>
     <p>OTel Collector (contrib) with OTLP + Arrow receivers, span-to-metrics APM, host metrics, Prometheus. Traces flow to SigNoz — dashboards, alerting, log aggregation. No custom build needed.</p>
   </div>
 </section>
@@ -361,47 +458,12 @@ Running Q2 PostgreSQL Resilience GameDay...
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
-<!-- Krönika platform                                      -->
+<!-- The platform, running                                  -->
 <!-- ════════════════════════════════════════════════════ -->
-<section class="arch-section">
-  <h2>Krönika: The Resilience Record, Built In</h2>
-  <p style="color: var(--text-muted); max-width: 700px; margin: 0 auto 1.5rem;">
-    Tumult now ships Krönika — the resilience-records platform the experiments feed.
-    One embedded DuckDB store, one daemon (<code>tumultd</code>): OTLP ingest, a web UI,
-    resilience scoring, a manual-evidence lifecycle, approval workflows, and
-    compliance-grade PDF reports. No external services to run.
-  </p>
-</section>
-<section class="features" style="padding-top: 0;">
-  <div class="feature-card">
-    <h3><span class="icon">📥</span> OTLP Ingest Daemon</h3>
-    <p><code>tumultd</code> receives traces, metrics and logs over OTLP gRPC/HTTP into one embedded DuckDB store — single-writer, WAL-backed, crash-robust. Experiment journals flow in over the same wire.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🖥️</span> Web UI</h3>
-    <p>Overview KPIs, experiments, scores, logs/traces/metrics explorers, and run control with a live waterfall and two-step e-stop — served from the same binary, role-aware (viewer / operator / approver / admin).</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">✅</span> Approval Workflows</h3>
-    <p>Risk-tiered runs (T0–T3) gate behind approval quorums with content-hash pinning, segregation of duties, expiry, and audited break-glass. Every state transition joins a per-run tamper-evident hash chain.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🗂️</span> Manual Evidence</h3>
-    <p>Game days, tabletops and vendor failovers enter as attested records with a draft → submitted → verified review lifecycle and an append-only hash-chained audit trail — DORA Art. 24 evidence without telemetry.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">📈</span> Resilience Scores</h3>
-    <p>Per-experiment scores roll up by target, environment, and org hierarchy — pass rate, coverage, MTTR — computed from the store, not from opinion.</p>
-  </div>
-  <div class="feature-card">
-    <h3><span class="icon">🧾</span> Evidence-Grade Reports</h3>
-    <p>R1 executive digests, R2 evidence packs, and R3 game-day reports rendered as A4 PDFs with document control and hash-chain verification — artifacts an auditor can file.</p>
-  </div>
-</section>
 <section class="arch-section" style="padding-bottom: 1rem;">
   <h2>The Platform, Running</h2>
   <p style="color: var(--text-muted); max-width: 700px; margin: 0 auto 1.5rem;">
-    Every screen below is the embedded Krönika web UI on the seeded demo stack
+    Every screen below is the Tumult analytics UI on the seeded demo stack
     (<code>docker compose -f docker/docker-compose.kronika.yml up -d</code>) —
     from sign-in to an approved, executed, e-stopped and reported run.
     The full click path is in the <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
@@ -409,11 +471,11 @@ Running Q2 PostgreSQL Resilience GameDay...
 </section>
 <section class="shots">
   <div class="shot-card">
-    <img src="assets/overview-dashboard.png" alt="Krönika overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown">
+    <img src="assets/overview-dashboard.png" alt="Tumult analytics overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown">
     <div class="caption"><b>Overview</b>Resilience posture at a glance: hypothesis pass rate, deviation rate, experiments per day, fault breakdown — computed from the store, per window.</div>
   </div>
   <div class="shot-card">
-    <img src="assets/scores-rollup.png" alt="Krönika scores page — company score 90.0 with coverage and a domain treemap">
+    <img src="assets/scores-rollup.png" alt="Scores page — company score 90.0 with coverage and a domain treemap">
     <div class="caption"><b>Org rollup scores</b>Per-experiment scores roll up by domain to the company root, with coverage against expected evidence and the weakest member called out.</div>
   </div>
   <div class="shot-card">

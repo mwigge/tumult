@@ -1,7 +1,7 @@
 //! Programmatic entry point for running the Tumult MCP server.
 //!
 //! Both the standalone `tumult-mcp` binary and the `tumult mcp serve`
-//! subcommand (in `tumult-cli`) call [`serve`], so the two front-ends share a
+//! subcommand (in `tumult-cli`) call [`serve`][crate::server::serve], so the two front-ends share a
 //! single server implementation rather than duplicating transport wiring.
 
 use std::sync::Arc;
@@ -174,11 +174,11 @@ async fn run_health_server(host: &str, port: u16) {
     let listener = match TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("Failed to bind health server on {addr}: {e}");
+            tracing::error!(addr = %addr, error = %e, "failed to bind health server");
             return;
         }
     };
-    eprintln!("Health endpoint listening on http://{addr}/health");
+    tracing::info!("Health endpoint listening on http://{addr}/health");
 
     let body = format!(
         r#"{{"status":"ok","version":"{}"}}"#,
@@ -223,10 +223,10 @@ async fn shutdown_signal() {
             .expect("failed to register SIGTERM handler");
         tokio::select! {
             _ = ctrl_c => {
-                eprintln!("received SIGINT, shutting down");
+                tracing::info!("received SIGINT, shutting down");
             }
             _ = sigterm.recv() => {
-                eprintln!("received SIGTERM, shutting down");
+                tracing::info!("received SIGTERM, shutting down");
             }
         }
     }
@@ -234,7 +234,7 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         ctrl_c.await.ok();
-        eprintln!("received SIGINT, shutting down");
+        tracing::info!("received SIGINT, shutting down");
     }
 }
 
@@ -321,9 +321,10 @@ pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
             }
         }
         Transport::Http => {
-            eprintln!(
+            tracing::info!(
                 "Tumult MCP server listening on http://{}:{}/mcp",
-                opts.host, opts.port
+                opts.host,
+                opts.port
             );
             let allowed_origins = allowed_http_origins(&opts.host, opts.port);
             let server = hyper_server::create_server(
@@ -374,7 +375,7 @@ fn flush_telemetry() {
     opentelemetry::global::set_tracer_provider(
         opentelemetry::trace::noop::NoopTracerProvider::new(),
     );
-    eprintln!("telemetry flushed, exiting");
+    tracing::info!("telemetry flushed, exiting");
 }
 
 #[cfg(test)]

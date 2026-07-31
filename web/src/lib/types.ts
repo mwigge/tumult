@@ -1,4 +1,4 @@
-// Shared types mirroring the kronika-api JSON shapes.
+// Shared types mirroring the query API JSON shapes.
 
 export interface SparkPoint {
   ts: number;

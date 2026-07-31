@@ -12,7 +12,7 @@ env:
 
 jobs:
   web:
-    name: Web UI (Krönika SPA embedded in tumultd)
+    name: Web UI (Svelte SPA embedded in tumultd)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

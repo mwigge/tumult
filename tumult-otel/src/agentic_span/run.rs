@@ -7,11 +7,17 @@ use opentelemetry::{global, Context, KeyValue};
 use super::SCOPE;
 use crate::agentic;
 
+/// Name of the span emitted for one agentic experiment run.
 pub const EXPERIMENT_SPAN: &str = "resilience.agentic.experiment";
+/// Span attribute key for the run's target type (e.g. `http`).
 pub const TARGET_TYPE: &str = "resilience.agent.target_type";
+/// Span attribute key for the number of fault decisions in the run.
 pub const FAULT_COUNT: &str = "resilience.agent.fault.count";
+/// Span attribute key for the number of contract outcomes in the run.
 pub const CONTRACT_COUNT: &str = "resilience.agent.contract.count";
+/// Span attribute key for the reason attached to a contract outcome.
 pub const CONTRACT_REASON: &str = "resilience.agent.contract.reason";
+/// Span attribute key for the severity of a contract outcome.
 pub const CONTRACT_SEVERITY: &str = "resilience.agent.contract.severity";
 
 /// One fault decision in a run.
@@ -26,7 +32,9 @@ pub struct FaultRecord {
 pub struct ContractRecord {
     pub contract_type: String,
     pub passed: bool,
+    /// Why the contract came out as it did, when known.
     pub reason: Option<String>,
+    /// Severity weight of the outcome, on a 0.0–1.0 scale.
     pub severity: f64,
 }
 
@@ -125,26 +133,26 @@ fn record_metrics(run: &AgenticRunTelemetry, client: &str, any_failed: bool) {
     let failed = run.contracts.len() - passed;
 
     meter
-        .u64_counter("resilience.agent.faults_applied")
+        .u64_counter("tumult.agent.faults_applied")
         .build()
         .add(applied as u64, &attrs);
     meter
-        .u64_counter("resilience.agent.contracts_passed")
+        .u64_counter("tumult.agent.contracts.passed")
         .build()
         .add(passed as u64, &attrs);
     meter
-        .u64_counter("resilience.agent.contracts_failed")
+        .u64_counter("tumult.agent.contracts.failed")
         .build()
         .add(failed as u64, &attrs);
     meter
-        .f64_histogram("resilience.agent.score")
+        .f64_histogram("tumult.agent.score")
         .build()
         .record(run.resilience_score, &attrs);
 
     if any_failed {
         // Mirror the experiment-failed signal as a counter for alerting.
         meter
-            .u64_counter("resilience.agent.runs_with_failure")
+            .u64_counter("tumult.agent.runs_with_failure")
             .build()
             .add(1, &attrs);
     }

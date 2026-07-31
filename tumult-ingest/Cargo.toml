@@ -1,7 +1,7 @@
 [package]
 name = "tumult-ingest"
 description = "OTLP gRPC/HTTP ingest + manual importers writing into tumult-lake"
-version = "0.6.0"
+version = "0.7.0"
 edition.workspace = true
 license.workspace = true
 
@@ -12,7 +12,7 @@ tumult-core = { path = "../tumult-core" }
 tumult-auth = { path = "../tumult-auth" }
 tumult-autopilot = { path = "../tumult-autopilot" }
 opentelemetry-proto.workspace = true
-tonic.workspace = true
+tonic = { workspace = true, features = ["tls-aws-lc"] }
 prost.workspace = true
 axum.workspace = true
 tokio.workspace = true

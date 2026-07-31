@@ -1,6 +1,6 @@
 # Research findings — compliance-grade reports
 
-Distilled research behind the v0.4.0 report pipeline (`kronika-docs`,
+Distilled research behind the v0.4.0 report pipeline (`tumult-compliance`,
 `/api/reports/v2/*`, `/api/scores`). Companion ADR:
 [../adr/ADR-008-typst-report-pipeline.md](../adr/ADR-008-typst-report-pipeline.md).
 
@@ -43,7 +43,7 @@ the recurring must-haves are:
 
 The clause lists (DORA Art. 11(4)/12(2)/24–26; NIS2 Art. 21(2)(c)(f);
 ISO 27001 A.5.29/30, A.8.13/14; SOC 2 A1.2/3) are compile-time constants in
-`kronika_docs::builders::FRAMEWORK_CLAUSES`. **They must be verified against
+`tumult_compliance::builders::FRAMEWORK_CLAUSES`. **They must be verified against
 the licensed framework text before any submission** — every R2 carries this
 footnote twice, deliberately. Treat the skeleton as a structure to fill in,
 not legal truth.
@@ -67,7 +67,7 @@ previous equal window.
 
 Rationale: linear and explainable — a board member can verify any number
 with the table above. Known limitation: "never run" only surfaces for
-experiments present in the store; Krönika has no external experiment
+experiments present in the store; Tumult has no external experiment
 inventory to diff against. A missing outcome log (run never completed)
 counts as a failed attempt — conservative by design.
 
@@ -87,7 +87,7 @@ Print-first, editorial rather than dashboard-y:
   `font-variant-numeric: tabular-nums` in the HTML preview and the web UI).
 - Charts are vector SVGs (Okabe–Ito palette, direct labels, no legends
   where avoidable), shared verbatim between the PDF and the HTML preview.
-- Every chart caption carries "Source: Krönika · data as of …".
+- Every chart caption carries "Source: Tumult · data as of …".
 - **Status is glyph + label, never hue alone** — outcomes, run states,
   severities and OTel status codes share one mapping (`Cell::glyph`):
   green ● good, orange ▲ warning, vermillion × bad, grey ○ unknown. Glyphs

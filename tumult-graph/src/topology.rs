@@ -8,7 +8,7 @@
 //! names are normalized exactly like run-derived hosts so `svc:` ids from
 //! experiment runs collide (join) with declared ones.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::model::{Edge, EdgeRel, GraphDelta, Node, NodeKind};
@@ -19,14 +19,14 @@ use crate::service::normalize_service;
 pub const TOPOLOGY_RUN_ID: &str = "__topology__";
 
 /// A parsed topology document.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TopologyDoc {
     #[serde(default, rename = "service")]
     pub services: Vec<TopologyService>,
 }
 
 /// One declared service.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TopologyService {
     /// Service name; normalized to the same form run-derived services use.
     pub name: String,
@@ -219,5 +219,36 @@ mod tests {
     fn cycles_are_allowed() {
         let cyclic = "[[service]]\nname=\"a\"\ndepends_on=[\"b\"]\n[[service]]\nname=\"b\"\ndepends_on=[\"a\"]\n";
         assert!(parse_topology(cyclic).is_ok());
+    }
+
+    #[test]
+    fn topology_doc_json_round_trips() {
+        let doc = parse_topology(DEMO).unwrap();
+        let json = serde_json::to_string(&doc).unwrap();
+        let back: TopologyDoc = serde_json::from_str(&json).unwrap();
+        assert_eq!(doc, back);
+    }
+
+    #[test]
+    fn topology_service_json_round_trips() {
+        let service = TopologyService {
+            name: "api".into(),
+            depends_on: vec!["db".into()],
+            owner: Some("team-core".into()),
+            tier: Some("service".into()),
+        };
+        let json = serde_json::to_string(&service).unwrap();
+        let back: TopologyService = serde_json::from_str(&json).unwrap();
+        assert_eq!(service, back);
+
+        let minimal = TopologyService {
+            name: "db".into(),
+            depends_on: Vec::new(),
+            owner: None,
+            tier: None,
+        };
+        let json = serde_json::to_string(&minimal).unwrap();
+        let back: TopologyService = serde_json::from_str(&json).unwrap();
+        assert_eq!(minimal, back);
     }
 }

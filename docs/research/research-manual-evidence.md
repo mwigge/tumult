@@ -1,11 +1,12 @@
 # Research: manual evidence entry (v0.5.0, Part B)
 
-Status: implemented in v0.5.0 — see `kronika_store::manual`,
-`/api/manual/*`, the UI's Manual page, and ADR 0004.
+Status: implemented in v0.5.0 — see `tumult_lake::manual`,
+`/api/manual/*`, the UI's Manual page, and
+[ADR-009](../adr/ADR-009-org-hierarchy-and-manual-evidence.md).
 
 ## Problem
 
-Krönika's evidence trail is only as good as its telemetry. Real resilience
+Tumult's evidence trail is only as good as its telemetry. Real resilience
 programmes run plenty of tests that never touch an agent:
 
 - **game days** coordinated over a call, with actions executed by hand;
@@ -118,14 +119,15 @@ can pin content.
 
 ## The "acting as" caveat
 
-There is no authentication in Krönika. The API takes plain `entered_by` /
-`by` / `reviewer` strings (the UI keeps an "acting as" name in
-localStorage) and the store enforces the lifecycle *given those strings* —
-including reviewer ≠ enterer. This is honest workflow scaffolding, not
-access control: anyone can claim any name. It is the right scope for a
-single-tenant local tool, and it is documented on the Manual page, here,
-and in ADR 0004. When auth lands (reverse proxy, SSO), the same fields map
-onto verified identities with no schema change.
+Authentication is optional in the analytics layer. With auth off, the API
+takes plain `entered_by` / `by` / `reviewer` strings (the UI keeps an
+"acting as" name in localStorage) and the store enforces the lifecycle
+*given those strings* — including reviewer ≠ enterer. This is honest
+workflow scaffolding, not access control: anyone can claim any name. It is
+the right scope for a single-tenant local tool, and it is documented on
+the Manual page, here, and in ADR-009. With auth enabled, the
+authenticated principal's name replaces the request-body fields — no
+schema change, exactly the mapping this design predicted.
 
 ## Bulk import
 

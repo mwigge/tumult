@@ -11,17 +11,37 @@ Tumult is a Rust-native chaos engineering platform. Fast, portable, observable.
 | Crate | Purpose |
 |-------|---------|
 | `tumult-cli` | CLI binary — the `tumult` command |
-| `tumult-core` | Engine: experiment runner, hypothesis eval, controls |
+| `tumult-core` | Core engine: experiment runner, hypothesis eval, controls |
 | `tumult-plugin` | Plugin trait, registry, manifest loader |
+| `tumult-exec` | Provider-dispatch activity executor shared by the CLI and tumultd |
+| `tumult-auth` | Shared auth primitives: RBAC roles, argon2id hashing, token generation |
+| `tumult-authoring` | Authoring ergonomics: fault catalog, experiment builder, starter templates |
 | `tumult-otel` | OpenTelemetry setup, span creation, OTLP export |
+| `tumult-baseline` | Baseline acquisition and statistical methods |
 | `tumult-ssh` | SSH remote execution (russh) |
-| `tumult-stress` | CPU/memory/IO stress (stress-ng) |
-| `tumult-containers` | Docker/Podman chaos |
-| `tumult-process` | Process kill/restart |
-| `tumult-kubernetes` | K8s chaos (kube-rs) |
-| `tumult-db` | Database chaos (PostgreSQL, MySQL, Redis) |
-| `tumult-kafka` | Kafka broker chaos + JMX probes |
-| `tumult-mcp` | MCP server adapter for AQE integration |
+| `tumult-net` | TCP chaos proxy actions and probes (wraps tokio-netem) |
+| `tumult-graph` | Token-efficient knowledge graph over chaos data (nodes/edges + SQL) |
+| `tumult-tui` | Keyboard-driven analytics TUI over the DuckDB store |
+| `tumult-kubernetes` | Kubernetes chaos actions and probes (kube-rs) |
+| `tumult-cloud` | Cloud fault API connectors (AWS FIS, Azure Chaos Studio) |
+| `tumult-windows` | Windows-native fault injection (taskkill, CPU stress, firewall) |
+| `tumult-mcp` | MCP server adapter exposing Tumult as tools |
+| `tumult-clickhouse` | ClickHouse analytics backend — shared storage with SigNoz |
+| `tumult-cypher` | openCypher query surface over ChaosGraph snapshots |
+| `tumult-agentic` | Agentic AI fault injection and resilience scoring |
+| `tumult-intelligence` | AI-assisted experiment recommendations |
+| `tumult-test-utils` | Shared test helpers for workspace integration tests |
+| `tumult-report` | Report model, HTML renderer, scheduled report producer |
+| `tumult-agent-cli` | Adapter for invoking agentic coding CLIs non-interactively |
+| `tumult-autopilot` | Autopilot decision logic: policy, validator, safety gate, ladder |
+| `tumult-otlp` | OTLP protobuf → tumult-lake row translation (pure functions) |
+| `tumult-lake` | Unified embedded DuckDB store — one file, one writer |
+| `tumult-query` | Read-side domain queries over the lake store |
+| `tumult-ingest` | OTLP gRPC/HTTP ingest + manual importers |
+| `tumult-metrics` | YAML semantic metric layer compiled to validated SQL |
+| `tumult-compliance` | Compliance report documents: content model, HTML, Typst PDF |
+| `tumult-api` | Read-only JSON query API backing the analytics UI |
+| `tumultd` | Daemon — OTLP ingest servers, manual import, ad-hoc reports |
 | `docs/` | Architecture, ADRs, guides, plugin docs |
 
 ---
@@ -89,9 +109,10 @@ git checkout main && git pull --ff-only   # back to clean main
 
 ### Observability First
 
-- Every new action or probe must emit an OTel span with `tumult.*` attributes
+- Every new action or probe must emit an OTel span carrying `resilience.*` attributes (see `tumult-otel/src/attributes.rs`)
 - Structured logging only — no `println!()` in library code, no credentials in log output
-- Metrics follow the `tumult_<component>_<metric>_<unit>` naming convention
+- Metrics use dotted `tumult.*` names (e.g. `tumult.experiments.total`) — the bundled SigNoz dashboards query these names (see `tumult-otel/src/metrics.rs`)
+- `baseline.*`, `script.*`, and `resilience.agent.*` are legacy attribute outliers — do not use them in new code
 
 ---
 
@@ -129,7 +150,7 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test && cargo doc --no
 | Linting | cargo clippy | 0 warnings (-D warnings) | Yes |
 | Test pass rate | cargo test | 100% | Yes |
 | Test coverage | cargo-tarpaulin | ≥ 90% | Yes |
-| Security audit | cargo audit | 0 HIGH/CRITICAL | Yes |
+| Security audit | cargo deny | 0 HIGH/CRITICAL unless explicitly excepted in `deny.toml` with written justification | Yes |
 | Documentation | cargo doc | 0 errors | Warning |
 
 ### Quick Fixes

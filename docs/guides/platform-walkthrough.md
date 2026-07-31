@@ -6,7 +6,7 @@ nav_order: 22
 
 # Platform Walkthrough
 
-A click-through of the merged tumult + Krönika platform: sign in, register an
+A click-through of the Tumult platform: sign in, register an
 experiment, run it behind an approval quorum, e-stop a second run mid-method,
 and generate the compliance evidence pack. Every screenshot below is the
 embedded web UI on the seeded demo stack — nothing is mocked.
@@ -25,7 +25,7 @@ approver.
 
 ## Sign in
 
-![Krönika login page](../assets/login.png)
+![Tumult login page](../assets/login.png)
 
 Sessions are 256-bit opaque cookies (`HttpOnly`, `SameSite=Strict`, 12h);
 automation uses revocable `kro_`-prefixed tokens instead. Authorization is a
@@ -124,11 +124,20 @@ store as document-controlled PDFs. The R2 pack includes the approval chain of
 every gated run in the window (SOC 2 CC8.1) — the two runs above, bob's
 approvals included.
 
+Reports respect the same per-user environment scopes as the rest of Tumult.
+A user scoped to specific environments generates digests, evidence packs and
+metric reports containing only those environments' data, and each generated
+artifact records the coverage it was built from. Scoped users then see only
+artifacts whose coverage lies inside their own scopes; global reports and
+older artifacts without coverage metadata stay visible to unscoped users
+only (a scoped user gets a 404, as with out-of-scope traces). Unscoped
+users see and generate everything, exactly as before.
+
 ![Reports page with a generated R2 evidence pack](../assets/reports-evidence-pack.png)
 
 ## Where next
 
-- [Krönika architecture](../architecture/kronika-architecture.md) — the
+- [Analytics architecture](../architecture/kronika-architecture.md) — the
   single-writer lake, run queue, approval pinning, and report pipeline behind
   these screens.
 - [Production deployment](production-deployment.md) — binaries, containers,

@@ -244,6 +244,49 @@ mod tests {
     }
 
     #[test]
+    fn resilience_score_round_trips() {
+        let score = ResilienceScore::compute(0.8, 1.0, 0.9, 0.75);
+        let decoded: ResilienceScore = toon_round_trip(&score);
+        assert_eq!(decoded, score);
+    }
+
+    #[test]
+    fn gameday_journal_round_trips() {
+        let journal = GameDayJournal {
+            gameday_id: "gd-2026-q2".into(),
+            title: "Q2 PG Resilience".into(),
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_981_000_000_000_000,
+            duration_s: 10_000.0,
+            experiment_journals: vec![Journal::for_experiment(
+                &Experiment::default(),
+                "exp-1".into(),
+                ExperimentStatus::Completed,
+                1_774_980_000_000_000_000,
+            )],
+            load_result: Some(LoadResult {
+                tool: LoadTool::K6,
+                started_at_ns: 1_774_980_000_000_000_000,
+                ended_at_ns: 1_774_980_060_000_000_000,
+                duration_s: 60.0,
+                vus: 10,
+                throughput_rps: 120.5,
+                latency_p50_ms: 12.0,
+                latency_p95_ms: 45.0,
+                latency_p99_ms: 90.0,
+                error_rate: 0.001,
+                total_requests: 7_230,
+                thresholds_met: true,
+            }),
+            resilience_score: ResilienceScore::compute(1.0, 1.0, 0.9, 1.0),
+            compliance_status: "COMPLIANT".into(),
+            regulatory: None,
+        };
+        let decoded: GameDayJournal = toon_round_trip(&journal);
+        assert_eq!(decoded, journal);
+    }
+
+    #[test]
     fn resilience_score_all_pass() {
         let score = ResilienceScore::compute(1.0, 1.0, 1.0, 1.0);
         assert!((score.overall - 1.0).abs() < f64::EPSILON);

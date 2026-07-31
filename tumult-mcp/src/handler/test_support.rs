@@ -42,6 +42,7 @@ impl StubMcpServer {
         }
     }
 
+    /// An inert stub with no captured auth info (the stdio case).
     pub(crate) fn new() -> Self {
         Self::with_auth_info(None)
     }

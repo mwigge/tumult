@@ -5,6 +5,10 @@ use rust_mcp_sdk::macros;
 
 use super::default_store_path;
 
+/// Arguments for the `tumult_autopilot_run` tool.
+///
+/// Every decision is persisted before any action runs; with `execute`
+/// unset or false the pass only decides and records — nothing is injected.
 #[macros::mcp_tool(
     name = "tumult_autopilot_run",
     description = "Autopilot: run ONE pass of the decision loop over the given policy TOML — assemble injection candidates from the compliance lineage, gate each against the policy, and persist every decision (enact / downgrade / propose / veto). AUDIT-BEFORE-ACT contract: each decision record is written to the analytics store BEFORE any action runs, so a crash mid-loop leaves the truthful partial record. By default (execute=false) the pass only decides and records — NOTHING is injected. Setting execute=true ACTUALLY INJECTS FAULTS: each enact verdict runs its policy-bound playbook experiment against the real target. Even with execute=false, guard probes run once against the target during pre-flight; no faults are injected. Every pass creates new decision records, so repeated calls are not idempotent. Structured content is {decisions, enacted, policy_hash, executed}.",
@@ -28,6 +32,7 @@ pub struct AutopilotRunTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_autopilot_status` tool.
 #[macros::mcp_tool(
     name = "tumult_autopilot_status",
     description = "Autopilot: list recorded decisions with their latest lifecycle event (run_started / run_completed / run_failed / human_approved / human_denied), newest first, optionally filtered by verdict. Reads the analytics store read-only. Structured content is {decisions, count}.",
@@ -46,6 +51,10 @@ pub struct AutopilotStatusTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_autopilot_respond` tool.
+///
+/// Approving re-evaluates the full gate against current state before the
+/// playbook experiment runs; a decision takes exactly one response.
 #[macros::mcp_tool(
     name = "tumult_autopilot_respond",
     description = "Autopilot: record the human response to a proposed/downgraded decision. approve=true runs the decision's playbook experiment (real fault injection, journaled and ingested like any run) — but only after the FULL gate is re-evaluated against CURRENT state: supply the same policy TOML via policy_path, and if the policy hash changed or any gate rule now vetoes or downgrades (enrollment, concurrency, cooldown, guard telemetry pre-flight, …), execution is refused and the refusal is recorded in the audit trail. No stale approval ever executes. approve=false records the veto feedback the autonomy ladder consumes — denials keep a fault class from graduating to unattended enact. Either response is appended as an event BEFORE any experiment runs, and a decision takes exactly one response. Structured content is {decision_id, action}.",
@@ -72,6 +81,7 @@ pub struct AutopilotRespondTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_autopilot_export` tool.
 #[macros::mcp_tool(
     name = "tumult_autopilot_export",
     description = "Autopilot: export the decision and event tables as a Parquet archive — writes autopilot_decisions.parquet and autopilot_events.parquet into the given directory (overwriting previous exports there). Structured content is {dir}.",
@@ -88,6 +98,9 @@ pub struct AutopilotExportTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_autopilot_notify` tool.
+///
+/// Insert-only — recording the change event runs nothing itself.
 #[macros::mcp_tool(
     name = "tumult_autopilot_notify",
     description = "Autopilot: record an external change event (deploy, config change) against a service. The next autopilot pass treats the service's evidence as invalidated and proposes revalidation via its playbook — change-triggered evidence invalidation, not just time-triggered. Insert-only; nothing runs from this call.",

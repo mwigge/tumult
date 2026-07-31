@@ -2,20 +2,29 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Whether an activity injects a fault or measures the system.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityType {
+    /// Mutates the system under test (fault injection or rollback).
     Action,
+    /// Measures system state without mutating it.
     Probe,
 }
 
+/// Terminal status of an experiment run, recorded in the journal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExperimentStatus {
+    /// The run finished and all hypotheses held.
     Completed,
+    /// The run finished but a post-method hypothesis failed.
     Deviated,
+    /// The run stopped before the method because the pre-method hypothesis failed.
     Aborted,
+    /// The run stopped because an action errored.
     Failed,
+    /// The run was cancelled mid-execution (e.g. via a cancellation token).
     Interrupted,
     /// The run was pulled mid-experiment by an auto-halt guard: a guard probe
     /// breached its safe-condition tolerance while the fault was active, so
@@ -25,15 +34,19 @@ pub enum ExperimentStatus {
     Halted,
 }
 
+/// Outcome status of a single activity execution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityStatus {
     Succeeded,
     Failed,
+    /// The activity exceeded its timeout and was terminated.
     Timeout,
+    /// The activity was not executed.
     Skipped,
 }
 
+/// Container runtime used to target or inspect containers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContainerRuntime {
@@ -42,14 +55,19 @@ pub enum ContainerRuntime {
     Containerd,
 }
 
+/// The outcome an operator predicts in the Phase 0 estimate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExpectedOutcome {
+    /// The system is expected to deviate from steady state and not recover cleanly.
     Deviated,
+    /// The system is expected to deviate, then recover.
     Recovered,
+    /// The system is expected to be unaffected by the fault.
     Unaffected,
 }
 
+/// Severity of expected or observed service degradation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DegradationLevel {
@@ -59,6 +77,7 @@ pub enum DegradationLevel {
     Severe,
 }
 
+/// Operator confidence in a Phase 0 estimate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Confidence {
@@ -67,16 +86,23 @@ pub enum Confidence {
     High,
 }
 
+/// Statistical method used to derive baseline tolerance bounds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BaselineMethod {
+    /// Operator-provided fixed bounds.
     Static,
+    /// Bounds derived from sample percentiles.
     Percentile,
+    /// Bounds at `mean ± sigma * stddev`.
     MeanStddev,
+    /// Bounds derived from the interquartile range.
     Iqr,
+    /// Bounds learned from historical data rather than the live window.
     Learned,
 }
 
+/// Load generator tool supported by the runner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LoadTool {
@@ -84,14 +110,19 @@ pub enum LoadTool {
     Jmeter,
 }
 
+/// Where baseline data came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BaselineSource {
+    /// Sampled live before fault injection.
     Live,
+    /// Loaded from a previous run's journal or baseline.
     Historical,
+    /// Provided by the AQE subsystem.
     Aqe,
 }
 
+/// Direction of change in resilience metrics across runs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Trend {

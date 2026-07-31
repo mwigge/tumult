@@ -13,17 +13,25 @@ use super::target::{ConfigValue, Provider, SecretValue, Tolerance};
 
 // ── Activity ───────────────────────────────────────────────────
 
+/// A single experiment step: an action (fault injection) or a probe
+/// (measurement), executed through a provider.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Activity {
+    /// Human-readable step name, surfaced in the journal.
     pub name: String,
     pub activity_type: ActivityType,
     pub provider: Provider,
+    /// Expected-output check. `None` (the default) means success is judged
+    /// by the provider's exit status alone.
     #[serde(default)]
     pub tolerance: Option<Tolerance>,
+    /// Pause in seconds before the activity runs.
     #[serde(default)]
     pub pause_before_s: Option<f64>,
+    /// Pause in seconds after the activity completes.
     #[serde(default)]
     pub pause_after_s: Option<f64>,
+    /// Run concurrently with the method instead of sequentially.
     #[serde(default)]
     pub background: bool,
     /// Optional label selector for targeting specific pods or containers by labels.
@@ -53,10 +61,14 @@ impl Default for Activity {
 
 // ── Hypothesis ─────────────────────────────────────────────────
 
+/// Steady-state hypothesis: the probes that define "healthy" for the system
+/// under test. Evaluated before and after the method.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hypothesis {
+    /// Human-readable statement of the expected steady state.
     pub title: String,
+    /// Probes evaluated together; the hypothesis is met when all succeed.
     pub probes: Vec<Activity>,
 }
 
@@ -92,75 +104,111 @@ fn default_min_breaches() -> u32 {
 
 // ── Control ────────────────────────────────────────────────────
 
+/// A lifecycle control binding: names a control and the provider that
+/// implements its hooks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Control {
+    /// Control identifier matched at lifecycle points (e.g. `logging`).
     pub name: String,
+    /// Provider invoked when the control's lifecycle points fire.
     pub provider: Provider,
 }
 
 // ── Estimate (Phase 0) ────────────────────────────────────────
 
+/// Phase 0 estimate: the operator's predicted outcome, recorded before the
+/// run and compared against actuals during analysis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Estimate {
+    /// Predicted outcome of the experiment.
     pub expected_outcome: ExpectedOutcome,
+    /// Predicted recovery time in seconds.
     pub expected_recovery_s: Option<f64>,
+    /// Predicted severity of service degradation during the fault.
     pub expected_degradation: Option<DegradationLevel>,
+    /// Whether the operator expects data loss.
     pub expected_data_loss: Option<bool>,
+    /// Operator's confidence in the prediction.
     pub confidence: Option<Confidence>,
+    /// Free-form reasoning behind the prediction.
     pub rationale: Option<String>,
+    /// Number of prior runs informing the prediction.
     pub prior_runs: Option<u32>,
 }
 
 // ── Baseline Config (Phase 1) ──────────────────────────────────
 
+/// Phase 1 baseline configuration: how steady-state metrics are captured
+/// before fault injection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BaselineConfig {
+    /// Total baseline capture window in seconds.
     pub duration_s: f64,
+    /// Warmup period in seconds at the start of the window.
     pub warmup_s: Option<f64>,
+    /// Interval in seconds between probe samples.
     pub interval_s: f64,
+    /// Statistical method used to derive tolerance bounds.
     pub method: BaselineMethod,
+    /// Standard-deviation multiplier, used by the `mean_stddev` method.
     pub sigma: Option<f64>,
+    /// Confidence level (0.0-1.0), used by statistical methods that take one.
     pub confidence: Option<f64>,
 }
 
 // ── Load Config ────────────────────────────────────────────────
 
+/// Load test configuration: a load generator run alongside the experiment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoadConfig {
+    /// Load tool to run.
     pub tool: LoadTool,
+    /// Path to the load script executed by the tool.
     pub script: PathBuf,
+    /// Virtual users (passed to the tool when set).
     pub vus: Option<u32>,
+    /// Load duration in seconds (passed to the tool when set).
     pub duration_s: Option<f64>,
+    /// Tool-specific metric thresholds (metric name → bound).
     #[serde(default)]
     pub thresholds: HashMap<String, f64>,
 }
 
 // ── Regulatory Mapping ─────────────────────────────────────────
 
+/// A single regulatory requirement an experiment provides evidence for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegulatoryRequirement {
+    /// Canonical requirement identifier (e.g. `DORA-Art24`).
     pub id: String,
     pub description: String,
+    /// Short statement of the evidence the experiment provides.
     pub evidence: String,
 }
 
+/// Regulatory mapping attached to an experiment or `GameDay`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegulatoryMapping {
+    /// Framework names or canonical report identifiers (e.g. `DORA`).
     pub frameworks: Vec<String>,
+    /// Individual requirements the experiment provides evidence for.
     pub requirements: Vec<RegulatoryRequirement>,
 }
 
 // ── Experiment (the top-level definition) ──────────────────────
 
+/// Top-level experiment definition: identity, configuration, steady-state
+/// hypothesis, method (fault window), rollbacks, and per-phase configs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Experiment {
+    /// Schema version; defaults to `v1` when omitted.
     #[serde(default = "default_version")]
     pub version: String,
     #[serde(default)]
@@ -169,12 +217,18 @@ pub struct Experiment {
     pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Configuration values resolved from the environment (or inlined) at
+    /// load time and substituted into provider arguments.
     #[serde(default)]
     pub configuration: IndexMap<String, ConfigValue>,
+    /// Secret references (`group -> key -> source`) resolved from the
+    /// environment or files at load time; resolved values never enter the
+    /// journal.
     #[serde(default)]
     pub secrets: IndexMap<String, IndexMap<String, SecretValue>>,
     #[serde(default)]
     pub controls: Vec<Control>,
+    /// Steady-state hypothesis evaluated before and after the method.
     #[serde(default)]
     pub steady_state_hypothesis: Option<Hypothesis>,
     /// Auto-halt guardrails: probes evaluated continuously during the fault
@@ -191,14 +245,20 @@ pub struct Experiment {
     /// enforcement boundary). `None` means unlimited (pre-2.3 behavior).
     #[serde(default)]
     pub max_concurrent_faults: Option<u32>,
+    /// Activities executed during the fault window, in declaration order
+    /// (background activities run concurrently).
     #[serde(default)]
     pub method: Vec<Activity>,
+    /// Activities executed to undo injected faults, per the rollback strategy.
     #[serde(default)]
     pub rollbacks: Vec<Activity>,
+    /// Phase 0 prediction, recorded in the journal for analysis.
     #[serde(default)]
     pub estimate: Option<Estimate>,
+    /// Phase 1 baseline capture configuration; `None` skips the baseline phase.
     #[serde(default)]
     pub baseline: Option<BaselineConfig>,
+    /// Load test to run alongside the method, if any.
     #[serde(default)]
     pub load: Option<LoadConfig>,
     #[serde(default)]

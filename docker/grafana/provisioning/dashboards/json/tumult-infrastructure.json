@@ -136,7 +136,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
       "targets": [
         {
-          "expr": "script_executions_total",
+          "expr": "tumult_plugin_script_executions_total",
           "legendFormat": "success={{script_success}}"
         }
       ],

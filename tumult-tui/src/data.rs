@@ -8,9 +8,9 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use tumult_lake::AnalyticsStore;
 
+use crate::error::TuiError;
 use crate::model::{ActivityRow, ExperimentRow, GraphNodeRow};
 
 /// The `ChaosGraph` node kinds the browser cycles through.
@@ -38,11 +38,13 @@ pub struct Snapshot {
 ///
 /// Returns an error if the store cannot be opened read-only (e.g. it does not
 /// exist yet, or a writer holds the exclusive lock) or a query fails.
-pub fn load_snapshot(path: &Path) -> Result<Snapshot> {
-    let store = AnalyticsStore::open_read_only(path)
-        .with_context(|| format!("opening analytics store read-only at {}", path.display()))?;
+pub fn load_snapshot(path: &Path) -> Result<Snapshot, TuiError> {
+    let store = AnalyticsStore::open_read_only(path).map_err(|source| TuiError::OpenReadOnly {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let experiments = load_experiments(&store)?;
-    let stats = store.stats().context("reading store stats")?;
+    let stats = store.stats().map_err(TuiError::StoreStats)?;
     let schema_version = store.schema_version().unwrap_or(0);
     Ok(Snapshot {
         experiments,
@@ -54,7 +56,7 @@ pub fn load_snapshot(path: &Path) -> Result<Snapshot> {
 
 /// Load every experiment (most-recent first) joined with its non-succeeded
 /// activity count as the `deviations` column.
-fn load_experiments(store: &AnalyticsStore) -> Result<Vec<ExperimentRow>> {
+fn load_experiments(store: &AnalyticsStore) -> Result<Vec<ExperimentRow>, TuiError> {
     let sql = "SELECT e.experiment_id, e.title, e.status, e.started_at_ns, e.duration_ms, \
                       e.resilience_score, e.method_step_count, \
                       COALESCE(d.dev, 0) AS deviations \
@@ -66,7 +68,7 @@ fn load_experiments(store: &AnalyticsStore) -> Result<Vec<ExperimentRow>> {
                    GROUP BY experiment_id \
                ) d ON d.experiment_id = e.experiment_id \
                ORDER BY e.started_at_ns DESC";
-    let rows = store.query(sql).context("querying experiments history")?;
+    let rows = store.query(sql).map_err(TuiError::ExperimentsHistory)?;
     Ok(rows
         .iter()
         .filter_map(|r| ExperimentRow::from_columns(r))
@@ -78,14 +80,14 @@ fn load_experiments(store: &AnalyticsStore) -> Result<Vec<ExperimentRow>> {
 /// # Errors
 ///
 /// Returns an error if the store cannot be opened read-only or the query fails.
-pub fn load_activities(path: &Path, experiment_id: &str) -> Result<Vec<ActivityRow>> {
+pub fn load_activities(path: &Path, experiment_id: &str) -> Result<Vec<ActivityRow>, TuiError> {
     let store = AnalyticsStore::open_read_only(path)?;
     // Bind the id as a parameter to avoid any SQL-injection surface.
     let sql = "SELECT name, activity_type, status, duration_ms, phase, output \
                FROM activity_results WHERE experiment_id = ? ORDER BY started_at_ns";
     let rows = store
         .query_with_param(sql, experiment_id)
-        .context("querying activity timeline")?;
+        .map_err(TuiError::ActivityTimeline)?;
     Ok(rows
         .iter()
         .filter_map(|r| ActivityRow::from_columns(r))
@@ -102,10 +104,13 @@ pub fn load_graph_nodes(
     path: &Path,
     kind: &str,
     filter: Option<&str>,
-) -> Result<Vec<GraphNodeRow>> {
+) -> Result<Vec<GraphNodeRow>, TuiError> {
     let store = AnalyticsStore::open_read_only(path)?;
-    let nodes = tumult_query::graph_query(&store, kind, filter)
-        .with_context(|| format!("querying ChaosGraph nodes of kind {kind}"))?;
+    let nodes =
+        tumult_query::graph_query(&store, kind, filter).map_err(|source| TuiError::GraphNodes {
+            kind: kind.to_string(),
+            source,
+        })?;
     Ok(nodes
         .into_iter()
         .map(|n| GraphNodeRow {
@@ -121,10 +126,10 @@ pub fn load_graph_nodes(
 /// # Errors
 ///
 /// Returns an error if the store cannot be opened read-only or the query fails.
-pub fn load_graph_neighbors(path: &Path, node_id: &str) -> Result<Vec<String>> {
+pub fn load_graph_neighbors(path: &Path, node_id: &str) -> Result<Vec<String>, TuiError> {
     let store = AnalyticsStore::open_read_only(path)?;
     let ego = tumult_query::graph_neighbors(&store, node_id, None, 1)
-        .context("querying ChaosGraph neighbours")?;
+        .map_err(TuiError::GraphNeighbours)?;
     Ok(ego
         .map(|g| {
             g.edges

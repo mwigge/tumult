@@ -39,6 +39,7 @@ impl ResourceKind {
         }
     }
 
+    /// Human-readable blurb shown in `resources/list` for this kind.
     pub(super) fn description(self) -> &'static str {
         match self {
             Self::Journal => "Tumult experiment journal (read as JSON: {summary, journal}).",

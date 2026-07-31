@@ -8,6 +8,8 @@ mod agentic;
 mod agents;
 mod analysis;
 mod authoring;
+/// Autopilot tools: decision-loop passes, status, human responses, export,
+/// and change notifications.
 pub mod autopilot;
 mod cypher;
 mod experiment;
@@ -17,6 +19,8 @@ mod journals;
 mod listing;
 mod recommend;
 mod reporting;
+/// Topology tools: declared-topology import, service map, compliance
+/// lineage, and injection recommendations over the analytics store.
 pub(crate) mod topology;
 mod validation;
 mod whoami;

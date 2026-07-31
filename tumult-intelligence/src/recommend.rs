@@ -1,9 +1,9 @@
 //! Top-level recommendation entry point and draft validation.
 
-use anyhow::Context as _;
 use tumult_core::engine::validate_experiment;
 
 use crate::context::{build_context, heuristic_output};
+use crate::error::RecommendError;
 use crate::render::render_text;
 use crate::types::{OutputFormat, RecommendOptions, RecommendationOutput};
 
@@ -13,7 +13,7 @@ use crate::types::{OutputFormat, RecommendOptions, RecommendationOutput};
 ///
 /// Returns an error only when JSON output serialization fails. Model and store
 /// failures are represented as heuristic fallback output.
-pub fn recommend(options: &RecommendOptions) -> anyhow::Result<String> {
+pub fn recommend(options: &RecommendOptions) -> Result<String, RecommendError> {
     render(&recommend_output(options), options.format)
 }
 
@@ -34,10 +34,13 @@ pub fn recommend_output(options: &RecommendOptions) -> RecommendationOutput {
 /// # Errors
 ///
 /// Returns an error only when JSON output serialization fails.
-pub fn render(output: &RecommendationOutput, format: OutputFormat) -> anyhow::Result<String> {
+pub fn render(
+    output: &RecommendationOutput,
+    format: OutputFormat,
+) -> Result<String, RecommendError> {
     match format {
         OutputFormat::Text => Ok(render_text(output)),
-        OutputFormat::Json => serde_json::to_string_pretty(output).context("encode JSON"),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(output)?),
     }
 }
 

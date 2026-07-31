@@ -368,11 +368,15 @@ impl TumultTelemetry {
         }
     }
 
+    /// Whether telemetry is actively exporting — i.e. a tracer provider was
+    /// successfully built. `false` when disabled in config, when no exporter
+    /// was configured, or when provider initialization failed.
     #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
 
+    /// The service name stamped on the `OTel` resource (`service.name`).
     #[must_use]
     pub fn service_name(&self) -> &str {
         &self.service_name

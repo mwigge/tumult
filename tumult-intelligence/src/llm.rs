@@ -1,4 +1,4 @@
-//! OpenAI-compatible HTTP chat client for the Krönika analytics layer
+//! OpenAI-compatible HTTP chat client for Tumult's analytics layer
 //! (imported from `kronika-ai`; sibling module to [`crate::sql_guard`]).
 //!
 //! * [`Llm`] / [`OpenAiCompatClient`]: one OpenAI-compatible chat interface.

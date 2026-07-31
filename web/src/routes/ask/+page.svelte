@@ -25,7 +25,10 @@
     try {
       result = await api.ask(q);
     } catch (e) {
-      error = String(e);
+      error =
+        (e as { status?: number }).status === 422
+          ? "Your access is limited to specific environments, and this question needs data that isn't tied to one. Try a question about a single environment, or ask an admin to widen your scopes."
+          : String(e);
     } finally {
       loading = false;
     }
@@ -82,8 +85,8 @@
   {#if !result.configured}
     <div class="panel state" style="text-align: left">
       <b>AI analytics is not configured.</b><br />
-      Point kronikad at an OpenAI-compatible endpoint (Ollama works out of the box):<br /><br />
-      <code>KRONIKA_LLM_BASE_URL=http://localhost:11434/v1 KRONIKA_LLM_MODEL=qwen2.5:7b kronikad</code><br /><br />
+      Point tumultd at an OpenAI-compatible endpoint (Ollama works out of the box):<br /><br />
+      <code>KRONIKA_LLM_BASE_URL=http://localhost:11434/v1 KRONIKA_LLM_MODEL=qwen2.5:7b tumultd</code><br /><br />
       The example questions above are answered from a curated golden bank and work
       without an LLM — try one.
     </div>

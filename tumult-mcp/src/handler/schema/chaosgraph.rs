@@ -4,6 +4,7 @@ use rust_mcp_sdk::macros;
 
 use super::default_store_path;
 
+/// Arguments for the `tumult_chaosgraph_query` tool.
 #[macros::mcp_tool(
     name = "tumult_chaosgraph_query",
     description = "ChaosGraph: list graph node ids + one-line summaries for a kind (experiment, fault, service, journal, deviation, compliance_article, coverage_gap, fault_domain) from the persistent analytics store, optionally filtered by a case-insensitive label substring. Small, token-efficient output. Structured content is {kind, count, nodes:[{id,kind,label}]}.",
@@ -22,6 +23,7 @@ pub struct ChaosGraphQueryTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_chaosgraph_neighbors` tool.
 #[macros::mcp_tool(
     name = "tumult_chaosgraph_neighbors",
     description = "ChaosGraph: return the ego sub-graph of a node (its neighbourhood within `depth`, default 1) as compact (src)-[rel]->(dst) tuples plus node labels. Optionally filter to a single relation (targets, injects, yielded, observed_on, exhibited, evidences, maps_to_compliance, gap_in, depends_on, caused_by). Structured content is {node_id, depth, nodes:[{id,kind,label}], edges:[{src,rel,dst}]}.",
@@ -47,6 +49,7 @@ fn default_graph_depth() -> u32 {
     1
 }
 
+/// Arguments for the `tumult_chaosgraph_coverage_gaps` tool.
 #[macros::mcp_tool(
     name = "tumult_chaosgraph_coverage_gaps",
     description = "ChaosGraph: list plugin-catalog actions that have never appeared in a tested run (coverage gaps), optionally filtered by fault domain (plugin substring). When a framework is given (dora, nis2, pci-dss, iso-22301, iso-27001, soc2, basel-iii), also lists that framework's articles still lacking any evidence edge. Refreshes the CoverageGap/FaultDomain nodes + gap_in edges in the store's graph. Structured content is {count, gaps:[{id,plugin,action,domain}], framework?, unevidenced_articles?}.",
@@ -67,6 +70,9 @@ pub struct ChaosGraphCoverageGapsTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_chaosgraph_cypher` tool.
+///
+/// Read-only: mutating clauses are rejected and rows are capped.
 #[macros::mcp_tool(
     name = "tumult_chaosgraph_cypher",
     description = "ChaosGraph: run an arbitrary READ-ONLY openCypher query over the whole graph (node labels = kinds: experiment, fault, service, journal, deviation, compliance_article, coverage_gap, fault_domain; relationship types: targets, injects, yielded, observed_on, exhibited, evidences, maps_to_compliance, gap_in, depends_on, caused_by; node props: id, label + attrs; edge props: run_id, ts + attrs). The graph is snapshotted from the analytics store into an in-memory engine per call — DuckDB stays the source of truth. Mutating clauses are rejected; rows are capped (default 500). Structured content is {columns, rows, truncated, graph}.",

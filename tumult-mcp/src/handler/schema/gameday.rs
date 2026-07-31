@@ -4,6 +4,7 @@ use rust_mcp_sdk::macros;
 
 use super::default_list_limit;
 
+/// Arguments for the `tumult_gameday_run` tool.
 #[macros::mcp_tool(
     name = "tumult_gameday_run",
     description = "Run a GameDay — execute all experiments in a .gameday.toon file under shared load. Returns resilience score and compliance status.",
@@ -18,6 +19,7 @@ pub struct GameDayRunTool {
     pub gameday_path: String,
 }
 
+/// Arguments for the `tumult_gameday_analyze` tool.
 #[macros::mcp_tool(
     name = "tumult_gameday_analyze",
     description = "Analyze a completed GameDay journal — returns resilience score, per-experiment results, and compliance article mapping.",
@@ -31,6 +33,9 @@ pub struct GameDayAnalyzeTool {
     pub gameday_path: String,
 }
 
+/// Arguments for the `tumult_gameday_create` tool.
+///
+/// Fails if `<name>.gameday.toon` already exists.
 #[macros::mcp_tool(
     name = "tumult_gameday_create",
     description = "Create a .gameday.toon campaign file (<name>.gameday.toon in the workspace root) from experiment paths, with optional shared load config (load_tool k6 or jmeter, load_script, load_vus) and compliance framework mapping. Fails if the file already exists.",
@@ -58,6 +63,7 @@ pub struct GameDayCreateTool {
     pub framework: Option<String>,
 }
 
+/// Arguments for the `tumult_gameday_list` tool.
 #[macros::mcp_tool(
     name = "tumult_gameday_list",
     description = "List available GameDay files (.gameday.toon) in the workspace (sorted by path). Supports limit (default 100, max 1000) and offset; structured content is {items, total, offset, limit}.",

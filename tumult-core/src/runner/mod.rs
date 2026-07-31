@@ -23,6 +23,7 @@ mod activity;
 mod experiment;
 mod gameday;
 mod guard;
+/// K6 load executor — spawns k6 and parses its summary into a `LoadResult`.
 pub mod k6;
 mod load;
 mod phases;
@@ -35,10 +36,13 @@ pub use telemetry::epoch_nanos_now;
 
 pub(crate) const TRACER_NAME: &str = "tumult-engine";
 
+/// Errors produced by the runner before or during experiment orchestration.
 #[derive(Error, Debug)]
 pub enum RunnerError {
+    /// The experiment's method section contains no steps.
     #[error("experiment has no method steps")]
     EmptyMethod,
+    /// A `GameDay` declares a different number of experiments than were provided.
     #[error("gameday declares {declared} experiments but {provided} were provided")]
     ExperimentCountMismatch { declared: usize, provided: usize },
 }
@@ -76,14 +80,19 @@ impl Default for SamplingConfig {
 /// Outcome of executing a single activity via a provider.
 #[derive(Debug, Clone)]
 pub struct ActivityOutcome {
+    /// Whether the activity succeeded.
     pub success: bool,
+    /// Provider output captured on success, if any.
     pub output: Option<String>,
+    /// Failure reason captured on error, if any.
     pub error: Option<String>,
+    /// Execution duration in milliseconds.
     pub duration_ms: u64,
 }
 
 /// Trait for executing activities -- allows mocking in tests.
 pub trait ActivityExecutor: Send + Sync {
+    /// Executes a single activity and returns its outcome.
     fn execute(&self, activity: &Activity) -> ActivityOutcome;
 }
 
@@ -121,6 +130,7 @@ pub trait LoadExecutor: Send + Sync {
 /// Dry-run and baseline-skip are handled at the CLI layer before
 /// calling `run_experiment`, so they are not part of this config.
 pub struct RunConfig {
+    /// When to execute rollbacks (defaults to `RollbackStrategy::OnDeviation`).
     pub rollback_strategy: RollbackStrategy,
     /// Optional cancellation token. When cancelled, the runner stops before
     /// executing the next foreground activity, runs rollbacks for any fault

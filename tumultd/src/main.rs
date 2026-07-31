@@ -13,6 +13,15 @@
 //! the live store — this works while the daemon holds the write lock, unlike
 //! the `report` subcommand which needs the daemon stopped.
 //!
+//! Both listeners default to `0.0.0.0`; on a non-loopback bind the daemon
+//! fails closed without `KRONIKA_INGEST_TOKEN` (unauthenticated ingest would
+//! accept telemetry from anywhere) and without API users (see
+//! `enforce_bind_guard`). TLS is optional via `KRONIKA_TLS_CERT` /
+//! `KRONIKA_TLS_KEY` (PEM): when set, the axum HTTP server serves HTTPS and
+//! the tonic gRPC server serves TLS with the same pair, and the daemon's own
+//! exporter loopback moves to a plaintext ephemeral-port loopback listener;
+//! when unset, a network-exposed bind logs a loud plaintext warning.
+//!
 //! The same HTTP server mounts the read-only query API (`/api/*`, from
 //! `tumult-api`) that backs the web UI. When `KRONIKA_REPORT_INTERVAL`
 //! (e.g. `1h`, `30m`) is set, a scheduler renders a metric digest per
@@ -57,7 +66,7 @@ use tumult_lake::{Store, TokenRow, UserRow};
 #[command(
     name = "tumultd",
     version,
-    about = "Krönika — the chronicle of your resilience work"
+    about = "Tumult — analytics for your resilience work"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -146,26 +155,112 @@ impl Drop for TelemetryShutdown {
     }
 }
 
+/// Validated TLS materials for both servers: the rustls config for the
+/// HTTPS (axum) listener and the PEM identity for the tonic gRPC server.
+struct TlsMaterials {
+    http: axum_server::tls_rustls::RustlsConfig,
+    grpc_identity: tonic::transport::Identity,
+}
+
+/// Load the optional TLS configuration (`KRONIKA_TLS_CERT` /
+/// `KRONIKA_TLS_KEY`). Returns `None` when TLS is not configured; when it is,
+/// the certificate chain and key are parsed here so a bad pair fails startup
+/// with a clear message before any listener binds.
+async fn load_tls(config: &Config) -> Result<Option<TlsMaterials>> {
+    let (Some(cert), Some(key)) = (config.tls_cert.as_deref(), config.tls_key.as_deref()) else {
+        return Ok(None);
+    };
+    // rustls has both the ring and aws-lc-rs providers compiled in via the
+    // wider dependency graph; without an explicit process default, building a
+    // `ServerConfig` panics on the ambiguity. Ignore "already installed".
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key)
+        .await
+        .with_context(|| {
+            format!(
+                "load TLS certificate chain and key from KRONIKA_TLS_CERT ({}) and \
+                 KRONIKA_TLS_KEY ({})",
+                cert.display(),
+                key.display()
+            )
+        })?;
+    let cert_pem = std::fs::read(cert)
+        .with_context(|| format!("read KRONIKA_TLS_CERT ({})", cert.display()))?;
+    let key_pem =
+        std::fs::read(key).with_context(|| format!("read KRONIKA_TLS_KEY ({})", key.display()))?;
+    let grpc_identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
+    tracing::info!(
+        cert = %cert.display(),
+        "TLS enabled for the HTTP and gRPC servers"
+    );
+    Ok(Some(TlsMaterials {
+        http,
+        grpc_identity,
+    }))
+}
+
+/// Loud startup warning when a network-exposed listener serves plaintext:
+/// bearer tokens and telemetry cross the wire unencrypted.
+fn warn_if_plaintext_on_network(config: &Config, tls_enabled: bool) {
+    if tls_enabled {
+        return;
+    }
+    if !config.otlp_http_addr.ip().is_loopback() {
+        tracing::warn!(
+            addr = %config.otlp_http_addr,
+            "TLS is OFF: the API, web UI and OTLP/HTTP ingest are served in plaintext on a \
+             network interface — bearer tokens and telemetry cross the wire unencrypted; \
+             set KRONIKA_TLS_CERT/KRONIKA_TLS_KEY or terminate TLS at a reverse proxy"
+        );
+    }
+    if !config.otlp_grpc_addr.ip().is_loopback() {
+        tracing::warn!(
+            addr = %config.otlp_grpc_addr,
+            "TLS is OFF: OTLP/gRPC ingest is served in plaintext on a network interface; \
+             set KRONIKA_TLS_CERT/KRONIKA_TLS_KEY or terminate TLS at a reverse proxy"
+        );
+    }
+}
+
 async fn serve() -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
+    // Fail-closed: refuse a token-less OTLP ingest on a network interface.
+    config.ensure_ingest_auth().map_err(anyhow::Error::msg)?;
+    // Load (and thereby validate) the TLS materials before binding anything:
+    // a bad cert/key fails startup here with a clear message.
+    let tls = load_tls(&config).await?;
+    warn_if_plaintext_on_network(&config, tls.is_some());
     tracing::info!(
         db = %config.db_path.display(),
         grpc = %config.otlp_grpc_addr,
         http = %config.otlp_http_addr,
+        tls = tls.is_some(),
         "starting tumultd"
     );
 
-    // Telemetry loopback: the daemon's own OTel exporter points at its own
-    // gRPC ingest, so experiments the daemon executes (run queue, orphan
-    // rollbacks) land in the store exactly like CLI runs. An unspecified
-    // bind address (0.0.0.0) exports via localhost. When the ingest is
-    // token-guarded the loopback must authenticate too — otherwise its spans
-    // are rejected (UNAUTHENTICATED) and silently dropped.
-    let loopback = if config.otlp_grpc_addr.ip().is_unspecified() {
+    // With gRPC TLS enabled, the daemon's own exporter cannot speak TLS back
+    // to it (the opentelemetry-otlp client here is built without TLS), so it
+    // exports to a plaintext listener on an ephemeral loopback port instead:
+    // network-facing ingest stays TLS-only while self-telemetry keeps working.
+    // An unspecified public bind (0.0.0.0) exports via localhost.
+    let internal_grpc_listener = if tls.is_some() {
+        Some(
+            tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+                .await
+                .context("bind internal loopback gRPC listener")?,
+        )
+    } else {
+        None
+    };
+    let loopback = if let Some(listener) = &internal_grpc_listener {
+        format!("http://{}", listener.local_addr()?)
+    } else if config.otlp_grpc_addr.ip().is_unspecified() {
         format!("http://127.0.0.1:{}", config.otlp_grpc_addr.port())
     } else {
         format!("http://{}", config.otlp_grpc_addr)
     };
+    // When the ingest is token-guarded the loopback must authenticate too —
+    // otherwise its spans are rejected (UNAUTHENTICATED) and silently dropped.
     let loopback_headers = config.ingest_token.as_deref().map(|token| {
         let mut map = tonic::metadata::MetadataMap::new();
         map.insert(
@@ -220,22 +315,46 @@ async fn serve() -> Result<()> {
         run_factory,
     );
 
-    // OTLP/gRPC server (tumult exporter target).
+    // OTLP/gRPC server (tumult exporter target) — TLS when configured.
+    // The router is built before the task spawns so an invalid TLS identity
+    // fails startup here instead of inside the task.
     let grpc_addr = config.otlp_grpc_addr;
-    let grpc_ingest = ingest.clone();
-    let grpc_token = config.ingest_token.clone();
+    let grpc_router = tumult_ingest::grpc::router_with_token_tls(
+        ingest.clone(),
+        config.ingest_token.clone(),
+        tls.as_ref().map(|t| t.grpc_identity.clone()),
+    )
+    .context("invalid TLS identity for the gRPC server (KRONIKA_TLS_CERT/KRONIKA_TLS_KEY)")?;
     let grpc_server = tokio::spawn(async move {
-        let result = tumult_ingest::grpc::router_with_token(grpc_ingest, grpc_token)
+        let result = grpc_router
             .serve_with_shutdown(grpc_addr, shutdown_signal("grpc"))
             .await;
         tracing::info!("gRPC server future completed: {result:?}");
         result
     });
 
+    // Internal plaintext gRPC loopback (only when the public gRPC listener
+    // serves TLS): carries the daemon's own exporter traffic, bound to an
+    // ephemeral 127.0.0.1 port chosen before the telemetry init above.
+    let internal_grpc_server = internal_grpc_listener.map(|listener| {
+        let router =
+            tumult_ingest::grpc::router_with_token(ingest.clone(), config.ingest_token.clone());
+        tokio::spawn(async move {
+            let result = router
+                .serve_with_incoming_shutdown(
+                    tokio_stream::wrappers::TcpListenerStream::new(listener),
+                    shutdown_signal("grpc-loopback"),
+                )
+                .await;
+            tracing::info!("internal gRPC loopback server future completed: {result:?}");
+            result
+        })
+    });
+
     // OTLP/HTTP server (smedja exporter target) + health + live reports + the
     // read-only query API backing the web UI.
     let http_addr = config.otlp_http_addr;
-    tumult_ingest::http::warn_if_unauthenticated(&http_addr, config.ingest_token.as_deref());
+    let http_tls = tls.as_ref().map(|t| t.http.clone());
     let http_token = config.ingest_token.clone();
     let report_state = ReportState {
         db_path: config.db_path.clone(),
@@ -245,7 +364,7 @@ async fn serve() -> Result<()> {
         config.db_path.clone(),
         config.metrics_dir.clone(),
         Some(ingest.clone()),
-        Some(run_queue),
+        Some(run_queue.clone()),
         // Secure cookies whenever the API is served beyond loopback.
         !tumult_auth::host_is_loopback(&http_addr.ip().to_string()),
     );
@@ -258,25 +377,54 @@ async fn serve() -> Result<()> {
             std::sync::Arc::new(tumult_intelligence::llm::OpenAiCompatClient::from_env()),
         );
     }
-    if let Some(interval) = lake_interval_from_env() {
+    // Background tasks holding an `IngestWriter` clone must stop — and drop
+    // that clone — before the drain below waits for the writer channel to
+    // close, or shutdown hangs on the still-open channel.
+    let background_shutdown = tokio_util::sync::CancellationToken::new();
+    let lake_task = lake_interval_from_env().map(|interval| {
         spawn_lake_scheduler(
             config.db_path.clone(),
             ingest.clone(),
             tumult_lake::lake::LakeConfig::from_env(&config.db_path),
             interval,
-        );
-    }
+            background_shutdown.clone(),
+        )
+    });
     let http_server = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(http_addr).await?;
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
             .merge(report_router(report_state))
             .merge(tumult_api::router(api_state))
             // Everything that is not /v1, /report, /healthz or /api is the UI.
             .fallback(ui_handler);
-        let result = axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal("http"))
-            .await;
-        tracing::info!("HTTP server future completed: {result:?}");
+        let result = match http_tls {
+            Some(tls_config) => {
+                let handle = axum_server::Handle::new();
+                let shutdown = handle.clone();
+                tokio::spawn(async move {
+                    shutdown_signal("https").await;
+                    shutdown.graceful_shutdown(Some(std::time::Duration::from_secs(10)));
+                });
+                let result = axum_server::bind_rustls(http_addr, tls_config)
+                    .handle(handle)
+                    .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+                    .await;
+                tracing::info!("HTTPS server future completed: {result:?}");
+                result
+            }
+            None => {
+                let listener = tokio::net::TcpListener::bind(http_addr).await?;
+                // ConnectInfo gives /api/auth/login the peer IP for its
+                // per-ip|username throttle key.
+                let result = axum::serve(
+                    listener,
+                    app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .with_graceful_shutdown(shutdown_signal("http"))
+                .await;
+                tracing::info!("HTTP server future completed: {result:?}");
+                result
+            }
+        };
         result
     });
 
@@ -287,10 +435,24 @@ async fn serve() -> Result<()> {
     http_result
         .context("HTTP server task panicked")?
         .context("HTTP server")?;
+    if let Some(task) = internal_grpc_server {
+        task.await
+            .context("internal gRPC loopback task panicked")?
+            .context("internal gRPC loopback server")?;
+    }
 
     tracing::info!("servers stopped; draining ingest writer");
-    // Both servers are down; drop their channel clones (moved into the tasks)
-    // so the writer task sees the channel close and exits.
+    // Both servers are down; their channel clones (moved into the tasks)
+    // are dropped. Order matters from here: signal the background tasks
+    // that hold an `IngestWriter` clone, wait for them to finish so those
+    // clones are dropped, and only then wait for the writer channel to
+    // close — the drain completes only once every sender is gone.
+    background_shutdown.cancel();
+    if let Some(task) = lake_task {
+        task.await.context("lake scheduler task panicked")?;
+    }
+    run_queue.shutdown();
+    drop(run_queue);
     writer_task.await.context("ingest writer task")?;
     tracing::info!("tumultd stopped cleanly");
     Ok(())
@@ -434,6 +596,7 @@ fn enforce_bind_guard(writer: &tumult_lake::Writer, store: &Store, config: &Conf
                 created_at_ns: now_ns(),
                 last_used_at_ns: None,
                 revoked: false,
+                expires_at_ns: None,
             })?;
             tracing::warn!(
                 "provisioned bootstrap API token for the bootstrap admin (demo/dev path)"
@@ -515,7 +678,7 @@ fn render_metric_report(
     let report = tumult_report::build_report(
         &reader,
         std::slice::from_ref(def),
-        &format!("Krönika — {metric}"),
+        &format!("Tumult — {metric}"),
         None,
     )?;
     Ok(ReportLookup::Html(tumult_report::render_html(&report)))
@@ -669,7 +832,7 @@ async fn write_digest(
         Ok(tumult_report::build_report(
             &reader,
             &defs,
-            &format!("Krönika digest — last {}s", interval.as_secs()),
+            &format!("Tumult digest — last {}s", interval.as_secs()),
             Some((from_ns, to_ns)),
         )?)
     })
@@ -798,13 +961,18 @@ async fn run_lake_job(
 
 /// Spawn the lake scheduler: one export (+ optional retention) per interval.
 /// Failures are logged and the schedule continues — the watermark makes the
-/// next run retry from the last good state.
+/// next run retry from the last good state. The task holds an `IngestWriter`
+/// clone, so it must stop on `shutdown` (dropping the clone) before the
+/// daemon's drain waits for the writer channel to close; the returned handle
+/// lets the caller wait for exactly that. An export already in flight runs
+/// to completion first.
 fn spawn_lake_scheduler(
     db_path: PathBuf,
     ingest: IngestWriter,
     cfg: tumult_lake::lake::LakeConfig,
     interval: std::time::Duration,
-) {
+    shutdown: tokio_util::sync::CancellationToken,
+) -> tokio::task::JoinHandle<()> {
     tracing::info!(
         interval = ?interval,
         dir = %cfg.dir.display(),
@@ -816,10 +984,179 @@ fn spawn_lake_scheduler(
         // Skip the immediate first tick: export after one full interval.
         ticker.tick().await;
         loop {
-            ticker.tick().await;
-            if let Err(e) = run_lake_job(&db_path, &ingest, &cfg).await {
-                tracing::warn!(error = %format!("{e:#}"), "lake export job failed");
+            tokio::select! {
+                _ = ticker.tick() => {
+                    if let Err(e) = run_lake_job(&db_path, &ingest, &cfg).await {
+                        tracing::warn!(error = %format!("{e:#}"), "lake export job failed");
+                    }
+                }
+                () = shutdown.cancelled() => {
+                    tracing::info!("lake export job stopping (shutdown)");
+                    break;
+                }
             }
         }
-    });
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Throwaway self-signed `localhost` certificate/key pair (generated with
+    /// `openssl req -x509`), used to exercise the TLS load path.
+    const CERT_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIDJTCCAg2gAwIBAgIUHvcqpsPfQCAnuxXOJLnZKClsYrswDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDczMTEyNTYyOFoXDTI2MDgw
+MTEyNTYyOFowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAtMVXRp4+rZ/6CfN2uLYBdUuI/3STDSWr6piuVvCi7S1J
+bszJTo9ILKvvljKkhhkV9u4g+6cPzD5rt/rd8/92EWC+8lVkYPoLPM9ydLa4VbqV
+/z6P7xt2DQmTY8oqfI+GkiXBvLfMKW63bqfYAEp+ZzwZPKibmykCmUScGGOfeezd
+YinTrvDnlrttw6Jf5H6eu/CJAmZA1iKqjCQcxv3guUgUN6PECwfc7kIvCnSvNSlo
+38f5zzg4xiyUA/larv9HtL4WZVrXwXnIrYv+tbA2eJJxUKwr8Pck/XKUHn5KhtDa
+hmEp3wMdjJQSbXclgsyG43jIQ25CldbfYHEComUpTQIDAQABo28wbTAdBgNVHQ4E
+FgQU7hn+N0c9xOL25lD8KslytcX7U0IwHwYDVR0jBBgwFoAU7hn+N0c9xOL25lD8
+KslytcX7U0IwDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARgglsb2NhbGhvc3SH
+BH8AAAEwDQYJKoZIhvcNAQELBQADggEBAAUvKDh7FLD/DtMlERVvPiu7rtgBfLcK
+S2Wd858fZ/IhvR3mvXNQxcWVsfjb8/O5ZlY0/+YCZMTjuL9YpBPix3WY50ktjHDk
+f1HBjXWNS8hLLKpM7f3jwFsuE/OaYdRTu7ob2JOI2lDIjajHpKp0XU/a9pTq+xNX
+XNpP0Bj7ElEmQKtNeJUqoMXzT1pPQJNpDLAyaNSYbz4yuSy7tXNoMI4Dy2VB5nLB
+ye+6Z1fl8Y9TdaxZBQolepjbBEQQ/dqeu3+WLn17FInao9yR81/7J0CxAtv1YXen
+qPsqtfAE6Ug4+5TQUqwIxtvzYHFF+pG2Lx+fcDCTQN3GDwXpJJdUQo8=
+-----END CERTIFICATE-----
+";
+    const KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC0xVdGnj6tn/oJ
+83a4tgF1S4j/dJMNJavqmK5W8KLtLUluzMlOj0gsq++WMqSGGRX27iD7pw/MPmu3
++t3z/3YRYL7yVWRg+gs8z3J0trhVupX/Po/vG3YNCZNjyip8j4aSJcG8t8wpbrdu
+p9gASn5nPBk8qJubKQKZRJwYY5957N1iKdOu8OeWu23Dol/kfp678IkCZkDWIqqM
+JBzG/eC5SBQ3o8QLB9zuQi8KdK81KWjfx/nPODjGLJQD+Vqu/0e0vhZlWtfBecit
+i/61sDZ4knFQrCvw9yT9cpQefkqG0NqGYSnfAx2MlBJtdyWCzIbjeMhDbkKV1t9g
+cQKiZSlNAgMBAAECggEAOqSUShP2+GNf/Y9uUcC1m2QcNucN92NjsJDEae7ZpACf
+hGLJ4YLo4pkKedrG9bu4nOkmaQ0KunL7he1LyKZ0mnGcsEfUbwNe1uTjWAqYpTMJ
+Cws0LVjmxJb5KhPBEbSL7uhxv7OOd1h0CGFJ2NpRxFLCSyPVixHURn1z+BOFfks1
+GVi+e5oGG0nsGMw7EJ7dYr6Qu1mmvRuulshJlbTRFrveKXW5qIZLGsnkmvhR8A69
+N9hbvsALfo4yaeKEQTXWzCBmYYdDPqRVosGOuwOSG10NP3O5KH2WAsrGX5J2qTCZ
+4d3RMTJ9jdET3CQ4r3mhLaG2cegiWB7LLZpRF0ulXwKBgQDwlp61p7KfRfCYj25f
+AgcZwL/KjTVD866XRz2p7LVTTxG2kZIIjaHYOZcenACe3KJ75BnrN6d7m/1GeW3N
+XgVdiW35s2JoR07hRH+fdF1dBx/DSMMOhB9YquOuNEzgq+LSgb017kUfUaOkQFEY
+mMxs6HgNA8Yq0v0l8zdDoD+UHwKBgQDAWcfqN55NQr76z8nTnKKjeuMPoL7WSJ+J
+CBgVbP/eZAefnKqhA7MZFZZOfKmsBtspeHqj78ZqTXysZOAXSWCNlFnmw5EZ9NXf
+T8WO+SVFt7S3ykjYsSMfC9+aBYQpyFjjp4Sjp/gyYGdMTt/y/kMEomx6+lEiindh
+iKlK6aV1EwKBgBRQw6oXNRAZ+c0IH4vKQgs8qXVTIzJPu2huzZgxssYMITTHagtq
+2kXF5yrghXTksJvBkSa5llzruSFgU5NJ4y4Y0r6JFUA09UY0YIp4awHV/iqhVEc/
+hN4Z4AvvwqYeHZMk/XM2YYPZgvX1sGNhU7HGl4yRywQGuPWhagM93uCFAoGAGy/V
+aM5pqoPnmG2sGiPGfRLOaxQORR1Ip0akmMqqM5Wx2iZ7m3x5YO9DKl7GYJErguYL
+d4ZZZgcDux4a6k+tvPUd69byeFe5rvGIe9fNI9h+S4fk2fPXgfjcptlmv70YizzP
+K45/LyefEhMH5kF32XzXll4w/4/QpdF6FCOIBk8CgYAY84rMAeJIZ6Os7PUOVTpP
+RtbpfPUQivnmWXg4j9FMktcGRwf+jd+gY+0zx154foHbKzfCIU+Knn64WpWdqJb9
+xXwj/ADaeC8lQd9LqUwMRysvfyIE9z+/Xky/FGNpoql7xskwe76x34sO+VoPBW3c
+xPXAffHX6Z04foGNwjzXeg==
+-----END PRIVATE KEY-----
+";
+
+    fn config_with_tls(cert: Option<&std::path::Path>, key: Option<&std::path::Path>) -> Config {
+        Config {
+            db_path: PathBuf::from("/tmp/db.duckdb"),
+            otlp_grpc_addr: "127.0.0.1:4317".parse().unwrap(),
+            otlp_http_addr: "127.0.0.1:4318".parse().unwrap(),
+            metrics_dir: PathBuf::from("metrics"),
+            ingest_token: None,
+            tls_cert: cert.map(std::path::Path::to_path_buf),
+            tls_key: key.map(std::path::Path::to_path_buf),
+        }
+    }
+
+    #[tokio::test]
+    async fn tls_unset_stays_plaintext() {
+        assert!(load_tls(&config_with_tls(None, None))
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn tls_missing_files_fail_fast_with_clear_message() {
+        let config = config_with_tls(
+            Some(std::path::Path::new("/nonexistent/tls.crt")),
+            Some(std::path::Path::new("/nonexistent/tls.key")),
+        );
+        let err = load_tls(&config).await.err().unwrap();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("KRONIKA_TLS_CERT"), "{msg}");
+    }
+
+    #[tokio::test]
+    async fn tls_garbage_pem_fails_fast() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = dir.path().join("tls.crt");
+        let key = dir.path().join("tls.key");
+        std::fs::write(&cert, "not a pem").unwrap();
+        std::fs::write(&key, "not a pem").unwrap();
+        assert!(load_tls(&config_with_tls(Some(&cert), Some(&key)))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn tls_mismatched_key_fails_fast() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = dir.path().join("tls.crt");
+        let key = dir.path().join("tls.key");
+        std::fs::write(&cert, CERT_PEM).unwrap();
+        // A valid PEM but the wrong half: cert as key.
+        std::fs::write(&key, CERT_PEM).unwrap();
+        assert!(load_tls(&config_with_tls(Some(&cert), Some(&key)))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn tls_valid_pair_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = dir.path().join("tls.crt");
+        let key = dir.path().join("tls.key");
+        std::fs::write(&cert, CERT_PEM).unwrap();
+        std::fs::write(&key, KEY_PEM).unwrap();
+        assert!(load_tls(&config_with_tls(Some(&cert), Some(&key)))
+            .await
+            .unwrap()
+            .is_some());
+    }
+
+    /// Regression: shutdown must complete with the lake scheduler enabled.
+    /// The scheduler holds an `IngestWriter` clone; before the cancellation
+    /// token existed, that clone kept the writer channel open forever and the
+    /// drain hung. Mirroring `serve`'s shutdown order (signal → wait →
+    /// drain), each wait is timeout-guarded so a regression fails fast
+    /// instead of hanging the test run.
+    #[tokio::test]
+    async fn shutdown_drains_with_lake_scheduler_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("k.duckdb");
+        let store = Store::open(&db_path).unwrap();
+        let (ingest, writer_task) = IngestWriter::spawn(store.writer().unwrap(), 8);
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let lake_task = spawn_lake_scheduler(
+            db_path.clone(),
+            ingest.clone(),
+            tumult_lake::lake::LakeConfig::new(dir.path().join("lake"), 0),
+            std::time::Duration::from_secs(3600),
+            shutdown.clone(),
+        );
+
+        shutdown.cancel();
+        tokio::time::timeout(std::time::Duration::from_secs(10), lake_task)
+            .await
+            .expect("lake scheduler did not stop on shutdown")
+            .expect("lake scheduler task panicked");
+        drop(ingest);
+        tokio::time::timeout(std::time::Duration::from_secs(10), writer_task)
+            .await
+            .expect("ingest writer drain hung — a sender is still alive")
+            .expect("ingest writer task panicked");
+    }
 }

@@ -6,11 +6,12 @@
 //! here are deliberately conservative, mirroring `resolve_citation`: an
 //! ambiguous situation produces no `caused_by` edge rather than a wrong one.
 
+use serde::{Deserialize, Serialize};
 use tumult_core::types::{ActivityStatus, ActivityType, Experiment, Journal, Provider};
 
 /// Enrichment for a deviation node, derived purely from the journal (and the
 /// experiment definition when available).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviationDetail {
     /// Node attrs: `status`, `failing_actions`, and a flattened `halt`
     /// record when the run was halted by a guard.

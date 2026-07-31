@@ -34,6 +34,8 @@ pub(crate) fn current_context() -> opentelemetry::Context {
     opentelemetry::Context::current()
 }
 
+/// Record an `mcp.tool.completed` span event on the currently-active span,
+/// mapping `success` to an `rpc.grpc.status_code` attribute (0 = OK, 2 = UNKNOWN).
 pub(crate) fn event_tool_completed(tool_name: &str, success: bool) {
     let cx = opentelemetry::Context::current();
     // rpc.grpc.status_code: 0 = OK, 2 = UNKNOWN (used as generic failure)
@@ -48,6 +50,8 @@ pub(crate) fn event_tool_completed(tool_name: &str, success: bool) {
     );
 }
 
+/// Record an `mcp.tool.error` span event carrying the error message on the
+/// currently-active span.
 pub(crate) fn event_tool_error(tool_name: &str, error: &str) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(

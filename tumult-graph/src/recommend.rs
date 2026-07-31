@@ -29,7 +29,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::coverage::AvailableAction;
 use crate::lineage::{ControlServiceStatus, LineageCell};
@@ -57,7 +57,7 @@ pub struct RecommendationInput<'a> {
 }
 
 /// One ranked, explained injection recommendation.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recommendation {
     /// The service to inject on.
     pub service_id: String,

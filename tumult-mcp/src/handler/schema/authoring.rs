@@ -2,6 +2,7 @@
 
 use rust_mcp_sdk::macros;
 
+/// Arguments for the `tumult_fault_catalog` tool (takes none).
 #[macros::mcp_tool(
     name = "tumult_fault_catalog",
     description = "Return the live fault catalog derived from the installed plugins: fault domains (Network, Database, Resource, State, Process, Container, Time, …), each with their actions/probes and documented arguments. Structured content is {action_count, domains:[{domain, label, actions:[{plugin, name, description, kind, args:[{name, required, description}]}]}]}.",
@@ -12,6 +13,9 @@ use rust_mcp_sdk::macros;
 #[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
 pub struct FaultCatalogTool {}
 
+/// Arguments for the `tumult_scaffold_experiment` tool.
+///
+/// Pure generation — the validated TOON is returned, nothing is persisted.
 #[macros::mcp_tool(
     name = "tumult_scaffold_experiment",
     description = "Scaffold a validated experiment from a chosen fault action. Give `plugin`+`action` (or a fully-qualified `action` as plugin::action), an `args` object, a `target`, an optional steady-state probe (probe_command or probe_url, plus probe_expect), and an optional title. Read-only w.r.t. the store — pure generation. Structured content is {action, toon, valid, validation_error?}: the generated TOON and whether it passes `tumult validate`.",

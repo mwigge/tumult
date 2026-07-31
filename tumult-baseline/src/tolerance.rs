@@ -4,13 +4,15 @@
 //! derive the upper and lower tolerance bounds for steady-state
 //! hypothesis evaluation.
 
+use serde::{Deserialize, Serialize};
+
 use crate::stats::{
     derive_iqr_bounds, derive_mean_stddev_bounds, derive_percentile, BaselineBounds,
 };
 
 /// Supported baseline methods.
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Method {
     /// Fixed threshold — no derivation needed.
     Static { lower: f64, upper: f64 },

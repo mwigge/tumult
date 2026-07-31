@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 // deliberately discarded — this keeps rendering panic-free without `unwrap`.
 use std::fmt::Write as _;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::lineage::{ControlServiceStatus, LineageCell};
 use crate::model::NodeSummary;
@@ -23,7 +23,7 @@ use crate::recommend::Recommendation;
 /// (Broken > Untested > Evidenced). `Unknown` means no article was in scope
 /// for it at all — distinct from Untested, which means articles exist but no
 /// run covered them on this service.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceState {
     /// Every in-scope cell on this service is evidenced.
@@ -60,7 +60,7 @@ impl ServiceState {
 }
 
 /// Summary of one broken control on a service, flattened for rendering.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BrokenControl {
     /// The broken compliance article id.
     pub article_id: String,
@@ -75,7 +75,7 @@ pub struct BrokenControl {
 }
 
 /// One service on the map, with its rolled-up compliance verdicts.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceView {
     /// Service node id (`svc:<name>`).
     pub id: String,
@@ -96,7 +96,7 @@ pub struct ServiceView {
 }
 
 /// The full map view: services, dependency edges, and recommendations.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TopologyMapView {
     /// Services in render order (tier rank, then id).
     pub services: Vec<ServiceView>,

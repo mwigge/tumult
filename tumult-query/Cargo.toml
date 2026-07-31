@@ -10,6 +10,7 @@ description = "Read-side domain queries over the unified tumult-lake store (Chao
 tumult-lake = { path = "../tumult-lake" }
 tumult-graph = { path = "../tumult-graph" }
 duckdb = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

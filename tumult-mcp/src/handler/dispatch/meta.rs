@@ -10,10 +10,14 @@ use crate::tools;
 
 use super::{parse_args, Dispatched, ToolOutput};
 
+/// Dispatch `tumult_discover`: list all installed plugins, actions, and
+/// probes. Takes no arguments, so it skips `parse_args`.
 pub(super) fn discover() -> Result<ToolOutput, ToolError> {
     tokio::task::block_in_place(|| Ok(ToolOutput::from(tools::discover_plugins())))
 }
 
+/// Dispatch `tumult_fault_catalog`: return the live fault catalog derived
+/// from the installed plugins.
 pub(super) fn fault_catalog(params: &CallToolRequestParams) -> Dispatched {
     let _args: FaultCatalogTool = parse_args(params)?;
     Ok(tokio::task::block_in_place(|| {
@@ -21,6 +25,9 @@ pub(super) fn fault_catalog(params: &CallToolRequestParams) -> Dispatched {
     }))
 }
 
+/// Dispatch `tumult_whoami`: report the role the auth layer resolved for this
+/// request; open-mode (no token) callers are reported as unauthenticated
+/// operators so a UI still renders every control for loopback dev.
 pub(super) fn whoami(params: &CallToolRequestParams, principal_role: Option<Role>) -> Dispatched {
     let _args: WhoamiTool = parse_args(params)?;
     // Surface the role the auth layer resolved for THIS request

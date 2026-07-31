@@ -13,6 +13,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::TableState;
 
 use crate::data;
+use crate::error::TuiError;
 use crate::logic::{self, SortKey};
 use crate::model::{ActivityRow, ExperimentRow, GraphNodeRow};
 
@@ -108,7 +109,7 @@ impl App {
     /// # Errors
     ///
     /// Returns an error if the initial read-only snapshot cannot be loaded.
-    pub fn new(store_path: PathBuf, refresh_secs: u64) -> anyhow::Result<Self> {
+    pub fn new(store_path: PathBuf, refresh_secs: u64) -> Result<Self, TuiError> {
         let snap = data::load_snapshot(&store_path)?;
         let mut app = Self {
             store_path,

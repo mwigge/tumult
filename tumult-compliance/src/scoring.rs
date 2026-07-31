@@ -15,6 +15,28 @@ use tumult_lake::Reader;
 /// Staleness threshold: a pass older than this decays from 100 to 75.
 pub const STALE_NS: i64 = 30 * 86_400 * 1_000_000_000;
 
+/// `col IN ('a', 'b')` predicate confining a query to a principal's
+/// environment scopes, or `None` when the set is empty (all environments —
+/// the API layer's unscoped-principal case). Values are single-quote
+/// doubled, matching the builders' SQL quoting.
+pub(crate) fn env_in(col: &str, envs: &[String]) -> Option<String> {
+    if envs.is_empty() {
+        return None;
+    }
+    let list = envs
+        .iter()
+        .map(|e| format!("'{}'", e.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!("{col} IN ({list})"))
+}
+
+/// `" AND <predicate>"` suffix for a WHERE clause, or empty when the
+/// predicate is `None` (unscoped).
+pub(crate) fn and_env(pred: Option<String>) -> String {
+    pred.map_or_else(String::new, |p| format!(" AND {p}"))
+}
+
 /// Run states driving the score.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,27 +115,31 @@ pub struct Scorecard {
 /// Verified manual records (excluding inconclusive outcomes) are UNIONed in
 /// with `origin = 'manual'`; the latest row is picked per (name, origin), so
 /// an experiment name present in both worlds yields one row per origin.
+/// `{ENV_*}` placeholders take the environment-scope predicates (empty when
+/// unscoped): automated rows bind `target_environment` directly on the root
+/// span, manual rows on the manual record.
 const LATEST_SQL: &str = "SELECT * FROM ( \
      SELECT s.experiment_name AS name, s.target_system AS target, \
      s.ts_ns AS ts, s.fault_severity AS severity, l.log_attrs['status'] AS status, \
      'automated' AS origin, \
      (SELECT COUNT(*) FROM spans r WHERE r.span_name = 'resilience.experiment' \
-      AND r.experiment_name = s.experiment_name AND r.ts_ns <= {AS_OF}) AS runs \
+      AND r.experiment_name = s.experiment_name AND r.ts_ns <= {AS_OF}{ENV_R}) AS runs \
      FROM spans s LEFT JOIN logs l \
        ON l.log_attrs['experiment_id'] = s.experiment_id \
       AND l.body = 'experiment.completed' \
      WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
-       AND s.ts_ns <= {AS_OF} \
+       AND s.ts_ns <= {AS_OF}{ENV_S} \
      UNION ALL \
      SELECT m.experiment_name, m.target_system, m.executed_at_ns, NULL, \
      m.outcome_status, 'manual', 1 \
      FROM manual_experiments m \
      WHERE m.status = 'verified' AND m.outcome_status != 'inconclusive' \
-       AND m.executed_at_ns <= {AS_OF} \
+       AND m.executed_at_ns <= {AS_OF}{ENV_M} \
      ) QUALIFY ROW_NUMBER() OVER (PARTITION BY name, origin ORDER BY ts DESC) = 1";
 
-/// Compute the scorecard as of `as_of_ns`; `delta` compares against the
-/// portfolio as of `as_of_ns - period_ns` when a period is given.
+/// Compute the scorecard as of `as_of_ns`, unscoped (all environments);
+/// `delta` compares against the portfolio as of `as_of_ns - period_ns` when
+/// a period is given.
 ///
 /// # Errors
 /// Returns the store error string when a query fails.
@@ -122,9 +148,24 @@ pub fn compute(
     as_of_ns: i64,
     period_ns: Option<i64>,
 ) -> Result<Scorecard, String> {
-    let mut card = compute_as_of(reader, as_of_ns)?;
+    compute_scoped(reader, as_of_ns, period_ns, &[])
+}
+
+/// Scoped variant of [`compute`]: `envs` confines every aggregate to the
+/// given environments (empty = unscoped). Scoped principals get a scorecard
+/// of their own environments only.
+///
+/// # Errors
+/// Returns the store error string when a query fails.
+pub fn compute_scoped(
+    reader: &Reader,
+    as_of_ns: i64,
+    period_ns: Option<i64>,
+    envs: &[String],
+) -> Result<Scorecard, String> {
+    let mut card = compute_as_of(reader, as_of_ns, envs)?;
     if let Some(period) = period_ns {
-        let prev = compute_as_of(reader, as_of_ns - period)?;
+        let prev = compute_as_of(reader, as_of_ns - period, envs)?;
         card.delta = Some(card.portfolio - prev.portfolio);
     }
     Ok(card)
@@ -142,18 +183,36 @@ pub fn portfolio_series(
     period_ns: i64,
     points: usize,
 ) -> Result<Vec<(f64, f64)>, String> {
+    portfolio_series_scoped(reader, as_of_ns, period_ns, points, &[])
+}
+
+/// Scoped variant of [`portfolio_series`] (empty `envs` = unscoped).
+///
+/// # Errors
+/// Returns the store error string when a query fails.
+pub fn portfolio_series_scoped(
+    reader: &Reader,
+    as_of_ns: i64,
+    period_ns: i64,
+    points: usize,
+    envs: &[String],
+) -> Result<Vec<(f64, f64)>, String> {
     let points = points.max(2) as i64;
     let step = period_ns / points;
     let mut out = Vec::with_capacity(points as usize);
     for i in 1..=points {
         let t = as_of_ns - period_ns + step * i;
-        out.push((i as f64, compute_as_of(reader, t)?.portfolio));
+        out.push((i as f64, compute_as_of(reader, t, envs)?.portfolio));
     }
     Ok(out)
 }
 
-fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
-    let sql = LATEST_SQL.replace("{AS_OF}", &as_of_ns.to_string());
+fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scorecard, String> {
+    let sql = LATEST_SQL
+        .replace("{AS_OF}", &as_of_ns.to_string())
+        .replace("{ENV_S}", &and_env(env_in("s.target_environment", envs)))
+        .replace("{ENV_R}", &and_env(env_in("r.target_environment", envs)))
+        .replace("{ENV_M}", &and_env(env_in("m.target_environment", envs)));
     let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
 
     let mut experiments = Vec::new();
@@ -253,11 +312,23 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64) -> Result<Scorecard, String> {
 /// # Errors
 /// Returns the store error string when the query fails.
 pub fn pending_manual_leaves(reader: &Reader) -> Result<Vec<String>, String> {
+    pending_manual_leaves_scoped(reader, &[])
+}
+
+/// Scoped variant of [`pending_manual_leaves`] (empty `envs` = unscoped).
+///
+/// # Errors
+/// Returns the store error string when the query fails.
+pub fn pending_manual_leaves_scoped(
+    reader: &Reader,
+    envs: &[String],
+) -> Result<Vec<String>, String> {
     let rows = reader
-        .query_json_rows(
+        .query_json_rows(&format!(
             "SELECT experiment_name AS name FROM manual_experiments \
-             WHERE status IN ('draft', 'submitted') ORDER BY experiment_name",
-        )
+             WHERE status IN ('draft', 'submitted'){} ORDER BY experiment_name",
+            and_env(env_in("target_environment", envs))
+        ))
         .map_err(|e| e.to_string())?;
     Ok(rows
         .iter()
@@ -306,5 +377,49 @@ mod tests {
         assert_eq!(band(50.0), "fair");
         assert_eq!(band(49.9), "poor");
         assert_eq!(band(0.0), "poor");
+    }
+
+    #[test]
+    fn compute_scoped_confines_to_in_scope_environments() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let root = |id: &str, name: &str, env: &str, ts: i64| tumult_lake::SpanRow {
+            ts_ns: ts,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}-root"),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: DAY,
+            service_name: "tumult".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some(name.into()),
+            target_system: Some("database".into()),
+            target_environment: Some(env.into()),
+            events: "[]".into(),
+            ..Default::default()
+        };
+        let now = 100 * DAY;
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[
+                root("exp-stg", "stg-exp", "staging", now - DAY),
+                root("exp-prd", "prd-exp", "prod", now - DAY),
+                // A second run of the staging experiment: run counts stay
+                // confined too.
+                root("exp-stg-2", "stg-exp", "staging", now - 2 * DAY),
+            ])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+
+        let global = compute(&reader, now, None).unwrap();
+        assert_eq!(global.experiments.len(), 2);
+
+        let scoped = compute_scoped(&reader, now, None, &["staging".to_string()]).unwrap();
+        assert_eq!(scoped.experiments.len(), 1);
+        assert_eq!(scoped.experiments[0].name, "stg-exp");
+        assert_eq!(scoped.experiments[0].runs, 2);
+        assert_eq!(scoped.targets.len(), 1);
+        assert_eq!(scoped.targets[0].runs, 2);
     }
 }

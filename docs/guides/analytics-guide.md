@@ -67,7 +67,7 @@ FROM experiments;
 
 Every `tumult run` automatically ingests the journal into a persistent DuckDB store at `~/.tumult/lake.duckdb`. This enables cross-run analytics without manually specifying journal paths.
 
-Upgrading from a pre-unification install? Merge the old analytics store (and a kronika lake, if you ran Krönika) into the unified store — the import is idempotent:
+Upgrading from an older install? Import the old databases (the analytics store and/or the kronika lake) into the current store — the import is idempotent:
 
 ```bash
 tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb

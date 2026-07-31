@@ -7,11 +7,17 @@ use opentelemetry::{global, Context, KeyValue};
 use super::SCOPE;
 use crate::agentic;
 
+/// Name of the span wrapping one proxied, potentially fault-injected request.
 pub const PROXY_SPAN: &str = "tumult.agentic.fault";
+/// Span attribute key for the request's HTTP method.
 pub const HTTP_METHOD: &str = "http.request.method";
+/// Span attribute key for the request URL path.
 pub const HTTP_PATH: &str = "url.path";
+/// Span attribute key for the response HTTP status code.
 pub const HTTP_STATUS: &str = "http.response.status_code";
+/// Span attribute key for the request duration, in milliseconds.
 pub const DURATION_MS: &str = "resilience.duration_ms";
+/// Span attribute key listing the faults injected into the request (comma-separated).
 pub const FAULTS_INJECTED: &str = "resilience.agent.faults_injected";
 
 /// A live span wrapping one proxied request, parented under the client's inbound
@@ -111,6 +117,7 @@ impl Drop for SpanScope {
     }
 }
 
+/// Name of the root span for an orchestrated experiment run.
 pub const EXPERIMENT_ROOT_SPAN: &str = "tumult.experiment";
 
 /// Start a `tumult.experiment` root span for an orchestrated run, tagged by
@@ -135,6 +142,7 @@ pub fn start_experiment_root(scenario: &str, client: &str) -> SpanScope {
     }
 }
 
+/// Name of the span emitted for one MCP agentic tool call.
 pub const TOOL_SPAN: &str = "tumult.agentic.tool";
 
 /// Start a tool-surface span for an MCP agentic tool call, tagged by `client`.

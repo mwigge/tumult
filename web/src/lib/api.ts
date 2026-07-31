@@ -1,5 +1,5 @@
-// Fetch wrappers for the kronika query API (same origin when embedded in
-// kronikad; vite dev proxies /api to a local daemon).
+// Fetch wrappers for the Tumult query API (same origin when embedded in
+// tumultd; vite dev proxies /api to a local daemon).
 
 import { goto } from '$app/navigation';
 import type {
@@ -177,7 +177,11 @@ export const api = {
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok && !('configured' in body)) {
       redirectOnUnauthorized(resp, '/api/ask');
-      throw new Error(body.error ?? `HTTP ${resp.status}`);
+      // Carry the status so callers can special-case e.g. 422 (scoped user
+      // asking a question that can't be confined to their environments).
+      const err = new Error(body.error ?? `HTTP ${resp.status}`) as Error & { status?: number };
+      err.status = resp.status;
+      throw err;
     }
     return body as AskResponse;
   },

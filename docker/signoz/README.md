@@ -19,7 +19,8 @@ Every experiment and every experiment operation is tracked:
   `tumult.actions.total` / `tumult.probes.total`,
   `tumult.action.duration` / `tumult.probe.duration`,
   `tumult.rollbacks.total`, `tumult.hypothesis.deviations.total`,
-  `tumult.plugin.errors.total`, `resilience.store.*`, `baseline.*`.
+  `tumult.plugin.errors.total`, `tumult.plugin.script.executions.total`,
+  `resilience.store.*`, `tumult.baseline.*`.
 - **Logs**: the full `tracing` stream over OTLP, stamped with the active
   trace/span ids, so any log line jumps to its experiment trace.
 

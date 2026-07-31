@@ -323,7 +323,7 @@ tumult store <subcommand>
 | `purge --older-than-days <N>` | Delete experiments older than N days |
 | `path` | Print the store file path |
 | `migrate` | Migrate data from DuckDB to ClickHouse backend |
-| `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Merge pre-unification databases (old analytics store and/or kronika lake) into the unified store; idempotent |
+| `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Import databases from older installs (old analytics store and/or kronika lake) into the current store; idempotent |
 
 ### Examples
 

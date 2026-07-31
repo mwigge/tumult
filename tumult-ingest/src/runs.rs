@@ -136,6 +136,10 @@ struct Shared {
     ingest: IngestWriter,
     /// Cancellation tokens of runs executing in this process, by run id.
     tokens: Mutex<HashMap<String, CancellationToken>>,
+    /// Signals the background sweeper to stop on daemon shutdown, releasing
+    /// the `IngestWriter` clone inside this struct so the ingest channel
+    /// can close and the writer drain can complete.
+    shutdown: CancellationToken,
 }
 
 struct WorkItem {
@@ -240,7 +244,8 @@ fn read_run_state(db_path: &Path, run_id: &str) -> Option<String> {
 
 impl RunQueue {
     /// Spawn the worker pool on the current tokio runtime. Workers exit when
-    /// every `RunQueue` clone is dropped and the channel closes.
+    /// every `RunQueue` clone is dropped and the channel closes; the approval
+    /// sweeper runs until [`RunQueue::shutdown`] is called.
     #[must_use]
     pub fn spawn(
         ingest: IngestWriter,
@@ -253,6 +258,7 @@ impl RunQueue {
             db_path,
             ingest,
             tokens: Mutex::new(HashMap::new()),
+            shutdown: CancellationToken::new(),
         });
         // One receiver fan-out: wrap in a Mutex so N workers share it.
         let rx = Arc::new(tokio::sync::Mutex::new(rx));
@@ -275,7 +281,9 @@ impl RunQueue {
         // Approval TTL sweeper (T10): gated runs whose approval lapses
         // before dispatch transition to the terminal `expired` state. The
         // approve path also checks the TTL lazily; this task is what makes
-        // a lapsed request terminal rather than merely undispatchable.
+        // a lapsed request terminal rather than merely undispatchable. It
+        // exits on `RunQueue::shutdown` so the shared `IngestWriter` clone
+        // is released before the daemon drains the writer channel.
         {
             let shared = Arc::clone(&shared);
             tokio::spawn(async move {
@@ -287,8 +295,13 @@ impl RunQueue {
                 // dispatchable in the gap either way).
                 interval.tick().await;
                 loop {
-                    interval.tick().await;
-                    sweep_expired_approvals(&shared).await;
+                    tokio::select! {
+                        _ = interval.tick() => sweep_expired_approvals(&shared).await,
+                        () = shared.shutdown.cancelled() => {
+                            tracing::info!("approval sweeper exiting (shutdown)");
+                            break;
+                        }
+                    }
                 }
             });
         }
@@ -297,6 +310,14 @@ impl RunQueue {
             waiting: Arc::new(Semaphore::new(config.queue_depth.max(1))),
             shared,
         }
+    }
+
+    /// Signal background tasks (the approval sweeper) to stop. The daemon
+    /// calls this before draining the ingest writer: the sweeper holds the
+    /// shared `IngestWriter` clone, and the writer channel closes only once
+    /// every clone is dropped.
+    pub fn shutdown(&self) {
+        self.shared.shutdown.cancel();
     }
 
     /// Persist and queue a run. Rejects with [`EnqueueError::Full`] when the
@@ -1458,6 +1479,7 @@ rollbacks[1]:
             db_path: fx.db_path.clone(),
             ingest: fx.ingest.clone(),
             tokens: Mutex::new(HashMap::new()),
+            shutdown: CancellationToken::new(),
         }
     }
 

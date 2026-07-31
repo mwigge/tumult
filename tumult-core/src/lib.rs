@@ -30,12 +30,21 @@
 //! See the [data lifecycle guide](https://github.com/tumult-rs/tumult/blob/main/docs/data-lifecycle.md)
 //! for an end-to-end walkthrough of experiment authoring through journal analysis.
 
+/// Regulatory compliance domain logic shared by the CLI and MCP server.
 pub mod compliance;
+/// Controls — lifecycle hooks for cross-cutting concerns (logging, tracing, safeguards).
 pub mod controls;
+/// Experiment engine — validation, config/secret resolution, tolerance evaluation.
 pub mod engine;
+/// Method and rollback execution logic.
 pub mod execution;
+/// Journal writer — serializes experiment results to TOON format.
 pub mod journal;
+/// Journal report renderers (JSON, `JUnit` XML) shared by the CLI and MCP server.
 pub mod report;
+/// Experiment runner — orchestrates the five-phase execution lifecycle.
 pub mod runner;
+/// Bridge for driving async futures from synchronous code.
 pub mod sync_bridge;
+/// Core data model types for Tumult experiments.
 pub mod types;

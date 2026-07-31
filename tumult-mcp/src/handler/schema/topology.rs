@@ -5,6 +5,10 @@ use rust_mcp_sdk::macros;
 
 use super::default_store_path;
 
+/// Arguments for the `tumult_topology_import` tool.
+///
+/// Exactly one of `toml_content`/`path` must be given; re-import replaces
+/// the previously declared topology.
 #[macros::mcp_tool(
     name = "tumult_topology_import",
     description = "Topology: import a declared service-topology TOML document (either inline toml_content or a file path — exactly one) into the persistent analytics store, replacing the previous declared topology. Opens the store read-write: the import persists svc: nodes and depends_on edges under a sentinel run id, so re-import is idempotent. The write is brief (one small transaction-sized delta) and the tool is Operator-gated. Structured content is {services, dependencies, service_ids}.",
@@ -25,6 +29,7 @@ pub struct TopologyImportTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_topology_map` tool.
 #[macros::mcp_tool(
     name = "tumult_topology_map",
     description = "Topology: render the compliance-aware service map — declared services with worst-of lineage state (OK / BROKEN / UNTESTED / UNKNOWN), depends_on edges, break causes, and ranked injection recommendations — as text (default), a Mermaid graph, or JSON. Reads the analytics store read-only. Structured content is {format, map} where map is the full view JSON.",
@@ -49,6 +54,7 @@ pub struct TopologyMapTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_compliance_lineage` tool.
 #[macros::mcp_tool(
     name = "tumult_compliance_lineage",
     description = "Topology: the compliance lineage matrix — for each (regulatory article, service) pair the latest chaos evidence verdict (evidenced / broken / untested), with break attribution (deviation, fault, halting guard). Optionally scoped by framework, control, and service. Reads the analytics store read-only. Structured content is {cells, counts}.",
@@ -70,6 +76,7 @@ pub struct ComplianceLineageTool {
     pub store_path: String,
 }
 
+/// Arguments for the `tumult_recommend_injection` tool.
 #[macros::mcp_tool(
     name = "tumult_recommend_injection",
     description = "Topology: rank the next most valuable fault injections from the lineage matrix, declared depends_on topology, and plugin catalog. Deterministic and explained — every recommendation carries one human-readable reason per scoring factor. Reads the analytics store read-only. Structured content is {recommendations}.",

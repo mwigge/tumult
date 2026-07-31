@@ -3,10 +3,12 @@
 //! Detects if a baseline measurement itself is anomalous (degraded before
 //! the experiment even starts). Uses coefficient of variation and outlier detection.
 
+use serde::{Deserialize, Serialize};
+
 use crate::stats::{mean, percentile, stddev};
 
 /// Result of an anomaly check on baseline data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnomalyCheck {
     pub anomaly_detected: bool,
     pub reason: Option<String>,

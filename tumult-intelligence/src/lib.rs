@@ -2,6 +2,7 @@
 
 mod agent;
 mod context;
+mod error;
 mod recommend;
 mod render;
 mod report;
@@ -9,6 +10,8 @@ mod types;
 mod write;
 
 pub mod llm;
+pub mod locked_reader;
+pub mod sanitise;
 pub mod sql_guard;
 
 #[cfg(test)]
@@ -18,6 +21,7 @@ mod model;
 mod tests;
 
 pub use agent::{build_agent_prompt, enhance, split_toon_blocks, AgentEnhancement, AgentOptions};
+pub use error::RecommendError;
 pub use recommend::{recommend, recommend_output, render};
 pub use report::heuristic_report;
 pub use types::{OutputFormat, RecommendOptions, RecommendationItem, RecommendationOutput};

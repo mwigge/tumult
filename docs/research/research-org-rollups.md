@@ -1,14 +1,15 @@
 # Research: org hierarchy rollups (v0.5.0, Part A)
 
-Status: implemented in v0.5.0 — see `kronika_docs::org`, `GET /api/scores/tree`,
-the UI's Scores page, and ADR 0004.
+Status: implemented in v0.5.0 — see `tumult_compliance::org`, `GET /api/scores/tree`,
+the UI's Scores page, and
+[ADR-009](../adr/ADR-009-org-hierarchy-and-manual-evidence.md).
 
 ## Problem
 
 v0.4.0 scores individual experiments and rolls them up by *target system*
 and into a single portfolio number. Organisations do not think in target
 systems; they think in **teams, units and domains**. A head of platform
-asking "which part of my org is under-tested?" has no answer in Krönika.
+asking "which part of my org is under-tested?" has no answer in Tumult.
 Compliance frameworks push the same way: DORA Art. 24 expects a resilience
 testing *programme* with coverage across the estate, and programme-level
 reporting needs an organisational axis, not just a flat experiment list.
@@ -59,7 +60,7 @@ leaf-recomputed:      (100 + 50*3) / 4 = 62.5   cancels three weak ones
 ```
 
 The mean-of-means flatters the domain by 12.5 points because the smallest
-team happens to be the strongest. Krönika therefore recomputes every node
+team happens to be the strongest. Tumult therefore recomputes every node
 score from **all leaves in its subtree**:
 
 ```

@@ -6,12 +6,16 @@ use crate::types::Journal;
 
 use thiserror::Error;
 
+/// Errors produced while encoding, writing, or reading a journal.
 #[derive(Error, Debug)]
 pub enum JournalError {
+    /// The journal could not be serialized to TOON.
     #[error("failed to encode journal to TOON: {0}")]
     EncodeError(String),
+    /// The TOON content could not be deserialized into a journal.
     #[error("failed to decode journal from TOON: {0}")]
     DecodeError(String),
+    /// The journal file could not be read or written.
     #[error("failed to write journal file: {0}")]
     WriteError(#[from] std::io::Error),
 }

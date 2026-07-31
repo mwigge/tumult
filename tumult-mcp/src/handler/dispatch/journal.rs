@@ -9,6 +9,8 @@ use crate::tools;
 
 use super::{parse_args, validate_page, Dispatched, ToolOutput};
 
+/// Dispatch `tumult_read_journal`: read a journal file as JSON or raw TOON
+/// (or a compact summary), after validating the path against the workspace.
 pub(super) fn read_journal(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: ReadJournalTool = parse_args(params)?;
     let path = handler.resolve_path(&args.journal_path)?;
@@ -18,6 +20,9 @@ pub(super) fn read_journal(handler: &TumultHandler, params: &CallToolRequestPara
     )
 }
 
+/// Dispatch `tumult_list_journals`: list `.toon` journal files in a directory,
+/// paginated; each listed journal is also linked as a `tumult://journal/…`
+/// resource.
 pub(super) fn list_journals(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: ListJournalsTool = parse_args(params)?;
     let (limit, offset) = validate_page(args.limit, args.offset)?;
@@ -30,12 +35,17 @@ pub(super) fn list_journals(handler: &TumultHandler, params: &CallToolRequestPar
     )
 }
 
+/// Dispatch `tumult_query_traces`: extract activity spans with trace/span IDs
+/// from a journal for observability correlation.
 pub(super) fn query_traces(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: QueryTracesTool = parse_args(params)?;
     let path = handler.resolve_path(&args.journal_path)?;
     Ok(tokio::task::block_in_place(|| tools::query_traces(&path)).map(ToolOutput::from))
 }
 
+/// Dispatch `tumult_report`: render a journal as a report (JSON or JUnit XML).
+/// With `output_path` the report is written inside the workspace and returned
+/// as a resource link; otherwise the content is returned inline.
 pub(super) fn report(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: ReportTool = parse_args(params)?;
     let path = handler.resolve_path(&args.journal_path)?;

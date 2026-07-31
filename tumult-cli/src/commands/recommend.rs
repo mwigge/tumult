@@ -44,7 +44,7 @@ pub struct AgentArgs {
 /// failures.
 pub fn cmd_recommend(options: &RecommendOptions, agent: Option<&AgentArgs>) -> Result<String> {
     let Some(args) = agent else {
-        return tumult_intelligence::recommend(options);
+        return Ok(tumult_intelligence::recommend(options)?);
     };
 
     let heuristic = tumult_intelligence::recommend_output(options);

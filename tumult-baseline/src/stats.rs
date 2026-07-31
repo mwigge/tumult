@@ -1,7 +1,9 @@
 //! Statistical functions for baseline derivation.
 
+use serde::{Deserialize, Serialize};
+
 /// Upper and lower bounds for a baseline tolerance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BaselineBounds {
     pub lower: f64,
     pub upper: f64,

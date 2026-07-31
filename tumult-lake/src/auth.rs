@@ -1,6 +1,7 @@
-//! Auth storage (schema v6): the `users` identity table, `sessions` (opaque
-//! session ids stored only as sha256 hashes), API `tokens` (kro_-prefixed,
-//! stored as sha256 hashes), and per-user `user_env_scopes`.
+//! Auth storage (schema v6; v9 adds optional `tokens.expires_at_ns`): the
+//! `users` identity table, `sessions` (opaque session ids stored only as
+//! sha256 hashes), API `tokens` (kro_-prefixed, stored as sha256 hashes),
+//! and per-user `user_env_scopes`.
 //!
 //! All four tables are index-free like the v5 run tables (see `schema.rs`):
 //! uniqueness of username / session id hash / token hash is enforced in
@@ -39,7 +40,8 @@ pub struct SessionRow {
 }
 
 /// An API token record (`tokens`): the kro_-prefixed token itself is never
-/// stored, only its sha256 hex.
+/// stored, only its sha256 hex. `expires_at_ns` is optional (schema v9):
+/// `None` means the token never expires (the pre-v9 behaviour).
 #[derive(Debug, Clone)]
 pub struct TokenRow {
     pub id: String,
@@ -49,6 +51,7 @@ pub struct TokenRow {
     pub created_at_ns: i64,
     pub last_used_at_ns: Option<i64>,
     pub revoked: bool,
+    pub expires_at_ns: Option<i64>,
 }
 
 impl Writer {
@@ -161,7 +164,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn create_token(&self, token: &TokenRow) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO tokens VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO tokens VALUES (?,?,?,?,?,?,?,?)",
             params![
                 token.id,
                 token.user_id,
@@ -169,7 +172,8 @@ impl Writer {
                 token.token_hash,
                 token.created_at_ns,
                 token.last_used_at_ns,
-                token.revoked
+                token.revoked,
+                token.expires_at_ns
             ],
         )?;
         Ok(())
@@ -308,24 +312,28 @@ impl Reader {
             .map(|r| (row_to_session(r), row_to_user_joined(r))))
     }
 
-    /// Fetch an unrevoked token by its hash, joined with its user, or
-    /// `None`. The caller checks `disabled`.
+    /// Fetch an unrevoked, unexpired token by its hash, joined with its
+    /// user, or `None`. A token with `expires_at_ns <= now_ns` authenticates
+    /// exactly like a revoked one; `NULL` expiry never expires. The caller
+    /// checks `disabled`.
     ///
     /// # Errors
     /// Returns an error if the query fails.
     pub fn token_with_user(
         &self,
         token_hash: &str,
+        now_ns: i64,
     ) -> Result<Option<(TokenRow, UserRow)>, StoreError> {
         let rows = self.query_json_rows(&format!(
             "SELECT t.id, t.user_id, t.name, t.token_hash, t.created_at_ns, \
-                    t.last_used_at_ns, t.revoked, \
+                    t.last_used_at_ns, t.revoked, t.expires_at_ns, \
                     u.id AS u_id, u.username AS u_username, \
                     u.password_hash AS u_password_hash, u.role AS u_role, \
                     u.must_change AS u_must_change, u.disabled AS u_disabled, \
                     u.created_at_ns AS u_created_at_ns \
              FROM tokens t JOIN users u ON u.id = t.user_id \
-             WHERE t.token_hash = '{}' AND t.revoked = false",
+             WHERE t.token_hash = '{}' AND t.revoked = false \
+               AND (t.expires_at_ns IS NULL OR t.expires_at_ns > {now_ns})",
             token_hash.replace('\'', "''")
         ))?;
         Ok(rows
@@ -401,6 +409,7 @@ fn row_to_token(v: &serde_json::Value) -> TokenRow {
         created_at_ns: v["created_at_ns"].as_i64().unwrap_or(0),
         last_used_at_ns: v["last_used_at_ns"].as_i64(),
         revoked: v["revoked"].as_bool().unwrap_or(false),
+        expires_at_ns: v["expires_at_ns"].as_i64(),
     }
 }
 
@@ -537,22 +546,23 @@ mod tests {
                 created_at_ns: 1,
                 last_used_at_ns: None,
                 revoked: false,
+                expires_at_ns: None,
             })
             .unwrap();
 
         let r = store.read_only().unwrap();
-        let (t, u) = r.token_with_user("thash").unwrap().unwrap();
+        let (t, u) = r.token_with_user("thash", 50).unwrap().unwrap();
         assert_eq!(t.id, "t-1");
         assert_eq!(t.name, "deploy script");
         assert!(t.last_used_at_ns.is_none());
         assert_eq!(u.username, "alice");
-        assert!(r.token_with_user("nope").unwrap().is_none());
+        assert!(r.token_with_user("nope", 50).unwrap().is_none());
 
         writer.touch_token_last_used("thash", 42).unwrap();
         let (t, _) = store
             .read_only()
             .unwrap()
-            .token_with_user("thash")
+            .token_with_user("thash", 50)
             .unwrap()
             .unwrap();
         assert_eq!(t.last_used_at_ns, Some(42));
@@ -561,9 +571,48 @@ mod tests {
         assert!(store
             .read_only()
             .unwrap()
-            .token_with_user("thash")
+            .token_with_user("thash", 50)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn token_expiry_is_enforced() {
+        let (_d, store) = fixture();
+        let writer = store.writer().unwrap();
+        writer.create_user(&user("u-1", "alice")).unwrap();
+        let token = |id: &str, hash: &str, expires_at_ns: Option<i64>| TokenRow {
+            id: id.into(),
+            user_id: "u-1".into(),
+            name: id.into(),
+            token_hash: hash.into(),
+            created_at_ns: 1,
+            last_used_at_ns: None,
+            revoked: false,
+            expires_at_ns,
+        };
+        writer
+            .create_token(&token("t-exp", "hexp", Some(10)))
+            .unwrap();
+        writer
+            .create_token(&token("t-live", "hlive", Some(100)))
+            .unwrap();
+        writer
+            .create_token(&token("t-open", "hopen", None))
+            .unwrap();
+
+        let r = store.read_only().unwrap();
+        // Expired (expires_at_ns <= now) is excluded, exactly like revoked.
+        assert!(r.token_with_user("hexp", 50).unwrap().is_none());
+        // Unexpired and no-expiry tokens resolve; the expiry round-trips.
+        let (t, _) = r.token_with_user("hlive", 50).unwrap().unwrap();
+        assert_eq!(t.expires_at_ns, Some(100));
+        let (t, _) = r.token_with_user("hopen", 50).unwrap().unwrap();
+        assert_eq!(t.expires_at_ns, None);
+        // Boundary: expires_at_ns == now is expired; the no-expiry token
+        // resolves at any time.
+        assert!(r.token_with_user("hlive", 100).unwrap().is_none());
+        assert!(r.token_with_user("hopen", i64::MAX).unwrap().is_some());
     }
 
     #[test]

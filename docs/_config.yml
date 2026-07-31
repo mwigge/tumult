@@ -1,5 +1,5 @@
 title: Tumult
-description: Rust-native chaos engineering for modern distributed systems
+description: Rust-native chaos engineering, end to end — define experiments, run them with OpenTelemetry, store every result, and report compliance evidence
 url: "https://tumult.rs"
 baseurl: ""
 

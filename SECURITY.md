@@ -4,8 +4,9 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 2.16.x  | :white_check_mark: |
-| < 2.16  | :x:                |
+| 2.20.x  | :white_check_mark: |
+| 2.19.x  | :white_check_mark: |
+| < 2.19  | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -33,7 +34,7 @@ Please use [GitHub's private vulnerability reporting](https://github.com/mwigge/
 
 - Workspace crates forbid unsafe code unless a narrowly scoped module documents
   and reviews the required invariant.
-- **cargo-audit** and **cargo-deny** run in CI.
+- **`cargo deny check advisories`** runs in CI (see below).
 - **Clippy pedantic** enforced with `-D warnings`
 - Production fallible paths return typed errors; panics are reserved for
   invariant violations and tests.
@@ -44,5 +45,23 @@ Please use [GitHub's private vulnerability reporting](https://github.com/mwigge/
 ## Dependency Management
 
 Tumult tracks the [RustSec Advisory Database](https://rustsec.org/) via
-`cargo-audit`. CI fails on known vulnerabilities. Unmaintained crate warnings
-are reviewed and documented in the security assessment.
+`cargo deny check advisories`, which runs in CI. Exceptions to specific
+advisories live in `deny.toml`, each with a written justification (typically:
+the vulnerable crate is reachable only through a transitive dependency, no
+upstream fix has been released, and the vulnerable code path is never
+exercised with untrusted input). Unmaintained-crate warnings are reviewed and
+documented in the security assessment.
+
+## Deployment Security
+
+- **TLS.** The Krönika daemon (`tumultd`) can serve TLS directly when
+  `KRONIKA_TLS_CERT` / `KRONIKA_TLS_KEY` are set (support being added);
+  otherwise deploy it — and the MCP server — behind a TLS-terminating reverse
+  proxy (nginx/Caddy/Ingress). Never expose the plain-HTTP listeners to an
+  untrusted network.
+- **Non-loopback listeners require auth tokens.** Both the MCP server and
+  `tumultd` fail closed: they refuse to bind a non-loopback address without
+  configured authentication. Issue a distinct token per principal and rotate
+  on a schedule.
+- See [docs/guides/production-deployment.md](docs/guides/production-deployment.md)
+  for the full hardening checklist.
