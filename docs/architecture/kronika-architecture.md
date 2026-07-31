@@ -186,6 +186,10 @@ embeds the live waterfall as loopback spans land, and exposes the
 two-step e-stop with rollback status — all role-aware (viewer is
 read-only).
 
+![The Run page: pick a registered definition, dry-run the resolved plan, start](../assets/runs-new-dry-run.png)
+
+![Run detail after an approved run: telemetry waterfall, rollback status, audit trail](../assets/run-estop-aborted.png)
+
 ## Authentication and RBAC (schema v6)
 
 The API authenticates once any real user exists (ADR-012) — until then it
@@ -239,6 +243,8 @@ approve/reject/break-glass endpoints (route-table roles), the
 `/approvals` queue page and run-detail chain card in the UI, and an
 "Approval chain (change management)" section in the R2 evidence pack
 (SOC 2 CC8.1).
+
+![The approvals queue: an approver reviews a pending T2 run against its pin](../assets/approvals-queue-review.png)
 
 ## Parquet lake + retention (durability story)
 

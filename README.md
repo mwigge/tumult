@@ -149,6 +149,17 @@ run` writes its journal and ingests into the same unified store
 (`tumult store import-legacy` migrates pre-merge databases — see the
 [CLI reference](docs/guides/cli-reference.md)).
 
+### Screenshots
+
+All captured on the seeded demo stack above; the full click path (login →
+register → approve → run → e-stop → evidence pack) is in the
+[platform walkthrough](docs/guides/platform-walkthrough.md).
+
+| | |
+|---|---|
+| ![Overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown](docs/assets/overview-dashboard.png) | ![Org rollup scores — company score with coverage and a domain treemap](docs/assets/scores-rollup.png) |
+| ![Run detail — live telemetry waterfall, consumed approval chain, hash-chained audit trail](docs/assets/run-detail-waterfall.png) | ![Approvals queue — an approver reviews a pending T2 run with its content-hash pin](docs/assets/approvals-queue-review.png) |
+
 ## CLI
 
 ```bash
