@@ -156,6 +156,22 @@ image: /images/tumult-banner.png
     box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
 
+  /* ── Screenshot gallery ───────────────────────────── */
+  .shots {
+    max-width: 1100px; margin: 0 auto; padding: 0 2rem 3rem;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 1.5rem;
+  }
+  .shot-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .shot-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+  .shot-card img { width: 100%; display: block; }
+  .shot-card .caption { padding: 0.9rem 1.1rem; color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; }
+  .shot-card .caption b { color: #fff; display: block; font-size: 0.95rem; margin-bottom: 0.2rem; }
+
   /* ── CTA ──────────────────────────────────────────── */
   .cta {
     text-align: center; padding: 3rem 2rem;
@@ -380,6 +396,49 @@ Running Q2 PostgreSQL Resilience GameDay...
   <div class="feature-card">
     <h3><span class="icon">🧾</span> Evidence-Grade Reports</h3>
     <p>R1 executive digests, R2 evidence packs, and R3 game-day reports rendered as A4 PDFs with document control and hash-chain verification — artifacts an auditor can file.</p>
+  </div>
+</section>
+<section class="arch-section" style="padding-bottom: 1rem;">
+  <h2>The Platform, Running</h2>
+  <p style="color: var(--text-muted); max-width: 700px; margin: 0 auto 1.5rem;">
+    Every screen below is the embedded Krönika web UI on the seeded demo stack
+    (<code>docker compose -f docker/docker-compose.kronika.yml up -d</code>) —
+    from sign-in to an approved, executed, e-stopped and reported run.
+    The full click path is in the <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
+  </p>
+</section>
+<section class="shots">
+  <div class="shot-card">
+    <img src="assets/overview-dashboard.png" alt="Krönika overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown">
+    <div class="caption"><b>Overview</b>Resilience posture at a glance: hypothesis pass rate, deviation rate, experiments per day, fault breakdown — computed from the store, per window.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/scores-rollup.png" alt="Krönika scores page — company score 90.0 with coverage and a domain treemap">
+    <div class="caption"><b>Org rollup scores</b>Per-experiment scores roll up by domain to the company root, with coverage against expected evidence and the weakest member called out.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/runs-new-dry-run.png" alt="New run page — pick a registered definition, dry-run the resolved plan, start the run">
+    <div class="caption"><b>One-click execution</b>Pick a validated definition from the registry, dry-run the exact resolved plan — hypothesis, method, rollbacks — then start.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/approvals-queue-review.png" alt="Approvals queue — an approver reviews a pending T2 run with its content-hash pin">
+    <div class="caption"><b>Approval workflows</b>Risk-tiered runs park behind a quorum with content-hash pinning and segregation of duties — the requester can never approve their own run.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/run-detail-waterfall.png" alt="Run detail — deviated run with live telemetry waterfall, consumed approval chain and hash-chained audit trail">
+    <div class="caption"><b>Run detail</b>Live telemetry waterfall, the consumed approval chain with the approver's note, and a tamper-evident hash-chained audit trail — one page, whole story.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/run-estop-aborted.png" alt="Aborted run after two-step e-stop — fault span halted mid-method, rollback completed">
+    <div class="caption"><b>Two-step e-stop</b>Stop a run mid-method: the fault span halts, rollbacks unwind to a clean state, and the stop joins the audit trail with its actor.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/manual-evidence.png" alt="Manual evidence register — draft, submitted and verified records with reviewer attribution">
+    <div class="caption"><b>Manual evidence</b>Game days and tabletops enter as attested records with a draft → submitted → verified lifecycle, reviewer ≠ enterer, append-only audit.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/reports-evidence-pack.png" alt="Reports page — a generated R2 DORA evidence pack with SHA-256 and PDF download">
+    <div class="caption"><b>Evidence packs</b>R1/R2/R3 compliance reports generated from the store as document-controlled PDFs — the R2 pack includes the approval chain (SOC 2 CC8.1).</div>
   </div>
 </section>
 
