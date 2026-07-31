@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.18.0-brightgreen)
-![Rust](https://img.shields.io/badge/rust-1.91.1%2B-orange)
+![Version](https://img.shields.io/badge/version-2.19.0-brightgreen)
+![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 Tumult is a Rust-native chaos engineering platform for running observable,
@@ -28,7 +28,7 @@ flowchart LR
 
 ## Quick start
 
-Prerequisites: Rust 1.91.1 or newer and Docker with Compose.
+Prerequisites: Rust 1.92.0 or newer and Docker with Compose.
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **MSRV raised to 1.92.0** (workspace, CI toolchains, Docker builder
+  images, clippy `msrv`, README): `typst` 0.15.1 / `hayro` 0.7 / `krilla`
+  0.8 require rustc 1.92, so 1.91.1 can no longer compile the workspace.
+  Local, CI and container toolchains are aligned on 1.92.0.
+
+### Fixed
+- CI: the Security Audit job now runs `cargo deny check advisories`
+  instead of `rustsec/audit-check`, which does not read `deny.toml` and
+  therefore re-reported advisories already ignored there with documented
+  reasons (RUSTSEC-2026-0194, RUSTSEC-2026-0195). One source of truth for
+  advisory exceptions.
+- CI: the Web UI job runs `svelte-kit sync` before `svelte-check`, so a
+  clean checkout (no `.svelte-kit/tsconfig.json` yet) type-checks.
+
 ## [2.19.0] — 2026-07-31
 
 **The Krönika merge.** The kronika workspace — daemon, OTLP ingestion,

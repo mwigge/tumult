@@ -16,7 +16,7 @@
 # The companion Dockerfile.tumult-mcp image selects the MCP binary and binds
 # its authenticated Streamable HTTP endpoint for container use.
 
-FROM rust:1.91.1-bookworm AS builder
+FROM rust:1.92.0-bookworm AS builder
 
 WORKDIR /build
 # Copy the whole build context (heavy dirs are excluded via .dockerignore) so
@@ -37,7 +37,7 @@ RUN cargo build --release -p tumult-cli -p tumult-mcp -p tumult-net && \
 # CI builds can use a multi-stage with debian:bookworm-slim for
 # smaller images; this approach prioritizes build reliability.
 
-FROM rust:1.91.1-bookworm AS runtime
+FROM rust:1.92.0-bookworm AS runtime
 
 # Install Docker CLI + tools needed by script plugins (docker exec, curl, ssh)
 # The bookworm repos are already cached in this image — no network fetch needed

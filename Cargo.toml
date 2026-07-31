@@ -56,7 +56,7 @@ members = [
 [workspace.package]
 version = "2.19.0"
 edition = "2021"
-rust-version = "1.91.1"
+rust-version = "1.92.0"
 license = "Apache-2.0"
 repository = "https://github.com/mwigge/tumult"
 description = "Rust-native chaos engineering platform with TOON format and OpenTelemetry observability"

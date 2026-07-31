@@ -10,7 +10,7 @@
 #     demo-control-panel
 
 # ── Build ───────────────────────────────────────────────────
-FROM rust:1.91.1-bookworm AS builder
+FROM rust:1.92.0-bookworm AS builder
 WORKDIR /build
 
 # Copy the self-contained crate (Cargo.toml declares its own [workspace]).
