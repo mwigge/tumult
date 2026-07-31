@@ -2,7 +2,9 @@
 
 Get Tumult running in 5 minutes. This is the CLI-only path; for the full
 platform (daemon, web UI, approvals, compliance reports) see the Krönika
-section of [README.md](README.md).
+section of [README.md](README.md) — or jump straight to the
+[platform walkthrough](docs/guides/platform-walkthrough.md) for a guided
+click-through of the web UI on the seeded demo stack.
 
 ```mermaid
 flowchart LR
