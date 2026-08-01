@@ -8,6 +8,12 @@
 #   TUMULT_PATTERN   - Process pattern to check via pgrep -f (optional)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
+if [ -n "${TUMULT_PID}" ]; then
+    validate_integer "TUMULT_PID" "${TUMULT_PID}"
+fi
+
 if [ -n "${TUMULT_PID}" ]; then
     if kill -0 "${TUMULT_PID}" 2>/dev/null; then
         echo "true"

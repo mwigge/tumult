@@ -5,7 +5,7 @@
 //! `(src)-[rel]->(dst)` tuples over the persistent analytics store. Until now it
 //! was reachable only through the MCP server; these commands expose the exact
 //! same query functions to an operator at a terminal. They read the analytics
-//! store at `~/.tumult/analytics.duckdb` (override with `--store`) and render a
+//! store at `~/.tumult/lake.duckdb` (override with `--store`) and render a
 //! readable text summary, or the underlying structured object with
 //! `--format json`.
 

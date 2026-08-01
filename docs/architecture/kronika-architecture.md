@@ -11,6 +11,15 @@ The daemon's configuration surface keeps `KRONIKA_*` environment variable
 names (`KRONIKA_HTTP_ADDR`, `KRONIKA_INGEST_TOKEN`, `KRONIKA_LAKE_DIR`,
 …) — those are stable identifiers, not product names.
 
+Three environment-variable prefixes coexist, each with a distinct scope:
+`KRONIKA_*` is the daemon's original configuration surface (frozen
+identifiers, kept for backwards compatibility); `TUMULTD_*` covers newer
+run-queue settings added after the import (`TUMULTD_RUN_CONCURRENCY`,
+`TUMULTD_RUN_QUEUE_DEPTH`, `TUMULTD_APPROVAL_SWEEP_S`); and `TUMULT_*`
+belongs to the CLI/native side (`TUMULT_OTEL_ENABLED`, `TUMULT_LAKE_PATH`,
+…). New daemon settings should use `TUMULTD_*`; the `KRONIKA_*` names are
+not being renamed.
+
 ## Component diagram
 
 ```

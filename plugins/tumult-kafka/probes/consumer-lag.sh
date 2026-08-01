@@ -8,9 +8,29 @@
 #   TUMULT_KAFKA_DIR       - Kafka install directory (default: /opt/kafka)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 BOOTSTRAP="${TUMULT_KAFKA_BOOTSTRAP:-localhost:9092}"
 GROUP="${TUMULT_CONSUMER_GROUP:?TUMULT_CONSUMER_GROUP is required}"
 KAFKA_DIR="${TUMULT_KAFKA_DIR:-/opt/kafka}"
+
+# Bootstrap servers: host:port list — hostname, IP, port, and separator chars only.
+case "${BOOTSTRAP}" in
+    ''|*[!a-zA-Z0-9.,:_-]*)
+        echo "error: TUMULT_KAFKA_BOOTSTRAP contains invalid characters: '${BOOTSTRAP}'" >&2
+        echo "  allowed: letters, digits, '.', ',', ':', '_', '-'" >&2
+        exit 1
+        ;;
+esac
+
+# Consumer group names: letters, digits, '_', '.', '-'.
+case "${GROUP}" in
+    ''|*[!a-zA-Z0-9._-]*)
+        echo "error: TUMULT_CONSUMER_GROUP contains invalid characters: '${GROUP}'" >&2
+        echo "  allowed: letters, digits, '_', '.', '-'" >&2
+        exit 1
+        ;;
+esac
 
 # Try kafka-consumer-groups.sh first, then kafka CLI
 if [ -x "${KAFKA_DIR}/bin/kafka-consumer-groups.sh" ]; then

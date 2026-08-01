@@ -3,6 +3,16 @@
 //! This crate is a **test-only** utility published exclusively as a
 //! `[dev-dependency]`. It provides mock executor implementations and
 //! experiment builder helpers used across multiple integration test suites.
+//!
+//! # Scope
+//!
+//! Adoption is deliberately incremental: this crate currently covers the
+//! handful of integration suites that have been migrated to it, while many
+//! workspace crates still carry their own local test helpers. That
+//! duplication is accepted rather than rewritten wholesale — but **new
+//! integration tests should prefer these helpers** over adding another
+//! per-crate copy, so the shared set grows over time instead of the
+//! duplicated one.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

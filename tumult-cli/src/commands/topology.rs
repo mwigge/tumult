@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 
 use super::chaosgraph::{emit, resolve_store};
 
@@ -120,14 +120,15 @@ pub fn cmd_topology_map(
 /// # Errors
 ///
 /// Returns an error if the store is missing, cannot be read, or an unknown
-/// framework is given.
+/// framework or unsupported format is given.
 pub fn cmd_topology_lineage(
     store: Option<&Path>,
     framework: Option<&str>,
     control: Option<&str>,
     service: Option<&str>,
-    json: bool,
+    format: &str,
 ) -> Result<()> {
+    let json = text_or_json(format)?;
     let store = resolve_store(store)?;
     let report = tumult_mcp::tools::compliance_lineage(
         &store.to_string_lossy(),
@@ -144,18 +145,29 @@ pub fn cmd_topology_lineage(
 /// # Errors
 ///
 /// Returns an error if the store is missing, cannot be read, or an unknown
-/// framework is given.
+/// framework or unsupported format is given.
 pub fn cmd_topology_recommend(
     store: Option<&Path>,
     framework: Option<&str>,
     limit: u32,
-    json: bool,
+    format: &str,
 ) -> Result<()> {
+    let json = text_or_json(format)?;
     let store = resolve_store(store)?;
     let report =
         tumult_mcp::tools::recommend_injection(&store.to_string_lossy(), framework, Some(limit))
             .map_err(|e| anyhow!(e.to_string()))?;
     emit(&report, json)
+}
+
+/// `lineage` and `recommend` render only text or JSON — `map` is the sole
+/// view with a Mermaid rendering, so reject anything else with a pointer.
+fn text_or_json(format: &str) -> Result<bool> {
+    match format {
+        "text" => Ok(false),
+        "json" => Ok(true),
+        other => bail!("--format {other} is only supported by `topology map`; use text or json"),
+    }
 }
 
 #[cfg(test)]
@@ -181,8 +193,22 @@ mod tests {
         cmd_topology_map(Some(&db), None, None, "text", true, 3).unwrap();
         cmd_topology_map(Some(&db), Some("dora"), None, "mermaid", false, 3).unwrap();
         cmd_topology_map(Some(&db), None, None, "json", true, 3).unwrap();
-        cmd_topology_lineage(Some(&db), Some("nis2"), None, None, true).unwrap();
-        cmd_topology_recommend(Some(&db), Some("dora"), 3, false).unwrap();
+        cmd_topology_lineage(Some(&db), Some("nis2"), None, None, "json").unwrap();
+        cmd_topology_recommend(Some(&db), Some("dora"), 3, "text").unwrap();
+    }
+
+    #[test]
+    fn mermaid_is_rejected_outside_map_with_a_pointer() {
+        let err = cmd_topology_lineage(None, None, None, None, "mermaid").unwrap_err();
+        assert!(
+            err.to_string().contains("only supported by `topology map`"),
+            "{err}"
+        );
+        let err = cmd_topology_recommend(None, None, 3, "mermaid").unwrap_err();
+        assert!(
+            err.to_string().contains("only supported by `topology map`"),
+            "{err}"
+        );
     }
 
     #[test]

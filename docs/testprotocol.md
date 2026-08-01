@@ -8,7 +8,8 @@
 
 > **Note (1.2):** the inventory and command references in this protocol were
 > corrected against tumult 2.16.1 (`tumult discover`: 16 plugins — 11 script
-> + 5 native — and 91 actions; 22 workspace crates; 40 MCP tools). The
+> + 5 native — and 91 actions; 40 MCP tools; the workspace has since grown to
+> 32 crates as of 2.20). The
 > **Test Results Log** at the end is a *historical* execution record from the
 > 0.1.0-era build (2026-04-01): its PASS rows, counts, and version strings
 > describe that build, not the current one, and are preserved as an audit
@@ -79,7 +80,7 @@ export TUMULT_CLICKHOUSE_URL=http://localhost:8123  # only for TP-CLICKHOUSE
 cargo build --workspace --release
 ```
 
-**Expected output:** All 22 workspace crates compile without errors. Binary at `target/release/tumult`.
+**Expected output:** All 32 workspace crates compile without errors. Binary at `target/release/tumult`.
 
 ### TP-ENV-02: Start chaos target containers
 

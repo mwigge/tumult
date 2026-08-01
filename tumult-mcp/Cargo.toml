@@ -35,6 +35,7 @@ tumult-ssh = { path = "../tumult-ssh" }
 tumult-net = { path = "../tumult-net" }
 tumult-cloud = { path = "../tumult-cloud" }
 rust-mcp-sdk = { workspace = true }
+clap = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

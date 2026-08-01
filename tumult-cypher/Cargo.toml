@@ -10,6 +10,8 @@ description = "openCypher query surface over ChaosGraph snapshots via a disposab
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+opentelemetry = { workspace = true }
+tracing = { workspace = true }
 # Embedded graph engine used purely as a throwaway query executor: the graph is
 # rebuilt from a snapshot on every call, so DuckDB remains the single source of
 # truth. Feature choice: the default `embedded` profile drags in vector/text

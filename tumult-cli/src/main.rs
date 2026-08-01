@@ -386,7 +386,7 @@ async fn main() -> anyhow::Result<()> {
                     framework.as_deref(),
                     control.as_deref(),
                     service.as_deref(),
-                    matches!(format, GraphFormat::Json),
+                    format.as_str(),
                 )?;
             }
             TopologyAction::Recommend {
@@ -399,7 +399,7 @@ async fn main() -> anyhow::Result<()> {
                     store.as_deref(),
                     framework.as_deref(),
                     limit,
-                    matches!(format, GraphFormat::Json),
+                    format.as_str(),
                 )?;
             }
         },

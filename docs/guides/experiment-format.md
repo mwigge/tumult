@@ -14,13 +14,17 @@ Every experiment has these sections:
 
 | Section | Required | Description |
 |---------|----------|-------------|
+| `version` | No | Schema version (defaults to `v1` when omitted) |
 | `title` | Yes | Human-readable experiment name |
 | `description` | No | What this experiment validates |
-| `tags` | Yes | Classification tags for filtering and analytics |
+| `tags` | No | Classification tags for filtering and analytics |
 | `configuration` | No | Non-sensitive key-value pairs (inline or from environment variables) — usable in templates and injected into subprocess environments |
 | `secrets` | No | Sensitive values (from environment variables or files) — env-injected, never journaled |
 | `controls` | No | Lifecycle hooks executed at every lifecycle event (before/after experiment, method, activity, hypothesis, rollback) |
 | `steady_state_hypothesis` | No | Probes that define "healthy" — checked before and after fault |
+| `guards` | No | Auto-halt guardrails — probes evaluated continuously during the fault window that stop the experiment when their tolerance is breached |
+| `blast_radius` | No | Free-form note describing the intended blast radius (journaled for audit; documentation only, not enforced) |
+| `max_concurrent_faults` | No | Cap on concurrently-active background faults during the method (unlimited when omitted) |
 | `method` | Yes | Ordered sequence of actions and probes to execute |
 | `rollbacks` | No | Actions to restore system state after the experiment |
 | `estimate` | No | Phase 0 — prediction of expected outcome |
@@ -180,10 +184,10 @@ Computed onto the journal after the run, comparing predictions (Phase 0) and mea
 |-------|-------------|
 | `estimate_accuracy` | 0.0–1.0 — how close the outcome was to the estimate |
 | `resilience_score` | 0.0–1.0 composite score |
-| `estimate_recovery_delta_s` | *Reserved — unpopulated in 2.17* |
-| `trend` | *Reserved — unpopulated in 2.17* |
+| `estimate_recovery_delta_s` | *Reserved — unpopulated in 2.20* |
+| `trend` | *Reserved — unpopulated in 2.20* |
 
-The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and unpopulated in 2.17.
+The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and unpopulated in 2.20.
 
 ## Journal Export
 

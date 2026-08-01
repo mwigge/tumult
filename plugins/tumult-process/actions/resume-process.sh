@@ -7,6 +7,12 @@
 #   TUMULT_PATTERN   - Process pattern to resume via pkill -f (optional)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
+if [ -n "${TUMULT_PID}" ]; then
+    validate_integer "TUMULT_PID" "${TUMULT_PID}"
+fi
+
 if [ -n "${TUMULT_PID}" ]; then
     echo "resuming PID ${TUMULT_PID}"
     kill -CONT "${TUMULT_PID}"
