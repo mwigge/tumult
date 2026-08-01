@@ -495,6 +495,24 @@ The following attributes are approved for use as metric label dimensions:
 | `resilience.recovery.duration` | Histogram | `s` | `fault.type`, `target.system` |
 | `resilience.deviation.count` | Counter | `{deviation}` | `fault.type`, `target.system`, `fault.severity` |
 
+### Telemetry Naming Across the Workspace
+
+The `resilience.*` namespace defined here is one of three dotted prefixes
+used across tumult telemetry:
+
+| Prefix | Used for | Examples |
+|---|---|---|
+| `tumult.*` | Metrics (counters, histograms, gauges) | `tumult.experiments.total`, `tumult.experiment.duration` |
+| `resilience.*` | Experiment/runner spans and their attributes | `resilience.experiment`, `resilience.probe`, `resilience.analytics.ingest` |
+| `<component>.*` | Component and client spans, one prefix per subsystem | `k8s.*`, `clickhouse.*`, `cypher.*` |
+
+**Known quirk — duplicate root span names.** The core runner's experiment
+root span is `resilience.experiment`, while the agentic runner
+(tumult-agentic) roots its traces at `tumult.experiment`. The two names are
+kept as-is for dashboard and alert compatibility; they are documented here
+as a deliberate inconsistency to be unified under a single name in a future
+major version. Do not rename either span in a minor release.
+
 ---
 
 ## 7. Scientific Rules

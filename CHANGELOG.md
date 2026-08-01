@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Docs accuracy pass after a full user-journey audit: README badge and
+  kronika "Try it" steps (`.env` is required now), real GameDay sample
+  output in QUICKSTART, `trend`/`report`/`run`/`analyze`/`mcp serve`/
+  `coverage-gaps` flag gaps in the CLI reference, missing
+  `version`/`guards`/`blast_radius`/`max_concurrent_faults` fields in the
+  experiment format guide, stale crate counts and unsafe-block claims on
+  the website, and a Linux one-liner in the release notes.
+- CLI help texts pointed at the old `~/.tumult/analytics.duckdb` default;
+  they now say `~/.tumult/lake.duckdb` (and `TUMULT_LAKE_PATH`).
+- `tumult validate` on a GameDay file now hints to use
+  `tumult gameday run` instead of a bare unknown-field error.
+
+### Changed
+- Large-file splits (the ~400-line convention): `tumult-api` (lib.rs,
+  auth, and the 3,800-line integration suite), `tumultd` (main →
+  serve/admin/reports/lake_jobs), `tumult-ingest` runs queue,
+  `tumult-compliance` builders, `tumult-lake` (manual/store/lake/auth/
+  approvals/runs), `tumult-cli` clap modules, and the two biggest web UI
+  pages into components. Inline test modules moved out across
+  `tumult-core`, `tumult-mcp`, `tumult-baseline` and `tumult-otel`. Pure
+  code motion — no behaviour changes.
+- `tumult-mcp` binary now uses clap like the other binaries (usage
+  errors exit 2, `--help` on stdout, unknown flags rejected; adds
+  `--token` and `--version` for parity with `tumult mcp serve`).
+- `topology lineage`/`recommend` share one `TopologyFormat` enum with
+  `topology map`; `mermaid` is rejected with a clear message outside
+  `map`.
+- `tumult-cypher` emits a `cypher.query` span with result attributes —
+  no engine crate is uninstrumented anymore.
+- Plugin input validation: `tumult-containers`, `tumult-kafka` and
+  `tumult-process` scripts now source `plugins/lib/validate.sh` and fail
+  fast on invalid input before any destructive command runs.
+- Cohesion fixes: consistent `DuckDb` casing and prefixed error messages
+  in `tumult-lake`, one help-text style across the CLI, documented
+  env-var prefixes (`KRONIKA_*`/`TUMULTD_*`/`TUMULT_*`), telemetry naming
+  conventions, store/lake glossary, and the `/healthz` vs `/health`
+  probe-path difference.
+
 ## [2.20.0] — 2026-07-31
 
 **Security hardening across the board, and one product everywhere.** A

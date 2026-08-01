@@ -24,7 +24,8 @@ use tumult_lake::{
 };
 
 use crate::auth::Principal;
-use crate::{internal, with_reader, ApiState};
+use crate::sql_util::{internal, with_reader};
+use crate::ApiState;
 
 /// The acting identity for a mutation: the authenticated principal's
 /// username when auth is enabled, else the request-supplied field (required,

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.19.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.20.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
@@ -137,8 +137,9 @@ flowchart LR
 Try it (full platform, demo seed included):
 
 ```bash
+cp .env.example .env   # fill in the three KRONIKA_* values — the stack refuses to start without them
 docker compose -f docker/docker-compose.kronika.yml up -d --build
-# open http://localhost:14318/ (demo credentials are in the compose file)
+# open http://localhost:14318/ (log in with the admin password you set in .env)
 ```
 
 The compose stack builds the UI and the `tumultd` binary in Docker, seeds a

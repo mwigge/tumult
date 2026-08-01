@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::snapshot::GraphSnapshot;
+use crate::telemetry;
 
 /// Default maximum number of result rows returned to the caller.
 ///
@@ -134,6 +135,7 @@ pub fn run_cypher_capped(
     // Guard first: a rejected query must never reach the engine, so even a
     // parser bug in grafeo cannot turn a write into a silent no-op.
     if let Some(token) = find_mutation_token(query) {
+        tracing::debug!(token, "cypher query rejected: mutating clause");
         return Err(CypherError::MutationRejected(token));
     }
     // Engine-side resource limits: clamp the row cap even when the caller did
@@ -141,19 +143,24 @@ pub fn run_cypher_capped(
     // — both before paying the graph-rebuild cost.
     let row_cap = row_cap.min(MAX_ROW_CAP);
     enforce_evaluation_budget(snapshot, query)?;
+    let _span = telemetry::begin_query(snapshot.nodes.len(), snapshot.edges.len(), row_cap);
+    let start = std::time::Instant::now();
     let db = GrafeoDB::new_in_memory();
     let session = db.session();
-    build_graph(&session, snapshot)?;
+    build_graph(&session, snapshot)
+        .inspect_err(|e| telemetry::record_query_error(&e.to_string()))?;
     let result = session
         .execute_language(query, "cypher", None)
-        .map_err(|e| CypherError::Engine(e.to_string()))?;
+        .map_err(|e| CypherError::Engine(e.to_string()))
+        .inspect_err(|e| telemetry::record_query_error(&e.to_string()))?;
     let truncated = result.row_count() > row_cap;
-    let rows = result
+    let rows: Vec<Vec<JsonValue>> = result
         .rows()
         .iter()
         .take(row_cap)
         .map(|row| row.iter().map(value_to_json).collect())
         .collect();
+    telemetry::record_query_result(rows.len(), truncated, start.elapsed());
     Ok(CypherTable {
         columns: result.columns.clone(),
         rows,

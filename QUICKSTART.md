@@ -176,23 +176,42 @@ tumult chaosgraph query --kind service --format json
 
 ## Run a GameDay (full e2e)
 
-One command — starts infrastructure, runs 4 PostgreSQL resilience experiments via MCP, scores results, maps to DORA compliance:
+One command — starts infrastructure, runs 4 PostgreSQL resilience experiments via MCP, scores results, maps to DORA compliance. (Note: `tumult validate` checks experiment files only — `.gameday.toon` files are validated when you run them.)
 
 ```bash
 ./scripts/gameday-demo.sh
 ```
 
-Output:
-```
-GameDay: Q2 PostgreSQL Resilience Programme
-Status: COMPLIANT
-Resilience Score: 1.00
-  #1 [PASS] PostgreSQL connection kill under load (2197ms)
-  #2 [PASS] PostgreSQL container pause — total unavailability (7402ms)
-  #3 [PASS] PostgreSQL CPU stress — resource pressure (9331ms)
-  #4 [PASS] PostgreSQL memory stress — resource pressure (9305ms)
+Output (trimmed — the script wraps each stage in a banner and indents the GameDay lines):
 
-Compliance: DORA EU 2022/2554 Art. 11, 24, 25 | NIS2
+```
+── Running Q2 PostgreSQL Resilience GameDay ────────────────────────
+  Experiments: connection kill, container pause, CPU stress, memory stress
+  Compliance: DORA EU 2022/2554 Articles 11, 24, 25
+  Running... (this takes ~30 seconds)
+
+  GameDay: Q2 PostgreSQL Resilience Programme
+  Status:  4/4 PASS (compliant)
+  Duration: 27.3s
+
+    #1 [PASS] PostgreSQL connection kill under load (2197ms)
+    #2 [PASS] PostgreSQL container pause — total unavailability (7402ms)
+    #3 [PASS] PostgreSQL CPU stress — resource pressure (9331ms)
+    #4 [PASS] PostgreSQL memory stress — resource pressure (9305ms)
+
+  Resilience Score: 1.00
+    Pass rate:        1.00
+    Recovery:         1.00
+    Load impact:      1.00
+    Compliance:       1.00
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  GameDay Complete                                                   ║
+║  Compliance frameworks:                                             ║
+║    DORA EU 2022/2554 — Art. 11 (recovery), Art. 24 (testing),      ║
+║                        Art. 25 (scenario-based testing)             ║
+║    NIS2 — Incident response and resilience testing                  ║
+╚══════════════════════════════════════════════════════════════════════╝
 ```
 
 The demo script exercises the full pipeline: Agent → MCP HTTP → experiment runner → plugins → Docker targets → DuckDB analytics → compliance mapping.

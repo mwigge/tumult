@@ -37,7 +37,8 @@ use tumult_lake::{
 };
 
 use crate::auth::Principal;
-use crate::{internal, now_ns, with_reader, ApiState};
+use crate::sql_util::{internal, now_ns, with_reader};
+use crate::ApiState;
 
 fn bad_request(msg: String) -> Response {
     (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()

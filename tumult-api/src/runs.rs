@@ -24,7 +24,8 @@ use tumult_ingest::{Batch, EnqueueError, RunRequest, StopError};
 use tumult_lake::{run_state, RegisteredDefinition, Writer};
 
 use crate::auth::Principal;
-use crate::{internal, now_ns, sql_string, with_reader, ApiState};
+use crate::sql_util::{internal, now_ns, sql_string, with_reader};
+use crate::ApiState;
 
 /// Every valid `runs.state` value (active + terminal), for `?state=`.
 const STATES: &[&str] = &[

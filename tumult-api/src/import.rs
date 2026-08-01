@@ -18,7 +18,8 @@ use tumult_core::types::{Experiment, Journal};
 use tumult_ingest::Batch;
 use tumult_lake::Writer;
 
-use crate::{internal, ApiState};
+use crate::sql_util::internal;
+use crate::ApiState;
 
 /// JSON body: the journal plus its experiment definition when the caller has
 /// it (the definition enriches the `ChaosGraph` with the full

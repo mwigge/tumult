@@ -8,12 +8,25 @@
 #   TUMULT_CPU_PERIOD     - CPU period in microseconds (default: 100000)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 CONTAINER="${TUMULT_CONTAINER_ID:?TUMULT_CONTAINER_ID is required}"
 RUNTIME="${TUMULT_RUNTIME:-docker}"
-
-case "${RUNTIME}" in docker|podman) ;; *) echo "error: TUMULT_RUNTIME must be docker or podman, got: ${RUNTIME}" >&2; exit 1;; esac
 CPU_QUOTA="${TUMULT_CPU_QUOTA:-50000}"
 CPU_PERIOD="${TUMULT_CPU_PERIOD:-100000}"
+
+validate_enum "TUMULT_RUNTIME" "${RUNTIME}" "docker podman"
+validate_integer "TUMULT_CPU_QUOTA" "${CPU_QUOTA}"
+validate_integer "TUMULT_CPU_PERIOD" "${CPU_PERIOD}"
+
+# Container names/IDs: letters, digits, '_', '.', '-' (docker naming rules).
+case "${CONTAINER}" in
+    ''|*[!a-zA-Z0-9_.-]*)
+        echo "error: TUMULT_CONTAINER_ID contains invalid characters: '${CONTAINER}'" >&2
+        echo "  allowed: letters, digits, '_', '.', '-'" >&2
+        exit 1
+        ;;
+esac
 
 if ! command -v "${RUNTIME}" >/dev/null 2>&1; then
     echo "error: ${RUNTIME} not found" >&2

@@ -21,16 +21,16 @@ pub enum StoreError {
     )]
     StoreLocked { path: PathBuf },
 
-    #[error(transparent)]
-    Duckdb(#[from] duckdb::Error),
+    #[error("duckdb error: {0}")]
+    DuckDb(#[from] duckdb::Error),
 
-    #[error(transparent)]
+    #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error(transparent)]
+    #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("{0}")]
+    #[error("internal store error: {0}")]
     Internal(String),
 }
 

@@ -42,10 +42,11 @@ members = [
     "tumult-agent-cli",
     # 2.15 — autopilot (pure decision logic: policy, validator, gate, ladder)
     "tumult-autopilot",
+    # Imported from kronika but versioned with the workspace (version.workspace = true).
+    "tumult-query",
     # Analytics platform (imported from kronika; crates keep their 0.7.x versions)
     "tumult-otlp",
     "tumult-lake",
-    "tumult-query",
     "tumult-ingest",
     "tumult-metrics",
     "tumult-compliance",

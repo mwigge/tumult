@@ -19,12 +19,17 @@ tumult run <experiment.toon> [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--journal-path <path>` | `journal.toon` | Output journal location |
+| `--force` | `false` | Overwrite the journal file if it already exists |
 | `--dry-run` | `false` | Validate and show plan without executing |
 | `--rollback-strategy <s>` | `on-deviation` | `always`, `on-deviation`, or `never` (`deviated` is accepted as an alias for `on-deviation`) |
 | `--baseline-mode <m>` | `full` | `full`, `skip`, or `only` |
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
 | `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
+| `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `none`) |
+| `--load-script <path>` | — | Path to load test script (k6 `.js`) |
+| `--load-vus <n>` | — | Number of virtual users for the load test |
+| `--load-duration <d>` | — | Load test duration (e.g. `30s`, `5m`) |
 
 ### Examples
 
@@ -100,6 +105,8 @@ Validate experiment syntax, structure, and plugin references.
 ```
 tumult validate <experiment.toon>
 ```
+
+Note: `tumult validate` only validates **experiment** files — it does not validate `.gameday.toon` files (those are checked when you run `tumult gameday run`).
 
 Reports:
 - Title, description, tags
@@ -217,6 +224,8 @@ tumult analyze [journals-dir] [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--query <sql>` | Custom SQL query |
+| `--last <n>` | Show summary of the last N experiments (default: 1 if no `--query`) |
+| `--all` | Show store-wide aggregate summary |
 
 If `journals-dir` is omitted, queries the persistent store at `~/.tumult/lake.duckdb`.
 
@@ -266,7 +275,7 @@ tumult compliance journals/ --framework pci-dss
 
 ## tumult trend
 
-Cross-run trend analysis from the persistent store.
+Cross-run trend analysis over journal files. `trend` requires a `<journals>` path (directory or file) — it loads those journals into a temporary in-memory store for the query; it does not read the persistent store.
 
 ```
 tumult trend <journals-dir> [OPTIONS]
@@ -287,7 +296,7 @@ tumult trend journals/ --target postgresql --metric resilience_score
 
 ## tumult report
 
-Generate HTML (or PDF-ready HTML) report from a journal.
+Generate a report from a journal — HTML (default), PDF-ready HTML, JSON, or JUnit XML.
 
 ```
 tumult report <journal.toon> [OPTIONS]
@@ -296,7 +305,8 @@ tumult report <journal.toon> [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--output <path>` | Output file path (default: `report.html`) |
-| `--format <f>` | `html` (default) |
+| `--format <f>` | `html` (default), `pdf`, `json`, or `junit` |
+| `--trace-ui-base <url>` | Base URL of a trace UI (e.g. Jaeger/Tempo) — HTML reports render each activity's `trace_id` as a clickable link (falls back to the `TUMULT_TRACE_UI_BASE` env var) |
 
 ## tumult import
 
@@ -404,7 +414,8 @@ tumult mcp serve --transport http --token my-secret # require bearer auth
 | `--host <addr>` | Bind address for HTTP transport and health endpoint (default: `127.0.0.1`; a non-loopback bind such as `0.0.0.0` requires `--token`) |
 | `--port <port>` | Port for the HTTP transport (default: `3100`) |
 | `--health-port <port>` | Port for the `/health` endpoint (default: `port + 1`) |
-| `--token <token>` | Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`) |
+| `--token <token>` | Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`, mapped to the `operator` role) |
+| `--auth-config <path>` | TOML auth config granting per-token roles (viewer/operator); overrides `--token` (sets `TUMULT_MCP_AUTH_CONFIG`) |
 
 The exposed tools, authentication, and data model are identical to the standalone binary documented next.
 
@@ -464,6 +475,7 @@ tumult chaosgraph coverage-gaps [--framework <fw>] [--domain <plugin>]
 | `--depth <n>` | Traversal depth in hops (neighbors, default `1`) |
 | `--framework <fw>` | Annotate gaps with a framework's still-unevidenced articles (coverage-gaps) |
 | `--domain <plugin>` | Filter gaps to a fault domain / plugin (coverage-gaps) |
+| `--refresh` | Also persist the derived gap sub-graph into the store so `chaosgraph query/neighbors` can navigate it — takes a write lock, so it conflicts with a running MCP server on the same store (coverage-gaps) |
 | `--format <text\|json>` | Output format (all; default `text`) |
 | `--store <path>` | Analytics store path (all; default `~/.tumult/lake.duckdb`) |
 
@@ -591,6 +603,8 @@ tumult tui [--store <path>] [--refresh-secs <n>]
 | `TUMULT_OTEL_CONSOLE` | Print spans to console (default: `false`) |
 | `RUST_LOG` | Tracing filter. When unset **and** no OTLP endpoint is configured, the CLI defaults it to `warn` to keep interactive output clean; set it explicitly (e.g. `info`) to see audit/telemetry logs |
 | `TUMULT_MCP_TOKEN` | Bearer token for MCP server authentication |
+| `TUMULT_DAEMON_URL` | Daemon URL (e.g. `http://localhost:4318`) — `tumult run` POSTs journals to the daemon's `/api/import/journal` instead of writing the store directly (see Auto-Ingest under `tumult run`) |
+| `TUMULT_DAEMON_TOKEN` | `kro_...` API token sent as `Authorization: Bearer` on daemon journal POSTs |
 | `CLAUDE_CODE_BIN` | Explicit path to the Claude Code binary for `recommend --agent` / `agents` |
 | `CODEX_BIN` | Explicit path to the Codex binary for `recommend --agent` / `agents` |
 | `TUMULT_CLICKHOUSE_URL` | ClickHouse URL for SigNoz cross-correlation mode |

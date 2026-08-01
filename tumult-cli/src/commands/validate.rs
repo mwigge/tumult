@@ -34,16 +34,98 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
         )
     })?;
 
-    let experiment = parse_experiment(&content)
-        .with_context(|| format!("failed to parse experiment: {}", experiment_path.display()))?;
+    let experiment = match parse_experiment(&content) {
+        Ok(experiment) => experiment,
+        Err(e) => {
+            if let Some(hint) = gameday_file_hint(experiment_path, &content) {
+                bail!(
+                    "failed to parse experiment: {}: {e}\n\nhint: {hint}",
+                    experiment_path.display()
+                );
+            }
+            return Err(e).with_context(|| {
+                format!("failed to parse experiment: {}", experiment_path.display())
+            });
+        }
+    };
 
     validate_experiment(&experiment)?;
 
-    // SRE-10: Warn when a native activity references an unknown plugin or function.
+    warn_on_unknown_plugin_refs(&experiment);
+
+    // Validate configuration references
+    let config_result = resolve_config(&experiment.configuration);
+    let secrets_result = resolve_secrets(&experiment.secrets);
+
+    println!("Experiment: {}", experiment.title);
+    if let Some(ref desc) = experiment.description {
+        println!("Description: {desc}");
+    }
+    println!("Tags: {}", experiment.tags.join(", "));
+    println!("Method steps: {}", experiment.method.len());
+    println!("Rollback steps: {}", experiment.rollbacks.len());
+
+    if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
+        println!(
+            "Hypothesis: {} ({} probes)",
+            hypothesis.title,
+            hypothesis.probes.len()
+        );
+    }
+
+    if experiment.estimate.is_some() {
+        println!("Estimate: present (Phase 0)");
+    }
+    if experiment.baseline.is_some() {
+        println!("Baseline: configured (Phase 1)");
+    }
+    if experiment.regulatory.is_some() {
+        println!("Regulatory: mapped");
+    }
+
+    // Report config/secret resolution
+    match config_result {
+        Ok(_) => println!("Configuration: all values resolved"),
+        Err(e) => println!("Configuration: WARNING — {e}"),
+    }
+    match secrets_result {
+        Ok(_) => println!("Secrets: all values resolved"),
+        Err(e) => println!("Secrets: WARNING — {e}"),
+    }
+
+    println!("\nValidation passed.");
+    Ok(())
+}
+
+/// `tumult validate` speaks the experiment schema; a `GameDay` file
+/// (`.gameday.toon`, with a top-level `experiments` list) is a different
+/// document and fails with a confusing "unknown field `experiments`" error.
+/// Detect that case so the error can point at the right command instead.
+fn gameday_file_hint(path: &Path, content: &str) -> Option<String> {
+    let named_like_gameday = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".gameday.toon"));
+    // TOON top-level keys are unindented; arrays render as `key[N]:`.
+    let has_experiments_key = content
+        .lines()
+        .any(|line| line.starts_with("experiments:") || line.starts_with("experiments["));
+    (named_like_gameday || has_experiments_key).then(|| {
+        format!(
+            "{} looks like a GameDay file, which `tumult validate` does not check \
+             — run it with `tumult gameday run {}`",
+            path.display(),
+            path.display()
+        )
+    })
+}
+
+/// SRE-10: warn when an activity references an unknown native plugin or
+/// function. Script providers get the same check, resolved through the
+/// discovery search paths; discovery problems are surfaced so a skipped path
+/// or malformed manifest does not silently shrink the available plugin set.
+fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
     let native_registry = tumult_exec::native_registry();
-    // Same check for script providers, resolved through the discovery search
-    // paths; discovery problems are surfaced so a skipped path or malformed
-    // manifest does not silently shrink the available plugin set.
     let discovery = tumult_plugin::discovery::discover_all_report();
     for warning in &discovery.warnings {
         eprintln!("warning: {warning}");
@@ -132,49 +214,6 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
             Provider::Process { .. } => {} // supported
         }
     }
-
-    // Validate configuration references
-    let config_result = resolve_config(&experiment.configuration);
-    let secrets_result = resolve_secrets(&experiment.secrets);
-
-    println!("Experiment: {}", experiment.title);
-    if let Some(ref desc) = experiment.description {
-        println!("Description: {desc}");
-    }
-    println!("Tags: {}", experiment.tags.join(", "));
-    println!("Method steps: {}", experiment.method.len());
-    println!("Rollback steps: {}", experiment.rollbacks.len());
-
-    if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
-        println!(
-            "Hypothesis: {} ({} probes)",
-            hypothesis.title,
-            hypothesis.probes.len()
-        );
-    }
-
-    if experiment.estimate.is_some() {
-        println!("Estimate: present (Phase 0)");
-    }
-    if experiment.baseline.is_some() {
-        println!("Baseline: configured (Phase 1)");
-    }
-    if experiment.regulatory.is_some() {
-        println!("Regulatory: mapped");
-    }
-
-    // Report config/secret resolution
-    match config_result {
-        Ok(_) => println!("Configuration: all values resolved"),
-        Err(e) => println!("Configuration: WARNING — {e}"),
-    }
-    match secrets_result {
-        Ok(_) => println!("Secrets: all values resolved"),
-        Err(e) => println!("Secrets: WARNING — {e}"),
-    }
-
-    println!("\nValidation passed.");
-    Ok(())
 }
 
 // ── Discover command ──────────────────────────────────────────
@@ -310,4 +349,55 @@ pub(crate) fn validate_path_no_symlink(path: &Path) -> Result<()> {
         bail!("symlink not allowed for security: {}", path.display());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GAMEDAY_TOON: &str =
+        "title: Q2 Resilience\n\nexperiments[1]:\n  - path: pg-cpu-stress.toon\n";
+
+    #[test]
+    fn gameday_suffix_parse_failure_carries_gameday_run_hint() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("q2.gameday.toon");
+        std::fs::write(&path, GAMEDAY_TOON).unwrap();
+
+        let err = cmd_validate(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("looks like a GameDay file"), "{msg}");
+        assert!(msg.contains("tumult gameday run"), "{msg}");
+    }
+
+    #[test]
+    fn experiments_key_without_suffix_also_hints() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("campaign.toon");
+        std::fs::write(&path, GAMEDAY_TOON).unwrap();
+
+        let err = cmd_validate(&path).unwrap_err();
+        assert!(err.to_string().contains("tumult gameday run"), "{err}");
+    }
+
+    #[test]
+    fn ordinary_experiment_parse_failure_has_no_gameday_hint() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("experiment.toon");
+        std::fs::write(&path, "unknown_field: 1\n").unwrap();
+
+        let err = cmd_validate(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("failed to parse experiment"), "{msg}");
+        assert!(!msg.contains("gameday"), "{msg}");
+    }
+
+    #[test]
+    fn gameday_hint_detection_cases() {
+        assert!(gameday_file_hint(Path::new("x.gameday.toon"), "title: x\n").is_some());
+        assert!(gameday_file_hint(Path::new("x.toon"), GAMEDAY_TOON).is_some());
+        assert!(gameday_file_hint(Path::new("x.toon"), "title: x\n").is_none());
+        // An indented `experiments` line is not a top-level key.
+        assert!(gameday_file_hint(Path::new("x.toon"), "  experiments: no\n").is_none());
+    }
 }

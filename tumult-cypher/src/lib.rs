@@ -38,6 +38,7 @@
 
 mod engine;
 mod snapshot;
+mod telemetry;
 
 pub use engine::{
     run_cypher, run_cypher_capped, CypherError, CypherTable, DEFAULT_ROW_CAP, MAX_EXPANSION_STEPS,

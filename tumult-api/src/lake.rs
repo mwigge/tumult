@@ -11,7 +11,8 @@ use axum::Json;
 use serde_json::{json, Value};
 use tumult_lake::lake::{self, LakeConfig};
 
-use crate::{internal, with_reader, ApiState};
+use crate::sql_util::{internal, with_reader};
+use crate::ApiState;
 
 fn cfg(state: &ApiState) -> LakeConfig {
     LakeConfig::from_env(&state.db_path)

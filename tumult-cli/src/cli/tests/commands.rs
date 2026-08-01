@@ -481,3 +481,38 @@ fn parse_topology_discover_k8s_repeatable_namespace_and_output() {
     assert_eq!(namespace, vec!["prod".to_string(), "staging".to_string()]);
     assert_eq!(output, Some(PathBuf::from("proposed.toml")));
 }
+
+// ── Topology formats ──────────────────────────────────────
+
+#[test]
+fn parse_topology_map_mermaid_format() {
+    let cli = Cli::try_parse_from(["tumult", "topology", "map", "--format", "mermaid"]).unwrap();
+    let Commands::Topology {
+        action: TopologyAction::Map { format, .. },
+    } = cli.command
+    else {
+        panic!("expected topology map");
+    };
+    assert_eq!(format, TopologyFormat::Mermaid);
+}
+
+#[test]
+fn parse_topology_lineage_and_recommend_share_the_map_format_enum() {
+    let cli = Cli::try_parse_from(["tumult", "topology", "lineage", "--format", "json"]).unwrap();
+    let Commands::Topology {
+        action: TopologyAction::Lineage { format, .. },
+    } = cli.command
+    else {
+        panic!("expected topology lineage");
+    };
+    assert_eq!(format, TopologyFormat::Json);
+
+    let cli = Cli::try_parse_from(["tumult", "topology", "recommend"]).unwrap();
+    let Commands::Topology {
+        action: TopologyAction::Recommend { format, .. },
+    } = cli.command
+    else {
+        panic!("expected topology recommend");
+    };
+    assert_eq!(format, TopologyFormat::Text);
+}

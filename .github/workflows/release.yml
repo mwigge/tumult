@@ -260,8 +260,15 @@ jobs:
             ## Binary Downloads
 
             See assets below. One-liner install:
+
+            macOS (Intel/Apple Silicon):
             ```bash
             curl -fsSL https://github.com/mwigge/tumult/releases/download/v${{ steps.version.outputs.version }}/tumult-v${{ steps.version.outputs.version }}-$(uname -m | sed 's/arm64/aarch64/')-apple-darwin.tar.gz | tar xz && sudo mv tumult-*/tumult /usr/local/bin/
+            ```
+
+            Linux (x86_64):
+            ```bash
+            curl -fsSL https://github.com/mwigge/tumult/releases/download/v${{ steps.version.outputs.version }}/tumult-v${{ steps.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz | tar xz && sudo mv tumult-*/tumult /usr/local/bin/
             ```
           generate_release_notes: true
           draft: false

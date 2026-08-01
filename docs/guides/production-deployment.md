@@ -157,6 +157,12 @@ The pod binds `0.0.0.0` (so the Service can reach it) — safe **only** because 
 token is required. Expose externally through a TLS Ingress. Run a **single writer**:
 `replicas: 1`, `strategy: Recreate` (see §4).
 
+**Health probes.** The health path differs per binary: `tumultd` / the ingest
+servers answer `GET /healthz`, while `tumult-mcp` answers `GET /health`.
+Configure liveness/readiness probes with the right path for the binary they
+target — the paths are intentionally kept as-is for compatibility with
+existing probes.
+
 ## 3. Observability — bring your own collector
 
 Telemetry is off unless you point it at a collector. Set

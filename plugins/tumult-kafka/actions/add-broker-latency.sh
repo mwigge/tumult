@@ -9,10 +9,16 @@
 #   TUMULT_KAFKA_PORT - Kafka port to target (default: 9092)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
 DELAY="${TUMULT_DELAY_MS:-100}"
 JITTER="${TUMULT_JITTER_MS:-10}"
 KAFKA_PORT="${TUMULT_KAFKA_PORT:-9092}"
+
+validate_number "TUMULT_DELAY_MS" "${DELAY}"
+validate_number "TUMULT_JITTER_MS" "${JITTER}"
+validate_integer "TUMULT_KAFKA_PORT" "${KAFKA_PORT}"
 
 if [ "$(uname -s)" != "Linux" ]; then
     echo "error: tc netem requires Linux" >&2

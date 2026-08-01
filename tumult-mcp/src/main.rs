@@ -4,6 +4,7 @@
 //! owns the actual server wiring so `tumult-cli`'s `tumult mcp serve` and this
 //! binary behave identically.
 
+use clap::{Parser, ValueEnum};
 use rust_mcp_sdk::error::SdkResult;
 use tumult_mcp::server::{serve, ServeOptions, Transport};
 
@@ -19,78 +20,66 @@ impl Drop for TelemetryShutdown {
     }
 }
 
-fn parse_args() -> ServeOptions {
-    let mut opts = ServeOptions::default();
+/// Transport for the MCP server.
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum TransportArg {
+    /// Newline-delimited JSON-RPC over stdin/stdout (default)
+    Stdio,
+    /// MCP Streamable HTTP transport
+    // `sse` was accepted by the previous hand-rolled parser; keep it as a
+    // hidden alias so existing invocations keep working.
+    #[value(alias = "sse")]
+    Http,
+}
 
-    let args: Vec<String> = std::env::args().collect();
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--transport" => {
-                i += 1;
-                if i < args.len() {
-                    opts.transport = match args[i].as_str() {
-                        "http" | "sse" => Transport::Http,
-                        "stdio" => Transport::Stdio,
-                        other => {
-                            eprintln!("Unknown transport: {other}. Use 'stdio' or 'http'.");
-                            std::process::exit(1);
-                        }
-                    };
-                }
-            }
-            "--host" => {
-                i += 1;
-                if i < args.len() {
-                    opts.host.clone_from(&args[i]);
-                }
-            }
-            "--port" => {
-                i += 1;
-                if i < args.len() {
-                    opts.port = args[i].parse().unwrap_or_else(|_| {
-                        eprintln!("Invalid port: {}", args[i]);
-                        std::process::exit(1);
-                    });
-                }
-            }
-            "--health-port" => {
-                i += 1;
-                if i < args.len() {
-                    opts.health_port = Some(args[i].parse().unwrap_or_else(|_| {
-                        eprintln!("Invalid health port: {}", args[i]);
-                        std::process::exit(1);
-                    }));
-                }
-            }
-            "--auth-config" => {
-                i += 1;
-                if i < args.len() {
-                    // Consumed by McpAuth::load() via the environment.
-                    std::env::set_var("TUMULT_MCP_AUTH_CONFIG", &args[i]);
-                }
-            }
-            "--help" | "-h" => {
-                eprintln!("tumult-mcp [OPTIONS]");
-                eprintln!();
-                eprintln!("Options:");
-                eprintln!("  --transport <stdio|http>  Transport mode (default: stdio)");
-                eprintln!("  --host <addr>             Bind address for HTTP (default: 127.0.0.1)");
-                eprintln!("  --port <port>             Port for HTTP (default: 3100)");
-                eprintln!(
-                    "  --health-port <port>      Port for /health endpoint (default: port+1)"
-                );
-                eprintln!(
-                    "  --auth-config <path>      TOML auth config (token->role); sets TUMULT_MCP_AUTH_CONFIG"
-                );
-                std::process::exit(0);
-            }
-            _ => {}
+/// Tumult MCP Server: stdio and Streamable HTTP transports.
+#[derive(Parser, Debug)]
+#[command(name = "tumult-mcp", version)]
+struct Cli {
+    /// Transport mode
+    #[arg(long, default_value_t = TransportArg::Stdio, value_enum)]
+    transport: TransportArg,
+    /// Bind address for the HTTP transport and health endpoint
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+    /// Port for the HTTP transport
+    #[arg(long, default_value_t = 3100)]
+    port: u16,
+    /// Port for the /health endpoint (default: port + 1)
+    #[arg(long)]
+    health_port: Option<u16>,
+    /// Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`,
+    /// mapped to the `operator` role)
+    #[arg(long)]
+    token: Option<String>,
+    /// Path to a TOML auth config file granting per-token roles (viewer /
+    /// operator). Overrides --token; sets `TUMULT_MCP_AUTH_CONFIG`
+    #[arg(long)]
+    auth_config: Option<std::path::PathBuf>,
+}
+
+impl From<Cli> for ServeOptions {
+    fn from(cli: Cli) -> Self {
+        // The auth flags are consumed by `McpAuth::load()` via the
+        // environment when the handler is built — the same mechanism
+        // `tumult mcp serve` uses. The config file takes priority when
+        // both are given.
+        if let Some(path) = &cli.auth_config {
+            std::env::set_var("TUMULT_MCP_AUTH_CONFIG", path);
         }
-        i += 1;
+        if let Some(token) = &cli.token {
+            std::env::set_var("TUMULT_MCP_TOKEN", token);
+        }
+        Self {
+            transport: match cli.transport {
+                TransportArg::Stdio => Transport::Stdio,
+                TransportArg::Http => Transport::Http,
+            },
+            host: cli.host,
+            port: cli.port,
+            health_port: cli.health_port,
+        }
     }
-
-    opts
 }
 
 #[tokio::main]
@@ -104,7 +93,7 @@ async fn main() -> SdkResult<()> {
         std::env::set_var("RUST_LOG", "warn");
     }
 
-    let args = parse_args();
+    let args = ServeOptions::from(Cli::parse());
 
     // Initialize OTel (traces, metrics, and logs — `TumultTelemetry::new`
     // installs all providers internally) before serving, so `tumult-mcp` and

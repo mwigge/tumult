@@ -7,6 +7,12 @@
 #   TUMULT_NAME      - Process name to check (optional)
 set -eu
 
+. "$(dirname "$0")/../../lib/validate.sh"
+
+if [ -n "${TUMULT_PID}" ]; then
+    validate_integer "TUMULT_PID" "${TUMULT_PID}"
+fi
+
 if [ -n "${TUMULT_PID}" ]; then
     PID="${TUMULT_PID}"
 elif [ -n "${TUMULT_NAME}" ]; then

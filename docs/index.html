@@ -280,7 +280,7 @@ image: /images/tumult-banner.png
   <div class="stat"><div class="num">40</div><div class="label">MCP Tools</div></div>
   <div class="stat"><div class="num">16</div><div class="label">Plugins</div></div>
   <div class="stat"><div class="num">91</div><div class="label">Chaos Actions</div></div>
-  <div class="stat"><div class="num">0</div><div class="label">Unsafe Blocks (production code)</div></div>
+  <div class="stat"><div class="num">2</div><div class="label">Unsafe Blocks (audited — process-group kills)</div></div>
   <div class="stat"><div class="num">7</div><div class="label">Compliance Frameworks</div></div>
 </section>
 
@@ -348,7 +348,7 @@ image: /images/tumult-banner.png
   <div class="feature-card">
     <span class="piece">Prove it</span>
     <h3>Reports &amp; Compliance</h3>
-    <p>Map experiments to DORA (EU 2022/2554), NIS2, PCI-DSS 4.0, ISO 22301, ISO 27001, SOC 2, and Basel III. R1 executive digests, R2 evidence packs, and R3 game-day reports render as A4 PDFs with document control and hash-chain verification.</p>
+    <p>Map experiments to DORA (EU 2022/2554), NIS2, PCI-DSS 4.0, ISO 22301, ISO 27001, SOC 2, and Basel III via <code>tumult compliance</code>. R1 executive digests and R3 game-day reports sit on top of any run; the R2 evidence pack renders for DORA, NIS2, ISO 27001, and SOC 2 — PCI-DSS 4.0, ISO 22301, and Basel III are mapping-only. All as A4 PDFs with document control and hash-chain verification.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Close the loop</span>
@@ -374,7 +374,7 @@ image: /images/tumult-banner.png
   </div>
   <div class="feature-card">
     <h3>Memory Safe</h3>
-    <p>100% safe Rust across all 22 crates. Zero <code>unsafe</code> blocks in production code. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
+    <p>Safe Rust across all 32 crates, with exactly two audited <code>unsafe</code> blocks for process-group kills. Zero production <code>.unwrap()</code>. Clippy pedantic enforced. cargo-audit on every commit.</p>
   </div>
   <div class="feature-card">
     <h3>GameDay Orchestration</h3>
