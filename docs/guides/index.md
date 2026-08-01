@@ -15,7 +15,9 @@ Step-by-step guides covering all major aspects of Tumult.
 | [CLI Reference](cli-reference.md) | All commands: `run`, `validate`, `analyze`, `export`, `compliance` |
 | [Statistical Baselines](baseline-guide.md) | Data-derived tolerance methods: percentile, IQR, mean/stddev |
 | [Analytics Guide](analytics-guide.md) | DuckDB SQL queries over experiment journals, Parquet export |
+| [SigNoz Bulk Import](signoz-bulk-import.md) | Backfill lake Parquet spans into SigNoz's ClickHouse, bypassing the collector |
 | [Observability Setup](observability-setup.md) | OTel env vars, collector configs, Jaeger, Grafana, SigNoz |
+| [Grafana Stack](grafana-stack.md) | Reference Tempo + Mimir + Loki stack: one compose file, translated metric names, LogQL/TraceQL examples |
 | [Load Testing Guide](load-testing-guide.md) | k6 integration with chaos experiments |
 | [MCP Guide](mcp-guide.md) | The MCP server: annotations, structured output, `tumult://` resources, and the run-to-ingest-to-recommend loop |
 | [ChaosGraph](chaosgraph.md) | The typed chaos knowledge graph served to agents over MCP: node/edge model, the two query tools, and compact agent context that stays within token budgets (reproducible via make demo-proof) |

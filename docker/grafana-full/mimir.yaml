@@ -1,0 +1,36 @@
+# Mimir — monolithic (single-binary) mode, filesystem block storage,
+# multi-tenancy off so the collector can remote-write without tenant
+# headers. Reference config for docker-compose.grafana-full.yml.
+
+target: all
+
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9095
+
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/mimir/blocks
+
+blocks_storage:
+  tsdb:
+    dir: /data/mimir/tsdb
+  bucket_store:
+    sync_dir: /data/mimir/tsdb-sync
+
+ingester:
+  ring:
+    replication_factor: 1
+    kvstore:
+      store: inmemory
+
+ruler_storage:
+  filesystem:
+    dir: /data/mimir/rules
+
+usage_stats:
+  enabled: false

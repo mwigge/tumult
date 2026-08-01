@@ -1,17 +1,29 @@
-# OTel Collector configuration for Grafana stack
+# OTel Collector configuration for the Grafana stack
 #
 # Routes Tumult telemetry to:
-#   - Tempo (traces)
-#   - Mimir (metrics)
-#   - Loki (logs)
+#   - Tempo  (traces,  via OTLP gRPC)
+#   - Mimir  (metrics, via Prometheus remote write)
+#   - Loki   (logs,    via OTLP HTTP — Loki 3.x native OTLP ingestion)
 #
-# Prerequisites:
+# Tested against otel/opentelemetry-collector-contrib:0.157.0, which
+# renamed exporter kinds (otlp→otlp_grpc, otlphttp→otlp_http,
+# prometheusremotewrite→prometheus_remote_write). The old names still
+# work as deprecated aliases; on contrib < 0.154 use those instead.
+# Note: the contrib `loki` exporter is deprecated (removed from recent
+# contrib builds); use the otlp_http exporter against Loki's `/otlp`
+# endpoint instead.
+#
+# Prerequisites (see docker/docker-compose.grafana-full.yml):
 #   - Grafana Tempo at tempo:4317
 #   - Grafana Mimir at mimir:9009
-#   - Grafana Loki at loki:3100
+#   - Grafana Loki  at loki:3100
 #
 # Usage:
-#   otelcol --config otel-collector-grafana.yaml
+#   otelcol-contrib --config otel-collector-grafana.yaml
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
 
 receivers:
   otlp:
@@ -38,33 +50,32 @@ processors:
         action: upsert
 
 exporters:
-  otlp/tempo:
+  otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
 
-  prometheusremotewrite/mimir:
+  prometheus_remote_write/mimir:
     endpoint: http://mimir:9009/api/v1/push
-    tls:
-      insecure: true
 
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/tempo]
+      exporters: [otlp_grpc/tempo]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [prometheusremotewrite/mimir]
+      exporters: [prometheus_remote_write/mimir]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loki]
+      exporters: [otlp_http/loki]
 
   telemetry:
     logs:
