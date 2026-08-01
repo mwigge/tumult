@@ -128,7 +128,7 @@ russh = { version = "0.61", default-features = false, features = ["flate2", "aws
 async-trait = "0.1"
 
 # Kubernetes
-kube = { version = "3.1", features = ["client", "runtime", "derive"] }
+kube = { version = "4.2", features = ["client", "runtime", "derive"] }
 k8s-openapi = { version = "0.27", features = ["v1_32"] }
 
 # MCP (Model Context Protocol)
