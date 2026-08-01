@@ -139,6 +139,7 @@ tumult run experiment.toon
 | `docker-compose.aqe.yml` | Agentic QE Fleet |
 | `docker-compose.kronika.yml` | tumultd demo stack (daemon + web UI + seed + report) |
 | `docker-compose.kronika-collector.yml` | tumultd dev pair with OTel Collector (`otel-collector-kronika.yaml`) |
+| `docker-compose.grafana-full.yml` | Grafana stack reference: Tempo + Mimir + Loki + Grafana (see `docs/guides/grafana-stack.md`) |
 | `Dockerfile.tumult` | CLI + MCP image (both binaries) |
 | `Dockerfile.tumultd` | tumultd image (web UI build + daemon + CLI) |
 | `Dockerfile.tumult-mcp` | MCP server entrypoint variant |

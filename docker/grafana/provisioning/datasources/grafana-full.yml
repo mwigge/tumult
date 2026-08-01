@@ -1,0 +1,39 @@
+# Datasources for the Grafana full stack (docker-compose.grafana-full.yml).
+# Loaded by any Grafana mounting this provisioning directory; in the
+# classic profile these point at hosts that don't exist there, which is
+# harmless (they only error when queried).
+apiVersion: 1
+
+datasources:
+  - name: Mimir
+    uid: tumult-mimir
+    type: prometheus
+    access: proxy
+    url: http://mimir:9009/prometheus
+    editable: false
+    jsonData:
+      timeInterval: 5s
+
+  - name: Tempo
+    uid: tumult-tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      nodeGraph:
+        enabled: true
+      tracesToLogsV2:
+        datasourceUid: tumult-loki
+        filterByTraceID: true
+      serviceMap:
+        datasourceUid: tumult-mimir
+
+  - name: Loki
+    uid: tumult-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
+  boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
+  versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
+  with provisioned Tempo/Mimir/Loki datasources and a reference dashboard
+  (`tumult-grafana-full.json`). How-to in `docs/guides/grafana-stack.md`,
+  including the OTLP→Prometheus metric-name translation table verified
+  live against Mimir.
+- SigNoz bulk import: `scripts/signoz-bulk-import.sh` backfills spans from
+  the Parquet lake straight into SigNoz's ClickHouse (`signoz_index_v3` plus
+  the `traces_v3_resource` companion table, so the UI resolves services),
+  bypassing the collector. Docker-exec and local `clickhouse-client`
+  transports, `--dry-run` per-partition counts, and a file ledger for
+  idempotent incremental re-runs (`signoz_index_v3` is a plain MergeTree —
+  no engine-level dedup). How-to in `docs/guides/signoz-bulk-import.md`,
+  with the full lake→SigNoz column mapping, verified live against the
+  `signoz-standalone` ClickHouse.
+
 ### Fixed
 - Docs accuracy pass after a full user-journey audit: README badge and
   kronika "Try it" steps (`.env` is required now), real GameDay sample
@@ -20,6 +38,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `tumult gameday run` instead of a bare unknown-field error.
 
 ### Changed
+- `collector/otel-collector-grafana.yaml`: replaced the deprecated contrib
+  `loki` exporter with `otlp_http` against Loki's native OTLP endpoint
+  (`/otlp`), renamed exporter kinds to their current canonical names
+  (`otlp_grpc`, `prometheus_remote_write`, `otlp_http`), dropped the
+  no-op `tls.insecure` on the remote-write exporter, and added the
+  `health_check` extension. Verified against otelcol-contrib 0.157.0.
 - Large-file splits (the ~400-line convention): `tumult-api` (lib.rs,
   auth, and the 3,800-line integration suite), `tumultd` (main →
   serve/admin/reports/lake_jobs), `tumult-ingest` runs queue,

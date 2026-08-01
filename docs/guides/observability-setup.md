@@ -92,7 +92,10 @@ otelcol --config collector/otel-collector-signoz.yaml
 ### Grafana Stack (Tempo + Mimir + Loki)
 
 ```bash
-# Requires Tempo, Mimir, and Loki running
+# Reference stack with all backends wired up (see docs/guides/grafana-stack.md):
+docker compose -f docker/docker-compose.grafana-full.yml up -d
+
+# Or run the collector standalone against your own backends:
 otelcol --config collector/otel-collector-grafana.yaml
 ```
 

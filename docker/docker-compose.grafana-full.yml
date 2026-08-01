@@ -1,0 +1,128 @@
+# ══════════════════════════════════════════════════════════════════════
+# Tumult — Grafana full-stack REFERENCE implementation
+#
+#   Tumult (CLI/tumultd) ──OTLP──▶ otelcol-contrib ──┬─▶ Tempo  (traces)
+#                                                    ├─▶ Mimir  (metrics)
+#                                                    └─▶ Loki   (logs)
+#                                                         ▲
+#                                                        Grafana
+#
+# This is a REFERENCE stack for local exploration, not a production
+# deployment: single-node everything, no auth, no TLS, filesystem
+# storage with short retention. See docs/guides/grafana-stack.md.
+#
+# Usage (from the repo root):
+#   docker compose -f docker/docker-compose.grafana-full.yml up -d
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 tumult run <experiment.toon>
+#
+# UIs / APIs:
+#   Grafana:  http://localhost:13001  (anonymous Viewer; admin/tumult)
+#   Tempo:    http://localhost:13200
+#   Mimir:    http://localhost:19009/prometheus
+#   Loki:     http://localhost:13100
+#   Collector OTLP: localhost:4317 (gRPC), localhost:4318 (HTTP)
+#
+# Port note: the collector binds the host's default OTLP ports 4317/4318
+# so Tumult's default endpoint works unchanged. Do not run this stack at
+# the same time as docker-compose.observability.yml (SigNoz owns 4317).
+# ══════════════════════════════════════════════════════════════════════
+
+services:
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.157.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ../collector/otel-collector-grafana.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"     # OTLP gRPC (Tumult default endpoint)
+      - "4318:4318"     # OTLP HTTP
+      - "23133:13133"   # health check (13133 belongs to the demo stack)
+    # No healthcheck: the contrib image is shell-less; readiness is
+    # visible at http://localhost:23133/ (health_check extension).
+    depends_on:
+      tempo:
+        condition: service_started
+      mimir:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - grafana-full
+
+  tempo:
+    image: grafana/tempo:2.9.4
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./grafana-full/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "13200:3200"
+    # No healthcheck: the tempo image is shell-less; check
+    # http://localhost:13200/ready from the host instead.
+    networks:
+      - grafana-full
+
+  mimir:
+    image: grafana/mimir:3.1.4
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    volumes:
+      - ./grafana-full/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir-data:/data/mimir
+    ports:
+      - "19009:9009"
+    # No healthcheck: the mimir image is shell-less; check
+    # http://localhost:19009/ready from the host instead.
+    networks:
+      - grafana-full
+
+  loki:
+    image: grafana/loki:3.6.2
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./grafana-full/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "13100:3100"
+    # No healthcheck: the loki image is shell-less; check
+    # http://localhost:13100/ready from the host instead.
+    networks:
+      - grafana-full
+
+  grafana:
+    image: grafana/grafana:12.4.6
+    ports:
+      - "13001:3000"
+    environment:
+      # LOCAL REFERENCE ONLY — do not expose. Hardcoded demo credential
+      # for this throwaway stack; never reuse outside it.
+      - GF_SECURITY_ADMIN_PASSWORD=tumult
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    depends_on:
+      tempo:
+        condition: service_started
+      mimir:
+        condition: service_started
+      loki:
+        condition: service_started
+    networks:
+      - grafana-full
+
+volumes:
+  tempo-data:
+  mimir-data:
+  loki-data:
+  grafana-data:
+
+networks:
+  grafana-full:
+    name: grafana-full

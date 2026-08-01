@@ -94,6 +94,10 @@ tumult store backup --output my-backup/
 tumult import my-backup/
 ```
 
+### SigNoz backfill
+
+The daemon's Parquet lake (`KRONIKA_LAKE_DIR`, exported on `KRONIKA_LAKE_INTERVAL` or via `POST /api/lake/export`) can be backfilled straight into SigNoz's ClickHouse — see the [SigNoz Bulk Import](signoz-bulk-import.md) guide.
+
 ### Retention
 
 ```bash
