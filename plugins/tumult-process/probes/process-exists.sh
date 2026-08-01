@@ -10,6 +10,12 @@ set -eu
 
 . "$(dirname "$0")/../../lib/validate.sh"
 
+# Default unset target vars so set -u does not abort before the friendly
+# "one of TUMULT_PID, TUMULT_NAME, or TUMULT_PATTERN is required" check.
+TUMULT_PID="${TUMULT_PID:-}"
+TUMULT_NAME="${TUMULT_NAME:-}"
+TUMULT_PATTERN="${TUMULT_PATTERN:-}"
+
 if [ -n "${TUMULT_PID}" ]; then
     validate_integer "TUMULT_PID" "${TUMULT_PID}"
 fi
