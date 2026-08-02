@@ -82,6 +82,34 @@ async fn scaffold_returns_validated_toon() {
 }
 
 #[tokio::test]
+async fn scaffold_reports_invalid_experiments_without_registering() {
+    point_discovery_at_workspace_plugins();
+    let srv = spawn_server().await;
+    // An unclosed probe regex fails engine validation: the endpoint still
+    // answers 200 with valid:false, and nothing reaches the registry.
+    let (status, body) = post(
+        &srv.base,
+        "/api/authoring/scaffold",
+        json!({
+            "plugin": "tumult-containers",
+            "action": "pause-container",
+            "args": {"container_id": "demo-postgres"},
+            "target": "demo-postgres",
+            "probe_command": "echo hi",
+            "probe_expect": "(unclosed",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["valid"], false, "{body}");
+    assert!(body["validation_error"].as_str().unwrap().len() > 1);
+
+    let (status, body) = get(&srv.base, "/api/registry").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["count"], 0, "scaffold must persist nothing: {body}");
+}
+
+#[tokio::test]
 async fn scaffold_rejects_unknown_actions_and_missing_plugin() {
     point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;

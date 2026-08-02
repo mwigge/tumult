@@ -15,7 +15,7 @@ use serde_json::{json, Map, Value};
 use tumult_authoring::builder::{
     build_experiment_unvalidated, encode_experiment, ProbeSpec, ScaffoldRequest,
 };
-use tumult_authoring::FaultCatalog;
+use tumult_authoring::{ActionKind, FaultCatalog};
 
 /// Client-error body: the 400s of this module are always safe to detail
 /// (they describe the request, never store internals).
@@ -24,7 +24,11 @@ fn bad_request(msg: String) -> (StatusCode, Json<Value>) {
 }
 
 /// 500 body: details are logged server-side, the client gets a fixed
-/// generic message (same contract as [`crate::sql_util::internal`]).
+/// generic message (same contract as [`crate::sql_util::internal`]). Not
+/// delegated: `sql_util::internal` returns `Response`, while this
+/// module's error channel is the smaller `(StatusCode, Json<Value>)`
+/// tuple (`clippy::result_large_err`), and the two can't be reconciled
+/// without converting one representation into the other.
 fn internal(msg: String) -> (StatusCode, Json<Value>) {
     tracing::error!(error = %msg, "internal error");
     (
@@ -111,7 +115,13 @@ pub fn scaffold_json(
     };
 
     let qualified = format!("{plugin}::{action}");
-    if catalog.find(&plugin, &action).is_none() {
+    // Only fault actions scaffold: a catalog probe used as the method's
+    // action would still validate and could register a semantically wrong
+    // experiment, so probes are rejected exactly like unknown names.
+    let is_action = catalog
+        .find(&plugin, &action)
+        .is_some_and(|a| a.kind == ActionKind::Action);
+    if !is_action {
         return Err(bad_request(format!("unknown action {qualified:?}")));
     }
 
@@ -167,16 +177,26 @@ pub fn scaffold_json(
 }
 
 /// `GET /api/authoring/catalog` — the live fault catalog (domains →
-/// actions → documented args) for the UI's action picker.
-pub async fn catalog() -> Json<Value> {
-    Json(catalog_json(&load_catalog()))
+/// actions → documented args) for the UI's action picker. Discovery reads
+/// plugin manifests from disk, so it runs on a blocking thread (the house
+/// convention — all blocking store/disk work goes through
+/// `spawn_blocking`, see `sql_util::with_reader`).
+pub async fn catalog() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    tokio::task::spawn_blocking(|| catalog_json(&load_catalog()))
+        .await
+        .map(Json)
+        .map_err(|e| internal(format!("catalog task failed: {e}")))
 }
 
 /// `POST /api/authoring/scaffold` — generate experiment TOON from a
 /// catalog action and its arguments. Pure generation: the UI registers
-/// explicitly via `POST /api/runs/validate`.
+/// explicitly via `POST /api/runs/validate`. Runs on a blocking thread —
+/// it does plugin discovery plus engine validation.
 pub async fn scaffold(
     Json(req): Json<ScaffoldBody>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    scaffold_json(&load_catalog(), &req).map(Json)
+    tokio::task::spawn_blocking(move || scaffold_json(&load_catalog(), &req))
+        .await
+        .map_err(|e| internal(format!("scaffold task failed: {e}")))?
+        .map(Json)
 }
