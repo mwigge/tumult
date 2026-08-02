@@ -19,8 +19,8 @@
 //!
 //! The tokenizer is a deliberately simple word splitter with string-literal
 //! awareness: **best-effort, not a SQL parser**. Defense in depth comes from
-//! also running on a read-only connection with a statement timeout (see
-//! `docs/adr/0002-ai-layer.md`); this module is the first gate, not the wall.
+//! also running on a read-only connection with a statement timeout (see the
+//! AI-layer ADR); this module is the first gate, not the wall.
 
 // Imported from kronika (kronika-ai). Pedantic lints are scoped to
 // tumult-native code; this module predates the pedantic gate.

@@ -1740,9 +1740,9 @@ Tumult release line.
   one experiment deliberately unassigned) mounted at `/data/org.yaml`; the
   seed service additionally creates a verified manual gameday (alice →
   bob), a submitted tabletop (pending) and a draft drill.
-- Docs: [docs/research/research-org-rollups.md](docs/research/research-org-rollups.md),
-  [docs/research/research-manual-evidence.md](docs/research/research-manual-evidence.md),
-  [docs/adr/ADR-009-org-hierarchy-and-manual-evidence.md](docs/adr/ADR-009-org-hierarchy-and-manual-evidence.md).
+- Docs: `docs/research/research-org-rollups.md`,
+  `docs/research/research-manual-evidence.md`,
+  `docs/adr/ADR-009-org-hierarchy-and-manual-evidence.md`.
 
 ### Changed
 - Schema version 1 → 2 (additive; existing stores migrate on open).
