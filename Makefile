@@ -21,7 +21,7 @@ COMPOSE_DEMO    = docker compose -f docker/docker-compose.demo.yml
 
 .PHONY: up up-targets up-observe up-classic down status reset logs \
         ssh-key test e2e lint precommit build clean \
-        demo demo-down demo-check demo-base
+        demo demo-down demo-check demo-base ui-check
 
 # ── Docker Infrastructure ──────────────────────────────────────
 
@@ -106,6 +106,11 @@ demo-check: demo-base
 	$(COMPOSE_DEMO) build
 	$(COMPOSE_DEMO) up -d
 	@COMPOSE_DEMO="$(COMPOSE_DEMO)" bash scripts/demo-check.sh --mode full
+
+# UI table-stakes smoke: needs a running tumultd (see the header of
+# scripts/ui-table-stakes-check.sh for the dev-daemon one-liner).
+ui-check:
+	@bash scripts/ui-table-stakes-check.sh
 
 demo-proof:
 	@echo "Validating Tumult's claims against the live demo (no mocks)..."
