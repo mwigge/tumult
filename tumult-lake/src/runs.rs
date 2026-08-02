@@ -92,6 +92,18 @@ fn now_ns() -> i64 {
 }
 
 impl Writer {
+    /// Link a run to its parent campaign (`runs.gameday_id`, schema v12).
+    ///
+    /// # Errors
+    /// Returns an error if the update fails.
+    pub fn set_run_gameday(&self, run_id: &str, gameday_id: &str) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE runs SET gameday_id = ? WHERE id = ?",
+            params![gameday_id, run_id],
+        )?;
+        Ok(())
+    }
+
     /// Insert a registry definition (callers dedup by `content_hash` first).
     ///
     /// # Errors

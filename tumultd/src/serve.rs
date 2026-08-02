@@ -292,6 +292,15 @@ pub(crate) async fn serve() -> Result<()> {
         tumult_ingest::webhooks::tick_from_env(),
         background_shutdown.clone(),
     );
+    // GameDay supervisor: advances active campaigns through their
+    // experiments as sequential child runs.
+    let gameday_task = tumult_ingest::gamedays::spawn_gameday_supervisor(
+        config.db_path.clone(),
+        ingest.clone(),
+        run_queue.clone(),
+        tumult_ingest::gamedays::tick_from_env(),
+        background_shutdown.clone(),
+    );
     let http_server = tokio::spawn(async move {
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
             .merge(report_router(report_state))
@@ -359,6 +368,9 @@ pub(crate) async fn serve() -> Result<()> {
     webhook_task
         .await
         .context("webhook dispatcher task panicked")?;
+    gameday_task
+        .await
+        .context("gameday supervisor task panicked")?;
     run_queue.shutdown();
     drop(run_queue);
     writer_task.await.context("ingest writer task")?;

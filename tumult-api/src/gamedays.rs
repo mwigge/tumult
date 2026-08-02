@@ -120,8 +120,10 @@ pub async fn validate(
         });
     }
 
-    // Register the campaign envelope itself (kind = 'gameday').
-    let envelope = json!({"toon": req.toon, "experiments": steps}).to_string();
+    // Register the campaign envelope itself (kind = 'gameday'). The
+    // scoring config rides along so the supervisor needs no TOON parse.
+    let envelope =
+        json!({"toon": req.toon, "experiments": steps, "scoring": gameday.scoring}).to_string();
     let gameday_id = register_definition(
         &state,
         ingest,
@@ -274,4 +276,73 @@ pub async fn detail(
         "registered_at_ns": row["registered_at_ns"],
         "registered_by": row["registered_by"],
     })))
+}
+
+/// JSON body for `POST /api/gamedays/{id}/runs`.
+#[derive(Debug, Deserialize)]
+pub struct CreateCampaignRequest {
+    #[serde(default = "default_env")]
+    env: String,
+}
+
+fn default_env() -> String {
+    "dev".into()
+}
+
+/// `POST /api/gamedays/{id}/runs {env?}` — start a campaign: a parent run
+/// the daemon's gameday supervisor advances through the campaign's
+/// experiments as sequential child runs (each with the campaign's env, so
+/// tier classification and approvals apply per step). 409 while another
+/// campaign of the same gameday is active.
+pub async fn start_campaign(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+    Json(req): Json<CreateCampaignRequest>,
+) -> Result<(StatusCode, Json<Value>), Response> {
+    let row = gameday_or_404(&state, &id).await?;
+    let envelope: Value = serde_json::from_str(row["definition_toon"].as_str().unwrap_or("{}"))
+        .map_err(|e| internal(e.to_string()))?;
+    let steps = envelope["experiments"].as_array().map_or(0, Vec::len);
+    let lookup = id.clone();
+    let active = with_reader(&state.db_path, move |reader| {
+        reader
+            .query_json_rows(&format!(
+                "SELECT r.id FROM runs r \
+                 WHERE r.registry_id = '{}' AND r.gameday_id IS NULL \
+                   AND r.state IN ('queued', 'running') LIMIT 1",
+                lookup.replace('\'', "''")
+            ))
+            .map_err(|e| e.to_string())
+    })
+    .await?;
+    if !active.is_empty() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({"error": "a campaign is already active for this gameday"})),
+        )
+            .into_response());
+    }
+
+    let Some(ingest) = state.ingest_handle() else {
+        return Err(unavailable("run creation is not wired (no ingest handle)"));
+    };
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let new_run = tumult_lake::NewRun {
+        id: run_id.clone(),
+        registry_id: id,
+        params_json: Some(json!({"env": req.env}).to_string()),
+        queued_at_ns: now_ns(),
+        actor: principal.actor(),
+    };
+    ingest
+        .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
+            writer.insert_run(&new_run).map_err(|e| e.to_string())
+        })))
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({"run_id": run_id, "state": "queued", "steps": steps})),
+    ))
 }

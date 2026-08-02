@@ -508,6 +508,8 @@ pub async fn stop_all(
 pub struct ListParams {
     state: Option<String>,
     limit: Option<u32>,
+    /// Campaign children of one parent run (schema v12 `runs.gameday_id`).
+    gameday_id: Option<String>,
 }
 
 /// `GET /api/runs?state=&limit=` — runs, newest first (limit defaults to
@@ -530,29 +532,44 @@ pub async fn list(
     }
     let limit = params.limit.unwrap_or(100).clamp(1, 500);
     let state_filter = params.state.filter(|s| !s.is_empty());
+    let gameday_filter = params.gameday_id.filter(|s| !s.is_empty());
+    if gameday_filter
+        .as_deref()
+        .is_some_and(|id| id.chars().count() > 100)
+    {
+        return Err(bad_request("gameday id too long".into()));
+    }
     let scopes = principal.env_scopes.clone();
     let rows = with_reader(&state.db_path, move |reader| {
-        if scopes.is_empty() {
+        let state_clause = state_filter.as_deref().map_or(String::new(), |s| {
+            format!("AND r.state = {}", sql_string(s))
+        });
+        let gameday_clause = gameday_filter.as_deref().map_or(String::new(), |g| {
+            format!("AND r.gameday_id = {}", sql_string(g))
+        });
+        if scopes.is_empty() && gameday_clause.is_empty() {
             return reader
                 .runs(state_filter.as_deref(), limit)
                 .map_err(|e| e.to_string());
         }
         // The `experiments` analytics table has no env column; spans do.
-        let env_list = scopes
-            .iter()
-            .map(|s| sql_string(s))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let state_clause = state_filter.as_deref().map_or(String::new(), |s| {
-            format!("AND r.state = {}", sql_string(s))
-        });
+        let scope_clause = if scopes.is_empty() {
+            String::from("TRUE")
+        } else {
+            let env_list = scopes
+                .iter()
+                .map(|s| sql_string(s))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("(e.env IN ({env_list}) OR r.experiment_id IS NULL)")
+        };
         reader
             .query_json_rows(&format!(
                 "SELECT r.*, g.name AS definition_name FROM runs r \
                  LEFT JOIN run_registry g ON g.id = r.registry_id \
                  LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
                             FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                 WHERE (e.env IN ({env_list}) OR r.experiment_id IS NULL) {state_clause} \
+                 WHERE {scope_clause} {state_clause} {gameday_clause} \
                  ORDER BY r.queued_at_ns DESC LIMIT {limit}"
             ))
             .map_err(|e| e.to_string())

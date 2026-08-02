@@ -175,3 +175,60 @@ async fn validate_rejects_bad_input() {
     .await;
     assert_eq!(status, 400, "{body}");
 }
+
+#[tokio::test]
+async fn start_campaign_creates_the_parent_run() {
+    let srv = spawn_server().await;
+    let (status, body) = validate_gameday(&srv.base, GAMEDAY, experiment_map()).await;
+    assert_eq!(status, 200, "{body}");
+    let gameday_id = body["gameday_registry_id"].as_str().unwrap().to_string();
+
+    // Unknown gameday: 404.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/gamedays/reg-nope/runs", srv.base))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    // Launch: 202 with the parent run id and the step count.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/gamedays/{gameday_id}/runs", srv.base))
+        .json(&json!({"env": "dev"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    let run_id = body["run_id"].as_str().unwrap().to_string();
+    assert_eq!(body["state"], "queued");
+    assert_eq!(body["steps"], 2);
+
+    // A second campaign for the same gameday conflicts while the first is
+    // active.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/gamedays/{gameday_id}/runs", srv.base))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 409);
+
+    // The parent is an ordinary run row; its (empty) child list is
+    // filterable by gameday_id.
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/runs/{run_id}", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/runs?gameday_id={run_id}", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["count"], 0, "no children yet: {body}");
+}

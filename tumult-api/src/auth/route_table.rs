@@ -79,6 +79,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/schedules/{id}/enable", Role::Operator),
     ("POST", "/api/schedules/{id}/delete", Role::Operator),
     ("POST", "/api/gamedays/validate", Role::Operator),
+    ("POST", "/api/gamedays/{id}/runs", Role::Operator),
     // Approver: manual-evidence review.
     (
         "POST",
@@ -162,6 +163,10 @@ mod tests {
             Role::Operator
         );
         assert_eq!(required_role("GET", "/api/gamedays/x"), Role::Viewer);
+        assert_eq!(
+            required_role("POST", "/api/gamedays/x/runs"),
+            Role::Operator
+        );
         assert_eq!(required_role("POST", "/api/webhooks/x/delete"), Role::Admin);
         assert_eq!(
             required_role("POST", "/api/schedules/x/enable"),
