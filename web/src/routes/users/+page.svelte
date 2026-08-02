@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, fmtAgo, fmtTs } from '$lib/api';
-  import type { AdminUser, MeResponse, Role } from '$lib/types';
+  import type { AdminUser, ApiToken, MeResponse, Role } from '$lib/types';
 
   const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -9,6 +9,16 @@
   let meError = $state<string | null>(null);
   let users = $state<AdminUser[] | null>(null);
   let error = $state<string | null>(null);
+
+  // API tokens (admin list; hashes are never exposed).
+  let tokens = $state<ApiToken[] | null>(null);
+  let tokenName = $state('');
+  let tokenUserId = $state('');
+  let tokenDays = $state('');
+  let tokenError = $state<string | null>(null);
+  // Shown once after minting — the plaintext token is never retrievable again.
+  let minted = $state<{ name: string; token: string } | null>(null);
+  let minting = $state(false);
 
   // One row expands at a time; the editors below belong to that row.
   let openId = $state<string | null>(null);
@@ -57,6 +67,12 @@
       // dropped the caller's own admin rights) the banner explains why the
       // page's actions now fail; the last good list stays visible.
       error = String(e);
+    }
+    try {
+      const r = await api.tokens();
+      tokens = r.tokens;
+    } catch (e) {
+      if (!tokens) tokenError = String(e);
     }
   }
 
@@ -130,6 +146,54 @@
       createError = String(e);
     } finally {
       creating = false;
+    }
+  }
+
+  /** Token status badge: revoked and expired are terminal; else active. */
+  function tokenStatus(t: ApiToken): { label: string; cls: string } {
+    if (t.revoked) return { label: 'revoked', cls: 'fail' };
+    if (t.expires_at_ns !== null && t.expires_at_ns / 1_000_000 <= Date.now()) {
+      return { label: 'expired', cls: 'warn' };
+    }
+    return { label: 'active', cls: 'ok' };
+  }
+
+  async function mint() {
+    if (minting) return;
+    minting = true;
+    tokenError = null;
+    minted = null;
+    try {
+      const days = Number(tokenDays);
+      const r = await api.createToken({
+        name: tokenName.trim(),
+        ...(tokenUserId ? { user_id: tokenUserId } : {}),
+        ...(tokenDays && days > 0
+          ? { expires_at_ns: (Date.now() + days * 86_400_000) * 1_000_000 }
+          : {})
+      });
+      minted = { name: tokenName.trim(), token: r.token };
+      tokenName = '';
+      tokenDays = '';
+      await refresh();
+    } catch (e) {
+      tokenError = String(e);
+    } finally {
+      minting = false;
+    }
+  }
+
+  async function revoke(t: ApiToken) {
+    if (busy) return;
+    busy = true;
+    tokenError = null;
+    try {
+      await api.revokeToken(t.id);
+      await refresh();
+    } catch (e) {
+      tokenError = String(e);
+    } finally {
+      busy = false;
     }
   }
 </script>
@@ -287,6 +351,84 @@
         the user must change it at first login:
         <div class="mono pw">{oneTime.password}</div>
       </div>
+    {/if}
+  </div>
+
+  <div class="panel">
+    <h2>API tokens</h2>
+    {#if tokens === null}
+      {#if tokenError}
+        <div class="state error">Failed to load tokens: {tokenError}</div>
+      {:else}
+        <div class="skeleton" style="height: 80px"></div>
+      {/if}
+    {:else}
+      {#if tokens.length > 0}
+        <table class="data" style="margin-bottom: 14px">
+          <thead>
+            <tr><th>Name</th><th>Owner</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {#each tokens as t (t.id)}
+              {@const st = tokenStatus(t)}
+              <tr>
+                <td>{t.name}</td>
+                <td>{t.username ?? '—'}</td>
+                <td title={fmtTs(t.created_at_ns)}>{fmtAgo(t.created_at_ns)}</td>
+                <td title={t.last_used_at_ns !== null ? fmtTs(t.last_used_at_ns) : ''}>
+                  {t.last_used_at_ns !== null ? fmtAgo(t.last_used_at_ns) : 'never'}
+                </td>
+                <td title={t.expires_at_ns !== null ? fmtTs(t.expires_at_ns) : ''}>
+                  {t.expires_at_ns !== null ? fmtTs(t.expires_at_ns) : 'never'}
+                </td>
+                <td><span class="badge {st.cls}">{st.label}</span></td>
+                <td>
+                  {#if !t.revoked}
+                    <button class="btn danger" onclick={() => revoke(t)} disabled={busy}>Revoke</button>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+      <form
+        class="create"
+        onsubmit={(e) => {
+          e.preventDefault();
+          mint();
+        }}
+      >
+        <label>
+          Name
+          <input type="text" bind:value={tokenName} placeholder="e.g. deploy script" autocomplete="off" required />
+        </label>
+        <label>
+          Owner
+          <select bind:value={tokenUserId}>
+            <option value="">yourself ({me?.username ?? 'current user'})</option>
+            {#each users ?? [] as u (u.id)}
+              <option value={u.id}>{u.username}</option>
+            {/each}
+          </select>
+        </label>
+        <label>
+          Expires in days (optional)
+          <input type="number" min="1" bind:value={tokenDays} placeholder="never" />
+        </label>
+        <div>
+          <button class="primary" type="submit" disabled={minting || !tokenName.trim()}>
+            {minting ? 'Minting…' : 'Mint token'}
+          </button>
+        </div>
+      </form>
+      {#if tokenError && tokens !== null}<div class="state error" style="margin-top: 10px">{tokenError}</div>{/if}
+      {#if minted}
+        <div class="onetime">
+          Token <b>{minted.name}</b> — shown once, never stored:
+          <div class="mono pw">{minted.token}</div>
+        </div>
+      {/if}
     {/if}
   </div>
 {/if}
