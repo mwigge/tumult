@@ -246,7 +246,10 @@ async fn enqueue_rejects_beyond_queue_depth() {
             queue_depth: 1,
             sweep_interval: Duration::from_secs(3600),
         },
-        recording_factory(&fx.executed, Duration::from_millis(200)),
+        // Slow steps on purpose: r3 must be rejected while r2 still holds
+        // the waiting permit, i.e. before r1 finishes — a wall-clock window
+        // that tarpaulin's instrumentation can stretch past short steps.
+        recording_factory(&fx.executed, Duration::from_millis(2000)),
     );
 
     let r1 = queue.enqueue(request(), None).await.unwrap();
@@ -281,7 +284,10 @@ async fn stop_mid_method_runs_rollback_and_aborts() {
             queue_depth: 4,
             sweep_interval: Duration::from_secs(3600),
         },
-        recording_factory(&fx.executed, Duration::from_millis(250)),
+        // Slow steps on purpose: the e-stop must land mid-method — a
+        // wall-clock window that tarpaulin's instrumentation can stretch
+        // past short steps.
+        recording_factory(&fx.executed, Duration::from_millis(2000)),
     );
 
     let run_id = queue.enqueue(request(), None).await.unwrap();
@@ -331,7 +337,12 @@ async fn stop_queued_run_cancels_before_start() {
             queue_depth: 4,
             sweep_interval: Duration::from_secs(3600),
         },
-        recording_factory(&fx.executed, Duration::from_millis(150)),
+        // Slow steps on purpose: the test must observe r1 RUNNING and then
+        // cancel r2 while r1 is still going. That window is wall-clock —
+        // under tarpaulin's instrumentation the test's own code path can
+        // take several seconds, so short steps here let r1 finish and r2
+        // run to completion before the stop lands (CI flake).
+        recording_factory(&fx.executed, Duration::from_millis(2000)),
     );
 
     let r1 = queue.enqueue(request(), None).await.unwrap();
