@@ -423,3 +423,116 @@ async fn stop_unknown_terminal_and_running_runs() {
         .collect();
     assert!(events.contains(&"stop_requested"), "{events:?}");
 }
+
+/// Definition with a declared blast radius, a guard, a fault cap and one
+/// targeted action (plus a probe step and a non-target argument) to exercise
+/// the dry-run scope summary.
+const SCOPE_TOON: &str = r#"
+title: scope preview experiment
+blast_radius: demo stack only
+max_concurrent_faults: 2
+guards[1]:
+  - name: latency guard
+    min_breaches: 2
+    probe:
+      name: p95
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+      tolerance:
+        type: range
+        from: 0.0
+        to: 500.0
+method[2]:
+  - name: pause db
+    activity_type: action
+    provider:
+      type: native
+      plugin: docker
+      function: pause
+      arguments:
+        container: demo-postgres
+        duration_s: 30
+  - name: watch
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+rollbacks[1]:
+  - name: unpause db
+    activity_type: action
+    provider:
+      type: native
+      plugin: docker
+      function: unpause
+      arguments:
+        container: demo-postgres
+"#;
+
+/// The dry-run plan carries a `scope` summary for the blast-radius preview:
+/// the declared note, the targeted fault actions (probes excluded; only
+/// identifying arguments surface as targets), the guards and the fault cap.
+#[tokio::test]
+async fn dry_run_scope_summarizes_targets_and_guards() {
+    let srv = spawn_server().await;
+    let registry_id = register_toon(&srv.base, SCOPE_TOON).await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/runs/dry-run", srv.base))
+        .json(&json!({"registry_id": registry_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+
+    let scope = &body["plan"]["scope"];
+    assert_eq!(scope["blast_radius"], "demo stack only", "{body}");
+    assert_eq!(scope["max_concurrent_faults"], 2, "{body}");
+
+    let actions = scope["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 1, "probe steps are excluded: {body}");
+    assert_eq!(actions[0]["step"], "pause db");
+    assert_eq!(actions[0]["provider"], "docker");
+    assert_eq!(actions[0]["action"], "pause");
+    // Only identifying arguments surface as targets — `duration_s` does not.
+    assert_eq!(actions[0]["targets"], json!({"container": "demo-postgres"}));
+
+    let guards = scope["guards"].as_array().unwrap();
+    assert_eq!(guards.len(), 1);
+    assert_eq!(guards[0]["name"], "latency guard");
+    assert_eq!(guards[0]["probe"], "p95");
+    assert_eq!(guards[0]["min_breaches"], 2);
+}
+
+/// Definitions without a declared blast radius, guards or fault cap still
+/// get a scope block — with nulls and empty lists, not a missing field.
+#[tokio::test]
+async fn dry_run_scope_defaults_when_nothing_declared() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/runs/dry-run", srv.base))
+        .json(&json!({"registry_id": registry_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["valid"], true, "{body}");
+
+    let scope = &body["plan"]["scope"];
+    assert!(scope.is_object(), "scope is always present: {body}");
+    assert_eq!(scope["blast_radius"], Value::Null, "{body}");
+    assert_eq!(scope["max_concurrent_faults"], Value::Null, "{body}");
+    assert_eq!(scope["guards"], json!([]), "{body}");
+    // RUN_TOON's three native noops are actions with no targets.
+    let actions = scope["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 3, "{body}");
+    assert_eq!(actions[0]["provider"], "test");
+    assert_eq!(actions[0]["action"], "noop");
+    assert_eq!(actions[0]["targets"], json!({}));
+}

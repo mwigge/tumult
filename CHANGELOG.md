@@ -26,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (plaintext shown once, optional day-based expiry), revoke.
 - `POST /api/users` now enforces the same ≥12-character minimum on a
   supplied password as the admin reset endpoint (400 otherwise).
+- `POST /api/runs/dry-run` gains an additive `plan.scope` block for the
+  blast-radius preview: the declared `blast_radius` note, the
+  fault-injecting method steps with the provider identity and only the
+  target-identifying arguments (container/host/selector/process/interface/
+  pod/namespace), the guards (name, probe, `min_breaches`), and
+  `max_concurrent_faults` — always present, nulls/empty when undeclared.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
