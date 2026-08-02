@@ -7963,6 +7963,7 @@ name = "tumultd"
 version = "0.7.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "axum-server",
  "clap",

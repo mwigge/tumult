@@ -176,3 +176,277 @@ pub(crate) fn enforce_bind_guard(
     );
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::ENV_LOCK;
+
+    /// One experiment span row in the manual-import CSV shape.
+    const SPAN_CSV: &str =
+        "ts_ns,span_name,service_name,experiment_name\n123,resilience.experiment,demo,exp-1\n";
+
+    /// An initialised (empty) store inside a tempdir; no connection is held.
+    fn temp_db() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("lake.duckdb");
+        Store::open(&db_path).unwrap();
+        (dir, db_path)
+    }
+
+    /// A store plus its single read-write connection, for the bind guard.
+    fn temp_store() -> (tempfile::TempDir, Store, tumult_lake::Writer) {
+        let (dir, db_path) = temp_db();
+        let store = Store::open(&db_path).unwrap();
+        let writer = store.writer().unwrap();
+        (dir, store, writer)
+    }
+
+    /// Guard-test config: loopback gRPC, caller-chosen HTTP bind.
+    fn config(http_addr: &str) -> Config {
+        Config {
+            db_path: PathBuf::from("/tmp/db.duckdb"),
+            otlp_grpc_addr: "127.0.0.1:4317".parse().unwrap(),
+            otlp_http_addr: http_addr.parse().unwrap(),
+            metrics_dir: PathBuf::from("metrics"),
+            ingest_token: None,
+            tls_cert: None,
+            tls_key: None,
+        }
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_bootstrap_env();
+        guard
+    }
+
+    fn clear_bootstrap_env() {
+        std::env::remove_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD");
+        std::env::remove_var("KRONIKA_BOOTSTRAP_TOKEN");
+    }
+
+    fn user_count(store: &Store) -> u64 {
+        let rows = store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT count(*) AS c FROM users")
+            .unwrap();
+        rows[0]["c"].as_u64().unwrap()
+    }
+
+    // -- create_admin ----------------------------------------------------------
+
+    #[test]
+    fn create_admin_creates_the_user_and_refuses_duplicates() {
+        let (_dir, db_path) = temp_db();
+        create_admin("admin", Some(db_path.clone())).unwrap();
+
+        let store = Store::at(&db_path);
+        let user = store
+            .read_only()
+            .unwrap()
+            .user_by_username("admin")
+            .unwrap()
+            .expect("admin row exists");
+        assert_eq!(user.role, "admin");
+        assert!(
+            user.must_change,
+            "the one-time password must be rotated on first login"
+        );
+        assert!(!user.disabled);
+        assert!(!user.password_hash.is_empty());
+
+        let err = create_admin("admin", Some(db_path)).unwrap_err();
+        assert!(format!("{err:#}").contains("already exists"), "{err:#}");
+    }
+
+    #[test]
+    fn create_admin_without_db_flag_uses_the_configured_store_path() {
+        let _guard = env_lock();
+        let (_dir, db_path) = temp_db();
+        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
+        create_admin("boss", None).unwrap();
+        std::env::remove_var("TUMULT_LAKE_PATH");
+
+        let store = Store::at(&db_path);
+        assert!(store
+            .read_only()
+            .unwrap()
+            .user_by_username("boss")
+            .unwrap()
+            .is_some());
+    }
+
+    // -- import ----------------------------------------------------------------
+
+    #[test]
+    fn import_loads_a_csv_into_the_store() {
+        let _guard = env_lock();
+        let (dir, db_path) = temp_db();
+        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
+
+        let csv = dir.path().join("spans.csv");
+        std::fs::write(&csv, SPAN_CSV).unwrap();
+        import(csv, Some("manual".to_string())).unwrap();
+        std::env::remove_var("TUMULT_LAKE_PATH");
+
+        let store = Store::at(&db_path);
+        let reader = store.read_only().unwrap();
+        let spans = reader
+            .query_json_rows("SELECT count(*) AS c FROM spans")
+            .unwrap();
+        assert_eq!(spans[0]["c"].as_u64(), Some(1));
+        let batches = reader
+            .query_json_rows("SELECT count(*) AS c FROM import_batches")
+            .unwrap();
+        assert_eq!(batches[0]["c"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn import_rejects_missing_and_unrecognised_files() {
+        let _guard = env_lock();
+        let (dir, db_path) = temp_db();
+        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
+
+        let missing = import(dir.path().join("nope.csv"), None).unwrap_err();
+        assert!(format!("{missing:#}").contains("import"), "{missing:#}");
+
+        let garbage = dir.path().join("notes.txt");
+        std::fs::write(&garbage, "plain text without commas\n").unwrap();
+        assert!(import(garbage, None).is_err());
+
+        std::env::remove_var("TUMULT_LAKE_PATH");
+    }
+
+    // -- enforce_bind_guard ----------------------------------------------------
+
+    #[test]
+    fn bind_guard_allows_unauthenticated_loopback_dev_mode() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        enforce_bind_guard(&writer, &store, &config("127.0.0.1:4318")).unwrap();
+        assert!(!store.read_only().unwrap().real_users_exist().unwrap());
+    }
+
+    #[test]
+    fn bind_guard_refuses_an_unauthenticated_network_bind() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        let err = enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("refusing to serve the API"),
+            "{err:#}"
+        );
+    }
+
+    #[test]
+    fn bind_guard_bootstrap_password_creates_the_admin_on_a_network_bind() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
+        enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
+        clear_bootstrap_env();
+
+        let user = store
+            .read_only()
+            .unwrap()
+            .user_by_username("admin")
+            .unwrap()
+            .expect("bootstrap admin exists");
+        assert_eq!(user.role, "admin");
+        assert!(
+            !user.must_change,
+            "the bootstrap password is used as-is, not rotated"
+        );
+        assert!(tumult_auth::verify_password(&user.password_hash, "s3cret"));
+    }
+
+    #[test]
+    fn bind_guard_rejects_a_token_without_the_kro_prefix_before_writing() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "not-a-kro-token");
+        let err = enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap_err();
+        clear_bootstrap_env();
+        assert!(format!("{err:#}").contains("kro_"), "{err:#}");
+        assert_eq!(
+            user_count(&store),
+            0,
+            "a rejected token must not leave a half-provisioned admin behind"
+        );
+    }
+
+    #[test]
+    fn bind_guard_provisions_the_bootstrap_token_for_the_bootstrap_admin() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+        enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
+        clear_bootstrap_env();
+
+        let admin = store
+            .read_only()
+            .unwrap()
+            .user_by_username("admin")
+            .unwrap()
+            .expect("bootstrap admin exists");
+        let tokens = store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT user_id, name, token_hash FROM tokens")
+            .unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0]["user_id"].as_str().unwrap(), admin.id);
+        assert_eq!(tokens[0]["name"].as_str().unwrap(), "bootstrap");
+        assert_eq!(
+            tokens[0]["token_hash"].as_str().unwrap(),
+            tumult_auth::sha256_hex("kro_dev_token"),
+            "only the sha256 of the token is stored"
+        );
+    }
+
+    #[test]
+    fn bind_guard_ignores_a_token_when_no_bootstrap_admin_is_created() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+
+        // The network bind is still refused: a token alone authenticates no one.
+        assert!(enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).is_err());
+        // Loopback dev mode starts, but no token is provisioned.
+        enforce_bind_guard(&writer, &store, &config("127.0.0.1:4318")).unwrap();
+        clear_bootstrap_env();
+
+        let tokens = store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT count(*) AS c FROM tokens")
+            .unwrap();
+        assert_eq!(tokens[0]["c"].as_u64(), Some(0));
+    }
+
+    #[test]
+    fn bind_guard_ignores_the_bootstrap_env_when_users_already_exist() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        insert_user(&writer, "admin", "existing-pw", "admin", true).unwrap();
+        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+        enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
+        clear_bootstrap_env();
+
+        assert_eq!(user_count(&store), 1, "no second admin may be created");
+        let tokens = store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT count(*) AS c FROM tokens")
+            .unwrap();
+        assert_eq!(tokens[0]["c"].as_u64(), Some(0));
+    }
+}
