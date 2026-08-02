@@ -431,6 +431,24 @@ export interface CreateTokenResponse {
   expires_at_ns: number | null;
 }
 
+/** `GET /api/schedules` row (plus the joined definition name). */
+export interface Schedule {
+  id: string;
+  name: string;
+  registry_id: string;
+  definition_name: string | null;
+  interval_s: number;
+  vars_json: string | null;
+  env: string;
+  target: string | null;
+  enabled: boolean;
+  next_run_at_ns: number;
+  last_run_at_ns: number | null;
+  last_run_id: string | null;
+  created_by: string | null;
+  created_at_ns: number;
+}
+
 // --- UI execution: run registry + runs (tumultd run-control API) ------------
 
 /**

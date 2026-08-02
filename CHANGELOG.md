@@ -84,6 +84,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   supplied vars 400), `POST /api/schedules/{id}/enable` and
   `/api/schedules/{id}/delete` (Operator, 404 on unknown id). Schedules
   start enabled; creation records the principal.
+- Web UI `/schedules` page: list with interval, next-fire countdown,
+  last-run link, enabled badge and created-by; create form (registry
+  picker, interval presets, env, optional JSON vars); enable/disable and
+  arm/confirm delete. Operator-only nav entry.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

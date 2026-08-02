@@ -7,7 +7,7 @@
 
   let { children } = $props();
 
-  const NAV: { href: string; label: string; icon: string; admin?: boolean }[] = [
+  const NAV: { href: string; label: string; icon: string; admin?: boolean; operator?: boolean }[] = [
     { href: '/', label: 'Overview', icon: '◧' },
     { href: '/scores', label: 'Scores', icon: '▦' },
     { href: '/experiments', label: 'Experiments', icon: '⚗' },
@@ -21,7 +21,8 @@
     { href: '/topology', label: 'Topology', icon: '✳' },
     { href: '/ask', label: 'Ask', icon: '✦' },
     { href: '/reports', label: 'Reports', icon: '▤' },
-    { href: '/users', label: 'Users', icon: '⚿', admin: true }
+    { href: '/users', label: 'Users', icon: '⚿', admin: true },
+    { href: '/schedules', label: 'Schedules', icon: '↻', operator: true }
   ];
 
   function active(pathname: string, href: string): boolean {
@@ -37,6 +38,10 @@
   // Admin-flagged nav entries show for admins; open local mode (no users,
   // `auth_required: false`) shows everything.
   const isAdmin = $derived(me ? !me.auth_required || me.role === 'admin' : false);
+  // Operator-flagged entries show for operators and above (approver, admin).
+  const isOperator = $derived(
+    me ? !me.auth_required || (!!me.role && me.role !== 'viewer') : false
+  );
 
   $effect(() => {
     const pathname = $page.url.pathname;
@@ -73,7 +78,7 @@
       </div>
       <nav class="nav">
         {#each NAV as item (item.href)}
-          {#if !item.admin || isAdmin}
+          {#if (!item.admin || isAdmin) && (!item.operator || isOperator)}
             <a href={item.href} class:active={active($page.url.pathname, item.href)}>
               <span>{item.icon}</span>{item.label}
             </a>
