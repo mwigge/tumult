@@ -12,6 +12,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # Line tables suffice for tarpaulin's line coverage and keep instrumented
+  # object files small enough to link on a standard runner (full debuginfo
+  # made ld die with SIGBUS from disk pressure on the duckdb/arrow crates).
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 jobs:
   coverage:
@@ -20,6 +24,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # The instrumented workspace build (duckdb/parquet/arrow static libs)
+      # nearly fills the runner disk; reclaim ~15 GB of unused toolchains.
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
         with:
           toolchain: 1.92.0
