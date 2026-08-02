@@ -10,6 +10,7 @@ import type {
   AskResponse,
   CreateTokenResponse,
   CreateUserResponse,
+  CatalogResponse,
   Dimensions,
   DryRunResponse,
   ExperimentDetail,
@@ -33,13 +34,16 @@ import type {
   ReportTemplate,
   RunDetail,
   RunRow,
+  ScaffoldRequest,
+  ScaffoldResponse,
   Scorecard,
   ScoreTree,
   Timeseries,
   Topology,
   TraceDetail,
   TraceDurations,
-  TraceRow
+  TraceRow,
+  ValidateToonResponse
 } from './types';
 
 // A 401 on any non-auth endpoint means the session is gone (or absent) — send
@@ -324,6 +328,17 @@ export const api = {
 
   revokeToken: (id: string) =>
     send<{ ok: boolean }>('POST', `/api/tokens/${encodeURIComponent(id)}/revoke`, {})
+  // --- Authoring: fault catalog + scaffold ------------------------------------
+
+  catalog: () => get<CatalogResponse>('/api/authoring/catalog'),
+
+  scaffold: (req: ScaffoldRequest) =>
+    send<ScaffoldResponse>('POST', '/api/authoring/scaffold', req),
+
+  /** Validates AND registers an experiment TOON (content-hash deduped) —
+      the explicit registration step after authoring. */
+  validateToon: (toon: string, vars: Record<string, string> = {}) =>
+    send<ValidateToonResponse>('POST', '/api/runs/validate', { toon, vars })
 };
 
 // --- formatting helpers ----------------------------------------------------

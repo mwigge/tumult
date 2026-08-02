@@ -11,6 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
   nav entry (everything shows in open local mode).
+- Web client plumbing for experiment authoring: typed wrappers in
+  `web/src/lib/api.ts` for `GET /api/authoring/catalog`,
+  `POST /api/authoring/scaffold`, and `POST /api/runs/validate`
+  (`api.catalog` / `api.scaffold` / `api.validateToon`) with matching
+  response types, and a `?registry_id=` deep link on the New Run page that
+  preselects a registered definition — the handoff target for the upcoming
+  in-UI authoring flow.
 - Authoring REST endpoints in `tumult-api`: `GET /api/authoring/catalog`
   serves the live fault catalog from plugin discovery (domains → actions →
   documented args), and `POST /api/authoring/scaffold` generates validated
