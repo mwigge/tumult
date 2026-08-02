@@ -51,7 +51,10 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Run tarpaulin
-        run: cargo tarpaulin --workspace --out xml --timeout 300 --fail-under 90
+        # Exclusions are platform/scope-honest, not coverage gaming:
+        # tumult-windows only runs on Windows; demo-control-panel is a demo
+        # binary, not product code. Neither can be executed on this runner.
+        run: cargo tarpaulin --workspace --exclude tumult-windows --exclude demo-control-panel --out xml --timeout 300 --fail-under 90
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
