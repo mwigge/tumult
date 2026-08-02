@@ -59,6 +59,23 @@ failovers. Records move draft → submitted → verified with reviewer ≠ enter
 
 ![Manual evidence register](../assets/manual-evidence.png)
 
+## Author from the catalog
+
+The fault catalog and experiment scaffolding are available over the same
+API — the same code paths as the MCP `tumult_fault_catalog` /
+`tumult_scaffold_experiment` tools, with no MCP hop:
+
+```bash
+curl http://localhost:14318/api/authoring/catalog      # domains → actions → args
+curl -X POST http://localhost:14318/api/authoring/scaffold \
+  -H 'Content-Type: application/json' \
+  -d '{"plugin":"tumult-containers","action":"pause-container",
+       "args":{"container_id":"demo-postgres"},"target":"demo-postgres"}'
+```
+
+Both endpoints are Viewer-level and persist nothing — the scaffolded TOON
+registers through `POST /api/runs/validate` like any other definition.
+
 ## Register and run an experiment
 
 Registration happens via the API or the CLI — the definition is validated by

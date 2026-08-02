@@ -7,10 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+<<<<<<< HEAD
 - Web UI `/users` admin page over the existing admin API (`/api/users*`):
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
   nav entry (everything shows in open local mode).
+=======
+- Authoring REST endpoints in `tumult-api`: `GET /api/authoring/catalog`
+  serves the live fault catalog from plugin discovery (domains → actions →
+  documented args), and `POST /api/authoring/scaffold` generates validated
+  experiment TOON from a catalog action and its arguments. Same code paths
+  as the MCP `tumult_fault_catalog` / `tumult_scaffold_experiment` tools,
+  exposed without an MCP hop so the web UI can author experiments
+  in-process. Both are Viewer-level in the RBAC route table and persist
+  nothing — registration stays behind Operator-level
+  `POST /api/runs/validate`.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

@@ -28,6 +28,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/scores/tree", Role::Viewer),
     ("GET", "/api/manual/experiments", Role::Viewer),
     ("GET", "/api/manual/experiments/{id}", Role::Viewer),
+    ("GET", "/api/authoring/catalog", Role::Viewer),
     ("GET", "/api/registry", Role::Viewer),
     ("GET", "/api/registry/{id}", Role::Viewer),
     ("GET", "/api/runs", Role::Viewer),
@@ -43,6 +44,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/users", Role::Admin),
     // Viewer-level writes (no fault injection, no state change).
     ("POST", "/api/ask", Role::Viewer),
+    ("POST", "/api/authoring/scaffold", Role::Viewer),
     ("POST", "/api/runs/dry-run", Role::Viewer),
     ("POST", "/api/auth/login", Role::Viewer),
     ("POST", "/api/auth/logout", Role::Viewer),
@@ -143,6 +145,17 @@ mod tests {
         assert_eq!(
             required_role("POST", "/api/runs/some-id/stop"),
             Role::Operator
+        );
+    }
+
+    #[test]
+    fn authoring_routes_are_viewer_level() {
+        // Catalog reads and scaffolding never mutate the store: same level
+        // as `POST /api/runs/dry-run` and the MCP authoring tools.
+        assert_eq!(required_role("GET", "/api/authoring/catalog"), Role::Viewer);
+        assert_eq!(
+            required_role("POST", "/api/authoring/scaffold"),
+            Role::Viewer
         );
     }
 
