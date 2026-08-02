@@ -12,6 +12,9 @@ tumult-core = { path = "../tumult-core" }
 tumult-auth = { path = "../tumult-auth" }
 tumult-autopilot = { path = "../tumult-autopilot" }
 opentelemetry-proto.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+hmac = "0.12"
 tonic = { workspace = true, features = ["tls-aws-lc"] }
 prost.workspace = true
 axum.workspace = true
@@ -26,5 +29,4 @@ tracing.workspace = true
 dirs-next.workspace = true
 
 [dev-dependencies]
-reqwest.workspace = true
 tempfile.workspace = true

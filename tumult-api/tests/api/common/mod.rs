@@ -427,3 +427,75 @@ pub async fn get(base: &str, path: &str) -> (u16, Value) {
     let body: Value = resp.json().await.unwrap();
     (status, body)
 }
+
+/// Create a user directly through the writer channel; returns the user id.
+/// (Fixtures go straight to the store; the API's own user endpoints are
+/// exercised separately.)
+pub async fn add_user(
+    srv: &TestServer,
+    username: &str,
+    password: &str,
+    role: &str,
+    must_change: bool,
+) -> String {
+    let hash = tumult_auth::hash_password(password).unwrap();
+    let row = tumult_lake::UserRow {
+        id: format!("u-{username}"),
+        username: username.into(),
+        password_hash: hash,
+        role: role.into(),
+        must_change,
+        disabled: false,
+        created_at_ns: now_ns(),
+    };
+    let id = row.id.clone();
+    exec_write(srv, move |w| w.create_user(&row).map_err(|e| e.to_string())).await;
+    id
+}
+
+/// Mint a `kro_` token for a user directly in the store; returns the
+/// plaintext token.
+pub async fn add_token(srv: &TestServer, user_id: &str, name: &str) -> (String, String) {
+    let token = tumult_auth::new_token();
+    let row = tumult_lake::TokenRow {
+        id: format!("t-{name}"),
+        user_id: user_id.into(),
+        name: name.into(),
+        token_hash: tumult_auth::sha256_hex(&token),
+        created_at_ns: now_ns(),
+        last_used_at_ns: None,
+        revoked: false,
+        expires_at_ns: None,
+    };
+    let hash = row.token_hash.clone();
+    exec_write(srv, move |w| {
+        w.create_token(&row).map_err(|e| e.to_string())
+    })
+    .await;
+    (token, hash)
+}
+
+/// POST a JSON body with a `kro_` bearer token; returns (status, body).
+pub async fn post_auth(base: &str, path: &str, token: &str, body: Value) -> (u16, Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}{path}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
+}
+
+/// GET with a `kro_` bearer token; returns (status, body).
+pub async fn get_auth(base: &str, path: &str, token: &str) -> (u16, Value) {
+    let resp = reqwest::Client::new()
+        .get(format!("{base}{path}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
+}

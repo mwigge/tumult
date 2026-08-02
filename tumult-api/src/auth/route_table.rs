@@ -102,6 +102,10 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/tokens", Role::Admin),
     ("POST", "/api/tokens", Role::Admin),
     ("POST", "/api/tokens/{id}/revoke", Role::Admin),
+    ("GET", "/api/webhooks", Role::Admin),
+    ("POST", "/api/webhooks", Role::Admin),
+    ("POST", "/api/webhooks/{id}/enable", Role::Admin),
+    ("POST", "/api/webhooks/{id}/delete", Role::Admin),
 ];
 
 /// Whether one path template matches a concrete path: a `{...}` segment
@@ -149,6 +153,8 @@ mod tests {
         assert_eq!(required_role("POST", "/api/runs/stop-all"), Role::Operator);
         assert_eq!(required_role("GET", "/api/schedules"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/events"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/webhooks"), Role::Admin);
+        assert_eq!(required_role("POST", "/api/webhooks/x/delete"), Role::Admin);
         assert_eq!(
             required_role("POST", "/api/schedules/x/enable"),
             Role::Operator

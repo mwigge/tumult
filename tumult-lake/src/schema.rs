@@ -50,8 +50,11 @@
 //!
 //! v10 adds the `run_schedules` table (interval-based recurring runs) —
 //! additive and index-free under the same rule as the v5 run tables.
+//!
+//! v11 adds the `webhooks` and `webhook_cursors` tables (admin-managed
+//! outbound event notifications) — additive and index-free likewise.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 10;
+pub const CURRENT_SCHEMA_VERSION: i64 = 11;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -456,6 +459,22 @@ CREATE TABLE IF NOT EXISTS run_schedules (
     last_run_id     VARCHAR,
     created_by      VARCHAR,
     created_at_ns   BIGINT NOT NULL
+);
+
+-- v11: outbound event notifications. Same index-free rule.
+CREATE TABLE IF NOT EXISTS webhooks (
+    id              VARCHAR NOT NULL,   -- uuid
+    name            VARCHAR NOT NULL,
+    url             VARCHAR NOT NULL,
+    secret          VARCHAR NOT NULL,   -- HMAC key; never serialized by the API
+    events          VARCHAR NOT NULL,   -- JSON array of event names; [] = all
+    enabled         BOOLEAN NOT NULL,
+    created_by      VARCHAR,
+    created_at_ns   BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS webhook_cursors (
+    webhook_id      VARCHAR NOT NULL,
+    last_at_ns      BIGINT NOT NULL     -- run_audit position delivered up to
 );
 ";
 

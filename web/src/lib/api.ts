@@ -11,6 +11,7 @@ import type {
   CreateTokenResponse,
   CreateUserResponse,
   CatalogResponse,
+  CreateWebhookResponse,
   Dimensions,
   DryRunResponse,
   ExperimentDetail,
@@ -45,7 +46,8 @@ import type {
   TraceDetail,
   TraceDurations,
   TraceRow,
-  ValidateToonResponse
+  ValidateToonResponse,
+  Webhook
 } from './types';
 
 // A 401 on any non-auth endpoint means the session is gone (or absent) — send
@@ -338,6 +340,17 @@ export const api = {
     ).toString();
     return get<{ count: number; events: RunEvent[] }>(`/api/events${qs ? `?${qs}` : ''}`);
   },
+
+  webhooks: () => get<{ count: number; webhooks: Webhook[] }>('/api/webhooks'),
+
+  createWebhook: (req: { name: string; url: string; events?: string[] }) =>
+    send<CreateWebhookResponse>('POST', '/api/webhooks', req),
+
+  setWebhookEnabled: (id: string, enabled: boolean) =>
+    send<{ ok: boolean }>('POST', `/api/webhooks/${encodeURIComponent(id)}/enable`, { enabled }),
+
+  deleteWebhook: (id: string) =>
+    send<{ ok: boolean }>('POST', `/api/webhooks/${encodeURIComponent(id)}/delete`, {}),
 
   createSchedule: (req: {
     name: string;

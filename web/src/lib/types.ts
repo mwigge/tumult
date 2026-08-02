@@ -431,6 +431,22 @@ export interface CreateTokenResponse {
   expires_at_ns: number | null;
 }
 
+/** `GET /api/webhooks` row — never carries the HMAC secret. */
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  created_by: string | null;
+  created_at_ns: number;
+}
+
+/** `POST /api/webhooks` 201 body — `secret` is returned exactly once. */
+export interface CreateWebhookResponse extends Webhook {
+  secret: string;
+}
+
 /** `GET /api/events` row — one cross-run audit event (hash-chained). */
 export interface RunEvent {
   run_id: string;
