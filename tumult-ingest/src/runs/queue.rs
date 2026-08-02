@@ -512,8 +512,20 @@ impl RunQueue {
             Some(_) => {
                 // Waiting (queued/validating) but no token yet: cancel before
                 // start — the worker re-checks state after dequeue and skips.
+                // The stop is audited exactly like the running path: a
+                // `stop_requested` event naming the halting principal, then
+                // the terminal `aborted` event.
                 let id = run_id.to_string();
+                let actor = actor.map(str::to_string);
                 exec_write(&self.shared.ingest, move |writer| {
+                    writer
+                        .insert_run_audit(
+                            &id,
+                            "stop_requested",
+                            Some("cancelled before start"),
+                            actor.as_deref(),
+                        )
+                        .map_err(|e| e.to_string())?;
                     writer
                         .finish_run(
                             &id,

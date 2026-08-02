@@ -421,6 +421,86 @@ pub async fn stop(
     }
 }
 
+/// Active (non-terminal) run states the global halt e-stops.
+const HALTABLE_STATES: &[&str] = &[
+    run_state::QUEUED,
+    run_state::VALIDATING,
+    run_state::RUNNING,
+    run_state::STOPPING,
+    run_state::PENDING_APPROVAL,
+];
+
+/// `POST /api/runs/stop-all` — the global halt: e-stop every active run.
+/// Running experiments cancel at the next activity boundary and run their
+/// rollbacks; queued runs are cancelled before they start; gated runs parked
+/// in `pending_approval` are aborted before dispatch. Each stopped run's
+/// audit trail records the halting principal on its `stop_requested` event.
+/// Runs in an environment outside the principal's scopes are not touched
+/// (same rule as the run list). Idempotent: a run that reached a terminal
+/// state between listing and stopping is counted as skipped, not an error.
+pub async fn stop_all(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<Value>, Response> {
+    let Some(queue) = state.runs_handle() else {
+        return Err(unavailable("run queue is not wired"));
+    };
+    let scopes = principal.env_scopes.clone();
+    let ids = with_reader(&state.db_path, move |reader| {
+        let state_list = HALTABLE_STATES
+            .iter()
+            .map(|s| sql_string(s))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if scopes.is_empty() {
+            return reader
+                .query_json_rows(&format!(
+                    "SELECT id FROM runs WHERE state IN ({state_list})"
+                ))
+                .map_err(|e| e.to_string());
+        }
+        let env_list = scopes
+            .iter()
+            .map(|s| sql_string(s))
+            .collect::<Vec<_>>()
+            .join(", ");
+        reader
+            .query_json_rows(&format!(
+                "SELECT r.id FROM runs r \
+                 LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                            FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+                 WHERE r.state IN ({state_list}) \
+                   AND (e.env IN ({env_list}) OR r.experiment_id IS NULL)"
+            ))
+            .map_err(|e| e.to_string())
+    })
+    .await?;
+    let actor = principal.actor();
+    let requested = ids.len();
+    let mut stopped = 0usize;
+    let mut skipped_terminal = 0usize;
+    for row in &ids {
+        let id = row["id"].as_str().unwrap_or_default();
+        match queue.stop(id, actor.as_deref()).await {
+            Ok(()) => stopped += 1,
+            Err(StopError::Terminal(_) | StopError::NotFound) => skipped_terminal += 1,
+            Err(StopError::Store(e)) => return Err(internal(e)),
+        }
+    }
+    tracing::warn!(
+        requested,
+        stopped,
+        skipped_terminal,
+        actor = actor.as_deref().unwrap_or("synthetic"),
+        "global halt requested"
+    );
+    Ok(Json(json!({
+        "requested": requested,
+        "stopped": stopped,
+        "skipped_terminal": skipped_terminal,
+    })))
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/runs (+ /{id})
 

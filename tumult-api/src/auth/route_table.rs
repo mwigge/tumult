@@ -51,6 +51,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/auth/change-password", Role::Viewer),
     // Operator: run execution, imports, manual-evidence entry, reports.
     ("POST", "/api/runs", Role::Operator),
+    ("POST", "/api/runs/stop-all", Role::Operator),
     ("POST", "/api/runs/{id}/stop", Role::Operator),
     ("POST", "/api/runs/validate", Role::Operator),
     ("POST", "/api/import/journal", Role::Operator),
@@ -140,6 +141,7 @@ mod tests {
     #[test]
     fn dry_run_and_validate_beat_the_runs_id_template() {
         // Literal-heavy templates win over `/api/runs/{id}`.
+        assert_eq!(required_role("POST", "/api/runs/stop-all"), Role::Operator);
         assert_eq!(required_role("POST", "/api/runs/dry-run"), Role::Viewer);
         assert_eq!(required_role("POST", "/api/runs/validate"), Role::Operator);
         assert_eq!(required_role("GET", "/api/runs/some-id"), Role::Viewer);

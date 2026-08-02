@@ -321,6 +321,13 @@ export const api = {
       environments
     }),
 
+  stopAllRuns: () =>
+    send<{ requested: number; stopped: number; skipped_terminal: number }>(
+      'POST',
+      '/api/runs/stop-all',
+      {}
+    ),
+
   tokens: () => get<{ tokens: ApiToken[] }>('/api/tokens'),
 
   createToken: (req: { name: string; user_id?: string; expires_at_ns?: number }) =>
