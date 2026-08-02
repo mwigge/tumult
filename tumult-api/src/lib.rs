@@ -342,7 +342,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/users/{id}/password", post(auth::reset_password))
         .route("/api/users/{id}/disable", post(auth::set_disabled))
         .route("/api/users/{id}/scopes", post(auth::set_scopes))
-        .route("/api/tokens", post(auth::create_token))
+        .route(
+            "/api/tokens",
+            get(auth::list_tokens).post(auth::create_token),
+        )
         .route("/api/tokens/{id}/revoke", post(auth::revoke_token))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

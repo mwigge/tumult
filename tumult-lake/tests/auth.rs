@@ -166,6 +166,33 @@ fn token_lifecycle() {
 }
 
 #[test]
+fn list_tokens_returns_all_newest_first_including_revoked() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    writer.create_user(&user("u-1", "alice")).unwrap();
+    let token = |id: &str, created_at_ns: i64| TokenRow {
+        id: id.into(),
+        user_id: "u-1".into(),
+        name: format!("token {id}"),
+        token_hash: format!("hash-{id}"),
+        created_at_ns,
+        last_used_at_ns: None,
+        revoked: false,
+        expires_at_ns: None,
+    };
+    writer.create_token(&token("t-old", 1)).unwrap();
+    writer.create_token(&token("t-new", 3)).unwrap();
+    writer.create_token(&token("t-mid", 2)).unwrap();
+    writer.revoke_token("t-mid").unwrap();
+
+    let tokens = store.read_only().unwrap().list_tokens().unwrap();
+    let ids: Vec<&str> = tokens.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["t-new", "t-mid", "t-old"], "newest first");
+    assert!(tokens[1].revoked, "revoked rows are listed too");
+    assert_eq!(tokens[0].name, "token t-new");
+}
+
+#[test]
 fn token_expiry_is_enforced() {
     let (_d, store) = fixture();
     let writer = store.writer().unwrap();
