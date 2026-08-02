@@ -459,6 +459,43 @@ export interface RunEvent {
   definition_name: string | null;
 }
 
+/** `GET /api/gamedays` row — campaign metadata. */
+export interface GameDayEntry {
+  id: string;
+  name: string;
+  content_hash: string;
+  registered_at_ns: number;
+  registered_by: string | null;
+}
+
+/** `GET /api/gamedays/{id}` — the parsed campaign plan. */
+export interface GameDayDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  tags: string[];
+  regulatory: {
+    frameworks: string[];
+    requirements: { id: string; description: string; evidence: string }[];
+  } | null;
+  scoring: { pass_threshold: number; mttr_target_s: number; recovery_required: boolean };
+  experiments: {
+    path: string;
+    compliance_maps: string[];
+    registry_id: string;
+    name: string | null;
+  }[];
+  registered_at_ns: number;
+  registered_by: string | null;
+}
+
+/** `POST /api/gamedays/validate` response. */
+export interface ValidateGameDayResponse {
+  valid: boolean;
+  gameday_registry_id: string;
+  experiments: { path: string; registry_id: string }[];
+}
+
 /** `GET /api/schedules` row (plus the joined definition name). */
 export interface Schedule {
   id: string;
@@ -573,6 +610,8 @@ export interface RunRow {
   id: string;
   registry_id: string;
   state: RunExecState;
+  /** Campaign parent when this run is a gameday child (schema v12). */
+  gameday_id?: string | null;
   params_json: string | null;
   experiment_id: string | null;
   rollback_status: string | null;

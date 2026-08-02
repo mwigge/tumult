@@ -15,6 +15,8 @@ import type {
   Dimensions,
   DryRunResponse,
   ExperimentDetail,
+  GameDayDetail,
+  GameDayEntry,
   ExperimentRow,
   ExperimentWindow,
   LogEntry,
@@ -46,6 +48,7 @@ import type {
   TraceDetail,
   TraceDurations,
   TraceRow,
+  ValidateGameDayResponse,
   ValidateToonResponse,
   Webhook
 } from './types';
@@ -351,6 +354,25 @@ export const api = {
 
   deleteWebhook: (id: string) =>
     send<{ ok: boolean }>('POST', `/api/webhooks/${encodeURIComponent(id)}/delete`, {}),
+
+  gamedays: () => get<{ count: number; gamedays: GameDayEntry[] }>('/api/gamedays'),
+
+  gameday: (id: string) => get<GameDayDetail>(`/api/gamedays/${encodeURIComponent(id)}`),
+
+  validateGameday: (toon: string, experiments: Record<string, string>) =>
+    send<ValidateGameDayResponse>('POST', '/api/gamedays/validate', { toon, experiments }),
+
+  startCampaign: (id: string, env: string) =>
+    send<{ run_id: string; state: string; steps: number }>(
+      'POST',
+      `/api/gamedays/${encodeURIComponent(id)}/runs`,
+      { env }
+    ),
+
+  campaignRuns: (parentId: string) =>
+    get<{ count: number; runs: RunRow[] }>(
+      `/api/runs?gameday_id=${encodeURIComponent(parentId)}&limit=100`
+    ),
 
   createSchedule: (req: {
     name: string;
