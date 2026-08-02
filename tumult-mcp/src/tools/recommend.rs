@@ -289,3 +289,241 @@ pub fn coverage(store_path: &str) -> Result<StructuredReport, ToolError> {
         structured,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request<'a>(store_path: &'a str, format: &'a str) -> RecommendRequest<'a> {
+        RecommendRequest {
+            store_path,
+            goal: None,
+            model: None,
+            include_draft: false,
+            format,
+            agent: None,
+            agent_model: None,
+            agent_timeout_secs: 30,
+            generate_dir: None,
+            workspace_root: Path::new("."),
+        }
+    }
+
+    /// Create an empty analytics store and return its path.
+    fn empty_store(dir: &Path) -> std::path::PathBuf {
+        let db = dir.join("analytics.duckdb");
+        drop(tumult_lake::AnalyticsStore::open(&db).unwrap());
+        db
+    }
+
+    #[test]
+    fn recommend_rejects_an_unknown_format() {
+        let err = recommend(&request("unused.duckdb", "yaml"))
+            .expect_err("unsupported formats must be rejected");
+        let msg = err.to_string();
+        assert!(msg.contains("yaml"), "must name the bad value: {msg}");
+        assert!(msg.contains("text") && msg.contains("json"), "got: {msg}");
+    }
+
+    #[test]
+    fn recommend_requires_agent_for_agent_only_parameters() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut req = request("unused.duckdb", "text");
+        req.agent_model = Some("claude-opus");
+        let err = recommend(&req).expect_err("agent_model without agent must be rejected");
+        assert!(err.to_string().contains("agent"), "got: {err}");
+
+        req.agent_model = None;
+        req.generate_dir = Some(dir.path());
+        let err = recommend(&req).expect_err("generate_dir without agent must be rejected");
+        assert!(err.to_string().contains("agent"), "got: {err}");
+    }
+
+    #[test]
+    fn recommend_rejects_an_unknown_adapter_before_touching_the_store() {
+        let mut req = request("unused.duckdb", "text");
+        req.agent = Some("no-such-adapter");
+        let err = recommend(&req).expect_err("an unknown adapter must be rejected");
+        assert!(err.to_string().contains("no-such-adapter"), "got: {err}");
+    }
+
+    #[test]
+    fn recommend_reports_when_no_store_exists() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let missing = dir.path().join("no-store.duckdb");
+        let report = recommend(&request(missing.to_str().unwrap(), "text")).unwrap();
+        assert_eq!(
+            report.structured["message"],
+            "No analytics store found. Run some experiments first."
+        );
+        assert_eq!(report.text, report.structured["message"]);
+    }
+
+    #[test]
+    fn recommend_returns_heuristic_output_over_an_empty_store() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = empty_store(dir.path());
+
+        let mut req = request(db.to_str().unwrap(), "text");
+        req.goal = Some("cover the data tier");
+        let report = recommend(&req).unwrap();
+        assert_eq!(report.structured["source"], "heuristic-fallback");
+        assert_eq!(report.structured["goal"], "cover the data tier");
+        assert!(
+            report.structured["recommendations"]
+                .as_array()
+                .is_some_and(|r| !r.is_empty()),
+            "heuristics always produce at least one recommendation: {:?}",
+            report.structured
+        );
+        assert!(!report.text.is_empty());
+
+        // The json format renders the same structured object as pretty JSON.
+        req.format = "json";
+        let report = recommend(&req).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&report.text).unwrap();
+        assert_eq!(parsed["source"], "heuristic-fallback");
+    }
+
+    #[test]
+    fn recommend_can_include_a_draft_experiment() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = empty_store(dir.path());
+        let mut req = request(db.to_str().unwrap(), "text");
+        req.include_draft = true;
+        let report = recommend(&req).unwrap();
+        // The draft is validated before being attached; the flag records the outcome.
+        assert!(report.structured.get("draft_valid").is_some());
+    }
+
+    #[test]
+    fn coverage_without_a_store_reports_no_store() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let missing = dir.path().join("no-store.duckdb");
+        let report = coverage(missing.to_str().unwrap()).unwrap();
+        assert!(report.structured["store"].is_null());
+        assert!(report.structured["plugins"].as_array().is_some());
+        assert!(
+            report.text.contains("No analytics store found"),
+            "{}",
+            report.text
+        );
+    }
+
+    #[test]
+    fn coverage_over_an_empty_store_reports_zero_counts() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = empty_store(dir.path());
+        let report = coverage(db.to_str().unwrap()).unwrap();
+
+        let store = &report.structured["store"];
+        assert_eq!(store["experiments"], 0);
+        assert_eq!(store["activities"], 0);
+        assert_eq!(store["passed"], 0);
+        assert_eq!(store["distinct_experiment_types"], 0);
+        assert!(report.text.contains("Store summary:"), "{}", report.text);
+        assert!(report.text.contains("Experiments: 0"), "{}", report.text);
+        assert!(report.text.contains("Pass rate: 0/0"), "{}", report.text);
+        // Every discovered plugin is untested against an empty store.
+        for entry in report.structured["plugins"].as_array().unwrap() {
+            assert_eq!(entry["actions_tested"], 0);
+            assert_eq!(entry["status"], "NONE");
+        }
+    }
+
+    #[test]
+    fn coverage_counts_tested_actions_from_the_store() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = empty_store(dir.path());
+        // Point discovery at a temp catalog with one plugin and two actions.
+        let plugin_dir = dir.path().join("catalog").join("cov-plugin");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        let manifest = tumult_plugin::manifest::ScriptPluginManifest {
+            name: "cov-plugin".into(),
+            version: "0.1.0".into(),
+            description: "coverage test".into(),
+            actions: vec![
+                tumult_plugin::manifest::ScriptAction {
+                    name: "cov-action-tested".into(),
+                    script: "actions/tested.sh".into(),
+                    description: "tested action".into(),
+                },
+                tumult_plugin::manifest::ScriptAction {
+                    name: "cov-action-untested".into(),
+                    script: "actions/untested.sh".into(),
+                    description: "untested action".into(),
+                },
+            ],
+            probes: vec![],
+        };
+        let toon = toon_format::encode_default(&manifest).unwrap();
+        std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
+        std::env::set_var("TUMULT_PLUGIN_PATH", dir.path().join("catalog"));
+
+        // A completed run that exercised exactly one of the two actions.
+        let journal = tumult_core::types::Journal {
+            experiment_title: "coverage drill".into(),
+            experiment_id: "run-cov-1".into(),
+            status: tumult_core::types::ExperimentStatus::Completed,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_ms: 1,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![tumult_core::types::ActivityResult {
+                name: "cov-action-tested".into(),
+                activity_type: tumult_core::types::ActivityType::Action,
+                status: tumult_core::types::ActivityStatus::Succeeded,
+                started_at_ns: 1,
+                duration_ms: 1,
+                output: None,
+                error: None,
+                trace_id: tumult_core::types::TraceId::empty(),
+                span_id: tumult_core::types::SpanId::empty(),
+            }],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: None,
+            halt: None,
+            blast_radius: None,
+        };
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        store
+            .ingest_journal_with_experiment(&journal, None)
+            .unwrap();
+        drop(store);
+
+        let report = coverage(db.to_str().unwrap()).unwrap();
+        let plugins = report.structured["plugins"].as_array().unwrap();
+        let entry = plugins
+            .iter()
+            .find(|p| p["name"] == "cov-plugin")
+            .expect("the catalog plugin must be discovered");
+        assert_eq!(entry["actions_total"], 2);
+        assert_eq!(entry["actions_tested"], 1);
+        assert_eq!(entry["status"], "PARTIAL");
+        assert!(
+            report.text.contains("1/2 actions tested"),
+            "{}",
+            report.text
+        );
+
+        let store_summary = &report.structured["store"];
+        assert_eq!(store_summary["experiments"], 1);
+        assert_eq!(store_summary["passed"], 1);
+        assert_eq!(store_summary["activities"], 1);
+        assert_eq!(store_summary["distinct_experiment_types"], 1);
+        assert!(report.text.contains("Pass rate: 1/1"), "{}", report.text);
+        assert!(
+            report.text.contains("Distinct experiment types: 1"),
+            "{}",
+            report.text
+        );
+    }
+}

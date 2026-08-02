@@ -163,3 +163,92 @@ impl TumultHandler {
             .map(|info| format!("Bearer {}", info.token_unique_id))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_mcp_sdk::schema::CallToolMeta;
+
+    #[test]
+    fn default_handler_allows_full_concurrency_from_a_workspace_root() {
+        let handler = TumultHandler::default();
+        assert_eq!(
+            handler.semaphore.available_permits(),
+            MAX_CONCURRENT_TOOL_CALLS
+        );
+        assert!(
+            !handler.workspace_root.as_os_str().is_empty(),
+            "the default workspace root falls back to the current directory"
+        );
+    }
+
+    #[test]
+    fn resolve_path_accepts_contained_files_and_rejects_escapes() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("inside.toon"), "x").unwrap();
+        let handler = TumultHandler::with_auth(tmp.path().to_path_buf(), McpAuth::none());
+
+        let resolved = handler.resolve_path("inside.toon").unwrap();
+        assert!(resolved.ends_with("inside.toon"), "{resolved}");
+        assert_eq!(
+            handler.workspace_root_str().unwrap(),
+            tmp.path().to_str().unwrap()
+        );
+
+        let err = handler
+            .resolve_path("../escape.toon")
+            .expect_err("a path outside the workspace must be rejected");
+        assert!(err.to_string().contains("path"), "got: {err}");
+
+        let err = handler
+            .resolve_path("no-such-file.toon")
+            .expect_err("a non-existent file cannot be canonicalized");
+        assert!(err.to_string().contains("path"), "got: {err}");
+    }
+
+    #[test]
+    fn extract_authorization_reads_only_meta_extra() {
+        let without_meta = CallToolRequestParams {
+            name: "tumult_whoami".into(),
+            arguments: None,
+            meta: None,
+            task: None,
+        };
+        assert_eq!(TumultHandler::extract_authorization(&without_meta), None);
+
+        let mut extra = serde_json::Map::new();
+        extra.insert(
+            "authorization".into(),
+            serde_json::Value::String("Bearer tok".into()),
+        );
+        let with_meta = CallToolRequestParams {
+            meta: Some(CallToolMeta {
+                progress_token: None,
+                extra: Some(extra),
+            }),
+            ..without_meta
+        };
+        assert_eq!(
+            TumultHandler::extract_authorization(&with_meta).as_deref(),
+            Some("Bearer tok")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resolve_authorization_prefers_meta_then_the_captured_header() {
+        let runtime = crate::handler::test_support::stub_runtime_with_bearer("http-tok");
+        // An explicit `_meta.authorization` always wins.
+        let resolved =
+            TumultHandler::resolve_authorization(Some("Bearer meta-tok".into()), &runtime).await;
+        assert_eq!(resolved.as_deref(), Some("Bearer meta-tok"));
+        // Otherwise fall back to the HTTP header captured on the session.
+        let resolved = TumultHandler::resolve_authorization(None, &runtime).await;
+        assert_eq!(resolved.as_deref(), Some("Bearer http-tok"));
+        // A stdio session carries no header at all.
+        let runtime = crate::handler::test_support::stub_runtime();
+        assert_eq!(
+            TumultHandler::resolve_authorization(None, &runtime).await,
+            None
+        );
+    }
+}

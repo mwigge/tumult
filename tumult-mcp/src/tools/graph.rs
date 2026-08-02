@@ -474,4 +474,127 @@ mod tests {
             chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("hipaa"), None, false).unwrap_err();
         assert!(err.to_string().contains("hipaa"));
     }
+
+    #[test]
+    fn query_normalizes_kind_and_applies_the_label_filter() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = seed_store(dir.path());
+
+        // Kind is trimmed and lowercased before the query.
+        let report = chaosgraph_query(db.to_str().unwrap(), " Experiment ", None).unwrap();
+        assert_eq!(report.structured["kind"], "experiment");
+        assert_eq!(report.structured["count"], 1);
+
+        // The filter narrows by label substring.
+        let report = chaosgraph_query(db.to_str().unwrap(), "experiment", Some("latency")).unwrap();
+        assert_eq!(report.structured["count"], 1);
+        assert!(report.text.contains("exp:Latency drill"), "{}", report.text);
+
+        let report =
+            chaosgraph_query(db.to_str().unwrap(), "experiment", Some("no-such-label")).unwrap();
+        assert_eq!(report.structured["count"], 0);
+        assert!(report.structured["nodes"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn neighbors_clamps_a_zero_depth_to_one() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = seed_store(dir.path());
+        let report =
+            chaosgraph_neighbors(db.to_str().unwrap(), "exp:Latency drill", None, 0).unwrap();
+        assert_eq!(report.structured["depth"], 1, "depth 0 must clamp to 1");
+        assert!(!report.structured["edges"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn coverage_gaps_domain_filter_narrows_the_listing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("analytics.duckdb");
+        drop(tumult_lake::AnalyticsStore::open(&db).unwrap());
+
+        // A domain that matches no plugin yields an empty (but valid) report.
+        let report = chaosgraph_coverage_gaps(
+            db.to_str().unwrap(),
+            None,
+            Some("zzz-no-such-domain"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(report.structured["count"], 0);
+        assert!(report.structured["gaps"].as_array().unwrap().is_empty());
+        assert!(
+            report.text.contains("domain filter: zzz-no-such-domain"),
+            "{}",
+            report.text
+        );
+    }
+
+    #[test]
+    fn coverage_gaps_framework_annotation_excludes_evidenced_articles() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("analytics.duckdb");
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        // A run whose experiment cites DORA Art. 25 records an `evidences`
+        // edge to that article.
+        let exp = Experiment {
+            title: "DORA drill".into(),
+            regulatory: Some(RegulatoryMapping {
+                frameworks: vec!["DORA".into()],
+                requirements: vec![RegulatoryRequirement {
+                    id: "Art. 25".into(),
+                    description: "Testing of ICT tools and systems".into(),
+                    evidence: "scenario-based fault injection".into(),
+                }],
+            }),
+            ..Default::default()
+        };
+        let journal = Journal {
+            experiment_title: "DORA drill".into(),
+            experiment_id: "run-dora-1".into(),
+            status: ExperimentStatus::Completed,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_ms: 1,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: exp.regulatory.clone(),
+            halt: None,
+            blast_radius: None,
+        };
+        store
+            .ingest_journal_with_experiment(&journal, Some(&exp))
+            .unwrap();
+        drop(store);
+
+        let report =
+            chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("dora"), None, false).unwrap();
+        assert_eq!(report.structured["framework"], "DORA");
+        let unevidenced = report.structured["unevidenced_articles"]
+            .as_array()
+            .unwrap();
+        assert!(
+            !unevidenced.is_empty(),
+            "other DORA articles remain unevidenced"
+        );
+        let framework = tumult_core::compliance::ComplianceFramework::parse("dora").unwrap();
+        let evidenced_id = tumult_graph::compliance_article_id(framework, "Art. 25");
+        assert!(
+            unevidenced.iter().all(|a| a["id"] != evidenced_id),
+            "the evidenced Art. 25 ({evidenced_id}) must not be listed: {unevidenced:?}"
+        );
+        assert!(
+            report.text.contains("article(s) still unevidenced"),
+            "{}",
+            report.text
+        );
+    }
 }

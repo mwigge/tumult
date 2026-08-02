@@ -415,4 +415,79 @@ mod tests {
         let result = query_traces("/nonexistent/journal.toon");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn query_traces_renders_hypotheses_rollbacks_and_trace_ids() {
+        use tumult_core::types::{
+            ActivityResult, ActivityStatus, ActivityType, ExperimentStatus, HypothesisResult,
+            Journal, SpanId, TraceId,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let result = |name: &str, trace: &str, span: &str| ActivityResult {
+            name: name.into(),
+            activity_type: ActivityType::Probe,
+            status: ActivityStatus::Succeeded,
+            started_at_ns: 1,
+            duration_ms: 7,
+            output: None,
+            error: None,
+            trace_id: TraceId::from(trace),
+            span_id: SpanId::from(span),
+        };
+        let journal = Journal {
+            experiment_title: "traced drill".into(),
+            experiment_id: "run-traced".into(),
+            status: ExperimentStatus::Completed,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_ms: 1,
+            steady_state_before: Some(HypothesisResult {
+                title: "app healthy".into(),
+                met: true,
+                probe_results: vec![result("before-probe", "trace-before", "span-before")],
+            }),
+            steady_state_after: Some(HypothesisResult {
+                title: "app healthy".into(),
+                met: true,
+                probe_results: vec![result("after-probe", "", "")],
+            }),
+            method_results: vec![result("fault", "trace-fault", "span-fault")],
+            rollback_results: vec![result("undo-fault", "trace-undo", "span-undo")],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: None,
+            halt: None,
+            blast_radius: None,
+        };
+        let path = dir.path().join("traced.toon");
+        std::fs::write(&path, toon_format::encode_default(&journal).unwrap()).unwrap();
+
+        let output = query_traces(path.to_str().unwrap()).unwrap();
+        assert!(
+            output.contains("Experiment: traced drill (run-traced)"),
+            "{output}"
+        );
+        // Instrumented probes render their IDs; uninstrumented render (none).
+        assert!(
+            output.contains("Hypothesis Before: app healthy"),
+            "{output}"
+        );
+        assert!(
+            output.contains("before-probe [Succeeded] trace=trace-before span=span-before 7ms"),
+            "{output}"
+        );
+        assert!(
+            output.contains("fault [Succeeded] trace=trace-fault span=span-fault 7ms"),
+            "{output}"
+        );
+        assert!(output.contains("Hypothesis After: app healthy"), "{output}");
+        assert!(output.contains("Rollbacks:"), "{output}");
+        assert!(output.contains("undo-fault [Succeeded]"), "{output}");
+    }
 }

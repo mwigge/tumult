@@ -513,4 +513,90 @@ mod tests {
         assert!(!host_is_loopback("192.168.1.10"));
         assert!(!host_is_loopback("10.0.0.5"));
     }
+
+    // ── check() (pre-RBAC resource gate) ─────────────────────
+
+    #[test]
+    fn check_requires_a_valid_token_without_resolving_the_role() {
+        let auth = McpAuth::from_tokens(vec![("view-tok".into(), Role::Viewer)]);
+        assert!(auth.check(Some("Bearer view-tok")).is_ok());
+        assert!(auth.check(None).is_err());
+        assert!(auth.check(Some("Bearer other")).is_err());
+        // Open mode imposes no requirement.
+        assert!(McpAuth::none().check(None).is_ok());
+    }
+
+    // ── Environment loading (serialized: mutates process env) ──
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn load_reads_an_explicit_auth_config_file() {
+        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("mcp-auth.toml");
+        std::fs::write(
+            &path,
+            "[[tokens]]\ntoken = \"cfg-tok\"\nrole = \"viewer\"\n",
+        )
+        .unwrap();
+        std::env::set_var(AUTH_CONFIG_ENV, &path);
+        let loaded = McpAuth::load();
+        std::env::remove_var(AUTH_CONFIG_ENV);
+
+        let auth = loaded.expect("a valid config file must load");
+        assert!(auth.is_configured());
+        assert_eq!(
+            auth.authenticate(Some("Bearer cfg-tok")).unwrap(),
+            Some(Role::Viewer)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn load_rejects_an_unreadable_explicit_config_and_from_env_denies() {
+        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
+        let missing = std::env::temp_dir().join(format!(
+            "tumult-mcp-auth-test-missing-{}.toml",
+            std::process::id()
+        ));
+        assert!(!missing.exists());
+        std::env::set_var(AUTH_CONFIG_ENV, &missing);
+
+        let err = match McpAuth::load() {
+            Ok(_) => panic!("a set-but-missing config must not load"),
+            Err(err) => err,
+        };
+        assert!(err.contains("failed to read MCP auth config"), "got: {err}");
+
+        // The infallible variant fails closed: deny every request.
+        let auth = McpAuth::from_env();
+        std::env::remove_var(AUTH_CONFIG_ENV);
+        assert!(auth.is_configured());
+        let err = auth
+            .authenticate(Some("Bearer anything"))
+            .expect_err("a broken config must refuse all requests");
+        assert!(
+            err.to_string().contains("refusing all requests"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn load_falls_back_to_the_legacy_single_token() {
+        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
+        if default_config_path().is_some_and(|p| p.exists()) {
+            // A real ~/.tumult/mcp-auth.toml shadows the legacy token by
+            // design; this environment cannot exercise the fallback.
+            return;
+        }
+        std::env::remove_var(AUTH_CONFIG_ENV);
+        std::env::set_var(TOKEN_ENV, "legacy-tok");
+        let loaded = McpAuth::load();
+        std::env::remove_var(TOKEN_ENV);
+
+        let auth = loaded.expect("a legacy token must load");
+        assert_eq!(
+            auth.authenticate(Some("Bearer legacy-tok")).unwrap(),
+            Some(Role::Operator),
+            "the legacy token maps to the operator role"
+        );
+    }
 }

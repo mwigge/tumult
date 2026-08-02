@@ -380,7 +380,11 @@ fn flush_telemetry() {
 
 #[cfg(test)]
 mod tests {
-    use super::allowed_http_origins;
+    use super::{
+        allowed_http_origins, run_health_server, serve, server_details, HeaderCaptureProvider,
+        ServeOptions, Transport,
+    };
+    use rust_mcp_sdk::auth::AuthProvider as _;
 
     #[test]
     fn wildcard_http_bind_accepts_local_browser_origins() {
@@ -395,5 +399,130 @@ mod tests {
             allowed_http_origins("tumult.internal", 3100),
             vec!["http://tumult.internal:3100"]
         );
+    }
+
+    #[test]
+    fn loopback_http_bind_adds_local_origins_once() {
+        let origins = allowed_http_origins("127.0.0.1", 3100);
+        assert_eq!(
+            origins
+                .iter()
+                .filter(|o| *o == "http://127.0.0.1:3100")
+                .count(),
+            1,
+            "loopback origin must not be duplicated: {origins:?}"
+        );
+        assert!(origins.contains(&"http://localhost:3100".to_string()));
+    }
+
+    #[test]
+    fn serve_options_default_is_loopback_stdio() {
+        let opts = ServeOptions::default();
+        assert_eq!(opts.transport, Transport::Stdio);
+        assert_eq!(opts.host, "127.0.0.1");
+        assert_eq!(opts.port, 3100);
+        assert_eq!(opts.health_port, None);
+    }
+
+    #[test]
+    fn server_details_advertises_tools_resources_and_instructions() {
+        let details = server_details();
+        assert_eq!(details.server_info.name, "tumult-mcp");
+        assert_eq!(details.server_info.version, env!("CARGO_PKG_VERSION"));
+        assert!(details.capabilities.tools.is_some());
+        assert!(details.capabilities.resources.is_some());
+        let instructions = details.instructions.expect("instructions must be set");
+        assert!(instructions.contains("chaos engineering"), "{instructions}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn header_capture_provider_passes_the_bearer_token_through() {
+        let provider = HeaderCaptureProvider;
+        let info = provider
+            .verify_token("the-token".to_string())
+            .await
+            .expect("header capture never rejects");
+        assert_eq!(info.token_unique_id, "the-token");
+        assert!(
+            info.expires_at.expect("expiry must be set") > std::time::SystemTime::now(),
+            "the SDK middleware requires a future expiry"
+        );
+        assert!(provider.auth_endpoints().is_none());
+        assert!(provider.protected_resource_metadata_url().is_none());
+    }
+
+    /// Bind an ephemeral port and release it, so the health server can take it.
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn health_server_answers_ok_json() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let port = free_port();
+        tokio::spawn(run_health_server("127.0.0.1", port));
+
+        let mut response = Vec::new();
+        for attempt in 0..50 {
+            match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+                Ok(mut stream) => {
+                    stream
+                        .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                        .await
+                        .unwrap();
+                    stream.read_to_end(&mut response).await.unwrap();
+                    break;
+                }
+                Err(_) if attempt < 49 => {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await
+                }
+                Err(e) => panic!("health server never came up: {e}"),
+            }
+        }
+
+        let text = String::from_utf8(response).unwrap();
+        assert!(text.starts_with("HTTP/1.1 200 OK"), "{text}");
+        assert!(text.contains("\"status\":\"ok\""), "{text}");
+        assert!(text.contains(env!("CARGO_PKG_VERSION")), "{text}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn health_server_logs_and_returns_when_the_port_is_taken() {
+        // Hold the port so the health server's bind fails: it must log the
+        // error and return promptly rather than panic or hang.
+        let blocker = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = blocker.local_addr().unwrap().port();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            run_health_server("127.0.0.1", port),
+        )
+        .await
+        .expect("a failed bind must return, not hang");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn serve_aborts_on_an_unreadable_auth_config() {
+        // An explicit but missing auth config path is a hard startup error:
+        // the server must fail closed instead of running unauthenticated.
+        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
+        let missing = std::env::temp_dir().join(format!(
+            "tumult-mcp-test-no-such-auth-{}.toml",
+            std::process::id()
+        ));
+        assert!(!missing.exists());
+        std::env::set_var("TUMULT_MCP_AUTH_CONFIG", &missing);
+        let result = serve(ServeOptions {
+            transport: Transport::Stdio,
+            ..ServeOptions::default()
+        })
+        .await;
+        std::env::remove_var("TUMULT_MCP_AUTH_CONFIG");
+        let err = result.expect_err("an unreadable auth config must abort startup");
+        assert!(err.to_string().contains("auth config"), "got: {err}");
     }
 }

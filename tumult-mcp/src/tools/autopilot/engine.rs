@@ -16,12 +16,12 @@ use crate::error::ToolError;
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
 
-fn elapsed_days(now_ns: i64, then_ns: i64) -> u32 {
+pub(super) fn elapsed_days(now_ns: i64, then_ns: i64) -> u32 {
     let days = now_ns.saturating_sub(then_ns).div_euclid(NANOS_PER_DAY);
     u32::try_from(days).unwrap_or(u32::MAX)
 }
 
-fn elapsed_hours(now_ns: i64, then_ns: i64) -> f64 {
+pub(super) fn elapsed_hours(now_ns: i64, then_ns: i64) -> f64 {
     let nanos = u64::try_from(now_ns.saturating_sub(then_ns)).unwrap_or(0);
     std::time::Duration::from_nanos(nanos).as_secs_f64() / 3_600.0
 }
@@ -37,7 +37,7 @@ pub(super) struct Assembled {
 
 /// Confidence is derived from the deterministic score: a broken control or
 /// a score at/above 1.0 is High; anything weaker is Directional.
-fn confidence_for(score: f64, broken: bool) -> ConfidenceTier {
+pub(super) fn confidence_for(score: f64, broken: bool) -> ConfidenceTier {
     if broken || score >= 1.0 {
         ConfidenceTier::High
     } else {
@@ -46,7 +46,7 @@ fn confidence_for(score: f64, broken: bool) -> ConfidenceTier {
 }
 
 /// Inspect a playbook experiment file for the validator's structural facts.
-fn inspect_experiment(path: &str) -> (bool, bool, bool, usize) {
+pub(super) fn inspect_experiment(path: &str) -> (bool, bool, bool, usize) {
     let Ok(content) = std::fs::read_to_string(path) else {
         return (false, false, false, 0);
     };
@@ -75,7 +75,7 @@ fn inspect_experiment(path: &str) -> (bool, bool, bool, usize) {
 /// - `Some(true)`  — probe executed and met its tolerance
 /// - `Some(false)` — probe failed, errored, or tolerance unmet
 /// - `None`        — no guard/probe to verify (gate downgrades on None)
-fn preflight_guard_telemetry(playbook_path: &str) -> Option<bool> {
+pub(super) fn preflight_guard_telemetry(playbook_path: &str) -> Option<bool> {
     use tumult_core::engine::evaluate_tolerance;
     use tumult_core::runner::ActivityExecutor;
 
@@ -98,7 +98,7 @@ fn preflight_guard_telemetry(playbook_path: &str) -> Option<bool> {
 
 /// Latest `evidences` timestamp (ns) for any of a cell's experiments toward
 /// its article — the freshness the staleness trigger measures.
-fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64> {
+pub(super) fn latest_evidence_ns(inputs: &TopologyInputs, cell: &LineageCell) -> Option<i64> {
     inputs
         .edges
         .iter()
@@ -464,7 +464,7 @@ pub(super) fn regate_decision(
 /// The compliance article a playbook experiment evidences (its first
 /// resolvable regulatory requirement) — what a change-event revalidation
 /// re-proves.
-fn playbook_article(experiment_path: &str) -> Option<String> {
+pub(super) fn playbook_article(experiment_path: &str) -> Option<String> {
     let content = std::fs::read_to_string(experiment_path).ok()?;
     let exp = tumult_core::engine::parse_experiment(&content).ok()?;
     let regulatory = exp.regulatory.as_ref()?;

@@ -317,4 +317,95 @@ mod tests {
             "decreasing"
         );
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn trend_last_window_includes_recent_journals() {
+        let dir = TempDir::new().unwrap();
+        let journal_path = write_run_journal(dir.path());
+
+        // A 30-day window parses and keeps a journal written just now.
+        let result = trend(
+            journal_path.to_str().unwrap(),
+            "duration_ms",
+            Some("30d"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.structured["points"].as_array().unwrap().len(), 1);
+
+        // A zero-day window (with or without the 'd' suffix) excludes it:
+        // the cutoff is the current instant.
+        let result = trend(
+            journal_path.to_str().unwrap(),
+            "duration_ms",
+            Some("0"),
+            None,
+        )
+        .unwrap();
+        assert!(result.structured["points"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn trend_over_a_directory_skips_unreadable_files() {
+        let dir = TempDir::new().unwrap();
+        // Run in a subdirectory, then move the journal next to the broken
+        // file so the directory under test holds exactly one valid journal.
+        let run_dir = dir.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let journal_path = write_run_journal(&run_dir);
+        std::fs::rename(&journal_path, dir.path().join("journal.toon")).unwrap();
+        std::fs::write(dir.path().join("broken.toon"), "title: [unterminated").unwrap();
+
+        let result = trend(dir.path().to_str().unwrap(), "duration_ms", None, None).unwrap();
+        assert!(
+            result.text.contains("Loaded 1 journal(s)"),
+            "{}",
+            result.text
+        );
+        assert!(
+            result.text.contains("Skipped (unreadable): 1"),
+            "{}",
+            result.text
+        );
+        assert_eq!(result.structured["points"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn trend_method_step_count_summarizes_multiple_runs() {
+        let dir = TempDir::new().unwrap();
+        let experiment = crate::tools::test_support::write_valid_experiment(dir.path());
+        // Two real runs of the same one-step experiment (distinct run ids).
+        for name in ["journal-1.toon", "journal-2.toon"] {
+            crate::tools::run_experiment(crate::tools::RunExperimentRequest {
+                experiment_path: &experiment,
+                rollback_strategy: "always",
+                journal_path: &dir.path().join(name),
+                store_path: "unused.duckdb",
+                no_ingest: true,
+                format: "toon",
+                parent_context: None,
+            })
+            .unwrap();
+        }
+
+        let result = trend(
+            dir.path().to_str().unwrap(),
+            "method_step_count",
+            None,
+            None,
+        )
+        .unwrap();
+        let points = result.structured["points"].as_array().unwrap();
+        assert_eq!(points.len(), 2, "both runs are data points: {points:?}");
+        for point in points {
+            assert_eq!(point["value"], 1.0, "one method step per run");
+        }
+        // A flat series is stable, and the summary line reports min/max/avg.
+        assert_eq!(result.structured["verdict"], "stable");
+        assert!(
+            result.text.contains("Summary: 2 runs, min=1, max=1, avg=1"),
+            "{}",
+            result.text
+        );
+    }
 }

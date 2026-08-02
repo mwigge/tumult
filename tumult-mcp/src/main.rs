@@ -107,3 +107,89 @@ async fn main() -> SdkResult<()> {
 
     serve(args).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_defaults_to_loopback_stdio() {
+        let cli = Cli::try_parse_from(["tumult-mcp"]).unwrap();
+        assert!(matches!(cli.transport, TransportArg::Stdio));
+        assert_eq!(cli.host, "127.0.0.1");
+        assert_eq!(cli.port, 3100);
+        assert_eq!(cli.health_port, None);
+        assert_eq!(cli.token, None);
+        assert_eq!(cli.auth_config, None);
+
+        let options = ServeOptions::from(cli);
+        assert_eq!(options.transport, Transport::Stdio);
+        assert_eq!(options.host, "127.0.0.1");
+        assert_eq!(options.port, 3100);
+        assert_eq!(options.health_port, None);
+    }
+
+    #[test]
+    fn cli_maps_http_transport_and_keeps_the_sse_alias() {
+        for arg in ["http", "sse"] {
+            let cli = Cli::try_parse_from([
+                "tumult-mcp",
+                "--transport",
+                arg,
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8080",
+                "--health-port",
+                "9090",
+            ])
+            .unwrap_or_else(|e| panic!("--transport {arg} must parse: {e}"));
+            assert!(matches!(cli.transport, TransportArg::Http));
+
+            let options = ServeOptions::from(cli);
+            assert_eq!(options.transport, Transport::Http);
+            assert_eq!(options.host, "0.0.0.0");
+            assert_eq!(options.port, 8080);
+            assert_eq!(options.health_port, Some(9090));
+        }
+    }
+
+    #[test]
+    fn cli_rejects_an_unknown_transport() {
+        let err = Cli::try_parse_from(["tumult-mcp", "--transport", "grpc"])
+            .expect_err("an unknown transport must be rejected");
+        assert!(err.to_string().contains("grpc"), "got: {err}");
+    }
+
+    #[test]
+    fn auth_flags_are_exported_through_the_environment() {
+        // The auth flags reach `McpAuth::load()` via the environment, exactly
+        // like `tumult mcp serve`. The config file takes priority.
+        let config = std::env::temp_dir().join(format!(
+            "tumult-mcp-cli-test-auth-{}.toml",
+            std::process::id()
+        ));
+        let cli = Cli::try_parse_from([
+            "tumult-mcp",
+            "--token",
+            "cli-test-token",
+            "--auth-config",
+            config.to_str().unwrap(),
+        ])
+        .unwrap();
+        let options = ServeOptions::from(cli);
+        assert_eq!(options.transport, Transport::Stdio);
+        assert_eq!(
+            std::env::var("TUMULT_MCP_TOKEN").as_deref(),
+            Ok("cli-test-token"),
+            "--token must be exported for McpAuth::load"
+        );
+        assert_eq!(
+            std::env::var("TUMULT_MCP_AUTH_CONFIG").as_deref(),
+            Ok(config.to_str().unwrap()),
+            "--auth-config must be exported for McpAuth::load"
+        );
+        std::env::remove_var("TUMULT_MCP_TOKEN");
+        std::env::remove_var("TUMULT_MCP_AUTH_CONFIG");
+    }
+}
