@@ -6,6 +6,7 @@
   const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
   let me = $state<MeResponse | null>(null);
+  let meError = $state<string | null>(null);
   let users = $state<AdminUser[] | null>(null);
   let error = $state<string | null>(null);
 
@@ -36,11 +37,11 @@
     api
       .me()
       .then((m) => (me = m))
-      .catch(() => (me = null));
+      .catch((e) => (meError = String(e)));
   });
 
   // Load the user list once the caller is known to be an admin (or once open
-  // mode is known); re-runs if the session identity changes mid-visit.
+  // local mode is known); runs once, guarded by `users !== null`.
   $effect(() => {
     if (!isAdmin || users !== null) return;
     refresh();
@@ -52,7 +53,10 @@
       users = r.users;
       error = null;
     } catch (e) {
-      if (!users) error = String(e);
+      // Always surfaced: with a list already loaded (e.g. after a role change
+      // dropped the caller's own admin rights) the banner explains why the
+      // page's actions now fail; the last good list stays visible.
+      error = String(e);
     }
   }
 
@@ -137,7 +141,11 @@
   </span>
 </div>
 
-{#if me && !isAdmin}
+{#if meError}
+  <div class="panel">
+    <div class="state error">Failed to load the session: {meError}</div>
+  </div>
+{:else if me && !isAdmin}
   <div class="panel">
     <div class="state">
       User management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
@@ -145,16 +153,23 @@
   </div>
 {:else}
   <div class="panel" style="margin-bottom: 14px">
-    {#if error}
-      <div class="state error">Failed to load users: {error}</div>
-    {:else if !users}
-      <div class="skeleton" style="height: 160px"></div>
+    {#if !users}
+      {#if error}
+        <div class="state error">Failed to load users: {error}</div>
+      {:else}
+        <div class="skeleton" style="height: 160px"></div>
+      {/if}
     {:else if users.length === 0}
       <div class="state">
         No users yet — the daemon is in open local mode. Create the first admin below (or with
         <span class="mono">tumultd create-admin</span>) to turn authentication on.
       </div>
     {:else}
+      {#if error}
+        <div class="state error" style="margin-bottom: 8px">
+          Refresh failed: {error} — showing the last loaded list.
+        </div>
+      {/if}
       <table class="data">
         <thead>
           <tr>
@@ -184,12 +199,16 @@
                   <div class="detail">
                     <div>
                       <h3>Role</h3>
-                      <div class="row">
-                        <select bind:value={roleEdit}>
-                          {#each ROLES as r (r)}<option value={r}>{r}</option>{/each}
-                        </select>
-                        <button class="btn" onclick={() => saveRole(u)} disabled={busy || roleEdit === u.role}>Save</button>
-                      </div>
+                      {#if me?.username === u.username}
+                        <div class="hint">You cannot change your own role — ask another admin.</div>
+                      {:else}
+                        <div class="row">
+                          <select bind:value={roleEdit}>
+                            {#each ROLES as r (r)}<option value={r}>{r}</option>{/each}
+                          </select>
+                          <button class="btn" onclick={() => saveRole(u)} disabled={busy || roleEdit === u.role}>Save</button>
+                        </div>
+                      {/if}
                       <h3>Environment scopes</h3>
                       <div class="row">
                         <input type="text" placeholder="comma-separated; empty = all" bind:value={scopeEdit} />
@@ -245,13 +264,18 @@
       <label>
         Password (optional)
         <input type="password" bind:value={newPassword} autocomplete="new-password" placeholder="empty = generate one-time" />
+        <span class="hint">12+ characters if set; empty generates a one-time password.</span>
       </label>
       <label>
         Environment scopes (optional)
         <input type="text" bind:value={newScopes} placeholder="comma-separated; empty = all" />
       </label>
       <div>
-        <button class="primary" type="submit" disabled={creating || !newUsername.trim()}>
+        <button
+          class="primary"
+          type="submit"
+          disabled={creating || !newUsername.trim() || (newPassword.length > 0 && newPassword.length < 12)}
+        >
           {creating ? 'Creating…' : 'Create user'}
         </button>
       </div>
