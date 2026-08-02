@@ -34,6 +34,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/runs", Role::Viewer),
     ("GET", "/api/runs/{id}", Role::Viewer),
     ("GET", "/api/runs/{id}/audit/verify", Role::Viewer),
+    ("GET", "/api/schedules", Role::Viewer),
     ("GET", "/api/lake/status", Role::Viewer),
     ("GET", "/api/reports", Role::Viewer),
     ("GET", "/api/reports/v2", Role::Viewer),
@@ -71,6 +72,9 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/reports/generate", Role::Operator),
     ("POST", "/api/reports/v2/generate", Role::Operator),
     ("POST", "/api/lake/export", Role::Operator),
+    ("POST", "/api/schedules", Role::Operator),
+    ("POST", "/api/schedules/{id}/enable", Role::Operator),
+    ("POST", "/api/schedules/{id}/delete", Role::Operator),
     // Approver: manual-evidence review.
     (
         "POST",
@@ -142,6 +146,11 @@ mod tests {
     fn dry_run_and_validate_beat_the_runs_id_template() {
         // Literal-heavy templates win over `/api/runs/{id}`.
         assert_eq!(required_role("POST", "/api/runs/stop-all"), Role::Operator);
+        assert_eq!(required_role("GET", "/api/schedules"), Role::Viewer);
+        assert_eq!(
+            required_role("POST", "/api/schedules/x/enable"),
+            Role::Operator
+        );
         assert_eq!(required_role("POST", "/api/runs/dry-run"), Role::Viewer);
         assert_eq!(required_role("POST", "/api/runs/validate"), Role::Operator);
         assert_eq!(required_role("GET", "/api/runs/some-id"), Role::Viewer);

@@ -78,6 +78,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   workspace has no cron parser; missed fires during downtime collapse into
   one, a full run queue retries next tick. `TUMULTD_SCHEDULE_TICK_S`
   (default 30s) sets the tick. CRUD API and UI follow separately.
+- Schedule CRUD API: `GET /api/schedules` (Viewer, definition name joined),
+  `POST /api/schedules` (Operator — interval bounds 60s–30d, name ≤100
+  chars, registry id must resolve 404, definition must resolve with the
+  supplied vars 400), `POST /api/schedules/{id}/enable` and
+  `/api/schedules/{id}/delete` (Operator, 404 on unknown id). Schedules
+  start enabled; creation records the principal.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
