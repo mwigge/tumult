@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
   nav entry (everything shows in open local mode).
+- `/author` page in the web UI: a browsable, searchable fault catalog
+  (domains → actions/probes with their documented arguments) backed by
+  `GET /api/authoring/catalog`, with an "Author" nav entry and an empty
+  state that explains plugin discovery paths. Picking an action deep-links
+  into the authoring wizard (`/author/new`).
 - Web client plumbing for experiment authoring: typed wrappers in
   `web/src/lib/api.ts` for `GET /api/authoring/catalog`,
   `POST /api/authoring/scaffold`, and `POST /api/runs/validate`
