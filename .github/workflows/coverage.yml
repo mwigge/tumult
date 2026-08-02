@@ -4,9 +4,8 @@ on:
   # Merge-blocking gate: the project mandates >= 90% workspace coverage, so the
   # tarpaulin run below must pass before a PR can land. While this job was
   # broken (missing web build, then runner disk/timeout), main drifted below
-  # the mandate; the floor is temporarily ratcheted to the measured 83% and
-  # must be raised back to 90 as coverage recovers — tracked in issue #192.
-  # Do not lower it further.
+  # the mandate to 83.08% — restored by backfilling real tests, tracked in
+  # issue #192. The 90% floor is NOT negotiable: do not lower it.
   pull_request:
   schedule:
     # Runs nightly at 02:00 UTC
@@ -52,9 +51,7 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Run tarpaulin
-        # 83 = ratchet floor measured on main 2026-08-02 (83.08%); restore
-        # to 90 as coverage recovers (see comment at the top of this file).
-        run: cargo tarpaulin --workspace --out xml --timeout 300 --fail-under 83
+        run: cargo tarpaulin --workspace --out xml --timeout 300 --fail-under 90
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
