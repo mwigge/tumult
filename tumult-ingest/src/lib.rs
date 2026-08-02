@@ -24,6 +24,7 @@ pub mod grpc;
 pub mod http;
 pub mod manual;
 pub mod runs;
+pub mod schedules;
 mod writer;
 
 pub use config::Config;
