@@ -142,7 +142,14 @@ mod tests {
     fn login_limiter_refills_over_time() {
         let l = LoginRateLimiter::with_params(1000.0, 1.0);
         l.penalize("k");
-        assert!(l.throttled("k"));
+        // The penalty consumed the only token. Assert the bucket state
+        // directly instead of going through `throttled`: with rps=1000 the
+        // refill between `penalize` and a `throttled` call can cross one
+        // token on a slow/loaded machine, which made this test flaky in CI.
+        {
+            let buckets = l.buckets.lock().unwrap();
+            assert_eq!(buckets["k"].tokens, 0.0, "penalty consumed the token");
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
         assert!(!l.throttled("k"), "bucket refills at the rps rate");
     }
