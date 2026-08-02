@@ -22,7 +22,9 @@ pub fn render(app: &mut App, f: &mut Frame) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // tab strip
-            Constraint::Length(4), // header
+            // The header grows by one row when a refresh error is shown so the
+            // error line is not clipped behind the bottom border.
+            Constraint::Length(if app.error.is_some() { 5 } else { 4 }),
             Constraint::Min(0),    // body
             Constraint::Length(1), // footer
         ])
@@ -583,4 +585,277 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(vertical[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::Input;
+    use crate::logic::SortKey;
+    use crate::model::{ActivityRow, ExperimentRow, GraphNodeRow};
+    use ratatui::backend::TestBackend;
+    use ratatui::widgets::TableState;
+    use ratatui::Terminal;
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    fn exp(id: &str, status: &str, ns: i64) -> ExperimentRow {
+        ExperimentRow {
+            id: id.into(),
+            title: format!("Experiment {id}"),
+            status: status.into(),
+            started_at_ns: ns,
+            duration_ms: 1_500,
+            resilience: Some(0.75),
+            steps: 2,
+            deviations: 1,
+        }
+    }
+
+    fn app_with(rows: Vec<ExperimentRow>) -> App {
+        let mut app = App {
+            store_path: PathBuf::from("/nonexistent/store.duckdb"),
+            experiments: rows,
+            filtered: Vec::new(),
+            new_ids: HashSet::new(),
+            experiment_count: 3,
+            activity_count: 9,
+            schema_version: 3,
+            tab: Tab::Experiments,
+            view: View::List,
+            table_state: TableState::default(),
+            selected: 0,
+            sort_key: SortKey::Time,
+            sort_asc: false,
+            status_filter: String::new(),
+            title_filter: String::new(),
+            input: Input::None,
+            detail_activities: Vec::new(),
+            marks: HashSet::new(),
+            graph_kind_idx: 0,
+            graph_nodes: Vec::new(),
+            graph_state: TableState::default(),
+            graph_neighbors: Vec::new(),
+            live: true,
+            refresh_interval: Duration::from_secs(5),
+            last_refresh: Instant::now(),
+            show_help: false,
+            error: None,
+        };
+        app.apply_sort_filter();
+        app
+    }
+
+    /// Render one frame at 120×30 and return the visible text.
+    fn render_text(app: &mut App) -> String {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        terminal.draw(|f| render(app, f)).expect("draw frame");
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect()
+    }
+
+    #[test]
+    fn experiments_tab_renders_header_table_and_status_pills() {
+        let mut app = app_with(vec![exp("a", "completed", 2), exp("b", "failed", 1)]);
+        app.marks.insert("a".to_string());
+        app.new_ids.insert("b".to_string());
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("Experiments"), "tab strip: {text}");
+        assert!(text.contains("schema v3"), "header: {text}");
+        assert!(text.contains("3 experiments"), "counts: {text}");
+        assert!(text.contains("LIVE"), "live indicator: {text}");
+        assert!(text.contains("Experiment a"), "row title: {text}");
+        assert!(text.contains("PASS"), "status pill: {text}");
+        assert!(text.contains("FAIL"), "status pill: {text}");
+        assert!(text.contains("◉"), "compare mark: {text}");
+        assert!(text.contains("1 marked (c to compare)"), "title: {text}");
+        assert!(text.contains("quit"), "footer: {text}");
+    }
+
+    #[test]
+    fn empty_store_renders_guidance_instead_of_a_table() {
+        let mut app = app_with(Vec::new());
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("No experiments in the store yet"), "{text}");
+    }
+
+    #[test]
+    fn a_filter_with_no_matches_offers_an_escape_hint() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.title_filter = "zzz".to_string();
+        app.apply_sort_filter();
+
+        let text = render_text(&mut app);
+
+        assert!(
+            text.contains("No experiments match the current filter"),
+            "{text}"
+        );
+        assert!(
+            text.contains("title:zzz"),
+            "header shows the filter: {text}"
+        );
+    }
+
+    #[test]
+    fn header_surfaces_the_last_refresh_error() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.live = false;
+        app.error = Some("store is locked".to_string());
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("PAUSED"), "{text}");
+        assert!(text.contains("! store is locked"), "{text}");
+    }
+
+    #[test]
+    fn detail_view_renders_metadata_and_the_duration_waterfall() {
+        let mut app = app_with(vec![exp("a", "deviated", 1)]);
+        app.detail_activities = vec![
+            ActivityRow {
+                name: "check-latency".into(),
+                activity_type: "probe".into(),
+                status: "succeeded".into(),
+                duration_ms: 120,
+                phase: "hypothesis_before".into(),
+                output: String::new(),
+            },
+            ActivityRow {
+                name: "kill-db".into(),
+                activity_type: "action".into(),
+                status: "failed".into(),
+                duration_ms: 2_400,
+                phase: String::new(),
+                output: String::new(),
+            },
+        ];
+        app.view = View::Detail;
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("DEVIATED"), "{text}");
+        assert!(text.contains("Timeline (duration waterfall)"), "{text}");
+        assert!(text.contains("check-latency"), "{text}");
+        assert!(text.contains("[hypothesis_before]"), "phase tag: {text}");
+        assert!(text.contains("kill-db"), "{text}");
+        assert!(text.contains('█'), "waterfall bar: {text}");
+    }
+
+    #[test]
+    fn detail_view_without_activities_says_so() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.view = View::Detail;
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("No activity timeline recorded"), "{text}");
+    }
+
+    #[test]
+    fn compare_view_renders_marked_runs_and_the_duration_trend() {
+        let mut app = app_with(vec![exp("a", "completed", 2), exp("b", "deviated", 1)]);
+        app.marks.insert("a".to_string());
+        app.marks.insert("b".to_string());
+        app.view = View::Compare;
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("Compare 2 runs"), "{text}");
+        assert!(text.contains("Duration trend"), "{text}");
+        assert!(text.contains("Experiment a"), "{text}");
+        assert!(text.contains("Experiment b"), "{text}");
+    }
+
+    #[test]
+    fn analytics_tab_renders_gauge_breakdown_and_trends() {
+        let mut app = app_with(vec![
+            exp("a", "completed", 3),
+            exp("b", "deviated", 2),
+            exp("c", "completed", 1),
+        ]);
+        app.tab = Tab::Analytics;
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("Overall success rate"), "{text}");
+        assert!(text.contains("66.7%"), "success gauge label: {text}");
+        assert!(text.contains("Status breakdown"), "{text}");
+        assert!(text.contains("Trends"), "{text}");
+        assert!(text.contains("Resilience score"), "{text}");
+        assert!(text.contains("Duration over the run sequence"), "{text}");
+    }
+
+    #[test]
+    fn graph_tab_renders_nodes_and_neighbour_edges() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.tab = Tab::ChaosGraph;
+        app.graph_nodes = vec![GraphNodeRow {
+            id: "exp-1".into(),
+            kind: "experiment".into(),
+            label: "latency drill".into(),
+        }];
+        app.graph_state.select(Some(0));
+        app.graph_neighbors = vec!["exp-1 —targets→ svc-api".to_string()];
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("ChaosGraph nodes: experiment"), "{text}");
+        assert!(text.contains("latency drill"), "{text}");
+        assert!(text.contains("exp-1 —targets→ svc-api"), "{text}");
+    }
+
+    #[test]
+    fn graph_tab_without_edges_says_so() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.tab = Tab::Compliance;
+        app.graph_nodes = vec![GraphNodeRow {
+            id: "art-24".into(),
+            kind: "compliance_article".into(),
+            label: "DORA Art 24".into(),
+        }];
+        app.graph_state.select(Some(0));
+
+        let text = render_text(&mut app);
+
+        assert!(
+            text.contains("Compliance nodes: compliance_article"),
+            "{text}"
+        );
+        assert!(text.contains("No edges for this node"), "{text}");
+    }
+
+    #[test]
+    fn help_overlay_lists_the_keybindings() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.show_help = true;
+
+        let text = render_text(&mut app);
+
+        assert!(text.contains("Tumult TUI — keybindings"), "{text}");
+        assert!(text.contains("switch tabs"), "{text}");
+        assert!(text.contains("compare marked runs"), "{text}");
+    }
+
+    #[test]
+    fn centered_rect_is_centered_and_proportional() {
+        let area = Rect::new(0, 0, 100, 40);
+        let rect = centered_rect(50, 50, area);
+
+        assert_eq!(rect.width, 50);
+        assert_eq!(rect.height, 20);
+        assert_eq!(rect.x, 25);
+        assert_eq!(rect.y, 10);
+    }
 }

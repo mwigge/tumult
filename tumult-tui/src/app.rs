@@ -608,4 +608,256 @@ mod tests {
         let mut app = app_with(vec![exp("a", "completed", 1)]);
         assert!(app.on_key(key(KeyCode::Char('q'))));
     }
+
+    fn graph_node(id: &str) -> GraphNodeRow {
+        GraphNodeRow {
+            id: id.into(),
+            kind: "experiment".into(),
+            label: format!("Node {id}"),
+        }
+    }
+
+    #[test]
+    fn tab_key_cycles_forward_and_shift_tab_backward() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        assert_eq!(app.tab, Tab::Experiments);
+        app.on_key(key(KeyCode::Tab));
+        assert_eq!(app.tab, Tab::Analytics);
+        app.on_key(key(KeyCode::Tab));
+        assert_eq!(app.tab, Tab::ChaosGraph);
+        app.on_key(key(KeyCode::Tab));
+        assert_eq!(app.tab, Tab::Compliance);
+        app.on_key(key(KeyCode::Tab)); // wraps around
+        assert_eq!(app.tab, Tab::Experiments);
+        app.on_key(key(KeyCode::BackTab));
+        assert_eq!(app.tab, Tab::Compliance);
+    }
+
+    #[test]
+    fn graph_tabs_reset_the_node_kind_and_report_store_errors() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('3')));
+        assert_eq!(app.tab, Tab::ChaosGraph);
+        assert_eq!(app.graph_kind_idx, 0);
+        assert_eq!(app.graph_kind(), data::GRAPH_KINDS[0]);
+        // The store path does not exist, so loading nodes surfaces an error
+        // instead of panicking.
+        assert!(app.error.is_some());
+
+        app.on_key(key(KeyCode::Char('4')));
+        assert_eq!(app.tab, Tab::Compliance);
+        assert_eq!(app.graph_kind(), "compliance_article");
+
+        app.on_key(key(KeyCode::Char('1')));
+        assert_eq!(app.tab, Tab::Experiments);
+    }
+
+    #[test]
+    fn compliance_graph_kind_is_pinned_to_compliance_kinds() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('4')));
+        app.graph_kind_idx = 1;
+        assert_eq!(app.graph_kind(), "coverage_gap");
+        // Large indices wrap within the compliance set.
+        app.graph_kind_idx = 5;
+        assert_eq!(app.graph_kind(), "coverage_gap");
+    }
+
+    #[test]
+    fn help_key_shows_overlay_and_the_next_key_dismisses_it() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('?')));
+        assert!(app.show_help);
+        // Any key dismisses help without triggering its normal action — this
+        // 'q' must not quit.
+        assert!(!app.on_key(key(KeyCode::Char('q'))));
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn ctrl_c_quits_even_outside_the_list_view() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.view = View::Detail;
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(app.on_key(ctrl_c));
+    }
+
+    #[test]
+    fn esc_on_the_list_clears_active_filters_instead_of_leaving() {
+        let mut app = app_with(vec![exp("a", "completed", 2), exp("b", "deviated", 1)]);
+        app.title_filter = "zzz".to_string();
+        app.status_filter = "pass".to_string();
+        app.apply_sort_filter();
+        assert!(app.filtered.is_empty());
+
+        assert!(!app.on_key(key(KeyCode::Esc)));
+        assert_eq!(app.view, View::List);
+        assert!(app.title_filter.is_empty());
+        assert!(app.status_filter.is_empty());
+        assert_eq!(app.filtered.len(), 2);
+    }
+
+    #[test]
+    fn esc_leaves_the_detail_view() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.view, View::Detail);
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.view, View::List);
+    }
+
+    #[test]
+    fn q_and_backspace_leave_the_compare_view() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char(' ')));
+        app.on_key(key(KeyCode::Char('c')));
+        assert_eq!(app.view, View::Compare);
+        app.on_key(key(KeyCode::Backspace));
+        assert_eq!(app.view, View::List);
+    }
+
+    #[test]
+    fn graph_selection_wraps_and_loads_neighbours() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('3')));
+        app.error = None;
+        app.graph_nodes = vec![graph_node("n1"), graph_node("n2"), graph_node("n3")];
+        app.graph_state.select(Some(0));
+
+        app.on_key(key(KeyCode::Char('j')));
+        assert_eq!(app.graph_state.selected(), Some(1));
+        app.on_key(key(KeyCode::Char('k')));
+        assert_eq!(app.graph_state.selected(), Some(0));
+        app.on_key(key(KeyCode::Char('k'))); // wraps to the last node
+        assert_eq!(app.graph_state.selected(), Some(2));
+    }
+
+    #[test]
+    fn graph_kind_keys_step_and_wrap() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('3')));
+        assert_eq!(app.graph_kind_idx, 0);
+        app.on_key(key(KeyCode::Right));
+        assert_eq!(app.graph_kind_idx, 1);
+        app.on_key(key(KeyCode::Left));
+        assert_eq!(app.graph_kind_idx, 0);
+        // Left at the first kind wraps to the last ChaosGraph kind.
+        app.on_key(key(KeyCode::Char('h')));
+        assert_eq!(app.graph_kind_idx, data::GRAPH_KINDS.len() - 1);
+
+        // On the Compliance tab the wrap cycles only the two compliance kinds.
+        app.on_key(key(KeyCode::Char('4')));
+        assert_eq!(app.graph_kind_idx, 0);
+        app.on_key(key(KeyCode::Left));
+        assert_eq!(app.graph_kind_idx, 1);
+        assert_eq!(app.graph_kind(), "coverage_gap");
+    }
+
+    #[test]
+    fn status_filter_cycles_through_every_status_and_back_to_all() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        for expected in ["pass", "deviated", "fail", "aborted", ""] {
+            app.on_key(key(KeyCode::Char('f')));
+            assert_eq!(app.status_filter, expected);
+        }
+    }
+
+    #[test]
+    fn marking_twice_unmarks() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char(' ')));
+        assert!(app.marks.contains("a"));
+        app.on_key(key(KeyCode::Char(' ')));
+        assert!(app.marks.is_empty());
+    }
+
+    #[test]
+    fn compare_key_without_marks_stays_on_the_list() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('c')));
+        assert_eq!(app.view, View::List);
+    }
+
+    #[test]
+    fn marked_experiments_follow_display_order() {
+        let mut app = app_with(vec![exp("a", "completed", 3), exp("b", "deviated", 2)]);
+        app.on_key(key(KeyCode::Char(' '))); // mark "a" (first row)
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Char(' '))); // mark "b"
+        let marked: Vec<&str> = app
+            .marked_experiments()
+            .iter()
+            .map(|e| e.id.as_str())
+            .collect();
+        assert_eq!(marked, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn capital_s_toggles_sort_direction() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        assert!(!app.sort_asc);
+        app.on_key(key(KeyCode::Char('S')));
+        assert!(app.sort_asc);
+        app.on_key(key(KeyCode::Char('S')));
+        assert!(!app.sort_asc);
+    }
+
+    #[test]
+    fn title_input_supports_backspace_and_enter_keeps_the_filter() {
+        let mut app = app_with(vec![
+            exp("alpha", "completed", 2),
+            exp("beta", "completed", 1),
+        ]);
+        app.on_key(key(KeyCode::Char('/')));
+        app.on_key(key(KeyCode::Char('z')));
+        app.on_key(key(KeyCode::Backspace));
+        assert_eq!(app.title_filter, "");
+        for c in "alp".chars() {
+            app.on_key(key(KeyCode::Char(c)));
+        }
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.input, Input::None);
+        assert_eq!(app.title_filter, "alp");
+        assert_eq!(app.filtered.len(), 1);
+    }
+
+    #[test]
+    fn title_input_ignores_non_editing_keys() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        app.on_key(key(KeyCode::Char('/')));
+        app.on_key(key(KeyCode::F(5)));
+        assert_eq!(app.input, Input::Title);
+        assert!(app.title_filter.is_empty());
+    }
+
+    #[test]
+    fn tick_refreshes_only_when_live_and_due() {
+        let mut app = app_with(vec![exp("a", "completed", 1)]);
+        // Paused: a stale refresh timer must not trigger a store read.
+        app.last_refresh = Instant::now()
+            .checked_sub(Duration::from_mins(1))
+            .expect("one minute ago is a valid instant");
+        app.tick();
+        assert!(app.error.is_none());
+
+        // Live and due: the missing store surfaces a refresh error.
+        app.live = true;
+        app.tick();
+        assert!(app.error.is_some());
+    }
+
+    #[test]
+    fn movement_on_an_empty_history_is_a_noop() {
+        let mut app = app_with(Vec::new());
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Up));
+        assert_eq!(app.selected, 0);
+        assert!(app.selected_experiment().is_none());
+    }
+
+    #[test]
+    fn refresh_age_reports_seconds_since_the_last_refresh() {
+        let app = app_with(vec![exp("a", "completed", 1)]);
+        assert_eq!(app.refresh_age_secs(), 0);
+    }
 }
