@@ -88,6 +88,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   last-run link, enabled badge and created-by; create form (registry
   picker, interval presets, env, optional JSON vars); enable/disable and
   arm/confirm delete. Operator-only nav entry.
+- Event feed: `GET /api/events` (Viewer) — every run's audit events from
+  the hash-chained `run_audit`, newest first, with `run_id` / `event`
+  filters, a `before` cursor and a 200-row cap, hash-chain links included;
+  plus the `/events` UI page polling every 5s with event-type filter
+  chips. Environment scoping matches the run list.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

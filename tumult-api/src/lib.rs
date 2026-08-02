@@ -110,6 +110,7 @@ pub mod approvals;
 mod ask;
 pub mod auth;
 pub mod authoring;
+pub mod events;
 pub mod handlers;
 pub mod import;
 pub mod lake;
@@ -324,6 +325,7 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/api/schedules/{id}/enable", post(schedules::set_enabled))
         .route("/api/schedules/{id}/delete", post(schedules::delete))
+        .route("/api/events", get(events::list))
         .route("/api/runs/{id}", get(runs::detail))
         .route("/api/runs/{id}/audit/verify", get(runs::audit_verify))
         .route("/api/runs/{id}/stop", post(runs::stop))

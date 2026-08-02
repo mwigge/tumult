@@ -21,6 +21,7 @@
     { href: '/topology', label: 'Topology', icon: '✳' },
     { href: '/ask', label: 'Ask', icon: '✦' },
     { href: '/reports', label: 'Reports', icon: '▤' },
+    { href: '/events', label: 'Events', icon: '◔' },
     { href: '/users', label: 'Users', icon: '⚿', admin: true },
     { href: '/schedules', label: 'Schedules', icon: '↻', operator: true }
   ];
