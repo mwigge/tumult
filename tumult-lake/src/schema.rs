@@ -53,8 +53,12 @@
 //!
 //! v11 adds the `webhooks` and `webhook_cursors` tables (admin-managed
 //! outbound event notifications) — additive and index-free likewise.
+//!
+//! v12 adds GameDay campaign columns: `run_registry.kind` (`'gameday'`;
+//! NULL = experiment) and `runs.gameday_id` (a campaign child's parent
+//! run; NULL = standalone) — additive ALTERs like v9.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 11;
+pub const CURRENT_SCHEMA_VERSION: i64 = 12;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -476,6 +480,10 @@ CREATE TABLE IF NOT EXISTS webhook_cursors (
     webhook_id      VARCHAR NOT NULL,
     last_at_ns      BIGINT NOT NULL     -- run_audit position delivered up to
 );
+
+-- v12: GameDay campaigns (additive, like the v9 token-expiry ALTER).
+ALTER TABLE run_registry ADD COLUMN IF NOT EXISTS kind VARCHAR;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS gameday_id VARCHAR;
 ";
 
 /// v4 → v5: rebuild the run tables without primary keys / secondary indexes

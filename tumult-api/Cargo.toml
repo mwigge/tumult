@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 tumult-core = { path = "../tumult-core" }
+toon-format.workspace = true
 tumult-auth = { path = "../tumult-auth" }
 tumult-authoring = { path = "../tumult-authoring" }
 tumult-autopilot = { path = "../tumult-autopilot" }

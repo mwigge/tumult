@@ -98,7 +98,35 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn register_definition(&self, def: &RegisteredDefinition) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO run_registry VALUES (?,?,?,?,?,?)",
+            "INSERT INTO run_registry \
+             (id, name, definition_toon, content_hash, registered_at_ns, registered_by) \
+             VALUES (?,?,?,?,?,?)",
+            params![
+                def.id,
+                def.name,
+                def.definition_toon,
+                def.content_hash,
+                def.registered_at_ns,
+                def.registered_by
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Register a GameDay definition (`kind = 'gameday'`): the stored
+    /// `definition_toon` is the JSON envelope with the campaign TOON and the
+    /// resolved experiment registry ids (see `tumult_api::gamedays`).
+    ///
+    /// # Errors
+    /// Returns an error if the row fails to insert.
+    pub fn register_gameday_definition(
+        &self,
+        def: &RegisteredDefinition,
+    ) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO run_registry \
+             (id, name, definition_toon, content_hash, registered_at_ns, registered_by, kind) \
+             VALUES (?,?,?,?,?,?,'gameday')",
             params![
                 def.id,
                 def.name,

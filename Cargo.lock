@@ -7919,6 +7919,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "toon-format",
  "tracing",
  "tumult-auth",
  "tumult-authoring",
