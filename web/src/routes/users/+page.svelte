@@ -1,0 +1,326 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { api, fmtAgo, fmtTs } from '$lib/api';
+  import type { AdminUser, MeResponse, Role } from '$lib/types';
+
+  const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
+
+  let me = $state<MeResponse | null>(null);
+  let users = $state<AdminUser[] | null>(null);
+  let error = $state<string | null>(null);
+
+  // One row expands at a time; the editors below belong to that row.
+  let openId = $state<string | null>(null);
+  let roleEdit = $state<Role>('viewer');
+  let scopeEdit = $state('');
+  let passwordEdit = $state('');
+  let rowError = $state<string | null>(null);
+  let busy = $state(false);
+
+  // Create-user form.
+  let newUsername = $state('');
+  let newRole = $state<Role>('viewer');
+  let newPassword = $state('');
+  let newScopes = $state('');
+  let createError = $state<string | null>(null);
+  // Shown once after creating a user without a supplied password — the
+  // one-time password is never retrievable again.
+  let oneTime = $state<{ username: string; password: string } | null>(null);
+  let creating = $state(false);
+
+  // Admins only (the server enforces it with 403 regardless); open local mode
+  // (no users yet) lets anyone in — that is how the first admin is created.
+  const isAdmin = $derived(me ? !me.auth_required || me.role === 'admin' : false);
+
+  onMount(() => {
+    api
+      .me()
+      .then((m) => (me = m))
+      .catch(() => (me = null));
+  });
+
+  // Load the user list once the caller is known to be an admin (or once open
+  // mode is known); re-runs if the session identity changes mid-visit.
+  $effect(() => {
+    if (!isAdmin || users !== null) return;
+    refresh();
+  });
+
+  async function refresh() {
+    try {
+      const r = await api.users();
+      users = r.users;
+      error = null;
+    } catch (e) {
+      if (!users) error = String(e);
+    }
+  }
+
+  function toggle(u: AdminUser) {
+    if (openId === u.id) {
+      openId = null;
+      return;
+    }
+    openId = u.id;
+    roleEdit = u.role;
+    scopeEdit = u.env_scopes.join(', ');
+    passwordEdit = '';
+    rowError = null;
+  }
+
+  /** Comma-separated scopes text → list; empty means every environment. */
+  function parseScopes(raw: string): string[] {
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== '');
+  }
+
+  /** Shared row-action wrapper: busy guard + error capture on the open row. */
+  async function act(fn: () => Promise<unknown>) {
+    if (busy) return;
+    busy = true;
+    rowError = null;
+    try {
+      await fn();
+      await refresh();
+    } catch (e) {
+      rowError = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  const saveRole = (u: AdminUser) => act(() => api.setUserRole(u.id, roleEdit));
+  const saveScopes = (u: AdminUser) =>
+    act(() => api.setUserScopes(u.id, parseScopes(scopeEdit)));
+  const savePassword = (u: AdminUser) =>
+    act(async () => {
+      await api.resetUserPassword(u.id, passwordEdit);
+      passwordEdit = '';
+    });
+  const toggleDisabled = (u: AdminUser) =>
+    act(() => api.setUserDisabled(u.id, !u.disabled));
+
+  async function create() {
+    if (creating) return;
+    creating = true;
+    createError = null;
+    oneTime = null;
+    try {
+      const r = await api.createUser({
+        username: newUsername.trim(),
+        role: newRole,
+        ...(newPassword ? { password: newPassword } : {}),
+        env_scopes: parseScopes(newScopes)
+      });
+      if (r.one_time_password) {
+        oneTime = { username: r.username, password: r.one_time_password };
+      }
+      newUsername = '';
+      newPassword = '';
+      newScopes = '';
+      newRole = 'viewer';
+      await refresh();
+    } catch (e) {
+      createError = String(e);
+    } finally {
+      creating = false;
+    }
+  }
+</script>
+
+<div class="page-head">
+  <h1>Users</h1>
+  <span class="sub">
+    {users ? `${users.length} account${users.length === 1 ? '' : 's'}` : 'accounts, roles and scopes'}
+  </span>
+</div>
+
+{#if me && !isAdmin}
+  <div class="panel">
+    <div class="state">
+      User management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
+    </div>
+  </div>
+{:else}
+  <div class="panel" style="margin-bottom: 14px">
+    {#if error}
+      <div class="state error">Failed to load users: {error}</div>
+    {:else if !users}
+      <div class="skeleton" style="height: 160px"></div>
+    {:else if users.length === 0}
+      <div class="state">
+        No users yet — the daemon is in open local mode. Create the first admin below (or with
+        <span class="mono">tumultd create-admin</span>) to turn authentication on.
+      </div>
+    {:else}
+      <table class="data">
+        <thead>
+          <tr>
+            <th></th><th>Username</th><th>Role</th><th>Scopes</th><th>Status</th><th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each users as u (u.id)}
+            <tr class="clickable" class:selected={openId === u.id} onclick={() => toggle(u)}>
+              <td style="color: var(--text-faint)">{openId === u.id ? '▾' : '▸'}</td>
+              <td>
+                {u.username}
+                {#if me?.username === u.username}<span class="badge neutral">you</span>{/if}
+              </td>
+              <td><span class="badge neutral">{u.role}</span></td>
+              <td>{u.env_scopes.length === 0 ? 'all environments' : u.env_scopes.join(', ')}</td>
+              <td>
+                {#if u.disabled}<span class="badge fail">disabled</span>{/if}
+                {#if u.must_change}<span class="badge warn">must change password</span>{/if}
+                {#if !u.disabled && !u.must_change}<span class="badge ok">active</span>{/if}
+              </td>
+              <td title={fmtTs(u.created_at_ns)}>{fmtAgo(u.created_at_ns)}</td>
+            </tr>
+            {#if openId === u.id}
+              <tr class="detail-row">
+                <td colspan={6}>
+                  <div class="detail">
+                    <div>
+                      <h3>Role</h3>
+                      <div class="row">
+                        <select bind:value={roleEdit}>
+                          {#each ROLES as r (r)}<option value={r}>{r}</option>{/each}
+                        </select>
+                        <button class="btn" onclick={() => saveRole(u)} disabled={busy || roleEdit === u.role}>Save</button>
+                      </div>
+                      <h3>Environment scopes</h3>
+                      <div class="row">
+                        <input type="text" placeholder="comma-separated; empty = all" bind:value={scopeEdit} />
+                        <button class="btn" onclick={() => saveScopes(u)} disabled={busy}>Save</button>
+                      </div>
+                    </div>
+                    <div>
+                      <h3>Reset password</h3>
+                      <div class="row">
+                        <input type="password" placeholder="new one-time password (min 12 chars)" autocomplete="new-password" bind:value={passwordEdit} />
+                        <button class="btn" onclick={() => savePassword(u)} disabled={busy || passwordEdit.length < 12}>Reset</button>
+                      </div>
+                      <div class="hint">The user must change it at next login.</div>
+                      <h3>Account</h3>
+                      {#if me?.username === u.username}
+                        <div class="hint">You cannot disable your own account.</div>
+                      {:else}
+                        <button class="btn danger" onclick={() => toggleDisabled(u)} disabled={busy}>
+                          {u.disabled ? 'Re-enable account' : 'Disable account'}
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+                  {#if rowError}<div class="err-text">{rowError}</div>{/if}
+                </td>
+              </tr>
+            {/if}
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </div>
+
+  <div class="panel">
+    <h2>Create user</h2>
+    <form
+      class="create"
+      onsubmit={(e) => {
+        e.preventDefault();
+        create();
+      }}
+    >
+      <label>
+        Username
+        <input type="text" bind:value={newUsername} autocomplete="off" required />
+      </label>
+      <label>
+        Role
+        <select bind:value={newRole}>
+          {#each ROLES as r (r)}<option value={r}>{r}</option>{/each}
+        </select>
+      </label>
+      <label>
+        Password (optional)
+        <input type="password" bind:value={newPassword} autocomplete="new-password" placeholder="empty = generate one-time" />
+      </label>
+      <label>
+        Environment scopes (optional)
+        <input type="text" bind:value={newScopes} placeholder="comma-separated; empty = all" />
+      </label>
+      <div>
+        <button class="primary" type="submit" disabled={creating || !newUsername.trim()}>
+          {creating ? 'Creating…' : 'Create user'}
+        </button>
+      </div>
+    </form>
+    {#if createError}<div class="state error" style="margin-top: 10px">{createError}</div>{/if}
+    {#if oneTime}
+      <div class="onetime">
+        One-time password for <b>{oneTime.username}</b> — shown once, never stored;
+        the user must change it at first login:
+        <div class="mono pw">{oneTime.password}</div>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+<style>
+  tr.selected td { background: var(--bg-hover); }
+  .detail-row td { background: var(--bg-raised); }
+  .detail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 8px 4px;
+    cursor: default;
+  }
+  .detail h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin: 0 0 6px;
+  }
+  .detail h3:not(:first-child) { margin-top: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row input, .row select { flex: 1; min-width: 0; }
+  .btn {
+    background: var(--bg-hover);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent-dim); }
+  .btn.danger { border-color: var(--fail); color: var(--fail); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .hint { color: var(--text-faint); font-size: 12px; margin-top: 4px; }
+  .err-text { color: var(--fail); font-size: 12.5px; padding: 0 4px 6px; }
+  .create {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px 18px;
+    align-items: end;
+  }
+  .create label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .onetime {
+    margin-top: 14px;
+    border: 1px solid var(--warn);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .pw { font-size: 14px; user-select: all; margin-top: 6px; }
+</style>

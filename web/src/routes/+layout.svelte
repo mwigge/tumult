@@ -7,7 +7,7 @@
 
   let { children } = $props();
 
-  const NAV = [
+  const NAV: { href: string; label: string; icon: string; admin?: boolean }[] = [
     { href: '/', label: 'Overview', icon: '◧' },
     { href: '/scores', label: 'Scores', icon: '▦' },
     { href: '/experiments', label: 'Experiments', icon: '⚗' },
@@ -19,7 +19,8 @@
     { href: '/metrics', label: 'Metrics', icon: '∿' },
     { href: '/topology', label: 'Topology', icon: '✳' },
     { href: '/ask', label: 'Ask', icon: '✦' },
-    { href: '/reports', label: 'Reports', icon: '▤' }
+    { href: '/reports', label: 'Reports', icon: '▤' },
+    { href: '/users', label: 'Users', icon: '⚿', admin: true }
   ];
 
   function active(pathname: string, href: string): boolean {
@@ -29,8 +30,12 @@
   // Session state for the user chip. me() never breaks the layout: any
   // failure just leaves the chip hidden. Refreshed on every navigation so
   // returning from /login picks up the new session.
-  let me: MeResponse | null = $state(null);
+  let me = $state<MeResponse | null>(null);
   let loggingOut = $state(false);
+
+  // Admin-flagged nav entries show for admins; open local mode (no users,
+  // `auth_required: false`) shows everything.
+  const isAdmin = $derived(me ? !me.auth_required || me.role === 'admin' : false);
 
   $effect(() => {
     const pathname = $page.url.pathname;
@@ -67,9 +72,11 @@
       </div>
       <nav class="nav">
         {#each NAV as item (item.href)}
-          <a href={item.href} class:active={active($page.url.pathname, item.href)}>
-            <span>{item.icon}</span>{item.label}
-          </a>
+          {#if !item.admin || isAdmin}
+            <a href={item.href} class:active={active($page.url.pathname, item.href)}>
+              <span>{item.icon}</span>{item.label}
+            </a>
+          {/if}
         {/each}
       </nav>
       {#if me?.auth_required && me.authenticated}
