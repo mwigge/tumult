@@ -11,6 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
   nav entry (everything shows in open local mode).
+- `scripts/ui-authoring-check.sh`: curl-based smoke test for the web-UI
+  authoring flow (SPA shell, non-empty catalog, scaffold, validate-and-
+  register + dedup, dry-run, validation-error path, probe-as-action 400,
+  and viewer-vs-operator RBAC), runnable against any running tumultd with
+  env-overridable URL/token. The kronika compose stack mounts `plugins/`
+  into tumultd with `TUMULT_PLUGIN_PATH` so the authoring catalog is
+  populated there.
 - `/author/new` authoring wizard in the web UI: a parameter form generated
   from the chosen catalog action's documented arguments (title, target,
   steady-state probe as command or HTTP URL), one-click TOON scaffolding

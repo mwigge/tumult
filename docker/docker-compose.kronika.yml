@@ -63,9 +63,16 @@ services:
       # OTLP ingest (/v1/* HTTP + gRPC) requires this bearer token; /healthz
       # stays open so the healthcheck above keeps working.
       KRONIKA_INGEST_TOKEN: ${KRONIKA_INGEST_TOKEN:?required - copy .env.example to .env and set a value}
+      # Plugin manifests for the authoring catalog (GET
+      # /api/authoring/catalog) and scaffolding — discovery reads
+      # TUMULT_PLUGIN_PATH. The scripts ride along, but the container has
+      # no docker/podman runtime, so scaffolded script-action runs validate
+      # and dry-run fine yet fail at dispatch time.
+      TUMULT_PLUGIN_PATH: /opt/tumult/plugins
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
+      - ../plugins:/opt/tumult/plugins:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4318/healthz"]
       interval: 2s
