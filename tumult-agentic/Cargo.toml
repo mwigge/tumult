@@ -22,3 +22,4 @@ toon-format = { workspace = true }
 axum = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
+tempfile = { workspace = true }
