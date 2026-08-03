@@ -138,3 +138,9 @@ pub(crate) fn stub_runtime() -> Arc<dyn McpServer> {
 pub(crate) fn stub_runtime_with_bearer(token: &str) -> Arc<dyn McpServer> {
     Arc::new(StubMcpServer::with_bearer_token(token))
 }
+
+/// Serializes tests that mutate the process-wide MCP auth environment
+/// (`TUMULT_MCP_AUTH_CONFIG` / `TUMULT_MCP_TOKEN`): `McpAuth::load` and the
+/// `Cli → ServeOptions` conversion read those variables, so concurrent
+/// mutation by parallel tests would be racy.
+pub(crate) static AUTH_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

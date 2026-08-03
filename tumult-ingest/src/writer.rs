@@ -83,6 +83,18 @@ impl IngestWriter {
     }
 }
 
+#[cfg(test)]
+impl IngestWriter {
+    /// A writer whose task is gone (the channel receiver was dropped):
+    /// every `write` fails with `IngestError::Channel`, deterministically —
+    /// the state the daemon is in after the writer task died.
+    pub(crate) fn stopped_for_test() -> Self {
+        let (tx, rx) = mpsc::channel::<Envelope>(1);
+        drop(rx);
+        Self { tx }
+    }
+}
+
 /// The writer task's receive loop. When `db_path` is set, a FATAL persist
 /// error triggers a bounded reconnect ([`reconnect`]) and the task swaps to
 /// the rebuilt writer instead of poisoning every subsequent batch.
@@ -223,5 +235,102 @@ mod tests {
         task.await.unwrap();
         // A real FATAL error cannot be triggered deterministically in a
         // test; the predicate and retry core above cover the branches.
+    }
+
+    #[tokio::test]
+    async fn write_fails_when_the_writer_task_is_gone() {
+        let err = IngestWriter::stopped_for_test()
+            .write(Batch::Logs(vec![]))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, IngestError::Channel(msg) if msg.contains("writer task stopped")),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn exec_batch_runs_the_closure_on_the_single_writer() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("k.duckdb")).unwrap();
+        let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 4);
+        ingest
+            .write(Batch::Exec(Box::new(|writer| {
+                writer
+                    .insert_run(&tumult_lake::NewRun {
+                        id: "run-exec".into(),
+                        registry_id: "reg-1".into(),
+                        params_json: None,
+                        queued_at_ns: 1,
+                        actor: None,
+                    })
+                    .map_err(|e| e.to_string())
+            })))
+            .await
+            .unwrap();
+        let run = store
+            .read_only()
+            .unwrap()
+            .run_get("run-exec")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            run["state"],
+            serde_json::json!(tumult_lake::run_state::QUEUED)
+        );
+
+        // A failing closure surfaces its message through the channel error.
+        let err = ingest
+            .write(Batch::Exec(Box::new(|_writer| Err("boom".to_string()))))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, IngestError::Channel(msg) if msg.ends_with("boom")),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn metrics_batch_persists_sums_gauges_and_histograms() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("k.duckdb")).unwrap();
+        let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 4);
+        let rows = tumult_otlp::MetricRows {
+            sums: vec![tumult_lake::MetricSumRow {
+                ts_ns: 1,
+                metric_name: "demo.sum".into(),
+                value: 3.0,
+                ..Default::default()
+            }],
+            gauges: vec![tumult_lake::MetricGaugeRow {
+                ts_ns: 2,
+                metric_name: "demo.gauge".into(),
+                value: 0.5,
+                ..Default::default()
+            }],
+            histograms: vec![tumult_lake::MetricHistogramRow {
+                ts_ns: 3,
+                metric_name: "demo.hist".into(),
+                count: 2,
+                sum: 10.0,
+                bucket_counts: vec![1, 1],
+                explicit_bounds: vec![5.0],
+                ..Default::default()
+            }],
+        };
+        ingest.write(Batch::Metrics(rows)).await.unwrap();
+        let reader = store.read_only().unwrap();
+        let sums = reader
+            .query_json_rows("SELECT value FROM metric_sums")
+            .unwrap();
+        assert_eq!(sums[0]["value"], serde_json::json!(3.0));
+        let gauges = reader
+            .query_json_rows("SELECT value FROM metric_gauges")
+            .unwrap();
+        assert_eq!(gauges[0]["value"], serde_json::json!(0.5));
+        let hists = reader
+            .query_json_rows("SELECT count FROM metric_histograms")
+            .unwrap();
+        assert_eq!(hists[0]["count"], serde_json::json!(2));
     }
 }

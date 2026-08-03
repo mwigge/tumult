@@ -503,4 +503,86 @@ mod tests {
         // Sparkline placeholders exist for KPI cards.
         assert!(html.contains("class=\"sparkline\""));
     }
+
+    #[test]
+    fn render_kpi_without_delta_and_chart_refs() {
+        let report = Report {
+            title: "t".into(),
+            generated_at_ns: 0,
+            sections: vec![
+                Section::Kpi {
+                    label: "experiment_count".into(),
+                    value: "7".into(),
+                    delta: None,
+                },
+                Section::ChartRef {
+                    metric: "deviation_rate".into(),
+                    dimension: Some("target".into()),
+                },
+                Section::ChartRef {
+                    metric: "mttr".into(),
+                    dimension: None,
+                },
+            ],
+        };
+        let html = render_html(&report);
+        // No delta means no delta span at all.
+        assert!(!html.contains("class=\"delta\""));
+        // Dimensioned chart ref names both metric and dimension.
+        assert!(html.contains(r#"data-metric="deviation_rate" data-dimension="target""#));
+        assert!(html.contains("deviation_rate by target"));
+        // A dimensionless ref renders an empty dimension placeholder.
+        assert!(html.contains(r#"data-metric="mttr" data-dimension="""#));
+        assert!(html.contains("mttr by"));
+    }
+
+    #[test]
+    fn fmt_value_formats_every_json_shape() {
+        assert_eq!(fmt_value(&serde_json::Value::Null), "—");
+        assert_eq!(fmt_value(&serde_json::json!(42)), "42");
+        assert_eq!(fmt_value(&serde_json::json!(-3)), "-3");
+        assert_eq!(fmt_value(&serde_json::json!(2.5)), "2.500");
+        // Integral floats beyond the exact-i64 window print as floats.
+        assert_eq!(fmt_value(&serde_json::json!(1e16)), "10000000000000000.000");
+        assert_eq!(fmt_value(&serde_json::json!("plain")), "plain");
+        assert_eq!(fmt_value(&serde_json::json!(true)), "true");
+    }
+
+    #[test]
+    fn scheduler_produces_a_report_from_the_store() {
+        let d = tempfile::TempDir::new().unwrap();
+        let path = d.path().join("k.duckdb");
+        {
+            let store = tumult_lake::Store::open(&path).unwrap();
+            store
+                .writer()
+                .unwrap()
+                .insert_spans(&[tumult_lake::SpanRow {
+                    ts_ns: 1,
+                    trace_id: "trace-1".into(),
+                    span_id: "span-1".into(),
+                    span_name: "resilience.experiment".into(),
+                    span_kind: "Internal".into(),
+                    service_name: "tumult".into(),
+                    experiment_id: Some("exp-1".into()),
+                    experiment_name: Some("exp-1".into()),
+                    events: "[]".into(),
+                    ..Default::default()
+                }])
+                .unwrap();
+        } // store dropped: the scheduler opens its own read-only connection
+
+        let scheduler = Scheduler::new(
+            path,
+            vec![count_def("spans", vec![])],
+            Duration::from_secs(60),
+            "scheduled digest".into(),
+        );
+        let report = scheduler.produce_once().unwrap();
+        assert_eq!(report.title, "scheduled digest");
+        match &report.sections[0] {
+            Section::Kpi { value, .. } => assert_eq!(value, "1"),
+            other => panic!("expected KPI section, got {other:?}"),
+        }
+    }
 }

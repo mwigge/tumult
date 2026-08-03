@@ -214,4 +214,130 @@ mod tests {
         let reader = LockedReader::open(&store_path(&dir)).unwrap();
         assert!(reader.query_json_rows("CREATE TABLE t (a INT)").is_err());
     }
+
+    #[test]
+    fn open_fails_when_store_file_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("no-such-store.duckdb");
+        match LockedReader::open(&missing) {
+            Ok(_) => panic!("opening a nonexistent store must fail"),
+            Err(err) => assert!(
+                matches!(err, LockedReaderError::Open(_)),
+                "expected Open error, got: {err:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn query_referencing_missing_table_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = LockedReader::open(&store_path(&dir)).unwrap();
+        match reader.query_json_rows("SELECT * FROM no_such_table") {
+            Ok(rows) => panic!("query on a missing table must fail, got: {rows:?}"),
+            Err(LockedReaderError::Query(msg)) => {
+                assert!(
+                    msg.contains("no_such_table"),
+                    "the error must name the missing table: {msg}"
+                );
+            }
+            Err(other) => panic!("expected Query error, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn signed_and_unsigned_integer_widths_become_json_numbers() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = LockedReader::open(&store_path(&dir)).unwrap();
+        let rows = reader
+            .query_json_rows(
+                "SELECT 127::TINYINT AS ti, 32767::SMALLINT AS si, \
+                 2147483647::INTEGER AS i32v, 9223372036854775807::BIGINT AS i64v, \
+                 255::UTINYINT AS uti, 65535::USMALLINT AS usi, \
+                 4294967295::UINTEGER AS ui32, 18446744073709551615::UBIGINT AS ui64",
+            )
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![serde_json::json!({
+                "ti": 127,
+                "si": 32767,
+                "i32v": 2_147_483_647,
+                "i64v": 9_223_372_036_854_775_807_i64,
+                "uti": 255,
+                "usi": 65535,
+                "ui32": 4_294_967_295_u32,
+                "ui64": 18_446_744_073_709_551_615_u64,
+            })]
+        );
+    }
+
+    #[test]
+    fn hugeint_within_i64_is_a_number_beyond_i64_is_a_string() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = LockedReader::open(&store_path(&dir)).unwrap();
+        let rows = reader
+            .query_json_rows(
+                "SELECT 42::HUGEINT AS small, \
+                 170141183460469231731687303715884105727::HUGEINT AS big",
+            )
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![serde_json::json!({
+                "small": 42,
+                "big": "170141183460469231731687303715884105727",
+            })]
+        );
+    }
+
+    #[test]
+    fn float_decimal_and_special_values_convert() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = LockedReader::open(&store_path(&dir)).unwrap();
+        let rows = reader
+            .query_json_rows(
+                "SELECT 1.5::REAL AS r, 2.5::DOUBLE AS d, 'NaN'::DOUBLE AS nan, \
+                 12.34::DECIMAL(10, 2) AS dec, NULL::VARCHAR AS nul, true AS b",
+            )
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![serde_json::json!({
+                "r": 1.5,
+                "d": 2.5,
+                // JSON has no NaN — it must degrade to null, not an error.
+                "nan": null,
+                "dec": 12.34,
+                "nul": null,
+                "b": true,
+            })]
+        );
+    }
+
+    #[test]
+    fn text_and_blob_become_json_strings() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = LockedReader::open(&store_path(&dir)).unwrap();
+        let rows = reader
+            .query_json_rows("SELECT 'hello'::VARCHAR AS s, 'hi'::BLOB AS bin")
+            .unwrap();
+        assert_eq!(rows, vec![serde_json::json!({"s": "hello", "bin": "hi"})]);
+    }
+
+    #[test]
+    fn lists_structs_and_maps_become_nested_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = LockedReader::open(&store_path(&dir)).unwrap();
+        let rows = reader
+            .query_json_rows("SELECT [1, 2, 3] AS lst, {'k': 1} AS st, map(['a'], ['b']) AS m")
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![serde_json::json!({
+                "lst": [1, 2, 3],
+                "st": {"k": 1},
+                "m": {"a": "b"},
+            })]
+        );
+    }
 }

@@ -7466,6 +7466,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "toon-format",
@@ -7477,6 +7478,7 @@ dependencies = [
 name = "tumult-api"
 version = "0.7.0"
 dependencies = [
+ "async-trait",
  "axum",
  "reqwest 0.12.28",
  "serde",
@@ -7741,6 +7743,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "opentelemetry",
+ "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
@@ -7963,6 +7966,7 @@ name = "tumultd"
 version = "0.7.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "axum-server",
  "clap",

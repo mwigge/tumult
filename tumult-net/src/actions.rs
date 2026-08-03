@@ -514,4 +514,192 @@ mod tests {
         let status = child.wait().expect("reap stand-in daemon");
         assert!(!status.success(), "stand-in should have been signalled");
     }
+
+    /// Restore an env var to its prior value on drop, so a panicking scenario
+    /// cannot leak `TUMULT_NET_PROXYD` into other tests in this process.
+    struct EnvGuard {
+        key: &'static str,
+        saved: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let saved = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.saved {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    fn unique_temp_file(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("tumult-net-test-{tag}-{}", std::process::id()))
+    }
+
+    /// `TUMULT_NET_PROXYD` is process-global, so every scenario that mutates it
+    /// is driven sequentially from this one test.
+    #[tokio::test]
+    async fn proxyd_env_override_scenarios() {
+        // 1. An override pointing at an existing file wins over any daemon
+        //    found beside the test executable.
+        let real_file = unique_temp_file("real-proxyd");
+        std::fs::write(&real_file, b"not really a daemon").unwrap();
+        {
+            let _guard = EnvGuard::set(PROXYD_ENV, &real_file);
+            let found = locate_proxyd().expect("an existing override file must be honoured");
+            assert_eq!(found, real_file);
+        }
+
+        // 2. An override pointing at a nonexistent path falls through to the
+        //    sibling-daemon search beside the current executable; with no such
+        //    daemon the error must name the env var. Which branch runs depends
+        //    on the build layout (Cargo places `tumult-net-proxyd` one
+        //    directory up from the test binary when it is built).
+        let missing = unique_temp_file("missing-proxyd");
+        let _guard = EnvGuard::set(PROXYD_ENV, &missing);
+        let exe = std::env::current_exe().unwrap();
+        let dir = exe.parent().unwrap();
+        let sibling_exists =
+            dir.join(PROXYD_BIN).is_file() || dir.join("..").join(PROXYD_BIN).is_file();
+        match locate_proxyd() {
+            Err(err) => {
+                assert!(!sibling_exists, "a sibling daemon exists but was not found");
+                assert!(err.to_string().contains(PROXYD_ENV), "err: {err}");
+            }
+            Ok(path) => {
+                assert!(
+                    sibling_exists,
+                    "no sibling daemon exists, yet one was found"
+                );
+                assert!(path.ends_with(PROXYD_BIN), "path: {}", path.display());
+            }
+        }
+
+        // 3. Dead-on-arrival daemon: the script runs but never binds the
+        //    listen address, so the start must fail surfacing the daemon's
+        //    captured stderr, and must not leave a pidfile behind.
+        let script = unique_temp_file("dead-proxyd");
+        std::fs::write(&script, b"#!/bin/sh\necho boom >&2\nsleep 30\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let _guard = EnvGuard::set(PROXYD_ENV, &script);
+        let listen = addr("127.0.0.1:0");
+        let err = start_proxy(listen, addr("127.0.0.1:9"), FaultProfile::default())
+            .await
+            .expect_err("a daemon that never binds must fail the start");
+        let msg = err.to_string();
+        assert!(msg.contains("did not accept connections"), "err: {msg}");
+        assert!(msg.contains("boom"), "captured stderr missing, err: {msg}");
+        assert!(
+            !pidfile_path(listen).exists(),
+            "pidfile must be removed when the daemon never comes up"
+        );
+        let _ = std::fs::remove_file(&script);
+
+        // 4. An override pointing at an existing but non-executable file fails
+        //    the spawn itself.
+        let not_exec = unique_temp_file("not-exec-proxyd");
+        std::fs::write(&not_exec, b"plain text, no exec bit").unwrap();
+        let _guard = EnvGuard::set(PROXYD_ENV, &not_exec);
+        let err = start_proxy(listen, addr("127.0.0.1:9"), FaultProfile::default())
+            .await
+            .expect_err("a non-executable daemon path must fail to spawn");
+        assert!(matches!(err, NetError::Io(_)), "err: {err}");
+        // The failed spawn leaves the startup log behind; tidy it up here.
+        let _ = std::fs::remove_file(stderr_log_path(listen));
+        let _ = std::fs::remove_file(&not_exec);
+        let _ = std::fs::remove_file(&real_file);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_distinguishes_bound_from_closed_ports() {
+        let listener = tokio::net::TcpListener::bind(addr("127.0.0.1:0"))
+            .await
+            .expect("bind ephemeral port");
+        let bound = listener.local_addr().unwrap();
+        let started = std::time::Instant::now();
+        assert!(wait_ready(bound).await, "a listening port must be ready");
+        assert!(
+            started.elapsed() < READY_TIMEOUT,
+            "readiness on a bound port must be prompt"
+        );
+        drop(listener);
+
+        // Grab an ephemeral port and release it so nothing is listening.
+        let closed = {
+            let probe = std::net::TcpListener::bind(addr("127.0.0.1:0")).expect("bind ephemeral");
+            let free = probe.local_addr().unwrap();
+            drop(probe);
+            free
+        };
+        let started = std::time::Instant::now();
+        assert!(
+            !wait_ready(closed).await,
+            "a closed port must never report ready"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_millis(1500),
+            "a closed port should only fail after the readiness deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_profile_fails_validation_before_daemon_lookup() {
+        // `FaultProfile::validate` runs before any daemon discovery, so this
+        // fails deterministically regardless of whether a proxyd exists; the
+        // typed field name proves the validation branch ran.
+        let profile = FaultProfile {
+            corrupt_prob: 1.5,
+            ..FaultProfile::default()
+        };
+        let err = start_proxy(addr("127.0.0.1:0"), addr("127.0.0.1:9"), profile)
+            .await
+            .expect_err("an out-of-range probability must be rejected");
+        match err {
+            NetError::InvalidConfig { field, .. } => assert_eq!(field, "corrupt_prob"),
+            other @ NetError::Io(_) => panic!("expected InvalidConfig, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn proxy_loop_is_rejected_by_every_fault_action() {
+        // listen == upstream is rejected before any daemon lookup, so every
+        // action body runs deterministically with no proxyd present.
+        let same = addr("127.0.0.1:64123");
+        let results = [
+            start_proxy(same, same, FaultProfile::default()).await,
+            inject_latency(same, same, 10, 5, 42).await,
+            throttle_bandwidth(same, same, 1024).await,
+            fragment_stream(same, same, 64).await,
+            corrupt_bytes(same, same, 0.5, 7).await,
+            terminate_connections(same, same, 0.25, 7).await,
+        ];
+        for out in results {
+            let err = out.expect_err("a proxy loop must be rejected");
+            assert!(err.to_string().contains("proxy loop"), "err: {err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_proxy_treats_a_garbage_pidfile_as_nothing_running() {
+        let listen = addr("127.0.0.1:59993");
+        let pidfile = pidfile_path(listen);
+        tokio::fs::write(&pidfile, "not-a-pid").await.unwrap();
+        let out = stop_proxy(listen).await.expect("idempotent rollback");
+        assert!(out.contains("no chaos proxy running"), "out: {out}");
+        // An unparseable pidfile is reported as "nothing running" but left in
+        // place (only a verified-stale one is removed); tidy it up here.
+        assert!(pidfile.exists(), "a garbage pidfile is not removed");
+        let _ = tokio::fs::remove_file(&pidfile).await;
+    }
 }

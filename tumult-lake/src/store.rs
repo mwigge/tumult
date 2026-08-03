@@ -259,3 +259,84 @@ pub(crate) fn query_json_rows(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attrs_json_serializes_pairs_as_a_json_object() {
+        let json = attrs_json(&[
+            ("k".to_string(), "v".to_string()),
+            ("nested".to_string(), "va\"l".to_string()),
+        ])
+        .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["k"], serde_json::json!("v"));
+        assert_eq!(parsed["nested"], serde_json::json!("va\"l"));
+        assert_eq!(attrs_json(&[]).unwrap(), "{}");
+    }
+
+    #[test]
+    fn with_tx_rolls_back_when_the_closure_fails() {
+        let conn = Connection::open_in_memory().unwrap();
+        let result: Result<(), StoreError> = with_tx(&conn, || {
+            conn.execute_batch("CREATE TABLE rolled_back (v INTEGER)")
+                .map_err(StoreError::from)?;
+            // A failure mid-transaction must unwind everything above.
+            conn.execute_batch("INSERT INTO nonexistent VALUES (1)")
+                .map_err(StoreError::from)?;
+            Ok(())
+        });
+        assert!(result.is_err());
+        // The DDL went away with the transaction.
+        assert!(conn.prepare("SELECT v FROM rolled_back").is_err());
+    }
+
+    #[test]
+    fn with_tx_commits_on_success() {
+        let conn = Connection::open_in_memory().unwrap();
+        with_tx(&conn, || {
+            conn.execute_batch("CREATE TABLE committed (v INTEGER)")
+                .map_err(StoreError::from)?;
+            Ok::<_, StoreError>(())
+        })
+        .unwrap();
+        assert!(conn.prepare("SELECT v FROM committed").is_ok());
+    }
+
+    #[test]
+    fn query_json_rows_maps_rows_and_surfaces_sql_errors() {
+        let conn = Connection::open_in_memory().unwrap();
+        let rows = query_json_rows(&conn, "SELECT 1 AS v, 'x' AS s").unwrap();
+        assert_eq!(rows, vec![serde_json::json!({"v": 1, "s": "x"})]);
+        assert!(query_json_rows(&conn, "SELECT FROM nonsense").is_err());
+    }
+
+    #[test]
+    fn store_handle_reports_its_path() {
+        let d = tempfile::TempDir::new().unwrap();
+        let path = d.path().join("k.duckdb");
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.path(), path);
+        // `at` is a pure handle: same path, no connection opened.
+        assert_eq!(Store::at(&path).path(), path);
+        // A second writer within the process succeeds (shared instance) —
+        // the cross-process lock is what open_with_retry guards.
+        assert!(store.writer().is_ok());
+        // A read-only connection opens alongside the writer.
+        assert!(store.read_only().is_ok());
+    }
+
+    #[test]
+    fn read_only_rejects_a_missing_store_file() {
+        let d = tempfile::TempDir::new().unwrap();
+        let missing = d.path().join("never-created.duckdb");
+        // Not a lock conflict: a plain open error. (`Reader` is not Debug,
+        // so no unwrap_err.)
+        match Store::at(&missing).read_only() {
+            Ok(_) => panic!("a missing store file must not open read-only"),
+            Err(err) => assert!(!matches!(err, StoreError::StoreLocked { .. }), "{err:?}"),
+        }
+    }
+}

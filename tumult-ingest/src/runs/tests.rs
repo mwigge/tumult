@@ -246,7 +246,10 @@ async fn enqueue_rejects_beyond_queue_depth() {
             queue_depth: 1,
             sweep_interval: Duration::from_secs(3600),
         },
-        recording_factory(&fx.executed, Duration::from_millis(200)),
+        // Slow steps on purpose: r3 must be rejected while r2 still holds
+        // the waiting permit, i.e. before r1 finishes — a wall-clock window
+        // that tarpaulin's instrumentation can stretch past short steps.
+        recording_factory(&fx.executed, Duration::from_millis(2000)),
     );
 
     let r1 = queue.enqueue(request(), None).await.unwrap();
@@ -281,7 +284,10 @@ async fn stop_mid_method_runs_rollback_and_aborts() {
             queue_depth: 4,
             sweep_interval: Duration::from_secs(3600),
         },
-        recording_factory(&fx.executed, Duration::from_millis(250)),
+        // Slow steps on purpose: the e-stop must land mid-method — a
+        // wall-clock window that tarpaulin's instrumentation can stretch
+        // past short steps.
+        recording_factory(&fx.executed, Duration::from_millis(2000)),
     );
 
     let run_id = queue.enqueue(request(), None).await.unwrap();
@@ -331,7 +337,12 @@ async fn stop_queued_run_cancels_before_start() {
             queue_depth: 4,
             sweep_interval: Duration::from_secs(3600),
         },
-        recording_factory(&fx.executed, Duration::from_millis(150)),
+        // Slow steps on purpose: the test must observe r1 RUNNING and then
+        // cancel r2 while r1 is still going. That window is wall-clock —
+        // under tarpaulin's instrumentation the test's own code path can
+        // take several seconds, so short steps here let r1 finish and r2
+        // run to completion before the stop lands (CI flake).
+        recording_factory(&fx.executed, Duration::from_millis(2000)),
     );
 
     let r1 = queue.enqueue(request(), None).await.unwrap();
@@ -673,4 +684,379 @@ async fn break_glass_bypasses_quorum_and_ttl_but_not_the_pin() {
     queue.dispatch_approved("run-override").await.unwrap();
     assert_eq!(await_terminal(&fx, "run-override").await, run_state::PASSED);
     assert_eq!(fx.executed.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn prepare_run_reports_the_failing_stage() {
+    // Unparseable TOON fails at the parse stage.
+    let err = prepare_run("{{{ not toon", &HashMap::new()).unwrap_err();
+    assert!(err.starts_with("parse:"), "{err}");
+
+    // Parseable but invalid: an unsupported experiment version fails
+    // validation, not parsing.
+    let err = prepare_run("title: bad version\nversion: v2\nmethod[1]:\n  - name: a\n    activity_type: action\n    provider:\n      type: native\n      plugin: t\n      function: f\n", &HashMap::new()).unwrap_err();
+    assert!(err.starts_with("validate:"), "{err}");
+}
+
+#[test]
+fn prepare_run_resolves_template_vars_into_the_definition() {
+    let toon = r#"
+title: kill ${svc}
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+"#;
+    let vars = HashMap::from([("svc".to_string(), "billing".to_string())]);
+    let (experiment, _env) = prepare_run(toon, &vars).unwrap();
+    assert_eq!(experiment.title, "kill billing");
+
+    // Resolving with the wrong var set fails at the template stage,
+    // naming the placeholder that has no value.
+    let vars = HashMap::from([("other".to_string(), "x".to_string())]);
+    let err = prepare_run(toon, &vars).unwrap_err();
+    assert!(err.starts_with("template:"), "{err}");
+    assert!(err.contains("svc"), "{err}");
+}
+
+#[test]
+fn run_queue_config_reads_env_with_fallbacks() {
+    std::env::set_var("TUMULTD_RUN_CONCURRENCY", "7");
+    std::env::set_var("TUMULTD_RUN_QUEUE_DEPTH", "notanumber");
+    std::env::set_var("TUMULTD_APPROVAL_SWEEP_S", "0");
+    let cfg = RunQueueConfig::from_env();
+    assert_eq!(cfg.concurrency, 7);
+    // Unparseable and zero values fall back to the defaults.
+    assert_eq!(cfg.queue_depth, 32);
+    assert_eq!(cfg.sweep_interval, Duration::from_secs(60));
+    std::env::remove_var("TUMULTD_RUN_CONCURRENCY");
+    std::env::remove_var("TUMULTD_RUN_QUEUE_DEPTH");
+    std::env::remove_var("TUMULTD_APPROVAL_SWEEP_S");
+    let cfg = RunQueueConfig::from_env();
+    assert_eq!(cfg.concurrency, 2);
+}
+
+#[tokio::test]
+async fn dispatch_is_refused_after_a_rejection() {
+    let fx = fixture().await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::from_millis(5)),
+    );
+    insert_gated(&fx, "run-no", now_ns() + 3_600_000_000_000).await;
+    let id = "run-no".to_string();
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .insert_approval_decision(&tumult_lake::ApprovalDecision {
+                run_id: id,
+                approver: "bob".into(),
+                decision: tumult_lake::approvals::decision::REJECTED.into(),
+                note: Some("too risky".into()),
+                decided_at_ns: now_ns(),
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let err = queue.dispatch_approved("run-no").await.unwrap_err();
+    assert!(
+        matches!(&err, DispatchError::Approval(r) if r.contains("rejected")),
+        "{err:?}"
+    );
+    assert!(fx.executed.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn dispatch_is_refused_when_the_approval_was_already_consumed() {
+    let fx = fixture().await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::from_millis(5)),
+    );
+    insert_gated(&fx, "run-used", now_ns() + 3_600_000_000_000).await;
+    approve(&fx, "run-used", "bob").await;
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .consume_approval("run-used", now_ns())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let err = queue.dispatch_approved("run-used").await.unwrap_err();
+    assert!(
+        matches!(&err, DispatchError::Approval(r) if r.contains("consumed")),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn dispatch_is_refused_when_the_approval_request_is_missing() {
+    let fx = fixture().await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::from_millis(5)),
+    );
+    // A run in pending_approval with no approval row: an inconsistent
+    // store must fail closed, never dispatch.
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "run-ghost".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: now_ns(),
+                actor: None,
+            })
+            .and_then(|()| {
+                writer.set_run_state_with(
+                    "run-ghost",
+                    run_state::PENDING_APPROVAL,
+                    None,
+                    None,
+                    None,
+                )
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let err = queue.dispatch_approved("run-ghost").await.unwrap_err();
+    assert!(
+        matches!(&err, DispatchError::Approval(r) if r.contains("no approval request")),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn invalid_definition_fails_the_run_before_any_activity() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "run-broken".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: now_ns(),
+                actor: None,
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let semaphore = Arc::new(Semaphore::new(1));
+    let item = WorkItem {
+        run_id: "run-broken".into(),
+        request: RunRequest {
+            registry_id: "reg-1".into(),
+            definition_toon: "{{{ not toon".into(),
+            vars: HashMap::new(),
+            env: "dev".into(),
+            target: None,
+        },
+        approval_pin: None,
+        _permit: semaphore.try_acquire_owned().unwrap(),
+    };
+    let factory = recording_factory(&fx.executed, Duration::from_millis(5));
+    process(item, &shared(&fx), &factory).await;
+
+    let run = run_row(&fx, "run-broken");
+    assert_eq!(run["state"], serde_json::json!(run_state::FAILED));
+    assert!(
+        run["error"].as_str().unwrap().starts_with("parse:"),
+        "{}",
+        run["error"]
+    );
+    assert!(fx.executed.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn consumed_approval_refuses_dispatch_at_the_worker() {
+    let fx = fixture().await;
+    // Correct pin, but the approval was already spent by an earlier
+    // dispatch — the worker's last-moment re-check must refuse.
+    insert_gated(&fx, "run-spent", now_ns() + 3_600_000_000_000).await;
+    approve(&fx, "run-spent", "bob").await;
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .consume_approval("run-spent", now_ns())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let params = std::collections::BTreeMap::new();
+    let pin = tumult_lake::approval_pin(&tumult_lake::CanonicalPin {
+        definition_toon: TEST_TOON,
+        params: &params,
+        env: "dev",
+        target: None,
+    });
+    let semaphore = Arc::new(Semaphore::new(1));
+    let item = WorkItem {
+        run_id: "run-spent".into(),
+        request: request(),
+        approval_pin: Some(pin),
+        _permit: semaphore.try_acquire_owned().unwrap(),
+    };
+    // The worker only picks up queued runs: mark it dispatched first.
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .set_run_state_with(
+                "run-spent",
+                run_state::QUEUED,
+                Some("dispatch_queued"),
+                None,
+                None,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let factory = recording_factory(&fx.executed, Duration::from_millis(5));
+    process(item, &shared(&fx), &factory).await;
+
+    let run = run_row(&fx, "run-spent");
+    assert_eq!(run["state"], serde_json::json!(run_state::FAILED));
+    assert!(
+        run["error"].as_str().unwrap().contains("single-use"),
+        "{}",
+        run["error"]
+    );
+    let events = audit_events(&fx, "run-spent");
+    assert!(
+        events.contains(&"dispatch_refused".to_string()),
+        "{events:?}"
+    );
+    assert!(fx.executed.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn orphan_with_unparseable_definition_marks_rollback_pending() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .register_definition(&RegisteredDefinition {
+                id: "reg-broken".into(),
+                name: "broken".into(),
+                definition_toon: "{{{ not toon".into(),
+                content_hash: "h-broken".into(),
+                registered_at_ns: 1,
+                registered_by: None,
+            })
+            .and_then(|()| {
+                writer.insert_run(&NewRun {
+                    id: "run-corrupt".into(),
+                    registry_id: "reg-broken".into(),
+                    params_json: None,
+                    queued_at_ns: 1,
+                    actor: None,
+                })
+            })
+            .and_then(|()| writer.mark_run_started("run-corrupt", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+
+    let factory = recording_factory(&fx.executed, Duration::from_millis(5));
+    let count = reconcile_orphans(&fx.ingest, &fx.db_path, &factory)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    let run = run_row(&fx, "run-corrupt");
+    assert_eq!(run["state"], serde_json::json!(run_state::ROLLBACK_PENDING));
+    assert_eq!(
+        run["rollback_status"],
+        serde_json::json!(rollback_status::FAILED)
+    );
+    assert!(
+        run["error"].as_str().unwrap().contains("unparseable"),
+        "{}",
+        run["error"]
+    );
+    // The rollback attempt is audited as started; the parse failure is
+    // recorded on the run row (the rollback_failed event only fires when
+    // the rollback itself ran and failed).
+    let events = audit_events(&fx, "run-corrupt");
+    assert!(
+        events.contains(&"rollback_started".to_string()),
+        "{events:?}"
+    );
+    assert!(fx.executed.lock().unwrap().is_empty());
+}
+
+/// Every activity fails: the orphan rollback cannot complete.
+struct FailingExecutor;
+impl ActivityExecutor for FailingExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        ActivityOutcome {
+            success: false,
+            output: None,
+            error: Some(format!("{} blew up", activity.name)),
+            duration_ms: 0,
+        }
+    }
+}
+
+#[tokio::test]
+async fn orphan_rollback_failure_marks_rollback_pending_with_names() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "run-doomed".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.mark_run_started("run-doomed", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+
+    let factory: ExecutorFactory = Arc::new(|_| Arc::new(FailingExecutor));
+    let count = reconcile_orphans(&fx.ingest, &fx.db_path, &factory)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    let run = run_row(&fx, "run-doomed");
+    assert_eq!(run["state"], serde_json::json!(run_state::ROLLBACK_PENDING));
+    assert_eq!(
+        run["rollback_status"],
+        serde_json::json!(rollback_status::FAILED)
+    );
+    // The failing rollback activity is named in the error.
+    assert!(
+        run["error"].as_str().unwrap().contains("rollback-1"),
+        "{}",
+        run["error"]
+    );
+    let events = audit_events(&fx, "run-doomed");
+    for want in ["rollback_started", "rollback_failed"] {
+        assert!(events.contains(&want.to_string()), "{events:?}");
+    }
 }

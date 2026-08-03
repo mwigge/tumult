@@ -429,7 +429,21 @@ impl TumultTelemetry {
 
 #[cfg(test)]
 mod tests {
-    use super::{effective_otlp_headers, parse_otlp_headers};
+    use super::{
+        effective_otlp_headers, init_logger_provider, init_meter_provider, otlp_headers_from_env,
+        parse_otlp_headers, TelemetryConfig,
+    };
+
+    /// Serialises the test that mutates `OTEL_EXPORTER_OTLP_HEADERS` so no
+    /// other test thread observes a half-configured value.
+    static HEADER_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn current_thread_runtime() -> tokio_minimal::runtime::Runtime {
+        tokio_minimal::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
 
     fn owned(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
@@ -479,5 +493,90 @@ mod tests {
         map.insert("authorization", "Bearer kro_test".parse().unwrap());
         let resolved = effective_otlp_headers(Some(&map)).unwrap();
         assert_eq!(resolved.get("authorization").unwrap(), "Bearer kro_test");
+    }
+
+    #[test]
+    fn otlp_headers_from_env_scenarios() {
+        let _lock = HEADER_ENV_MUTEX.lock().unwrap();
+        let prev = std::env::var("OTEL_EXPORTER_OTLP_HEADERS").ok();
+
+        std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS");
+        assert!(otlp_headers_from_env().is_none());
+        assert!(effective_otlp_headers(None).is_none());
+
+        std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "   ");
+        assert!(otlp_headers_from_env().is_none());
+
+        std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "no-equals,=empty-key");
+        assert!(otlp_headers_from_env().is_none());
+
+        std::env::set_var(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "authorization=Bearer kro_env,x-tenant=dev",
+        );
+        let map = otlp_headers_from_env().expect("headers");
+        assert_eq!(map.get("authorization").unwrap(), "Bearer kro_env");
+        assert_eq!(map.get("x-tenant").unwrap(), "dev");
+        // With no explicit config headers, the env var is the fallback.
+        let resolved = effective_otlp_headers(None).expect("headers");
+        assert_eq!(resolved.get("authorization").unwrap(), "Bearer kro_env");
+
+        // Entries that are not valid gRPC metadata are skipped; valid ones stay.
+        std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "sp ace=v,ok=1");
+        let map = otlp_headers_from_env().expect("headers");
+        assert_eq!(map.get("ok").unwrap(), "1");
+        assert!(map.get("sp ace").is_none());
+
+        match prev {
+            Some(value) => std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", value),
+            None => std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS"),
+        }
+    }
+
+    #[test]
+    fn init_logger_provider_returns_none_when_disabled_or_without_endpoint() {
+        let disabled = TelemetryConfig {
+            enabled: false,
+            otlp_endpoint: Some("http://localhost:4317".into()),
+            ..TelemetryConfig::default()
+        };
+        assert!(init_logger_provider(&disabled).is_none());
+
+        let no_endpoint = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: None,
+            ..TelemetryConfig::default()
+        };
+        assert!(init_logger_provider(&no_endpoint).is_none());
+    }
+
+    #[test]
+    fn init_logger_provider_builds_provider_with_explicit_headers() {
+        let rt = current_thread_runtime();
+        let _guard = rt.enter();
+        let mut headers = tonic::metadata::MetadataMap::new();
+        headers.insert("authorization", "Bearer kro_cfg".parse().unwrap());
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://localhost:4317".into()),
+            otlp_headers: Some(headers),
+            ..TelemetryConfig::default()
+        };
+        let provider = init_logger_provider(&config).expect("provider");
+        assert!(provider.shutdown().is_ok());
+    }
+
+    #[test]
+    fn exporter_builders_return_none_for_unparseable_endpoints() {
+        let rt = current_thread_runtime();
+        let _guard = rt.enter();
+        // The build error must surface as `None` (with a warning), not a panic.
+        let config = TelemetryConfig {
+            enabled: true,
+            otlp_endpoint: Some("http://[::1".into()),
+            ..TelemetryConfig::default()
+        };
+        assert!(init_meter_provider(&config).is_none());
+        assert!(init_logger_provider(&config).is_none());
     }
 }

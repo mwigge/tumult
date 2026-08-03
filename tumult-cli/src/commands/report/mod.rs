@@ -8,6 +8,8 @@ mod escape;
 mod html;
 mod junit;
 
+#[cfg(test)]
+pub(crate) use html::format_activity_row;
 pub(crate) use html::generate_html_report;
 pub(crate) use junit::generate_junit_report;
 

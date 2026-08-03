@@ -376,4 +376,91 @@ mod tests {
         assert_eq!(facts["kpis"][1]["value"], "0.875");
         assert_eq!(facts["tables"][0]["rows"][0][1], "4");
     }
+
+    #[test]
+    fn narrative_messages_carry_rules_then_facts() {
+        let r = report();
+        let messages = narrative_messages(&r);
+        assert_eq!(messages.len(), 2);
+        assert!(matches!(messages[0].role, Role::System));
+        assert!(messages[0].content.contains("use ONLY numbers"));
+        assert!(matches!(messages[1].role, Role::User));
+        assert!(messages[1].content.contains("kronika digest"));
+        assert!(messages[1].content.contains("0.875"));
+    }
+
+    // ── narrate pipeline with a stub LLM ───────────────────────
+
+    enum StubReply {
+        Text(&'static str),
+        Fail,
+        Hang,
+    }
+
+    struct StubLlm(StubReply);
+
+    // `Llm` is an `#[async_trait]` trait; implement its desugared signature
+    // directly so the test needs no extra dev-dependency.
+    impl Llm for StubLlm {
+        fn chat<'life0, 'life1, 'async_trait>(
+            &'life0 self,
+            _messages: &'life1 [Message],
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<String, tumult_intelligence::llm::AiError>>
+                    + Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
+            Box::pin(async move {
+                match self.0 {
+                    StubReply::Text(text) => Ok(text.to_string()),
+                    StubReply::Fail => Err(tumult_intelligence::llm::AiError::Config(
+                        "stub failure".into(),
+                    )),
+                    StubReply::Hang => {
+                        std::future::pending::<Result<String, tumult_intelligence::llm::AiError>>()
+                            .await
+                    }
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn narrate_prepends_a_grounded_reply() {
+        let llm: Arc<dyn Llm> = Arc::new(StubLlm(StubReply::Text("6 experiments ran.")));
+        let out = narrate(&llm, report(), Duration::from_secs(5)).await;
+        assert_eq!(out.sections.len(), report().sections.len() + 1);
+        match &out.sections[0] {
+            Section::Narrative { text } => assert_eq!(text, "6 experiments ran."),
+            other => panic!("expected narrative section, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn narrate_drops_a_fully_ungrounded_reply() {
+        let llm: Arc<dyn Llm> = Arc::new(StubLlm(StubReply::Text("999 experiments ran.")));
+        let out = narrate(&llm, report(), Duration::from_secs(5)).await;
+        assert_eq!(out, report());
+    }
+
+    #[tokio::test]
+    async fn narrate_leaves_the_report_unchanged_on_llm_error() {
+        let llm: Arc<dyn Llm> = Arc::new(StubLlm(StubReply::Fail));
+        let out = narrate(&llm, report(), Duration::from_secs(5)).await;
+        assert_eq!(out, report());
+    }
+
+    #[tokio::test]
+    async fn narrate_leaves_the_report_unchanged_on_timeout() {
+        let llm: Arc<dyn Llm> = Arc::new(StubLlm(StubReply::Hang));
+        let out = narrate(&llm, report(), Duration::from_millis(50)).await;
+        assert_eq!(out, report());
+    }
 }

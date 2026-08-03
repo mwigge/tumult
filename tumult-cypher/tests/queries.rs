@@ -321,3 +321,116 @@ fn unbounded_variable_length_patterns_count_against_budget() {
         "expected BudgetExceeded, got {err:?}"
     );
 }
+
+// ── Engine error paths and value conversions ────────────────
+
+#[test]
+fn duplicate_node_id_is_rejected() {
+    let mut snapshot = fixture();
+    snapshot
+        .nodes
+        .push(node("svc:checkout", "service", "Checkout Again", json!({})));
+    let err = run_cypher(&snapshot, "MATCH (s:service) RETURN s.id").unwrap_err();
+    assert!(
+        matches!(err, CypherError::DuplicateNode(ref id) if id == "svc:checkout"),
+        "expected DuplicateNode, got {err:?}"
+    );
+    assert!(err.to_string().contains("svc:checkout"));
+}
+
+#[test]
+fn unparsable_cypher_is_an_engine_error() {
+    let err = run_cypher(&fixture(), "MATCH (s:service RETURN s.id").unwrap_err();
+    assert!(
+        matches!(err, CypherError::Engine(_)),
+        "expected Engine error, got {err:?}"
+    );
+    assert!(
+        err.to_string().contains("cypher execution failed"),
+        "message must frame the failure: {err}"
+    );
+}
+
+#[test]
+fn scalar_attr_types_round_trip_with_native_types() {
+    let snapshot = GraphSnapshot {
+        nodes: vec![node(
+            "svc:typed",
+            "service",
+            "Typed",
+            json!({"score": 2.5, "healthy": true, "note": JsonValue::Null}),
+        )],
+        edges: vec![],
+    };
+    let table = run_cypher(
+        &snapshot,
+        "MATCH (s:service) RETURN s.score, s.healthy, s.note",
+    )
+    .unwrap();
+    assert_eq!(table.rows.len(), 1);
+    assert_eq!(table.rows[0][0], json!(2.5));
+    assert_eq!(table.rows[0][1], json!(true));
+    assert_eq!(table.rows[0][2], json!(JsonValue::Null));
+}
+
+#[test]
+fn huge_integer_attrs_fall_back_to_float() {
+    let snapshot = GraphSnapshot {
+        nodes: vec![node(
+            "svc:big",
+            "service",
+            "Big",
+            json!({"counter": u64::MAX}),
+        )],
+        edges: vec![],
+    };
+    let table = run_cypher(&snapshot, "MATCH (s:service) RETURN s.counter").unwrap();
+    let value = table.rows[0][0]
+        .as_f64()
+        .expect("u64::MAX must come back as a float");
+    assert!((value - 1.844_674_407_370_955_2e19).abs() < 1.0);
+}
+
+#[test]
+fn nested_attrs_are_stringified_as_json_text() {
+    let snapshot = GraphSnapshot {
+        nodes: vec![
+            node(
+                "svc:nested",
+                "service",
+                "Nested",
+                json!({"meta": {"team": "core"}, "tags": ["a", "b"]}),
+            ),
+            // Non-object attrs contribute no properties at all.
+            node("svc:bare", "service", "Bare", JsonValue::Null),
+        ],
+        edges: vec![],
+    };
+    let table = run_cypher(
+        &snapshot,
+        "MATCH (s:service) WHERE s.meta = '{\"team\":\"core\"}' RETURN s.tags",
+    )
+    .unwrap();
+    assert_eq!(table.rows.len(), 1);
+    assert_eq!(table.rows[0][0], json!("[\"a\",\"b\"]"));
+
+    // The bare node still answers queries; its missing attrs read as null.
+    let table = run_cypher(
+        &snapshot,
+        "MATCH (s:service) WHERE s.id = 'svc:bare' RETURN s.meta",
+    )
+    .unwrap();
+    assert_eq!(table.rows[0][0], json!(JsonValue::Null));
+}
+
+#[test]
+fn collect_aggregates_into_a_json_array() {
+    let table = run_cypher(&fixture(), "MATCH (s:service) RETURN collect(s.id) AS ids").unwrap();
+    assert_eq!(table.rows.len(), 1);
+    let ids = table.rows[0][0]
+        .as_array()
+        .expect("collect() must produce a JSON array");
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&json!("svc:checkout")));
+    assert!(ids.contains(&json!("svc:payments")));
+}

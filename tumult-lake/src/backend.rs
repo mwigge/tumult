@@ -200,4 +200,50 @@ mod tests {
             .unwrap();
         assert_eq!(cols, vec!["experiment_id", "status"]);
     }
+
+    #[test]
+    fn duckdb_backend_ingest_journals_counts_only_new() {
+        use tumult_core::types::*;
+
+        let store = crate::duckdb_store::AnalyticsStore::in_memory().unwrap();
+        let backend: &dyn AnalyticsBackend = &store;
+        let journal = |id: &str| Journal {
+            experiment_title: format!("batch {id}"),
+            experiment_id: id.into(),
+            status: ExperimentStatus::Completed,
+            started_at_ns: 1_774_980_000_000_000_000,
+            ended_at_ns: 1_774_980_060_000_000_000,
+            duration_ms: 60_000,
+            steady_state_before: None,
+            steady_state_after: None,
+            method_results: vec![],
+            rollback_results: vec![],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: None,
+            analysis: None,
+            regulatory: None,
+            halt: None,
+            blast_radius: None,
+        };
+        // First pass: all three are new. Second pass: all duplicates.
+        let batch = [journal("bj-1"), journal("bj-2"), journal("bj-3")];
+        assert_eq!(backend.ingest_journals(&batch).unwrap(), 3);
+        assert_eq!(backend.ingest_journals(&batch).unwrap(), 0);
+        assert_eq!(backend.experiment_count().unwrap(), 3);
+    }
+
+    #[test]
+    fn duckdb_backend_purge_and_bad_sql_error_paths() {
+        let store = crate::duckdb_store::AnalyticsStore::in_memory().unwrap();
+        let backend: &dyn AnalyticsBackend = &store;
+        // Purging an empty store removes nothing.
+        assert_eq!(backend.purge_older_than_days(30).unwrap(), 0);
+        // Invalid SQL surfaces as an error, not a panic.
+        assert!(backend.query("SELECT FROM nonsense").is_err());
+        assert!(backend.query_columns("SELECT FROM nonsense").is_err());
+    }
 }

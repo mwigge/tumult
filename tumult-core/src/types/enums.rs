@@ -326,4 +326,124 @@ mod tests {
             assert_eq!(decoded, source);
         }
     }
+
+    #[test]
+    fn expected_outcome_all_variants_round_trip() {
+        for outcome in [
+            ExpectedOutcome::Deviated,
+            ExpectedOutcome::Recovered,
+            ExpectedOutcome::Unaffected,
+        ] {
+            let decoded: ExpectedOutcome = toon_round_trip(&outcome);
+            assert_eq!(decoded, outcome);
+        }
+    }
+
+    #[test]
+    fn degradation_level_all_variants_round_trip() {
+        for level in [
+            DegradationLevel::None,
+            DegradationLevel::Minor,
+            DegradationLevel::Moderate,
+            DegradationLevel::Severe,
+        ] {
+            let decoded: DegradationLevel = toon_round_trip(&level);
+            assert_eq!(decoded, level);
+        }
+    }
+
+    #[test]
+    fn confidence_all_variants_round_trip() {
+        for confidence in [Confidence::Low, Confidence::Medium, Confidence::High] {
+            let decoded: Confidence = toon_round_trip(&confidence);
+            assert_eq!(decoded, confidence);
+        }
+    }
+
+    #[test]
+    fn baseline_method_all_variants_round_trip() {
+        for method in [
+            BaselineMethod::Static,
+            BaselineMethod::Percentile,
+            BaselineMethod::MeanStddev,
+            BaselineMethod::Iqr,
+            BaselineMethod::Learned,
+        ] {
+            let decoded: BaselineMethod = toon_round_trip(&method);
+            assert_eq!(decoded, method);
+        }
+    }
+
+    #[test]
+    fn load_tool_all_variants_round_trip() {
+        for tool in [LoadTool::K6, LoadTool::Jmeter] {
+            let decoded: LoadTool = toon_round_trip(&tool);
+            assert_eq!(decoded, tool);
+        }
+    }
+
+    #[test]
+    fn display_renders_the_snake_case_wire_name() {
+        assert_eq!(ActivityType::Action.to_string(), "action");
+        assert_eq!(ActivityType::Probe.to_string(), "probe");
+
+        assert_eq!(ExperimentStatus::Completed.to_string(), "completed");
+        assert_eq!(ExperimentStatus::Deviated.to_string(), "deviated");
+        assert_eq!(ExperimentStatus::Aborted.to_string(), "aborted");
+        assert_eq!(ExperimentStatus::Failed.to_string(), "failed");
+        assert_eq!(ExperimentStatus::Interrupted.to_string(), "interrupted");
+        assert_eq!(ExperimentStatus::Halted.to_string(), "halted");
+
+        assert_eq!(ActivityStatus::Succeeded.to_string(), "succeeded");
+        assert_eq!(ActivityStatus::Failed.to_string(), "failed");
+        assert_eq!(ActivityStatus::Timeout.to_string(), "timeout");
+        assert_eq!(ActivityStatus::Skipped.to_string(), "skipped");
+
+        assert_eq!(ContainerRuntime::Docker.to_string(), "docker");
+        assert_eq!(ContainerRuntime::Podman.to_string(), "podman");
+        assert_eq!(ContainerRuntime::Containerd.to_string(), "containerd");
+
+        assert_eq!(ExpectedOutcome::Deviated.to_string(), "deviated");
+        assert_eq!(ExpectedOutcome::Recovered.to_string(), "recovered");
+        assert_eq!(ExpectedOutcome::Unaffected.to_string(), "unaffected");
+
+        assert_eq!(DegradationLevel::None.to_string(), "none");
+        assert_eq!(DegradationLevel::Minor.to_string(), "minor");
+        assert_eq!(DegradationLevel::Moderate.to_string(), "moderate");
+        assert_eq!(DegradationLevel::Severe.to_string(), "severe");
+
+        assert_eq!(Confidence::Low.to_string(), "low");
+        assert_eq!(Confidence::Medium.to_string(), "medium");
+        assert_eq!(Confidence::High.to_string(), "high");
+
+        assert_eq!(BaselineMethod::Static.to_string(), "static");
+        assert_eq!(BaselineMethod::Percentile.to_string(), "percentile");
+        assert_eq!(BaselineMethod::MeanStddev.to_string(), "mean_stddev");
+        assert_eq!(BaselineMethod::Iqr.to_string(), "iqr");
+        assert_eq!(BaselineMethod::Learned.to_string(), "learned");
+
+        assert_eq!(LoadTool::K6.to_string(), "k6");
+        assert_eq!(LoadTool::Jmeter.to_string(), "jmeter");
+
+        assert_eq!(BaselineSource::Live.to_string(), "live");
+        assert_eq!(BaselineSource::Historical.to_string(), "historical");
+        assert_eq!(BaselineSource::Aqe.to_string(), "aqe");
+
+        assert_eq!(Trend::Improving.to_string(), "improving");
+        assert_eq!(Trend::Stable.to_string(), "stable");
+        assert_eq!(Trend::Degrading.to_string(), "degrading");
+    }
+
+    #[test]
+    fn display_matches_the_serde_serialization() {
+        // The journal and the CLI rely on Display and serde agreeing; guard
+        // the two from drifting apart.
+        let status = ExperimentStatus::Halted;
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(json, format!("\"{status}\""));
+
+        let method = BaselineMethod::MeanStddev;
+        let json = serde_json::to_string(&method).expect("serialize");
+        assert_eq!(json, format!("\"{method}\""));
+    }
 }

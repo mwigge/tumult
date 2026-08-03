@@ -623,4 +623,78 @@ mod tests {
             "expected ScriptNotFound when script is outside plugin root, got: {result:?}"
         );
     }
+
+    #[test]
+    fn validate_arguments_rejects_null_bytes() {
+        let in_value = HashMap::from([("key".to_string(), "va\0lue".to_string())]);
+        assert!(
+            matches!(
+                validate_arguments(&in_value),
+                Err(ExecutorError::NullByteInArgument(k)) if k == "key"
+            ),
+            "null byte in value should be rejected naming its key"
+        );
+
+        let in_key = HashMap::from([("ke\0y".to_string(), "value".to_string())]);
+        assert!(
+            matches!(
+                validate_arguments(&in_key),
+                Err(ExecutorError::NullByteInArgument(_))
+            ),
+            "null byte in key should be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_script_rejects_invalid_argument_names() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hi");
+        let args = HashMap::from([("foo-bar".to_string(), "v".to_string())]);
+        let result = execute_script(&script, dir.path(), &args, None).await;
+        assert!(
+            matches!(result, Err(ExecutorError::InvalidArgumentName(_))),
+            "expected InvalidArgumentName, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_script_rejects_conflicting_argument_names() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hi");
+        let args = HashMap::from([
+            ("foo".to_string(), "1".to_string()),
+            ("FOO".to_string(), "2".to_string()),
+        ]);
+        let result = execute_script(&script, dir.path(), &args, None).await;
+        assert!(
+            matches!(result, Err(ExecutorError::ConflictingArgumentNames { .. })),
+            "expected ConflictingArgumentNames, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_script_rejects_null_byte_arguments() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hi");
+        let args = HashMap::from([("key".to_string(), "va\0lue".to_string())]);
+        let result = execute_script(&script, dir.path(), &args, None).await;
+        assert!(
+            matches!(result, Err(ExecutorError::NullByteInArgument(_))),
+            "expected NullByteInArgument, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_script_reports_signal_termination() {
+        // A script that kills itself has no numeric exit code: the executor
+        // must report Signal rather than a bogus code.
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\nkill -9 $$");
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        assert_eq!(result.exit_status, ScriptExitStatus::Signal);
+        assert_eq!(result.exit_status.code(), None);
+        assert!(!result.succeeded());
+    }
 }

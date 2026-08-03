@@ -222,6 +222,39 @@ mod tests {
     }
 
     #[test]
+    fn invalid_toml_is_a_parse_error() {
+        let not_toml = "[[service]\nname = ";
+        assert!(matches!(
+            parse_topology(not_toml),
+            Err(TopologyError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn error_display_names_the_problem() {
+        let parse = parse_topology("[[service]\nname = ").unwrap_err();
+        assert!(parse.to_string().starts_with("topology TOML parse error:"));
+
+        let unknown =
+            parse_topology("[[service]]\nname = \"a\"\ndepends_on = [\"ghost\"]\n").unwrap_err();
+        assert_eq!(
+            unknown.to_string(),
+            "service 'a' depends on 'ghost', which is not declared"
+        );
+
+        let duplicate =
+            parse_topology("[[service]]\nname = \"a\"\n[[service]]\nname = \"a:9090\"\n")
+                .unwrap_err();
+        assert_eq!(duplicate.to_string(), "service 'a' is declared twice");
+
+        let empty = parse_topology("").unwrap_err();
+        assert_eq!(
+            empty.to_string(),
+            "topology document declares no [[service]] blocks"
+        );
+    }
+
+    #[test]
     fn topology_doc_json_round_trips() {
         let doc = parse_topology(DEMO).unwrap();
         let json = serde_json::to_string(&doc).unwrap();

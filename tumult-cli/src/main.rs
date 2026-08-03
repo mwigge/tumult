@@ -46,8 +46,16 @@ async fn main() -> anyhow::Result<()> {
         TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
 
     let cli = Cli::parse();
+    // OTel spans are flushed by the TelemetryShutdown guard on all paths.
+    dispatch(cli.command).await
+}
 
-    match cli.command {
+/// Dispatch a parsed command to its handler. Split from `main` so the wiring
+/// (argument mapping, enum conversions, output shaping) is exercisable from
+/// tests without spawning the binary.
+#[allow(clippy::too_many_lines)]
+async fn dispatch(command: Commands) -> anyhow::Result<()> {
+    match command {
         Commands::Run {
             experiment,
             journal_path,
@@ -464,6 +472,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // OTel spans are flushed by the TelemetryShutdown guard on all paths.
     Ok(())
 }
+
+#[cfg(test)]
+mod dispatch_tests;

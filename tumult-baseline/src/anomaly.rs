@@ -155,4 +155,34 @@ mod tests {
         let result = check_baseline_anomaly(&data, 5);
         assert!(!result.anomaly_detected);
     }
+
+    #[test]
+    fn empty_data_with_zero_min_samples_is_not_anomalous() {
+        // No minimum required and no data: there is nothing to flag, and the
+        // undefined mean/stddev must degrade to a zero spread rather than
+        // poisoning the variance check.
+        let result = check_baseline_anomaly(&[], 0);
+        assert!(!result.anomaly_detected);
+        assert!(result.reason.is_none());
+        assert!(result.coefficient_of_variation.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn single_sample_has_zero_spread() {
+        // N = 1 satisfies the sample floor but has no defined sample stddev;
+        // the spread must read as zero, not as an anomaly.
+        let result = check_baseline_anomaly(&[42.0], 1);
+        assert!(!result.anomaly_detected);
+        assert!(result.coefficient_of_variation.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn zero_mean_alternating_data_is_not_flagged_for_variance() {
+        // Mean ~0 makes the CV denominator vanish; the guard must treat the
+        // CV as 0 instead of dividing by a near-zero mean.
+        let data = vec![1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0];
+        let result = check_baseline_anomaly(&data, 5);
+        assert!(!result.anomaly_detected);
+        assert!(result.coefficient_of_variation.abs() < f64::EPSILON);
+    }
 }

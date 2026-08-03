@@ -5,9 +5,10 @@
 //! scripted by exact command string, so stdout/stderr/exit-status mapping
 //! is asserted end to end through the real SSH protocol.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::keys::ssh_key;
@@ -38,9 +39,15 @@ AAAEAxvXRBUnx7Jcin5D2271AJtMlLOev8LVHrd47wJIIPR19UK6q9l6dwtrRGJJIFQrwW
 ";
 
 /// Server-side handler with scripted command behavior.
+///
+/// `uploads` records the bytes the client streams after a `cat > '<path>'`
+/// exec, keyed by the remote path — the remote-side effect upload tests
+/// assert against. `in_flight` buffers per-channel bytes until EOF.
 #[derive(Clone)]
 struct TestHandler {
     reject_auth: bool,
+    uploads: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    in_flight: HashMap<ChannelId, (String, Vec<u8>)>,
 }
 
 impl server::Handler for TestHandler {
@@ -101,6 +108,33 @@ impl server::Handler for TestHandler {
                 // Tear the whole connection down mid-command.
                 return Err(russh::Error::Disconnect);
             }
+            "sigkill" => {
+                session.extended_data(channel, 1, &b"about to die\n"[..])?;
+                session.exit_signal_request(channel, russh::Sig::KILL, false, "", "")?;
+            }
+            "sigterm-quiet" => {
+                // Signal death with no preceding stderr output.
+                session.exit_signal_request(channel, russh::Sig::TERM, false, "", "")?;
+            }
+            "sigsegv-core" => {
+                session.exit_signal_request(channel, russh::Sig::SEGV, true, "", "")?;
+            }
+            "signal-and-status" => {
+                // Both a signal and an explicit status: the status must win.
+                session.exit_signal_request(channel, russh::Sig::INT, false, "", "")?;
+                session.exit_status_request(channel, 42)?;
+            }
+            cmd if cmd.starts_with("cat > '") => {
+                // Upload path: buffer the streamed bytes until the client
+                // sends EOF, then report the exit status from `channel_eof`.
+                let path = cmd
+                    .strip_prefix("cat > '")
+                    .and_then(|rest| rest.split('\'').next())
+                    .expect("quoted remote path")
+                    .to_string();
+                self.in_flight.insert(channel, (path, Vec::new()));
+                return Ok(());
+            }
             _ => {
                 session.extended_data(channel, 1, &b"command not found\n"[..])?;
                 session.exit_status_request(channel, 127)?;
@@ -110,17 +144,58 @@ impl server::Handler for TestHandler {
         session.close(channel)?;
         Ok(())
     }
+
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some((_, buf)) = self.in_flight.get_mut(&channel) {
+            buf.extend_from_slice(data);
+        }
+        Ok(())
+    }
+
+    async fn channel_eof(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some((path, buf)) = self.in_flight.remove(&channel) {
+            if path.starts_with("/missing/") {
+                let msg = format!("cat: {path}: No such file or directory\n");
+                session.extended_data(channel, 1, msg.into_bytes())?;
+                session.exit_status_request(channel, 1)?;
+            } else {
+                self.uploads.lock().expect("uploads lock").insert(path, buf);
+                session.exit_status_request(channel, 0)?;
+            }
+            session.close(channel)?;
+        }
+        Ok(())
+    }
 }
 
 /// Spawn a test SSH server on an ephemeral loopback port.
 ///
 /// Returns the bound port and a counter of accepted TCP connections.
 async fn spawn_server(reject_auth: bool) -> (u16, Arc<AtomicUsize>) {
+    let (port, connections, _) = spawn_server_with_uploads(reject_auth).await;
+    (port, connections)
+}
+
+/// Like [`spawn_server`], but also returns the map of uploaded remote files
+/// the server records for `cat > '<path>'` commands.
+async fn spawn_server_with_uploads(
+    reject_auth: bool,
+) -> (u16, Arc<AtomicUsize>, Arc<Mutex<HashMap<String, Vec<u8>>>>) {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind loopback");
     let port = listener.local_addr().expect("local addr").port();
     let connections = Arc::new(AtomicUsize::new(0));
+    let uploads = Arc::new(Mutex::new(HashMap::new()));
 
     let host_key = russh::keys::decode_secret_key(HOST_KEY, None).expect("parse host key");
     let config = Arc::new(server::Config {
@@ -131,6 +206,7 @@ async fn spawn_server(reject_auth: bool) -> (u16, Arc<AtomicUsize>) {
     });
 
     let counter = Arc::clone(&connections);
+    let uploaded = Arc::clone(&uploads);
     tokio::spawn(async move {
         loop {
             let Ok((stream, _)) = listener.accept().await else {
@@ -138,17 +214,20 @@ async fn spawn_server(reject_auth: bool) -> (u16, Arc<AtomicUsize>) {
             };
             counter.fetch_add(1, Ordering::SeqCst);
             let config = Arc::clone(&config);
+            let handler = TestHandler {
+                reject_auth,
+                uploads: Arc::clone(&uploaded),
+                in_flight: HashMap::new(),
+            };
             tokio::spawn(async move {
-                if let Ok(session) =
-                    server::run_stream(config, stream, TestHandler { reject_auth }).await
-                {
+                if let Ok(session) = server::run_stream(config, stream, handler).await {
                     let _ = session.await;
                 }
             });
         }
     });
 
-    (port, connections)
+    (port, connections, uploads)
 }
 
 /// Write the embedded client key into `dir` with 0600 permissions.
@@ -242,10 +321,81 @@ async fn execute_times_out_when_command_never_finishes() {
 
     let err = session.execute("hang").await.expect_err("must time out");
 
-    assert!(
-        matches!(err, SshError::Timeout { .. }),
-        "expected Timeout, got: {err:?}"
+    match err {
+        SshError::Timeout { seconds } => {
+            assert!(
+                (seconds - 0.3).abs() < 1e-9,
+                "the error must report the configured deadline, got {seconds}"
+            );
+        }
+        other => panic!("expected Timeout, got: {other:?}"),
+    }
+}
+
+// ── Signal termination and exit-status precedence ─────────────
+
+#[tokio::test]
+async fn execute_maps_exit_signal_to_137_and_appends_note_to_stderr() {
+    let (port, _) = spawn_server(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let result = session.execute("sigkill").await.expect("execute");
+
+    assert_eq!(
+        result.exit_code, 137,
+        "a signal death without exit status must map to 128 + 9"
     );
+    assert!(!result.success());
+    assert_eq!(result.stderr, "about to die\nkilled by signal: KILL");
+}
+
+#[tokio::test]
+async fn execute_signal_note_alone_when_stderr_is_empty() {
+    let (port, _) = spawn_server(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let result = session.execute("sigterm-quiet").await.expect("execute");
+
+    assert_eq!(result.exit_code, 137);
+    assert_eq!(result.stderr, "killed by signal: TERM");
+    assert_eq!(result.stdout, "");
+}
+
+#[tokio::test]
+async fn execute_marks_core_dumped_signal_deaths() {
+    let (port, _) = spawn_server(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let result = session.execute("sigsegv-core").await.expect("execute");
+
+    assert_eq!(result.exit_code, 137);
+    assert_eq!(result.stderr, "killed by signal: SEGV (core dumped)");
+}
+
+#[tokio::test]
+async fn execute_prefers_explicit_exit_status_over_signal() {
+    let (port, _) = spawn_server(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let result = session.execute("signal-and-status").await.expect("execute");
+
+    assert_eq!(
+        result.exit_code, 42,
+        "an explicit exit status takes precedence over the signal fallback"
+    );
+    assert_eq!(result.stderr, "killed by signal: INT");
 }
 
 // ── Connection and auth failure paths ─────────────────────────
@@ -482,5 +632,109 @@ async fn native_execute_maps_nonzero_exit_to_failed_error() {
     assert!(
         message.contains("boom"),
         "stderr must be reported: {message}"
+    );
+}
+
+// ── File upload ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn upload_fails_when_local_file_is_missing() {
+    let (port, _, _) = spawn_server_with_uploads(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let missing = dir.path().join("no-such-script.sh");
+    let err = session
+        .upload_file(&missing, "/remote/x.sh")
+        .await
+        .expect_err("missing local file must fail");
+
+    match err {
+        SshError::UploadFailed(reason) => {
+            assert!(
+                reason.contains("read local file"),
+                "expected the local-read context, got: {reason}"
+            );
+        }
+        other => panic!("expected UploadFailed, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn upload_streams_bytes_to_the_remote_path() {
+    let (port, _, uploads) = spawn_server_with_uploads(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let local = dir.path().join("payload.sh");
+    std::fs::write(&local, b"#!/bin/sh\necho chaos\n").unwrap();
+
+    session
+        .upload_file(&local, "/remote/payload.sh")
+        .await
+        .expect("upload");
+
+    let uploads = uploads.lock().expect("uploads lock");
+    assert_eq!(
+        uploads.get("/remote/payload.sh").map(Vec::as_slice),
+        Some(b"#!/bin/sh\necho chaos\n".as_slice()),
+        "the server must record the exact streamed bytes"
+    );
+}
+
+#[tokio::test]
+async fn upload_fails_when_remote_write_exits_nonzero() {
+    let (port, _, uploads) = spawn_server_with_uploads(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let local = dir.path().join("payload.sh");
+    std::fs::write(&local, b"echo hi\n").unwrap();
+
+    let err = session
+        .upload_file(&local, "/missing/dir/payload.sh")
+        .await
+        .expect_err("nonexistent remote directory must fail");
+
+    match err {
+        SshError::UploadFailed(reason) => {
+            assert!(
+                reason.contains("non-zero status"),
+                "expected the remote exit-status context, got: {reason}"
+            );
+        }
+        other => panic!("expected UploadFailed, got: {other:?}"),
+    }
+    assert!(
+        uploads.lock().expect("uploads lock").is_empty(),
+        "a failed write must not be recorded as an upload"
+    );
+}
+
+#[tokio::test]
+async fn upload_rejects_remote_path_with_control_characters() {
+    let (port, _, _) = spawn_server_with_uploads(false).await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let session = SshSession::connect(config_for(port, write_client_key(&dir)))
+        .await
+        .expect("connect");
+
+    let local = dir.path().join("payload.sh");
+    std::fs::write(&local, b"echo hi\n").unwrap();
+
+    let err = session
+        .upload_file(&local, "/tmp/evil\nrm -rf /")
+        .await
+        .expect_err("control characters in the remote path must fail");
+
+    assert!(
+        matches!(err, SshError::InvalidPath { .. }),
+        "expected InvalidPath, got: {err:?}"
     );
 }

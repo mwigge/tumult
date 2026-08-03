@@ -266,4 +266,164 @@ mod tests {
         let rows = trace_request_to_spans(&request);
         assert_eq!(rows[0].experiment_id.as_deref(), Some("exp-from-resource"));
     }
+
+    fn bare_span() -> Span {
+        Span {
+            trace_id: vec![0x01; 16],
+            span_id: vec![0x02; 8],
+            start_time_unix_nano: 10,
+            end_time_unix_nano: 25,
+            ..Span::default()
+        }
+    }
+
+    fn request_for(spans: Vec<Span>, resource_attrs: Vec<KeyValue>) -> ExportTraceServiceRequest {
+        ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                resource: Some(Resource {
+                    attributes: resource_attrs,
+                    dropped_attributes_count: 0,
+                    entity_refs: vec![],
+                }),
+                scope_spans: vec![ScopeSpans {
+                    scope: None,
+                    spans,
+                    schema_url: String::new(),
+                }],
+                schema_url: String::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn span_kind_and_status_strings_cover_all_variants() {
+        assert_eq!(span_kind_str(SpanKind::Unspecified as i32), "Unspecified");
+        assert_eq!(span_kind_str(SpanKind::Internal as i32), "Internal");
+        assert_eq!(span_kind_str(SpanKind::Server as i32), "Server");
+        assert_eq!(span_kind_str(SpanKind::Client as i32), "Client");
+        assert_eq!(span_kind_str(SpanKind::Producer as i32), "Producer");
+        assert_eq!(span_kind_str(SpanKind::Consumer as i32), "Consumer");
+        // Unknown discriminants fall back to the unspecified label.
+        assert_eq!(span_kind_str(99), "Unspecified");
+
+        assert_eq!(status_code_str(StatusCode::Unset as i32), "Unset");
+        assert_eq!(status_code_str(StatusCode::Ok as i32), "Ok");
+        assert_eq!(status_code_str(StatusCode::Error as i32), "Error");
+        assert_eq!(status_code_str(77), "Unset");
+    }
+
+    #[test]
+    fn span_identity_falls_back_through_title_and_resource() {
+        let mut aliased = bare_span();
+        aliased.attributes = vec![
+            kv(
+                keys::EXPERIMENT_TITLE,
+                Value::StringValue("cli-title".into()),
+            ),
+            kv(keys::PLUGIN_NAME, Value::StringValue("alias-plugin".into())),
+            kv(keys::FAULT_SUBTYPE, Value::StringValue("signal".into())),
+            kv(keys::FAULT_SEVERITY, Value::StringValue("high".into())),
+            kv(
+                keys::FAULT_BLAST_RADIUS,
+                Value::StringValue("single-pod".into()),
+            ),
+            kv(
+                keys::TARGET_TECHNOLOGY,
+                Value::StringValue("postgres".into()),
+            ),
+            kv(
+                keys::TARGET_ENVIRONMENT,
+                Value::StringValue("staging".into()),
+            ),
+        ];
+
+        // The standard's plugin name wins over the instrument alias.
+        let mut standard = bare_span();
+        standard.attributes = vec![
+            kv(keys::FAULT_PLUGIN, Value::StringValue("std-plugin".into())),
+            kv(keys::PLUGIN_NAME, Value::StringValue("alias-plugin".into())),
+        ];
+
+        // No identity attributes at all: everything comes from the resource.
+        let child = bare_span();
+
+        let request = request_for(
+            vec![aliased, standard, child],
+            vec![
+                kv(keys::EXPERIMENT_ID, Value::StringValue("res-exp".into())),
+                kv(keys::EXPERIMENT_NAME, Value::StringValue("res-name".into())),
+            ],
+        );
+        let rows = trace_request_to_spans(&request);
+        assert_eq!(rows.len(), 3);
+
+        let row = &rows[0];
+        assert_eq!(row.experiment_id.as_deref(), Some("res-exp"));
+        assert_eq!(row.experiment_name.as_deref(), Some("cli-title"));
+        assert_eq!(row.plugin_name.as_deref(), Some("alias-plugin"));
+        assert_eq!(row.fault_subtype.as_deref(), Some("signal"));
+        assert_eq!(row.fault_severity.as_deref(), Some("high"));
+        assert_eq!(row.blast_radius.as_deref(), Some("single-pod"));
+        assert_eq!(row.target_technology.as_deref(), Some("postgres"));
+        assert_eq!(row.target_environment.as_deref(), Some("staging"));
+        // Every attribute was promoted, so the map stays empty.
+        assert!(row.span_attrs.is_empty());
+        // No status set on the span.
+        assert_eq!(row.status_code, "Unset");
+        assert!(row.status_message.is_empty());
+
+        assert_eq!(rows[1].plugin_name.as_deref(), Some("std-plugin"));
+        assert_eq!(rows[2].experiment_name.as_deref(), Some("res-name"));
+    }
+
+    #[test]
+    fn span_events_serialize_to_a_json_array() {
+        use opentelemetry_proto::tonic::trace::v1::span::Event;
+
+        let mut span = bare_span();
+        span.status = Some(Status {
+            code: StatusCode::Error as i32,
+            message: "boom".into(),
+        });
+        span.events = vec![Event {
+            time_unix_nano: 11,
+            name: "resilience.hypothesis.evaluated".into(),
+            attributes: vec![
+                kv(keys::OUTCOME_STATUS, Value::StringValue("met".into())),
+                KeyValue {
+                    key: "skip".into(),
+                    value: None,
+                    key_strindex: 0,
+                },
+            ],
+            ..Event::default()
+        }];
+
+        let rows = trace_request_to_spans(&request_for(vec![span], vec![]));
+        let row = &rows[0];
+        assert_eq!(row.status_code, "Error");
+        assert_eq!(row.status_message, "boom");
+
+        let events: serde_json::Value = serde_json::from_str(&row.events).unwrap();
+        assert_eq!(events[0]["name"], "resilience.hypothesis.evaluated");
+        assert_eq!(events[0]["time_unix_nano"], 11);
+        assert_eq!(events[0]["attributes"]["resilience.outcome.status"], "met");
+        // Valueless event attributes are dropped from the JSON object.
+        assert!(events[0]["attributes"].get("skip").is_none());
+    }
+
+    #[test]
+    fn timestamps_saturate_and_duration_clamps_at_zero() {
+        let mut span = bare_span();
+        span.start_time_unix_nano = u64::MAX;
+        // End before start: the duration must clamp to zero, not wrap.
+        span.end_time_unix_nano = 5;
+        span.parent_span_id = vec![0x03; 8];
+
+        let rows = trace_request_to_spans(&request_for(vec![span], vec![]));
+        let row = &rows[0];
+        assert_eq!(row.ts_ns, i64::MAX);
+        assert_eq!(row.duration_ns, 0);
+        assert_eq!(row.parent_span_id.as_deref(), Some("0303030303030303"));
+    }
 }

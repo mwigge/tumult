@@ -684,4 +684,89 @@ defaults: {weight: 1.0, stale_days: 30}
         assert_eq!(root.expected, 0);
         assert_eq!(root.children.len(), 1); // just (unassigned)
     }
+
+    #[test]
+    fn org_error_display_names_each_cause() {
+        let io = OrgTree::load(std::path::Path::new("/nonexistent/org.yaml")).unwrap_err();
+        assert!(matches!(io, OrgError::Io(_)));
+        assert!(io.to_string().starts_with("cannot read org file:"));
+
+        let yaml = OrgTree::from_yaml("nodes: [unclosed").unwrap_err();
+        assert!(matches!(yaml, OrgError::Yaml(_)));
+        assert!(yaml.to_string().starts_with("cannot parse org yaml:"));
+
+        let invalid = OrgTree::from_yaml("nodes: [{name: a}, {name: a}]").unwrap_err();
+        assert!(matches!(invalid, OrgError::Invalid(_)));
+        let msg = invalid.to_string();
+        assert!(msg.starts_with("invalid org file:"), "{msg}");
+        assert!(msg.contains("duplicate or invalid node name 'a'"), "{msg}");
+    }
+
+    #[test]
+    fn load_round_trips_a_valid_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("org.yaml");
+        std::fs::write(&path, YAML).unwrap();
+        let t = OrgTree::load(&path).unwrap();
+        assert!(t.resolve("platform/edge").is_some());
+    }
+
+    #[test]
+    fn criticality_weights_follow_the_documented_ladder() {
+        assert_eq!(criticality_weight("critical"), 3);
+        assert_eq!(criticality_weight("high"), 2);
+        assert_eq!(criticality_weight("medium"), 1);
+        assert_eq!(criticality_weight(""), 1);
+    }
+
+    #[test]
+    fn glob_edge_cases() {
+        // A pattern of only stars matches everything, including empty.
+        assert!(glob_match("***", "anything"));
+        assert!(glob_match("*", ""));
+        // Multiple interior segments must appear in order.
+        assert!(glob_match("a*b*c", "a-x-b-y-c"));
+        assert!(!glob_match("a*b*c", "a-x-c-y-b"));
+        // A literal-only pattern is an exact match.
+        assert!(!glob_match("abc", "abcx"));
+        assert!(!glob_match("abc", "xabc"));
+    }
+
+    #[test]
+    fn subtree_and_accessor_queries() {
+        let t = tree();
+        let platform = t.resolve("platform").unwrap();
+        let edge = t.resolve("platform/edge").unwrap();
+        let db_team = t.resolve("platform/compute/db-team").unwrap();
+        assert!(t.in_subtree(platform, edge));
+        assert!(t.in_subtree(edge, edge));
+        assert!(!t.in_subtree(edge, db_team));
+        assert!(!t.in_subtree(db_team, t.root()));
+
+        let children = t.children(platform);
+        assert_eq!(children.len(), 2);
+        assert_eq!(t.node(children[0]).name, "edge");
+        assert_eq!(t.node(children[0]).kind, "unit");
+        assert_eq!(t.node(t.root()).kind, "company");
+
+        // An unknown path yields no rollup.
+        assert!(t.compute_node("platform/nope", &[]).is_none());
+    }
+
+    #[test]
+    fn default_weight_scales_assignment_weights() {
+        let t = OrgTree::from_yaml(
+            "nodes: [{name: t}]\n\
+             assignments: [{team: t, targets: [\"db-*\"], criticality: {db-x: high}}]\n\
+             defaults: {weight: 2.5, stale_days: 7}",
+        )
+        .unwrap();
+        let (_, w) = t.assign("db-x");
+        assert_eq!(w, 5.0); // 2.5 × high(2)
+        let (_, w) = t.assign("db-other");
+        assert_eq!(w, 2.5); // 2.5 × default(1)
+        let (node, w) = t.assign("unmapped");
+        assert_eq!(node, t.resolve("(unassigned)").unwrap());
+        assert_eq!(w, 2.5); // unassigned gets the plain default weight
+    }
 }

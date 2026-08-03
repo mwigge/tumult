@@ -61,3 +61,40 @@ impl EvidenceStrength {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn evidence_type_labels_are_human_readable() {
+        assert_eq!(
+            EvidenceType::ResilienceTesting.as_str(),
+            "resilience testing"
+        );
+        assert_eq!(
+            EvidenceType::RecoveryValidation.as_str(),
+            "recovery validation"
+        );
+        assert_eq!(
+            EvidenceType::ContinuityExercise.as_str(),
+            "continuity exercise"
+        );
+        assert_eq!(
+            EvidenceType::EffectivenessAssessment.as_str(),
+            "effectiveness assessment"
+        );
+        assert_eq!(EvidenceType::Monitoring.as_str(), "monitoring");
+        assert_eq!(
+            EvidenceType::IncidentResponseTesting.as_str(),
+            "incident-response testing"
+        );
+    }
+
+    #[test]
+    fn evidence_strength_labels_are_human_readable() {
+        assert_eq!(EvidenceStrength::Direct.as_str(), "direct");
+        assert_eq!(EvidenceStrength::Supporting.as_str(), "supporting");
+        assert_eq!(EvidenceStrength::Indirect.as_str(), "indirect");
+    }
+}
