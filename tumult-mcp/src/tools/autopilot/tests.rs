@@ -624,3 +624,510 @@ fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
         "an approved, gate-passing decision must run its playbook"
     );
 }
+
+// ── Engine helpers ─────────────────────────────────────────────
+
+use tumult_autopilot::{Candidate, ConfidenceTier, GateDecision, Trigger, Verdict};
+
+#[test]
+fn elapsed_days_measures_whole_days_and_saturates() {
+    const DAY: i64 = 86_400_000_000_000;
+    assert_eq!(engine::elapsed_days(2 * DAY, DAY), 1);
+    assert_eq!(engine::elapsed_days(DAY - 1, 0), 0);
+    // The largest representable age (i64::MAX ns ≈ 292 years) fits a u32.
+    assert_eq!(engine::elapsed_days(i64::MAX, 0), 106_751);
+    // A negative age (a clock reading before the evidence) maps to the
+    // u32::MAX sentinel: treated as maximally stale.
+    assert_eq!(engine::elapsed_days(0, DAY), u32::MAX);
+}
+
+#[test]
+fn elapsed_hours_measures_fractional_hours_and_saturates() {
+    const HOUR: i64 = 3_600_000_000_000;
+    let hours = engine::elapsed_hours(5 * HOUR, 2 * HOUR);
+    assert!((hours - 3.0).abs() < 1e-9, "got {hours}");
+    let saturated = engine::elapsed_hours(0, HOUR);
+    assert!(
+        saturated.abs() < 1e-9,
+        "now before then saturates to zero: {saturated}"
+    );
+}
+
+#[test]
+fn confidence_is_high_for_broken_controls_and_strong_scores() {
+    assert_eq!(engine::confidence_for(0.1, true), ConfidenceTier::High);
+    assert_eq!(engine::confidence_for(1.0, false), ConfidenceTier::High);
+    assert_eq!(
+        engine::confidence_for(0.99, false),
+        ConfidenceTier::Directional
+    );
+}
+
+#[test]
+fn inspect_experiment_reports_structural_facts() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let missing = dir.path().join("missing.toon");
+    assert_eq!(
+        engine::inspect_experiment(missing.to_str().unwrap()),
+        (false, false, false, 0),
+        "an unreadable file reads as no facts"
+    );
+    let bad = dir.path().join("bad.toon");
+    std::fs::write(&bad, "title: [unterminated").unwrap();
+    assert_eq!(
+        engine::inspect_experiment(bad.to_str().unwrap()),
+        (false, false, false, 0),
+        "an unparseable file reads as no facts"
+    );
+
+    // Plain experiment: one fault, no hypothesis, rollback, or guard.
+    let plain = crate::tools::test_support::write_valid_experiment(dir.path());
+    assert_eq!(engine::inspect_experiment(&plain), (false, false, false, 1));
+
+    // Enact-eligible playbook: steady-state, rollback + guard, one fault.
+    let guarded = write_guarded_playbook(dir.path());
+    assert_eq!(engine::inspect_experiment(&guarded), (true, true, true, 1));
+}
+
+/// Write a playbook whose only guard runs `probe`; returns the path.
+fn write_playbook_with_guard(dir: &std::path::Path, probe: Activity) -> String {
+    let exp = Experiment {
+        title: "guard preflight playbook".into(),
+        guards: vec![tumult_core::types::Guard {
+            name: "guard".into(),
+            probe,
+            min_breaches: 1,
+        }],
+        ..Default::default()
+    };
+    let toon = toon_format::encode_default(&exp).unwrap();
+    let path = dir.join("guard-preflight.toon");
+    std::fs::write(&path, toon).unwrap();
+    path.to_str().unwrap().to_string()
+}
+
+#[test]
+fn preflight_guard_telemetry_is_none_without_a_guard() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let missing = dir.path().join("missing.toon");
+    assert_eq!(
+        engine::preflight_guard_telemetry(missing.to_str().unwrap()),
+        None,
+        "an unreadable playbook cannot be pre-flighted"
+    );
+    let plain = crate::tools::test_support::write_valid_experiment(dir.path());
+    assert_eq!(
+        engine::preflight_guard_telemetry(&plain),
+        None,
+        "no guard means no telemetry to verify"
+    );
+}
+
+#[test]
+fn preflight_guard_telemetry_passes_when_the_probe_meets_its_tolerance() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let playbook = write_playbook_with_guard(dir.path(), echo_probe("guard-probe"));
+    assert_eq!(engine::preflight_guard_telemetry(&playbook), Some(true));
+}
+
+#[test]
+fn preflight_guard_telemetry_fails_when_the_probe_fails() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut failing = echo_probe("guard-probe");
+    failing.provider = Provider::Process {
+        path: "false".into(),
+        arguments: vec![],
+        env: std::collections::HashMap::new(),
+        timeout_s: Some(5.0),
+    };
+    let playbook = write_playbook_with_guard(dir.path(), failing);
+    assert_eq!(
+        engine::preflight_guard_telemetry(&playbook),
+        Some(false),
+        "a failing guard probe means the run would be blind"
+    );
+}
+
+#[test]
+fn preflight_guard_telemetry_fails_when_the_probe_has_no_tolerance() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut no_tolerance = echo_probe("guard-probe");
+    no_tolerance.tolerance = None;
+    let playbook = write_playbook_with_guard(dir.path(), no_tolerance);
+    assert_eq!(
+        engine::preflight_guard_telemetry(&playbook),
+        Some(false),
+        "a guard without a tolerance cannot be judged"
+    );
+}
+
+#[test]
+fn latest_evidence_ns_picks_the_newest_matching_edge() {
+    let edge = |src: &str, rel: &str, dst: &str, ts: i64| tumult_graph::EdgeRecord {
+        src: src.into(),
+        rel: rel.into(),
+        dst: dst.into(),
+        run_id: "run".into(),
+        ts,
+        attrs: "{}".into(),
+    };
+    let inputs = crate::tools::topology::inputs::TopologyInputs {
+        edges: vec![
+            edge("exp-1", "evidences", "art", 100),
+            edge("exp-1", "evidences", "art", 300),
+            // Wrong rel, wrong dst, and an experiment outside the cell.
+            edge("exp-1", "targets", "art", 900),
+            edge("exp-1", "evidences", "other-art", 900),
+            edge("exp-2", "evidences", "art", 900),
+        ],
+        services: vec![],
+        services_with_attrs: vec![],
+        articles: vec![],
+        deviation_attrs: std::collections::HashMap::new(),
+        depends_on: vec![],
+    };
+    let cell = tumult_graph::lineage::LineageCell {
+        article_id: "art".into(),
+        service_id: "svc:a".into(),
+        status: tumult_graph::lineage::ControlServiceStatus::Evidenced,
+        evidence_strength: None,
+        cause: None,
+        experiments: vec!["exp-1".into()],
+    };
+    assert_eq!(engine::latest_evidence_ns(&inputs, &cell), Some(300));
+
+    let never_evidenced = tumult_graph::lineage::LineageCell {
+        experiments: vec![],
+        ..cell
+    };
+    assert_eq!(engine::latest_evidence_ns(&inputs, &never_evidenced), None);
+}
+
+#[test]
+fn playbook_article_resolves_the_first_regulatory_citation() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let exp = Experiment {
+        title: "regulated playbook".into(),
+        regulatory: Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 25".into(),
+                description: "Testing of ICT tools and systems".into(),
+                evidence: "scenario-based fault injection".into(),
+            }],
+        }),
+        ..Default::default()
+    };
+    let path = dir.path().join("regulated.toon");
+    std::fs::write(&path, toon_format::encode_default(&exp).unwrap()).unwrap();
+    let article = engine::playbook_article(path.to_str().unwrap())
+        .expect("a DORA requirement must resolve to an article");
+    assert!(article.starts_with("compliance:DORA/"), "{article}");
+    assert!(article.contains("Art"), "{article}");
+
+    let missing = dir.path().join("missing.toon");
+    assert_eq!(engine::playbook_article(missing.to_str().unwrap()), None);
+
+    let plain = crate::tools::test_support::write_valid_experiment(dir.path());
+    assert_eq!(
+        engine::playbook_article(&plain),
+        None,
+        "an experiment without regulatory mapping evidences no article"
+    );
+}
+
+fn candidate_with(id: &str, trigger: Trigger) -> Candidate {
+    Candidate {
+        id: id.into(),
+        service_id: "svc:db".into(),
+        tier: Some("data".into()),
+        plugin: "tumult-db".into(),
+        action: "kill-primary".into(),
+        article_id: "compliance:DORA/Art.25".into(),
+        score: 1.5,
+        reasons: vec!["seeded".into()],
+        confidence: ConfidenceTier::High,
+        playbook_experiment: None,
+        experiment_has_guard: false,
+        experiment_has_rollback: false,
+        experiment_has_steady_state: false,
+        experiment_fault_count: 0,
+        trigger,
+    }
+}
+
+#[test]
+fn persist_decision_records_every_verdict_and_trigger_shape() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let policy = LoadedPolicy::parse("[autopilot]\nenabled = true\n").unwrap();
+
+    let cases: [(Trigger, Verdict, &str, &str); 4] = [
+        (
+            Trigger::Staleness {
+                article_id: "compliance:DORA/Art.25".into(),
+                age_days: 42,
+            },
+            Verdict::Enact,
+            "staleness",
+            "enact",
+        ),
+        (
+            Trigger::BrokenControl {
+                article_id: "compliance:DORA/Art.25".into(),
+            },
+            Verdict::Veto {
+                rule: "ambient.no_concurrent_experiment".into(),
+            },
+            "broken_control",
+            "veto",
+        ),
+        (
+            Trigger::Manual,
+            Verdict::Downgrade {
+                reasons: vec!["cooldown active".into()],
+            },
+            "manual",
+            "downgrade",
+        ),
+        (
+            Trigger::ChangeEvent {
+                source: "deploy".into(),
+                detail: None,
+            },
+            Verdict::Propose {
+                reasons: vec!["no playbook".into()],
+            },
+            "change_event",
+            "propose",
+        ),
+    ];
+
+    for (i, (trigger, verdict, want_trigger, want_verdict)) in cases.into_iter().enumerate() {
+        let id = format!("d-{i}");
+        let assembled = engine::Assembled {
+            candidate: candidate_with(&id, trigger),
+            decision: GateDecision {
+                verdict,
+                rules_evaluated: vec![("rule.a".into(), true)],
+            },
+            autonomy_score: Some(0.75),
+        };
+        #[allow(clippy::cast_possible_wrap)]
+        engine::persist_decision(&store, &policy, &assembled, 1_000 + i as i64).unwrap();
+
+        let status = tumult_query::autopilot_decision(&store, &id)
+            .unwrap()
+            .expect("the decision must be persisted before any action");
+        let record = status.record;
+        assert_eq!(record.trigger, want_trigger);
+        assert_eq!(record.verdict, want_verdict);
+        assert_eq!(record.autonomy_score, Some(0.75));
+        assert_eq!(record.policy_hash, policy.policy_hash());
+        match want_verdict {
+            "veto" => assert_eq!(
+                record.gate_detail["rule"], "ambient.no_concurrent_experiment",
+                "a veto records the violated rule"
+            ),
+            "downgrade" => assert_eq!(
+                record.gate_detail["reasons"],
+                serde_json::json!(["cooldown active"]),
+                "a downgrade records its reasons"
+            ),
+            "propose" => assert_eq!(
+                record.gate_detail["reasons"],
+                serde_json::json!(["no playbook"])
+            ),
+            _ => assert_eq!(record.gate_detail, serde_json::json!({})),
+        }
+
+        // Every decision mirrors a `rec:<id>` recommendation node into the graph.
+        let nodes = tumult_query::graph_query(&store, "recommendation", None).unwrap();
+        assert!(
+            nodes.iter().any(|n| n.id == format!("rec:{id}")),
+            "decision {id} must mirror a graph node: {:?}",
+            nodes.iter().map(|n| n.id.as_str()).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn change_event_yields_a_revalidation_candidate_for_the_changed_service() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+
+    // A playbook bound to service `db` whose experiment carries a DORA
+    // regulatory mapping — the article the change event revalidates.
+    let exp = Experiment {
+        title: "regulated playbook".into(),
+        regulatory: Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 25".into(),
+                description: "Testing of ICT tools and systems".into(),
+                evidence: "scenario-based fault injection".into(),
+            }],
+        }),
+        ..Default::default()
+    };
+    let playbook = dir.path().join("regulated.toon");
+    std::fs::write(&playbook, toon_format::encode_default(&exp).unwrap()).unwrap();
+
+    let policy_text = format!(
+        "[autopilot]\nenabled = true\n\n\
+         [[autopilot.playbook]]\nplugin = \"tumult-db\"\naction = \"kill-primary\"\n\
+         service = \"db\"\nexperiment = \"{}\"\n",
+        playbook.display()
+    );
+    let policy = LoadedPolicy::parse(&policy_text).unwrap();
+
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let now = now_ns();
+    store
+        .record_change_event("db", now - 1_000, "deploy", Some("v2 rollout"))
+        .unwrap();
+
+    let out = engine::assemble_candidates(&store, &policy, now, true, 3, 0).unwrap();
+    let matching: Vec<_> = out
+        .iter()
+        .filter(|a| a.candidate.service_id == "svc:db")
+        .collect();
+    assert_eq!(
+        matching.len(),
+        1,
+        "one change-event candidate per changed service: {:?}",
+        out.iter()
+            .map(|a| a.candidate.service_id.as_str())
+            .collect::<Vec<_>>()
+    );
+    let candidate = &matching[0].candidate;
+    assert!(
+        matches!(candidate.trigger, Trigger::ChangeEvent { .. }),
+        "expected a change-event trigger: {:?}",
+        candidate.trigger
+    );
+    assert_eq!(candidate.confidence, ConfidenceTier::High);
+    assert!(
+        candidate.article_id.starts_with("compliance:DORA/"),
+        "the candidate revalidates the playbook's article: {}",
+        candidate.article_id
+    );
+    assert!(
+        candidate.reasons.iter().any(|r| r.contains("deploy")),
+        "the reason names the change source: {:?}",
+        candidate.reasons
+    );
+}
+
+#[test]
+fn notify_change_records_the_event_and_rejects_a_missing_store() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+
+    let report = autopilot_notify_change(db.to_str().unwrap(), "db", "deploy", Some("v2")).unwrap();
+    assert_eq!(report.structured["service"], "db");
+    assert_eq!(report.structured["source"], "deploy");
+    assert!(
+        report.text.contains("change event recorded"),
+        "{}",
+        report.text
+    );
+
+    let err = autopilot_notify_change(
+        dir.path().join("missing.duckdb").to_str().unwrap(),
+        "db",
+        "deploy",
+        None,
+    )
+    .expect_err("a missing store must be reported");
+    assert!(matches!(err, ToolError::NotFound(_)), "got: {err}");
+}
+
+#[test]
+fn respond_rejects_a_decision_that_is_not_proposable() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    {
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-enact", "enact"))
+            .unwrap();
+    }
+
+    let err = autopilot_respond(db.to_str().unwrap(), "d-enact", false, None, None, 0)
+        .expect_err("an enacted decision takes no human response");
+    let msg = err.to_string();
+    assert!(msg.contains("enact"), "must name the verdict: {msg}");
+    assert!(
+        msg.contains("only propose/downgrade take a human response"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn once_with_a_missing_policy_file_is_not_found() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let missing = dir.path().join("no-such-policy.toml");
+
+    let err = autopilot_once(
+        db.to_str().unwrap(),
+        missing.to_str().unwrap(),
+        false,
+        None,
+        0,
+    )
+    .expect_err("a missing policy file must fail before any store work");
+    assert!(matches!(err, ToolError::NotFound(_)), "got: {err}");
+    assert!(err.to_string().contains("no-such-policy.toml"), "{err}");
+}
+
+#[test]
+fn respond_approve_with_a_missing_policy_file_fails_before_any_event() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    {
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        store
+            .insert_autopilot_decision(&decision("d-prop", "propose"))
+            .unwrap();
+    }
+    let missing = dir.path().join("no-such-policy.toml");
+
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        None,
+        Some(missing.to_str().unwrap()),
+        0,
+    )
+    .expect_err("an unloadable policy must refuse the approval");
+    assert!(err.to_string().contains("no-such-policy.toml"), "{err}");
+
+    // The usage error must not burn the decision's one human response.
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
+    assert!(
+        !matches!(
+            status.last_event.as_deref(),
+            Some("human_approved" | "human_denied")
+        ),
+        "no human event may be appended on a usage error: {:?}",
+        status.last_event
+    );
+}
+
+#[test]
+fn status_on_a_missing_store_is_not_found() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let missing = dir.path().join("missing.duckdb");
+    let err = autopilot_status(missing.to_str().unwrap(), None, None)
+        .expect_err("a missing store must be reported");
+    assert!(matches!(err, ToolError::NotFound(_)), "got: {err}");
+}

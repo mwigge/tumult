@@ -332,4 +332,97 @@ mod tests {
         assert!(outcome.success, "{:?}", outcome.error);
         assert_eq!(outcome.output.as_deref(), Some("db.internal/declared"));
     }
+
+    /// A process-provider activity with the given path/args/env.
+    fn process_activity(path: &str, arguments: &[&str]) -> tumult_core::types::Activity {
+        tumult_core::types::Activity {
+            name: "test".into(),
+            activity_type: tumult_core::types::ActivityType::Action,
+            provider: tumult_core::types::Provider::Process {
+                path: path.into(),
+                arguments: arguments.iter().map(|a| (*a).to_string()).collect(),
+                env: std::collections::HashMap::new(),
+                timeout_s: Some(10.0),
+            },
+            tolerance: None,
+            pause_before_s: None,
+            pause_after_s: None,
+            background: false,
+            label_selector: None,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn non_process_providers_are_rejected() {
+        let executor = ProcessExecutor::default();
+        for provider in [
+            tumult_core::types::Provider::Native {
+                plugin: "tumult-net".into(),
+                function: "inject_latency".into(),
+                arguments: std::collections::HashMap::new(),
+            },
+            tumult_core::types::Provider::Script {
+                plugin: "tumult-network".into(),
+                function: "reset-tc".into(),
+                arguments: std::collections::HashMap::new(),
+                timeout_s: None,
+            },
+        ] {
+            let activity = tumult_core::types::Activity {
+                provider,
+                ..process_activity("echo", &[])
+            };
+            let outcome = executor.execute(&activity);
+            assert!(!outcome.success);
+            assert_eq!(
+                outcome.error.as_deref(),
+                Some("only process provider supported in MCP context")
+            );
+            assert_eq!(outcome.duration_ms, 0);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn missing_binary_reports_the_spawn_error() {
+        let executor = ProcessExecutor::new();
+        let outcome = executor.execute(&process_activity("tumult-mcp-no-such-binary", &[]));
+        assert!(!outcome.success);
+        assert!(outcome.output.is_none());
+        let error = outcome.error.expect("a failed spawn must be reported");
+        assert!(!error.is_empty());
+        assert_eq!(outcome.duration_ms, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn nonzero_exit_is_unsuccessful_and_stderr_is_captured() {
+        let executor = ProcessExecutor::new();
+        let outcome = executor.execute(&process_activity(
+            "sh",
+            &["-c", "echo partial; echo boom >&2; exit 3"],
+        ));
+        assert!(!outcome.success, "exit 3 must not be a success");
+        assert_eq!(outcome.output.as_deref(), Some("partial"));
+        assert_eq!(outcome.error.as_deref(), Some("boom"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn output_beyond_the_capture_cap_is_truncated_and_noted() {
+        let executor = ProcessExecutor::new();
+        // ~9 MB of 'a' — beyond the 8 MiB in-memory cap.
+        let outcome = executor.execute(&process_activity(
+            "sh",
+            &["-c", "head -c 9000000 /dev/zero | tr '\\0' 'a'"],
+        ));
+        assert!(outcome.success, "{:?}", outcome.error);
+        let output = outcome.output.expect("stdout must be captured");
+        assert!(
+            output.contains("… [truncated: capture capped at 8 MiB]"),
+            "the truncation note must be appended"
+        );
+        assert!(
+            output.len() < 9_000_000,
+            "the capture is bounded by the cap: {} bytes",
+            output.len()
+        );
+    }
 }

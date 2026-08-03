@@ -509,4 +509,224 @@ mod tests {
             out.display().to_string().as_str()
         );
     }
+
+    #[test]
+    fn gameday_create_with_k6_load_writes_load_block_and_framework() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("loaded.gameday.toon");
+        let experiments = vec!["a.toon".to_string(), "b.toon".to_string()];
+        let report = gameday_create(&GameDayCreateRequest {
+            output_path: &out,
+            name: "loaded-gd",
+            experiments: &experiments,
+            load_tool: Some("k6"),
+            load_script: Some("load.js"),
+            load_vus: Some(10),
+            framework: Some("dora"),
+        })
+        .unwrap();
+
+        let content = std::fs::read_to_string(&out).unwrap();
+        assert!(content.contains("tool: k6"), "{content}");
+        assert!(content.contains("script: load.js"), "{content}");
+        assert!(content.contains("vus: 10"), "{content}");
+        assert!(content.contains("frameworks[1]: DORA"), "{content}");
+        assert!(content.contains("- path: a.toon"), "{content}");
+        assert_eq!(report.structured["experiments"], 2);
+        assert!(report.text.contains("Created:"), "{}", report.text);
+        assert!(
+            report.text.contains("tumult_gameday_run"),
+            "{}",
+            report.text
+        );
+    }
+
+    #[test]
+    fn gameday_create_with_jmeter_load_tool() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("jmeter.gameday.toon");
+        let experiments = vec!["a.toon".to_string()];
+        gameday_create(&GameDayCreateRequest {
+            output_path: &out,
+            name: "jmeter-gd",
+            experiments: &experiments,
+            load_tool: Some("jmeter"),
+            load_script: Some("plan.jmx"),
+            load_vus: None,
+            framework: None,
+        })
+        .unwrap();
+        let content = std::fs::read_to_string(&out).unwrap();
+        assert!(content.contains("tool: jmeter"), "{content}");
+        assert!(content.contains("script: plan.jmx"), "{content}");
+        assert!(!content.contains("vus:"), "no vus expected: {content}");
+        assert!(!content.contains("regulatory:"), "no framework: {content}");
+    }
+
+    #[test]
+    fn gameday_create_requires_script_when_load_tool_set() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        let experiments = vec!["a.toon".to_string()];
+        let err = gameday_create(&create_request(&out, &experiments, Some("k6"), None))
+            .expect_err("load tool without a script must be rejected");
+        assert!(err.to_string().contains("load_script"), "got: {err}");
+        assert!(!out.exists(), "no file must be written");
+    }
+
+    #[test]
+    fn gameday_create_refuses_to_overwrite_existing_file() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        std::fs::write(&out, "original").unwrap();
+        let experiments = vec!["a.toon".to_string()];
+        let err = gameday_create(&create_request(&out, &experiments, None, None))
+            .expect_err("existing file must not be overwritten");
+        assert!(matches!(err, ToolError::AlreadyExists(_)), "got: {err}");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "original");
+    }
+
+    /// Write a runnable campaign: one echo-backed experiment plus the
+    /// `.gameday.toon` referencing it (relative path, resolved against the
+    /// gameday's directory). Returns the gameday path.
+    fn write_runnable_gameday(dir: &Path) -> std::path::PathBuf {
+        crate::tools::test_support::write_valid_experiment(dir);
+        let out = dir.join("unit-gd.gameday.toon");
+        let experiments = vec!["test.toon".to_string()];
+        gameday_create(&create_request(&out, &experiments, None, None)).unwrap();
+        out
+    }
+
+    #[test]
+    fn gameday_run_executes_campaign_and_writes_journal() {
+        let dir = TempDir::new().unwrap();
+        let out = write_runnable_gameday(dir.path());
+
+        let report = gameday_run(out.to_str().unwrap()).unwrap();
+        assert!(report.contains("GameDay: unit-gd"), "{report}");
+        assert!(report.contains("Status:"), "{report}");
+        assert!(report.contains("Resilience Score:"), "{report}");
+        assert!(
+            report.contains("Experiments: 1/1 passed"),
+            "echo experiment must pass: {report}"
+        );
+        let journal_path = out.with_extension("journal.toon");
+        assert!(journal_path.exists(), "journal must be written");
+        assert!(report.contains(&journal_path.display().to_string()));
+    }
+
+    #[test]
+    fn gameday_analyze_reports_experiment_outcomes() {
+        let dir = TempDir::new().unwrap();
+        let out = write_runnable_gameday(dir.path());
+        gameday_run(out.to_str().unwrap()).unwrap();
+
+        let analysis = gameday_analyze(out.to_str().unwrap()).unwrap();
+        assert!(analysis.contains("GameDay: unit-gd"), "{analysis}");
+        assert!(analysis.contains("Pass rate:"), "{analysis}");
+        assert!(analysis.contains("Recovery:"), "{analysis}");
+        assert!(analysis.contains("Load impact:"), "{analysis}");
+        assert!(analysis.contains("Compliance:"), "{analysis}");
+        assert!(
+            analysis.contains("#1 [PASS] MCP test experiment"),
+            "{analysis}"
+        );
+    }
+
+    #[test]
+    fn gameday_run_missing_file_is_an_io_error() {
+        let err = gameday_run("/nonexistent/unit-gd.gameday.toon")
+            .expect_err("a missing gameday file must fail");
+        assert!(matches!(err, ToolError::Io(_)), "got: {err}");
+    }
+
+    #[test]
+    fn gameday_run_rejects_unparseable_gameday() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("bad.gameday.toon");
+        std::fs::write(&out, "title: [unterminated").unwrap();
+        let err = gameday_run(out.to_str().unwrap()).expect_err("garbage must not parse");
+        assert!(
+            err.to_string().contains("failed to parse gameday"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn gameday_run_rejects_missing_experiment_file() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        let experiments = vec!["no-such-experiment.toon".to_string()];
+        gameday_create(&create_request(&out, &experiments, None, None)).unwrap();
+        let err =
+            gameday_run(out.to_str().unwrap()).expect_err("a missing experiment file must fail");
+        assert!(matches!(err, ToolError::Io(_)), "got: {err}");
+    }
+
+    #[test]
+    fn gameday_run_rejects_unparseable_experiment() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("broken.toon"), "title: [unterminated").unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        let experiments = vec!["broken.toon".to_string()];
+        gameday_create(&create_request(&out, &experiments, None, None)).unwrap();
+        let err =
+            gameday_run(out.to_str().unwrap()).expect_err("an unparseable experiment must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to parse"), "got: {msg}");
+        assert!(msg.contains("broken.toon"), "must name the file: {msg}");
+    }
+
+    #[test]
+    fn gameday_analyze_missing_journal_is_an_io_error() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        std::fs::write(&out, "title: gd\n").unwrap();
+        let err = gameday_analyze(out.to_str().unwrap())
+            .expect_err("analyze without a journal must fail");
+        assert!(matches!(err, ToolError::Io(_)), "got: {err}");
+    }
+
+    #[test]
+    fn gameday_analyze_rejects_unparseable_journal() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        std::fs::write(&out, "title: gd\n").unwrap();
+        std::fs::write(out.with_extension("journal.toon"), "title: [unterminated").unwrap();
+        let err =
+            gameday_analyze(out.to_str().unwrap()).expect_err("an unparseable journal must fail");
+        assert!(err.to_string().contains("failed to parse"), "got: {err}");
+    }
+
+    #[test]
+    fn gameday_list_rejects_non_directory_root() {
+        let err = gameday_list("/nonexistent/search-root", 10, 0)
+            .expect_err("a non-directory search root must be rejected");
+        assert!(err.to_string().contains("not a directory"), "got: {err}");
+    }
+
+    #[test]
+    fn gameday_list_reports_empty_result() {
+        let dir = TempDir::new().unwrap();
+        let report = gameday_list(dir.path().to_str().unwrap(), 10, 0).unwrap();
+        assert_eq!(report.structured["total"], 0);
+        assert_eq!(report.text, "No .gameday.toon files found.");
+    }
+
+    #[test]
+    fn gameday_list_finds_nested_files_and_falls_back_to_untitled() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        // No title line: the listing falls back to "(untitled)".
+        std::fs::write(nested.join("x.gameday.toon"), "description: no title\n").unwrap();
+        let report = gameday_list(dir.path().to_str().unwrap(), 10, 0).unwrap();
+        assert_eq!(report.structured["total"], 1);
+        let items = report.structured["items"].as_array().unwrap();
+        assert_eq!(items[0]["title"], "(untitled)");
+        assert!(items[0]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("nested/x.gameday.toon"));
+    }
 }

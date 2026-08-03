@@ -22,3 +22,23 @@ pub(crate) fn registry() -> &'static NativeExecutorRegistry {
         registry
     })
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn registry_exposes_all_native_plugins_for_discovery() {
+        let registry = super::registry();
+        let names = registry.plugin_names();
+        for expected in [
+            "tumult-cloud",
+            "tumult-kubernetes",
+            "tumult-net",
+            "tumult-ssh",
+        ] {
+            assert!(names.contains(&expected), "missing {expected}: {names:?}");
+            assert!(registry.get(expected).is_some());
+        }
+        // The composition root is a singleton: repeated calls return the same registry.
+        assert!(std::ptr::eq(registry, super::registry()));
+    }
+}
