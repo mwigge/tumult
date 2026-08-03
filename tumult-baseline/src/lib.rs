@@ -167,6 +167,13 @@ mod tests {
         assert!((bounds.upper - 50.0).abs() < f64::EPSILON);
     }
 
+    #[test]
+    fn mean_stddev_bounds_of_empty_data_are_zero_width_at_origin() {
+        let bounds = derive_mean_stddev_bounds(&[], 2.0);
+        assert!(bounds.lower.abs() < f64::EPSILON);
+        assert!(bounds.upper.abs() < f64::EPSILON);
+    }
+
     // ── derive_iqr_bounds ──────────────────────────────────────
 
     #[test]

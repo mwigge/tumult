@@ -173,3 +173,72 @@ fn tier_allows_enact_only_for_listed_tiers() {
     assert!(!p.tier_allows_enact(Some("data")));
     assert!(!p.tier_allows_enact(None));
 }
+
+#[test]
+fn incomplete_playbook_entry_is_rejected() {
+    let text =
+        "[[autopilot.playbook]]\nplugin = \"tumult-net\"\naction = \"inject_latency\"\nexperiment = \"\"\n";
+    let err = LoadedPolicy::parse(text).unwrap_err();
+    assert!(
+        matches!(err, PolicyError::IncompletePlaybook(0)),
+        "got {err}"
+    );
+
+    // An empty plugin is just as incomplete, at its own index.
+    let text =
+        "[[autopilot.playbook]]\nplugin = \"tumult-net\"\naction = \"a\"\nexperiment = \"e\"\n\
+                [[autopilot.playbook]]\nplugin = \"\"\naction = \"a\"\nexperiment = \"e\"\n";
+    let err = LoadedPolicy::parse(text).unwrap_err();
+    assert!(
+        matches!(err, PolicyError::IncompletePlaybook(1)),
+        "got {err}"
+    );
+}
+
+#[test]
+fn boundary_thresholds_are_accepted() {
+    // 0.0 and 1.0 are both inside the documented 0.0..=1.0 range.
+    for (threshold, expected_bits) in [("0.0", 0.0_f64.to_bits()), ("1.0", 1.0_f64.to_bits())] {
+        let text = format!("[autopilot]\nautonomy_threshold = {threshold}\n");
+        let loaded = LoadedPolicy::parse(&text).unwrap_or_else(|e| {
+            panic!("threshold {threshold} must be accepted: {e}");
+        });
+        assert_eq!(loaded.policy.autonomy_threshold.to_bits(), expected_bits);
+    }
+}
+
+#[test]
+fn every_policy_error_variant_has_a_human_readable_message() {
+    let parse = LoadedPolicy::parse("[autopilot]\nnope = true\n").unwrap_err();
+    assert!(parse.to_string().contains("TOML parse error"), "{parse}");
+
+    let threshold = LoadedPolicy::parse("[autopilot]\nautonomy_threshold = 1.5\n").unwrap_err();
+    assert_eq!(
+        threshold.to_string(),
+        "autonomy_threshold 1.5 must be within 0.0..=1.0"
+    );
+
+    let samples = LoadedPolicy::parse("[autopilot]\nautonomy_min_samples = 0\n").unwrap_err();
+    assert_eq!(
+        samples.to_string(),
+        "autonomy_min_samples must be at least 1"
+    );
+
+    let pretrust = LoadedPolicy::parse(
+        "[[autopilot.pretrusted]]\nplugin = \"\"\naction = \"a\"\ntier = \"t\"\n",
+    )
+    .unwrap_err();
+    assert_eq!(
+        pretrust.to_string(),
+        "pretrusted entry 0 has an empty plugin/action/tier"
+    );
+
+    let playbook = LoadedPolicy::parse(
+        "[[autopilot.playbook]]\nplugin = \"p\"\naction = \"a\"\nexperiment = \"\"\n",
+    )
+    .unwrap_err();
+    assert_eq!(
+        playbook.to_string(),
+        "playbook entry 0 has an empty plugin/action/experiment"
+    );
+}

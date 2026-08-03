@@ -182,4 +182,61 @@ mod tests {
         let output = NetExecutor.execute("stop_proxy", &args).await.unwrap();
         assert!(output.contains("no chaos proxy running"));
     }
+
+    /// listen == upstream with every optional argument present: each arm's
+    /// argument parsing runs, then the action's proxy-loop guard rejects the
+    /// call deterministically without any proxyd daemon.
+    fn proxy_loop_args() -> NativeArgs {
+        NativeArgs::from([
+            ("listen".into(), serde_json::json!("127.0.0.1:64123")),
+            ("upstream".into(), serde_json::json!("127.0.0.1:64123")),
+            ("delay_ms".into(), serde_json::json!(10)),
+            ("jitter_ms".into(), serde_json::json!(5)),
+            ("rate_bps".into(), serde_json::json!(1024)),
+            ("slice_bytes".into(), serde_json::json!(64)),
+            ("probability".into(), serde_json::json!(0.5)),
+            ("corrupt_prob".into(), serde_json::json!(0.1)),
+            ("terminate_prob".into(), serde_json::json!(0.2)),
+            ("seed".into(), serde_json::json!(42)),
+        ])
+    }
+
+    #[tokio::test]
+    async fn every_fault_arm_rejects_a_proxy_loop() {
+        for function in [
+            "start_proxy",
+            "inject_latency",
+            "throttle_bandwidth",
+            "fragment_stream",
+            "corrupt_bytes",
+            "terminate_connections",
+        ] {
+            let err = NetExecutor
+                .execute(function, &proxy_loop_args())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, NativeError::Execution { .. }),
+                "{function}: expected Execution, got: {err:?}"
+            );
+            assert!(
+                err.to_string().contains("proxy loop"),
+                "{function}: err: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_upstream_address_is_typed_error() {
+        let args = NativeArgs::from([
+            ("listen".into(), serde_json::json!("127.0.0.1:64124")),
+            ("upstream".into(), serde_json::json!("not-an-addr")),
+        ]);
+        let err = NetExecutor.execute("start_proxy", &args).await.unwrap_err();
+        assert!(
+            matches!(err, NativeError::InvalidArgument { .. }),
+            "expected InvalidArgument, got: {err:?}"
+        );
+        assert!(err.to_string().contains("upstream"));
+    }
 }

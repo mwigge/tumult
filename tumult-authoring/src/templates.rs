@@ -399,4 +399,39 @@ mod tests {
         assert_eq!(parsed["delay"], "200ms");
         assert!(parse_overrides(&["novalue".into()]).is_err());
     }
+
+    #[test]
+    fn parse_overrides_trims_keys_and_reports_the_bad_entry() {
+        let parsed = parse_overrides(&["  target  =demo".into()]).unwrap();
+        assert_eq!(parsed["target"], "demo");
+
+        let err = parse_overrides(&["ok=1".into(), "broken".into()]).unwrap_err();
+        assert!(
+            matches!(err, AuthoringError::BadOverride(ref entry) if entry == "broken"),
+            "the malformed entry must be named: {err}"
+        );
+    }
+
+    #[test]
+    fn find_template_misses_and_param_lookup_are_exact() {
+        assert!(find_template("no-such-template").is_none());
+
+        let template = find_template("net-latency").unwrap();
+        let target = template.param("target").unwrap();
+        assert_eq!(target.default, "127.0.0.1");
+        assert!(template.param("nope").is_none());
+    }
+
+    #[test]
+    fn unknown_override_error_names_the_valid_parameters() {
+        let template = find_template("container-pause").unwrap();
+        let bad = HashMap::from([("contianer".to_string(), "x".to_string())]);
+        let err = template.instantiate(&bad).unwrap_err();
+        let AuthoringError::BadOverride(message) = err else {
+            panic!("expected BadOverride, got {err:?}");
+        };
+        assert!(message.contains("'contianer'"), "{message}");
+        assert!(message.contains("container-pause"), "{message}");
+        assert!(message.contains("container"), "{message}");
+    }
 }

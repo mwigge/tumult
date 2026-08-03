@@ -469,4 +469,89 @@ mod tests {
             "echo 'web\"; touch /tmp/pwned; \"' steady-state ok"
         );
     }
+
+    #[test]
+    fn float_bool_and_string_args_are_coerced() {
+        let mut req = sample_request();
+        req.args.insert("ratio".to_string(), "1.5".to_string());
+        req.args.insert("dry_run".to_string(), "true".to_string());
+        req.args.insert("mode".to_string(), "careful".to_string());
+        let exp = build_experiment(&req).unwrap();
+        let Provider::Script { arguments, .. } = &exp.method[0].provider else {
+            panic!("expected script provider");
+        };
+        assert_eq!(arguments["ratio"], serde_json::json!(1.5));
+        assert_eq!(arguments["dry_run"], serde_json::json!(true));
+        assert_eq!(arguments["mode"], serde_json::json!("careful"));
+    }
+
+    #[test]
+    fn http_probe_with_empty_expect_matches_any_response() {
+        let mut req = sample_request();
+        req.probe = ProbeSpec::Http {
+            url: "http://localhost:8080/health".to_string(),
+            expect: String::new(),
+        };
+        let exp = build_experiment(&req).unwrap();
+        let probe = &exp.steady_state_hypothesis.unwrap().probes[0];
+        let Some(Tolerance::Regex { pattern }) = &probe.tolerance else {
+            panic!("expected regex tolerance");
+        };
+        assert_eq!(pattern, ".");
+    }
+
+    #[test]
+    fn malformed_probe_regex_fails_validation() {
+        let mut req = sample_request();
+        req.probe = ProbeSpec::Exec {
+            command: "echo hi".to_string(),
+            expect: "([invalid".to_string(),
+        };
+        let err = build_experiment(&req).unwrap_err();
+        assert!(
+            matches!(err, AuthoringError::Validation(_)),
+            "expected Validation, got {err:?}"
+        );
+        assert!(
+            err.to_string().contains("failed validation"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn rollback_action_knows_every_curated_undo_pair() {
+        for (plugin, action) in [
+            ("tumult-network", "add-latency"),
+            ("tumult-network", "add-packet-loss"),
+            ("tumult-network", "add-corruption"),
+        ] {
+            assert_eq!(rollback_action(plugin, action), Some("reset-tc"));
+        }
+        for action in ["block-dns", "redirect-dns"] {
+            assert_eq!(
+                rollback_action("tumult-network", action),
+                Some("block-dns-rollback")
+            );
+        }
+        assert_eq!(
+            rollback_action("tumult-containers", "pause-container"),
+            Some("unpause-container")
+        );
+        assert_eq!(
+            rollback_action("tumult-containers", "stop-container"),
+            Some("start-container")
+        );
+        for action in ["skew-clock", "advance-clock-past-cert-expiry"] {
+            assert_eq!(
+                rollback_action("tumult-timewarp", action),
+                Some("restore-clock")
+            );
+        }
+        assert_eq!(
+            rollback_action("tumult-timewarp", "entropy-drain"),
+            Some("stop-entropy-drain")
+        );
+        assert_eq!(rollback_action("tumult-network", "unknown"), None);
+        assert_eq!(rollback_action("unknown-plugin", "add-latency"), None);
+    }
 }

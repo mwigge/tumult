@@ -317,3 +317,65 @@ fn evaluation_is_deterministic() {
     let second = evaluate(&policy(), &c, &a, None, &report);
     assert_eq!(first, second);
 }
+
+#[test]
+fn open_deviation_on_target_is_a_veto() {
+    let mut a = ambient();
+    a.open_deviation_for_target = true;
+    let decision = decide(&candidate(), &a);
+    assert_eq!(
+        decision.verdict,
+        Verdict::Veto {
+            rule: "ambient.no_open_deviation".to_string()
+        }
+    );
+}
+
+#[test]
+fn concurrent_experiment_is_a_veto() {
+    let mut a = ambient();
+    a.concurrent_experiments = 2;
+    let decision = decide(&candidate(), &a);
+    assert_eq!(
+        decision.verdict,
+        Verdict::Veto {
+            rule: "ambient.no_concurrent_experiment".to_string()
+        }
+    );
+    // The audit trail records the budget rule passing — one fault at a time
+    // is the only concurrency rule that fired.
+    let budget = decision
+        .rules_evaluated
+        .iter()
+        .find(|(id, _)| id == RULE_DAILY_BUDGET)
+        .expect("budget rule must be evaluated");
+    assert!(budget.1);
+}
+
+#[test]
+fn unlisted_tier_downgrades_naming_the_tier() {
+    let mut c = candidate();
+    c.tier = Some("data".to_string()); // not in enact_tiers
+    let decision = decide(&c, &ambient());
+    let Verdict::Downgrade { reasons } = decision.verdict else {
+        panic!("expected downgrade, got {:?}", decision.verdict);
+    };
+    assert!(
+        reasons.iter().any(|r| r.contains("tier 'data'")),
+        "reasons: {reasons:?}"
+    );
+}
+
+#[test]
+fn failed_telemetry_preflight_downgrades_differently_than_a_missing_one() {
+    let mut a = ambient();
+    a.guard_telemetry_ok = Some(false);
+    let decision = decide(&candidate(), &a);
+    let Verdict::Downgrade { reasons } = decision.verdict else {
+        panic!("expected downgrade, got {:?}", decision.verdict);
+    };
+    assert!(
+        reasons.iter().any(|r| r.contains("pre-flight failed")),
+        "reasons: {reasons:?}"
+    );
+}

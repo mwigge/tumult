@@ -179,3 +179,67 @@ fn empty_catalog_or_no_actionable_cells_yields_nothing() {
     let input = fixture(&broken, &depends_on, &no_actions, &tested, &strengths);
     assert!(recommend(&input, 10).is_empty());
 }
+
+#[test]
+fn observed_traffic_boosts_score_and_unreachable_service_is_far() {
+    let lineage = vec![
+        cell(DORA, "svc:db", ControlServiceStatus::Broken),
+        // Not connected to any broken service: blast-radius distance falls
+        // back to the unreachable constant.
+        cell(NIS2, "svc:island", ControlServiceStatus::Untested),
+    ];
+    let depends_on = fixture_edges();
+    let actions = vec![AvailableAction::new("tumult-net", "drop_packets")];
+    let tested: HashSet<String> = HashSet::new();
+    let strengths: HashMap<String, String> = [(DORA.to_string(), "direct".to_string())]
+        .into_iter()
+        .collect();
+    let criticality: HashMap<String, f64> = [
+        ("svc:db".to_string(), 100.0),
+        ("svc:gateway".to_string(), 50.0),
+    ]
+    .into_iter()
+    .collect();
+    let input = RecommendationInput {
+        lineage: &lineage,
+        depends_on: &depends_on,
+        available_actions: &actions,
+        tested_action_names: &tested,
+        article_strength: &strengths,
+        criticality: &criticality,
+    };
+
+    let recs = recommend(&input, 10);
+    assert_eq!(recs.len(), 2);
+
+    // db: 1.0 (broken) × 1.0 (direct) × 2.0 (in-degree 1/1) × 1.0 (d=0)
+    //     × 1.25 (untested) × 2.0 (busiest service) = 5.0
+    assert_eq!(recs[0].service_id, "svc:db");
+    assert!(
+        (recs[0].score - 5.0).abs() < 1e-9,
+        "score {}",
+        recs[0].score
+    );
+    assert!(recs[0]
+        .reasons
+        .iter()
+        .any(|r| r.contains("observed traffic rate 100 (100% of busiest service)")));
+
+    // island: 0.6 (untested) × 0.4 (unknown strength → indirect) × 1.0
+    //         (in-degree 0) × 1/6 (unreachable) × 1.25 = 0.05; no
+    //         criticality entry, so no traffic reason.
+    assert_eq!(recs[1].service_id, "svc:island");
+    assert!(
+        (recs[1].score - 0.05).abs() < 1e-9,
+        "score {}",
+        recs[1].score
+    );
+    assert!(recs[1]
+        .reasons
+        .iter()
+        .any(|r| r.contains("5 hop(s) from the nearest broken service")));
+    assert!(!recs[1]
+        .reasons
+        .iter()
+        .any(|r| r.contains("observed traffic")));
+}

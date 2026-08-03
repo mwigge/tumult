@@ -509,4 +509,141 @@ condition: { column: span_name, equals: "resilience.experiment" }
         assert_eq!(defs[0].name, "mttr");
         assert_eq!(defs[0].time_col, "ts_ns");
     }
+
+    #[test]
+    fn sum_avg_and_count_distinct_render_their_aggregates() {
+        let def: MetricDef = serde_yaml::from_str(
+            r#"
+name: action_duration_s
+source_table: spans
+measure: { type: sum, column: duration_s }
+"#,
+        )
+        .unwrap();
+        assert!(to_sql(&def, &[], None)
+            .unwrap()
+            .contains("SUM(duration_s) AS value"));
+
+        let def: MetricDef = serde_yaml::from_str(
+            r#"
+name: avg_duration
+source_table: spans
+measure: { type: avg, column: duration_s }
+"#,
+        )
+        .unwrap();
+        assert!(to_sql(&def, &[], None)
+            .unwrap()
+            .contains("AVG(duration_s) AS value"));
+
+        let def: MetricDef = serde_yaml::from_str(
+            r#"
+name: experiment_coverage
+source_table: spans
+measure: { type: count_distinct, column: target_system }
+"#,
+        )
+        .unwrap();
+        assert!(to_sql(&def, &[], None)
+            .unwrap()
+            .contains("COUNT(DISTINCT target_system) AS value"));
+    }
+
+    #[test]
+    fn boolean_and_numeric_literals_render_unquoted() {
+        let bool_cond = Condition {
+            column: "hypothesis_met".into(),
+            equals: Literal::Bool(true),
+        };
+        assert_eq!(
+            render_condition(&bool_cond).unwrap(),
+            "hypothesis_met = TRUE"
+        );
+
+        let num_cond = Condition {
+            column: "status_code".into(),
+            equals: Literal::Num(2.5),
+        };
+        assert_eq!(render_condition(&num_cond).unwrap(), "status_code = 2.5");
+    }
+
+    #[test]
+    fn nul_in_string_literal_is_rejected() {
+        let cond = Condition {
+            column: "outcome_status".into(),
+            equals: Literal::Str("ok\0evil".into()),
+        };
+        assert!(matches!(
+            render_condition(&cond),
+            Err(MetricsError::InvalidLiteral(_))
+        ));
+    }
+
+    #[test]
+    fn bucketed_series_rejects_non_positive_bucket() {
+        let def = pass_rate_def();
+        for bucket_ns in [0, -1] {
+            let err = to_sql_bucketed(&def, bucket_ns, &[], None).unwrap_err();
+            assert!(
+                matches!(err, MetricsError::InvalidIdentifier(_)),
+                "bucket_ns {bucket_ns}: got: {err:?}"
+            );
+            assert!(err.to_string().contains("bucket_ns must be positive"));
+        }
+    }
+
+    #[test]
+    fn load_dir_on_missing_directory_is_io_error() {
+        let missing = Path::new("/nonexistent/tumult-metrics-no-such-dir");
+        assert!(matches!(load_dir(missing), Err(MetricsError::Io(_))));
+    }
+
+    #[test]
+    fn load_dir_with_malformed_yaml_is_yaml_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("broken.yaml"), "name: [unclosed").unwrap();
+        assert!(matches!(load_dir(dir.path()), Err(MetricsError::Yaml(_))));
+    }
+
+    #[test]
+    fn validate_rejects_empty_and_uppercase_identifiers() {
+        let empty_name: MetricDef = serde_yaml::from_str(
+            r#"
+name: ""
+source_table: spans
+measure: { type: count }
+"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            validate(&empty_name),
+            Err(MetricsError::InvalidIdentifier(_))
+        ));
+
+        let uppercase_name: MetricDef = serde_yaml::from_str(
+            r#"
+name: PassRate
+source_table: spans
+measure: { type: count }
+"#,
+        )
+        .unwrap();
+        let err = validate(&uppercase_name).unwrap_err();
+        assert!(matches!(err, MetricsError::InvalidIdentifier(_)));
+        assert!(err.to_string().contains("PassRate"));
+
+        let uppercase_dim: MetricDef = serde_yaml::from_str(
+            r#"
+name: pass_rate
+source_table: spans
+measure: { type: count }
+dimensions: [TargetSystem]
+"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            validate(&uppercase_dim),
+            Err(MetricsError::InvalidIdentifier(_))
+        ));
+    }
 }

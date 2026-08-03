@@ -364,3 +364,105 @@ fn insert_optional(
         attributes.insert(key, value.clone());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tumult_client_attribute_values_are_kebab_case() {
+        assert_eq!(TumultClient::ClaudeCode.as_str(), "claude-code");
+        assert_eq!(TumultClient::Codex.as_str(), "codex");
+        assert_eq!(TumultClient::Copilot.as_str(), "copilot");
+        assert_eq!(TumultClient::OpenCode.as_str(), "opencode");
+        assert_eq!(TumultClient::Unknown.as_str(), "unknown");
+    }
+
+    #[test]
+    fn gen_ai_operation_attribute_values_are_snake_case() {
+        assert_eq!(GenAiOperation::Chat.as_str(), "chat");
+        assert_eq!(GenAiOperation::GenerateContent.as_str(), "generate_content");
+        assert_eq!(GenAiOperation::ExecuteTool.as_str(), "execute_tool");
+        assert_eq!(GenAiOperation::Embeddings.as_str(), "embeddings");
+        assert_eq!(GenAiOperation::InvokeAgent.as_str(), "invoke_agent");
+        assert_eq!(GenAiOperation::InvokeWorkflow.as_str(), "invoke_workflow");
+        assert_eq!(GenAiOperation::Evaluate.as_str(), "evaluate");
+    }
+
+    #[test]
+    fn trace_context_builder_attaches_parent() {
+        let ctx = AgenticTraceContext::new("trace-1", "span-1");
+        assert_eq!(ctx.trace_id, "trace-1");
+        assert_eq!(ctx.span_id, "span-1");
+        assert_eq!(ctx.parent_span_id, None);
+
+        let ctx = ctx.with_parent_span_id("parent-1");
+        assert_eq!(ctx.parent_span_id.as_deref(), Some("parent-1"));
+    }
+
+    #[test]
+    fn minimal_evidence_emits_only_mandatory_attributes() {
+        let evidence =
+            TelemetryEvidence::new("exp-1", "kill-pg", "termination", GenAiOperation::Chat);
+        let attrs = evidence.span_attributes();
+
+        assert_eq!(attrs.len(), 5);
+        assert_eq!(attrs[RESILIENCE_EXPERIMENT_ID], "exp-1");
+        assert_eq!(attrs[RESILIENCE_AGENT_SCENARIO], "kill-pg");
+        assert_eq!(attrs[RESILIENCE_AGENT_FAULT_TYPE], "termination");
+        assert_eq!(attrs[RESILIENCE_AGENT_CAPTURE_POLICY], "metadata_only");
+        assert_eq!(attrs[GEN_AI_OPERATION_NAME], "chat");
+        assert!(!attrs.contains_key(RESILIENCE_RUN_ID));
+        assert!(!attrs.contains_key(RESILIENCE_TRACE_ID));
+        assert!(!attrs.contains_key(RESILIENCE_AGENT_INPUT_BYTES));
+    }
+
+    #[test]
+    fn fully_populated_evidence_flattens_every_field() {
+        let evidence = TelemetryEvidence::new(
+            "exp-1",
+            "prompt-injection",
+            "prompt",
+            GenAiOperation::ExecuteTool,
+        )
+        .with_run_id("run-7")
+        .with_tool_name("bash")
+        .with_gen_ai_system("anthropic")
+        .with_request_model("claude-requested")
+        .with_response_model("claude-actual")
+        .with_evaluation_result("pass")
+        .with_trace_context(
+            AgenticTraceContext::new("trace-1", "span-1").with_parent_span_id("parent-1"),
+        )
+        .with_payload_metadata(128, 512, "deadbeef");
+        let attrs = evidence.span_attributes();
+
+        assert_eq!(attrs.len(), 17);
+        assert_eq!(attrs[RESILIENCE_RUN_ID], "run-7");
+        assert_eq!(attrs[GEN_AI_TOOL_NAME], "bash");
+        assert_eq!(attrs[GEN_AI_SYSTEM], "anthropic");
+        assert_eq!(attrs[GEN_AI_REQUEST_MODEL], "claude-requested");
+        assert_eq!(attrs[GEN_AI_RESPONSE_MODEL], "claude-actual");
+        assert_eq!(attrs[GEN_AI_EVALUATION_RESULT], "pass");
+        assert_eq!(attrs[GEN_AI_OPERATION_NAME], "execute_tool");
+        assert_eq!(attrs[RESILIENCE_TRACE_ID], "trace-1");
+        assert_eq!(attrs[RESILIENCE_SPAN_ID], "span-1");
+        assert_eq!(attrs[RESILIENCE_PARENT_SPAN_ID], "parent-1");
+        // Payload sizes are stringified; the payload body is never captured.
+        assert_eq!(attrs[RESILIENCE_AGENT_INPUT_BYTES], "128");
+        assert_eq!(attrs[RESILIENCE_AGENT_OUTPUT_BYTES], "512");
+        assert_eq!(attrs[RESILIENCE_AGENT_PAYLOAD_SHA256], "deadbeef");
+    }
+
+    #[test]
+    fn trace_context_without_parent_omits_the_parent_attribute() {
+        let evidence =
+            TelemetryEvidence::new("exp-1", "scenario", "fault", GenAiOperation::Evaluate)
+                .with_trace_context(AgenticTraceContext::new("trace-1", "span-1"));
+        let attrs = evidence.span_attributes();
+
+        assert_eq!(attrs[RESILIENCE_TRACE_ID], "trace-1");
+        assert_eq!(attrs[RESILIENCE_SPAN_ID], "span-1");
+        assert!(!attrs.contains_key(RESILIENCE_PARENT_SPAN_ID));
+    }
+}

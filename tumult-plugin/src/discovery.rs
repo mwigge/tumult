@@ -505,4 +505,79 @@ mod tests {
         let plugins = discover_all_plugins_with_config(&config).unwrap();
         assert!(plugins.iter().any(|p| p.name == "tumult-custom"));
     }
+
+    #[test]
+    fn into_manifests_drops_roots_and_warnings() {
+        let dir = TempDir::new().unwrap();
+        write_manifest(dir.path(), "tumult-kafka", &sample_manifest("tumult-kafka"));
+        let bad_plugin = dir.path().join("broken");
+        fs::create_dir(&bad_plugin).unwrap();
+        fs::write(bad_plugin.join("plugin.toon"), "{{{{").unwrap();
+
+        let config = PluginDiscoveryConfig {
+            plugin_paths: vec![dir.path().to_path_buf()],
+        };
+        let manifests = discover_report_with_config(&config).into_manifests();
+        assert_eq!(manifests.len(), 1);
+        assert_eq!(manifests[0].name, "tumult-kafka");
+    }
+
+    #[test]
+    fn compatibility_wrapper_never_fails() {
+        // The legacy `Result`-returning entry point scans the default search
+        // paths and always succeeds, whatever they contain.
+        let plugins = discover_all_plugins().unwrap();
+        // Every returned manifest is well-formed enough to have a name.
+        assert!(plugins.iter().all(|p| !p.name.is_empty()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_plugin_dirs_are_skipped() {
+        use std::os::unix::fs::symlink;
+
+        let dir = TempDir::new().unwrap();
+        let elsewhere = TempDir::new().unwrap();
+        write_manifest(
+            elsewhere.path(),
+            "tumult-linked",
+            &sample_manifest("tumult-linked"),
+        );
+        symlink(
+            elsewhere.path().join("tumult-linked"),
+            dir.path().join("tumult-linked"),
+        )
+        .unwrap();
+
+        let report = discover_plugins_in_dir(dir.path());
+        assert!(
+            report.plugins.is_empty(),
+            "symlinked plugin dirs must be skipped: {:?}",
+            report.plugins
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_directory_warns_instead_of_aborting() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o000)).unwrap();
+        let report = discover_plugins_in_dir(dir.path());
+        // Restore permissions so TempDir cleanup cannot fail.
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(report.plugins.is_empty());
+        // Root can read a 0o000 directory, so only non-root runs see the
+        // permission error that produces the warning.
+        if unsafe { libc::geteuid() } != 0 {
+            assert_eq!(report.warnings.len(), 1);
+            assert!(
+                report.warnings[0].contains("skipping plugin directory"),
+                "unexpected warning: {}",
+                report.warnings[0]
+            );
+        }
+    }
 }
