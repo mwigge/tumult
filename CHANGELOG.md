@@ -7,12 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
-<<<<<<< HEAD
 - Web UI `/users` admin page over the existing admin API (`/api/users*`):
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
   nav entry (everything shows in open local mode).
-=======
 - Authoring REST endpoints in `tumult-api`: `GET /api/authoring/catalog`
   serves the live fault catalog from plugin discovery (domains → actions →
   documented args), and `POST /api/authoring/scaffold` generates validated
