@@ -354,10 +354,11 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_lake::AnalyticsStore) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::tests::helpers::ENV_LOCK;
 
-    /// Env vars are process-global; serialize every test that touches them.
-    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
+    // Env vars are process-global; serialize every test that touches them on
+    // the shared lock so command-handler tests in sibling modules cannot
+    // observe this test's overrides.
     fn test_journal(id: &str) -> Journal {
         Journal {
             experiment_title: format!("Test {id}"),
@@ -387,12 +388,12 @@ mod tests {
     /// connection-level failure means the journal never left the process, so
     /// writing the store directly cannot double-write.
     // The env guard must cover the awaited ingest (env vars are read inside
-    // it). Only tests serialized on ENV_MUTEX can block on it, so holding a
+    // it). Only tests serialized on ENV_LOCK can block on it, so holding a
     // std guard across the await cannot deadlock the test runtime.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn unreachable_daemon_falls_back_to_direct_write() {
-        let _guard = ENV_MUTEX.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap();
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("lake.duckdb");
         std::env::set_var("TUMULT_LAKE_PATH", &db_path);

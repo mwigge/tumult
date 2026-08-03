@@ -568,4 +568,172 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("forbidden keyword"), "{err}");
     }
+
+    // ── cmd_analyze summary/aggregate rendering ───────────────
+
+    use tumult_core::types::{
+        ActivityResult, ActivityStatus, ActivityType, ExperimentStatus, HypothesisResult, Journal,
+        LoadResult, LoadTool, SpanId, TraceId,
+    };
+
+    fn activity(
+        name: &str,
+        activity_type: ActivityType,
+        status: ActivityStatus,
+        output: Option<String>,
+    ) -> ActivityResult {
+        ActivityResult {
+            name: name.into(),
+            activity_type,
+            status,
+            started_at_ns: 1,
+            duration_ms: 250,
+            output,
+            error: None,
+            trace_id: TraceId::empty(),
+            span_id: SpanId::empty(),
+        }
+    }
+
+    /// A journal exercising every timeline branch: hypothesis before/after,
+    /// a failed probe, a long output that must be truncated, a rollback
+    /// phase, and a load result block.
+    fn rich_journal(id: &str, started_at_ns: i64) -> Journal {
+        Journal {
+            experiment_title: format!("rich {id}"),
+            experiment_id: id.into(),
+            status: ExperimentStatus::Deviated,
+            started_at_ns,
+            ended_at_ns: started_at_ns + 60_000_000_000,
+            duration_ms: 60_000,
+            steady_state_before: Some(HypothesisResult {
+                title: "steady before".into(),
+                met: true,
+                probe_results: vec![activity(
+                    "health",
+                    ActivityType::Probe,
+                    ActivityStatus::Succeeded,
+                    Some("ok".into()),
+                )],
+            }),
+            steady_state_after: Some(HypothesisResult {
+                title: "steady after".into(),
+                met: false,
+                probe_results: vec![activity(
+                    "health",
+                    ActivityType::Probe,
+                    ActivityStatus::Failed,
+                    None,
+                )],
+            }),
+            method_results: vec![
+                activity(
+                    "inject",
+                    ActivityType::Action,
+                    ActivityStatus::Succeeded,
+                    // >60 chars so the preview truncation branch runs.
+                    Some("x".repeat(120)),
+                ),
+                activity("verify", ActivityType::Probe, ActivityStatus::Failed, None),
+            ],
+            rollback_results: vec![activity(
+                "undo",
+                ActivityType::Action,
+                ActivityStatus::Succeeded,
+                None,
+            )],
+            rollback_failures: 0,
+            estimate: None,
+            baseline_result: None,
+            during_result: None,
+            post_result: None,
+            load_result: Some(LoadResult {
+                tool: LoadTool::K6,
+                started_at_ns,
+                ended_at_ns: started_at_ns + 30_000_000_000,
+                duration_s: 30.0,
+                vus: 10,
+                throughput_rps: 100.0,
+                latency_p50_ms: 12.0,
+                latency_p95_ms: 45.0,
+                latency_p99_ms: 80.0,
+                error_rate: 0.01,
+                total_requests: 3000,
+                thresholds_met: true,
+            }),
+            analysis: None,
+            regulatory: None,
+            halt: None,
+            blast_radius: None,
+        }
+    }
+
+    #[test]
+    fn summary_renders_full_timeline_and_load_block() {
+        let dir = tempfile::TempDir::new().unwrap();
+        tumult_core::journal::write_journal(
+            &rich_journal("rich-1", 1_774_980_000_000_000_000),
+            &dir.path().join("run-1.toon"),
+        )
+        .unwrap();
+        tumult_core::journal::write_journal(
+            &rich_journal("rich-2", 1_774_980_060_000_000_000),
+            &dir.path().join("run-2.toon"),
+        )
+        .unwrap();
+
+        // last > 1 with multiple experiments also renders the store aggregate.
+        cmd_analyze(Some(dir.path()), None, Some(5), false).unwrap();
+    }
+
+    #[test]
+    fn summary_on_empty_store_reports_no_experiments() {
+        let dir = tempfile::TempDir::new().unwrap();
+        cmd_analyze(Some(dir.path()), None, None, false).unwrap();
+    }
+
+    #[test]
+    fn aggregate_renders_store_wide_stats() {
+        let dir = journal_dir(&rich_journal("agg-1", 1_774_980_000_000_000_000));
+        cmd_analyze(Some(dir.path()), None, None, true).unwrap();
+    }
+
+    #[test]
+    fn aggregate_on_empty_store_reports_absence() {
+        let dir = tempfile::TempDir::new().unwrap();
+        cmd_analyze(Some(dir.path()), None, None, true).unwrap();
+    }
+
+    #[test]
+    fn analyze_accepts_a_single_journal_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("single.toon");
+        tumult_core::journal::write_journal(&sample_journal(), &path).unwrap();
+
+        cmd_analyze(Some(&path), None, None, false).unwrap();
+    }
+
+    #[test]
+    fn analyze_missing_path_errors() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let err = cmd_analyze(Some(&dir.path().join("nope")), None, None, false).unwrap_err();
+        assert!(err.to_string().contains("path does not exist"), "{err}");
+    }
+
+    #[test]
+    fn analyze_skips_experiment_definitions_and_warns_on_malformed_toon() {
+        let dir = tempfile::TempDir::new().unwrap();
+        tumult_core::journal::write_journal(&sample_journal(), &dir.path().join("run.toon"))
+            .unwrap();
+        // A valid experiment definition: skipped silently (not a journal).
+        std::fs::write(
+            dir.path().join("experiment.toon"),
+            toon_format::encode_default(&tumult_core::types::Experiment::default()).unwrap(),
+        )
+        .unwrap();
+        // Neither journal nor experiment: skipped with a warning.
+        std::fs::write(dir.path().join("broken.toon"), "not valid {{{").unwrap();
+
+        cmd_analyze(Some(dir.path()), None, None, false).unwrap();
+    }
 }

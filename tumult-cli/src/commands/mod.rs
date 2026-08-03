@@ -80,7 +80,7 @@ pub(crate) use init::{generate_template, init_at};
 #[cfg(test)]
 pub(crate) use load::*;
 #[cfg(test)]
-pub(crate) use report::{generate_html_report, generate_junit_report};
+pub(crate) use report::{format_activity_row, generate_html_report, generate_junit_report};
 // Names the test modules pull in via `use super::super::*`, previously provided
 // by this module's private `use` aliases before the split.
 #[cfg(test)]

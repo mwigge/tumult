@@ -37,8 +37,14 @@ async fn report_generates_html_file() {
     assert!(content.contains("Activity Timeline"));
 }
 
+// The cwd guard must cover the awaited report call (the cwd is read inside
+// it). Only tests serialized on CWD_LOCK can block on it, so holding a std
+// guard across the await cannot deadlock the test runtime.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn report_default_output_uses_journal_stem() {
+    // The default output lands in the cwd, which is process-global.
+    let _guard = CWD_LOCK.lock().unwrap();
     let d = TempDir::new().unwrap();
     let exp_path = write_valid_experiment(d.path());
     let journal_path = d.path().join("my-experiment.toon");
