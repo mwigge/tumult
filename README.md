@@ -71,8 +71,7 @@ DuckDB lake, and the embedded SvelteKit web UI. The CLI is the engine that
 executes experiments. The daemon is where they are registered, approved,
 executed under guardrails, stored, and reported. The crate and binary
 layout is documented in
-[docs/architecture/kronika-architecture.md](docs/architecture/kronika-architecture.md)
-(see also `docs/adr/ADR-006-kronika-stack.md`).
+[docs/architecture/kronika-architecture.md](docs/architecture/kronika-architecture.md).
 
 ```mermaid
 flowchart LR
@@ -249,7 +248,6 @@ See [SECURITY.md](SECURITY.md) for the supported-version policy.
 - [Quickstart](QUICKSTART.md)
 - [Guides](docs/guides/index.md)
 - [Plugin reference](docs/plugins/index.md)
-- [Architecture decisions](docs/adr/index.md)
 - [Data lifecycle](docs/data-lifecycle.md)
 - [Security assessment](docs/security-assessment.md)
 - [Verification protocol](docs/testprotocol.md)
