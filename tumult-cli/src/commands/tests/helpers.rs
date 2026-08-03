@@ -3,6 +3,50 @@
 use super::super::*;
 use tumult_core::types::{Activity, ActivityType};
 
+// ── Process-global env access ───────────────────────────────
+
+/// Env vars are process-global; every test that reads or mutates
+/// `TUMULT_LAKE_PATH`, `TUMULT_CLICKHOUSE_URL`, `TUMULT_DAEMON_URL`, or `HOME`
+/// must hold this lock for the whole test body so concurrent tests cannot
+/// observe each other's overrides.
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Point the persistent analytics store at a temp file and return that path,
+/// so command handlers that resolve `AnalyticsStore::default_path()` never
+/// touch the real `~/.tumult/lake.duckdb`. Caller must hold [`ENV_LOCK`].
+pub(crate) fn use_temp_store(dir: &std::path::Path) -> std::path::PathBuf {
+    let db = dir.join("lake.duckdb");
+    std::env::set_var("TUMULT_LAKE_PATH", &db);
+    db
+}
+
+// ── Process-global working directory ────────────────────────
+
+/// The working directory is process-global; every test that changes it (for
+/// commands that write into the cwd, like `gameday create` or `export`) must
+/// hold this lock for the whole test body.
+pub(crate) static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// RAII guard that switches the process cwd and restores it on drop. The
+/// caller must hold [`CWD_LOCK`] for the guard's lifetime.
+pub(crate) struct CwdGuard {
+    prev: std::path::PathBuf,
+}
+
+impl CwdGuard {
+    pub(crate) fn enter(dir: &std::path::Path) -> Self {
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir).unwrap();
+        Self { prev }
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        std::env::set_current_dir(&self.prev).unwrap();
+    }
+}
+
 // ── Helper: write a valid experiment file ─────────────────
 
 pub(crate) fn write_valid_experiment(dir: &Path) -> std::path::PathBuf {
