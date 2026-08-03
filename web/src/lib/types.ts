@@ -390,6 +390,28 @@ export interface MeResponse {
   env_scopes?: string[];
 }
 
+// --- admin: user management (tumultd admin API, Admin role) -------------------
+
+/** `GET /api/users` row — never carries the password hash. */
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: Role;
+  must_change: boolean;
+  disabled: boolean;
+  created_at_ns: number;
+  env_scopes: string[];
+}
+
+/** `POST /api/users` 201 body — `one_time_password` only when no password was supplied. */
+export interface CreateUserResponse {
+  id: string;
+  username: string;
+  role: Role;
+  must_change: boolean;
+  one_time_password?: string;
+}
+
 // --- UI execution: run registry + runs (tumultd run-control API) ------------
 
 /**

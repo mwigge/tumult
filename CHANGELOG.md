@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Web UI `/users` admin page over the existing admin API (`/api/users*`):
+  create users (generated one-time password shown once), change roles, edit
+  environment scopes, reset passwords, disable/re-enable accounts; admin-only
+  nav entry (everything shows in open local mode).
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

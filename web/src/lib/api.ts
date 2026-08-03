@@ -3,9 +3,11 @@
 
 import { goto } from '$app/navigation';
 import type {
+  AdminUser,
   ApprovalQueueRow,
   ApprovalTier,
   AskResponse,
+  CreateUserResponse,
   Dimensions,
   DryRunResponse,
   ExperimentDetail,
@@ -282,7 +284,36 @@ export const api = {
       'POST',
       `/api/runs/${encodeURIComponent(id)}/break-glass`,
       { justification }
-    )
+    ),
+
+  // --- Admin: user management -------------------------------------------------
+
+  users: () => get<{ users: AdminUser[] }>('/api/users'),
+
+  createUser: (req: {
+    username: string;
+    password?: string;
+    role: string;
+    env_scopes?: string[];
+  }) => send<CreateUserResponse>('POST', '/api/users', req),
+
+  setUserRole: (id: string, role: string) =>
+    send<{ ok: boolean }>('POST', `/api/users/${encodeURIComponent(id)}/role`, { role }),
+
+  setUserDisabled: (id: string, disabled: boolean) =>
+    send<{ ok: boolean }>('POST', `/api/users/${encodeURIComponent(id)}/disable`, { disabled }),
+
+  resetUserPassword: (id: string, password: string) =>
+    send<{ ok: boolean; must_change: boolean }>(
+      'POST',
+      `/api/users/${encodeURIComponent(id)}/password`,
+      { password }
+    ),
+
+  setUserScopes: (id: string, environments: string[]) =>
+    send<{ ok: boolean }>('POST', `/api/users/${encodeURIComponent(id)}/scopes`, {
+      environments
+    })
 };
 
 // --- formatting helpers ----------------------------------------------------
