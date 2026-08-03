@@ -479,7 +479,7 @@ mod tests {
                     break;
                 }
                 Err(_) if attempt < 49 => {
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 }
                 Err(e) => panic!("health server never came up: {e}"),
             }

@@ -560,9 +560,8 @@ mod tests {
         assert!(!missing.exists());
         std::env::set_var(AUTH_CONFIG_ENV, &missing);
 
-        let err = match McpAuth::load() {
-            Ok(_) => panic!("a set-but-missing config must not load"),
-            Err(err) => err,
+        let Err(err) = McpAuth::load() else {
+            panic!("a set-but-missing config must not load");
         };
         assert!(err.contains("failed to read MCP auth config"), "got: {err}");
 

@@ -646,7 +646,11 @@ fn elapsed_hours_measures_fractional_hours_and_saturates() {
     const HOUR: i64 = 3_600_000_000_000;
     let hours = engine::elapsed_hours(5 * HOUR, 2 * HOUR);
     assert!((hours - 3.0).abs() < 1e-9, "got {hours}");
-    assert_eq!(engine::elapsed_hours(0, HOUR), 0.0);
+    let saturated = engine::elapsed_hours(0, HOUR);
+    assert!(
+        saturated.abs() < 1e-9,
+        "now before then saturates to zero: {saturated}"
+    );
 }
 
 #[test]
