@@ -512,4 +512,181 @@ xPXAffHX6Z04foGNwjzXeg==
             .unwrap()
             .is_some());
     }
+
+    // -- ui_handler (embedded SPA) --------------------------------------------
+
+    async fn body_bytes(resp: Response) -> Vec<u8> {
+        axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec()
+    }
+
+    #[tokio::test]
+    async fn ui_handler_serves_index_html_at_the_root() {
+        let resp = ui_handler(axum::http::Uri::from_static("/")).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()[axum::http::header::CONTENT_TYPE],
+            "text/html"
+        );
+        // Non-fingerprinted files must revalidate.
+        assert_eq!(
+            resp.headers()[axum::http::header::CACHE_CONTROL],
+            "no-cache"
+        );
+        let index = UiAssets::get("index.html").expect("index.html is embedded");
+        assert_eq!(body_bytes(resp).await.as_slice(), &index.data[..]);
+    }
+
+    #[tokio::test]
+    async fn ui_handler_caches_fingerprinted_assets_forever() {
+        let path = UiAssets::iter()
+            .find(|p| p.starts_with("_app/immutable/"))
+            .expect("fingerprinted assets are embedded")
+            .into_owned();
+        let uri: axum::http::Uri = format!("/{path}").parse().unwrap();
+        let resp = ui_handler(uri).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()[axum::http::header::CACHE_CONTROL],
+            "public, max-age=31536000, immutable"
+        );
+        let file = UiAssets::get(&path).unwrap();
+        assert_eq!(body_bytes(resp).await.as_slice(), &file.data[..]);
+    }
+
+    #[tokio::test]
+    async fn ui_handler_falls_back_to_the_app_shell_for_client_routes() {
+        let resp = ui_handler(axum::http::Uri::from_static("/runs/some/client/route")).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()[axum::http::header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        let shell = UiAssets::get("200.html").expect("200.html app shell is embedded");
+        assert_eq!(body_bytes(resp).await.as_slice(), &shell.data[..]);
+    }
+
+    // -- serve() end to end ----------------------------------------------------
+
+    /// One metric definition so the live `/report` endpoint has something to
+    /// render.
+    const METRIC_YAML: &str = r#"
+name: experiment_count
+description: Count of experiment runs in the window, per experiment.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: count
+dimensions: [experiment_name]
+condition: { column: span_name, equals: "resilience.experiment" }
+"#;
+
+    /// A currently-free loopback port (the listener is dropped before the
+    /// server binds it).
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    /// Minimal HTTP/1.0 GET against a loopback server; returns the raw
+    /// response (status line, headers and body).
+    async fn http_get(port: u16, path: &str) -> std::io::Result<String> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+        stream
+            .write_all(format!("GET {path} HTTP/1.0\r\nHost: localhost\r\n\r\n").as_bytes())
+            .await?;
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).await?;
+        Ok(String::from_utf8_lossy(&buf).into_owned())
+    }
+
+    /// The whole daemon in-process: bind both listeners on loopback, serve
+    /// the health and live-report endpoints, then stop cleanly on SIGTERM.
+    /// Holds the env lock for its whole lifetime — the configuration is
+    /// process-global. Holding a std mutex guard across awaits is deliberate
+    /// here: the guard only ever blocks other env-mutating tests, and this
+    /// test's own progress never depends on them.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
+        let _guard = crate::test_support::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let metrics_dir = dir.path().join("metrics");
+        std::fs::create_dir_all(&metrics_dir).unwrap();
+        std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
+        let grpc_port = free_port();
+        let http_port = free_port();
+        std::env::set_var("TUMULT_LAKE_PATH", dir.path().join("lake.duckdb"));
+        std::env::set_var("KRONIKA_METRICS_DIR", &metrics_dir);
+        std::env::set_var("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"));
+        std::env::set_var("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"));
+        std::env::set_var("KRONIKA_LAKE_INTERVAL", "off");
+        std::env::remove_var("KRONIKA_INGEST_TOKEN");
+        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
+        std::env::remove_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD");
+        std::env::remove_var("KRONIKA_BOOTSTRAP_TOKEN");
+
+        let mut daemon = tokio::spawn(serve());
+
+        // Wait for the HTTP listener, then probe the health and live report
+        // endpoints while the daemon holds the store.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let health = loop {
+            if let Ok(Ok(resp)) = tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                http_get(http_port, "/healthz"),
+            )
+            .await
+            {
+                break resp;
+            }
+            if daemon.is_finished() {
+                let outcome = (&mut daemon).await.expect("daemon task panicked");
+                panic!("daemon exited before serving: {outcome:?}");
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "daemon did not start serving within 30s"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        };
+        assert!(health.contains(" 200 OK"), "{health}");
+
+        let report = http_get(http_port, "/report?metric=experiment_count")
+            .await
+            .expect("live report request failed");
+        assert!(report.contains(" 200 OK"), "{report}");
+        assert!(
+            report.contains("Tumult — experiment_count"),
+            "live report did not render the metric"
+        );
+
+        // SIGTERM to ourselves: the daemon's shutdown handler must drive a
+        // clean stop (servers, lake task, writer drain) and return Ok.
+        let status = std::process::Command::new("kill")
+            .arg("-TERM")
+            .arg(std::process::id().to_string())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let result = tokio::time::timeout(std::time::Duration::from_secs(30), daemon)
+            .await
+            .expect("daemon did not stop within 30s of SIGTERM")
+            .expect("daemon task panicked");
+        result.expect("daemon returned an error");
+
+        std::env::remove_var("TUMULT_LAKE_PATH");
+        std::env::remove_var("KRONIKA_METRICS_DIR");
+        std::env::remove_var("KRONIKA_OTLP_GRPC_ADDR");
+        std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
+        std::env::remove_var("KRONIKA_LAKE_INTERVAL");
+    }
 }

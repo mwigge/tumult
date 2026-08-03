@@ -122,3 +122,11 @@ async fn main() -> Result<()> {
         Command::CreateAdmin { username, db } => admin::create_admin(&username, db),
     }
 }
+
+/// Shared test support: environment variables are process-global, so every
+/// test that sets or removes one (across all modules of this binary) must
+/// hold this lock to keep those tests sequential.
+#[cfg(test)]
+pub(crate) mod test_support {
+    pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}

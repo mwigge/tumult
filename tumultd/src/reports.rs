@@ -224,3 +224,291 @@ pub(crate) fn spawn_report_scheduler(
         }
     });
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::ENV_LOCK;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// One metric definition over the `spans` table, mirroring
+    /// `metrics/experiment_count.yaml`.
+    const METRIC_YAML: &str = r#"
+name: experiment_count
+description: Count of experiment runs in the window, per experiment.
+source_table: spans
+time_col: ts_ns
+measure:
+  type: count
+dimensions: [experiment_name]
+condition: { column: span_name, equals: "resilience.experiment" }
+"#;
+
+    /// An initialised (empty) store and a metrics dir with one definition,
+    /// both inside one tempdir.
+    fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("lake.duckdb");
+        Store::open(&db_path).unwrap();
+        let metrics_dir = dir.path().join("metrics");
+        std::fs::create_dir_all(&metrics_dir).unwrap();
+        std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
+        (dir, db_path, metrics_dir)
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    async fn body_string(resp: Response) -> String {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    // -- parse_interval ------------------------------------------------------
+
+    #[test]
+    fn parse_interval_accepts_every_unit() {
+        assert_eq!(parse_interval("45s"), Some(Duration::from_secs(45)));
+        assert_eq!(parse_interval("30m"), Some(Duration::from_secs(30 * 60)));
+        assert_eq!(parse_interval("1h"), Some(Duration::from_secs(3_600)));
+        assert_eq!(parse_interval("2d"), Some(Duration::from_secs(2 * 86_400)));
+        // Whitespace around the number is tolerated.
+        assert_eq!(parse_interval(" 10m"), Some(Duration::from_secs(600)));
+    }
+
+    #[test]
+    fn parse_interval_rejects_zero_garbage_and_overflow() {
+        assert_eq!(parse_interval(""), None);
+        assert_eq!(parse_interval("s"), None);
+        assert_eq!(parse_interval("0s"), None);
+        assert_eq!(parse_interval("0h"), None);
+        assert_eq!(parse_interval("10x"), None);
+        assert_eq!(parse_interval("abc"), None);
+        assert_eq!(parse_interval("-5m"), None);
+        // Seconds pass through unscaled; scaling u64::MAX must not wrap.
+        assert_eq!(
+            parse_interval(&format!("{}s", u64::MAX)),
+            Some(Duration::from_secs(u64::MAX))
+        );
+        assert_eq!(parse_interval(&format!("{}m", u64::MAX)), None);
+        assert_eq!(parse_interval(&format!("{}h", u64::MAX)), None);
+        assert_eq!(parse_interval(&format!("{}d", u64::MAX)), None);
+    }
+
+    // -- report_interval_from_env --------------------------------------------
+
+    #[test]
+    fn report_interval_from_env_off_unless_set_to_a_valid_interval() {
+        let _guard = env_lock();
+        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
+        assert_eq!(report_interval_from_env(), None);
+        for off in ["", "0", "off", "OFF", "Off"] {
+            std::env::set_var("KRONIKA_REPORT_INTERVAL", off);
+            assert_eq!(report_interval_from_env(), None, "{off:?} must disable");
+        }
+        std::env::set_var("KRONIKA_REPORT_INTERVAL", "30m");
+        assert_eq!(report_interval_from_env(), Some(Duration::from_secs(1_800)));
+        // Invalid values disable reporting rather than guessing.
+        std::env::set_var("KRONIKA_REPORT_INTERVAL", "bogus");
+        assert_eq!(report_interval_from_env(), None);
+        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
+    }
+
+    // -- render_metric_report -------------------------------------------------
+
+    #[test]
+    fn render_metric_report_unknown_metric_lists_available_names() {
+        let (_dir, db, mdir) = fixture();
+        match render_metric_report(&db, &mdir, "nope").unwrap() {
+            ReportLookup::UnknownMetric(msg) => {
+                assert!(msg.contains("\"nope\" not found"), "{msg}");
+                assert!(msg.contains("experiment_count"), "{msg}");
+            }
+            ReportLookup::Html(_) => panic!("expected UnknownMetric for an unknown name"),
+        }
+    }
+
+    #[test]
+    fn render_metric_report_renders_html_for_a_known_metric() {
+        let (_dir, db, mdir) = fixture();
+        match render_metric_report(&db, &mdir, "experiment_count").unwrap() {
+            ReportLookup::Html(html) => {
+                assert!(html.contains("Tumult — experiment_count"), "title missing");
+                assert!(html.contains("kpi"), "headline section missing");
+            }
+            ReportLookup::UnknownMetric(msg) => panic!("unexpected unknown metric: {msg}"),
+        }
+    }
+
+    #[test]
+    fn render_metric_report_fails_when_the_metrics_dir_is_unreadable() {
+        let (_dir, db, _mdir) = fixture();
+        let result = render_metric_report(
+            &db,
+            std::path::Path::new("/nonexistent/metrics"),
+            "experiment_count",
+        );
+        let Err(err) = result else {
+            panic!("an unreadable metrics dir must fail");
+        };
+        assert!(format!("{err:#}").contains("load metrics"), "{err:#}");
+    }
+
+    // -- report_handler --------------------------------------------------------
+
+    #[tokio::test]
+    async fn report_handler_rejects_a_missing_metric_parameter() {
+        let (_dir, db_path, metrics_dir) = fixture();
+        let resp = report_handler(
+            State(ReportState {
+                db_path,
+                metrics_dir,
+            }),
+            Query(HashMap::new()),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert!(body_string(resp).await.contains("missing query parameter"));
+    }
+
+    #[tokio::test]
+    async fn report_handler_unknown_metric_is_not_found() {
+        let (_dir, db_path, metrics_dir) = fixture();
+        let params = HashMap::from([("metric".to_string(), "nope".to_string())]);
+        let resp = report_handler(
+            State(ReportState {
+                db_path,
+                metrics_dir,
+            }),
+            Query(params),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert!(body_string(resp).await.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn report_handler_serves_html_for_a_known_metric() {
+        let (_dir, db_path, metrics_dir) = fixture();
+        let params = HashMap::from([("metric".to_string(), "experiment_count".to_string())]);
+        let resp = report_handler(
+            State(ReportState {
+                db_path,
+                metrics_dir,
+            }),
+            Query(params),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let content_type = resp
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(content_type.starts_with("text/html"), "{content_type}");
+        assert!(body_string(resp)
+            .await
+            .contains("Tumult — experiment_count"));
+    }
+
+    // -- report subcommand -----------------------------------------------------
+
+    #[test]
+    fn report_subcommand_writes_out_file_and_rejects_unknown_metrics() {
+        let _guard = env_lock();
+        let (dir, db_path, metrics_dir) = fixture();
+        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
+        std::env::set_var("KRONIKA_METRICS_DIR", &metrics_dir);
+
+        let out = dir.path().join("report.html");
+        report("experiment_count".to_string(), Some(out.clone())).unwrap();
+        let html = std::fs::read_to_string(&out).unwrap();
+        assert!(html.contains("Tumult — experiment_count"));
+
+        // Without --out the report goes to stdout; it must still succeed.
+        report("experiment_count".to_string(), None).unwrap();
+
+        let err = report("nope".to_string(), None).unwrap_err();
+        assert!(format!("{err:#}").contains("not found"), "{err:#}");
+
+        std::env::remove_var("TUMULT_LAKE_PATH");
+        std::env::remove_var("KRONIKA_METRICS_DIR");
+    }
+
+    // -- scheduled digests -----------------------------------------------------
+
+    /// An LLM that is never reachable: the digest must fall back to the
+    /// deterministic report rather than fail.
+    struct OfflineLlm;
+
+    #[async_trait::async_trait]
+    impl tumult_intelligence::llm::Llm for OfflineLlm {
+        async fn chat(
+            &self,
+            _messages: &[tumult_intelligence::llm::Message],
+        ) -> std::result::Result<String, tumult_intelligence::llm::AiError> {
+            Err(tumult_intelligence::llm::AiError::EmptyResponse)
+        }
+    }
+
+    #[tokio::test]
+    async fn write_digest_writes_the_report_when_the_llm_is_unreachable() {
+        let (dir, db_path, metrics_dir) = fixture();
+        let reports_dir = dir.path().join("reports");
+        let path = write_digest(
+            &db_path,
+            &metrics_dir,
+            &reports_dir,
+            Duration::from_secs(3_600),
+            Arc::new(OfflineLlm),
+        )
+        .await
+        .unwrap();
+        assert!(path.starts_with(&reports_dir));
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.starts_with("report_") && name.ends_with(".html"),
+            "{name}"
+        );
+        let html = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            html.contains("Tumult digest — last 3600s"),
+            "digest title missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn report_scheduler_writes_a_digest_after_one_interval() {
+        let (dir, db_path, metrics_dir) = fixture();
+        let reports_dir = dir.path().join("reports");
+        spawn_report_scheduler(
+            db_path,
+            metrics_dir,
+            reports_dir.clone(),
+            Duration::from_millis(50),
+            Arc::new(OfflineLlm),
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let written = std::fs::read_dir(&reports_dir).map_or(0, |rd| rd.count());
+            if written > 0 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "no digest appeared in {} within 30s",
+                reports_dir.display()
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+}
