@@ -387,3 +387,51 @@ fn global_meter_records_counter_with_real_provider() {
         opentelemetry::metrics::noop::NoopMeterProvider::new(),
     );
 }
+
+#[test]
+fn init_meter_provider_builds_provider_with_explicit_headers() {
+    let _meter_lock = METER_MUTEX.lock().unwrap();
+    let rt = tokio_minimal::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _guard = rt.enter();
+    let mut headers = tonic::metadata::MetadataMap::new();
+    headers.insert("authorization", "Bearer kro_cfg".parse().unwrap());
+    let config = TelemetryConfig {
+        enabled: true,
+        otlp_endpoint: Some("http://localhost:4317".into()),
+        otlp_headers: Some(headers),
+        ..TelemetryConfig::default()
+    };
+    let provider = telemetry::init_meter_provider(&config);
+    assert!(provider.is_some());
+    // Clean up: shut down and reset the global so later tests start noop.
+    if let Some(p) = provider {
+        let _ = p.shutdown();
+    }
+    opentelemetry::global::set_meter_provider(
+        opentelemetry::metrics::noop::NoopMeterProvider::new(),
+    );
+}
+
+#[test]
+fn telemetry_with_endpoint_and_explicit_headers_initializes() {
+    let _meter_lock = METER_MUTEX.lock().unwrap();
+    let rt = tokio_minimal::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _guard = rt.enter();
+    let mut headers = tonic::metadata::MetadataMap::new();
+    headers.insert("authorization", "Bearer kro_cfg".parse().unwrap());
+    let config = TelemetryConfig {
+        enabled: true,
+        otlp_endpoint: Some("http://localhost:4317".into()),
+        otlp_headers: Some(headers),
+        ..TelemetryConfig::default()
+    };
+    let telemetry = TumultTelemetry::new(config);
+    assert!(telemetry.is_enabled());
+    telemetry.shutdown();
+}

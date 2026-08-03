@@ -205,4 +205,115 @@ mod tests {
         assert!(matches!(err, NativeError::MissingArgument { .. }));
         assert!(err.to_string().contains("subscription"));
     }
+
+    #[tokio::test]
+    async fn azure_missing_resource_group_is_typed_error_for_all_functions() {
+        let args = NativeArgs::from([
+            ("subscription".into(), serde_json::json!("sub1")),
+            ("experiment_id".into(), serde_json::json!("exp1")),
+        ]);
+        for function in [
+            "azure_chaos_start",
+            "azure_chaos_cancel",
+            "azure_chaos_status",
+        ] {
+            let err = CloudExecutor.execute(function, &args).await.unwrap_err();
+            assert!(
+                matches!(err, NativeError::MissingArgument { .. }),
+                "{function}: expected MissingArgument, got: {err:?}"
+            );
+            assert!(
+                err.to_string().contains("resource_group"),
+                "{function}: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn azure_missing_experiment_id_is_typed_error_for_all_functions() {
+        let args = NativeArgs::from([
+            ("subscription".into(), serde_json::json!("sub1")),
+            ("resource_group".into(), serde_json::json!("rg1")),
+        ]);
+        for function in [
+            "azure_chaos_start",
+            "azure_chaos_cancel",
+            "azure_chaos_status",
+        ] {
+            let err = CloudExecutor.execute(function, &args).await.unwrap_err();
+            assert!(
+                matches!(err, NativeError::MissingArgument { .. }),
+                "{function}: expected MissingArgument, got: {err:?}"
+            );
+            assert!(
+                err.to_string().contains("experiment_id"),
+                "{function}: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn gcp_missing_project_is_typed_error_before_network() {
+        let err = CloudExecutor
+            .execute("gcp_compute_stop_instance", &NativeArgs::new())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("project"));
+    }
+
+    #[tokio::test]
+    async fn gcp_missing_zone_is_typed_error_before_network() {
+        let args = NativeArgs::from([("project".into(), serde_json::json!("proj"))]);
+        let err = CloudExecutor
+            .execute("gcp_compute_stop_instance", &args)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("zone"));
+    }
+
+    #[tokio::test]
+    async fn gcp_missing_instance_is_typed_error_before_network() {
+        let args = NativeArgs::from([
+            ("project".into(), serde_json::json!("proj")),
+            ("zone".into(), serde_json::json!("us-central1-a")),
+        ]);
+        let err = CloudExecutor
+            .execute("gcp_compute_stop_instance", &args)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("instance"));
+    }
+
+    #[tokio::test]
+    async fn fis_stop_missing_experiment_id_is_typed_error_before_network() {
+        let err = CloudExecutor
+            .execute("aws_fis_stop_experiment", &NativeArgs::new())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("experiment_id"));
+    }
+
+    #[tokio::test]
+    async fn fis_status_missing_experiment_id_is_typed_error_before_network() {
+        let err = CloudExecutor
+            .execute("aws_fis_experiment_status", &NativeArgs::new())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("experiment_id"));
+    }
+
+    #[tokio::test]
+    async fn ec2_terminate_missing_instance_id_is_typed_error_before_network() {
+        let err = CloudExecutor
+            .execute("aws_ec2_terminate_instance", &NativeArgs::new())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("instance_id"));
+    }
 }

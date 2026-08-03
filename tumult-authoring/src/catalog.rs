@@ -431,4 +431,45 @@ mod tests {
         assert_eq!(latency.kind, ActionKind::Action);
         assert!(latency.args.iter().any(|a| a.name == "delay_ms"));
     }
+
+    #[test]
+    fn every_domain_has_a_distinct_label_and_tag() {
+        let domains = [
+            Domain::Network,
+            Domain::Database,
+            Domain::State,
+            Domain::Resource,
+            Domain::Process,
+            Domain::Container,
+            Domain::Time,
+            Domain::Messaging,
+            Domain::Load,
+            Domain::Agentic,
+            Domain::Other,
+        ];
+        let labels: std::collections::HashSet<&str> = domains.iter().map(|d| d.label()).collect();
+        let tags: std::collections::HashSet<&str> = domains.iter().map(|d| d.tag()).collect();
+        assert_eq!(labels.len(), domains.len());
+        assert_eq!(tags.len(), domains.len());
+        assert_eq!(Domain::Agentic.label(), "Agentic");
+        assert_eq!(Domain::Other.tag(), "other");
+    }
+
+    #[test]
+    fn find_misses_and_empty_catalog_reports_empty() {
+        let catalog = catalog_from_manifests(&[]);
+        assert!(catalog.is_empty());
+        assert_eq!(catalog.action_count(), 0);
+        assert!(catalog.find("tumult-network", "add-latency").is_none());
+        assert_eq!(catalog.all_actions().count(), 0);
+    }
+
+    #[test]
+    fn build_catalog_from_default_search_paths_never_fails() {
+        // The default-paths entry point (cwd plugins, user-global plugins,
+        // TUMULT_PLUGIN_PATH) is fault-tolerant: whatever those paths hold,
+        // building the catalog succeeds.
+        let catalog = build_catalog().unwrap();
+        assert_eq!(catalog.is_empty(), catalog.action_count() == 0);
+    }
 }

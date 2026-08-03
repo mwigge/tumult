@@ -260,4 +260,100 @@ mod tests {
         assert_eq!(rows.gauges.len(), 1);
         assert_eq!(rows.gauges[0].ts_ns, 9);
     }
+
+    fn bare_metric(name: &str, data: Option<metric::Data>) -> Metric {
+        Metric {
+            name: name.into(),
+            description: String::new(),
+            unit: String::new(),
+            data,
+            metadata: vec![],
+        }
+    }
+
+    #[test]
+    fn metrics_without_supported_data_are_skipped() {
+        use opentelemetry_proto::tonic::metrics::v1::{ExponentialHistogram, Summary};
+
+        let request = request_with(vec![
+            bare_metric("tumult.no_data", None),
+            bare_metric(
+                "tumult.exp_histogram",
+                Some(metric::Data::ExponentialHistogram(ExponentialHistogram {
+                    data_points: vec![],
+                    aggregation_temporality: 2,
+                })),
+            ),
+            bare_metric(
+                "tumult.summary",
+                Some(metric::Data::Summary(Summary {
+                    data_points: vec![],
+                })),
+            ),
+        ]);
+
+        let rows = metrics_request_to_rows(&request);
+        assert!(rows.sums.is_empty());
+        assert!(rows.gauges.is_empty());
+        assert!(rows.histograms.is_empty());
+    }
+
+    #[test]
+    fn missing_point_values_and_timestamps_fall_back_safely() {
+        let request = request_with(vec![
+            bare_metric(
+                "tumult.unvalued_sum",
+                Some(metric::Data::Sum(Sum {
+                    data_points: vec![NumberDataPoint {
+                        attributes: vec![],
+                        // No value recorded: the row must default to zero.
+                        value: None,
+                        // Beyond i64 range: the timestamp must saturate, not wrap.
+                        time_unix_nano: u64::MAX,
+                        ..NumberDataPoint::default()
+                    }],
+                    aggregation_temporality: 2,
+                    is_monotonic: true,
+                })),
+            ),
+            bare_metric(
+                "tumult.unsummed_histogram",
+                Some(metric::Data::Histogram(Histogram {
+                    data_points: vec![HistogramDataPoint {
+                        attributes: vec![
+                            kv(
+                                keys::EXPERIMENT_NAME,
+                                Value::StringValue("pg-failover".into()),
+                            ),
+                            kv(keys::FAULT_PLUGIN, Value::StringValue("pg".into())),
+                        ],
+                        time_unix_nano: 3,
+                        count: 1,
+                        // Sum/min/max absent: zero and None, respectively.
+                        sum: None,
+                        min: None,
+                        max: None,
+                        bucket_counts: vec![u64::MAX],
+                        explicit_bounds: vec![],
+                        ..HistogramDataPoint::default()
+                    }],
+                    aggregation_temporality: 2,
+                })),
+            ),
+        ]);
+
+        let rows = metrics_request_to_rows(&request);
+        assert_eq!(rows.sums.len(), 1);
+        assert!((rows.sums[0].value - 0.0).abs() < f64::EPSILON);
+        assert_eq!(rows.sums[0].ts_ns, i64::MAX);
+
+        assert_eq!(rows.histograms.len(), 1);
+        let hist = &rows.histograms[0];
+        assert!((hist.sum - 0.0).abs() < f64::EPSILON);
+        assert_eq!(hist.min, None);
+        assert_eq!(hist.max, None);
+        assert_eq!(hist.bucket_counts, vec![i64::MAX]);
+        assert_eq!(hist.experiment_name.as_deref(), Some("pg-failover"));
+        assert_eq!(hist.plugin_name.as_deref(), Some("pg"));
+    }
 }

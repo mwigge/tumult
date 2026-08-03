@@ -204,6 +204,133 @@ mod tests {
         assert_eq!(hex_id(&[0x00]).as_deref(), Some("00"));
     }
 
+    fn any(value: Value) -> AnyValue {
+        AnyValue { value: Some(value) }
+    }
+
+    #[test]
+    fn any_value_complex_variants_render() {
+        use opentelemetry_proto::tonic::common::v1::{ArrayValue, KeyValueList};
+
+        // Byte arrays hex-encode like ids do.
+        let bytes = any(Value::BytesValue(vec![0x01, 0xff]));
+        assert_eq!(any_value_to_string(&bytes), "01ff");
+
+        // Arrays render as a JSON array of rendered elements.
+        let array = any(Value::ArrayValue(ArrayValue {
+            values: vec![any(Value::StringValue("a".into())), any(Value::IntValue(7))],
+        }));
+        assert_eq!(any_value_to_string(&array), "[\"a\",\"7\"]");
+
+        // Kvlists render as a JSON object; entries without a value are dropped.
+        let kvlist = any(Value::KvlistValue(KeyValueList {
+            values: vec![
+                kv("k", Value::BoolValue(false)),
+                KeyValue {
+                    key: "missing".into(),
+                    value: None,
+                    key_strindex: 0,
+                },
+            ],
+        }));
+        assert_eq!(any_value_to_string(&kvlist), "{\"k\":\"false\"}");
+
+        // String-table interned values cannot be resolved here and render empty.
+        let interned = any(Value::StringValueStrindex(3));
+        assert_eq!(any_value_to_string(&interned), "");
+
+        // An absent value renders empty.
+        let absent = AnyValue { value: None };
+        assert_eq!(any_value_to_string(&absent), "");
+    }
+
+    #[test]
+    fn attr_helpers_treat_mismatches_and_missing_values_as_absent() {
+        let attrs = vec![
+            kv("n", Value::IntValue(41)),
+            kv("s", Value::StringValue("x".into())),
+            KeyValue {
+                key: "noval".into(),
+                value: None,
+                key_strindex: 0,
+            },
+        ];
+        assert!(attr_str(&attrs, "missing").is_none());
+        assert!(attr_str(&attrs, "noval").is_none());
+        assert!(attr_string(&attrs, "noval").is_none());
+        // A non-bool value is not a bool.
+        assert_eq!(attr_bool(&attrs, "n"), None);
+        // Ints widen to doubles; strings do not.
+        assert_eq!(attr_double(&attrs, "n"), Some(41.0));
+        assert_eq!(attr_double(&attrs, "s"), None);
+        assert!(attr_double(&attrs, "missing").is_none());
+    }
+
+    #[test]
+    fn unpromoted_attrs_skip_promoted_keys_and_valueless_entries() {
+        let attrs = vec![
+            kv("keep", Value::StringValue("v".into())),
+            kv("drop", Value::StringValue("x".into())),
+            KeyValue {
+                key: "noval".into(),
+                value: None,
+                key_strindex: 0,
+            },
+        ];
+        assert_eq!(
+            unpromoted_attrs(&attrs, &["drop"]),
+            vec![("keep".to_string(), "v".to_string())]
+        );
+    }
+
+    #[test]
+    fn resource_ctx_defaults_when_resource_is_absent() {
+        let ctx = ResourceCtx::from_resource(None);
+        assert!(ctx.service_name.is_empty());
+        assert!(ctx.service_version.is_none());
+        assert!(ctx.experiment_id.is_none());
+        assert!(ctx.experiment_name.is_none());
+        assert!(ctx.resource_attrs.is_empty());
+    }
+
+    #[test]
+    fn resource_ctx_experiment_name_prefers_standard_key_then_title() {
+        let titled = Resource {
+            attributes: vec![
+                kv("service.name", Value::StringValue("tumultd".into())),
+                kv("service.version", Value::StringValue("1.0.0".into())),
+                kv(
+                    "resilience.experiment.title",
+                    Value::StringValue("cli-title".into()),
+                ),
+            ],
+            dropped_attributes_count: 0,
+            entity_refs: vec![],
+        };
+        let ctx = ResourceCtx::from_resource(Some(&titled));
+        assert_eq!(ctx.service_version.as_deref(), Some("1.0.0"));
+        assert_eq!(ctx.experiment_name.as_deref(), Some("cli-title"));
+        // title is promoted, so nothing remains in the attribute map
+        assert!(ctx.resource_attrs.is_empty());
+
+        let both = Resource {
+            attributes: vec![
+                kv(
+                    "resilience.experiment.name",
+                    Value::StringValue("standard-name".into()),
+                ),
+                kv(
+                    "resilience.experiment.title",
+                    Value::StringValue("cli-title".into()),
+                ),
+            ],
+            dropped_attributes_count: 0,
+            entity_refs: vec![],
+        };
+        let ctx = ResourceCtx::from_resource(Some(&both));
+        assert_eq!(ctx.experiment_name.as_deref(), Some("standard-name"));
+    }
+
     #[test]
     fn resource_ctx_promotes_and_excludes() {
         let resource = Resource {

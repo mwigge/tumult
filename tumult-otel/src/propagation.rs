@@ -120,4 +120,43 @@ mod tests {
         assert!(tp.starts_with("00-0af7651916cd43dd8448eb211c80319c-"));
         assert!(current_traceparent(&Context::new()).is_none());
     }
+
+    #[test]
+    fn header_extractor_reads_values_and_lists_keys() {
+        let mut headers = HashMap::new();
+        headers.insert("traceparent".to_string(), "00-x".to_string());
+        headers.insert("x-other".to_string(), "1".to_string());
+
+        let extractor = HeaderExtractor(&headers);
+        assert_eq!(extractor.get("traceparent"), Some("00-x"));
+        assert_eq!(extractor.get("absent"), None);
+
+        let mut keys = extractor.keys();
+        keys.sort_unstable();
+        assert_eq!(keys, ["traceparent", "x-other"]);
+    }
+
+    #[test]
+    fn inject_then_parse_round_trips_tracestate() {
+        let span = SpanContext::new(
+            TraceId::from_hex("0af7651916cd43dd8448eb211c80319c").unwrap(),
+            SpanId::from_hex("b7ad6b7169203331").unwrap(),
+            TraceFlags::SAMPLED,
+            true,
+            TraceState::from_key_value([("congo", "t61rcWkgMzE")]).unwrap(),
+        );
+        let cx = Context::new().with_remote_span_context(span);
+
+        let mut headers = HashMap::new();
+        inject_traceparent(&cx, &mut headers);
+        assert_eq!(
+            headers.get("tracestate").map(String::as_str),
+            Some("congo=t61rcWkgMzE")
+        );
+
+        let extracted = parse_traceparent(&headers);
+        let span = extracted.span().span_context().clone();
+        assert!(span.is_remote());
+        assert_eq!(span.trace_state().get("congo"), Some("t61rcWkgMzE"));
+    }
 }

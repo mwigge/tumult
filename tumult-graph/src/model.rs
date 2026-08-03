@@ -275,6 +275,13 @@ mod tests {
     }
 
     #[test]
+    fn node_kind_display_matches_canonical_token() {
+        assert_eq!(NodeKind::Experiment.to_string(), "experiment");
+        assert_eq!(NodeKind::FaultDomain.to_string(), "fault_domain");
+        assert_eq!(NodeKind::Recommendation.to_string(), "recommendation");
+    }
+
+    #[test]
     fn edge_rel_round_trips_through_token() {
         for rel in [
             EdgeRel::Targets,
@@ -292,5 +299,12 @@ mod tests {
             assert_eq!(EdgeRel::parse(rel.as_str()), Some(rel));
         }
         assert_eq!(EdgeRel::parse("nope"), None);
+    }
+
+    #[test]
+    fn edge_rel_display_matches_canonical_token() {
+        assert_eq!(EdgeRel::Targets.to_string(), "targets");
+        assert_eq!(EdgeRel::ObservedOn.to_string(), "observed_on");
+        assert_eq!(EdgeRel::CausedBy.to_string(), "caused_by");
     }
 }

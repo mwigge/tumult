@@ -289,4 +289,33 @@ mod tests {
         assert!(autopilot_decision(&s, "d1").unwrap().is_some());
         assert!(autopilot_decision(&s, "nope").unwrap().is_none());
     }
+
+    #[test]
+    fn change_events_since_filters_and_orders() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.record_change_event("svc:db", 100, "deploy", Some("v1.2.3"))
+            .unwrap();
+        s.record_change_event("svc:db", 200, "config", None)
+            .unwrap();
+        s.record_change_event("svc:api", 150, "deploy", Some("v9"))
+            .unwrap();
+        // Older than the cutoff: excluded.
+        s.record_change_event("svc:db", 10, "deploy", None).unwrap();
+
+        let rows = change_events_since(&s, 50).unwrap();
+        assert_eq!(rows.len(), 3);
+        // Ordered by service_id, then newest first within a service.
+        assert_eq!(rows[0].service_id, "svc:api");
+        assert_eq!(rows[0].at_ns, 150);
+        assert_eq!(rows[1].service_id, "svc:db");
+        assert_eq!(rows[1].at_ns, 200);
+        assert_eq!(rows[1].source, "config");
+        assert_eq!(rows[1].detail, None);
+        assert_eq!(rows[2].service_id, "svc:db");
+        assert_eq!(rows[2].at_ns, 100);
+        assert_eq!(rows[2].detail.as_deref(), Some("v1.2.3"));
+
+        // A cutoff beyond every event yields nothing.
+        assert!(change_events_since(&s, 1_000).unwrap().is_empty());
+    }
 }

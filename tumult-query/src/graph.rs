@@ -232,6 +232,38 @@ mod tests {
     }
 
     #[test]
+    fn tested_action_names_reflects_ingested_actions() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        assert!(tested_action_names(&s).unwrap().is_empty());
+
+        s.ingest_journal_with_experiment(
+            &sample_journal("e1", ExperimentStatus::Completed),
+            Some(&latency_experiment()),
+        )
+        .unwrap();
+
+        let names = tested_action_names(&s).unwrap();
+        assert!(names.contains("action-1"));
+    }
+
+    #[test]
+    fn graph_query_filter_matches_label_case_insensitively() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal_with_experiment(
+            &sample_journal("e1", ExperimentStatus::Completed),
+            Some(&latency_experiment()),
+        )
+        .unwrap();
+
+        let hits = graph_query(&s, "service", Some("DEMO-APP")).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "svc:demo-app");
+
+        let misses = graph_query(&s, "service", Some("no-such-service")).unwrap();
+        assert!(misses.is_empty());
+    }
+
+    #[test]
     fn compliance_articles_seeded_on_open() {
         let s = AnalyticsStore::in_memory().unwrap();
         let articles = graph_query(&s, "compliance_article", None).unwrap();

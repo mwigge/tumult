@@ -267,4 +267,49 @@ mod tests {
         let detail = deviation_detail(&journal, None);
         assert_eq!(detail.caused_by_fault_ids, vec!["fault:kill-db"]);
     }
+
+    #[test]
+    fn script_and_process_providers_key_faults_like_the_map() {
+        let exp = Experiment {
+            method: vec![
+                Activity {
+                    name: "dns-chaos".into(),
+                    activity_type: ActivityType::Action,
+                    provider: Provider::Script {
+                        plugin: "tumult-dns".into(),
+                        function: "redirect".into(),
+                        arguments: std::collections::HashMap::new(),
+                        timeout_s: None,
+                    },
+                    ..Default::default()
+                },
+                Activity {
+                    name: "stress".into(),
+                    activity_type: ActivityType::Action,
+                    provider: Provider::Process {
+                        path: "/bin/stress".into(),
+                        arguments: Vec::new(),
+                        env: std::collections::HashMap::new(),
+                        timeout_s: None,
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let journal = journal(
+            ExperimentStatus::Deviated,
+            vec![
+                action_result("dns-chaos", ActivityStatus::Failed),
+                action_result("stress", ActivityStatus::Timeout),
+            ],
+            None,
+        );
+        let detail = deviation_detail(&journal, Some(&exp));
+        assert_eq!(
+            detail.caused_by_fault_ids,
+            // Sorted; a Process action faults under its activity name.
+            vec!["fault:stress", "fault:tumult-dns::redirect"]
+        );
+    }
 }

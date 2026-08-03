@@ -137,4 +137,32 @@ mod tests {
         assert!(delta.nodes.is_empty());
         assert!(delta.edges.is_empty());
     }
+
+    #[test]
+    fn duplicate_catalog_entries_are_deduplicated() {
+        let available = [
+            AvailableAction::new("tumult-net", "drop_packets"),
+            AvailableAction::new("tumult-net", "drop_packets"),
+            AvailableAction::new("tumult-net", "inject_latency"),
+        ];
+        let tested: HashSet<String> = HashSet::new();
+
+        let delta = coverage_gap_delta(&available, &tested);
+
+        let gap_ids: Vec<&str> = delta
+            .nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::CoverageGap)
+            .map(|n| n.id.as_str())
+            .collect();
+        assert_eq!(
+            gap_ids,
+            vec![
+                "gap:tumult-net::drop_packets",
+                "gap:tumult-net::inject_latency"
+            ],
+            "each untested action appears exactly once"
+        );
+        assert_eq!(delta.edges.len(), 2, "no duplicate gap_in edges");
+    }
 }
