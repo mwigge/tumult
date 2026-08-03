@@ -5,8 +5,10 @@
 //! End-to-end tests for the query API: a seeded store served on an ephemeral
 //! port, every endpoint exercised over HTTP.
 
+mod ask_llm;
 mod auth_approvals;
 mod common;
+mod endpoints;
 mod manual;
 mod query;
 mod reports;
