@@ -93,6 +93,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/users/{id}/password", Role::Admin),
     ("POST", "/api/users/{id}/disable", Role::Admin),
     ("POST", "/api/users/{id}/scopes", Role::Admin),
+    ("GET", "/api/tokens", Role::Admin),
     ("POST", "/api/tokens", Role::Admin),
     ("POST", "/api/tokens/{id}/revoke", Role::Admin),
 ];
@@ -173,6 +174,7 @@ mod tests {
             Role::Approver
         );
         assert_eq!(required_role("POST", "/api/users"), Role::Admin);
+        assert_eq!(required_role("GET", "/api/tokens"), Role::Admin);
         assert_eq!(required_role("POST", "/api/tokens/x/revoke"), Role::Admin);
     }
 

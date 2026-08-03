@@ -31,7 +31,7 @@ use tumult_auth::Role;
 pub use middleware::auth_middleware;
 pub use route_table::ROUTE_TABLE;
 pub use session::{change_password, login, logout, me, ChangePasswordRequest, LoginRequest};
-pub use tokens::{create_token, revoke_token, CreateTokenRequest};
+pub use tokens::{create_token, list_tokens, revoke_token, CreateTokenRequest};
 pub use users::{
     create_user, list_users, reset_password, set_disabled, set_role, set_scopes, CreateUserRequest,
     ResetPasswordRequest, SetDisabledRequest, SetRoleRequest, SetScopesRequest,

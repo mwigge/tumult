@@ -412,6 +412,25 @@ export interface CreateUserResponse {
   one_time_password?: string;
 }
 
+/** `GET /api/tokens` row — never carries the token hash. */
+export interface ApiToken {
+  id: string;
+  user_id: string;
+  username: string | null;
+  name: string;
+  created_at_ns: number;
+  last_used_at_ns: number | null;
+  revoked: boolean;
+  expires_at_ns: number | null;
+}
+
+/** `POST /api/tokens` 201 body — `token` is the plaintext, returned exactly once. */
+export interface CreateTokenResponse {
+  id: string;
+  token: string;
+  expires_at_ns: number | null;
+}
+
 // --- UI execution: run registry + runs (tumultd run-control API) ------------
 
 /**

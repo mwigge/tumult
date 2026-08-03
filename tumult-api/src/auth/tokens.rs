@@ -8,12 +8,42 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_lake::TokenRow;
 
-use crate::sql_util::now_ns;
+use crate::sql_util::{now_ns, with_reader};
 use crate::ApiState;
 
 use super::middleware::{bad_request, exec_auth_write};
 use super::users::user_or_404;
 use super::Principal;
+
+/// `GET /api/tokens` — every token (newest first, including revoked) with
+/// the owner's username; never the token hash. Admin-only via the route
+/// table, like the rest of `/api/tokens*`.
+pub async fn list_tokens(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+    let tokens = with_reader(&state.db_path, |reader| {
+        let usernames: std::collections::HashMap<String, String> = reader
+            .list_users()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|u| (u.id, u.username))
+            .collect();
+        let mut out = Vec::new();
+        for t in reader.list_tokens().map_err(|e| e.to_string())? {
+            out.push(json!({
+                "id": t.id,
+                "user_id": t.user_id,
+                "username": usernames.get(&t.user_id),
+                "name": t.name,
+                "created_at_ns": t.created_at_ns,
+                "last_used_at_ns": t.last_used_at_ns,
+                "revoked": t.revoked,
+                "expires_at_ns": t.expires_at_ns,
+            }));
+        }
+        Ok(out)
+    })
+    .await?;
+    Ok(Json(json!({"tokens": tokens})))
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTokenRequest {

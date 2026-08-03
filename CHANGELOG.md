@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   in-process. Both are Viewer-level in the RBAC route table and persist
   nothing — registration stays behind Operator-level
   `POST /api/runs/validate`.
+- Token management on the same page, backed by the new
+  `GET /api/tokens` admin endpoint (newest first, owners' usernames, revoked
+  included, never the hashes): list with active/expired/revoked status, mint
+  (plaintext shown once, optional day-based expiry), revoke.
+- `POST /api/users` now enforces the same ≥12-character minimum on a
+  supplied password as the admin reset endpoint (400 otherwise).
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

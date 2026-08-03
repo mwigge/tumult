@@ -60,6 +60,15 @@ pub async fn create_user(
     if username.is_empty() {
         return Err(bad_request("username must not be empty".into()));
     }
+    // A supplied password meets the same ≥12-character minimum as the admin
+    // reset endpoint; omitting it keeps the generated one-time-password path.
+    if let Some(p) = req.password.as_deref().filter(|p| !p.is_empty()) {
+        if p.chars().count() < 12 {
+            return Err(bad_request(
+                "password must be at least 12 characters".into(),
+            ));
+        }
+    }
     let Some(role) = Role::parse(&req.role) else {
         return Err(bad_request(format!(
             "unknown role {:?}; expected viewer|operator|approver|admin",

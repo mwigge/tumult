@@ -1745,3 +1745,79 @@ async fn env_scoping_confines_report_generation_and_artifacts() {
     .unwrap();
     assert_eq!(resp.status().as_u16(), 200);
 }
+
+/// `POST /api/users` with a supplied password enforces the same ≥12-character
+/// minimum as the admin reset endpoint; omitting the password keeps the
+/// generated one-time-password path.
+#[tokio::test]
+async fn create_user_validates_supplied_password_length() {
+    let srv = spawn_server().await;
+    add_user(&srv, "admin", "admin-password-1", "admin", false).await;
+    let (admin, _) = add_token(&srv, "u-admin", "admin-token").await;
+
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/users",
+        &admin,
+        json!({"username": "dave", "role": "viewer", "password": "short"}),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/users",
+        &admin,
+        json!({"username": "dave", "role": "viewer", "password": "dave-password-1"}),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert!(body.get("one_time_password").is_none(), "{body}");
+}
+
+/// `GET /api/tokens` — the admin token list behind the UI: every token
+/// (including revoked) with its owner's username, newest first, and never
+/// the token hash. Admin-only like the rest of `/api/tokens*`.
+#[tokio::test]
+async fn list_tokens_admin_only_and_never_serializes_hashes() {
+    let srv = spawn_server().await;
+    add_user(&srv, "admin", "admin-password-1", "admin", false).await;
+    add_user(&srv, "erin", "erin-password-1", "operator", false).await;
+    let (admin, _) = add_token(&srv, "u-admin", "admin-token").await;
+    let (erin, _) = add_token(&srv, "u-erin", "erin-token").await;
+
+    // Unauthenticated → 401; non-admin → 403.
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/tokens", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+    let (status, _body) = get_auth(&srv.base, "/api/tokens", &erin).await;
+    assert_eq!(status, 403, "erin is an operator");
+
+    // Revoked tokens are listed too (with their revocation state).
+    let (status, _body) = post_auth(
+        &srv.base,
+        "/api/tokens/t-erin-token/revoke",
+        &admin,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let (status, body) = get_auth(&srv.base, "/api/tokens", &admin).await;
+    assert_eq!(status, 200, "{body}");
+    let tokens = body["tokens"].as_array().unwrap();
+    assert_eq!(tokens.len(), 2, "{body}");
+    assert_eq!(tokens[0]["name"], "erin-token", "newest first: {body}");
+    assert_eq!(tokens[0]["username"], "erin");
+    assert_eq!(tokens[0]["revoked"], true);
+    assert_eq!(tokens[1]["name"], "admin-token");
+    assert_eq!(tokens[1]["revoked"], false);
+    for t in tokens {
+        assert!(t.get("token_hash").is_none(), "never serialize hashes: {t}");
+        assert!(t["id"].as_str().is_some());
+        assert!(t["created_at_ns"].as_i64().is_some());
+    }
+}

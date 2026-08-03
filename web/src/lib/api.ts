@@ -4,9 +4,11 @@
 import { goto } from '$app/navigation';
 import type {
   AdminUser,
+  ApiToken,
   ApprovalQueueRow,
   ApprovalTier,
   AskResponse,
+  CreateTokenResponse,
   CreateUserResponse,
   Dimensions,
   DryRunResponse,
@@ -313,7 +315,15 @@ export const api = {
   setUserScopes: (id: string, environments: string[]) =>
     send<{ ok: boolean }>('POST', `/api/users/${encodeURIComponent(id)}/scopes`, {
       environments
-    })
+    }),
+
+  tokens: () => get<{ tokens: ApiToken[] }>('/api/tokens'),
+
+  createToken: (req: { name: string; user_id?: string; expires_at_ns?: number }) =>
+    send<CreateTokenResponse>('POST', '/api/tokens', req),
+
+  revokeToken: (id: string) =>
+    send<{ ok: boolean }>('POST', `/api/tokens/${encodeURIComponent(id)}/revoke`, {})
 };
 
 // --- formatting helpers ----------------------------------------------------

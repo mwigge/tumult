@@ -287,6 +287,18 @@ impl Reader {
         Ok(rows.iter().map(row_to_user).collect())
     }
 
+    /// List all API tokens, newest first, including revoked ones (the admin
+    /// list needs the revocation state). Includes `token_hash` — the service
+    /// layer decides what to expose; the API must never serialize it out.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    pub fn list_tokens(&self) -> Result<Vec<TokenRow>, StoreError> {
+        let rows =
+            self.query_json_rows("SELECT * FROM tokens ORDER BY created_at_ns DESC, id DESC")?;
+        Ok(rows.iter().map(row_to_token).collect())
+    }
+
     /// Fetch an unexpired session (`expires_at_ns > now_ns`) joined with its
     /// user, or `None`. The caller checks `disabled`.
     ///
