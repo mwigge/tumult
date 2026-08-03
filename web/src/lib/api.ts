@@ -327,7 +327,8 @@ export const api = {
     send<CreateTokenResponse>('POST', '/api/tokens', req),
 
   revokeToken: (id: string) =>
-    send<{ ok: boolean }>('POST', `/api/tokens/${encodeURIComponent(id)}/revoke`, {})
+    send<{ ok: boolean }>('POST', `/api/tokens/${encodeURIComponent(id)}/revoke`, {}),
+
   // --- Authoring: fault catalog + scaffold ------------------------------------
 
   catalog: () => get<CatalogResponse>('/api/authoring/catalog'),
