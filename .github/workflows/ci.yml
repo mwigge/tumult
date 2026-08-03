@@ -98,7 +98,10 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 45 min fits a warm-cache run, but a cold cache (new Cargo.lock after a
+    # rebase) needs ~50 min — and the timeout killed the job during the cache
+    # save, so the cache was never written and every retry stayed cold.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
