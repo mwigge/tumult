@@ -37,6 +37,14 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// This test binary links both `ring` and `aws-lc-rs` through the workspace
+/// dependency tree, so rustls cannot pick a process-level default provider on
+/// its own and panics when `kube` builds its TLS config. Install one
+/// explicitly, mirroring `tumultd::serve`.
+fn install_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 /// Write a syntactically valid kubeconfig pointing at `server` and return
 /// its unique temp path.
 fn write_kubeconfig(server: &str) -> PathBuf {
@@ -292,6 +300,7 @@ struct Case {
 }
 
 async fn run_cases(cases: Vec<Case>) {
+    install_crypto_provider();
     let _lock = env_lock().await;
     let kubeconfig = write_kubeconfig("http://127.0.0.1:1"); // unreachable; never dialed
     let _env = KubeconfigEnv::point_at(&kubeconfig);
@@ -473,6 +482,7 @@ async fn dispatch_validates_probe_arguments_before_any_api_call() {
 
 #[tokio::test]
 async fn dispatch_reports_client_init_failure_for_missing_kubeconfig() {
+    install_crypto_provider();
     let _lock = env_lock().await;
     let missing = std::env::temp_dir().join(format!(
         "tumult-no-such-kubeconfig-{}.yaml",
@@ -503,6 +513,7 @@ async fn dispatch_reports_client_init_failure_for_missing_kubeconfig() {
 
 #[tokio::test]
 async fn dispatch_executes_pod_and_node_actions_against_apiserver() {
+    install_crypto_provider();
     let server = MockApiserver::start(vec![
         pod_json("prod", "api-0", "Running", true), // delete_pod
         json!({
@@ -588,6 +599,7 @@ async fn dispatch_executes_pod_and_node_actions_against_apiserver() {
 
 #[tokio::test]
 async fn dispatch_executes_drain_and_network_policies_against_apiserver() {
+    install_crypto_provider();
     let mut daemon_pod = pod_json("kube-system", "logger-abc", "Running", true);
     daemon_pod["metadata"]["ownerReferences"] = json!([{
         "apiVersion": "apps/v1",
@@ -683,6 +695,7 @@ async fn dispatch_executes_drain_and_network_policies_against_apiserver() {
 
 #[tokio::test]
 async fn dispatch_executes_probes_against_apiserver() {
+    install_crypto_provider();
     let server = MockApiserver::start(vec![
         pod_json("prod", "web-0", "Running", true), // pod_is_ready
         json!({
