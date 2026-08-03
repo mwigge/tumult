@@ -7,6 +7,7 @@
 
 mod ask_llm;
 mod auth_approvals;
+mod authoring;
 mod common;
 mod endpoints;
 mod manual;

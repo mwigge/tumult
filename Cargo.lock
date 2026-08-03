@@ -7744,6 +7744,7 @@ version = "0.7.0"
 dependencies = [
  "async-trait",
  "axum",
+ "indexmap",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -7752,6 +7753,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tumult-auth",
+ "tumult-authoring",
  "tumult-autopilot",
  "tumult-compliance",
  "tumult-core",

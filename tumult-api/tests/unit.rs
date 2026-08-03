@@ -52,3 +52,233 @@ async fn internal_error_hides_store_details() {
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body, json!({"error": "internal error"}));
 }
+
+// ---------------------------------------------------------------------------
+// /api/authoring* — catalog and scaffold helpers (pure functions over an
+// in-memory FaultCatalog; the handlers only add plugin discovery on top).
+
+use axum::Json;
+use tumult_api::authoring::{catalog_json, scaffold_json, ScaffoldBody};
+use tumult_authoring::{
+    ActionKind, CatalogAction, CatalogArg, CatalogDomain, Domain, FaultCatalog,
+};
+
+/// One container domain with the pause action and a probe, mirroring the
+/// curated `tumult-containers` entry of the live catalog (actions and
+/// probes share a namespace there, so the fixture must too).
+fn fixture_catalog() -> FaultCatalog {
+    FaultCatalog {
+        domains: vec![CatalogDomain {
+            domain: Domain::Container,
+            label: "Containers".into(),
+            actions: vec![
+                CatalogAction {
+                    plugin: "tumult-containers".into(),
+                    name: "pause-container".into(),
+                    description: "Pause a running container (freeze all processes)".into(),
+                    kind: ActionKind::Action,
+                    args: vec![
+                        CatalogArg {
+                            name: "container_id".into(),
+                            required: true,
+                            description: "Target container id or name".into(),
+                        },
+                        CatalogArg {
+                            name: "runtime".into(),
+                            required: false,
+                            description: "Container runtime (docker/podman)".into(),
+                        },
+                    ],
+                },
+                CatalogAction {
+                    plugin: "tumult-containers".into(),
+                    name: "container-status".into(),
+                    description: "Check if a container is running".into(),
+                    kind: ActionKind::Probe,
+                    args: vec![CatalogArg {
+                        name: "container_id".into(),
+                        required: true,
+                        description: "Target container id or name".into(),
+                    }],
+                },
+            ],
+        }],
+    }
+}
+
+fn scaffold_body(req: Value) -> ScaffoldBody {
+    serde_json::from_value(req).unwrap()
+}
+
+#[test]
+fn catalog_json_mirrors_the_mcp_tool_shape() {
+    let body = catalog_json(&fixture_catalog());
+    assert_eq!(body["action_count"], json!(2));
+    let action = &body["domains"][0]["actions"][0];
+    assert_eq!(action["plugin"], json!("tumult-containers"));
+    assert_eq!(action["name"], json!("pause-container"));
+    assert_eq!(action["kind"], json!("action"));
+    assert_eq!(action["args"][0]["name"], json!("container_id"));
+    assert_eq!(action["args"][0]["required"], json!(true));
+    assert_eq!(body["domains"][0]["actions"][1]["kind"], json!("probe"));
+}
+
+#[test]
+fn catalog_json_empty_catalog_is_a_valid_response() {
+    let body = catalog_json(&FaultCatalog { domains: vec![] });
+    assert_eq!(body, json!({"action_count": 0, "domains": []}));
+}
+
+#[test]
+fn scaffold_json_builds_a_valid_experiment() {
+    let body = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "pause-container",
+            "args": {"container_id": "demo-postgres", "runtime": "docker"},
+            "target": "demo-postgres",
+            "probe_command": "pg_isready -h demo-postgres",
+            "probe_expect": "accepting connections",
+            "title": "Pause postgres",
+        })),
+    )
+    .unwrap();
+    assert_eq!(body["action"], json!("tumult-containers::pause-container"));
+    assert_eq!(body["valid"], json!(true), "{body}");
+    assert!(body.get("validation_error").is_none());
+    let toon = body["toon"].as_str().unwrap();
+    assert!(toon.contains("Pause postgres"), "{toon}");
+    assert!(toon.contains("demo-postgres"), "{toon}");
+}
+
+#[test]
+fn scaffold_json_stringifies_non_string_args() {
+    let body = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "action": "tumult-containers::pause-container",
+            "args": {"container_id": 42},
+            "target": "demo-postgres",
+        })),
+    )
+    .unwrap();
+    assert_eq!(body["valid"], json!(true), "{body}");
+}
+
+#[test]
+fn scaffold_json_defaults_title_and_probe() {
+    let body = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "pause-container",
+            "target": "demo-postgres",
+        })),
+    )
+    .unwrap();
+    assert_eq!(body["valid"], json!(true), "{body}");
+    let toon = body["toon"].as_str().unwrap();
+    assert!(toon.contains("pause-container — demo-postgres"), "{toon}");
+}
+
+#[test]
+fn scaffold_json_supports_http_probes() {
+    let body = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "pause-container",
+            "target": "demo-app",
+            "probe_url": "http://demo-app:8080/health",
+            "probe_expect": "ok",
+        })),
+    )
+    .unwrap();
+    assert_eq!(body["valid"], json!(true), "{body}");
+    assert!(body["toon"].as_str().unwrap().contains("demo-app:8080"));
+}
+
+#[test]
+fn scaffold_json_reports_an_invalid_probe_as_invalid() {
+    let err = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "pause-container",
+            "target": "x",
+            "probe_command": "echo hi",
+            "probe_expect": "(unclosed",
+        })),
+    )
+    .unwrap();
+    assert_eq!(err["valid"], json!(false));
+    assert!(err["validation_error"].as_str().unwrap().len() > 1);
+}
+
+#[test]
+fn scaffold_json_requires_plugin_or_qualified_action() {
+    let (status, Json(body)) = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({"action": "pause-container", "target": "x"})),
+    )
+    .unwrap_err();
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("plugin::action"));
+}
+
+#[test]
+fn scaffold_json_rejects_actions_outside_the_catalog() {
+    let (status, Json(body)) = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "nuke-everything",
+            "target": "x",
+        })),
+    )
+    .unwrap_err();
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("unknown action"));
+}
+
+/// Catalog probes are steady-state checks, not faults: scaffolding one as
+/// the experiment's action would validate and register a semantically
+/// wrong experiment, so it's a 400 just like an unknown name.
+#[test]
+fn scaffold_json_rejects_probes_as_actions() {
+    let (status, Json(body)) = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "container-status",
+            "args": {"container_id": "demo-postgres"},
+            "target": "demo-postgres",
+        })),
+    )
+    .unwrap_err();
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("unknown action"));
+}
+
+#[test]
+fn scaffold_json_prefers_probe_url_over_probe_command() {
+    let body = scaffold_json(
+        &fixture_catalog(),
+        &scaffold_body(json!({
+            "plugin": "tumult-containers",
+            "action": "pause-container",
+            "target": "demo-app",
+            "probe_url": "http://demo-app:8080/health",
+            "probe_command": "echo should-not-appear",
+        })),
+    )
+    .unwrap();
+    assert_eq!(body["valid"], json!(true), "{body}");
+    let toon = body["toon"].as_str().unwrap();
+    assert!(
+        toon.contains("curl -fsS 'http://demo-app:8080/health'"),
+        "{toon}"
+    );
+    assert!(!toon.contains("should-not-appear"), "{toon}");
+}

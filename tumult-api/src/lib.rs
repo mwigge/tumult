@@ -76,6 +76,13 @@
 //!   retrospective manual-evidence draft as compliance debt.
 //! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
+//! * `GET /api/authoring/catalog` — the live fault catalog (domains →
+//!   actions → documented args) from plugin discovery;
+//!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
+//!   generate experiment TOON from a catalog action plus whether it
+//!   validates. The same code paths as the MCP authoring tools; both are
+//!   Viewer-level and persist nothing (registration stays behind
+//!   `POST /api/runs/validate`).
 //! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?}`
 //!   — build a compliance-grade report (R1 executive digest, R3 game-day,
 //!   R2 evidence pack) as PDF + print-HTML + JSON meta under
@@ -102,6 +109,7 @@
 pub mod approvals;
 mod ask;
 pub mod auth;
+pub mod authoring;
 pub mod handlers;
 pub mod import;
 pub mod lake;
@@ -301,6 +309,8 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/api/manual/import", post(manual::import))
         .route("/api/import/journal", post(import::import_journal))
+        .route("/api/authoring/catalog", get(authoring::catalog))
+        .route("/api/authoring/scaffold", post(authoring::scaffold))
         .route("/api/registry", get(runs::registry_list))
         .route("/api/registry/{id}", get(runs::registry_detail))
         .route("/api/runs/validate", post(runs::validate))
