@@ -320,4 +320,126 @@ mod tests {
         assert_eq!(rows[0]["outcome_status"], serde_json::json!("deviated"));
         assert_eq!(rows[0]["note"], serde_json::json!("hello"));
     }
+
+    #[test]
+    fn unreadable_file_surfaces_the_io_error() {
+        let (_d, store) = temp_store();
+        let writer = store.writer().unwrap();
+        let importer = ManualImporter::new(&writer);
+        let err = importer
+            .import_file(Path::new("/nonexistent/nope.json"), None)
+            .unwrap_err();
+        assert!(matches!(err, IngestError::Io(_)), "{err:?}");
+    }
+
+    #[test]
+    fn unrecognized_content_is_rejected_with_the_source_name() {
+        let (_d, store) = temp_store();
+        let writer = store.writer().unwrap();
+        let importer = ManualImporter::new(&writer);
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("mystery.txt");
+        std::fs::write(&path, "no commas in this file\njust prose\n").unwrap();
+        let err = importer.import_file(&path, None).unwrap_err();
+        assert!(
+            matches!(&err, IngestError::UnknownFormat(src) if src == "mystery.txt"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_journal_json_is_rejected() {
+        let (_d, store) = temp_store();
+        let writer = store.writer().unwrap();
+        let importer = ManualImporter::new(&writer);
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("broken.json");
+        std::fs::write(&path, "{\"experiment_title\": 42}").unwrap();
+        let err = importer.import_file(&path, None).unwrap_err();
+        assert!(matches!(err, IngestError::Json(_)), "{err:?}");
+    }
+
+    #[test]
+    fn journal_rollbacks_and_explicit_ids_are_preserved() {
+        let (_d, store) = temp_store();
+        let writer = store.writer().unwrap();
+        let importer = ManualImporter::new(&writer);
+        let journal = serde_json::json!({
+            "experiment_title": "cache-flush",
+            "experiment_id": "exp-rb",
+            "status": "completed",
+            "started_at_ns": 1_000_000_000_i64,
+            "ended_at_ns": 61_000_000_000_i64,
+            "method_results": [{
+                "name": "flush",
+                "activity_type": "action",
+                "status": "succeeded",
+                "started_at_ns": 2_000_000_000_i64,
+                "duration_ms": 100,
+                "trace_id": "otel-trace-1",
+                "span_id": "otel-span-1"
+            }],
+            "rollback_results": [{
+                "name": "rewarm",
+                "activity_type": "rollback",
+                "status": "succeeded",
+                "started_at_ns": 3_000_000_000_i64,
+                "duration_ms": 200
+            }]
+        });
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("journal.json");
+        std::fs::write(&path, journal.to_string()).unwrap();
+
+        let summary = importer.import_file(&path, None).unwrap();
+        assert_eq!(summary.rows, 3); // root + action + rollback
+
+        let reader = store.read_only().unwrap();
+        let rows = reader
+            .query_json_rows(
+                "SELECT span_name, trace_id, span_id, duration_ns FROM spans ORDER BY ts_ns",
+            )
+            .unwrap();
+        // Explicit OTel ids on the activity win over the synthesized ones.
+        assert_eq!(rows[1]["trace_id"], serde_json::json!("otel-trace-1"));
+        assert_eq!(rows[1]["span_id"], serde_json::json!("otel-span-1"));
+        assert_eq!(rows[1]["duration_ns"], serde_json::json!(100_000_000));
+        // Rollback activities keep their type in the span name.
+        assert_eq!(
+            rows[2]["span_name"],
+            serde_json::json!("resilience.rollback")
+        );
+        // …and hang off the synthesized journal trace with default ids.
+        assert_eq!(rows[2]["trace_id"], serde_json::json!("journal-exp-rb"));
+        assert_eq!(
+            rows[2]["span_id"],
+            serde_json::json!("journal-exp-rb-rewarm")
+        );
+    }
+
+    #[test]
+    fn csv_defaults_fill_span_identity_and_tolerate_bad_numbers() {
+        let (_d, store) = temp_store();
+        let writer = store.writer().unwrap();
+        let importer = ManualImporter::new(&writer);
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("sparse.csv");
+        std::fs::write(&path, "ts_ns,duration_ns\nnotanumber,alsobad\n").unwrap();
+
+        let summary = importer.import_file(&path, None).unwrap();
+        assert_eq!(summary.rows, 1);
+
+        let reader = store.read_only().unwrap();
+        let rows = reader
+            .query_json_rows(
+                "SELECT span_name, span_kind, status_code, ts_ns, duration_ns FROM spans",
+            )
+            .unwrap();
+        assert_eq!(rows[0]["span_name"], serde_json::json!("csv.import"));
+        assert_eq!(rows[0]["span_kind"], serde_json::json!("Internal"));
+        assert_eq!(rows[0]["status_code"], serde_json::json!("Unset"));
+        // Unparseable numerics degrade to 0 rather than failing the import.
+        assert_eq!(rows[0]["ts_ns"], serde_json::json!(0));
+        assert_eq!(rows[0]["duration_ns"], serde_json::json!(0));
+    }
 }

@@ -504,4 +504,98 @@ method[1]:
         );
         assert!(matches!(outcome, GateOutcome::Unavailable { .. }));
     }
+
+    #[test]
+    fn tier_labels_round_trip() {
+        assert_eq!(Tier::T0.as_str(), "T0");
+        assert_eq!(Tier::T1.as_str(), "T1");
+        assert_eq!(Tier::T2.as_str(), "T2");
+        assert_eq!(Tier::T3.as_str(), "T3");
+    }
+
+    fn ambient() -> AmbientContext {
+        AmbientContext {
+            open_deviation_for_target: false,
+            runs_today: 0,
+            hours_since_last_run_on_service: None,
+            within_business_hours: true,
+            concurrent_experiments: 0,
+            guard_telemetry_ok: None,
+        }
+    }
+
+    #[test]
+    fn gate_vetoes_when_the_policy_is_disabled() {
+        let policy = LoadedPolicy::parse("[autopilot]\nenabled = false\n").unwrap();
+        let outcome = evaluate_t3_gate(
+            Some(&policy),
+            "run-1",
+            &intro(1, true, false),
+            "prod",
+            None,
+            &ambient(),
+        );
+        match outcome {
+            GateOutcome::Veto { rule } => assert_eq!(rule, "policy.enabled"),
+            other => panic!("expected veto, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn gate_reports_not_enact_when_bounded_rules_fail() {
+        // The candidate carries no playbook experiment, so the validator's
+        // enactability rule caps every operator-requested run at Propose —
+        // the gate is fail-closed even when every veto rule passes.
+        let policy =
+            LoadedPolicy::parse("[autopilot]\nenabled = true\nenact_tiers = [\"staging\"]\n")
+                .unwrap();
+        let outcome = evaluate_t3_gate(
+            Some(&policy),
+            "run-1",
+            &intro(1, true, false),
+            "prod",
+            None,
+            &ambient(),
+        );
+        match outcome {
+            GateOutcome::NotEnact { verdict } => {
+                assert_eq!(verdict, "propose");
+            }
+            other => panic!("expected not-enact, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn gate_proposes_even_a_fully_clearing_candidate() {
+        // Pretrusted fault class + enact-allowed tier + high operator
+        // confidence: every veto rule passes — but with no playbook
+        // experiment the candidate is never enactable, so the outcome is a
+        // propose (fail closed), never an enact.
+        let policy = LoadedPolicy::parse(
+            "[autopilot]\n\
+             enabled = true\n\
+             enact_tiers = [\"prod\"]\n\
+             require_guard = false\n\
+             \n\
+             [[autopilot.pretrusted]]\n\
+             plugin = \"chaos\"\n\
+             action = \"process_kill\"\n\
+             tier = \"prod\"\n",
+        )
+        .unwrap();
+        let mut introspection = intro(1, true, false);
+        introspection.first_fault = Some(("chaos".into(), "process_kill".into()));
+        let outcome = evaluate_t3_gate(
+            Some(&policy),
+            "run-1",
+            &introspection,
+            "prod",
+            None,
+            &ambient(),
+        );
+        match outcome {
+            GateOutcome::NotEnact { verdict } => assert_eq!(verdict, "propose"),
+            other => panic!("expected propose, got {other:?}"),
+        }
+    }
 }
