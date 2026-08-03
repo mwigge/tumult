@@ -171,4 +171,43 @@ mod tests {
         assert!(pdf.starts_with(b"%PDF"), "missing magic bytes");
         assert!(pdf.len() > 2_000, "suspiciously small: {}", pdf.len());
     }
+
+    #[test]
+    fn invalid_markup_reports_a_compile_error() {
+        let err = compile_markup("#let x = ", HashMap::new()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.starts_with("typst compile failed:"), "{msg}");
+        assert!(matches!(err, DocsError::Compile(_)));
+    }
+
+    #[test]
+    fn world_serves_only_the_main_source_and_known_files() {
+        use typst::syntax::{RootedPath, VirtualRoot};
+
+        let file_id = |path: &str| {
+            FileId::new(RootedPath::new(
+                VirtualRoot::Project,
+                VirtualPath::new(path).expect("static path"),
+            ))
+        };
+        let world = DocWorld {
+            library: LazyHash::new(Library::default()),
+            fonts: load_fonts(),
+            main: Source::detached("hello"),
+            files: HashMap::from([(
+                VirtualPath::new("charts/c0.svg").expect("static path"),
+                Bytes::new(b"<svg/>".as_slice()),
+            )]),
+        };
+        // The main source resolves; anything else is NotFound.
+        assert!(world.source(world.main()).is_ok());
+        let missing = file_id("nope.typ");
+        assert!(world.source(missing).is_err());
+        // Known virtual files resolve; unknown ones do not.
+        assert!(world.file(file_id("charts/c0.svg")).is_ok());
+        assert!(world.file(missing).is_err());
+        // Fonts are served by index; dates are baked into the markup.
+        assert!(world.font(0).is_some());
+        assert!(world.today(None).is_none());
+    }
 }

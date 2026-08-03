@@ -122,3 +122,44 @@ pub struct ReportDoc {
     pub meta: DocMeta,
     pub blocks: Vec<Block>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_maps_outcomes_severities_and_bands() {
+        for good in [
+            "completed",
+            "passed",
+            "ok",
+            "low",
+            "good",
+            "met",
+            "Completed",
+        ] {
+            assert_eq!(Cell::glyph(good), ("●", "#009E73"), "{good}");
+        }
+        for warn in ["deviated", "stale", "medium", "warning", "fair"] {
+            assert_eq!(Cell::glyph(warn), ("▲", "#E69F00"), "{warn}");
+        }
+        for bad in ["failed", "error", "high", "critical", "poor", "not met"] {
+            assert_eq!(Cell::glyph(bad), ("×", "#D55E00"), "{bad}");
+        }
+        assert_eq!(Cell::glyph("inconclusive"), ("○", "#6B7280"));
+    }
+
+    #[test]
+    fn cell_constructors_and_conversion() {
+        assert_eq!(Cell::text("a"), Cell::Text("a".into()));
+        assert_eq!(Cell::status("b"), Cell::Status("b".into()));
+        assert_eq!(Cell::from("c".to_string()), Cell::Text("c".into()));
+    }
+
+    #[test]
+    fn template_kind_codes_are_stable() {
+        assert_eq!(TemplateKind::ExecutiveDigest.code(), "R1");
+        assert_eq!(TemplateKind::GameDay.code(), "R3");
+        assert_eq!(TemplateKind::EvidencePack.code(), "R2");
+    }
+}

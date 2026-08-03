@@ -201,4 +201,154 @@ mod tests {
         let err = authorize(token("kro_secret").as_ref(), &no_scheme).unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
     }
+
+    fn test_ingest() -> (tempfile::TempDir, tumult_lake::Store, IngestWriter) {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+        (d, store, ingest)
+    }
+
+    #[tokio::test]
+    async fn routers_build_with_and_without_token() {
+        let (_d, _store, ingest) = test_ingest();
+        // Plain, token-gated and explicit no-TLS builders all succeed. (TLS
+        // identity handling needs the process-level rustls crypto provider,
+        // which only the daemon installs at startup.)
+        let _ = router(ingest.clone());
+        let _ = router_with_token(ingest.clone(), Some("kro_secret".into()));
+        assert!(router_with_token_tls(ingest, None, None).is_ok());
+    }
+
+    #[tokio::test]
+    async fn trace_export_persists_and_requires_the_token() {
+        let (_d, store, ingest) = test_ingest();
+        let svc = OtlpGrpc {
+            ingest,
+            ingest_token: token("kro_secret"),
+        };
+        // Unauthenticated calls are refused before anything is written.
+        let err = TraceService::export(&svc, Request::new(ExportTraceServiceRequest::default()))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
+
+        let mut req = Request::new(ExportTraceServiceRequest::default());
+        req.metadata_mut().insert(
+            "authorization",
+            MetadataValue::from_static("Bearer kro_secret"),
+        );
+        let resp = TraceService::export(&svc, req).await.unwrap();
+        assert!(resp.get_ref().partial_success.is_none());
+        // The (empty) batch rode the writer channel without error; the store
+        // is readable afterwards.
+        assert!(store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT 1 AS v")
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn metrics_and_logs_export_persist_rows() {
+        use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
+        use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+        use opentelemetry_proto::tonic::metrics::v1::{
+            metric::Data, Metric, ResourceMetrics, ScopeMetrics, Sum,
+        };
+        use opentelemetry_proto::tonic::resource::v1::Resource;
+
+        let (_d, store, ingest) = test_ingest();
+        let svc = OtlpGrpc {
+            ingest,
+            ingest_token: None,
+        };
+
+        let metrics_req = ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                resource: Some(Resource {
+                    attributes: vec![KeyValue {
+                        key: "service.name".into(),
+                        value: Some(AnyValue {
+                            value: Some(
+                                opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
+                                    "tumult".into(),
+                                ),
+                            ),
+                        }),
+                        key_strindex: 0,
+                    }],
+                    dropped_attributes_count: 0,
+                    entity_refs: vec![],
+                }),
+                scope_metrics: vec![ScopeMetrics {
+                    scope: None,
+                    metrics: vec![Metric {
+                        name: "tumult.experiments.total".into(),
+                        description: String::new(),
+                        unit: String::new(),
+                        data: Some(Data::Sum(Sum {
+                            data_points: vec![],
+                            aggregation_temporality: 2,
+                            is_monotonic: true,
+                        })),
+                        metadata: vec![],
+                    }],
+                    schema_url: String::new(),
+                }],
+                schema_url: String::new(),
+            }],
+        };
+        MetricsService::export(&svc, Request::new(metrics_req))
+            .await
+            .unwrap();
+
+        let logs_req = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: None,
+                scope_logs: vec![ScopeLogs {
+                    scope: None,
+                    log_records: vec![LogRecord {
+                        time_unix_nano: 1_785_268_000_000_000_000,
+                        severity_text: "INFO".into(),
+                        body: Some(AnyValue {
+                            value: Some(
+                                opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
+                                    "experiment.started".into(),
+                                ),
+                            ),
+                        }),
+                        ..LogRecord::default()
+                    }],
+                    schema_url: String::new(),
+                }],
+                schema_url: String::new(),
+            }],
+        };
+        LogsService::export(&svc, Request::new(logs_req))
+            .await
+            .unwrap();
+
+        let rows = store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT body FROM logs")
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["body"], serde_json::json!("experiment.started"));
+    }
+
+    #[tokio::test]
+    async fn export_maps_writer_failure_to_internal() {
+        // A dead writer task: the channel receiver is gone, so the export
+        // call surfaces the channel error as INTERNAL (never a panic).
+        let dead = OtlpGrpc {
+            ingest: IngestWriter::stopped_for_test(),
+            ingest_token: None,
+        };
+        let err = TraceService::export(&dead, Request::new(ExportTraceServiceRequest::default()))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Internal);
+    }
 }

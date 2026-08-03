@@ -137,4 +137,19 @@ mod tests {
         let row = QueryRow::from(vec!["first".to_string(), "second".to_string()]);
         assert_eq!(row.first(), Some(&"first".to_string()));
     }
+
+    #[test]
+    fn query_row_new_and_as_slice() {
+        let row = QueryRow::new(vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(row.as_slice(), &["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn query_row_owned_and_borrowed_into_iterator() {
+        let row = QueryRow::new(vec!["x".to_string(), "y".to_string()]);
+        let borrowed: Vec<&String> = (&row).into_iter().collect();
+        assert_eq!(borrowed, [&"x".to_string(), &"y".to_string()]);
+        let owned: Vec<String> = row.into_iter().collect();
+        assert_eq!(owned, ["x".to_string(), "y".to_string()]);
+    }
 }

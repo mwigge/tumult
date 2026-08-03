@@ -422,4 +422,162 @@ mod tests {
         assert_eq!(scoped.targets.len(), 1);
         assert_eq!(scoped.targets[0].runs, 2);
     }
+
+    #[test]
+    fn delta_compares_against_the_previous_period() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let root = |id: &str, ts: i64| tumult_lake::SpanRow {
+            ts_ns: ts,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}"),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: DAY,
+            service_name: "tumult".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some("exp".into()),
+            target_system: Some("db".into()),
+            events: "[]".into(),
+            ..Default::default()
+        };
+        let done = |id: &str, status: &str, ts: i64| tumult_lake::LogRow {
+            ts_ns: ts,
+            severity_text: "INFO".into(),
+            body: "experiment.completed".into(),
+            trace_id: Some(format!("trace-{id}")),
+            span_id: None,
+            service_name: "tumult".into(),
+            log_attrs: vec![
+                ("experiment_id".to_string(), id.to_string()),
+                ("status".to_string(), status.to_string()),
+            ],
+            resource_attrs: vec![],
+        };
+        let now = 100 * DAY;
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[root("exp-old", now - 10 * DAY), root("exp-new", now - DAY)])
+            .unwrap();
+        store
+            .writer()
+            .unwrap()
+            .insert_logs(&[
+                done("exp-old", "Completed", now - 10 * DAY),
+                done("exp-new", "Deviated", now - DAY),
+            ])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+
+        let card = compute(&reader, now, Some(7 * DAY)).unwrap();
+        assert_eq!(card.portfolio, 50.0); // latest run deviated
+                                          // A week ago the latest run was the pass: portfolio 100 → delta -50.
+        assert_eq!(card.delta, Some(-50.0));
+        // Without a period there is no comparison point.
+        assert_eq!(compute(&reader, now, None).unwrap().delta, None);
+    }
+
+    #[test]
+    fn portfolio_series_samples_evenly_spaced_instants() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let now = 100 * DAY;
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[tumult_lake::SpanRow {
+                ts_ns: now - DAY,
+                trace_id: "trace-s".into(),
+                span_id: "span-s".into(),
+                span_name: "resilience.experiment".into(),
+                span_kind: "Internal".into(),
+                duration_ns: DAY,
+                service_name: "tumult".into(),
+                experiment_id: Some("exp-s".into()),
+                experiment_name: Some("exp".into()),
+                events: "[]".into(),
+                ..Default::default()
+            }])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+
+        let series = portfolio_series(&reader, now, 7 * DAY, 5).unwrap();
+        assert_eq!(series.len(), 5);
+        // Bucket indices run 1..=points. The only run sits at now-1d, so
+        // samples before it see an empty store (0) and the last sample sees
+        // the run with no outcome log (failed → 50).
+        assert_eq!(series[0].0, 1.0);
+        assert!(series[..4].iter().all(|(_, v)| *v == 0.0));
+        assert_eq!(series[4].1, 50.0);
+
+        // Scoped to an environment with no spans, every sample is zero.
+        let scoped =
+            portfolio_series_scoped(&reader, now, 7 * DAY, 3, &["elsewhere".to_string()]).unwrap();
+        assert_eq!(scoped.len(), 3);
+        assert!(scoped.iter().all(|(_, v)| *v == 0.0));
+    }
+
+    #[test]
+    fn manual_outcomes_flow_into_the_scorecard() {
+        use tumult_lake::{ExerciseType, ManualOutcome, NewManualExperiment};
+
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let record = |name: &str, outcome: ManualOutcome| NewManualExperiment {
+            experiment_name: name.into(),
+            exercise_type: ExerciseType::Drill,
+            executed_at_ns: 90 * DAY,
+            hypothesis: "h".into(),
+            method: "m".into(),
+            outcome,
+            hypothesis_met: None,
+            findings: None,
+            action_items: vec![],
+            target_system: Some("svc".into()),
+            target_environment: Some("prod".into()),
+            blast_radius: None,
+            recovery_time_s: None,
+            duration_s: None,
+            entered_by: "alice".into(),
+            attestation: "attested".into(),
+            renewal_due_ns: None,
+            framework_refs: vec![],
+        };
+        let verify = |name: &str, outcome: ManualOutcome| {
+            let id = writer.create_manual_draft(&record(name, outcome)).unwrap();
+            writer.submit_manual(&id, None, "alice").unwrap();
+            writer.verify_manual(&id, "bob", None).unwrap();
+        };
+        verify("partial-exp", ManualOutcome::Partial);
+        verify("inconclusive-exp", ManualOutcome::Inconclusive);
+        // A draft stays pending: coverage leaf, no score.
+        writer
+            .create_manual_draft(&record("draft-exp", ManualOutcome::Passed))
+            .unwrap();
+
+        let reader = store.read_only().unwrap();
+        let card = compute(&reader, 100 * DAY, None).unwrap();
+        // The inconclusive outcome is excluded from scoring entirely.
+        assert_eq!(card.experiments.len(), 1);
+        let exp = &card.experiments[0];
+        assert_eq!(exp.name, "partial-exp");
+        assert_eq!(exp.score, 75);
+        assert_eq!(exp.state, RunState::Partial);
+        assert_eq!(exp.origin, "manual");
+
+        // Pending records surface as coverage leaves, draft included.
+        assert_eq!(pending_manual_leaves(&reader).unwrap(), ["draft-exp"]);
+        // …confined to scope when scopes are given.
+        assert_eq!(
+            pending_manual_leaves_scoped(&reader, &["prod".to_string()]).unwrap(),
+            ["draft-exp"]
+        );
+        assert!(
+            pending_manual_leaves_scoped(&reader, &["staging".to_string()])
+                .unwrap()
+                .is_empty()
+        );
+    }
 }

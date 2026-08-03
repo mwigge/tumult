@@ -249,4 +249,57 @@ mod tests {
         assert!(svg.contains('…'), "{svg}");
         assert!(!svg.contains("SIGSTOP injection"));
     }
+
+    #[test]
+    fn donut_draws_arcs_for_partial_slices_and_escapes_labels() {
+        let svg = render_svg(&ChartSpec::Donut(vec![
+            ("passed".into(), 3.0),
+            ("failed <script>".into(), 1.0),
+            ("zero".into(), 0.0),
+        ]));
+        // Two non-zero slices: two arc paths, and a legend entry each
+        // (including the zero slice).
+        assert_eq!(svg.matches("<path").count(), 2, "{svg}");
+        assert!(svg.contains("passed — 75%"), "{svg}");
+        assert!(svg.contains("failed &lt;script&gt; — 25%"), "{svg}");
+        assert!(svg.contains("zero — 0%"), "{svg}");
+    }
+
+    #[test]
+    fn lines_skips_empty_series_and_pads_negative_ranges() {
+        // An empty point list contributes nothing but must not blank the
+        // chart; negative values pad below zero.
+        let svg = render_svg(&ChartSpec::Lines(vec![
+            ("empty".into(), vec![]),
+            ("delta".into(), vec![(1.0, -4.0), (2.0, 6.5)]),
+        ]));
+        assert!(svg.contains("<polyline"), "{svg}");
+        assert!(svg.contains("delta"), "{svg}");
+        assert!(!svg.contains("empty</text>"), "{svg}");
+        // Axis labels: y1 = 6.5 + pad → 8.5; y0 = -4 - pad → -6.
+        assert!(svg.contains(">8.5<"), "{svg}");
+        assert!(svg.contains(">-6<"), "{svg}");
+    }
+
+    #[test]
+    fn lines_with_no_points_at_all_render_nothing() {
+        assert!(render_svg(&ChartSpec::Lines(vec![])).is_empty());
+        assert!(render_svg(&ChartSpec::Lines(vec![("a".into(), vec![])])).is_empty());
+    }
+
+    #[test]
+    fn fmt_num_trims_but_keeps_significant_decimals() {
+        assert_eq!(fmt_num(75.0), "75");
+        assert_eq!(fmt_num(2.5), "2.5");
+        assert_eq!(fmt_num(-4.0), "-4");
+        assert_eq!(fmt_num(0.26), "0.3"); // one decimal, rounded
+    }
+
+    #[test]
+    fn esc_covers_every_special() {
+        assert_eq!(
+            esc("<a href=\"x\">&amp;</a>"),
+            "&lt;a href=&quot;x&quot;&gt;&amp;amp;&lt;/a&gt;"
+        );
+    }
 }

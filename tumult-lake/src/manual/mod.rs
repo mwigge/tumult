@@ -230,3 +230,140 @@ impl NewManualExperiment {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exercise_type_parses_every_kind_and_rejects_unknown() {
+        for (s, want) in [
+            ("gameday", ExerciseType::GameDay),
+            ("tabletop", ExerciseType::Tabletop),
+            ("failover", ExerciseType::Failover),
+            ("pentest", ExerciseType::Pentest),
+            ("drill", ExerciseType::Drill),
+            ("other", ExerciseType::Other),
+        ] {
+            assert_eq!(ExerciseType::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = ExerciseType::parse("workshop").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown exercise_type 'workshop'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn manual_outcome_parses_every_outcome_and_rejects_unknown() {
+        for (s, want) in [
+            ("passed", ManualOutcome::Passed),
+            ("failed", ManualOutcome::Failed),
+            ("partial", ManualOutcome::Partial),
+            ("inconclusive", ManualOutcome::Inconclusive),
+        ] {
+            assert_eq!(ManualOutcome::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = ManualOutcome::parse("unknown").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown outcome_status 'unknown'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn attachment_kind_parses_every_kind_and_rejects_unknown() {
+        for (s, want) in [
+            ("file", AttachmentKind::File),
+            ("url", AttachmentKind::Url),
+            ("log_excerpt", AttachmentKind::LogExcerpt),
+            ("ticket", AttachmentKind::Ticket),
+        ] {
+            assert_eq!(AttachmentKind::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = AttachmentKind::parse("screenshot").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown attachment kind 'screenshot'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn manual_error_display_names_each_cause() {
+        assert_eq!(
+            ManualError::Invalid("bad".into()).to_string(),
+            "invalid manual experiment: bad"
+        );
+        assert_eq!(
+            ManualError::NotFound("m-1".into()).to_string(),
+            "manual experiment 'm-1' not found"
+        );
+        assert_eq!(
+            ManualError::WrongStatus {
+                status: "verified".into(),
+                action: "edit".into(),
+            }
+            .to_string(),
+            "cannot edit a record in status 'verified'"
+        );
+        assert_eq!(
+            ManualError::SelfReview.to_string(),
+            "reviewer must differ from the person who entered the record"
+        );
+    }
+
+    fn valid() -> NewManualExperiment {
+        NewManualExperiment {
+            experiment_name: "exp".into(),
+            exercise_type: ExerciseType::Drill,
+            executed_at_ns: 1,
+            hypothesis: "h".into(),
+            method: "m".into(),
+            outcome: ManualOutcome::Passed,
+            hypothesis_met: None,
+            findings: None,
+            action_items: vec![],
+            target_system: None,
+            target_environment: None,
+            blast_radius: None,
+            recovery_time_s: None,
+            duration_s: None,
+            entered_by: "alice".into(),
+            attestation: "attested".into(),
+            renewal_due_ns: None,
+            framework_refs: vec![],
+        }
+    }
+
+    #[test]
+    fn validate_rejects_blank_required_fields_and_bad_timestamps() {
+        assert!(valid().validate().is_ok());
+
+        let mut blank = valid();
+        blank.method = "   ".into();
+        let err = blank.validate().unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg == "'method' must not be empty"),
+            "{err:?}"
+        );
+
+        let mut no_attestation = valid();
+        no_attestation.attestation = String::new();
+        let err = no_attestation.validate().unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg == "'attestation' must not be empty"),
+            "{err:?}"
+        );
+
+        let mut epoch = valid();
+        epoch.executed_at_ns = 0;
+        let err = epoch.validate().unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("positive unix-nanos")),
+            "{err:?}"
+        );
+    }
+}

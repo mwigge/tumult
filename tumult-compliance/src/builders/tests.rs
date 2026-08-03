@@ -273,6 +273,651 @@ fn evidence_pack_scoped_confines_register_and_approvals() {
 }
 
 #[test]
+fn evidence_pack_rejects_unknown_framework() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let reader = store.read_only().unwrap();
+    let err = build_evidence_pack(&reader, "pci-dss", None, BASE_NS, &[]).unwrap_err();
+    assert!(err.contains("unknown framework"), "{err}");
+    assert!(err.contains("dora"), "{err}");
+}
+
+/// A store with:
+/// * `flaky-exp` — an automated experiment that deviated, then recovered
+///   (completed), then deviated again: the latest run decides (Failed), and
+///   the earlier deviation counts as discovered *and* fixed.
+/// * `drill-exp` — a verified manual gameday record with a `partial`
+///   outcome, entered by alice and verified by bob.
+fn findings_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
+    use tumult_lake::{ExerciseType, ManualOutcome, NewManualExperiment};
+
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let root = |id: &str, name: &str, ts: i64, recovery: Option<f64>| tumult_lake::SpanRow {
+        ts_ns: ts,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}-root"),
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: HOUR_NS,
+        service_name: "tumult".into(),
+        experiment_id: Some(id.into()),
+        experiment_name: Some(name.into()),
+        target_system: Some("database".into()),
+        target_environment: Some("prod".into()),
+        recovery_time_s: recovery,
+        events: "[]".into(),
+        ..Default::default()
+    };
+    writer
+        .insert_spans(&[
+            // An old pass: the previous period's latest run (score 100), so
+            // the current period's deviation reads as a decline.
+            root("exp-0", "flaky-exp", BASE_NS - 8 * DAY_NS, None),
+            root("exp-1a", "flaky-exp", BASE_NS, Some(12.0)),
+            root("exp-1b", "flaky-exp", BASE_NS + HOUR_NS, None),
+            root("exp-1c", "flaky-exp", BASE_NS + 2 * HOUR_NS, Some(30.0)),
+        ])
+        .unwrap();
+    let done = |id: &str, status: &str, ts: i64| tumult_lake::LogRow {
+        ts_ns: ts,
+        severity_text: "INFO".into(),
+        body: "experiment.completed".into(),
+        trace_id: Some(format!("trace-{id}")),
+        span_id: None,
+        service_name: "tumult".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), id.to_string()),
+            ("status".to_string(), status.to_string()),
+        ],
+        resource_attrs: vec![],
+    };
+    writer
+        .insert_logs(&[
+            done("exp-0", "Completed", BASE_NS - 8 * DAY_NS + 60_000_000_000),
+            done("exp-1a", "Deviated", BASE_NS + 60_000_000_000),
+            done("exp-1b", "Completed", BASE_NS + HOUR_NS + 60_000_000_000),
+            done("exp-1c", "Deviated", BASE_NS + 2 * HOUR_NS + 60_000_000_000),
+        ])
+        .unwrap();
+
+    let id = writer
+        .create_manual_draft(&NewManualExperiment {
+            experiment_name: "drill-exp".into(),
+            exercise_type: ExerciseType::GameDay,
+            executed_at_ns: BASE_NS + 3 * HOUR_NS,
+            hypothesis: "failover keeps p95 under 800ms".into(),
+            method: "disabled the primary PoP".into(),
+            outcome: ManualOutcome::Partial,
+            hypothesis_met: Some(true),
+            findings: None,
+            action_items: vec![],
+            target_system: Some("cdn".into()),
+            target_environment: Some("prod".into()),
+            blast_radius: None,
+            recovery_time_s: None,
+            duration_s: None,
+            entered_by: "alice".into(),
+            attestation: "I attest this record reflects the exercise.".into(),
+            renewal_due_ns: None,
+            framework_refs: vec!["DORA Art. 24(7)".into(), "ISO 27001 A.5.29".into()],
+        })
+        .unwrap();
+    writer.submit_manual(&id, None, "alice").unwrap();
+    writer.verify_manual(&id, "bob", Some("reviewed")).unwrap();
+    (d, store)
+}
+
+/// The test-register table after its H2 heading.
+fn register_table(doc: &ReportDoc) -> Vec<Vec<Cell>> {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Test register"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("test register table")
+}
+
+#[test]
+fn evidence_pack_renders_register_provenance_attestation_and_findings() {
+    let (_d, store) = findings_fixture();
+    let reader = store.read_only().unwrap();
+    let now = BASE_NS + 6 * HOUR_NS;
+    let doc = build_evidence_pack(&reader, "dora", Some(12 * HOUR_NS), now, &[]).unwrap();
+
+    assert_eq!(doc.meta.framework.as_deref(), Some("DORA"));
+    assert_eq!(doc.meta.period, Some((now - 12 * HOUR_NS, now)));
+    // The scope paragraph names the framework and the period.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::Paragraph(p) if p.contains("DORA") && p.contains('–') && p.contains("experiments are on record")
+    )));
+    // Traceability matrix: one row per DORA clause, tested summary joined.
+    let matrix = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Traceability matrix"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("traceability matrix");
+    assert_eq!(matrix.len(), 3);
+    assert!(row_text(&matrix[0]).contains("flaky-exp, drill-exp"));
+
+    // Register: the manual record carries entered/verifier provenance.
+    let register = register_table(&doc);
+    assert_eq!(register.len(), 2, "rows: {register:?}");
+    let manual_row = register
+        .iter()
+        .find(|r| row_text(r).contains("drill-exp"))
+        .expect("manual row");
+    let text = row_text(manual_row);
+    assert!(text.contains("manual"), "{text}");
+    assert!(text.contains("bob"), "{text}");
+    assert!(text.contains("partial"), "{text}");
+    assert!(text.contains("|75"), "{text}");
+
+    // Attestation appendix: one H3 per verified record, frameworks joined.
+    let appendix = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Manual attestation appendix"));
+    let blocks: Vec<&Block> = appendix.collect();
+    assert!(
+        blocks
+            .iter()
+            .any(|b| matches!(b, Block::H3(t) if t.starts_with("drill-exp — "))),
+        "{blocks:?}"
+    );
+    assert!(blocks.iter().any(|b| matches!(
+        b,
+        Block::KeyValues(kvs) if kvs.iter().any(|(k, v)|
+            k == "Frameworks" && row_text(std::slice::from_ref(v)).contains("ISO 27001 A.5.29"))
+    )));
+
+    // Findings log: the failed automated run is listed with its outcome.
+    let findings = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Findings log"))
+        .find_map(|b| match b {
+            Block::Bullets(items) => Some(items.clone()),
+            _ => None,
+        })
+        .expect("findings bullets");
+    assert_eq!(findings.len(), 1);
+    assert!(findings[0].contains("flaky-exp"), "{findings:?}");
+    assert!(findings[0].contains("Deviated"), "{findings:?}");
+}
+
+#[test]
+fn evidence_pack_traceability_defers_to_register_past_three_experiments() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let root = |n: usize| tumult_lake::SpanRow {
+        ts_ns: BASE_NS,
+        trace_id: format!("trace-{n}"),
+        span_id: format!("span-{n}"),
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: HOUR_NS,
+        service_name: "tumult".into(),
+        experiment_id: Some(format!("exp-{n}")),
+        experiment_name: Some(format!("exp-{n}")),
+        events: "[]".into(),
+        ..Default::default()
+    };
+    writer
+        .insert_spans(&(0..4).map(root).collect::<Vec<_>>())
+        .unwrap();
+    let reader = store.read_only().unwrap();
+    let doc = build_evidence_pack(&reader, "nis2", None, BASE_NS + HOUR_NS, &[]).unwrap();
+    let matrix = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Traceability matrix"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("traceability matrix");
+    assert!(row_text(&matrix[0]).contains("See test register (4)"));
+}
+
+#[test]
+fn executive_digest_reports_declining_trend_open_weaknesses_and_mttr() {
+    let (_d, store) = findings_fixture();
+    let reader = store.read_only().unwrap();
+    let org = OrgTree::empty();
+
+    // Previous period (a week back): flaky-exp's latest run is the pass at
+    // BASE_NS + 1h (score 100). Now: the deviation at +2h (score 50) —
+    // a declining delta, one open weakness, one discovered-and-fixed issue.
+    let doc = build_executive(
+        &reader,
+        &org,
+        BASE_NS + 6 * HOUR_NS,
+        7 * DAY_NS,
+        BASE_NS + 6 * HOUR_NS,
+        &[],
+    )
+    .unwrap();
+
+    let bluf = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) if p.starts_with("Portfolio resilience") => Some(p.clone()),
+            _ => None,
+        })
+        .expect("bluf paragraph");
+    assert!(bluf.contains("declining"), "{bluf}");
+    assert!(bluf.contains("open weakness"), "{bluf}");
+
+    // KPIs: 1 of 2 issues fixed, MTTR from the two recovery_time_s spans.
+    let kpis = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Kpis(k) => Some(k.clone()),
+            _ => None,
+        })
+        .expect("kpi cards");
+    let fixed = kpis
+        .iter()
+        .find(|(label, _, _)| label == "Issues fixed")
+        .unwrap();
+    assert_eq!(fixed.1, "1 / 2");
+    assert_eq!(fixed.2.as_deref(), Some("MTTR 21.0s"));
+
+    // Open weaknesses table carries the decision per run state.
+    let open = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Open weaknesses and decisions needed"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("open weaknesses table");
+    let texts: Vec<String> = open.iter().map(|r| row_text(r)).collect();
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("flaky-exp") && t.contains("Re-run, remediate, or accept")),
+        "{texts:?}"
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("drill-exp") && t.contains("Re-run to a full pass, or accept")),
+        "{texts:?}"
+    );
+
+    // Outlook focuses the next game-day on the weakest target.
+    let outlook = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) if p.starts_with("Next period priorities") => Some(p.clone()),
+            _ => None,
+        })
+        .expect("outlook paragraph");
+    assert!(outlook.contains("weakest target"), "{outlook}");
+
+    // The HTML preview renders the whole document (charts included).
+    let html = crate::html::render_html(&doc);
+    assert!(html.contains("Executive resilience digest"));
+    assert!(html.contains("<svg"));
+}
+
+#[test]
+fn executive_digest_all_green_has_no_weaknesses() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    store
+        .writer()
+        .unwrap()
+        .insert_spans(&[tumult_lake::SpanRow {
+            ts_ns: BASE_NS,
+            trace_id: "trace-green".into(),
+            span_id: "span-green".into(),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: HOUR_NS,
+            service_name: "tumult".into(),
+            experiment_id: Some("exp-green".into()),
+            experiment_name: Some("green-exp".into()),
+            target_system: Some("queue".into()),
+            events: "[]".into(),
+            ..Default::default()
+        }])
+        .unwrap();
+    store
+        .writer()
+        .unwrap()
+        .insert_logs(&[tumult_lake::LogRow {
+            ts_ns: BASE_NS + 60_000_000_000,
+            severity_text: "INFO".into(),
+            body: "experiment.completed".into(),
+            trace_id: Some("trace-green".into()),
+            span_id: None,
+            service_name: "tumult".into(),
+            log_attrs: vec![
+                ("experiment_id".to_string(), "exp-green".to_string()),
+                ("status".to_string(), "Completed".to_string()),
+            ],
+            resource_attrs: vec![],
+        }])
+        .unwrap();
+    let reader = store.read_only().unwrap();
+    let doc = build_executive(
+        &reader,
+        &OrgTree::empty(),
+        BASE_NS + HOUR_NS,
+        DAY_NS,
+        BASE_NS + HOUR_NS,
+        &[],
+    )
+    .unwrap();
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::Paragraph(p) if p == "No open weaknesses: every known experiment last ran green."
+    )));
+    let bluf = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) if p.starts_with("Portfolio resilience") => Some(p.clone()),
+            _ => None,
+        })
+        .expect("bluf paragraph");
+    assert!(bluf.contains("No open weaknesses"), "{bluf}");
+}
+
+/// A full game-day run: fault context on the root span, a rollback span in
+/// the trace, WARN/ERROR findings logs, and started/completed logs.
+fn game_day_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    writer
+        .insert_spans(&[
+            tumult_lake::SpanRow {
+                ts_ns: BASE_NS,
+                trace_id: "trace-gd".into(),
+                span_id: "span-gd-root".into(),
+                span_name: "resilience.experiment".into(),
+                span_kind: "Internal".into(),
+                duration_ns: 10 * 60 * NS_MIN,
+                service_name: "tumult".into(),
+                experiment_id: Some("exp-gd".into()),
+                experiment_name: Some("pg-failover-drill".into()),
+                fault_type: Some("injection".into()),
+                fault_subtype: Some("process-kill".into()),
+                fault_severity: Some("high".into()),
+                blast_radius: Some("single-node".into()),
+                target_system: Some("postgres".into()),
+                target_environment: Some("staging".into()),
+                hypothesis_met: Some(true),
+                recovery_time_s: Some(42.5),
+                span_attrs: vec![("fault.args.signal".into(), "9".into())],
+                events: "[]".into(),
+                ..Default::default()
+            },
+            tumult_lake::SpanRow {
+                ts_ns: BASE_NS + NS_MIN,
+                trace_id: "trace-gd".into(),
+                span_id: "span-gd-rb".into(),
+                parent_span_id: Some("span-gd-root".into()),
+                span_name: "resilience.rollback.restart".into(),
+                span_kind: "Internal".into(),
+                duration_ns: NS_MIN,
+                status_code: "Ok".into(),
+                service_name: "tumult".into(),
+                events: "[]".into(),
+                ..Default::default()
+            },
+        ])
+        .unwrap();
+    writer
+        .insert_logs(&[
+            tumult_lake::LogRow {
+                ts_ns: BASE_NS,
+                severity_text: "INFO".into(),
+                body: "experiment.started".into(),
+                trace_id: Some("trace-gd".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![
+                    ("experiment_id".to_string(), "exp-gd".to_string()),
+                    ("title".to_string(), "pg-failover-drill".to_string()),
+                ],
+                resource_attrs: vec![],
+            },
+            tumult_lake::LogRow {
+                ts_ns: BASE_NS + 2 * NS_MIN,
+                severity_text: "WARN".into(),
+                body: "replica lag climbing".into(),
+                trace_id: Some("trace-gd".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![],
+                resource_attrs: vec![],
+            },
+            tumult_lake::LogRow {
+                ts_ns: BASE_NS + 3 * NS_MIN,
+                severity_text: "ERROR".into(),
+                body: "primary unreachable".into(),
+                trace_id: Some("trace-gd".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![],
+                resource_attrs: vec![],
+            },
+            tumult_lake::LogRow {
+                ts_ns: BASE_NS + 9 * NS_MIN,
+                severity_text: "INFO".into(),
+                body: "experiment.completed".into(),
+                trace_id: Some("trace-gd".into()),
+                span_id: None,
+                service_name: "tumult".into(),
+                log_attrs: vec![
+                    ("experiment_id".to_string(), "exp-gd".to_string()),
+                    ("status".to_string(), "Completed".to_string()),
+                ],
+                resource_attrs: vec![],
+            },
+        ])
+        .unwrap();
+    (d, store)
+}
+
+const NS_MIN: i64 = 60 * 1_000_000_000;
+
+#[test]
+fn game_day_renders_full_run_context() {
+    let (_d, store) = game_day_fixture();
+    let reader = store.read_only().unwrap();
+    let doc = build_game_day(&reader, "exp-gd", BASE_NS + 10 * NS_MIN, &[])
+        .unwrap()
+        .expect("run exists");
+    assert_eq!(doc.meta.experiment_id.as_deref(), Some("exp-gd"));
+
+    let summary = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::KeyValues(kvs) => Some(kvs.clone()),
+            _ => None,
+        })
+        .expect("run summary");
+    let get = |key: &str| {
+        summary
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| row_text(std::slice::from_ref(v)))
+            .unwrap()
+    };
+    assert_eq!(get("Scenario"), "injection / process-kill");
+    assert_eq!(get("Severity"), "high");
+    assert_eq!(get("Hypothesis"), "Met");
+    assert_eq!(get("Outcome"), "Completed");
+
+    // Blast radius section: rollback exercised, recovery recorded.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::KeyValues(kvs) if kvs.iter().any(|(k, v)|
+            k == "Rollback exercised" && row_text(std::slice::from_ref(v)) == "yes")
+            && kvs.iter().any(|(k, v)|
+            k == "Recovery time" && row_text(std::slice::from_ref(v)) == "42.5s")
+    )));
+
+    // Timeline: both spans, the rollback row rendering its Ok status.
+    let timeline = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Timeline"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("timeline table");
+    assert_eq!(timeline.len(), 2);
+    assert!(row_text(&timeline[1]).contains("ok"));
+
+    // Findings: WARN and ERROR rows become bullets.
+    let findings = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Findings"))
+        .find_map(|b| match b {
+            Block::Bullets(items) => Some(items.clone()),
+            _ => None,
+        })
+        .expect("findings bullets");
+    assert_eq!(findings.len(), 2);
+    assert!(findings[0].contains("[WARN] replica lag climbing"));
+
+    // Rollback section counts the clean rollback spans.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::Paragraph(p) if p == "1 rollback span(s) executed; status: all clean."
+    )));
+
+    // Config appendix merges root span attrs and started-log attrs.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::KeyValues(kvs) if kvs.iter().any(|(k, _)| k == "fault.args.signal")
+            && kvs.iter().any(|(k, _)| k == "start.title")
+    )));
+
+    // Verdict mentions the recovery time.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::Paragraph(p) if p.contains("Service recovered in 42.5s.")
+    )));
+
+    // Both renderers accept the full document.
+    let html = crate::html::render_html(&doc);
+    assert!(html.contains("pg-failover-drill"));
+    let pdf = crate::typst_pdf::render_pdf(&doc).expect("pdf render");
+    assert!(pdf.starts_with(b"%PDF"));
+}
+
+#[test]
+fn game_day_handles_missing_outcome_and_failed_rollback() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    store
+        .writer()
+        .unwrap()
+        .insert_spans(&[
+            tumult_lake::SpanRow {
+                ts_ns: BASE_NS,
+                trace_id: "trace-x".into(),
+                span_id: "span-x-root".into(),
+                span_name: "resilience.experiment".into(),
+                span_kind: "Internal".into(),
+                duration_ns: NS_MIN,
+                service_name: "tumult".into(),
+                experiment_id: Some("exp-x".into()),
+                experiment_name: Some("half-run".into()),
+                fault_type: Some("network".into()),
+                events: "[]".into(),
+                ..Default::default()
+            },
+            tumult_lake::SpanRow {
+                ts_ns: BASE_NS + 1_000_000_000,
+                trace_id: "trace-x".into(),
+                span_id: "span-x-rb".into(),
+                span_name: "resilience.rollback".into(),
+                span_kind: "Client".into(),
+                duration_ns: 1_000_000_000,
+                status_code: "Error".into(),
+                status_message: "boom".into(),
+                service_name: "tumult".into(),
+                events: "[]".into(),
+                ..Default::default()
+            },
+        ])
+        .unwrap();
+    let reader = store.read_only().unwrap();
+    let doc = build_game_day(&reader, "exp-x", BASE_NS + NS_MIN, &[])
+        .unwrap()
+        .expect("run exists");
+
+    let summary = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::KeyValues(kvs) => Some(kvs.clone()),
+            _ => None,
+        })
+        .expect("run summary");
+    let get = |key: &str| {
+        summary
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| row_text(std::slice::from_ref(v)))
+            .unwrap()
+    };
+    // No completion log: incomplete outcome; no hypothesis recorded;
+    // fault type without a subtype stands alone.
+    assert_eq!(get("Outcome"), "incomplete");
+    assert_eq!(get("Hypothesis"), "Not recorded");
+    assert_eq!(get("Scenario"), "network");
+    assert_eq!(get("Severity"), "medium"); // default
+
+    // A failed rollback is flagged for investigation.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::Paragraph(p) if p.contains("errors present — investigate")
+    )));
+    // No WARN/ERROR logs: the quiet-run message.
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        Block::Paragraph(p) if p == "No warnings or errors were logged during this run."
+    )));
+    // The error span's timeline row renders the readable status.
+    let timeline = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Timeline"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("timeline table");
+    assert!(row_text(&timeline[1]).contains("error"));
+}
+
+#[test]
 fn game_day_scoped_hides_out_of_scope_run() {
     let (_d, store) = env_fixture();
     let reader = store.read_only().unwrap();
