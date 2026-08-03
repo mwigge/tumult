@@ -24,9 +24,10 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    # The instrumented full-workspace build + test run takes ~50 min; the
-    # old 60-min budget left no headroom and cancelled the job at the wire.
-    timeout-minutes: 120
+    # The instrumented full-workspace build + test run takes ~120 min with the
+    # current test count; 120 exactly cancelled the job at the wire (run
+    # 30809935772 died at 120m16s), so leave real headroom.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       # The instrumented workspace build (duckdb/parquet/arrow static libs)
