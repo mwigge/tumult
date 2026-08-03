@@ -113,11 +113,20 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # Linking the big test binaries (duckdb/parquet static libs) with full
+      # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
+      # same fix as the Coverage job: reclaim ~15 GB, line tables suffice.
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
       # tumultd rust-embeds web/build/ at compile time; without this the
       # workspace cargo step below fails on the tumultd crate.
       - name: Build web UI (tumultd embeds web/build)
         run: npm --prefix web ci && npm --prefix web run build
       - run: cargo test --all-features
+        env:
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
   doc:
     name: Documentation
