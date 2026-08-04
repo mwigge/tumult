@@ -57,6 +57,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   concurrency cap) on the `runs/new` dry-run panel — where the launch
   button reads "Start run — affects N target(s)" — and on the run detail
   page (resolved from the run's own definition and parameters).
+- Global halt: `POST /api/runs/stop-all` (Operator) e-stops every active
+  run — running experiments cancel at the next activity boundary and roll
+  back, queued and approval-parked runs are cancelled before start — with
+  the halting principal audited on each run's `stop_requested` event
+  (including the previously unaudited cancel-before-start path). The Runs
+  page gains a two-step arm/confirm "Halt all" kill switch.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

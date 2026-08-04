@@ -1821,3 +1821,54 @@ async fn list_tokens_admin_only_and_never_serializes_hashes() {
         assert!(t["created_at_ns"].as_i64().is_some());
     }
 }
+
+/// `POST /api/runs/stop-all` is Operator-level: unauthenticated 401s, viewers
+/// 403, and every run it stops records the requesting principal as the actor
+/// of the run's `stop_requested` audit event.
+#[tokio::test]
+async fn stop_all_enforces_operator_role_and_audits_actor() {
+    let srv = spawn_server().await;
+    add_user(&srv, "admin", "admin-password-1", "admin", false).await;
+    add_user(&srv, "op", "op-password-1", "operator", false).await;
+    add_user(&srv, "vie", "vie-password-1", "viewer", false).await;
+    let (admin, _) = add_token(&srv, "u-admin", "admin-token").await;
+    let (op, _) = add_token(&srv, "u-op", "op-token").await;
+    let (vie, _) = add_token(&srv, "u-vie", "vie-token").await;
+
+    let registry_id = register_run_def_auth(&srv.base, &op).await;
+    let (run_id, _tier) = create_gated(&srv.base, &op, &registry_id, "dev").await;
+
+    // Unauthenticated → 401; viewer → 403.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/runs/stop-all", srv.base))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+    let (status, _body) = post_auth(&srv.base, "/api/runs/stop-all", &vie, json!({})).await;
+    assert_eq!(status, 403, "viewer may not halt");
+
+    // Operator halts; the gated run is cancelled before dispatch.
+    let (status, body) = post_auth(&srv.base, "/api/runs/stop-all", &op, json!({})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["stopped"], 1, "{body}");
+
+    let detail = await_terminal_run_auth(&srv.base, &op, &run_id).await;
+    assert_eq!(detail["run"]["state"], "aborted", "{detail}");
+    let stop = detail["audit"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event"] == "stop_requested")
+        .expect("stop_requested audit event recorded");
+    assert_eq!(
+        stop["actor"], "op",
+        "the halting principal is the audit actor"
+    );
+
+    // Admin may halt too (nothing active now → no-op).
+    let (status, body) = post_auth(&srv.base, "/api/runs/stop-all", &admin, json!({})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["stopped"], 0, "{body}");
+}

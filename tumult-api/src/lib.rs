@@ -316,6 +316,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/runs/validate", post(runs::validate))
         .route("/api/runs/dry-run", post(runs::dry_run))
         .route("/api/runs", get(runs::list).post(runs::create))
+        .route("/api/runs/stop-all", post(runs::stop_all))
         .route("/api/runs/{id}", get(runs::detail))
         .route("/api/runs/{id}/audit/verify", get(runs::audit_verify))
         .route("/api/runs/{id}/stop", post(runs::stop))

@@ -287,17 +287,21 @@ async fn run_audit_verify_reports_chain_validity() {
 }
 
 /// A probe-only definition classifies T0 (no faults, no rollback), so it
-/// enqueues directly — the shape needed to exercise queue backpressure.
+/// enqueues directly — the shape needed to exercise queue backpressure. The
+/// `hold-*` names make the SlowNoopExecutor hold each step for 1s (~2s per
+/// run): all 8 burst requests are handled while the first run still
+/// occupies the single executor slot, even on a loaded CI runner (200ms
+/// probes raced — a freed permit accepted a 6th run).
 const PROBE_ONLY_TOON: &str = r#"
 title: probe-only health check
 method[2]:
-  - name: probe-1
+  - name: hold-1
     activity_type: probe
     provider:
       type: native
       plugin: test
       function: noop
-  - name: probe-2
+  - name: hold-2
     activity_type: probe
     provider:
       type: native
@@ -321,7 +325,7 @@ async fn run_create_backpressure_returns_429_on_overload() {
 
     // The harness queue: concurrency 1, depth 4 → capacity 5. Fire the
     // whole burst concurrently so every request lands within the first
-    // run's ~400ms lifetime (two 200ms noop probes): at most 5 accepted,
+    // run's ~2s lifetime (two 1s hold probes): at most 5 accepted,
     // the rest rejected 429 — never silently queued. A sequential burst is
     // racy: under suite load it can outlive a run and free a permit.
     let mut handles = Vec::new();
@@ -535,4 +539,74 @@ async fn dry_run_scope_defaults_when_nothing_declared() {
     assert_eq!(actions[0]["provider"], "test");
     assert_eq!(actions[0]["action"], "noop");
     assert_eq!(actions[0]["targets"], json!({}));
+}
+
+/// `POST /api/runs/stop-all` e-stops every active run — queued/running runs
+/// are cancelled (mid-method or before start), gated runs are cancelled
+/// before dispatch — and is a no-op 200 when nothing is active.
+#[tokio::test]
+async fn stop_all_halts_every_active_run() {
+    let srv = spawn_server().await;
+    let client = reqwest::Client::new();
+
+    // One executing run (STOP_TOON holds each step for 1s, so it cannot
+    // complete inside the stop-all window) and one gated run parked in
+    // pending_approval. Park the gated run FIRST and enqueue the executing
+    // run last: run_a's ~3s lifetime then only has to cover the
+    // approval → halt gap, not the gated run's registration — under
+    // tarpaulin instrumentation that registration alone outlives 3s and
+    // the halt found run_a already terminal (requested: 1).
+    let gated_reg = register_run_def(&srv.base).await;
+    let resp = client
+        .post(format!("{}/api/runs", srv.base))
+        .json(&json!({"registry_id": gated_reg}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "pending_approval", "{body}");
+    let gated = body["run_id"].as_str().unwrap().to_string();
+
+    let stop_reg = register_toon(&srv.base, STOP_TOON).await;
+    let run_a = enqueue_approved(&srv.base, &stop_reg).await;
+
+    let resp = client
+        .post(format!("{}/api/runs/stop-all", srv.base))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["requested"], 2, "{body}");
+    assert_eq!(body["stopped"], 2, "{body}");
+
+    for id in [&run_a, &gated] {
+        let detail = await_terminal_run(&srv.base, id).await;
+        assert_eq!(detail["run"]["state"], "aborted", "{detail}");
+    }
+    // Both halt paths record the stop request on the run's audit trail.
+    for id in [&run_a, &gated] {
+        let detail = await_terminal_run(&srv.base, id).await;
+        let events: Vec<&str> = detail["audit"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|e| e["event"].as_str())
+            .collect();
+        assert!(events.contains(&"stop_requested"), "{id}: {events:?}");
+    }
+
+    // Nothing active now: the kill switch is a no-op.
+    let resp = client
+        .post(format!("{}/api/runs/stop-all", srv.base))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["requested"], 0, "{body}");
+    assert_eq!(body["stopped"], 0, "{body}");
 }

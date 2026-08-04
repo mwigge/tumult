@@ -508,6 +508,25 @@ mod tests {
             .await
             .unwrap();
 
+        // Wait for the exec to land: /proc/<pid>/cmdline is empty between
+        // fork and execve, and a loaded CI runner can delay the child's
+        // first scheduling long enough for stop_proxy to read it mid-exec
+        // and refuse the kill as "stale".
+        let cmdline = format!("/proc/{}/cmdline", child.id());
+        let mut execd = false;
+        for _ in 0..100 {
+            if tokio::fs::read(&cmdline)
+                .await
+                .map(|c| String::from_utf8_lossy(&c).contains(PROXYD_BIN))
+                .unwrap_or(false)
+            {
+                execd = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(execd, "stand-in proxyd never exec'd");
+
         let out = stop_proxy(listen).await.expect("rollback");
         assert!(out.contains("stopped"), "out: {out}");
         assert!(!pidfile.exists());

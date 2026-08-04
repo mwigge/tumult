@@ -14,6 +14,13 @@
   let me = $state<MeResponse | null>(null);
   let filter = $state('');
 
+  // Global halt: two-step arm/confirm — the first click arms for 5s, the
+  // second fires. No bare one-click kill switch.
+  let haltArmed = $state(false);
+  let halting = $state(false);
+  let haltNote = $state<string | null>(null);
+  let haltTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Operators and up may launch runs; missing role counts as viewer. When
   // the daemon has no users (open local mode) anyone may run.
   const canRun = $derived(
@@ -26,16 +33,59 @@
     ) ?? null
   );
 
+  const activeCount = $derived(rows?.filter((r) => ACTIVE_RUN_STATES.has(r.state)).length ?? 0);
+
   onMount(() => {
     api
       .me()
       .then((m) => (me = m))
       .catch(() => (me = null));
-    api
-      .runs()
-      .then((r) => (rows = r.runs))
-      .catch((e) => (error = String(e)));
+    refresh();
+    return () => {
+      if (haltTimer) clearTimeout(haltTimer);
+    };
   });
+
+  async function refresh() {
+    try {
+      const r = await api.runs();
+      rows = r.runs;
+      error = null;
+    } catch (e) {
+      if (!rows) error = String(e);
+    }
+  }
+
+  function disarm() {
+    haltArmed = false;
+    if (haltTimer) {
+      clearTimeout(haltTimer);
+      haltTimer = null;
+    }
+  }
+
+  async function halt() {
+    if (halting) return;
+    if (!haltArmed) {
+      haltArmed = true;
+      haltTimer = setTimeout(disarm, 5000);
+      return;
+    }
+    disarm();
+    halting = true;
+    haltNote = null;
+    try {
+      const r = await api.stopAllRuns();
+      haltNote = `Halt requested — ${r.stopped} run${r.stopped === 1 ? '' : 's'} stopping${
+        r.skipped_terminal > 0 ? `, ${r.skipped_terminal} already terminal` : ''
+      }.`;
+    } catch (e) {
+      haltNote = `Halt failed: ${String(e)}`;
+    } finally {
+      halting = false;
+    }
+    await refresh();
+  }
 
   function duration(r: RunRow): string {
     return fmtDuration(r.ended_at_ns !== null ? r.ended_at_ns - r.queued_at_ns : null);
@@ -54,10 +104,23 @@
       {/each}
     </div>
     {#if canRun}
+      {#if activeCount > 0}
+        <button class:danger={haltArmed} class="halt" onclick={halt} disabled={halting}>
+          {halting
+            ? 'Halting…'
+            : haltArmed
+              ? `Confirm halt ${activeCount} active run${activeCount === 1 ? '' : 's'}`
+              : 'Halt all'}
+        </button>
+      {/if}
       <button class="primary" onclick={() => goto('/runs/new')}>New run</button>
     {/if}
   </div>
 </div>
+
+{#if haltNote}
+  <div class="panel halt-note">{haltNote}</div>
+{/if}
 
 <div class="panel">
   {#if error}
@@ -108,6 +171,32 @@
     gap: 8px;
     flex-wrap: wrap;
     align-items: center;
+  }
+  .halt {
+    background: var(--bg-hover);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .halt:hover {
+    border-color: var(--fail);
+  }
+  .halt.danger {
+    border-color: var(--fail);
+    color: var(--fail);
+    font-weight: 600;
+  }
+  .halt:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .halt-note {
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
   }
   .err {
     max-width: 260px;
