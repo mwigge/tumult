@@ -70,6 +70,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   the halting principal audited on each run's `stop_requested` event
   (including the previously unaudited cancel-before-start path). The Runs
   page gains a two-step arm/confirm "Halt all" kill switch.
+- Scheduling core (schema v10): the `run_schedules` table plus the daemon's
+  schedule scheduler — interval-based recurring runs fired through the
+  normal run path (tier classification and approval gating preserved, so a
+  scheduled production run still parks for approval) with actor
+  `schedule:<name>`. Interval semantics (`interval_s`), not cron — the
+  workspace has no cron parser; missed fires during downtime collapse into
+  one, a full run queue retries next tick. `TUMULTD_SCHEDULE_TICK_S`
+  (default 30s) sets the tick. CRUD API and UI follow separately.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

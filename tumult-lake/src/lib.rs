@@ -61,6 +61,8 @@ mod rows;
 #[cfg(feature = "duckdb")]
 mod runs;
 #[cfg(feature = "duckdb")]
+mod schedules;
+#[cfg(feature = "duckdb")]
 mod schema;
 #[cfg(feature = "duckdb")]
 mod store;
@@ -89,6 +91,8 @@ pub use rows::{
 };
 #[cfg(feature = "duckdb")]
 pub use runs::{rollback_status, run_state, NewRun, RegisteredDefinition};
+#[cfg(feature = "duckdb")]
+pub use schedules::ScheduleRow;
 #[cfg(feature = "duckdb")]
 pub use schema::CURRENT_SCHEMA_VERSION;
 #[cfg(feature = "duckdb")]

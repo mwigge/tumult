@@ -47,8 +47,11 @@
 //! v9 adds the optional `tokens.expires_at_ns` column (NULL = never
 //! expires, so pre-v9 tokens keep working) — additive and idempotent like
 //! the v6/v7 ALTERs below.
+//!
+//! v10 adds the `run_schedules` table (interval-based recurring runs) —
+//! additive and index-free under the same rule as the v5 run tables.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 9;
+pub const CURRENT_SCHEMA_VERSION: i64 = 10;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -435,6 +438,24 @@ ALTER TABLE tokens ADD COLUMN IF NOT EXISTS expires_at_ns BIGINT;
 CREATE TABLE IF NOT EXISTS user_env_scopes (
     user_id         VARCHAR NOT NULL,
     environment     VARCHAR NOT NULL    -- one row per allowed env; zero rows = all environments
+);
+
+-- v10: recurring runs. Same index-free rule as the v5 run tables. Interval
+-- semantics (interval_s), not cron — see tumult_lake::schedules docs.
+CREATE TABLE IF NOT EXISTS run_schedules (
+    id              VARCHAR NOT NULL,   -- uuid
+    name            VARCHAR NOT NULL,
+    registry_id     VARCHAR NOT NULL,   -- references run_registry.id
+    interval_s      BIGINT NOT NULL,    -- seconds between fires
+    vars_json       VARCHAR,            -- template vars, same shape as runs.params_json
+    env             VARCHAR NOT NULL,   -- tier-classified at fire time (default 'dev')
+    target          VARCHAR,
+    enabled         BOOLEAN NOT NULL,
+    next_run_at_ns  BIGINT NOT NULL,
+    last_run_at_ns  BIGINT,
+    last_run_id     VARCHAR,
+    created_by      VARCHAR,
+    created_at_ns   BIGINT NOT NULL
 );
 ";
 

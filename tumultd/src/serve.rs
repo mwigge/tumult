@@ -274,6 +274,16 @@ pub(crate) async fn serve() -> Result<()> {
             background_shutdown.clone(),
         )
     });
+    // Schedule scheduler: fires due interval schedules through the normal
+    // run path every tick. Holds an IngestWriter clone, so it is cancelled
+    // and awaited before the writer drain below, like the lake task.
+    let schedule_task = tumult_ingest::schedules::spawn_schedule_scheduler(
+        config.db_path.clone(),
+        ingest.clone(),
+        run_queue.clone(),
+        tumult_ingest::schedules::tick_from_env(),
+        background_shutdown.clone(),
+    );
     let http_server = tokio::spawn(async move {
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
             .merge(report_router(report_state))
@@ -335,6 +345,9 @@ pub(crate) async fn serve() -> Result<()> {
     if let Some(task) = lake_task {
         task.await.context("lake scheduler task panicked")?;
     }
+    schedule_task
+        .await
+        .context("schedule scheduler task panicked")?;
     run_queue.shutdown();
     drop(run_queue);
     writer_task.await.context("ingest writer task")?;
