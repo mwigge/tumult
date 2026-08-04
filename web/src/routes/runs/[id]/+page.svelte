@@ -2,12 +2,13 @@
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
   import { ACTIVE_RUN_STATES, api } from '$lib/api';
-  import type { ExperimentDetail, MeResponse, RunDetail, Span } from '$lib/types';
+  import type { DryRunScope, ExperimentDetail, MeResponse, RunDetail, Span } from '$lib/types';
   import Waterfall from '$lib/components/Waterfall.svelte';
   import SpanDrawer from '$lib/components/SpanDrawer.svelte';
   import RunHeader from '$lib/components/RunHeader.svelte';
   import ApprovalActions from '$lib/components/ApprovalActions.svelte';
   import AuditTimeline from '$lib/components/AuditTimeline.svelte';
+  import ScopeSummary from '$lib/components/ScopeSummary.svelte';
 
   const id = $derived($page.params.id ?? '');
 
@@ -16,6 +17,10 @@
   let me = $state<MeResponse | null>(null);
   let telemetry = $state<ExperimentDetail | null>(null);
   let selected = $state<Span | null>(null);
+  // Blast-radius summary from the run's own definition+vars, fetched once
+  // via the dry-run endpoint (Viewer-level; executes nothing).
+  let scope = $state<DryRunScope | null>(null);
+  let scopeFailed = $state(false);
 
   // Approvers and admins may decide; only admins may break glass. The server
   // enforces both regardless — these only hide what the role cannot use.
@@ -72,6 +77,8 @@
     detail = null;
     telemetry = null;
     error = null;
+    scope = null;
+    scopeFailed = false;
 
     async function poll() {
       try {
@@ -79,6 +86,19 @@
         if (cancelled) return;
         detail = d;
         error = null;
+        if (!scope && !scopeFailed) {
+          try {
+            const vars = d.run.params_json
+              ? (JSON.parse(d.run.params_json) as Record<string, string>)
+              : {};
+            const r = await api.dryRun(d.run.registry_id, vars);
+            if (cancelled) return;
+            if (r.valid) scope = r.plan.scope;
+            else scopeFailed = true;
+          } catch {
+            if (!cancelled) scopeFailed = true;
+          }
+        }
         if (d.run.experiment_id) {
           try {
             const t = await api.experiment(d.run.experiment_id);
@@ -134,6 +154,13 @@
 {:else}
   {@const run = detail.run}
   <RunHeader {run} runId={id} {active} {canStop} {awaitingTier} {triggerActor} />
+
+  {#if scope}
+    <div class="panel" style="margin-bottom: 14px">
+      <h2>Blast radius</h2>
+      <ScopeSummary {scope} />
+    </div>
+  {/if}
 
   <div class="panel" style="margin-bottom: 14px">
     <h2>Telemetry</h2>

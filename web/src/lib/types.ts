@@ -497,7 +497,25 @@ export interface DryRunPlan {
   rollbacks: DryRunStep[];
   controls: unknown;
   regulatory: unknown;
-  blast_radius: unknown;
+  blast_radius: string | null;
+  scope: DryRunScope;
+}
+
+/**
+ * The dry-run plan's blast-radius summary (`plan.scope`): the declared note,
+ * the fault actions with their target-identifying arguments, the guards and
+ * the concurrent-fault cap. Always present — nulls/empty when undeclared.
+ */
+export interface DryRunScope {
+  blast_radius: string | null;
+  actions: {
+    step: string;
+    provider: string;
+    action: string;
+    targets: Record<string, unknown>;
+  }[];
+  guards: { name: string; probe: string; min_breaches: number }[];
+  max_concurrent_faults: number | null;
 }
 
 export type DryRunResponse =

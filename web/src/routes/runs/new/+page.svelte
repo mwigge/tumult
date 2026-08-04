@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { api, fmtAgo, fmtTs, shortId } from '$lib/api';
+  import ScopeSummary, { targetedActions } from '$lib/components/ScopeSummary.svelte';
   import type {
     DryRunResponse,
     DryRunStep,
@@ -66,6 +67,10 @@
   const dryValidForCurrent = $derived(
     dry !== null && dry.valid && dryKey !== null && dryKey === currentKey
   );
+
+  // Targeted fault actions in the current dry-run plan — the honest count
+  // behind the launch button's "affects N targets".
+  const affected = $derived(dry !== null && dry.valid ? targetedActions(dry.plan.scope) : 0);
 
   onMount(() => {
     api
@@ -243,6 +248,8 @@
               : ''}{plan.estimate.confidence ? ` · confidence ${plan.estimate.confidence}` : ''}
           </div>
         {/if}
+        <h3>Blast radius</h3>
+        <ScopeSummary scope={plan.scope} />
         {#if plan.hypothesis}
           <h3>Hypothesis — {plan.hypothesis.title}</h3>
           {#if plan.hypothesis.probes.length === 0}
@@ -295,7 +302,11 @@
       <div class="hint">A valid dry run for the current parameters is required before starting.</div>
     {/if}
     <button class="primary" onclick={start} disabled={!dryValidForCurrent || !canRun || starting}>
-      {starting ? 'Starting…' : 'Start run'}
+      {starting
+        ? 'Starting…'
+        : affected > 0
+          ? `Start run — affects ${affected} target${affected === 1 ? '' : 's'}`
+          : 'Start run'}
     </button>
     {#if startError}
       <div class="state error">Failed to start the run: {startError}</div>

@@ -39,6 +39,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   target-identifying arguments (container/host/selector/process/interface/
   pod/namespace), the guards (name, probe, `min_breaches`), and
   `max_concurrent_faults` — always present, nulls/empty when undeclared.
+- Blast-radius preview in the web UI: a shared `ScopeSummary` component
+  renders the scope block (note, targeted fault actions, guards,
+  concurrency cap) on the `runs/new` dry-run panel — where the launch
+  button reads "Start run — affects N target(s)" — and on the run detail
+  page (resolved from the run's own definition and parameters).
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
