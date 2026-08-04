@@ -287,17 +287,21 @@ async fn run_audit_verify_reports_chain_validity() {
 }
 
 /// A probe-only definition classifies T0 (no faults, no rollback), so it
-/// enqueues directly — the shape needed to exercise queue backpressure.
+/// enqueues directly — the shape needed to exercise queue backpressure. The
+/// `hold-*` names make the SlowNoopExecutor hold each step for 1s (~2s per
+/// run): all 8 burst requests are handled while the first run still
+/// occupies the single executor slot, even on a loaded CI runner (200ms
+/// probes raced — a freed permit accepted a 6th run).
 const PROBE_ONLY_TOON: &str = r#"
 title: probe-only health check
 method[2]:
-  - name: probe-1
+  - name: hold-1
     activity_type: probe
     provider:
       type: native
       plugin: test
       function: noop
-  - name: probe-2
+  - name: hold-2
     activity_type: probe
     provider:
       type: native
@@ -321,7 +325,7 @@ async fn run_create_backpressure_returns_429_on_overload() {
 
     // The harness queue: concurrency 1, depth 4 → capacity 5. Fire the
     // whole burst concurrently so every request lands within the first
-    // run's ~400ms lifetime (two 200ms noop probes): at most 5 accepted,
+    // run's ~2s lifetime (two 1s hold probes): at most 5 accepted,
     // the rest rejected 429 — never silently queued. A sequential burst is
     // racy: under suite load it can outlive a run and free a permit.
     let mut handles = Vec::new();
