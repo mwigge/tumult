@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { api, fmtAgo, fmtTs, shortId } from '$lib/api';
   import type {
     DryRunResponse,
@@ -73,7 +74,16 @@
       .catch(() => (me = null));
     api
       .registry()
-      .then((r) => (entries = r.definitions))
+      .then((r) => {
+        entries = r.definitions;
+        // Deep link from the authoring flow: ?registry_id= preselects the
+        // definition and skips straight to the parameter step. Unknown ids
+        // are ignored (the user picks from the table as usual).
+        const preselect = $page.url.searchParams.get('registry_id');
+        if (preselect && r.definitions.some((d) => d.id === preselect)) {
+          void select(preselect);
+        }
+      })
       .catch((e) => (listError = String(e)));
   });
 

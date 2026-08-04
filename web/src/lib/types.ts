@@ -581,3 +581,65 @@ export interface RunDetail {
     decisions: ApprovalDecision[];
   };
 }
+
+// --- Authoring: fault catalog + scaffold -------------------------------------
+
+/** One documented argument of a catalog action. Plugin manifests declare no
+    typed parameter schema, so every arg renders as a plain text input. */
+export interface CatalogArg {
+  name: string;
+  required: boolean;
+  description: string;
+}
+
+/** A single fault action or probe in the fault catalog. */
+export interface CatalogAction {
+  plugin: string;
+  name: string;
+  description: string;
+  kind: 'action' | 'probe';
+  args: CatalogArg[];
+}
+
+/** A fault domain and the actions grouped under it. */
+export interface CatalogDomain {
+  domain: string;
+  label: string;
+  actions: CatalogAction[];
+}
+
+/** `GET /api/authoring/catalog` response. */
+export interface CatalogResponse {
+  action_count: number;
+  domains: CatalogDomain[];
+}
+
+/** `POST /api/authoring/scaffold` request — mirrors the MCP
+    `tumult_scaffold_experiment` tool's argument schema. `plugin` is optional
+    when `action` is fully qualified as `plugin::action`. */
+export interface ScaffoldRequest {
+  plugin?: string;
+  action: string;
+  args: Record<string, string>;
+  target: string;
+  probe_command?: string;
+  probe_url?: string;
+  probe_expect?: string;
+  title?: string;
+}
+
+/** `POST /api/authoring/scaffold` response. `validation_error` is present
+    only when `valid` is false. */
+export interface ScaffoldResponse {
+  action: string;
+  toon: string;
+  valid: boolean;
+  validation_error?: string;
+}
+
+/** `POST /api/runs/validate` response. The endpoint validates AND registers
+    (content-hash deduped): `registered` is false when the same TOON was
+    already in the registry. */
+export type ValidateToonResponse =
+  | { valid: true; registry_id: string; name: string; registered: boolean }
+  | { valid: false; error: string };
