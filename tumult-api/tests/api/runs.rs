@@ -551,10 +551,11 @@ async fn stop_all_halts_every_active_run() {
 
     // One executing run (STOP_TOON holds each step for 1s, so it cannot
     // complete inside the stop-all window) and one gated run parked in
-    // pending_approval. The halt fires immediately after approval — the
-    // executing run is queued or running, both haltable.
-    let stop_reg = register_toon(&srv.base, STOP_TOON).await;
-    let run_a = enqueue_approved(&srv.base, &stop_reg).await;
+    // pending_approval. Park the gated run FIRST and enqueue the executing
+    // run last: run_a's ~3s lifetime then only has to cover the
+    // approval → halt gap, not the gated run's registration — under
+    // tarpaulin instrumentation that registration alone outlives 3s and
+    // the halt found run_a already terminal (requested: 1).
     let gated_reg = register_run_def(&srv.base).await;
     let resp = client
         .post(format!("{}/api/runs", srv.base))
@@ -566,6 +567,9 @@ async fn stop_all_halts_every_active_run() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["state"], "pending_approval", "{body}");
     let gated = body["run_id"].as_str().unwrap().to_string();
+
+    let stop_reg = register_toon(&srv.base, STOP_TOON).await;
+    let run_a = enqueue_approved(&srv.base, &stop_reg).await;
 
     let resp = client
         .post(format!("{}/api/runs/stop-all", srv.base))
