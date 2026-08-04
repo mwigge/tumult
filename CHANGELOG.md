@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
   nav entry (everything shows in open local mode).
+- `/author/new` authoring wizard in the web UI: a parameter form generated
+  from the chosen catalog action's documented arguments (title, target,
+  steady-state probe as command or HTTP URL), one-click TOON scaffolding
+  via `POST /api/authoring/scaffold`, an editable TOON editor with a
+  "Validate & register" step (Operator-gated server-side, content-hash
+  deduped), and a handoff into the New Run launcher
+  (`/runs/new?registry_id=…`). New `ActionParamForm` and `ToonEditor`
+  components.
 - `/author` page in the web UI: a browsable, searchable fault catalog
   (domains → actions/probes with their documented arguments) backed by
   `GET /api/authoring/catalog`, with an "Author" nav entry and an empty
