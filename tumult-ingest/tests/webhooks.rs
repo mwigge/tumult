@@ -11,9 +11,9 @@ use tumult_ingest::IngestWriter;
 use tumult_lake::{NewRun, Store, WebhookRow};
 
 /// Run one dispatch against a local receiver; returns the captured
-/// (signature, body) pairs and the delivery count.
+/// (signature, timestamp, signature-v2, body) tuples and the delivery count.
 struct Receiver {
-    hits: Arc<Mutex<Vec<(String, String)>>>,
+    hits: Arc<Mutex<Vec<(String, String, String, String)>>>,
     url: String,
 }
 
@@ -26,12 +26,19 @@ async fn spawn_receiver() -> Receiver {
             axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {
                 let hits = Arc::clone(&hits);
                 async move {
-                    let sig = headers
-                        .get("x-tumult-signature")
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or_default()
-                        .to_string();
-                    hits.lock().unwrap().push((sig, body));
+                    let header = |name: &str| {
+                        headers
+                            .get(name)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string()
+                    };
+                    hits.lock().unwrap().push((
+                        header("x-tumult-signature"),
+                        header("x-tumult-timestamp"),
+                        header("x-tumult-signature-v2"),
+                        body,
+                    ));
                     "ok"
                 }
             }),
@@ -101,10 +108,24 @@ async fn dispatcher_posts_signed_events_and_advances_the_cursor() {
     {
         let hits = receiver.hits.lock().unwrap();
         assert_eq!(hits.len(), 1);
-        let (sig, body) = &hits[0];
-        // X-Tumult-Signature: sha256=<hmac-sha256(secret, body)>.
+        let (sig, timestamp, sig_v2, body) = &hits[0];
+        // X-Tumult-Signature: sha256=<hmac-sha256(secret, body)> — unchanged,
+        // so receivers built before the timestamp scheme keep verifying.
         let expected = tumult_ingest::webhooks::hmac_sha256_hex("test-secret", body);
         assert_eq!(sig, &format!("sha256={expected}"));
+        // The additive replay protection: a parseable, fresh timestamp whose
+        // v2 signature covers "{timestamp}.{body}".
+        let ts: i64 = timestamp.parse().expect("unix-seconds timestamp");
+        assert!(tumult_ingest::webhooks::verify_v2(
+            "test-secret",
+            body,
+            ts,
+            sig_v2,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+        ));
         let payload: Value = serde_json::from_str(body).unwrap();
         assert_eq!(payload["event"], "enqueued");
         assert_eq!(payload["run_id"], "run-1");
@@ -159,7 +180,9 @@ async fn spawn_rejecting_receiver() -> Receiver {
             axum::routing::post(move |body: String| {
                 let hits = Arc::clone(&hits);
                 async move {
-                    hits.lock().unwrap().push((String::new(), body));
+                    hits.lock()
+                        .unwrap()
+                        .push((String::new(), String::new(), String::new(), body));
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR
                 }
             }),
