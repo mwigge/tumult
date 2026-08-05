@@ -315,3 +315,79 @@ async fn campaign_parent_deviates_below_the_pass_threshold() {
         .unwrap();
     assert_eq!(parent["state"], "deviated", "1/2 passed < 0.75 threshold");
 }
+
+/// A daemon "restart" mid-campaign: the startup orphan sweep must leave the
+/// gameday parent alone (its registry row is `kind = 'gameday'`, excluded
+/// from `active_runs`), and the supervisor's next tick resumes the campaign
+/// from store state instead of rolling it back or stalling it.
+#[tokio::test]
+async fn campaign_parent_survives_a_daemon_restart() {
+    let fx = fixture().await;
+    seed_campaign(&fx, &[("probe one", PROBE_TOON), ("probe two", PROBE_TOON)]).await;
+    let parent = || {
+        Store::at(&fx.db_path)
+            .read_only()
+            .unwrap()
+            .run_get("parent-1")
+            .unwrap()
+            .unwrap()
+    };
+
+    // Mid-campaign state: step 1 has passed, the parent is running.
+    tumult_ingest::gamedays::advance_campaigns(&fx.db_path, &fx.ingest, &fx.runs)
+        .await
+        .unwrap();
+    let child1 = children_of(&fx, "parent-1")[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(await_terminal(&fx, &child1).await, "passed");
+    assert_eq!(parent()["state"], "running");
+
+    // Simulated restart: re-run the startup orphan reconciliation over the
+    // live store. The running parent is a campaign, not a stray experiment
+    // run, so nothing is reconciled, orphaned, or rolled back.
+    let factory: tumult_ingest::runs::ExecutorFactory =
+        Arc::new(|_| Arc::new(NoopExecutor) as Arc<dyn ActivityExecutor>);
+    let reconciled = tumult_ingest::runs::reconcile_orphans(&fx.ingest, &fx.db_path, &factory)
+        .await
+        .unwrap();
+    assert_eq!(
+        reconciled, 0,
+        "the campaign parent must be excluded from the orphan sweep"
+    );
+    assert_eq!(parent()["state"], "running");
+    let audit = Store::at(&fx.db_path)
+        .read_only()
+        .unwrap()
+        .query_json_rows("SELECT event FROM run_audit WHERE run_id = 'parent-1'")
+        .unwrap();
+    assert!(
+        !audit.iter().any(|r| matches!(
+            r["event"].as_str(),
+            Some("orphan_detected" | "rollback_started")
+        )),
+        "no phantom orphan/rollback audit entries: {audit:?}"
+    );
+
+    // The supervisor resumes from store state: step 2 enqueues, passes, and
+    // the campaign completes.
+    let enqueued = tumult_ingest::gamedays::advance_campaigns(&fx.db_path, &fx.ingest, &fx.runs)
+        .await
+        .unwrap();
+    assert_eq!(enqueued, 1, "the campaign resumes with the next step");
+    let kids = children_of(&fx, "parent-1");
+    assert_eq!(kids.len(), 2);
+    let child2 = kids[1]["id"].as_str().unwrap().to_string();
+    assert_eq!(await_terminal(&fx, &child2).await, "passed");
+
+    let enqueued = tumult_ingest::gamedays::advance_campaigns(&fx.db_path, &fx.ingest, &fx.runs)
+        .await
+        .unwrap();
+    assert_eq!(enqueued, 0);
+    assert_eq!(
+        parent()["state"],
+        "passed",
+        "campaign completes after restart"
+    );
+}
