@@ -35,11 +35,7 @@ fn now_ns() -> i64 {
 /// 30s, minimum 1s); invalid values fall back to the default.
 #[must_use]
 pub fn tick_from_env() -> Duration {
-    std::env::var("TUMULTD_SCHEDULE_TICK_S")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .map_or_else(|| Duration::from_secs(30), Duration::from_secs)
+    crate::daemon_task::tick_from_env("TUMULTD_SCHEDULE_TICK_S", Duration::from_secs(30))
 }
 
 /// Spawn the schedule scheduler: fires due schedules every `tick` until
@@ -53,22 +49,15 @@ pub fn spawn_schedule_scheduler(
     tick: Duration,
     shutdown: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tick);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    crate::daemon_metrics::supervisor_tick();
-                    if let Err(e) = fire_due_schedules(&db_path, &ingest, &runs).await {
-                        tracing::warn!(error = %e, "schedule scheduler tick failed");
-                    }
-                }
-                () = shutdown.cancelled() => {
-                    tracing::info!("schedule scheduler exiting (shutdown)");
-                    break;
-                }
-            }
+    crate::daemon_task::spawn_ticker("schedule scheduler", tick, shutdown, move || {
+        let db_path = db_path.clone();
+        let ingest = ingest.clone();
+        let runs = runs.clone();
+        async move {
+            crate::daemon_metrics::supervisor_tick();
+            fire_due_schedules(&db_path, &ingest, &runs)
+                .await
+                .map(|_| ())
         }
     })
 }
