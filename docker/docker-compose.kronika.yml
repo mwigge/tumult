@@ -60,8 +60,10 @@ services:
       # Values come from .env (see ../.env.example) — no credentials in git.
       KRONIKA_BOOTSTRAP_ADMIN_PASSWORD: ${KRONIKA_BOOTSTRAP_ADMIN_PASSWORD:?required - copy .env.example to .env and set a value}
       KRONIKA_BOOTSTRAP_TOKEN: ${KRONIKA_BOOTSTRAP_TOKEN:?required - copy .env.example to .env and set a value}
-      # OTLP ingest (/v1/* HTTP + gRPC) requires this bearer token; /healthz
-      # stays open so the healthcheck above keeps working.
+      # OTLP ingest (/v1/* HTTP + gRPC) requires this bearer token. /healthz
+      # rides the API auth (Viewer): the bootstrap admin makes the API
+      # authenticated, so the healthcheck below accepts 401 (= alive but
+      # unauthorized) as healthy alongside 200.
       KRONIKA_INGEST_TOKEN: ${KRONIKA_INGEST_TOKEN:?required - copy .env.example to .env and set a value}
       # Plugin manifests for the authoring catalog (GET
       # /api/authoring/catalog) and scaffolding — discovery reads
@@ -74,7 +76,9 @@ services:
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
       - ../plugins:/opt/tumult/plugins:ro
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4318/healthz"]
+      # 200 = live; 401 = live but auth on (bootstrap admin exists) — both
+      # prove the daemon is serving; anything else is down.
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:4318/healthz | grep -Eq '^(200|401)$$'"]
       interval: 2s
       timeout: 3s
       retries: 15

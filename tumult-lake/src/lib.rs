@@ -102,7 +102,7 @@ pub use store::Store;
 #[cfg(feature = "duckdb")]
 pub(crate) use store::{migrate, query_json_rows, with_tx};
 #[cfg(feature = "duckdb")]
-pub use webhooks::WebhookRow;
+pub use webhooks::{WebhookDeadLetter, WebhookRow};
 #[cfg(feature = "duckdb")]
 pub use writer::Writer;
 

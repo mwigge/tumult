@@ -51,6 +51,7 @@ pub fn spawn_gameday_supervisor(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
+                    crate::daemon_metrics::supervisor_tick();
                     if let Err(e) = advance_campaigns(&db_path, &ingest, &runs).await {
                         tracing::warn!(error = %e, "gameday supervisor tick failed");
                     }
@@ -81,6 +82,7 @@ pub async fn advance_campaigns(
                AND r.state IN ('queued', 'running')",
         )
         .map_err(|e| e.to_string())?;
+    crate::daemon_metrics::set_active_campaigns(parents.len() as u64);
     let mut enqueued = 0usize;
     for parent in &parents {
         match advance_one(db_path, ingest, runs, parent).await {

@@ -9,8 +9,7 @@
 //! * **OTLP/gRPC** ([`grpc`]): what tumult's exporter talks
 //!   (`OTEL_EXPORTER_OTLP_ENDPOINT=http://host:4317`, bare host, no path).
 //! * **OTLP/HTTP protobuf** ([`http`]): what smedja's exporter talks
-//!   (`SMEDJA_OTLP_ENDPOINT=http://host:4318`, `/v1/*` paths), plus the
-//!   daemon's `GET /healthz`.
+//!   (`SMEDJA_OTLP_ENDPOINT=http://host:4318`, `/v1/*` paths).
 //! * **Single-writer channel** ([`writer`]): both servers funnel batches
 //!   through one bounded channel onto the store's single `DuckDB` writer.
 //! * **Manual import** ([`manual`]): CSV and tumult journal JSON files.
@@ -19,11 +18,13 @@
 
 pub mod approvals;
 pub mod config;
+pub mod daemon_metrics;
 mod error;
 pub mod gamedays;
 pub mod grpc;
 pub mod http;
 pub mod manual;
+pub mod retention;
 pub mod runs;
 pub mod schedules;
 pub mod webhooks;

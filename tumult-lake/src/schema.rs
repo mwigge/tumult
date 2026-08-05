@@ -57,8 +57,13 @@
 //! v12 adds GameDay campaign columns: `run_registry.kind` (`'gameday'`;
 //! NULL = experiment) and `runs.gameday_id` (a campaign child's parent
 //! run; NULL = standalone) — additive ALTERs like v9.
+//!
+//! v13 adds `webhook_dead_letters`: audit events whose webhook delivery
+//! failed permanently (bounded retries exhausted) — the dispatcher never
+//! advances a cursor past a failed event without recording it here.
+//! Additive and index-free under the same rule as the v11 webhook tables.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 12;
+pub const CURRENT_SCHEMA_VERSION: i64 = 13;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -479,6 +484,21 @@ CREATE TABLE IF NOT EXISTS webhooks (
 CREATE TABLE IF NOT EXISTS webhook_cursors (
     webhook_id      VARCHAR NOT NULL,
     last_at_ns      BIGINT NOT NULL     -- run_audit position delivered up to
+);
+
+-- v13: webhook dead letters. Same index-free rule. One row per audit event
+-- the dispatcher gave up on after bounded retries; `run_audit` remains the
+-- source of truth for replay, this table is the record of the loss.
+CREATE TABLE IF NOT EXISTS webhook_dead_letters (
+    webhook_id  VARCHAR NOT NULL,
+    run_id      VARCHAR NOT NULL,
+    at_ns       BIGINT NOT NULL,    -- the audit event's original timestamp
+    event       VARCHAR NOT NULL,
+    detail      VARCHAR,
+    actor       VARCHAR,
+    error       VARCHAR,            -- last delivery error
+    attempts    INTEGER NOT NULL,   -- consecutive failed dispatch ticks
+    dead_at_ns  BIGINT NOT NULL     -- when the dispatcher gave up
 );
 
 -- v12: GameDay campaigns (additive, like the v9 token-expiry ALTER).

@@ -15,6 +15,12 @@
 //! snapshot per run instead of incrementally, since records mutate through
 //! their review lifecycle).
 //!
+//! The run system is covered as well: `run_audit` / `webhook_dead_letters`
+//! export incrementally on `at_ns`; `runs`, `run_registry`, `run_schedules`,
+//! `webhooks`, `webhook_cursors`, `approval_*` and `users` export as
+//! fingerprint-guarded snapshots. Their hot-store retention is the daemon's
+//! `TUMULTD_RUN_RETENTION_DAYS` sweep, not the watermark guard here.
+//!
 //! Two operational caveats, both inherited from event-time watermarking:
 //!
 //! * **Snapshot readers.** A read-only `DuckDB` connection pins its snapshot
@@ -59,6 +65,14 @@ pub const MANUAL_TABLE: &str = "manual_experiments";
 const JOURNAL_TABLES: [&str; 3] = ["experiments", "activity_results", "load_results"];
 const JOURNAL_TS_COL: &str = "started_at_ns";
 
+/// Append-only run-system tables: incremental export on `at_ns`, never
+/// deleted by the lake watermark guard (hot-store run retention is the
+/// daemon's `TUMULTD_RUN_RETENTION_DAYS` sweep, not the lake's). These are
+/// the hash-chained run trail and the webhook dead-letter record — the
+/// rows a restore cannot afford to lose.
+const RUN_SYSTEM_INCREMENTAL_TABLES: [(&str, &str); 2] =
+    [("run_audit", "at_ns"), ("webhook_dead_letters", "at_ns")];
+
 /// INSERT-ONLY autopilot history: snapshot-exported (rows are few and the
 /// tables are event-sourced), retention-eligible ONLY while the current
 /// fingerprint matches the last exported one — fingerprint equality proves
@@ -72,14 +86,26 @@ const AUTOPILOT_SNAPSHOT_TABLES: [(&str, &str); 3] = [
 /// Mutable or timestamp-less tables: snapshot-exported, never deleted.
 /// `graph_edges` rows are rewritten with `ts = 0` by topology refreshes, so
 /// a watermark would lose updates and retention would delete fresh rows;
-/// the `agentic_*` tables have no timestamp column at all.
-const SNAPSHOT_ONLY_TABLES: [&str; 6] = [
+/// the `agentic_*` tables have no timestamp column at all. The run-system
+/// tables (`runs` and friends) mutate through their lifecycle, so they get
+/// full snapshots too. Note the snapshots carry what the store carries —
+/// `webhooks.secret`, `users.password_hash` — so the lake directory must be
+/// protected like the database file itself.
+const SNAPSHOT_ONLY_TABLES: [&str; 14] = [
     "graph_nodes",
     "graph_edges",
     "agentic_runs",
     "agentic_contract_outcomes",
     "agentic_fault_applications",
     "agentic_replay_outcomes",
+    "runs",
+    "run_registry",
+    "run_schedules",
+    "webhooks",
+    "webhook_cursors",
+    "approval_requests",
+    "approval_decisions",
+    "users",
 ];
 
 /// Content fingerprint for a snapshot table: md5 over the ordered per-row
@@ -383,6 +409,13 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
     for table in JOURNAL_TABLES {
         let wm = meta.tables.get(table).copied().unwrap_or(0);
         let t = export_incremental(reader, cfg, table, JOURNAL_TS_COL, wm, run_ns)?;
+        meta.tables.insert(table.to_string(), t.watermark_ns);
+        tables.push(t);
+    }
+
+    for (table, ts_col) in RUN_SYSTEM_INCREMENTAL_TABLES {
+        let wm = meta.tables.get(table).copied().unwrap_or(0);
+        let t = export_incremental(reader, cfg, table, ts_col, wm, run_ns)?;
         meta.tables.insert(table.to_string(), t.watermark_ns);
         tables.push(t);
     }

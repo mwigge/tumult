@@ -1,0 +1,84 @@
+# Hardened systemd unit for the Tumult daemon (tumultd): OTLP ingest,
+# control-plane API + web UI, run queue, schedules, webhooks, GameDay
+# campaigns.
+#
+#   install:  cp deploy/systemd/tumultd.service /etc/systemd/system/
+#             install -Dm600 /dev/stdin /etc/tumult/tumultd.env <<'EOF'
+#               KRONIKA_INGEST_TOKEN=<a long random secret>
+#               KRONIKA_BOOTSTRAP_ADMIN_PASSWORD=<initial admin password>
+#             EOF
+#             systemctl daemon-reload && systemctl enable --now tumultd
+#
+# The daemon binds LOOPBACK here; terminate TLS and authenticate ingress at a
+# reverse proxy (nginx/Caddy) in front of it, or set KRONIKA_TLS_CERT /
+# KRONIKA_TLS_KEY. A non-loopback bind refuses to start without an ingest
+# token and at least one API user (fail-closed). See
+# docs/guides/production-deployment.md.
+
+[Unit]
+Description=Tumult daemon (OTLP ingest, API, run queue)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/tumult/tumultd.env
+ExecStart=/usr/local/bin/tumultd serve
+Restart=on-failure
+RestartSec=5
+
+# Persistent store (DuckDB + parquet lake + reports) lives under this state
+# dir; TUMULT_LAKE_PATH below resolves inside it.
+StateDirectory=tumult
+Environment=HOME=/var/lib/tumult
+
+# --- Core configuration (override in /etc/tumult/tumultd.env) ---
+# Store + listeners.
+Environment=TUMULT_LAKE_PATH=/var/lib/tumult/lake.duckdb
+Environment=KRONIKA_OTLP_GRPC_ADDR=127.0.0.1:4317
+Environment=KRONIKA_OTLP_HTTP_ADDR=127.0.0.1:4318
+Environment=KRONIKA_METRICS_DIR=/var/lib/tumult/metrics
+# REQUIRED in the env file: KRONIKA_INGEST_TOKEN (bearer for /v1/* and gRPC).
+# First-boot identity (create-admin also available interactively):
+#   KRONIKA_BOOTSTRAP_ADMIN_PASSWORD / KRONIKA_BOOTSTRAP_TOKEN
+# TLS: KRONIKA_TLS_CERT / KRONIKA_TLS_KEY (PEM).
+
+# --- Tick / queue / webhook knobs (defaults shown) ---
+Environment=TUMULTD_SCHEDULE_TICK_S=30
+Environment=TUMULTD_WEBHOOK_TICK_S=15
+Environment=TUMULTD_GAMEDAY_TICK_S=15
+Environment=TUMULTD_RUN_CONCURRENCY=2
+Environment=TUMULTD_RUN_QUEUE_DEPTH=32
+Environment=TUMULTD_APPROVAL_SWEEP_S=60
+Environment=TUMULTD_RUN_RETENTION_DAYS=90
+Environment=TUMULTD_RUN_RETENTION_TICK_S=3600
+# Webhook delivery: bounded retries then dead-letter; per-endpoint budget.
+Environment=TUMULTD_WEBHOOK_MAX_ATTEMPTS=5
+Environment=TUMULTD_WEBHOOK_ENDPOINT_BUDGET_S=120
+# SSRF escape hatches for demos ONLY (never production):
+#   TUMULTD_WEBHOOK_ALLOW_INSECURE=1 (permits http) / TUMULTD_WEBHOOK_ALLOW_LOCAL=1 (permits loopback+private)
+# Parquet lake export + telemetry retention:
+#   KRONIKA_LAKE_DIR (default <db dir>/lake) / KRONIKA_LAKE_INTERVAL (default 6h) / KRONIKA_RETENTION_DAYS (default 0 = keep)
+
+# --- Hardening ---
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# ReadWritePaths is managed by StateDirectory=tumult (/var/lib/tumult).
+# Note: run experiments execute provider actions in-process; fault types
+# needing more syscalls than @system-service must loosen the filter above.
+
+[Install]
+WantedBy=multi-user.target

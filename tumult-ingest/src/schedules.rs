@@ -59,6 +59,7 @@ pub fn spawn_schedule_scheduler(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
+                    crate::daemon_metrics::supervisor_tick();
                     if let Err(e) = fire_due_schedules(&db_path, &ingest, &runs).await {
                         tracing::warn!(error = %e, "schedule scheduler tick failed");
                     }
@@ -99,6 +100,9 @@ pub async fn fire_due_schedules(
         // fixes the definition). A crash between fire and advance refires on
         // the next tick: at-least-once, like the run queue itself.
         fired += usize::from(fired_run.is_some());
+        if fired_run.is_some() {
+            crate::daemon_metrics::schedule_fired();
+        }
         let id = schedule.id.clone();
         let next = now + schedule.interval_s.max(1) * 1_000_000_000;
         ingest

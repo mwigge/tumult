@@ -100,6 +100,51 @@ impl Writer {
     }
 }
 
+/// One `webhook_dead_letters` row (schema v13): an audit event the
+/// dispatcher gave up delivering after bounded retries.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebhookDeadLetter {
+    pub webhook_id: String,
+    pub run_id: String,
+    /// The audit event's original timestamp.
+    pub at_ns: i64,
+    pub event: String,
+    pub detail: Option<String>,
+    pub actor: Option<String>,
+    /// The last delivery error.
+    pub error: String,
+    /// Consecutive failed dispatch ticks before giving up.
+    pub attempts: u32,
+    /// When the dispatcher gave up.
+    pub dead_at_ns: i64,
+}
+
+impl Writer {
+    /// Record a permanently-failed delivery (schema v13). The dispatcher
+    /// writes one row per abandoned event *before* advancing the cursor
+    /// past it, so delivery loss is never silent.
+    ///
+    /// # Errors
+    /// Returns an error if the insert fails.
+    pub fn insert_webhook_dead_letter(&self, d: &WebhookDeadLetter) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO webhook_dead_letters VALUES (?,?,?,?,?,?,?,?,?)",
+            params![
+                d.webhook_id,
+                d.run_id,
+                d.at_ns,
+                d.event,
+                d.detail,
+                d.actor,
+                d.error,
+                d.attempts,
+                d.dead_at_ns
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 impl Reader {
     /// List all webhooks, ordered by name. Includes `secret` — the service
     /// layer decides what to expose; the API must never serialize it out.

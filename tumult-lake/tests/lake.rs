@@ -492,3 +492,106 @@ fn legacy_manual_fingerprint_migrates_into_fingerprints() {
     assert!(raw.get("manual_fingerprint").is_none());
     assert_eq!(raw["fingerprints"][MANUAL_TABLE], serde_json::json!(fp));
 }
+
+#[test]
+fn export_covers_the_run_system_tables() {
+    use tumult_lake::{NewRun, ScheduleRow, WebhookRow};
+
+    let (_d, store, cfg) = fixture();
+    let writer = store.writer().unwrap();
+    // One run with an audit trail row, one schedule, one webhook + cursor,
+    // one dead letter: the run-system rows a restore cannot afford to lose.
+    writer
+        .insert_run(&NewRun {
+            id: "run-1".into(),
+            registry_id: "reg-1".into(),
+            params_json: None,
+            queued_at_ns: BASE_NS,
+            actor: Some("tester".into()),
+        })
+        .unwrap();
+    writer
+        .create_schedule(&ScheduleRow {
+            id: "sched-1".into(),
+            name: "nightly".into(),
+            registry_id: "reg-1".into(),
+            interval_s: 3600,
+            vars_json: None,
+            env: "dev".into(),
+            target: None,
+            enabled: true,
+            next_run_at_ns: BASE_NS,
+            last_run_at_ns: None,
+            last_run_id: None,
+            created_by: Some("tester".into()),
+            created_at_ns: BASE_NS,
+        })
+        .unwrap();
+    writer
+        .create_webhook(&WebhookRow {
+            id: "w-1".into(),
+            name: "hook".into(),
+            url: "https://hooks.example.com/x".into(),
+            secret: "s".into(),
+            events: vec![],
+            enabled: true,
+            created_by: Some("tester".into()),
+            created_at_ns: BASE_NS,
+        })
+        .unwrap();
+    writer.set_webhook_cursor("w-1", BASE_NS).unwrap();
+    writer
+        .insert_webhook_dead_letter(&tumult_lake::WebhookDeadLetter {
+            webhook_id: "w-1".into(),
+            run_id: "run-1".into(),
+            at_ns: BASE_NS,
+            event: "enqueued".into(),
+            detail: None,
+            actor: Some("tester".into()),
+            error: "connection refused".into(),
+            attempts: 5,
+            dead_at_ns: BASE_NS,
+        })
+        .unwrap();
+
+    let reader = store.read_only().unwrap();
+    let report = export(&reader, &cfg).unwrap();
+    for table in [
+        "runs",
+        "run_registry",
+        "run_audit",
+        "run_schedules",
+        "webhooks",
+        "webhook_cursors",
+        "webhook_dead_letters",
+        "approval_requests",
+        "approval_decisions",
+        "users",
+    ] {
+        assert!(
+            report.tables.iter().any(|t| t.name == table),
+            "{table} missing from the export report"
+        );
+    }
+    assert_eq!(parquet_count(&reader, &cfg, "runs"), 1);
+    assert_eq!(parquet_count(&reader, &cfg, "run_audit"), 1);
+    assert_eq!(parquet_count(&reader, &cfg, "run_schedules"), 1);
+    assert_eq!(parquet_count(&reader, &cfg, "webhooks"), 1);
+    assert_eq!(parquet_count(&reader, &cfg, "webhook_cursors"), 1);
+    assert_eq!(parquet_count(&reader, &cfg, "webhook_dead_letters"), 1);
+
+    // run_audit is incremental: a new audit row exports on the next run
+    // without rewriting what is already in the lake.
+    writer
+        .insert_run_audit("run-1", "started", None, None)
+        .unwrap();
+    let reader = store.read_only().unwrap();
+    let report = export(&reader, &cfg).unwrap();
+    let audit = report
+        .tables
+        .iter()
+        .find(|t| t.name == "run_audit")
+        .unwrap();
+    assert_eq!(audit.rows, 1, "only the new audit row exports");
+    assert_eq!(parquet_count(&reader, &cfg, "run_audit"), 2);
+}
