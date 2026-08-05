@@ -301,11 +301,8 @@ fn v2_store_migrates_forward_without_data_loss() {
     // span row, version recorded as 2.
     {
         let conn = Connection::open(&db_path).unwrap();
-        let v2_ddl = schema::CREATE_TABLES
-            .split("-- v3: the tumult-analytics family")
-            .next()
-            .unwrap();
-        conn.execute_batch(v2_ddl).unwrap();
+        let v2_ddl = schema::CREATE_TABLES[..2].concat();
+        conn.execute_batch(&v2_ddl).unwrap();
         conn.execute(
             "INSERT INTO schema_meta (key, value) VALUES ('version', 2)",
             [],
