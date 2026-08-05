@@ -1,0 +1,123 @@
+# Minimal production deployment of the Tumult daemon (tumultd) on Kubernetes:
+# OTLP ingest, control-plane API + web UI, run queue, schedules, webhooks,
+# GameDay campaigns.
+#
+#   1. Create the secrets (do NOT commit real values):
+#        kubectl create secret generic tumultd-secrets \
+#          --from-literal=ingest-token="$(openssl rand -hex 32)" \
+#          --from-literal=bootstrap-admin-password="<initial admin password>"
+#   2. kubectl apply -f deploy/k8s/tumultd.yaml
+#   3. API/UI on :4318, OTLP/HTTP on :4318 (/v1/*), OTLP/gRPC on :4317.
+#      Expose externally only through an Ingress that terminates TLS.
+#
+# The image is built from docker/Dockerfile.tumultd (see the release
+# workflow). Probes hit /healthz and /readyz: with auth on they answer 401
+# to unauthenticated probes, which kubelet still treats as success (any
+# status < 400); a dead daemon answers nothing.
+# See docs/guides/production-deployment.md.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tumultd
+  labels: { app: tumultd }
+spec:
+  replicas: 1 # single-writer DuckDB store; do not scale horizontally
+  strategy: { type: Recreate } # avoid two pods holding the store's write lock
+  selector:
+    matchLabels: { app: tumultd }
+  template:
+    metadata:
+      labels: { app: tumultd }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: tumultd
+          image: ghcr.io/mwigge/tumultd:latest
+          # The image's default CMD runs the daemon (`tumultd` defaults to
+          # `serve`); no args needed.
+          ports:
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: http, containerPort: 4318 } # OTLP/HTTP + API + UI + ops
+          env:
+            # --- Core configuration ---
+            - name: TUMULT_LAKE_PATH
+              value: /data/lake.duckdb
+            - name: KRONIKA_OTLP_GRPC_ADDR
+              value: "0.0.0.0:4317"
+            - name: KRONIKA_OTLP_HTTP_ADDR
+              value: "0.0.0.0:4318"
+            - name: KRONIKA_METRICS_DIR
+              value: /data/metrics
+            # REQUIRED — bearer token for /v1/* and OTLP/gRPC ingest.
+            - name: KRONIKA_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef: { name: tumultd-secrets, key: ingest-token }
+            # First-boot admin (delete after provisioning real users).
+            - name: KRONIKA_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: tumultd-secrets, key: bootstrap-admin-password }
+            # --- Tick / queue / webhook knobs (defaults shown) ---
+            - { name: TUMULTD_SCHEDULE_TICK_S, value: "30" }
+            - { name: TUMULTD_WEBHOOK_TICK_S, value: "15" }
+            - { name: TUMULTD_GAMEDAY_TICK_S, value: "15" }
+            - { name: TUMULTD_RUN_CONCURRENCY, value: "2" }
+            - { name: TUMULTD_RUN_QUEUE_DEPTH, value: "32" }
+            - { name: TUMULTD_APPROVAL_SWEEP_S, value: "60" }
+            - { name: TUMULTD_RUN_RETENTION_DAYS, value: "90" }
+            - { name: TUMULTD_RUN_RETENTION_TICK_S, value: "3600" }
+            # Webhook delivery: bounded retries then dead-letter; per-endpoint budget.
+            - { name: TUMULTD_WEBHOOK_MAX_ATTEMPTS, value: "5" }
+            - { name: TUMULTD_WEBHOOK_ENDPOINT_BUDGET_S, value: "120" }
+            # SSRF escape hatches for demos ONLY (never production):
+            # - { name: TUMULTD_WEBHOOK_ALLOW_INSECURE, value: "1" }  # permits http
+            # - { name: TUMULTD_WEBHOOK_ALLOW_LOCAL, value: "1" }     # permits loopback/private receivers
+            # Parquet lake export + telemetry retention:
+            # - { name: KRONIKA_LAKE_INTERVAL, value: "6h" }
+            # - { name: KRONIKA_RETENTION_DAYS, value: "0" }  # 0 = keep forever
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "2", memory: "2Gi" }
+          volumeMounts:
+            - { name: store, mountPath: /data }
+      volumes:
+        - name: store
+          persistentVolumeClaim: { claimName: tumultd-store }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tumultd
+  labels: { app: tumultd }
+spec:
+  selector: { app: tumultd }
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }
+    - { name: http, port: 4318, targetPort: http }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tumultd-store
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { storage: 10Gi }
