@@ -24,6 +24,7 @@ pub mod gamedays;
 pub mod grpc;
 pub mod http;
 pub mod manual;
+pub mod retention;
 pub mod runs;
 pub mod schedules;
 pub mod webhooks;

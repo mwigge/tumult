@@ -301,6 +301,14 @@ pub(crate) async fn serve() -> Result<()> {
         tumult_ingest::gamedays::tick_from_env(),
         background_shutdown.clone(),
     );
+    // Run retention: sweeps terminal runs (and their audit trails) older
+    // than TUMULTD_RUN_RETENTION_DAYS. Same shutdown-drain contract.
+    let retention_task = tumult_ingest::retention::spawn_run_retention(
+        ingest.clone(),
+        tumult_ingest::retention::tick_from_env(),
+        tumult_ingest::retention::retention_days_from_env(),
+        background_shutdown.clone(),
+    );
     let ops_db_path = config.db_path.clone();
     let ops_ingest = ingest.clone();
     let http_server = tokio::spawn(async move {
@@ -391,6 +399,9 @@ pub(crate) async fn serve() -> Result<()> {
     gameday_task
         .await
         .context("gameday supervisor task panicked")?;
+    retention_task
+        .await
+        .context("run retention task panicked")?;
     run_queue.shutdown();
     drop(run_queue);
     writer_task.await.context("ingest writer task")?;
