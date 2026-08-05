@@ -302,8 +302,15 @@ pub(crate) async fn serve() -> Result<()> {
         background_shutdown.clone(),
     );
     let http_server = tokio::spawn(async move {
+        // The live /report endpoint rides the API's auth middleware: it
+        // renders from the same store, so it follows the same credential and
+        // role rules as /api (ROUTE_TABLE gates it at Viewer).
+        let report_auth = axum::middleware::from_fn_with_state(
+            api_state.clone(),
+            tumult_api::auth::auth_middleware,
+        );
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
-            .merge(report_router(report_state))
+            .merge(report_router(report_state).layer(report_auth))
             .merge(tumult_api::router(api_state))
             // Everything that is not /v1, /report, /healthz or /api is the UI.
             .fallback(ui_handler);

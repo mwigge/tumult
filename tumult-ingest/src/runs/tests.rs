@@ -464,6 +464,68 @@ async fn orphan_never_started_aborts_without_rollback() {
     assert!(!events.contains(&"rollback_started".to_string()));
 }
 
+#[tokio::test]
+async fn orphan_reconciliation_leaves_gameday_campaign_parents_untouched() {
+    let fx = fixture().await;
+    // A gameday definition plus its campaign parent left `running` by a dead
+    // process: the parent owns no fault execution, so the orphan sweep must
+    // not touch it — the gameday supervisor resumes it on its next tick.
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .register_gameday_definition(&RegisteredDefinition {
+                id: "reg-gameday".into(),
+                name: "smoke campaign".into(),
+                definition_toon: "{}".into(),
+                content_hash: "hash-gameday".into(),
+                registered_at_ns: 1,
+                registered_by: Some("test".into()),
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "run-campaign".into(),
+                registry_id: "reg-gameday".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .mark_run_started("run-campaign", None)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+
+    let factory = recording_factory(&fx.executed, Duration::from_millis(5));
+    let count = reconcile_orphans(&fx.ingest, &fx.db_path, &factory)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+
+    // Untouched: still running, no rollback executed, no orphan audit event.
+    let run = run_row(&fx, "run-campaign");
+    assert_eq!(run["state"], serde_json::json!(run_state::RUNNING));
+    assert!(fx.executed.lock().unwrap().is_empty());
+    let events = audit_events(&fx, "run-campaign");
+    assert!(
+        !events.contains(&"orphan_detected".to_string()),
+        "{events:?}"
+    );
+    assert!(
+        !events.contains(&"rollback_started".to_string()),
+        "{events:?}"
+    );
+}
+
 /// Insert a gated run directly on the store (bypassing `request_gated`'s
 /// clock so TTL edge cases can be tested).
 async fn insert_gated(fx: &Fixture, run_id: &str, expires_at_ns: i64) {

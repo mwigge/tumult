@@ -35,6 +35,14 @@ fn unavailable(msg: &str) -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
 }
 
+fn forbidden(msg: String) -> Response {
+    (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
+}
+
+fn conflict(msg: &str) -> Response {
+    (StatusCode::CONFLICT, Json(json!({"error": msg}))).into_response()
+}
+
 /// SHA-256 hex of a definition — the dedup key; registry ids derive from it
 /// (`reg-<first 12 hex>`), same rule as experiment registration.
 fn content_hash(text: &str) -> String {
@@ -293,36 +301,26 @@ fn default_env() -> String {
 /// the daemon's gameday supervisor advances through the campaign's
 /// experiments as sequential child runs (each with the campaign's env, so
 /// tier classification and approvals apply per step). 409 while another
-/// campaign of the same gameday is active.
+/// campaign of the same gameday is active — the check rides the same
+/// single-writer closure as the insert, so two concurrent launches cannot
+/// both win. A scoped principal may only launch into its own environments:
+/// any other `env` is a 403.
 pub async fn start_campaign(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<CreateCampaignRequest>,
 ) -> Result<(StatusCode, Json<Value>), Response> {
+    if !principal.env_allowed(&req.env) {
+        return Err(forbidden(format!(
+            "environment {:?} is outside the principal's scopes",
+            req.env
+        )));
+    }
     let row = gameday_or_404(&state, &id).await?;
     let envelope: Value = serde_json::from_str(row["definition_toon"].as_str().unwrap_or("{}"))
         .map_err(|e| internal(e.to_string()))?;
     let steps = envelope["experiments"].as_array().map_or(0, Vec::len);
-    let lookup = id.clone();
-    let active = with_reader(&state.db_path, move |reader| {
-        reader
-            .query_json_rows(&format!(
-                "SELECT r.id FROM runs r \
-                 WHERE r.registry_id = '{}' AND r.gameday_id IS NULL \
-                   AND r.state IN ('queued', 'running') LIMIT 1",
-                lookup.replace('\'', "''")
-            ))
-            .map_err(|e| e.to_string())
-    })
-    .await?;
-    if !active.is_empty() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({"error": "a campaign is already active for this gameday"})),
-        )
-            .into_response());
-    }
 
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable("run creation is not wired (no ingest handle)"));
@@ -335,12 +333,27 @@ pub async fn start_campaign(
         queued_at_ns: now_ns(),
         actor: principal.actor(),
     };
+    // Check-and-insert on the single writer: the conflict check cannot race
+    // another launch because every write is serialized through this channel.
+    let conflicted = std::sync::Arc::new(std::sync::Mutex::new(false));
+    let conflicted2 = std::sync::Arc::clone(&conflicted);
     ingest
         .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
+            if writer
+                .active_gameday_campaign(&new_run.registry_id)
+                .map_err(|e| e.to_string())?
+                .is_some()
+            {
+                *conflicted2.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                return Ok(());
+            }
             writer.insert_run(&new_run).map_err(|e| e.to_string())
         })))
         .await
         .map_err(|e| internal(e.to_string()))?;
+    if *conflicted.lock().unwrap_or_else(|e| e.into_inner()) {
+        return Err(conflict("a campaign is already active for this gameday"));
+    }
     Ok((
         StatusCode::ACCEPTED,
         Json(json!({"run_id": run_id, "state": "queued", "steps": steps})),
