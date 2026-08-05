@@ -12,7 +12,12 @@ path = "src/lib.rs"
 
 [dependencies]
 # Pinned to the release candidate already resolved in the workspace lockfile
-# (via ssh-key) so the tree keeps exactly one argon2 build.
+# (via ssh-key → russh) so the tree keeps exactly one argon2 build. There is
+# no stable 0.6.0 yet (crates.io tops out at 0.6.0-rc.8 as of 2026-08) and
+# the 0.5.x stable line is not API-compatible with the usage in src/lib.rs
+# (0.6 moved salt generation inside `hash_password`); downgrading would also
+# add a second argon2 build next to ssh-key's rc. Revisit at argon2 0.6.0
+# final.
 argon2 = "0.6.0-rc.8"
 # OS randomness for salts, session ids, and tokens (same single copy argon2 uses).
 getrandom = "0.4"
