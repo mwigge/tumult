@@ -80,6 +80,11 @@ pub fn cmd_store_stats() -> Result<()> {
     Ok(())
 }
 
+/// Backs up the analytics tables to parquet. Opens the store **read-only**,
+/// so the backup coexists with a live daemon holding the write lock — the
+/// same reader path the query API uses (see
+/// [`tumult_lake::AnalyticsStore::open_read_only`]).
+///
 /// # Errors
 ///
 /// Returns an error if the store cannot be opened, the backup directory cannot
@@ -100,7 +105,7 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
     }
     std::fs::create_dir_all(output_dir)?;
 
-    let store = AnalyticsStore::open(&db_path)?;
+    let store = AnalyticsStore::open_read_only(&db_path)?;
     let exp_path = output_dir.join("experiments.parquet");
     let act_path = output_dir.join("activities.parquet");
 
