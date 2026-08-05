@@ -74,10 +74,11 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    # Warm cache lands in the 10-20 min band; a cold cache (new Cargo.lock)
-    # needs ~35 min — the timeout must outlive the cache save or every retry
-    # stays cold.
-    timeout-minutes: 45
+    # Warm cache lands in the 10-20 min band; a cold cache (new Cargo.lock or
+    # a new shared-key lineage) needs ~45-55 min — the timeout must outlive
+    # the cache save or every retry stays cold (the first run of this
+    # pipeline died at exactly 45m mid-link and saved nothing).
+    timeout-minutes: 75
     env:
       # Linking the big test binaries (duckdb/parquet static libs) with full
       # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
@@ -108,7 +109,9 @@ jobs:
       - name: Build web UI (tumultd embeds web/build)
         run: npm --prefix web ci && npm --prefix web run build
       - run: cargo install cargo-nextest cargo-machete --locked
-      - run: cargo check --all-targets --all-features
+      # No separate `cargo check`: clippy --all-targets already type-checks
+      # every target including tests, so a check pass first only recompiles
+      # the workspace crates a second time.
       - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
       # Fail on unused dependencies declared in Cargo.toml (respects
       # [package.metadata.cargo-machete] ignore lists).
