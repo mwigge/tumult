@@ -86,12 +86,19 @@ pub(crate) fn create_admin(username: &str, db: Option<PathBuf>) -> Result<()> {
 ///   not expose an unauthenticated API on a network interface.
 /// * `KRONIKA_BOOTSTRAP_ADMIN_PASSWORD` set with zero users → create the
 ///   `admin` user with that exact password (`must_change = false`) — a loud
-///   demo/dev path. Ignored (logged) when users already exist.
+///   demo/dev path. The password must be at least 12 characters (the same
+///   floor as every other user password); anything shorter refuses startup.
+///   Ignored (logged) when users already exist.
 /// * `KRONIKA_BOOTSTRAP_TOKEN` set in that same zero-users bootstrap →
-///   provision a `kro_`-prefixed API token (stored only as its sha256) for
-///   the bootstrap admin. The value must start with `kro_`; anything else
-///   refuses startup. When no bootstrap admin is created (no password set),
-///   the token env var is ignored with a warning: there is no user to own it.
+///   provision a `kro_`-prefixed API token for the bootstrap admin. The
+///   value must start with `kro_` and carry at least 20 characters after
+///   the prefix: tokens are stored as their sha256 (lookup is by hash, like
+///   every minted token), and an unsalted hash of a low-entropy,
+///   operator-chosen token would be offline-brute-forceable if the store
+///   file leaked — minted `tumult_auth::new_token()` values carry 256 bits
+///   and need no salt. Anything weaker refuses startup before any write.
+///   When no bootstrap admin is created (no password set), the token env
+///   var is ignored with a warning: there is no user to own it.
 /// * Loopback bind with zero users → start unauthenticated (dev mode), with
 ///   a warning.
 pub(crate) fn enforce_bind_guard(
@@ -123,12 +130,19 @@ pub(crate) fn enforce_bind_guard(
     }
 
     if let Some(password) = bootstrap_password {
-        // Validate the token before writing anything: a bad value must not
-        // leave a half-provisioned bootstrap behind.
+        // Validate both secrets before writing anything: a weak value must
+        // not leave a half-provisioned bootstrap behind.
+        if password.chars().count() < 12 {
+            anyhow::bail!(
+                "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters; refusing to start"
+            );
+        }
         if let Some(token) = bootstrap_token.as_deref() {
-            if !token.starts_with("kro_") {
+            if !token.starts_with("kro_") || token.len() - "kro_".len() < 20 {
                 anyhow::bail!(
-                    "KRONIKA_BOOTSTRAP_TOKEN must start with \"kro_\"; refusing to start"
+                    "KRONIKA_BOOTSTRAP_TOKEN must start with \"kro_\" and carry at least \
+                     20 characters after the prefix (it is stored as an unsalted sha256, so \
+                     a low-entropy token would be brute-forceable); refusing to start"
                 );
             }
         }
@@ -347,7 +361,10 @@ mod tests {
     fn bind_guard_bootstrap_password_creates_the_admin_on_a_network_bind() {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
-        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
+        std::env::set_var(
+            "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
+            "s3cret-bootstrap-password",
+        );
         enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
         clear_bootstrap_env();
 
@@ -362,14 +379,20 @@ mod tests {
             !user.must_change,
             "the bootstrap password is used as-is, not rotated"
         );
-        assert!(tumult_auth::verify_password(&user.password_hash, "s3cret"));
+        assert!(tumult_auth::verify_password(
+            &user.password_hash,
+            "s3cret-bootstrap-password"
+        ));
     }
 
     #[test]
     fn bind_guard_rejects_a_token_without_the_kro_prefix_before_writing() {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
-        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
+        std::env::set_var(
+            "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
+            "s3cret-bootstrap-password",
+        );
         std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "not-a-kro-token");
         let err = enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap_err();
         clear_bootstrap_env();
@@ -382,11 +405,46 @@ mod tests {
     }
 
     #[test]
+    fn bind_guard_rejects_a_short_bootstrap_password_before_writing() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "short");
+        let err = enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap_err();
+        clear_bootstrap_env();
+        assert!(format!("{err:#}").contains("at least 12"), "{err:#}");
+        assert_eq!(user_count(&store), 0);
+    }
+
+    #[test]
+    fn bind_guard_rejects_a_low_entropy_bootstrap_token_before_writing() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var(
+            "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
+            "s3cret-bootstrap-password",
+        );
+        // Valid prefix but fewer than 20 characters after it — stored
+        // unsalted, this would be offline-brute-forceable.
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+        let err = enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap_err();
+        clear_bootstrap_env();
+        assert!(format!("{err:#}").contains("20 characters"), "{err:#}");
+        assert_eq!(
+            user_count(&store),
+            0,
+            "a rejected token must not leave a half-provisioned admin behind"
+        );
+    }
+
+    #[test]
     fn bind_guard_provisions_the_bootstrap_token_for_the_bootstrap_admin() {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
-        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
-        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+        std::env::set_var(
+            "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
+            "s3cret-bootstrap-password",
+        );
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token_0123456789abcdef");
         enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
         clear_bootstrap_env();
 
@@ -406,7 +464,7 @@ mod tests {
         assert_eq!(tokens[0]["name"].as_str().unwrap(), "bootstrap");
         assert_eq!(
             tokens[0]["token_hash"].as_str().unwrap(),
-            tumult_auth::sha256_hex("kro_dev_token"),
+            tumult_auth::sha256_hex("kro_dev_token_0123456789abcdef"),
             "only the sha256 of the token is stored"
         );
     }
@@ -415,7 +473,7 @@ mod tests {
     fn bind_guard_ignores_a_token_when_no_bootstrap_admin_is_created() {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
-        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token_0123456789abcdef");
 
         // The network bind is still refused: a token alone authenticates no one.
         assert!(enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).is_err());
@@ -436,8 +494,11 @@ mod tests {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
         insert_user(&writer, "admin", "existing-pw", "admin", true).unwrap();
-        std::env::set_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", "s3cret");
-        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token");
+        std::env::set_var(
+            "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
+            "s3cret-bootstrap-password",
+        );
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_dev_token_0123456789abcdef");
         enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
         clear_bootstrap_env();
 
