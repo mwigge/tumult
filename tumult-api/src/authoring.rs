@@ -4,18 +4,18 @@
 //! These are the same code paths as the MCP `tumult_fault_catalog` /
 //! `tumult_scaffold_experiment` tools and the CLI (`tumult new`), exposed
 //! without an MCP hop so the web UI can browse the catalog and generate
-//! experiment TOON in-process. Both endpoints are read-only w.r.t. the
-//! store: scaffolding generates content but never persists — registration
-//! stays behind `POST /api/runs/validate` (Operator role).
+//! experiment TOON in-process: the orchestration lives in
+//! [`tumult_authoring::scaffold`], this module only maps arguments and
+//! errors. Both endpoints are read-only w.r.t. the store: scaffolding
+//! generates content but never persists — registration stays behind
+//! `POST /api/runs/validate` (Operator role).
 
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
-use tumult_authoring::builder::{
-    build_experiment_unvalidated, encode_experiment, ProbeSpec, ScaffoldRequest,
-};
-use tumult_authoring::{ActionKind, FaultCatalog};
+use tumult_authoring::scaffold::{ScaffoldError, ScaffoldInput};
+use tumult_authoring::FaultCatalog;
 
 /// Client-error body: the 400s of this module are always safe to detail
 /// (they describe the request, never store internals).
@@ -56,10 +56,7 @@ fn load_catalog() -> FaultCatalog {
 /// `{action_count, domains}`.
 #[must_use]
 pub fn catalog_json(catalog: &FaultCatalog) -> Value {
-    json!({
-        "action_count": catalog.action_count(),
-        "domains": catalog.domains,
-    })
+    Value::Object(tumult_authoring::catalog_summary(catalog))
 }
 
 /// JSON body for `POST /api/authoring/scaffold`, mirroring the MCP
@@ -88,10 +85,12 @@ pub struct ScaffoldBody {
     title: Option<String>,
 }
 
-/// Scaffold an experiment from a catalog action: the generated TOON plus
+/// Scaffold an experiment from a catalog action via
+/// [`tumult_authoring::scaffold_from_catalog`]: the generated TOON plus
 /// whether it passes `tumult_core::engine::validate_experiment`, as
 /// `{action, toon, valid, validation_error?}` — the MCP tool's structured
-/// content. The action must exist in `catalog`.
+/// content. The action must exist in `catalog` and be a fault action
+/// (probe-kind entries are rejected, same as the MCP tool).
 ///
 /// # Errors
 ///
@@ -102,78 +101,24 @@ pub fn scaffold_json(
     catalog: &FaultCatalog,
     req: &ScaffoldBody,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
-    let (plugin, action) = match &req.plugin {
-        Some(p) => (p.clone(), req.action.clone()),
-        None => match req.action.split_once("::") {
-            Some((p, a)) => (p.to_string(), a.to_string()),
-            None => {
-                return Err(bad_request(
-                    "provide `plugin`, or a fully-qualified `action` as plugin::action".into(),
-                ));
+    let input = ScaffoldInput {
+        plugin: req.plugin.as_deref(),
+        action: &req.action,
+        args: &req.args,
+        target: &req.target,
+        probe_command: req.probe_command.as_deref(),
+        probe_url: req.probe_url.as_deref(),
+        probe_expect: req.probe_expect.as_deref(),
+        title: req.title.as_deref(),
+    };
+    tumult_authoring::scaffold_from_catalog(catalog, &input)
+        .map(|outcome| Value::Object(outcome.to_json()))
+        .map_err(|e| match e {
+            ScaffoldError::UnqualifiedAction | ScaffoldError::UnknownAction(_) => {
+                bad_request(e.to_string())
             }
-        },
-    };
-
-    let qualified = format!("{plugin}::{action}");
-    // Only fault actions scaffold: a catalog probe used as the method's
-    // action would still validate and could register a semantically wrong
-    // experiment, so probes are rejected exactly like unknown names.
-    let is_action = catalog
-        .find(&plugin, &action)
-        .is_some_and(|a| a.kind == ActionKind::Action);
-    if !is_action {
-        return Err(bad_request(format!("unknown action {qualified:?}")));
-    }
-
-    let mut args = indexmap::IndexMap::new();
-    for (k, v) in &req.args {
-        let value = match v {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        args.insert(k.clone(), value);
-    }
-
-    let probe = if let Some(url) = &req.probe_url {
-        ProbeSpec::Http {
-            url: url.clone(),
-            expect: req.probe_expect.clone().unwrap_or_default(),
-        }
-    } else if let Some(command) = &req.probe_command {
-        ProbeSpec::Exec {
-            command: command.clone(),
-            expect: req.probe_expect.clone().unwrap_or_else(|| ".".into()),
-        }
-    } else {
-        ProbeSpec::default_for(&req.target)
-    };
-
-    let title = req
-        .title
-        .clone()
-        .unwrap_or_else(|| format!("{action} — {}", req.target));
-
-    let request = ScaffoldRequest {
-        title,
-        plugin,
-        action,
-        args,
-        target: req.target.clone(),
-        probe,
-    };
-    let experiment = build_experiment_unvalidated(&request);
-    let validity = tumult_core::engine::validate_experiment(&experiment);
-    let toon = encode_experiment(&experiment).map_err(|e| internal(e.to_string()))?;
-
-    let mut body = json!({
-        "action": qualified,
-        "toon": toon,
-        "valid": validity.is_ok(),
-    });
-    if let Err(e) = &validity {
-        body["validation_error"] = json!(e.to_string());
-    }
-    Ok(body)
+            ScaffoldError::Encode(_) => internal(e.to_string()),
+        })
 }
 
 /// `GET /api/authoring/catalog` — the live fault catalog (domains →
