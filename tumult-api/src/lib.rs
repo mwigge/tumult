@@ -331,6 +331,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/gamedays", get(gamedays::list))
         .route("/api/gamedays/validate", post(gamedays::validate))
         .route("/api/gamedays/{id}", get(gamedays::detail))
+        .route("/api/gamedays/{id}/runs", post(gamedays::start_campaign))
         .route("/api/webhooks", get(webhooks::list).post(webhooks::create))
         .route("/api/webhooks/{id}/enable", post(webhooks::set_enabled))
         .route("/api/webhooks/{id}/delete", post(webhooks::delete))

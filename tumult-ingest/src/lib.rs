@@ -20,6 +20,7 @@
 pub mod approvals;
 pub mod config;
 mod error;
+pub mod gamedays;
 pub mod grpc;
 pub mod http;
 pub mod manual;

@@ -111,6 +111,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `GET /api/gamedays/{id}` list campaigns and return the parsed plan
   (scoring, regulatory mapping, ordered steps). Campaign execution
   follows separately.
+- GameDay execution: `POST /api/gamedays/{id}/runs` (Operator) starts a
+  campaign as a parent run, and the daemon's gameday supervisor advances
+  it through its experiments as sequential child runs
+  (`runs.gameday_id`) — each step through the normal run path, so a gated
+  experiment parks the campaign at an approval. The parent takes the
+  campaign outcome: `failed` on any failed/orphaned child, else `passed`
+  when the passed fraction meets `scoring.pass_threshold`, else
+  `deviated`. `GET /api/runs?gameday_id=` lists a campaign's children.
+  `TUMULTD_GAMEDAY_TICK_S` (default 15s) sets the supervisor tick. Shared
+  k6 load and GameDayJournal ingest remain deferred.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
