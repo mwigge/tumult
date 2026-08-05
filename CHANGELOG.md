@@ -151,6 +151,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `signoz-standalone` ClickHouse.
 
 ### Fixed
+- docs: follow-up review pass — the scheduling guide now describes the
+  shipped schedules feature (JSON API, web UI page, 60s interval floor,
+  audited `schedule:<name>` runs, `TUMULTD_SCHEDULE_TICK_S`), QUICKSTART
+  gains a "Choosing your path" section and the correct experiment-format
+  link, README lists the current web UI pages and adds a "How Tumult
+  differs" section, the demo contract is bumped to 2.21 and lists all 13
+  demo experiments (the topo pair is also scoped out in `demo/README.md`),
+  and `gamedays/` gets a README.
 - Docs accuracy pass after a full user-journey audit: README badge and
   kronika "Try it" steps (`.env` is required now), real GameDay sample
   output in QUICKSTART, `trend`/`report`/`run`/`analyze`/`mcp serve`/

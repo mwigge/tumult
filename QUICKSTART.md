@@ -7,6 +7,17 @@ README.md — or jump straight to the
 [platform walkthrough](docs/guides/platform-walkthrough.md) for a guided
 click-through of the web UI on the seeded demo stack.
 
+## Choosing your path
+
+- **Ad-hoc local experiments** → the CLI path below. About 10 minutes from
+  clone to first run; no daemon, no secrets.
+- **Team governance** — approvals, schedules, audit trails, compliance
+  reports → the platform path (`tumultd` + web UI, see
+  [the daemon, lake and web UI](README.md#the-daemon-lake-and-web-ui)). It
+  needs a `.env` with the three `KRONIKA_*` secrets and a full
+  `docker compose -f docker/docker-compose.kronika.yml up -d --build` —
+  expect ~15–20 minutes for the first build.
+
 ```mermaid
 flowchart LR
     accTitle: Tumult quickstart path
@@ -298,6 +309,6 @@ make down
 
 - [Full documentation](https://mwigge.github.io/tumult/)
 - [Plugin reference](docs/plugins/)
-- [Experiment format](docs/reference/)
+- [Experiment format](docs/guides/experiment-format.md)
 - [Test protocol](docs/testprotocol.md)
 - [Security assessment](docs/security-assessment.md)

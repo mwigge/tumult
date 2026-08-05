@@ -62,6 +62,28 @@ analysis, observability, GameDays, and MCP usage.
 Run `tumult discover` to obtain the authoritative plugin and action catalog for
 the installed build.
 
+## How Tumult differs
+
+Against the incumbent chaos tools (Gremlin, Chaos Mesh, LitmusChaos), Tumult
+bets on four things:
+
+- **Agent-first.** A 40-tool MCP server where every tool declares safety
+  annotations and role gating (read-only tools need `viewer`, writers and
+  fault executors need `operator`) — plus deterministic and live-proxy fault
+  injection for agentic AI systems themselves
+  (`demo/experiments/demo-agentic*.toon`).
+- **Always-on evidence.** The `tumultd` daemon ingests OTLP telemetry
+  (gRPC and HTTP) around the clock into one DuckDB lake (Kronika), so
+  analytics, trends and audit trails accrue without exporting anything.
+- **Governance built in.** Risk-tiered approvals, hash-chained audit trails
+  and compliance evidence packs (`tumult-compliance/`) mapped to DORA, NIS2,
+  ISO 27001 and SOC 2.
+- **One Rust binary.** The daemon embeds the lake, the schedulers and the
+  web UI in a single `tumultd` binary; the CLI is another.
+
+The launch post has the longer story:
+[Introducing Tumult](docs/blog/01-introducing-tumult.md).
+
 ## The daemon, lake and web UI
 
 *The chronicle of your resilience work.*
@@ -128,8 +150,10 @@ flowchart LR
   draft → verified manual-evidence lifecycle (reviewer ≠ enterer,
   append-only hash-chained audit).
 - **Web UI + query API** — a SvelteKit SPA embedded into the `tumultd`
-  binary (Overview, Scores, Experiments, Runs, Approvals, Manual evidence,
-  Logs, Traces, Metrics, Topology, Ask, Reports). It is backed by a JSON
+  binary (Overview, Scores, Experiments, Runs, Author, GameDays, Approvals,
+  Manual evidence, Logs, Traces, Metrics, Topology, Ask, Reports, Events,
+  Schedules, plus admin-only Users and Webhooks — and a two-click stop-all
+  kill switch on the Runs page). It is backed by a JSON
   API under `/api/*`, including a guarded NL→SQL ask path
   (`tumult_intelligence::sql_guard`).
 

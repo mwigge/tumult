@@ -102,6 +102,14 @@ A safety-guardrail experiment, `demo-guard-halt.toon`, is **not** in the sweep
 above: it arms an auto-halt guard so its expected outcome is `Halted`, not
 `Completed`. It runs from the control panel's **Safety guardrail** card.
 
+The topology/compliance pair — `demo-topo-blind.toon` and
+`demo-topo-recommended.toon` — is likewise outside the sweep: both validate
+demo-postgres recovery to close the NIS2 BC/DR gap flagged by the
+recommender, and they belong to the topology proof flow in
+[`scripts/demo-topology.sh`](../scripts/demo-topology.sh) (the blind variant
+also serves as the autopilot playbook in
+[`demo/topology/autopilot-blind.toml`](./topology/autopilot-blind.toml)).
+
 Validate them yourself:
 
 ```bash
