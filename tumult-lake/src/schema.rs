@@ -53,8 +53,12 @@
 //!
 //! v11 adds the `webhooks` and `webhook_cursors` tables (admin-managed
 //! outbound event notifications) — additive and index-free likewise.
+//!
+//! v12 adds GameDay campaign columns: `run_registry.kind` (`'gameday'`;
+//! NULL = experiment) and `runs.gameday_id` (a campaign child's parent
+//! run; NULL = standalone) — additive ALTERs like v9.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 11;
+pub const CURRENT_SCHEMA_VERSION: i64 = 12;
 
 /// All DDL is `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1
 /// migration on every open.
@@ -476,12 +480,19 @@ CREATE TABLE IF NOT EXISTS webhook_cursors (
     webhook_id      VARCHAR NOT NULL,
     last_at_ns      BIGINT NOT NULL     -- run_audit position delivered up to
 );
+
+-- v12: GameDay campaigns (additive, like the v9 token-expiry ALTER).
+ALTER TABLE run_registry ADD COLUMN IF NOT EXISTS kind VARCHAR;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS gameday_id VARCHAR;
 ";
 
 /// v4 → v5: rebuild the run tables without primary keys / secondary indexes
 /// (see the comment above). Data copy is a plain table scan — safe even when
 /// the v4 ART indexes are desynced, since reads never touch them. Atomic:
 /// any failure rolls back and the next open retries (version stays 4).
+/// Explicit column lists, not SELECT *: later additive migrations (v12's
+/// gameday columns) ALTER the old table before this rebuild runs, and a
+/// wildcard then pulls more columns than the v5 table has.
 pub const MIGRATE_V5_RUN_TABLES_INDEX_FREE: &str = "
 BEGIN TRANSACTION;
 CREATE TABLE runs_v5 (
@@ -496,7 +507,8 @@ CREATE TABLE runs_v5 (
     started_at_ns   BIGINT,
     ended_at_ns     BIGINT
 );
-INSERT INTO runs_v5 SELECT * FROM runs;
+INSERT INTO runs_v5 SELECT id, registry_id, state, params_json, experiment_id,
+    rollback_status, error, queued_at_ns, started_at_ns, ended_at_ns FROM runs;
 DROP TABLE runs;
 ALTER TABLE runs_v5 RENAME TO runs;
 CREATE TABLE run_registry_v5 (
@@ -507,7 +519,8 @@ CREATE TABLE run_registry_v5 (
     registered_at_ns BIGINT NOT NULL,
     registered_by    VARCHAR
 );
-INSERT INTO run_registry_v5 SELECT * FROM run_registry;
+INSERT INTO run_registry_v5 SELECT id, name, definition_toon, content_hash,
+    registered_at_ns, registered_by FROM run_registry;
 DROP TABLE run_registry;
 ALTER TABLE run_registry_v5 RENAME TO run_registry;
 DROP INDEX IF EXISTS idx_run_audit_run;

@@ -102,6 +102,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   only; http and loopback/private/link-local addresses need the explicit
   `TUMULTD_WEBHOOK_ALLOW_INSECURE=1` / `TUMULTD_WEBHOOK_ALLOW_LOCAL=1`
   opt-ins. `TUMULTD_WEBHOOK_TICK_S` (default 15s) sets the dispatch tick.
+- GameDay registration (schema v12): `run_registry.kind` distinguishes
+  gameday definitions from experiments. `POST /api/gamedays/validate`
+  registers a campaign TOON plus its referenced experiment TOONs (each
+  validated through the normal run pipeline and content-hash deduped as
+  ordinary runnable definitions), storing the resolved
+  path→registry-id envelope; `GET /api/gamedays` and
+  `GET /api/gamedays/{id}` list campaigns and return the parsed plan
+  (scoring, regulatory mapping, ordered steps). Campaign execution
+  follows separately.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

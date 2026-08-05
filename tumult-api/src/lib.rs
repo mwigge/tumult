@@ -111,6 +111,7 @@ mod ask;
 pub mod auth;
 pub mod authoring;
 pub mod events;
+pub mod gamedays;
 pub mod handlers;
 pub mod import;
 pub mod lake;
@@ -327,6 +328,9 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/schedules/{id}/enable", post(schedules::set_enabled))
         .route("/api/schedules/{id}/delete", post(schedules::delete))
         .route("/api/events", get(events::list))
+        .route("/api/gamedays", get(gamedays::list))
+        .route("/api/gamedays/validate", post(gamedays::validate))
+        .route("/api/gamedays/{id}", get(gamedays::detail))
         .route("/api/webhooks", get(webhooks::list).post(webhooks::create))
         .route("/api/webhooks/{id}/enable", post(webhooks::set_enabled))
         .route("/api/webhooks/{id}/delete", post(webhooks::delete))

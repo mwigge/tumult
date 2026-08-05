@@ -36,6 +36,8 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/runs/{id}/audit/verify", Role::Viewer),
     ("GET", "/api/schedules", Role::Viewer),
     ("GET", "/api/events", Role::Viewer),
+    ("GET", "/api/gamedays", Role::Viewer),
+    ("GET", "/api/gamedays/{id}", Role::Viewer),
     ("GET", "/api/lake/status", Role::Viewer),
     ("GET", "/api/reports", Role::Viewer),
     ("GET", "/api/reports/v2", Role::Viewer),
@@ -76,6 +78,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/schedules", Role::Operator),
     ("POST", "/api/schedules/{id}/enable", Role::Operator),
     ("POST", "/api/schedules/{id}/delete", Role::Operator),
+    ("POST", "/api/gamedays/validate", Role::Operator),
     // Approver: manual-evidence review.
     (
         "POST",
@@ -154,6 +157,11 @@ mod tests {
         assert_eq!(required_role("GET", "/api/schedules"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/events"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/webhooks"), Role::Admin);
+        assert_eq!(
+            required_role("POST", "/api/gamedays/validate"),
+            Role::Operator
+        );
+        assert_eq!(required_role("GET", "/api/gamedays/x"), Role::Viewer);
         assert_eq!(required_role("POST", "/api/webhooks/x/delete"), Role::Admin);
         assert_eq!(
             required_role("POST", "/api/schedules/x/enable"),

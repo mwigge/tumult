@@ -11,6 +11,7 @@ mod authoring;
 mod common;
 mod endpoints;
 mod events;
+mod gamedays;
 mod manual;
 mod query;
 mod reports;
