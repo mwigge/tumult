@@ -1,12 +1,15 @@
 name: Coverage
 
 on:
-  # Merge-blocking gate: the project mandates >= 90% workspace coverage, so the
-  # tarpaulin run below must pass before a PR can land. While this job was
-  # broken (missing web build, then runner disk/timeout), main drifted below
-  # the mandate to 83.08% — restored by backfilling real tests, tracked in
-  # issue #192. The 90% floor is NOT negotiable: do not lower it.
-  pull_request:
+  # The project mandates >= 90% workspace coverage. Tarpaulin takes ~2h, which
+  # made it the pipeline bottleneck when it ran per PR — a stack of small PRs
+  # (each ADDING tests) serialized behind days of instrumented runs. The gate
+  # therefore lives on main: every merge and the nightly run verify the floor,
+  # and a regression is closed by a targeted test backfill (proven when main
+  # drifted to 83.08% while this job was broken — issue #192). The 90% floor
+  # is NOT negotiable: do not lower it.
+  push:
+    branches: [main]
   schedule:
     # Runs nightly at 02:00 UTC
     - cron: "0 2 * * *"
