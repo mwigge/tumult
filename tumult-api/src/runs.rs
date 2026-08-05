@@ -451,6 +451,10 @@ const HALTABLE_STATES: &[&str] = &[
 /// Runs in an environment outside the principal's scopes are not touched
 /// (same rule as the run list). Idempotent: a run that reached a terminal
 /// state between listing and stopping is counted as skipped, not an error.
+/// A store error on one run does not abort the halt: the response is always
+/// a 200 summary — `{requested, stopped, skipped_terminal, failed}` with
+/// `failed` listing `{run_id, error}` for each run that could not be
+/// stopped (retry the call to halt them).
 pub async fn stop_all(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -489,29 +493,64 @@ pub async fn stop_all(
     })
     .await?;
     let actor = principal.actor();
-    let requested = ids.len();
-    let mut stopped = 0usize;
-    let mut skipped_terminal = 0usize;
-    for row in &ids {
-        let id = row["id"].as_str().unwrap_or_default();
-        match queue.stop(id, actor.as_deref()).await {
-            Ok(()) => stopped += 1,
-            Err(StopError::Terminal(_) | StopError::NotFound) => skipped_terminal += 1,
-            Err(StopError::Store(e)) => return Err(internal(e)),
-        }
-    }
+    let summary = halt_runs(&ids, |id| {
+        let actor = actor.clone();
+        async move { queue.stop(&id, actor.as_deref()).await }
+    })
+    .await;
     tracing::warn!(
-        requested,
-        stopped,
-        skipped_terminal,
+        requested = summary.requested,
+        stopped = summary.stopped,
+        skipped_terminal = summary.skipped_terminal,
+        failed = summary.failed.len(),
         actor = actor.as_deref().unwrap_or("synthetic"),
         "global halt requested"
     );
     Ok(Json(json!({
-        "requested": requested,
-        "stopped": stopped,
-        "skipped_terminal": skipped_terminal,
+        "requested": summary.requested,
+        "stopped": summary.stopped,
+        "skipped_terminal": summary.skipped_terminal,
+        "failed": summary.failed,
     })))
+}
+
+/// The outcome of one `stop-all` pass: per-run results, never an early
+/// abort — one run's store error must not leave the remaining runs active
+/// behind a misleading 500.
+struct HaltSummary {
+    requested: usize,
+    stopped: usize,
+    skipped_terminal: usize,
+    /// `{run_id, error}` for each run whose stop failed at the store.
+    failed: Vec<Value>,
+}
+
+/// E-stop every listed run, collecting per-run outcomes. Store errors are
+/// recorded against the run and the loop continues; runs that turned
+/// terminal (or vanished) between listing and stopping count as skipped.
+async fn halt_runs<F, Fut>(ids: &[Value], stop: F) -> HaltSummary
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), StopError>>,
+{
+    let mut summary = HaltSummary {
+        requested: ids.len(),
+        stopped: 0,
+        skipped_terminal: 0,
+        failed: Vec::new(),
+    };
+    for row in ids {
+        let id = row["id"].as_str().unwrap_or_default().to_string();
+        match stop(id.clone()).await {
+            Ok(()) => summary.stopped += 1,
+            Err(StopError::Terminal(_) | StopError::NotFound) => summary.skipped_terminal += 1,
+            Err(StopError::Store(e)) => {
+                tracing::warn!(run = %id, error = %e, "global halt: stop failed; continuing with the remaining runs");
+                summary.failed.push(json!({"run_id": id, "error": e}));
+            }
+        }
+    }
+    summary
 }
 
 // ---------------------------------------------------------------------------
@@ -708,5 +747,41 @@ pub async fn audit_verify(
             "chain_valid": chain_valid,
         }))),
         None => Err(not_found(format!("unknown run id {id:?}"))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One run's store failure must not abort the halt: the remaining runs
+    /// are still stopped and the failure is reported per-run.
+    #[tokio::test]
+    async fn halt_runs_continues_past_a_failing_run() {
+        let ids = vec![
+            json!({"id": "run-a"}),
+            json!({"id": "run-broken"}),
+            json!({"id": "run-gone"}),
+            json!({"id": "run-terminal"}),
+            json!({"id": "run-b"}),
+        ];
+        let summary = halt_runs(&ids, |id| async move {
+            match id.as_str() {
+                "run-broken" => Err(StopError::Store("writer down".into())),
+                "run-gone" => Err(StopError::NotFound),
+                "run-terminal" => Err(StopError::Terminal("passed".into())),
+                _ => Ok(()),
+            }
+        })
+        .await;
+        assert_eq!(summary.requested, 5);
+        assert_eq!(summary.stopped, 2, "run-a and run-b are both stopped");
+        assert_eq!(summary.skipped_terminal, 2);
+        assert_eq!(summary.failed.len(), 1);
+        assert_eq!(summary.failed[0]["run_id"], json!("run-broken"));
+        assert_eq!(summary.failed[0]["error"], json!("writer down"));
     }
 }
