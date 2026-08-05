@@ -10,10 +10,13 @@ use serde_json::Value;
 use tumult_ingest::IngestWriter;
 use tumult_lake::{NewRun, Store, WebhookRow};
 
+/// One captured delivery: (signature, timestamp, signature-v2, body).
+type Hits = Arc<Mutex<Vec<(String, String, String, String)>>>;
+
 /// Run one dispatch against a local receiver; returns the captured
 /// (signature, timestamp, signature-v2, body) tuples and the delivery count.
 struct Receiver {
-    hits: Arc<Mutex<Vec<(String, String, String, String)>>>,
+    hits: Hits,
     url: String,
 }
 
@@ -124,7 +127,8 @@ async fn dispatcher_posts_signed_events_and_advances_the_cursor() {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_secs() as i64,
+                .as_secs()
+                .cast_signed(),
         ));
         let payload: Value = serde_json::from_str(body).unwrap();
         assert_eq!(payload["event"], "enqueued");
