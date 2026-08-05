@@ -115,6 +115,7 @@ pub mod import;
 pub mod lake;
 pub mod manual;
 pub mod runs;
+pub mod schedules;
 pub mod sql_util;
 
 use std::path::PathBuf;
@@ -317,6 +318,12 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/runs/dry-run", post(runs::dry_run))
         .route("/api/runs", get(runs::list).post(runs::create))
         .route("/api/runs/stop-all", post(runs::stop_all))
+        .route(
+            "/api/schedules",
+            get(schedules::list).post(schedules::create),
+        )
+        .route("/api/schedules/{id}/enable", post(schedules::set_enabled))
+        .route("/api/schedules/{id}/delete", post(schedules::delete))
         .route("/api/runs/{id}", get(runs::detail))
         .route("/api/runs/{id}/audit/verify", get(runs::audit_verify))
         .route("/api/runs/{id}/stop", post(runs::stop))

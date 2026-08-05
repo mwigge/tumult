@@ -1872,3 +1872,57 @@ async fn stop_all_enforces_operator_role_and_audits_actor() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["stopped"], 0, "{body}");
 }
+
+/// `/api/schedules*` roles: the list is Viewer-level, all mutations are
+/// Operator-level; unauthenticated requests 401 when users exist.
+#[tokio::test]
+async fn schedules_endpoints_enforce_roles() {
+    let srv = spawn_server().await;
+    add_user(&srv, "admin", "admin-password-1", "admin", false).await;
+    add_user(&srv, "op", "op-password-1", "operator", false).await;
+    add_user(&srv, "vie", "vie-password-1", "viewer", false).await;
+    let (op, _) = add_token(&srv, "u-op", "op-token").await;
+    let (vie, _) = add_token(&srv, "u-vie", "vie-token").await;
+
+    let registry_id = register_run_def_auth(&srv.base, &op).await;
+
+    // Unauthenticated → 401 on both read and write.
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/schedules", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+
+    // Viewer may list but not mutate.
+    let (status, _body) = get_auth(&srv.base, "/api/schedules", &vie).await;
+    assert_eq!(status, 200);
+    let (status, _body) = post_auth(
+        &srv.base,
+        "/api/schedules",
+        &vie,
+        json!({"name": "x", "registry_id": registry_id, "interval_s": 3600}),
+    )
+    .await;
+    assert_eq!(status, 403, "viewer may not create schedules");
+
+    // Operator creates and deletes.
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/schedules",
+        &op,
+        json!({"name": "op schedule", "registry_id": registry_id, "interval_s": 3600}),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["created_by"], "op", "the creator is recorded");
+    let id = body["id"].as_str().unwrap();
+    let (status, _body) = post_auth(
+        &srv.base,
+        &format!("/api/schedules/{id}/delete"),
+        &op,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 200);
+}

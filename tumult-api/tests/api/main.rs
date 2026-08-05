@@ -14,3 +14,4 @@ mod manual;
 mod query;
 mod reports;
 mod runs;
+mod schedules;
