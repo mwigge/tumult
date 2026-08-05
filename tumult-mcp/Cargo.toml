@@ -47,7 +47,6 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 opentelemetry = { workspace = true }
 subtle = { workspace = true }
-indexmap = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
