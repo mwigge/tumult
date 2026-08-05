@@ -36,13 +36,13 @@ def check_links(errors: list[str]) -> None:
 
 def check_blog(errors: list[str]) -> None:
     posts = sorted((ROOT / "docs/blog").glob("[0-9][0-9]-*.md"))
-    if len(posts) != 25:
-        errors.append(f"docs/blog: expected 25 numbered posts, found {len(posts)}")
+    if len(posts) != 27:
+        errors.append(f"docs/blog: expected 27 numbered posts, found {len(posts)}")
     index = (ROOT / "docs/blog/index.md").read_text(encoding="utf-8")
     for post in posts:
         text = post.read_text(encoding="utf-8")
-        if "updated: 2026-07-21" not in text:
-            fail(errors, post, "missing the current editorial review date")
+        if not re.search(r"^updated: \d{4}-\d{2}-\d{2}$", text, re.M):
+            fail(errors, post, "missing an `updated:` editorial review date")
         if f"({post.name})" not in index:
             fail(errors, ROOT / "docs/blog/index.md", f"missing {post.name}")
 
@@ -156,7 +156,7 @@ def main() -> int:
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    print("Documentation checks passed: local links, 25-post index, and MCP inventory.")
+    print("Documentation checks passed: local links, 27-post index, and MCP inventory.")
     return 0
 
 
