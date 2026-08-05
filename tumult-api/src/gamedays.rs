@@ -13,45 +13,15 @@ use std::collections::HashMap;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tumult_lake::RegisteredDefinition;
 
 use crate::auth::Principal;
+use crate::error::{bad_request, conflict, forbidden, not_found, unavailable};
 use crate::sql_util::{internal, now_ns, with_reader};
 use crate::ApiState;
-
-fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
-}
-
-fn not_found(msg: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg}))).into_response()
-}
-
-fn unavailable(msg: &str) -> Response {
-    (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
-}
-
-fn forbidden(msg: String) -> Response {
-    (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
-}
-
-fn conflict(msg: &str) -> Response {
-    (StatusCode::CONFLICT, Json(json!({"error": msg}))).into_response()
-}
-
-/// SHA-256 hex of a definition — the dedup key; registry ids derive from it
-/// (`reg-<first 12 hex>`), same rule as experiment registration.
-fn content_hash(text: &str) -> String {
-    use sha2::Digest as _;
-    sha2::Sha256::digest(text.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
 
 /// JSON body for `POST /api/gamedays/validate`: the campaign TOON plus its
 /// referenced experiment TOONs keyed by the exact `path` strings the
@@ -79,12 +49,12 @@ pub async fn validate(
     Json(req): Json<ValidateGameDayRequest>,
 ) -> Result<Json<Value>, Response> {
     if req.toon.chars().count() > 256_000 {
-        return Err(bad_request("gameday too large (max 256k chars)".into()));
+        return Err(bad_request("gameday too large (max 256k chars)"));
     }
     let gameday: tumult_core::types::GameDay = toon_format::decode_default(&req.toon)
         .map_err(|e| bad_request(format!("gameday does not parse: {e}")))?;
     if gameday.experiments.is_empty() {
-        return Err(bad_request("gameday has no experiments".into()));
+        return Err(bad_request("gameday has no experiments"));
     }
     // Every referenced path must come with its TOON; validate each through
     // the normal run pipeline before anything is registered.
@@ -100,12 +70,6 @@ pub async fn validate(
         }
     }
 
-    let Some(ingest) = state.ingest_handle() else {
-        return Err(unavailable(
-            "gameday registration is not wired (no ingest handle)",
-        ));
-    };
-
     // Register each experiment (content-hash dedup, kind NULL = experiment).
     let mut steps = Vec::with_capacity(gameday.experiments.len());
     for step in &gameday.experiments {
@@ -113,18 +77,18 @@ pub async fn validate(
         let toon = req.experiments[&path].clone();
         let (experiment, _env) =
             tumult_ingest::prepare_run(&toon, &HashMap::new()).map_err(internal)?;
-        let id = register_definition(
+        let registration = crate::registry::register_definition(
             &state,
-            ingest,
             &toon,
             &experiment.title,
             principal.actor(),
             /* gameday */ false,
+            "gameday registration is not wired (no ingest handle)",
         )
         .await?;
         steps.push(GameDayStep {
             path,
-            registry_id: id,
+            registry_id: registration.id,
         });
     }
 
@@ -132,63 +96,20 @@ pub async fn validate(
     // scoring config rides along so the supervisor needs no TOON parse.
     let envelope =
         json!({"toon": req.toon, "experiments": steps, "scoring": gameday.scoring}).to_string();
-    let gameday_id = register_definition(
+    let gameday_id = crate::registry::register_definition(
         &state,
-        ingest,
         &envelope,
         &gameday.title,
         principal.actor(),
         true,
+        "gameday registration is not wired (no ingest handle)",
     )
     .await?;
     Ok(Json(json!({
         "valid": true,
-        "gameday_registry_id": gameday_id,
+        "gameday_registry_id": gameday_id.id,
         "experiments": steps,
     })))
-}
-
-/// Register one definition by content hash (dedup: an identical TOON lands
-/// on the existing row) and return its registry id.
-async fn register_definition(
-    state: &ApiState,
-    ingest: &tumult_ingest::IngestWriter,
-    text: &str,
-    name: &str,
-    actor: Option<String>,
-    gameday: bool,
-) -> Result<String, Response> {
-    let hash = content_hash(text);
-    let lookup = hash.clone();
-    let existing = with_reader(&state.db_path, move |reader| {
-        reader.registry_by_hash(&lookup).map_err(|e| e.to_string())
-    })
-    .await?;
-    if let Some(def) = existing {
-        return Ok(def.id);
-    }
-    let def = RegisteredDefinition {
-        id: format!("reg-{}", &hash[..12]),
-        name: name.to_string(),
-        definition_toon: text.to_string(),
-        content_hash: hash,
-        registered_at_ns: now_ns(),
-        registered_by: actor,
-    };
-    let id = def.id.clone();
-    ingest
-        .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
-            if gameday {
-                writer
-                    .register_gameday_definition(&def)
-                    .map_err(|e| e.to_string())
-            } else {
-                writer.register_definition(&def).map_err(|e| e.to_string())
-            }
-        })))
-        .await
-        .map_err(|e| internal(e.to_string()))?;
-    Ok(id)
 }
 
 /// `GET /api/gamedays` — registered campaigns (metadata only), newest first.
@@ -209,7 +130,7 @@ pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, Response
 /// Fetch one gameday registry row, or a 404 response.
 async fn gameday_or_404(state: &ApiState, id: &str) -> Result<Value, Response> {
     if id.chars().count() > 100 {
-        return Err(bad_request("gameday id too long".into()));
+        return Err(bad_request("gameday id too long"));
     }
     let lookup = id.to_string();
     let rows = with_reader(&state.db_path, move |reader| {

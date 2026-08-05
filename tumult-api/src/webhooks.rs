@@ -4,27 +4,16 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_lake::WebhookRow;
 
 use crate::auth::Principal;
+use crate::error::{bad_request, not_found, unavailable};
 use crate::sql_util::{internal, now_ns, with_reader};
 use crate::ApiState;
-
-fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
-}
-
-fn not_found(msg: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg}))).into_response()
-}
-
-fn unavailable(msg: &str) -> Response {
-    (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
-}
 
 /// One webhook as JSON *without* the secret.
 fn webhook_json(w: &WebhookRow) -> Value {
@@ -42,7 +31,7 @@ fn webhook_json(w: &WebhookRow) -> Value {
 /// Fetch one webhook by id, or a 404 response.
 async fn webhook_or_404(state: &ApiState, id: &str) -> Result<WebhookRow, Response> {
     if id.chars().count() > 100 {
-        return Err(bad_request("webhook id too long".into()));
+        return Err(bad_request("webhook id too long"));
     }
     let lookup = id.to_string();
     let found = with_reader(&state.db_path, move |reader| {
@@ -90,13 +79,13 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<Value>), Response> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
-        return Err(bad_request("name must not be empty".into()));
+        return Err(bad_request("name must not be empty"));
     }
     if name.chars().count() > 100 {
-        return Err(bad_request("name too long (max 100 chars)".into()));
+        return Err(bad_request("name too long (max 100 chars)"));
     }
     if req.events.iter().any(|e| e.chars().count() > 100) {
-        return Err(bad_request("event name too long (max 100 chars)".into()));
+        return Err(bad_request("event name too long (max 100 chars)"));
     }
     if let Err(reason) = tumult_ingest::webhooks::validate_webhook_url(&req.url) {
         return Err(bad_request(reason));
