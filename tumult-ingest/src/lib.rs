@@ -19,6 +19,7 @@
 
 pub mod approvals;
 pub mod config;
+pub mod daemon_metrics;
 mod error;
 pub mod gamedays;
 pub mod grpc;
