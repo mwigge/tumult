@@ -68,6 +68,8 @@ mod schema;
 mod store;
 pub mod telemetry;
 #[cfg(feature = "duckdb")]
+mod webhooks;
+#[cfg(feature = "duckdb")]
 mod writer;
 
 #[cfg(feature = "duckdb")]
@@ -99,6 +101,8 @@ pub use schema::CURRENT_SCHEMA_VERSION;
 pub use store::Store;
 #[cfg(feature = "duckdb")]
 pub(crate) use store::{migrate, query_json_rows, with_tx};
+#[cfg(feature = "duckdb")]
+pub use webhooks::WebhookRow;
 #[cfg(feature = "duckdb")]
 pub use writer::Writer;
 

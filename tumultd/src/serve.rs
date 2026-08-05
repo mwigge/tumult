@@ -284,6 +284,14 @@ pub(crate) async fn serve() -> Result<()> {
         tumult_ingest::schedules::tick_from_env(),
         background_shutdown.clone(),
     );
+    // Webhook dispatcher: delivers due run-audit events to enabled webhooks
+    // every tick. Same shutdown-drain contract as the other background tasks.
+    let webhook_task = tumult_ingest::webhooks::spawn_webhook_dispatcher(
+        config.db_path.clone(),
+        ingest.clone(),
+        tumult_ingest::webhooks::tick_from_env(),
+        background_shutdown.clone(),
+    );
     let http_server = tokio::spawn(async move {
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
             .merge(report_router(report_state))
@@ -348,6 +356,9 @@ pub(crate) async fn serve() -> Result<()> {
     schedule_task
         .await
         .context("schedule scheduler task panicked")?;
+    webhook_task
+        .await
+        .context("webhook dispatcher task panicked")?;
     run_queue.shutdown();
     drop(run_queue);
     writer_task.await.context("ingest writer task")?;

@@ -93,6 +93,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   filters, a `before` cursor and a 200-row cap, hash-chain links included;
   plus the `/events` UI page polling every 5s with event-type filter
   chips. Environment scoping matches the run list.
+- Webhooks (schema v11): admin-managed outbound run-event notifications.
+  `/api/webhooks*` CRUD (Admin; the HMAC secret is returned exactly once
+  at creation), a daemon dispatcher posting signed
+  (`X-Tumult-Signature: sha256=<hmac-sha256>`) JSON per webhook cursor —
+  fire-and-log with one retry, so a down receiver misses events rather
+  than blocking runs — and a `/webhooks` admin page. SSRF policy: https
+  only; http and loopback/private/link-local addresses need the explicit
+  `TUMULTD_WEBHOOK_ALLOW_INSECURE=1` / `TUMULTD_WEBHOOK_ALLOW_LOCAL=1`
+  opt-ins. `TUMULTD_WEBHOOK_TICK_S` (default 15s) sets the dispatch tick.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,

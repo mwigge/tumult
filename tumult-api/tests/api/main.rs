@@ -16,3 +16,4 @@ mod query;
 mod reports;
 mod runs;
 mod schedules;
+mod webhooks;

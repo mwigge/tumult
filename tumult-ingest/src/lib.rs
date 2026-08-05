@@ -25,6 +25,7 @@ pub mod http;
 pub mod manual;
 pub mod runs;
 pub mod schedules;
+pub mod webhooks;
 mod writer;
 
 pub use config::Config;

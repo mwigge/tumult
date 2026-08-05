@@ -118,6 +118,7 @@ pub mod manual;
 pub mod runs;
 pub mod schedules;
 pub mod sql_util;
+pub mod webhooks;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -326,6 +327,9 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/schedules/{id}/enable", post(schedules::set_enabled))
         .route("/api/schedules/{id}/delete", post(schedules::delete))
         .route("/api/events", get(events::list))
+        .route("/api/webhooks", get(webhooks::list).post(webhooks::create))
+        .route("/api/webhooks/{id}/enable", post(webhooks::set_enabled))
+        .route("/api/webhooks/{id}/delete", post(webhooks::delete))
         .route("/api/runs/{id}", get(runs::detail))
         .route("/api/runs/{id}/audit/verify", get(runs::audit_verify))
         .route("/api/runs/{id}/stop", post(runs::stop))

@@ -23,6 +23,7 @@
     { href: '/reports', label: 'Reports', icon: '▤' },
     { href: '/events', label: 'Events', icon: '◔' },
     { href: '/users', label: 'Users', icon: '⚿', admin: true },
+    { href: '/webhooks', label: 'Webhooks', icon: '➤', admin: true },
     { href: '/schedules', label: 'Schedules', icon: '↻', operator: true }
   ];
 
