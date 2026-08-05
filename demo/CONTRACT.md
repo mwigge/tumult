@@ -1,4 +1,4 @@
-# Tumult Demo — Interface Contract (2.2)
+# Tumult Demo — Interface Contract (2.21)
 
 This file is the shared contract for the one-command demo. All demo components
 build to these names/ports so they compose without collision. Do not change a
@@ -42,8 +42,8 @@ value here without updating every component that references it.
 - Every handler emits OTel spans to the collector; service name `demo-app`.
 
 ## Fault domains (docker-viable — NO k8s in demo)
-Each domain has one demo experiment `.toon` under `demo/experiments/` targeting
-the demo stack, named `demo-<domain>.toon`:
+`demo/experiments/` holds 13 experiments targeting the demo stack. The fault
+sweep (`make demo-check`) is one per domain, named `demo-<domain>.toon`:
 - `demo-net.toon` — tumult-net userspace proxy: latency between demo-app and demo-postgres
 - `demo-postgres.toon` — tumult-db-postgres script plugin: kill connections
 - `demo-container.toon` — tumult-pumba or container pause: pause demo-postgres briefly
@@ -51,6 +51,15 @@ the demo stack, named `demo-<domain>.toon`:
 - `demo-process.toon` — process fault against demo-app
 - `demo-ssh.toon` — tumult-ssh native execute against demo-sshd
 - `demo-agentic.toon` — an agentic scenario smoke (no external API — bundled fake adapter)
+- `demo-agentic-trajectory.toon` — multi-turn agent-graph trajectory poisoning (bundled fake adapters)
+- `demo-timewarp-clock.toon` — tumult-timewarp clock skew past a short-TTL token's expiry
+- `demo-timewarp-entropy.toon` — tumult-timewarp sustained RNG/crypto pressure
+
+Three experiments are deliberately outside the sweep:
+- `demo-guard-halt.toon` — auto-halt guardrail; expected outcome is `Halted`, not `Completed` (control panel's Safety guardrail card)
+- `demo-topo-blind.toon` — recovery validation with a blind guard, wired as the autopilot playbook in `demo/topology/autopilot-blind.toml`
+- `demo-topo-recommended.toon` — the recommender loop's closing run (`scripts/demo-topology.sh`)
+
 Each experiment must `validate` clean and run against the live demo stack.
 
 ## Control panel (demo-control-panel)
