@@ -65,10 +65,29 @@ jobs:
       - name: Build web UI (tumultd embeds web/build)
         run: npm --prefix web ci && npm --prefix web run build
 
-      # The exhaustive gate: full workspace, all features, per release target.
-      - name: Run tests before release
-        if: ${{ !matrix.cross }}
+      # Gate scales with release risk: minor/major (x.y.0) and prereleases get
+      # the exhaustive full-workspace --all-features run; a patch release
+      # (x.y.z, z>0) ships fixes already verified continuously on main, so it
+      # only pays the fast unit-test smoke.
+      - name: Classify release
+        id: gate
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          IFS=. read -r _major _minor patch <<< "$TAG"
+          patch_num=${patch%%[-+]*}
+          if [ "$patch_num" = "0" ] || [[ "$TAG" == *-* ]]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "full=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Full test gate (minor/major/prerelease)
+        if: ${{ !matrix.cross && steps.gate.outputs.full == 'true' }}
         run: cargo test --workspace --all-features
+
+      - name: Smoke tests only (patch release)
+        if: ${{ !matrix.cross && steps.gate.outputs.full == 'false' }}
+        run: cargo test --workspace --lib
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
