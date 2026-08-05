@@ -36,6 +36,7 @@ import type {
   RunRow,
   ScaffoldRequest,
   ScaffoldResponse,
+  Schedule,
   Scorecard,
   ScoreTree,
   Timeseries,
@@ -328,6 +329,23 @@ export const api = {
       {}
     ),
 
+  schedules: () => get<{ count: number; schedules: Schedule[] }>('/api/schedules'),
+
+  createSchedule: (req: {
+    name: string;
+    registry_id: string;
+    interval_s: number;
+    vars?: Record<string, string>;
+    env?: string;
+    target?: string;
+  }) => send<Schedule>('POST', '/api/schedules', req),
+
+  setScheduleEnabled: (id: string, enabled: boolean) =>
+    send<{ ok: boolean }>('POST', `/api/schedules/${encodeURIComponent(id)}/enable`, { enabled }),
+
+  deleteSchedule: (id: string) =>
+    send<{ ok: boolean }>('POST', `/api/schedules/${encodeURIComponent(id)}/delete`, {}),
+
   tokens: () => get<{ tokens: ApiToken[] }>('/api/tokens'),
 
   createToken: (req: { name: string; user_id?: string; expires_at_ns?: number }) =>
@@ -386,6 +404,25 @@ export function fmtAgo(ns: number): string {
   if (s < 3600) return `${Math.round(s / 60)}m ago`;
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
+}
+
+/** Future-time counterpart of {@link fmtAgo} (next-fire countdowns). */
+export function fmtIn(ns: number): string {
+  const s = (ns / 1_000_000 - Date.now()) / 1000;
+  if (s <= 0) return 'due';
+  if (s < 60) return `in ${Math.round(s)}s`;
+  if (s < 3600) return `in ${Math.round(s / 60)}m`;
+  if (s < 86400) return `in ${Math.round(s / 3600)}h`;
+  return `in ${Math.round(s / 86400)}d`;
+}
+
+/** Seconds → compact interval label (`900` → "15m", `86400` → "1d"). */
+export function fmtInterval(s: number): string {
+  if (s % 604800 === 0) return `${s / 604800}w`;
+  if (s % 86400 === 0) return `${s / 86400}d`;
+  if (s % 3600 === 0) return `${s / 3600}h`;
+  if (s % 60 === 0) return `${s / 60}m`;
+  return `${s}s`;
 }
 
 export function fmtDuration(ns: number | null): string {
