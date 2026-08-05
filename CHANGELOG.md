@@ -126,6 +126,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (steps with compliance maps, regulatory mapping, scoring), launches
   campaigns (operator), and watches the newest campaign's children
   progress with per-step status badges.
+- `scripts/ui-table-stakes-check.sh` (`make ui-check`): demo-check-style
+  end-to-end smoke for the UI table-stakes track against a running
+  tumultd — users + RBAC boundary, tokens, dry-run scope, global halt with
+  audit actor, schedule CRUD plus a real scheduler fire, the events feed,
+  a gameday campaign's first child, and a signed webhook delivery verified
+  against a local receiver (HMAC-SHA256). Env-overridable
+  (`TUMULTD_URL`, `SMOKE_ADMIN_TOKEN`), idempotent across reruns.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
