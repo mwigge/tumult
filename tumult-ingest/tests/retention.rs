@@ -10,7 +10,7 @@ const DAY_NS: i64 = 86_400 * 1_000_000_000;
 fn now_ns() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos() as i64)
+        .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(0))
 }
 
 /// Seed three runs: an old terminal run (finished 120 days ago), a recent
