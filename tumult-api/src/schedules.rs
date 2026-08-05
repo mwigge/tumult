@@ -7,13 +7,14 @@ use std::collections::HashMap;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_lake::ScheduleRow;
 
 use crate::auth::Principal;
+use crate::error::{bad_request, forbidden, not_found, unavailable};
 use crate::sql_util::{internal, now_ns, with_reader};
 use crate::ApiState;
 
@@ -21,22 +22,6 @@ use crate::ApiState;
 /// meaningfully; above 30 days is almost certainly a typo.
 const MIN_INTERVAL_S: i64 = 60;
 const MAX_INTERVAL_S: i64 = 30 * 86_400;
-
-fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
-}
-
-fn not_found(msg: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg}))).into_response()
-}
-
-fn unavailable(msg: &str) -> Response {
-    (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
-}
-
-fn forbidden(msg: String) -> Response {
-    (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
-}
 
 /// One schedule as JSON, with the registry name joined for display.
 fn schedule_json(s: &ScheduleRow, definition_name: Option<&str>) -> Value {
@@ -61,7 +46,7 @@ fn schedule_json(s: &ScheduleRow, definition_name: Option<&str>) -> Value {
 /// Fetch one schedule by id, or a 404 response.
 async fn schedule_or_404(state: &ApiState, id: &str) -> Result<ScheduleRow, Response> {
     if id.chars().count() > 100 {
-        return Err(bad_request("schedule id too long".into()));
+        return Err(bad_request("schedule id too long"));
     }
     let lookup = id.to_string();
     let found = with_reader(&state.db_path, move |reader| {
@@ -141,10 +126,10 @@ pub async fn create(
     }
     let name = req.name.trim().to_string();
     if name.is_empty() {
-        return Err(bad_request("name must not be empty".into()));
+        return Err(bad_request("name must not be empty"));
     }
     if name.chars().count() > 100 {
-        return Err(bad_request("name too long (max 100 chars)".into()));
+        return Err(bad_request("name too long (max 100 chars)"));
     }
     if !(MIN_INTERVAL_S..=MAX_INTERVAL_S).contains(&req.interval_s) {
         return Err(bad_request(format!(

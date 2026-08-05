@@ -17,7 +17,6 @@ tumult-intelligence.workspace = true
 tumult-report.workspace = true
 tumult-compliance.workspace = true
 tumult-ingest.workspace = true
-indexmap.workspace = true
 sha2.workspace = true
 uuid.workspace = true
 axum.workspace = true

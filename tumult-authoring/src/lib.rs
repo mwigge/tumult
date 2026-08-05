@@ -12,9 +12,13 @@
 //!   [`Experiment`](tumult_core::types::Experiment) and serialize it to TOON.
 //! - [`templates`] — ~10 curated, parameterized starter templates covering the
 //!   main domains; every one validates.
+//! - [`scaffold`] — the catalog-checked scaffold orchestration shared by the
+//!   REST authoring endpoint and the MCP scaffold tool (probe-kind catalog
+//!   entries are rejected in both).
 
 pub mod builder;
 pub mod catalog;
+pub mod scaffold;
 pub mod templates;
 
 pub use builder::{
@@ -24,5 +28,8 @@ pub use builder::{
 pub use catalog::{
     build_catalog, build_catalog_with_config, documented_args, domain_for, ActionKind,
     CatalogAction, CatalogArg, CatalogDomain, Domain, FaultCatalog,
+};
+pub use scaffold::{
+    catalog_summary, scaffold_from_catalog, ScaffoldError, ScaffoldInput, ScaffoldOutcome,
 };
 pub use templates::{all_templates, find_template, parse_overrides, Template, TemplateParam};

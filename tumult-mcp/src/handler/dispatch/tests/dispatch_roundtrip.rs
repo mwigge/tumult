@@ -165,6 +165,13 @@ async fn call_tool_read_journal_structured_round_trip() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::too_many_lines)]
 async fn structured_content_conforms_to_advertised_schema_for_all_structured_tools() {
+    // `tumult_scaffold_experiment` resolves its action against the live
+    // fault catalog; point discovery at the workspace's real `plugins/`.
+    let plugins = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../plugins")
+        .canonicalize()
+        .unwrap();
+    std::env::set_var("TUMULT_PLUGIN_PATH", plugins);
     let tmp = tempfile::tempdir().unwrap();
     crate::tools::test_support::write_valid_experiment(tmp.path());
     let handler = open_handler(tmp.path());

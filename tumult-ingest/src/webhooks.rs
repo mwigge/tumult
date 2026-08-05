@@ -42,11 +42,7 @@ pub use policy::{hmac_sha256_hex, validate_webhook_url};
 /// 15s, minimum 1s); invalid values fall back to the default.
 #[must_use]
 pub fn tick_from_env() -> Duration {
-    std::env::var("TUMULTD_WEBHOOK_TICK_S")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .map_or_else(|| Duration::from_secs(15), Duration::from_secs)
+    crate::daemon_task::tick_from_env("TUMULTD_WEBHOOK_TICK_S", Duration::from_secs(15))
 }
 
 /// Consecutive failing dispatch ticks after which an endpoint's pending

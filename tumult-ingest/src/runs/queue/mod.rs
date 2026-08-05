@@ -1,3 +1,10 @@
+//! The queue core: configuration, request types, the spawn/shutdown
+//! lifecycle and the enqueue paths. Dispatch of approved runs and e-stop
+//! live in [`dispatch`] and [`stop`].
+
+mod dispatch;
+mod stop;
+
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -6,12 +13,10 @@ use tokio::sync::{mpsc, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tumult_core::runner::ActivityExecutor;
 use tumult_core::types::Experiment;
-use tumult_lake::{
-    approval_pin, rollback_status, run_state, ApprovalRequest, CanonicalPin, NewRun, Store,
-};
+use tumult_lake::{approval_pin, ApprovalRequest, CanonicalPin, NewRun};
 
 use super::worker::{process, sweep_expired_approvals};
-use super::{exec_write, now_ns, read_run_state, Shared, WorkItem};
+use super::{exec_write, now_ns, Shared, WorkItem};
 use crate::approvals::Tier;
 use crate::IngestWriter;
 
@@ -362,183 +367,5 @@ impl RunQueue {
         .await
         .map_err(EnqueueError::Store)?;
         Ok(run_id)
-    }
-
-    /// Dispatch a run whose approval cleared: flips `pending_approval` back
-    /// to `queued` and hands the worker a [`WorkItem`] carrying the approved
-    /// pin (re-verified before execution). All approval checks are re-read
-    /// from the store here — the approve endpoint and break-glass both funnel
-    /// through this one gate. Break-glass requests bypass quorum and TTL (the
-    /// override's whole point) but never the pin re-verification in the
-    /// worker.
-    ///
-    /// # Errors
-    /// See [`DispatchError`].
-    pub async fn dispatch_approved(&self, run_id: &str) -> Result<(), DispatchError> {
-        let (request, approval_pin) = {
-            let reader = Store::at(&self.shared.db_path)
-                .read_only()
-                .map_err(|e| DispatchError::Store(e.to_string()))?;
-            let run = reader
-                .run_get(run_id)
-                .map_err(|e| DispatchError::Store(e.to_string()))?
-                .ok_or(DispatchError::NotPending)?;
-            if run["state"].as_str() != Some(run_state::PENDING_APPROVAL) {
-                return Err(DispatchError::NotPending);
-            }
-            let approval = reader
-                .approval_request(run_id)
-                .map_err(|e| DispatchError::Store(e.to_string()))?
-                .ok_or_else(|| DispatchError::Approval("no approval request".into()))?;
-            let break_glass = approval["break_glass"].as_bool().unwrap_or(false);
-            if approval["consumed_at_ns"].is_number() {
-                return Err(DispatchError::Approval(
-                    "approval already consumed — a second run needs a fresh approval".into(),
-                ));
-            }
-            if !break_glass {
-                let decisions = reader
-                    .approval_decisions(run_id)
-                    .map_err(|e| DispatchError::Store(e.to_string()))?;
-                if decisions.iter().any(|d| d["decision"] == "rejected") {
-                    return Err(DispatchError::Approval("request was rejected".into()));
-                }
-                let approved = decisions
-                    .iter()
-                    .filter(|d| d["decision"] == "approved")
-                    .count() as i64;
-                let quorum = approval["quorum_required"].as_i64().unwrap_or(1);
-                if approved < quorum {
-                    return Err(DispatchError::Approval(format!(
-                        "quorum short: {approved}/{quorum} approvals"
-                    )));
-                }
-                if now_ns() > approval["expires_at_ns"].as_i64().unwrap_or(0) {
-                    return Err(DispatchError::Approval(
-                        "approval expired before dispatch".into(),
-                    ));
-                }
-            }
-            let definition = reader
-                .registry_definition(run["registry_id"].as_str().unwrap_or_default())
-                .map_err(|e| DispatchError::Store(e.to_string()))?
-                .ok_or_else(|| DispatchError::Store("registry row missing".into()))?;
-            let vars: HashMap<String, String> = run["params_json"]
-                .as_object()
-                .map(|obj| {
-                    obj.iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let request = RunRequest {
-                registry_id: definition.id,
-                definition_toon: definition.definition_toon,
-                vars,
-                env: approval["env"].as_str().unwrap_or("dev").to_string(),
-                target: approval["target"].as_str().map(str::to_string),
-            };
-            let pin = approval["pin_hash"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
-            (request, pin)
-        };
-        let permit = self
-            .waiting
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| DispatchError::Full)?;
-        let id = run_id.to_string();
-        exec_write(&self.shared.ingest, move |writer| {
-            writer
-                .set_run_state_with(&id, run_state::QUEUED, Some("dispatch_queued"), None, None)
-                .map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(DispatchError::Store)?;
-        let item = WorkItem {
-            run_id: run_id.to_string(),
-            request,
-            approval_pin: Some(approval_pin),
-            _permit: permit,
-        };
-        self.tx
-            .send(item)
-            .await
-            .map_err(|_| DispatchError::Store("run queue stopped".into()))
-    }
-
-    /// E-stop a run: cancel its token (the runner stops before the next
-    /// activity and runs rollbacks) and record `stopping`. Runs still
-    /// waiting are cancelled before they start. `actor` is the authenticated
-    /// identity behind the stop request, recorded on the `stop_requested`
-    /// audit event (`None` when unauthenticated).
-    ///
-    /// # Errors
-    /// See [`StopError`].
-    pub async fn stop(&self, run_id: &str, actor: Option<&str>) -> Result<(), StopError> {
-        let token = self
-            .shared
-            .tokens
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(run_id)
-            .cloned();
-        if let Some(token) = token {
-            token.cancel();
-            let id = run_id.to_string();
-            let actor = actor.map(str::to_string);
-            exec_write(&self.shared.ingest, move |writer| {
-                writer
-                    .set_run_state_with(
-                        &id,
-                        run_state::STOPPING,
-                        Some("stop_requested"),
-                        None,
-                        actor.as_deref(),
-                    )
-                    .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(StopError::Store)?;
-            return Ok(());
-        }
-        match read_run_state(&self.shared.db_path, run_id) {
-            None => Err(StopError::NotFound),
-            Some(state) if run_state::TERMINAL.contains(&state.as_str()) => {
-                Err(StopError::Terminal(state))
-            }
-            Some(_) => {
-                // Waiting (queued/validating) but no token yet: cancel before
-                // start — the worker re-checks state after dequeue and skips.
-                // The stop is audited exactly like the running path: a
-                // `stop_requested` event naming the halting principal, then
-                // the terminal `aborted` event.
-                let id = run_id.to_string();
-                let actor = actor.map(str::to_string);
-                exec_write(&self.shared.ingest, move |writer| {
-                    writer
-                        .insert_run_audit(
-                            &id,
-                            "stop_requested",
-                            Some("cancelled before start"),
-                            actor.as_deref(),
-                        )
-                        .map_err(|e| e.to_string())?;
-                    writer
-                        .finish_run(
-                            &id,
-                            run_state::ABORTED,
-                            None,
-                            Some(rollback_status::NOT_NEEDED),
-                            Some("cancelled before start"),
-                        )
-                        .map_err(|e| e.to_string())
-                })
-                .await
-                .map_err(StopError::Store)
-            }
-        }
     }
 }

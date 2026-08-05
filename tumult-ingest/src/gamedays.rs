@@ -29,11 +29,7 @@ use crate::IngestWriter;
 /// 15s, minimum 1s); invalid values fall back to the default.
 #[must_use]
 pub fn tick_from_env() -> Duration {
-    std::env::var("TUMULTD_GAMEDAY_TICK_S")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .map_or_else(|| Duration::from_secs(15), Duration::from_secs)
+    crate::daemon_task::tick_from_env("TUMULTD_GAMEDAY_TICK_S", Duration::from_secs(15))
 }
 
 /// Spawn the campaign supervisor (same shutdown contract as the other
@@ -45,22 +41,15 @@ pub fn spawn_gameday_supervisor(
     tick: Duration,
     shutdown: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tick);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    crate::daemon_metrics::supervisor_tick();
-                    if let Err(e) = advance_campaigns(&db_path, &ingest, &runs).await {
-                        tracing::warn!(error = %e, "gameday supervisor tick failed");
-                    }
-                }
-                () = shutdown.cancelled() => {
-                    tracing::info!("gameday supervisor exiting (shutdown)");
-                    break;
-                }
-            }
+    crate::daemon_task::spawn_ticker("gameday supervisor", tick, shutdown, move || {
+        let db_path = db_path.clone();
+        let ingest = ingest.clone();
+        let runs = runs.clone();
+        async move {
+            crate::daemon_metrics::supervisor_tick();
+            advance_campaigns(&db_path, &ingest, &runs)
+                .await
+                .map(|_| ())
         }
     })
 }
