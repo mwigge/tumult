@@ -35,6 +35,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/runs/{id}", Role::Viewer),
     ("GET", "/api/runs/{id}/audit/verify", Role::Viewer),
     ("GET", "/api/schedules", Role::Viewer),
+    ("GET", "/api/events", Role::Viewer),
     ("GET", "/api/lake/status", Role::Viewer),
     ("GET", "/api/reports", Role::Viewer),
     ("GET", "/api/reports/v2", Role::Viewer),
@@ -147,6 +148,7 @@ mod tests {
         // Literal-heavy templates win over `/api/runs/{id}`.
         assert_eq!(required_role("POST", "/api/runs/stop-all"), Role::Operator);
         assert_eq!(required_role("GET", "/api/schedules"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/events"), Role::Viewer);
         assert_eq!(
             required_role("POST", "/api/schedules/x/enable"),
             Role::Operator

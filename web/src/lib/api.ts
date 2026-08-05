@@ -33,6 +33,7 @@ import type {
   ReportMetaV2,
   ReportTemplate,
   RunDetail,
+  RunEvent,
   RunRow,
   ScaffoldRequest,
   ScaffoldResponse,
@@ -330,6 +331,13 @@ export const api = {
     ),
 
   schedules: () => get<{ count: number; schedules: Schedule[] }>('/api/schedules'),
+
+  events: (params: Record<string, string>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '')
+    ).toString();
+    return get<{ count: number; events: RunEvent[] }>(`/api/events${qs ? `?${qs}` : ''}`);
+  },
 
   createSchedule: (req: {
     name: string;

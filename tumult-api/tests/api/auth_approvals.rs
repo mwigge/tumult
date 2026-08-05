@@ -1926,3 +1926,21 @@ async fn schedules_endpoints_enforce_roles() {
     .await;
     assert_eq!(status, 200);
 }
+
+/// `GET /api/events` is Viewer-level like the other reads; unauthenticated
+/// requests 401 when users exist.
+#[tokio::test]
+async fn events_feed_enforces_viewer_role() {
+    let srv = spawn_server().await;
+    add_user(&srv, "vie", "vie-password-1", "viewer", false).await;
+    let (vie, _) = add_token(&srv, "u-vie", "vie-token").await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/events", srv.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+    let (status, _body) = get_auth(&srv.base, "/api/events", &vie).await;
+    assert_eq!(status, 200);
+}

@@ -431,6 +431,18 @@ export interface CreateTokenResponse {
   expires_at_ns: number | null;
 }
 
+/** `GET /api/events` row — one cross-run audit event (hash-chained). */
+export interface RunEvent {
+  run_id: string;
+  at_ns: number;
+  event: string;
+  detail: string | null;
+  actor: string | null;
+  prev_hash: string | null;
+  new_hash: string | null;
+  definition_name: string | null;
+}
+
 /** `GET /api/schedules` row (plus the joined definition name). */
 export interface Schedule {
   id: string;

@@ -10,6 +10,7 @@ mod auth_approvals;
 mod authoring;
 mod common;
 mod endpoints;
+mod events;
 mod manual;
 mod query;
 mod reports;
