@@ -33,11 +33,14 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # The instrumented workspace build (duckdb/parquet/arrow static libs)
-      # nearly fills the runner disk; reclaim ~15 GB of unused toolchains.
+      # The instrumented workspace build (duckdb/parquet/arrow + the typst/pdf
+      # stack) overfills the runner disk and ld dies with SIGBUS mid-link;
+      # reclaim everything the job provably does not use (~25 GB).
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/share/swift /usr/share/miniconda /opt/az /usr/lib/jvm
+          sudo docker system prune -af || true
           df -h /
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
         with:
