@@ -10,6 +10,15 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
 
+# PR pipeline budget: 5-20 min. The old layout ran check, clippy, test and
+# doc as four jobs that each rebuilt the whole workspace in their own cache
+# namespace (~40 min wall, and every stacked-PR rebase paid it again). Now
+# one job builds the workspace once and walks check → clippy → machete →
+# nextest, every Rust job shares one rust-cache key (main-push runs warm it
+# for PRs), nextest runs the suite process-parallel, and the doc build only
+# happens on main. The exhaustive gates live on main (Coverage on every
+# merge, 90% floor) and in the Release workflow (full --all-features matrix).
+
 jobs:
   web:
     name: Web UI (Svelte SPA embedded in tumultd)
@@ -32,27 +41,6 @@ jobs:
       - run: npx svelte-check --tsconfig ./tsconfig.json
       - run: npm run build
 
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
-        with:
-          toolchain: 1.92.0
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      # tumultd rust-embeds web/build/ at compile time; without this the
-      # workspace cargo step below fails on the tumultd crate.
-      - name: Build web UI (tumultd embeds web/build)
-        run: npm --prefix web ci && npm --prefix web run build
-      - run: cargo check --all-targets --all-features
-
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -65,106 +53,6 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    # Cold-cache runs (new SHA lineage, e.g. after a history rewrite) compile
-    # the full dependency graph under --all-targets --all-features and then
-    # build cargo-machete from source — that exceeded the old 10 min budget
-    # and GitHub killed the step mid-lint, cancelling the whole run.
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
-        with:
-          toolchain: 1.92.0
-          components: clippy
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      # tumultd rust-embeds web/build/ at compile time; without this the
-      # workspace cargo step below fails on the tumultd crate.
-      - name: Build web UI (tumultd embeds web/build)
-        run: npm --prefix web ci && npm --prefix web run build
-      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
-      # Fail on unused dependencies declared in Cargo.toml (respects
-      # [package.metadata.cargo-machete] ignore lists).
-      - run: cargo install cargo-machete --locked
-      - run: cargo machete --with-metadata
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    # 45 min fits a warm-cache run, but a cold cache (new Cargo.lock after a
-    # rebase) needs ~50 min — and the timeout killed the job during the cache
-    # save, so the cache was never written and every retry stayed cold.
-    timeout-minutes: 75
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
-        with:
-          toolchain: 1.92.0
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      # Linking the big test binaries (duckdb/parquet static libs) with full
-      # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
-      # same fix as the Coverage job: reclaim ~15 GB, line tables suffice.
-      - name: Free runner disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
-          df -h /
-      # tumultd rust-embeds web/build/ at compile time; without this the
-      # workspace cargo step below fails on the tumultd crate.
-      - name: Build web UI (tumultd embeds web/build)
-        run: npm --prefix web ci && npm --prefix web run build
-      - run: cargo test --all-features
-        env:
-          CARGO_PROFILE_TEST_DEBUG: line-tables-only
-
-  doc:
-    name: Documentation
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
-        with:
-          toolchain: 1.92.0
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      # tumultd rust-embeds web/build/ at compile time; without this the
-      # workspace cargo step below fails on the tumultd crate.
-      - name: Build web UI (tumultd embeds web/build)
-        run: npm --prefix web ci && npm --prefix web run build
-      - run: cargo doc --no-deps --all-features
-
-  audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # rustsec/audit-check does not read deny.toml, so its findings
-      # diverged from the documented exceptions. Run the advisories check
-      # through cargo-deny instead: one source of truth (deny.toml).
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
-        with:
-          toolchain: 1.92.0
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
-      - run: cargo install cargo-deny --locked
-      - run: cargo deny check advisories
-
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
@@ -175,8 +63,83 @@ jobs:
         with:
           toolchain: 1.92.0
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+        with:
+          shared-key: ci-workspace
       - run: cargo install cargo-deny --locked
+      # advisories through cargo-deny (not rustsec/audit-check) so deny.toml
+      # stays the single source of truth for documented exceptions.
+      - run: cargo deny check advisories
       - run: cargo deny check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # Warm cache lands in the 10-20 min band; a cold cache (new Cargo.lock)
+    # needs ~35 min — the timeout must outlive the cache save or every retry
+    # stays cold.
+    timeout-minutes: 45
+    env:
+      # Linking the big test binaries (duckdb/parquet static libs) with full
+      # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
+      # same fix as the Coverage job: line tables suffice.
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
+        with:
+          toolchain: 1.92.0
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+        with:
+          shared-key: ci-workspace
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # Reclaim ~15 GB so linking the duckdb/parquet test binaries cannot
+      # die with SIGBUS from disk pressure.
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
+      # tumultd rust-embeds web/build/ at compile time; without this the
+      # workspace cargo steps below fail on the tumultd crate.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
+      - run: cargo install cargo-nextest cargo-machete --locked
+      - run: cargo check --all-targets --all-features
+      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+      # Fail on unused dependencies declared in Cargo.toml (respects
+      # [package.metadata.cargo-machete] ignore lists).
+      - run: cargo machete --with-metadata
+      - run: cargo nextest run --all-features
+
+  doc:
+    name: Documentation
+    # Main-only: rustdoc over the workspace is ~20 min and validates nothing
+    # a PR author can act on differently than clippy already does.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
+        with:
+          toolchain: 1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+        with:
+          shared-key: ci-workspace
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # tumultd rust-embeds web/build/ at compile time; without this the
+      # workspace cargo step below fails on the tumultd crate.
+      - name: Build web UI (tumultd embeds web/build)
+        run: npm --prefix web ci && npm --prefix web run build
+      - run: cargo doc --no-deps --all-features
 
   docs-check:
     name: Documentation checks

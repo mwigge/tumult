@@ -65,9 +65,10 @@ jobs:
       - name: Build web UI (tumultd embeds web/build)
         run: npm --prefix web ci && npm --prefix web run build
 
+      # The exhaustive gate: full workspace, all features, per release target.
       - name: Run tests before release
         if: ${{ !matrix.cross }}
-        run: cargo test --workspace
+        run: cargo test --workspace --all-features
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
