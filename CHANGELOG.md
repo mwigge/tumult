@@ -126,6 +126,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (steps with compliance maps, regulatory mapping, scoring), launches
   campaigns (operator), and watches the newest campaign's children
   progress with per-step status badges.
+- docs: two getting-started blog posts — `26-web-ui-getting-started.md`
+  (the governance half: tumultd bootstrap, RBAC login, registry → approvals
+  → run → e-stop → audit, the authoring wizard, schedules, GameDays,
+  webhooks, events, users) and `27-kronika-getting-started.md` (the
+  analytics half: OTLP ingest, the single-writer DuckDB lake, parquet
+  export, semantic metrics, compliance reports, and Grafana/SigNoz
+  alongside); blog index updated. `scripts/check-docs.py` now expects 27
+  posts and validates that every post carries an `updated:` review date
+  instead of one hardcoded editorial date.
 - `scripts/ui-table-stakes-check.sh` (`make ui-check`): demo-check-style
   end-to-end smoke for the UI table-stakes track against a running
   tumultd — users + RBAC boundary, tokens, dry-run scope, global halt with

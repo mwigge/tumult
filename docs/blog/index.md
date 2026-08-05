@@ -1,7 +1,7 @@
 ---
 title: Blog
 nav_order: 4
-updated: 2026-07-21
+updated: 2026-08-05
 has_children: true
 ---
 
@@ -36,3 +36,5 @@ The Tumult blog series covers the platform end-to-end, from first principles to 
 | [Native Windows Faults in Tumult 2.12](23-windows-faults.md) | Scope, verification model, and limitations for process-kill, CPU-stress, and firewall-blackhole faults |
 | [Where Compliance Breaks: Lineage on the Service Map](24-topology-compliance-lineage.md) | declared service topology + compliance lineage: see where controls break on the map, which fault caused it, and where the recommender says to inject next; three live proof runs from the demo stack |
 | [Autopilot: Decisions With an Audit Trail](25-autopilot.md) | Deterministic recommendations, the 14-rule safety gate, earned autonomy, lineage, and evidence storage |
+| [Get Started with the Tumult Web UI](26-web-ui-getting-started.md) | The governance half: tumultd bootstrap, RBAC login, registry → approvals → run → e-stop → audit, the authoring wizard, schedules, GameDays, webhooks |
+| [Get Started with Krönika](27-kronika-getting-started.md) | The analytics half: OTLP ingest, the single-writer DuckDB lake, parquet export, semantic metrics, compliance reports, and Grafana/SigNoz alongside |
