@@ -98,6 +98,7 @@ pub(super) async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorF
             }
         }
         if let Some(reason) = refusal {
+            crate::daemon_metrics::run_failed();
             let id = run_id.clone();
             let _ = exec_write(ingest, move |writer| {
                 writer
@@ -133,6 +134,7 @@ pub(super) async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorF
     let (experiment, injected_env) = match prepare_run(&request.definition_toon, &request.vars) {
         Ok(prepared) => prepared,
         Err(e) => {
+            crate::daemon_metrics::run_failed();
             let id = run_id.clone();
             let _ = exec_write(ingest, move |writer| {
                 writer
@@ -151,6 +153,7 @@ pub(super) async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorF
             .map_err(|e| e.to_string())
     })
     .await;
+    crate::daemon_metrics::run_started();
 
     let token = CancellationToken::new();
     shared
@@ -198,6 +201,7 @@ async fn record_completion(
     experiment: &Experiment,
     journal: Journal,
 ) {
+    crate::daemon_metrics::run_completed();
     let state = terminal_state(&journal.status).to_string();
     let rb = if journal.rollback_results.is_empty() {
         rollback_status::NOT_NEEDED
@@ -228,6 +232,7 @@ async fn record_completion(
 }
 
 async fn record_failure(ingest: &IngestWriter, run_id: &str, error: &str) {
+    crate::daemon_metrics::run_failed();
     let id = run_id.to_string();
     let error = error.to_string();
     let _ = exec_write(ingest, move |writer| {

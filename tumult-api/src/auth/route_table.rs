@@ -47,8 +47,12 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/me", Role::Viewer),
     ("GET", "/api/users", Role::Admin),
     // The daemon's live metric report is served outside `/api` but rides the
-    // same auth middleware.
+    // same auth middleware — as do the ops endpoints (deep health, readiness,
+    // Prometheus metrics).
     ("GET", "/report", Role::Viewer),
+    ("GET", "/healthz", Role::Viewer),
+    ("GET", "/readyz", Role::Viewer),
+    ("GET", "/metrics", Role::Viewer),
     // Viewer-level writes (no fault injection, no state change, no resolved
     // plan output — dry-run is Operator: the resolved plan carries
     // substituted secrets).
@@ -179,6 +183,9 @@ mod tests {
         );
         assert_eq!(required_role("POST", "/api/runs/dry-run"), Role::Operator);
         assert_eq!(required_role("GET", "/report"), Role::Viewer);
+        assert_eq!(required_role("GET", "/healthz"), Role::Viewer);
+        assert_eq!(required_role("GET", "/readyz"), Role::Viewer);
+        assert_eq!(required_role("GET", "/metrics"), Role::Viewer);
         assert_eq!(required_role("POST", "/api/runs/validate"), Role::Operator);
         assert_eq!(required_role("GET", "/api/runs/some-id"), Role::Viewer);
         assert_eq!(

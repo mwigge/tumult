@@ -86,14 +86,6 @@ async fn http_post_protobuf_traces_lands_in_store() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // healthz answers too.
-    let health = client
-        .get(format!("http://{addr}/healthz"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(health.status(), 200);
-
     let reader = store.read_only().unwrap();
     let runs = reader.experiment_runs().unwrap();
     assert_eq!(runs.len(), 1);

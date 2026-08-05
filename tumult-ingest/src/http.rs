@@ -3,18 +3,18 @@
 //! `POST /v1/traces|/v1/metrics|/v1/logs` accept `application/x-protobuf`
 //! bodies carrying the OTLP export requests, decode them with prost, and
 //! funnel the resulting rows into the single-writer channel.
-//! `GET /healthz` is the daemon health endpoint.
 //!
 //! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
-//! `/v1/*` route requires `Authorization: Bearer <token>`; `/healthz` and
-//! any non-`/v1` route stay open.
+//! `/v1/*` route requires `Authorization: Bearer <token>`; non-`/v1` routes
+//! pass through. The daemon's `/healthz`, `/readyz` and `/metrics` live on
+//! tumultd's ops router (behind the API auth middleware), not here.
 
 use axum::body::Bytes;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::post;
 use axum::Router;
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
@@ -24,7 +24,7 @@ use prost::Message;
 use crate::error::IngestError;
 use crate::writer::{Batch, IngestWriter};
 
-/// Build the HTTP router (OTLP/HTTP + health), unauthenticated.
+/// Build the HTTP router (OTLP/HTTP), unauthenticated.
 pub fn router(ingest: IngestWriter) -> Router {
     router_with_token(ingest, None)
 }
@@ -33,7 +33,6 @@ pub fn router(ingest: IngestWriter) -> Router {
 /// route requires `Authorization: Bearer <token>` (constant-time compare).
 pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> Router {
     let router = Router::new()
-        .route("/healthz", get(healthz))
         .route("/v1/traces", post(traces))
         .route("/v1/metrics", post(metrics))
         .route("/v1/logs", post(logs));
@@ -48,9 +47,8 @@ pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> 
 }
 
 /// Bearer-token guard for the `/v1/*` OTLP routes; every other path passes
-/// through (`/healthz` stays open for load-balancer probes). The fail-closed
-/// startup guard that refuses a token-less non-loopback bind lives on
-/// [`crate::Config::ensure_ingest_auth`].
+/// through. The fail-closed startup guard that refuses a token-less
+/// non-loopback bind lives on [`crate::Config::ensure_ingest_auth`].
 async fn require_bearer(
     State(expected): State<std::sync::Arc<String>>,
     req: Request,
@@ -71,10 +69,6 @@ async fn require_bearer(
         }
     }
     next.run(req).await
-}
-
-async fn healthz() -> &'static str {
-    "ok"
 }
 
 async fn traces(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {

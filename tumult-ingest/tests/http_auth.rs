@@ -3,8 +3,8 @@
 #![allow(clippy::pedantic)]
 
 //! Integration test: with an ingest token configured, `/v1/*` requires
-//! `Authorization: Bearer <token>` (401 otherwise) while `/healthz` stays
-//! open; with no token the routes stay open.
+//! `Authorization: Bearer <token>` (401 otherwise) while non-`/v1` paths
+//! pass through; with no token the routes stay open.
 
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use prost::Message;
@@ -86,13 +86,15 @@ async fn v1_routes_require_bearer_when_token_configured() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // /healthz stays open without a token.
-    let health = client
-        .get(format!("{}/healthz", srv.base))
+    // Non-/v1 paths pass through the bearer guard (404 from the router, not
+    // a 401 from the middleware) — the daemon's /healthz lives on tumultd's
+    // ops router, not on the OTLP ingest router.
+    let other = client
+        .get(format!("{}/other", srv.base))
         .send()
         .await
         .unwrap();
-    assert_eq!(health.status(), 200);
+    assert_eq!(other.status(), 404);
 
     srv.server.abort();
 }

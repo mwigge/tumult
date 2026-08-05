@@ -81,6 +81,15 @@ impl IngestWriter {
             .map_err(|_| IngestError::Channel("writer task dropped the ack".into()))?
             .map_err(IngestError::Channel)
     }
+
+    /// Round-trip a no-op through the channel: proves the writer task is
+    /// alive and processing (the daemon's `/healthz` liveness probe).
+    ///
+    /// # Errors
+    /// Returns [`IngestError::Channel`] if the writer task is gone.
+    pub async fn ping(&self) -> Result<(), IngestError> {
+        self.write(Batch::Exec(Box::new(|_| Ok(())))).await
+    }
 }
 
 #[cfg(test)]

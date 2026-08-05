@@ -301,18 +301,31 @@ pub(crate) async fn serve() -> Result<()> {
         tumult_ingest::gamedays::tick_from_env(),
         background_shutdown.clone(),
     );
+    let ops_db_path = config.db_path.clone();
+    let ops_ingest = ingest.clone();
     let http_server = tokio::spawn(async move {
         // The live /report endpoint rides the API's auth middleware: it
         // renders from the same store, so it follows the same credential and
-        // role rules as /api (ROUTE_TABLE gates it at Viewer).
+        // role rules as /api (ROUTE_TABLE gates it at Viewer). The ops
+        // endpoints (/healthz, /readyz, /metrics) follow the same pattern.
         let report_auth = axum::middleware::from_fn_with_state(
             api_state.clone(),
             tumult_api::auth::auth_middleware,
         );
+        let ops_auth = axum::middleware::from_fn_with_state(
+            api_state.clone(),
+            tumult_api::auth::auth_middleware,
+        );
+        let ops_state = crate::ops::OpsState {
+            db_path: ops_db_path,
+            ingest: ops_ingest,
+        };
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
             .merge(report_router(report_state).layer(report_auth))
+            .merge(crate::ops::router(ops_state).layer(ops_auth))
             .merge(tumult_api::router(api_state))
-            // Everything that is not /v1, /report, /healthz or /api is the UI.
+            // Everything that is not /v1, /report, /healthz, /readyz, /metrics
+            // or /api is the UI.
             .fallback(ui_handler);
         let result = match http_tls {
             Some(tls_config) => {
@@ -702,6 +715,21 @@ condition: { column: span_name, equals: "resilience.experiment" }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         };
         assert!(health.contains(" 200 OK"), "{health}");
+
+        // Readiness (migrations applied, supervisor ticking) and the daemon
+        // metrics exposition answer on the same listener.
+        let ready = http_get(http_port, "/readyz")
+            .await
+            .expect("readiness request failed");
+        assert!(ready.contains(" 200 OK"), "{ready}");
+        let metrics = http_get(http_port, "/metrics")
+            .await
+            .expect("metrics request failed");
+        assert!(metrics.contains(" 200 OK"), "{metrics}");
+        assert!(
+            metrics.contains("tumultd_runs_started_total"),
+            "metrics endpoint did not expose daemon SLIs"
+        );
 
         let report = http_get(http_port, "/report?metric=experiment_count")
             .await
