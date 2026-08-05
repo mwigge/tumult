@@ -949,17 +949,25 @@ async fn must_change_gates_until_password_change() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["changed"], true);
 
-    // The same session is ungated now, and the new password logs in.
+    // The rotated credential invalidates every existing session — the old
+    // cookie is dead — and the new password logs in ungated.
     let resp = client
         .get(format!("{}/api/experiments", srv.base))
         .header("Cookie", format!("kro_session={cookie}"))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-    let (status, body, _) = login(&srv.base, "carol", "carol-new-password").await;
+    assert_eq!(resp.status().as_u16(), 401);
+    let (status, body, fresh) = login(&srv.base, "carol", "carol-new-password").await;
     assert_eq!(status, 200);
     assert_eq!(body["must_change"], false);
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={}", fresh.unwrap()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
 }
 
 /// Admin password reset: a user locked out (password unknown — the demo
@@ -1017,8 +1025,8 @@ async fn admin_reset_password_recovers_a_locked_out_user() {
         .unwrap();
     assert_eq!(resp.status().as_u16(), 403);
 
-    // Change to the permanent password: the same session is ungated and the
-    // new password logs in clean.
+    // Change to the permanent password: every prior session is invalidated
+    // (the old cookie 401s) and the new password logs in clean and ungated.
     let resp = client
         .post(format!("{}/api/auth/change-password", srv.base))
         .header("Cookie", format!("kro_session={cookie}"))
@@ -1033,10 +1041,68 @@ async fn admin_reset_password_recovers_a_locked_out_user() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-    let (status, body, _) = login(&srv.base, "dave", "dave-permanent-pw").await;
+    assert_eq!(resp.status().as_u16(), 401);
+    let (status, body, fresh) = login(&srv.base, "dave", "dave-permanent-pw").await;
     assert_eq!(status, 200);
     assert_eq!(body["must_change"], false);
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Cookie", format!("kro_session={}", fresh.unwrap()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+/// A password reset invalidates the user's live sessions and API tokens:
+/// the old token 401s immediately, the old session is gone, and the new
+/// password logs in. Compromised credentials must not survive the reset.
+#[tokio::test]
+async fn password_reset_revokes_sessions_and_tokens() {
+    let srv = spawn_server().await;
+    add_user(&srv, "root", "root-password-1", "admin", false).await;
+    let (root_token, _) = add_token(&srv, "u-root", "root").await;
+    add_user(&srv, "erin", "erin-password-12", "operator", false).await;
+    let (erin_token, _) = add_token(&srv, "u-erin", "erin-ci").await;
+    let client = reqwest::Client::new();
+
+    // Erin has a live session and a live API token before the reset.
+    let (status, _, cookie) = login(&srv.base, "erin", "erin-password-12").await;
+    assert_eq!(status, 200);
+    let cookie = cookie.unwrap();
+    let resp = client
+        .get(format!("{}/api/experiments", srv.base))
+        .header("Authorization", format!("Bearer {erin_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // The admin reset kills both credentials at once.
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/users/u-erin/password",
+        &root_token,
+        json!({"password": "erin-one-time-pw"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    for req in [
+        client
+            .get(format!("{}/api/experiments", srv.base))
+            .header("Authorization", format!("Bearer {erin_token}")),
+        client
+            .get(format!("{}/api/experiments", srv.base))
+            .header("Cookie", format!("kro_session={cookie}")),
+    ] {
+        let resp = req.send().await.unwrap();
+        assert_eq!(resp.status().as_u16(), 401);
+    }
+
+    // The one-time password logs in (gated on must_change, as before).
+    let (status, body, _) = login(&srv.base, "erin", "erin-one-time-pw").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["must_change"], true);
 }
 
 /// Environment scopes filter the experiment reads: list, detail.
