@@ -121,6 +121,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `deviated`. `GET /api/runs?gameday_id=` lists a campaign's children.
   `TUMULTD_GAMEDAY_TICK_S` (default 15s) sets the supervisor tick. Shared
   k6 load and GameDayJournal ingest remain deferred.
+- GameDay UI: `/gamedays` lists campaigns and registers new ones (campaign
+  TOON + experiment TOON map); `/gamedays/{id}` shows the parsed plan
+  (steps with compliance maps, regulatory mapping, scoring), launches
+  campaigns (operator), and watches the newest campaign's children
+  progress with per-step status badges.
 - Grafana full-stack reference implementation: `docker/docker-compose.grafana-full.yml`
   boots otelcol-contrib + Tempo + Mimir + Loki 3.x + Grafana (pinned
   versions, named volumes) wired to `collector/otel-collector-grafana.yaml`,
