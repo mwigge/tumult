@@ -8419,6 +8419,7 @@ dependencies = [
  "tracing-subscriber",
  "tumult-api",
  "tumult-auth",
+ "tumult-compliance",
  "tumult-exec",
  "tumult-ingest",
  "tumult-intelligence",

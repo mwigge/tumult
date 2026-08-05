@@ -56,6 +56,10 @@ fn unavailable(msg: &str) -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
 }
 
+fn forbidden(msg: String) -> Response {
+    (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
+}
+
 /// SHA-256 hex of a definition — its dedup key; the registry id derives
 /// from it (`reg-<first 12 hex>`), so identical TOON always lands on the
 /// same registry row.
@@ -337,7 +341,8 @@ fn default_env() -> String {
 /// [`crate::approvals`]. The definition is re-validated here, so an invalid
 /// definition now fails with 400 at request time instead of failing the run
 /// at dispatch. The `enqueued`/`requested` audit event records the
-/// authenticated principal as actor.
+/// authenticated principal as actor. A scoped principal may only launch into
+/// its own environments: any other `env` is a 403.
 pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -346,6 +351,14 @@ pub async fn create(
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
+    // A scoped principal may only launch into its own environments (same
+    // rule as the run reads); checked before anything else resolves.
+    if !principal.env_allowed(&req.env) {
+        return Err(forbidden(format!(
+            "environment {:?} is outside the principal's scopes",
+            req.env
+        )));
+    }
     let def = registry_or_404(&state, &req.registry_id).await?;
     let (experiment, _env) =
         tumult_ingest::prepare_run(&def.definition_toon, &req.vars).map_err(bad_request)?;

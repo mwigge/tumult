@@ -104,6 +104,33 @@ impl Writer {
         Ok(())
     }
 
+    /// The active campaign parent for one gameday definition, if any
+    /// (`runs.gameday_id IS NULL` in any genuinely-active state). Called on
+    /// the single-writer path so `POST /api/gamedays/{id}/runs` checks and
+    /// inserts atomically — two concurrent launches cannot both win.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    pub fn active_gameday_campaign(
+        &self,
+        registry_id: &str,
+    ) -> Result<Option<serde_json::Value>, StoreError> {
+        let states = run_state::ACTIVE
+            .iter()
+            .map(|s| format!("'{s}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Ok(self
+            .query_json_rows(&format!(
+                "SELECT r.id FROM runs r \
+                 WHERE r.registry_id = '{}' AND r.gameday_id IS NULL \
+                   AND r.state IN ({states}) LIMIT 1",
+                registry_id.replace('\'', "''")
+            ))?
+            .into_iter()
+            .next())
+    }
+
     /// Insert a registry definition (callers dedup by `content_hash` first).
     ///
     /// # Errors
@@ -391,7 +418,11 @@ impl Reader {
     }
 
     /// Active-state runs joined with their definitions — the orphan
-    /// reconciliation input at daemon startup.
+    /// reconciliation input at daemon startup. GameDay campaign parents
+    /// (`run_registry.kind = 'gameday'`) are excluded: they own no fault
+    /// execution, so the orphan sweep's rollback would be nonsense — the
+    /// gameday supervisor resumes a recovered `queued`/`running` parent on
+    /// its next tick.
     ///
     /// # Errors
     /// Returns an error if the query fails.
@@ -404,7 +435,8 @@ impl Reader {
         self.query_json_rows(&format!(
             "SELECT r.*, g.name AS definition_name, g.definition_toon FROM runs r \
              JOIN run_registry g ON g.id = r.registry_id \
-             WHERE r.state IN ({states}) ORDER BY r.queued_at_ns"
+             WHERE r.state IN ({states}) AND g.kind IS DISTINCT FROM 'gameday' \
+             ORDER BY r.queued_at_ns"
         ))
     }
 }

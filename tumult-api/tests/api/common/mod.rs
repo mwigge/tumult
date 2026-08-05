@@ -499,3 +499,23 @@ pub async fn get_auth(base: &str, path: &str, token: &str) -> (u16, Value) {
     let status = resp.status().as_u16();
     (status, resp.json().await.unwrap())
 }
+
+/// Create a user with the given role and env scopes and mint a `kro_` token
+/// for it; returns the plaintext token (fixtures go straight to the store).
+pub async fn add_scoped_token(
+    srv: &TestServer,
+    username: &str,
+    role: &str,
+    scopes: &[&str],
+) -> String {
+    let user_id = add_user(srv, username, &format!("{username}-password"), role, false).await;
+    let owned: Vec<String> = scopes.iter().map(|s| (*s).to_string()).collect();
+    let uid = user_id.clone();
+    exec_write(srv, move |w| {
+        w.set_user_env_scopes(&uid, &owned)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (token, _) = add_token(srv, &user_id, username).await;
+    token
+}

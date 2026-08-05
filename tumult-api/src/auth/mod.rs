@@ -81,4 +81,10 @@ impl Principal {
     pub fn actor(&self) -> Option<String> {
         (!self.synthetic).then(|| self.username.clone())
     }
+
+    /// Whether the principal may act on environment `env`: an empty scope
+    /// list means every environment (same rule as the scoped reads).
+    pub fn env_allowed(&self, env: &str) -> bool {
+        self.env_scopes.is_empty() || self.env_scopes.iter().any(|s| s == env)
+    }
 }

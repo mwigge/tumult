@@ -232,3 +232,39 @@ async fn start_campaign_creates_the_parent_run() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["count"], 0, "no children yet: {body}");
 }
+
+/// Two simultaneous launches of the same gameday race; the single-writer
+/// check-and-insert serializes them, so exactly one is accepted (202) and
+/// the other conflicts (409) — never two active campaigns.
+#[tokio::test]
+async fn concurrent_campaign_launches_yield_exactly_one_winner() {
+    let srv = spawn_server().await;
+    let (status, body) = validate_gameday(&srv.base, GAMEDAY, experiment_map()).await;
+    assert_eq!(status, 200, "{body}");
+    let gameday_id = body["gameday_registry_id"].as_str().unwrap().to_string();
+
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let base = srv.base.clone();
+        let id = gameday_id.clone();
+        handles.push(tokio::spawn(async move {
+            let resp = reqwest::Client::new()
+                .post(format!("{base}/api/gamedays/{id}/runs"))
+                .json(&json!({"env": "dev"}))
+                .send()
+                .await
+                .unwrap();
+            resp.status().as_u16()
+        }));
+    }
+    let mut accepted = 0;
+    let mut conflicts = 0;
+    for handle in handles {
+        match handle.await.unwrap() {
+            202 => accepted += 1,
+            409 => conflicts += 1,
+            other => panic!("unexpected status {other}"),
+        }
+    }
+    assert_eq!((accepted, conflicts), (1, 1));
+}

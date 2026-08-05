@@ -46,15 +46,20 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/reports/{name}", Role::Viewer),
     ("GET", "/api/me", Role::Viewer),
     ("GET", "/api/users", Role::Admin),
-    // Viewer-level writes (no fault injection, no state change).
+    // The daemon's live metric report is served outside `/api` but rides the
+    // same auth middleware.
+    ("GET", "/report", Role::Viewer),
+    // Viewer-level writes (no fault injection, no state change, no resolved
+    // plan output — dry-run is Operator: the resolved plan carries
+    // substituted secrets).
     ("POST", "/api/ask", Role::Viewer),
     ("POST", "/api/authoring/scaffold", Role::Viewer),
-    ("POST", "/api/runs/dry-run", Role::Viewer),
     ("POST", "/api/auth/login", Role::Viewer),
     ("POST", "/api/auth/logout", Role::Viewer),
     ("POST", "/api/auth/change-password", Role::Viewer),
     // Operator: run execution, imports, manual-evidence entry, reports.
     ("POST", "/api/runs", Role::Operator),
+    ("POST", "/api/runs/dry-run", Role::Operator),
     ("POST", "/api/runs/stop-all", Role::Operator),
     ("POST", "/api/runs/{id}/stop", Role::Operator),
     ("POST", "/api/runs/validate", Role::Operator),
@@ -172,7 +177,8 @@ mod tests {
             required_role("POST", "/api/schedules/x/enable"),
             Role::Operator
         );
-        assert_eq!(required_role("POST", "/api/runs/dry-run"), Role::Viewer);
+        assert_eq!(required_role("POST", "/api/runs/dry-run"), Role::Operator);
+        assert_eq!(required_role("GET", "/report"), Role::Viewer);
         assert_eq!(required_role("POST", "/api/runs/validate"), Role::Operator);
         assert_eq!(required_role("GET", "/api/runs/some-id"), Role::Viewer);
         assert_eq!(
@@ -183,8 +189,9 @@ mod tests {
 
     #[test]
     fn authoring_routes_are_viewer_level() {
-        // Catalog reads and scaffolding never mutate the store: same level
-        // as `POST /api/runs/dry-run` and the MCP authoring tools.
+        // Catalog reads and scaffolding never mutate the store and return no
+        // resolved plan: same level as `POST /api/ask` and the MCP authoring
+        // tools (dry-run is Operator — the resolved plan carries secrets).
         assert_eq!(required_role("GET", "/api/authoring/catalog"), Role::Viewer);
         assert_eq!(
             required_role("POST", "/api/authoring/scaffold"),

@@ -4,9 +4,12 @@
 // comparisons). CI still applies -D warnings to it.
 #![allow(clippy::pedantic)]
 
-//! `tumult-api` — the read-only JSON query API backing the kronika UI.
+//! `tumult-api` — the control-plane API backing the kronika UI: reads
+//! (overview, series, experiments, logs, traces, scores, reports) plus the
+//! write paths for runs, schedules, webhooks, gamedays, users and tokens.
 //!
-//! Routes (all under `/api`, all read-only against the store):
+//! Routes (all under `/api`; reads run against a fresh read-only
+//! connection, mutations ride the daemon's single-writer channel):
 //!
 //! * `GET /api/overview?range=24h|7d|14d` — KPI cards (value, delta vs the
 //!   previous equal window, sparkline), experiments per day, target-system
@@ -58,7 +61,8 @@
 //!   (content-hash dedup) and returns its `registry_id`.
 //! * `POST /api/runs/dry-run {registry_id, vars?}` — the resolved execution
 //!   plan (hypothesis probes, method steps in order, guards, rollbacks)
-//!   with nothing executed.
+//!   with nothing executed. The plan carries substituted `${secrets.*}`
+//!   values, so it is gated at Operator, not Viewer.
 //! * `POST /api/runs {registry_id, vars?, env?, target?}` — classify the
 //!   definition into a risk tier (T0–T3, ADR-013) at request time: T0
 //!   enqueues onto the daemon's bounded run queue (202 + `run_id`, 429 on

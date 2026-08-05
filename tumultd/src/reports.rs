@@ -363,6 +363,88 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
     // -- report_handler --------------------------------------------------------
 
+    /// Minimal HTTP/1.0 GET against a loopback server, with an optional
+    /// bearer token; returns the raw response (status line, headers, body).
+    async fn http_get(port: u16, path: &str, bearer: Option<&str>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        let auth = bearer.map_or_else(String::new, |t| format!("Authorization: Bearer {t}\r\n"));
+        stream
+            .write_all(format!("GET {path} HTTP/1.0\r\nHost: localhost\r\n{auth}\r\n").as_bytes())
+            .await
+            .unwrap();
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).await.unwrap();
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    /// The live endpoint rides the API's auth middleware: once the store has
+    /// a real user, an unauthenticated request is a 401 and a viewer token
+    /// passes (zero users keeps the open-auth behaviour).
+    #[tokio::test]
+    async fn report_endpoint_requires_auth_once_users_exist() {
+        let (dir, db_path, metrics_dir) = fixture();
+        let store = Store::open(&db_path).unwrap();
+        let writer = store.writer().unwrap();
+        writer
+            .create_user(&tumult_lake::UserRow {
+                id: "u-rep".into(),
+                username: "rep".into(),
+                password_hash: tumult_auth::hash_password("rep-password").unwrap(),
+                role: "viewer".into(),
+                must_change: false,
+                disabled: false,
+                created_at_ns: 1,
+            })
+            .unwrap();
+        let token = tumult_auth::new_token();
+        writer
+            .create_token(&tumult_lake::TokenRow {
+                id: "t-rep".into(),
+                user_id: "u-rep".into(),
+                name: "rep".into(),
+                token_hash: tumult_auth::sha256_hex(&token),
+                created_at_ns: 1,
+                last_used_at_ns: None,
+                revoked: false,
+                expires_at_ns: None,
+            })
+            .unwrap();
+
+        let api_state = tumult_api::ApiState::new(
+            db_path.clone(),
+            metrics_dir.clone(),
+            dir.path().join("reports"),
+            Arc::new(OfflineLlm),
+            tumult_compliance::OrgTree::empty(),
+            None,
+            None,
+            None,
+            false,
+        );
+        let app = report_router(ReportState {
+            db_path,
+            metrics_dir,
+        })
+        .layer(axum::middleware::from_fn_with_state(
+            api_state,
+            tumult_api::auth::auth_middleware,
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let resp = http_get(port, "/report?metric=experiment_count", None).await;
+        assert!(resp.contains(" 401 "), "{resp}");
+        let resp = http_get(port, "/report?metric=experiment_count", Some(&token)).await;
+        assert!(resp.contains(" 200 OK"), "{resp}");
+        assert!(resp.contains("Tumult — experiment_count"), "{resp}");
+    }
+
     #[tokio::test]
     async fn report_handler_rejects_a_missing_metric_parameter() {
         let (_dir, db_path, metrics_dir) = fixture();

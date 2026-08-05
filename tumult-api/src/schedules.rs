@@ -34,6 +34,10 @@ fn unavailable(msg: &str) -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
 }
 
+fn forbidden(msg: String) -> Response {
+    (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
+}
+
 /// One schedule as JSON, with the registry name joined for display.
 fn schedule_json(s: &ScheduleRow, definition_name: Option<&str>) -> Value {
     json!({
@@ -122,11 +126,19 @@ fn default_env() -> String {
 /// definition resolves with the supplied variables (the same pipeline the
 /// scheduler fires, so a bad schedule fails fast with 400 instead of
 /// erroring every tick). The first fire is one interval from creation.
+/// A scoped principal may only schedule into its own environments: any
+/// other `env` is a 403.
 pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<CreateScheduleRequest>,
 ) -> Result<(StatusCode, Json<Value>), Response> {
+    if !principal.env_allowed(&req.env) {
+        return Err(forbidden(format!(
+            "environment {:?} is outside the principal's scopes",
+            req.env
+        )));
+    }
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(bad_request("name must not be empty".into()));
