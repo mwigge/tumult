@@ -161,7 +161,8 @@ token is required. Expose externally through a TLS Ingress. Run a **single write
 servers answer `GET /healthz`, while `tumult-mcp` answers `GET /health`.
 Configure liveness/readiness probes with the right path for the binary they
 target — the paths are intentionally kept as-is for compatibility with
-existing probes.
+existing probes. `tumultd` additionally serves `GET /readyz` (readiness) and
+`GET /metrics` (Prometheus text) — see §8 and §9.
 
 ## 3. Observability — bring your own collector
 
@@ -217,3 +218,96 @@ Two distinct fields:
 - [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at your collector
 - [ ] Store volume persisted, encrypted, and on a backup schedule; single writer
 - [ ] Experiments set `max_concurrent_faults` and attach guard probes to real SLOs
+
+## 8. `tumultd` runtime flags (`TUMULTD_*`)
+
+All daemon tunables are environment variables. Every one is optional; an
+unset, unparsable, or zero value falls back to the default (minimum accepted
+value is always 1). None of these need changing for a normal deployment —
+tune them only when the defaults measurably don't fit.
+
+| Flag | Default | Effect |
+|---|---|---|
+| `TUMULTD_RUN_CONCURRENCY` | `2` | Experiments executing concurrently. Raise cautiously: each run injects real faults. |
+| `TUMULTD_RUN_QUEUE_DEPTH` | `32` | Runs waiting for a worker. Enqueue beyond the depth is rejected (HTTP 429), never silently queued. |
+| `TUMULTD_APPROVAL_SWEEP_S` | `60` | Seconds between approval-TTL sweeps (lapsed `pending_approval` runs become terminal). |
+| `TUMULTD_SCHEDULE_TICK_S` | `30` | Seconds between scheduler ticks. Missed fires collapse per the scheduling policy; intervals under 60s are rejected server-side regardless. |
+| `TUMULTD_WEBHOOK_TICK_S` | `15` | Seconds between webhook dispatcher ticks. |
+| `TUMULTD_WEBHOOK_MAX_ATTEMPTS` | `5` | Consecutive failing ticks per endpoint before its pending events are moved to `webhook_dead_letters` and the cursor advances. |
+| `TUMULTD_WEBHOOK_ENDPOINT_BUDGET_S` | `120` | Per-endpoint per-tick wall-clock budget; a hung receiver is abandoned at the budget and retried under backoff without stalling other endpoints. The per-request HTTP timeout is fixed at 2s. |
+| `TUMULTD_GAMEDAY_TICK_S` | `15` | Seconds between GameDay supervisor ticks (campaign advancement). |
+| `TUMULTD_RUN_RETENTION_DAYS` | `90` | Terminal runs (and their audit rows) older than this are deleted from the hot store. |
+| `TUMULTD_RUN_RETENTION_TICK_S` | `3600` | Seconds between retention sweeps. |
+
+**Escape hatches — demo/test only, never production:**
+
+| Flag | Default | Effect |
+|---|---|---|
+| `TUMULTD_WEBHOOK_ALLOW_INSECURE` | off | Set `1`/`true` to allow `http://` webhook URLs (default is HTTPS-only). Plaintext delivers HMAC-signed audit events and the signing secret's protection is only as strong as the channel — do not enable outside a lab. |
+| `TUMULTD_WEBHOOK_ALLOW_LOCAL` | off | Set `1`/`true` to allow loopback, private, and link-local (incl. cloud metadata `169.254.169.254`) IP-literal webhook URLs. This weakens the SSRF guard; enable only for local receivers in demos/tests. |
+
+Related bootstrap knobs (schema/auth, documented in §1a and the
+[platform walkthrough](platform-walkthrough.md)): `KRONIKA_INGEST_TOKEN`,
+`KRONIKA_BOOTSTRAP_ADMIN_PASSWORD` (minimum 12 characters) and
+`KRONIKA_BOOTSTRAP_TOKEN` (`kro_`-prefixed, minimum 20 characters after the
+prefix). The bootstrap pair is a one-time demo/dev path — it is ignored once
+any user exists, and production should run `tumultd create-admin` instead.
+
+## 9. Daemon SLOs & alerting
+
+`tumultd` exposes its own SLIs — separate from the experiment/product metrics
+in `metrics/*.yaml` — via three endpoints on the HTTP listener. All three sit
+behind the API auth middleware (Viewer); while the store has no users they
+answer unauthenticated so loopback probes keep working, and k8s' probe
+contract (any 2xx/3xx — and 401 — is "alive") still holds once auth is on.
+
+- **`GET /healthz`** — liveness: the single-writer channel round-trips and
+  the store answers a probe query. 200 `ok` or 503 with the failing probe.
+- **`GET /readyz`** — readiness: liveness plus schema migrations applied and
+  at least one supervisor tick since boot (a dead supervisor task stops
+  ticking). Use this for the readiness probe; use `/healthz` for liveness.
+- **`GET /metrics`** — Prometheus text exposition of the daemon counters
+  below. Scrape it like any other target.
+
+**Daemon SLIs (all `tumultd_*`):**
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `tumultd_runs_started_total` | counter | Runs that began execution. |
+| `tumultd_runs_completed_total` | counter | Runs that reached a completed terminal state (journal written). |
+| `tumultd_runs_failed_total` | counter | Runs that failed (validation, dispatch refusal, runner error). |
+| `tumultd_webhook_deliveries_succeeded_total` | counter | Webhook events delivered. |
+| `tumultd_webhook_deliveries_failed_total` | counter | Webhook deliveries that failed (retried under backoff until dead-lettered). |
+| `tumultd_webhook_dead_letters_total` | counter | Events abandoned to `webhook_dead_letters` — **permanent delivery loss**. |
+| `tumultd_schedule_fires_total` | counter | Schedule fires. |
+| `tumultd_active_campaigns` | gauge | GameDay campaigns currently advancing. |
+| `tumultd_supervisor_last_tick_ns` | gauge | Last supervisor heartbeat, epoch ns. |
+
+**Suggested alert thresholds** (tune to your traffic; chaos runs fail by
+design, so rates matter more than single increments):
+
+- **Daemon task died (page):** `time() - tumultd_supervisor_last_tick_ns / 1e9 > 120`
+  (no supervisor tick for 2 minutes) or a failing `/readyz` for > 2 minutes.
+- **Webhook delivery failure ratio (warn):**
+  `rate(tumultd_webhook_deliveries_failed_total[15m]) / (rate(tumultd_webhook_deliveries_succeeded_total[15m]) + rate(tumultd_webhook_deliveries_failed_total[15m])) > 0.1` for 30m.
+- **Webhook permanent loss (page):** `increase(tumultd_webhook_dead_letters_total[15m]) > 0` —
+  events were dead-lettered; replay them from `run_audit` (the source of
+  truth) once the receiver recovers.
+- **Run failure rate (warn):** `rate(tumultd_runs_failed_total[1h]) / rate(tumultd_runs_started_total[1h]) > 0.25`
+  for 1h — above this, check whether failures are daemon-level (validation /
+  dispatch) rather than experiment outcomes.
+- **Schedule fire stall (warn):** `rate(tumultd_schedule_fires_total[1h]) == 0`
+  while enabled schedules exist — the scheduler is down or every schedule is
+  broken; correlate with the heartbeat alert above.
+
+A scrape config fragment:
+
+```yaml
+scrape_configs:
+  - job_name: tumultd
+    metrics_path: /metrics
+    scheme: https          # or http behind your TLS proxy
+    bearer_token: <viewer-token>   # once users exist; drop on loopback dev
+    static_configs:
+      - targets: ["tumultd.internal:4318"]
+```
