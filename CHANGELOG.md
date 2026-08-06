@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.21.0] — 2026-08-06
+
+**The GUI grows up, and Krönika becomes the analytics half for real.** The
+web UI is now a full chaos console: author experiments in the browser from
+the live fault catalog (catalog → wizard → validate → dry-run → run),
+schedule them, wire signed webhooks, run GameDay campaigns, and halt
+everything with a two-click kill switch — all under tiered approvals and a
+hash-chained audit. Krönika's OTLP→DuckDB lake gains run-system backup,
+retention, and daemon self-observability (`/metrics`, `/readyz`, deep
+`/healthz`), plus verified Grafana and SigNoz reference stacks. A full
+security, architecture, SRE and product review accompanied the work; every
+finding shipped in this release.
+
 ### Added
 - Website visual rework: the docs site gains a `tumult` color scheme for
   just-the-docs derived from the product UI palette
@@ -173,6 +186,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   no engine-level dedup). How-to in `docs/guides/signoz-bulk-import.md`,
   with the full lake→SigNoz column mapping, verified live against the
   `signoz-standalone` ClickHouse.
+- Daemon self-observability: `/healthz` now probes the writer channel and
+  the lake store (a static "ok" before), joined by `/readyz` (schema
+  version + supervisor heartbeat) and a Prometheus-text `/metrics`
+  endpoint with counters for runs, webhook deliveries, schedule fires and
+  active campaigns — all Viewer-gated like `/report`.
+- Run retention: terminal runs and audit rows older than
+  `TUMULTD_RUN_RETENTION_DAYS` (default 90) are swept every
+  `TUMULTD_RUN_RETENTION_TICK_S` (default 3600s) — the `runs`/`run_audit`
+  tables no longer grow monotonically.
+- Run-system backup: lake export now covers `runs`, `run_audit`,
+  `run_schedules`, `webhooks` (+ approvals and users), and
+  `tumult store backup` opens the store read-only so it works against a
+  live daemon instead of failing on the write lock.
+- tumultd deploy artifacts: `deploy/systemd/tumultd.service` and
+  `deploy/k8s/tumultd.yaml` (PVC, liveness → `/healthz`, readiness →
+  `/readyz`, all `TUMULTD_*` knobs documented) — deploy/ previously only
+  shipped tumult-mcp.
 
 ### Fixed
 - `/author` catalog page crashed with Svelte `each_key_duplicate` whenever
@@ -199,6 +229,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   they now say `~/.tumult/lake.duckdb` (and `TUMULT_LAKE_PATH`).
 - `tumult validate` on a GameDay file now hints to use
   `tumult gameday run` instead of a bare unknown-field error.
+- GameDay campaign launches are now atomic: the active-campaign check and
+  the parent-run insert happen inside the same single-writer batch, so two
+  concurrent launches can no longer both win the 409 race.
+- Daemon restarts no longer destroy running GameDay campaigns: orphan
+  reconciliation excludes campaign parents (they got a nonsense rollback
+  of their JSON envelope before), and a restart-mid-campaign integration
+  test proves the supervisor resumes them.
+- Webhook delivery is reliable: per-endpoint dispatch isolation (a dead
+  endpoint can no longer stall the dispatcher ~400s/tick), cross-tick
+  exponential backoff (`TUMULTD_WEBHOOK_ENDPOINT_BUDGET_S`,
+  `TUMULTD_WEBHOOK_MAX_ATTEMPTS`), and dead-lettering
+  (`webhook_dead_letters`, schema v13) instead of silently advancing the
+  cursor past failed deliveries.
+- Stop-all no longer halts partially: it continues past per-run store
+  errors and always returns 200 with a `{requested, stopped,
+  skipped_terminal, failed}` summary.
 
 ### Changed
 - `collector/otel-collector-grafana.yaml`: replaced the deprecated contrib
@@ -231,6 +277,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   env-var prefixes (`KRONIKA_*`/`TUMULTD_*`/`TUMULT_*`), telemetry naming
   conventions, store/lake glossary, and the `/healthz` vs `/health`
   probe-path difference.
+- Scaffold/catalog orchestration now lives in `tumult-authoring` and is
+  shared by the REST and MCP surfaces (which had diverged — the MCP tool
+  now rejects probe-kind actions like the API); shared error helpers,
+  registration dedup and tick-loop scaffolding extracted across
+  `tumult-api`/`tumult-ingest`. Pure code motion beyond the probe-rule
+  alignment.
+
+### Security
+- `POST /api/runs/dry-run` is Operator-gated: the resolved plan carries
+  substituted `${secrets.*}` values (and a templated secret-file path was
+  an arbitrary-file-read oracle) — Viewer tokens now get 403.
+- Environment scopes are enforced on mutations, not just reads:
+  `POST /api/runs`, `/api/schedules` and `/api/gamedays/{id}/runs` reject
+  a caller-chosen `env` outside the principal's scopes with 403 (a
+  staging-scoped operator could previously launch — but not see or stop —
+  runs in production).
+- `/report` is served behind the same auth middleware as `/api` — store
+  analytics were reachable unauthenticated on hardened deployments.
+- Bootstrap secrets have an entropy floor (`KRONIKA_BOOTSTRAP_TOKEN` ≥20
+  chars after `kro_`, admin password ≥12), validated before any write.
+- Changing or resetting a password now revokes that user's sessions and
+  tokens in the same writer transaction.
+- Webhook deliveries gain replay protection: an additive
+  `X-Tumult-Timestamp` + `X-Tumult-Signature-V2` (HMAC over
+  `{timestamp}.{body}`, ±5 min tolerance) — the original
+  `X-Tumult-Signature` header is byte-for-byte unchanged, so existing
+  receivers keep working.
 
 ## [2.20.0] — 2026-07-31
 
