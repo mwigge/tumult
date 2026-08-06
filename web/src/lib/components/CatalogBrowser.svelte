@@ -50,7 +50,7 @@
           <tr><th>Action</th><th>Kind</th><th>Description</th><th></th></tr>
         </thead>
         <tbody>
-          {#each d.actions as a (a.name)}
+          {#each d.actions as a (`${a.plugin}::${a.name}`)}
             <tr class="clickable" onclick={() => use(a)}>
               <td class="mono">{a.name}</td>
               <td><span class="badge {a.kind === 'action' ? 'warn' : 'neutral'}">{a.kind}</span></td>

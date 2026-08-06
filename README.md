@@ -185,6 +185,7 @@ register → approve → run → e-stop → evidence pack) is in the
 |---|---|
 | ![Overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown](docs/assets/overview-dashboard.png) | ![Org rollup scores — company score with coverage and a domain treemap](docs/assets/scores-rollup.png) |
 | ![Run detail — live telemetry waterfall, consumed approval chain, hash-chained audit trail](docs/assets/run-detail-waterfall.png) | ![Approvals queue — an approver reviews a pending T2 run with its content-hash pin](docs/assets/approvals-queue-review.png) |
+| ![Author — the live plugin fault catalog, one click to scaffold an experiment](docs/assets/author-catalog.png) | ![Runs — state filters and the two-step Halt all e-stop](docs/assets/runs-stop-all.png) |
 
 ## CLI
 
