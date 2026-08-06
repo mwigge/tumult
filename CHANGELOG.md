@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Recaptured all thirteen `docs/assets/` screenshots on the current SPA
+  (new nav: Author, GameDays, Events, Webhooks, Users, Schedules; Halt all
+  on Runs) and added eight new captures: `author-catalog.png`,
+  `author-new.png`, `runs-stop-all.png`, `schedules.png`, `events.png`,
+  `webhooks.png`, `users.png`, `gamedays.png`. The platform walkthrough
+  gains an "Operate the platform" section covering them, and the README
+  screenshot table references the Author and Runs pages.
 - Web UI `/users` admin page over the existing admin API (`/api/users*`):
   create users (generated one-time password shown once), change roles, edit
   environment scopes, reset passwords, disable/re-enable accounts; admin-only
@@ -160,6 +167,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `signoz-standalone` ClickHouse.
 
 ### Fixed
+- `/author` catalog page crashed with Svelte `each_key_duplicate` whenever
+  two mounted plugins exposed same-named actions in one domain (e.g.
+  `tumult-db-mysql`/`tumult-db-postgres` `kill-connections`,
+  `tumult-containers`/`tumult-pumba` `pause-container`) — the each-block now
+  keys on `plugin::name`.
 - docs: follow-up review pass — the scheduling guide now describes the
   shipped schedules feature (JSON API, web UI page, 60s interval floor,
   audited `schedule:<name>` runs, `TUMULTD_SCHEDULE_TICK_S`), QUICKSTART

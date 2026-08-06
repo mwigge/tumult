@@ -7,8 +7,8 @@ nav_order: 22
 # Platform Walkthrough
 
 A click-through of the Tumult platform: sign in, register an
-experiment, run it behind an approval quorum, e-stop a second run mid-method,
-and generate the compliance evidence pack. Every screenshot below is the
+experiment, run it behind an approval quorum, e-stop a gated run, and
+generate the compliance evidence pack. Every screenshot below is the
 embedded web UI on the seeded demo stack — nothing is mocked.
 
 ## Start the demo stack
@@ -54,16 +54,28 @@ OTLP spans the engine emitted.
 
 Manual evidence covers what telemetry can't: game days, tabletops, vendor
 failovers. Records move draft → submitted → verified with reviewer ≠ enterer
-(the register below shows one record in each state; the verified one names
-`bob` as verifier), each transition appended to a hash-chained audit trail.
+(the register below shows a verified record with `bob-admin` as verifier),
+each transition appended to a hash-chained audit trail.
 
 ![Manual evidence register](../assets/manual-evidence.png)
 
 ## Author from the catalog
 
-The fault catalog and experiment scaffolding are available over the same
-API — the same code paths as the MCP `tumult_fault_catalog` /
-`tumult_scaffold_experiment` tools, with no MCP hop:
+The Author page browses the live fault catalog — every action and probe the
+mounted plugins expose, grouped by domain — and scaffolds a definition from
+any of them without leaving the UI.
+
+![Author page: the live plugin fault catalog](../assets/author-catalog.png)
+
+Picking an action opens the scaffolding wizard: title, target, the action's
+arguments, and an optional steady-state probe, then a generated TOON ready to
+validate and register.
+
+![Author wizard for a catalog action](../assets/author-new.png)
+
+The same catalog and scaffolding are available over the API — the same code
+paths as the MCP `tumult_fault_catalog` / `tumult_scaffold_experiment`
+tools, with no MCP hop:
 
 ```bash
 curl http://localhost:14318/api/authoring/catalog      # domains → actions → args
@@ -103,7 +115,7 @@ inputs, a 24h TTL, and single-use consumption at dispatch.
 ![Run parked awaiting approval — approval chain card with pin](../assets/run-pending-approval.png)
 
 Segregation of duties is enforced by the writer: the requester can never
-approve their own run. A second identity — `bob`, an approver — reviews the
+approve their own run. A second identity — `bob-admin` — reviews the
 pending request in the queue against its pin and records a decision note.
 
 ![Bob reviews the pending T2 run in the approvals queue](../assets/approvals-queue-review.png)
@@ -112,34 +124,38 @@ pending request in the queue against its pin and records a decision note.
 
 Once approved, the run dispatches onto the worker pool and its page polls to
 terminal. The detail page is the whole story on one screen: the telemetry
-waterfall as loopback spans land (this definition is designed to deviate —
-the rollback restores the known-good config), the consumed approval chain
-with bob's note, and the per-run hash-chained audit trail from `requested`
-through `approved`, `dispatch_queued`, `started`, `deviated`.
+waterfall as loopback spans land (here the steady-state probe failed, so the
+run aborted and the rollback restored the target), the consumed approval
+chain with bob-admin's note, and the per-run hash-chained audit trail from
+`requested` through `approved`, `dispatch_queued`, `consumed`, `started`,
+`aborted`.
 
 ![Run detail: waterfall, consumed approval chain, audit trail](../assets/run-detail-waterfall.png)
 
-## E-stop mid-method
+## E-stop a gated run
 
-A second run — a rolling-sleep definition — is stopped mid-method. The
-two-step e-stop is deliberate: the first click arms, the confirm halts the
-run before the next activity and unwinds rollbacks.
+A second gated run — the pause-container definition parked in
+`pending_approval` — is stopped before it ever dispatches. The two-step
+e-stop is deliberate: the first click arms, the confirm halts the run before
+the next activity and unwinds rollbacks.
 
 ![Two-step e-stop confirmation](../assets/run-estop-confirm.png)
 
-The result: state `aborted`, the fault span cut short (the long red action
-span), `stop_requested` attributed to the operator in the audit trail, and
-rollback completed — the marker file the fault created is gone.
+The result: state `aborted`, "cancelled before start", `stop_requested`
+attributed to the operator in the audit trail, and the approval request
+closed out — no approval can resurrect a stopped run. The Runs page also
+carries a global two-step **Halt all** for stopping everything active at
+once.
 
-![Aborted run: halted fault span, rollback completed](../assets/run-estop-aborted.png)
+![Aborted run: cancelled before start, stop_requested audited](../assets/run-estop-aborted.png)
 
 ## Evidence pack
 
 Finally, the compliance story: R1 executive digests, R2 evidence packs
 (DORA/NIS2/ISO 27001/SOC 2), and R3 game-day reports are generated from the
 store as document-controlled PDFs. The R2 pack includes the approval chain of
-every gated run in the window (SOC 2 CC8.1) — the two runs above, bob's
-approvals included.
+every gated run in the window (SOC 2 CC8.1) — the two runs above,
+bob-admin's approval included.
 
 Reports respect the same per-user environment scopes as the rest of Tumult.
 A user scoped to specific environments generates digests, evidence packs and
@@ -151,6 +167,43 @@ only (a scoped user gets a 404, as with out-of-scope traces). Unscoped
 users see and generate everything, exactly as before.
 
 ![Reports page with a generated R2 evidence pack](../assets/reports-evidence-pack.png)
+
+## Operate the platform
+
+The remaining nav pages cover day-to-day operation. The Runs page lists
+every run with state filters and the global **Halt all** — the same two-step
+arm/confirm as the per-run e-stop, stopping everything active in one shot.
+
+![Runs page with state filters and Halt all](../assets/runs-stop-all.png)
+
+Schedules fire registered definitions on an interval through the normal run
+path — production-classified environments still park for approval.
+
+![Schedules page](../assets/schedules.png)
+
+The events feed is the audit spine across runs: every `requested`,
+`approved`, `started`, `passed`, `aborted`, and `stop_requested`, newest
+first, attributed to the actor (including schedules).
+
+![Events feed](../assets/events.png)
+
+Webhooks push those same events to external sinks, each payload signed
+`X-Tumult-Signature` (HMAC-SHA256) with a per-hook secret shown once at
+creation.
+
+![Webhooks page](../assets/webhooks.png)
+
+Users manages accounts and revocable `kro_` API tokens under
+`viewer < operator < approver < admin` roles, with optional per-environment
+scopes.
+
+![Users and API tokens](../assets/users.png)
+
+GameDays group experiments into scored campaigns — register the campaign
+TOON, launch it, and the child runs execute in order under the same approval
+tiers.
+
+![GameDays page](../assets/gamedays.png)
 
 ## Where next
 
