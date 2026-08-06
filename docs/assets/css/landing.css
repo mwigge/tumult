@@ -1,0 +1,259 @@
+/* Landing page styles for docs/index.html.
+   Palette: graphite chrome from the product UI (web/src/lib/theme.css),
+   with the copper brand accent from the logo and banner, and the SPA's
+   status hues (emerald/amber/red) reserved for data and terminal output. */
+
+:root {
+  /* brand */
+  --copper: #c87533;
+  --copper-light: #e89a4f;
+  /* graphite chrome (web/src/lib/theme.css) */
+  --bg: #0b0e11;
+  --bg-raised: #11161b;
+  --bg-panel: #151b21;
+  --bg-hover: #1c242c;
+  --border: #242d36;
+  --border-strong: #33404c;
+  --text: #d8dee4;
+  --text-dim: #8b98a5;
+  --text-faint: #5b6772;
+  --accent: #5eb1ef;
+  --accent-dim: #2d5d84;
+  /* status hues — data only */
+  --ok: #34d399;
+  --warn: #f59e0b;
+  --fail: #ef4444;
+}
+
+/* Override just-the-docs defaults for the landing page */
+.main-content { max-width: 100%; padding: 0; }
+.side-bar { display: none; }
+@media (min-width: 66.5rem) { .main-content { margin-left: 0; } }
+
+/* ── Hero ──────────────────────────────────────────── */
+.hero {
+  background:
+    radial-gradient(900px 420px at 50% -140px, rgba(200, 117, 51, 0.16), rgba(200, 117, 51, 0) 70%),
+    linear-gradient(180deg, var(--bg-raised) 0%, var(--bg) 100%);
+  padding: 4rem 2rem 3rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.hero-logo { max-width: 120px; margin-bottom: 1.5rem; }
+.hero h1 {
+  font-size: 3rem; font-weight: 800; color: #fff;
+  margin: 0 0 0.5rem; letter-spacing: -0.02em;
+}
+.hero h1 span { color: var(--copper); }
+.hero .tagline {
+  font-size: 1.25rem; color: var(--text-dim);
+  max-width: 720px; margin: 0 auto 2rem; line-height: 1.6;
+}
+
+/* ── Install box ──────────────────────────────────── */
+.install-box {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem 1.5rem;
+  max-width: 620px; margin: 0 auto 1.5rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.95rem; color: var(--copper-light);
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; transition: border-color 0.2s;
+}
+.install-box:hover { border-color: var(--copper); }
+.install-box .prompt { color: var(--text-dim); margin-right: 0.5rem; }
+.install-box .copy-hint {
+  color: var(--text-faint); font-size: 0.75rem;
+  font-family: -apple-system, sans-serif;
+}
+
+.hero-buttons { margin-top: 1.5rem; }
+.hero-buttons a {
+  display: inline-block; padding: 0.75rem 2rem;
+  border-radius: 6px; font-weight: 600; font-size: 1rem;
+  text-decoration: none; margin: 0 0.5rem 0.5rem;
+  transition: all 0.2s;
+}
+.btn-primary-custom {
+  background: var(--copper); color: #fff;
+}
+.btn-primary-custom:hover { background: var(--copper-light); color: #fff; }
+.btn-secondary-custom {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+.btn-secondary-custom:hover { border-color: var(--copper); color: var(--copper-light); }
+
+/* ── Banner ───────────────────────────────────────── */
+.banner {
+  max-width: 900px; margin: 2rem auto 0;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.banner img { width: 100%; display: block; }
+
+/* ── Stats bar ────────────────────────────────────── */
+.stats {
+  display: flex; justify-content: center; gap: 3rem;
+  padding: 2rem; background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.stat { text-align: center; }
+.stat .num { font-size: 2rem; font-weight: 800; color: var(--copper); }
+.stat .label {
+  font-size: 0.85rem; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+/* ── Flow diagram ─────────────────────────────────── */
+.flow-section {
+  max-width: 1100px; margin: 0 auto; padding: 3rem 2rem 1rem;
+  text-align: center;
+}
+.flow-section h2 { color: #fff; margin-bottom: 0.75rem; }
+.flow-section .lead {
+  color: var(--text-dim); max-width: 720px;
+  margin: 0 auto 2rem; line-height: 1.6;
+}
+.flow {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  align-items: stretch; gap: 0.75rem;
+}
+.flow-step {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1rem 1.25rem;
+  min-width: 120px; flex: 1; max-width: 160px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.flow-step .step-name {
+  color: var(--copper-light); font-weight: 700; font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+.flow-step .step-desc { color: var(--text-dim); font-size: 0.8rem; line-height: 1.45; }
+.flow-arrow {
+  color: var(--copper); font-size: 1.5rem; font-weight: 700;
+  align-self: center;
+}
+.flow-loop {
+  margin-top: 1.5rem; color: var(--text-dim); font-size: 0.85rem;
+}
+.flow-loop .loop-arrow { color: var(--copper); }
+
+/* ── Features grid ────────────────────────────────── */
+.features {
+  max-width: 1100px; margin: 0 auto;
+  padding: 3rem 2rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+.section-heading {
+  max-width: 1100px; margin: 0 auto; padding: 2rem 2rem 0;
+}
+.section-heading h2 { color: #fff; margin-bottom: 0.5rem; }
+.section-heading p { color: var(--text-dim); line-height: 1.6; }
+.feature-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1.5rem;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.feature-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+.feature-card .piece {
+  display: inline-block; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--copper); margin-bottom: 0.5rem;
+}
+.feature-card h3 {
+  font-size: 1.1rem; color: #fff; margin: 0 0 0.5rem;
+}
+.feature-card p { color: var(--text-dim); font-size: 0.9rem; line-height: 1.6; margin: 0; }
+.feature-card code { color: var(--text); }
+
+/* ── Terminal demo ────────────────────────────────── */
+.demo-section {
+  max-width: 800px; margin: 0 auto; padding: 2rem 2rem 3rem;
+}
+.demo-section h2 { text-align: center; color: #fff; margin-bottom: 1.5rem; }
+.terminal {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+.terminal-bar {
+  background: var(--bg-raised); padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+}
+.terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+.terminal-dot.red { background: #ff5f57; }
+.terminal-dot.yellow { background: #febc2e; }
+.terminal-dot.green { background: #28c840; }
+.terminal-body {
+  padding: 1.25rem; font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85rem; line-height: 1.7; color: var(--text);
+  overflow-x: auto;
+}
+.terminal-body .prompt-sign { color: var(--copper); }
+.terminal-body .cmd { color: #fff; }
+.terminal-body .output { color: var(--text-dim); }
+.terminal-body .success { color: var(--ok); }
+.terminal-body .info { color: var(--accent); }
+
+/* ── Architecture ─────────────────────────────────── */
+.arch-section {
+  max-width: 900px; margin: 0 auto; padding: 2rem;
+  text-align: center;
+}
+.arch-section h2 { color: #fff; margin-bottom: 1.5rem; }
+.arch-section img {
+  max-width: 100%; border-radius: 10px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Screenshot gallery ───────────────────────────── */
+.shots {
+  max-width: 1100px; margin: 0 auto; padding: 0 2rem 3rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+  gap: 1.5rem;
+}
+@media (max-width: 560px) {
+  .shots { grid-template-columns: 1fr; }
+}
+.shot-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.shot-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+.shot-card img {
+  width: 100%; display: block;
+  border-bottom: 1px solid var(--border);
+}
+.shot-card .caption {
+  padding: 0.9rem 1.1rem; color: var(--text-dim);
+  font-size: 0.85rem; line-height: 1.5;
+}
+.shot-card .caption b { color: #fff; display: block; font-size: 0.95rem; margin-bottom: 0.2rem; }
+
+/* ── CTA ──────────────────────────────────────────── */
+.cta {
+  text-align: center; padding: 3rem 2rem;
+  background:
+    radial-gradient(700px 300px at 50% -80px, rgba(200, 117, 51, 0.12), rgba(200, 117, 51, 0) 70%),
+    linear-gradient(180deg, var(--bg-raised), var(--bg));
+  border-top: 1px solid var(--border);
+}
+.cta h2 { color: #fff; font-size: 1.8rem; margin-bottom: 1rem; }
+.cta p { color: var(--text-dim); margin-bottom: 1.5rem; max-width: 520px; margin-left: auto; margin-right: auto; }
+
+/* ── Footer ───────────────────────────────────────── */
+.landing-footer {
+  text-align: center; padding: 2rem;
+  color: var(--text-dim); font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+.landing-footer a { color: var(--copper-light); text-decoration: none; }
+.landing-footer a:hover { text-decoration: underline; }
+.footer-links { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }

@@ -1,0 +1,46 @@
+// Tumult custom polish — imported last by just-the-docs, after the color
+// scheme. Pure CSS: no JavaScript, no external assets, so offline builds
+// keep working and the theme's accessibility features (skip links, focus
+// rings, reduced-motion handling) are untouched.
+
+// Ambient glow over the graphite base — a background image only, so the
+// color scheme's background color is preserved underneath.
+body {
+  background-image: radial-gradient(
+    1200px 480px at 50% -160px,
+    rgba(94, 177, 239, 0.07),
+    rgba(94, 177, 239, 0)
+  );
+  background-repeat: no-repeat;
+}
+
+// Typography: tighten headings to match the application's compact chrome.
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.01em;
+}
+
+// Code: panel background with a hairline border, rounded like the app UI.
+div.highlight,
+pre.highlight {
+  border: 1px solid #242d36;
+  border-radius: 6px;
+}
+
+// Tables: replace the default drop shadow with a flat bordered panel.
+.table-wrapper {
+  border: 1px solid #242d36;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+// Mermaid diagrams sit on the panel background so dark-scheme diagrams
+// keep readable contrast against the page.
+.language-mermaid {
+  background-color: #151b21;
+  border: 1px solid #242d36;
+  border-radius: 6px;
+  padding: 1rem;
+}

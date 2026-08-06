@@ -1,0 +1,26 @@
+// Tumult color scheme — based on the theme's dark scheme, re-paletted on
+// the product UI tokens (web/src/lib/theme.css): near-black graphite
+// chrome, cool text, and a calm blue accent for links and primary
+// controls. Saturated hues stay reserved for status and data, matching
+// the application. Basing on `dark` keeps its OneDark syntax highlighting
+// and `color-scheme: dark` for native widgets.
+
+@import "./color_schemes/dark";
+
+$body-background-color: #0b0e11;
+$sidebar-color: #11161b;
+$border-color: #242d36;
+
+$body-text-color: #d8dee4;
+$body-heading-color: #eef2f6;
+$nav-child-link-color: #8b98a5;
+
+$link-color: #5eb1ef;
+$btn-primary-color: #2d5d84;
+$base-button-color: #1c242c;
+
+$code-background-color: #151b21;
+$search-background-color: #11161b;
+$search-result-preview-color: #8b98a5;
+$table-background-color: #11161b;
+$feedback-color: #0d1114;

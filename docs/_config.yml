@@ -23,8 +23,9 @@ search:
   rel_url: true
   button: false
 
-# Colour scheme
-color_scheme: dark
+# Colour scheme — custom palette derived from the product UI
+# (web/src/lib/theme.css), defined in _sass/color_schemes/tumult.scss
+color_scheme: tumult
 
 # Footer
 footer_content: "Tumult is open source under the Apache-2.0 license."

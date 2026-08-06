@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Website visual rework: the docs site gains a `tumult` color scheme for
+  just-the-docs derived from the product UI palette
+  (`web/src/lib/theme.css` — graphite chrome, blue accent), custom
+  typography/spacing polish, and a reworked landing page that leads with
+  the current platform — web-UI authoring, T0–T3 approvals and the stop-all
+  kill switch, the Kronika lake, compliance evidence, and the 40-tool MCP
+  surface — with eight current-SPA screenshots embedded from
+  `docs/assets/`.
 - Recaptured all thirteen `docs/assets/` screenshots on the current SPA
   (new nav: Author, GameDays, Events, Webhooks, Users, Schedules; Halt all
   on Runs) and added eight new captures: `author-catalog.png`,

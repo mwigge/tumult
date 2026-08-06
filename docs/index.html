@@ -2,237 +2,11 @@
 title: Tumult — Rust-Native Chaos Engineering
 layout: default
 nav_exclude: true
-description: "Tumult is one platform for chaos engineering: define experiments in TOON, run them with OpenTelemetry, store results in the analytics lake, explore them in the web UI, and report compliance evidence."
+description: "Tumult is one platform for chaos engineering: author experiments in the web UI, approve them behind risk-tiered quorums, run them with OpenTelemetry, store every result in the Kronika lake, and report compliance evidence."
 image: /images/tumult-banner.png
 ---
 
-<style>
-  /* Override just-the-docs defaults for landing page */
-  .main-content { max-width: 100%; padding: 0; }
-  .side-bar { display: none; }
-  @media (min-width: 66.5rem) { .main-content { margin-left: 0; } }
-
-  :root {
-    --copper: #c87533;
-    --copper-light: #e89a4f;
-    --slate: #1a1a2e;
-    --slate-light: #16213e;
-    --slate-lighter: #0f3460;
-    --text: #e0e0e0;
-    --text-muted: #8892b0;
-    --bg: #0a0a1a;
-    --card-bg: #111126;
-    --border: #1e1e3a;
-  }
-
-  /* ── Hero ──────────────────────────────────────────── */
-  .hero {
-    background: linear-gradient(135deg, var(--bg) 0%, var(--slate) 50%, var(--slate-light) 100%);
-    padding: 4rem 2rem 3rem;
-    text-align: center;
-    border-bottom: 1px solid var(--border);
-  }
-  .hero-logo { max-width: 120px; margin-bottom: 1.5rem; }
-  .hero h1 {
-    font-size: 3rem; font-weight: 800; color: #fff;
-    margin: 0 0 0.5rem; letter-spacing: -0.02em;
-  }
-  .hero h1 span { color: var(--copper); }
-  .hero .tagline {
-    font-size: 1.25rem; color: var(--text-muted);
-    max-width: 700px; margin: 0 auto 2rem; line-height: 1.6;
-  }
-
-  /* ── Install box ──────────────────────────────────── */
-  .install-box {
-    background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 1rem 1.5rem;
-    max-width: 620px; margin: 0 auto 1.5rem;
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.95rem; color: var(--copper-light);
-    display: flex; align-items: center; justify-content: space-between;
-    cursor: pointer; transition: border-color 0.2s;
-  }
-  .install-box:hover { border-color: var(--copper); }
-  .install-box .prompt { color: var(--text-muted); margin-right: 0.5rem; }
-  .install-box .copy-hint {
-    color: var(--text-muted); font-size: 0.75rem;
-    font-family: -apple-system, sans-serif;
-  }
-
-  .hero-buttons { margin-top: 1.5rem; }
-  .hero-buttons a {
-    display: inline-block; padding: 0.75rem 2rem;
-    border-radius: 6px; font-weight: 600; font-size: 1rem;
-    text-decoration: none; margin: 0 0.5rem 0.5rem;
-    transition: all 0.2s;
-  }
-  .btn-primary-custom {
-    background: var(--copper); color: #fff;
-  }
-  .btn-primary-custom:hover { background: var(--copper-light); color: #fff; }
-  .btn-secondary-custom {
-    background: transparent; color: var(--text);
-    border: 1px solid var(--border);
-  }
-  .btn-secondary-custom:hover { border-color: var(--copper); color: var(--copper-light); }
-
-  /* ── Banner ───────────────────────────────────────── */
-  .banner {
-    max-width: 900px; margin: 2rem auto 0;
-    border-radius: 12px; overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  }
-  .banner img { width: 100%; display: block; }
-
-  /* ── Stats bar ────────────────────────────────────── */
-  .stats {
-    display: flex; justify-content: center; gap: 3rem;
-    padding: 2rem; background: var(--card-bg);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-  }
-  .stat { text-align: center; }
-  .stat .num { font-size: 2rem; font-weight: 800; color: var(--copper); }
-  .stat .label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-
-  /* ── Flow diagram ─────────────────────────────────── */
-  .flow-section {
-    max-width: 1000px; margin: 0 auto; padding: 3rem 2rem 1rem;
-    text-align: center;
-  }
-  .flow-section h2 { color: #fff; margin-bottom: 0.75rem; }
-  .flow-section .lead {
-    color: var(--text-muted); max-width: 700px;
-    margin: 0 auto 2rem; line-height: 1.6;
-  }
-  .flow {
-    display: flex; flex-wrap: wrap; justify-content: center;
-    align-items: stretch; gap: 0.75rem;
-  }
-  .flow-step {
-    background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: 10px; padding: 1rem 1.25rem;
-    min-width: 130px; flex: 1; max-width: 170px;
-    display: flex; flex-direction: column; justify-content: center;
-  }
-  .flow-step .step-name {
-    color: var(--copper-light); font-weight: 700; font-size: 0.95rem;
-    margin-bottom: 0.35rem;
-  }
-  .flow-step .step-desc { color: var(--text-muted); font-size: 0.8rem; line-height: 1.45; }
-  .flow-arrow {
-    color: var(--copper); font-size: 1.5rem; font-weight: 700;
-    align-self: center;
-  }
-  .flow-loop {
-    margin-top: 1.5rem; color: var(--text-muted); font-size: 0.85rem;
-  }
-  .flow-loop .loop-arrow { color: var(--copper); }
-
-  /* ── Features grid ────────────────────────────────── */
-  .features {
-    max-width: 1100px; margin: 0 auto;
-    padding: 3rem 2rem;
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
-  }
-  .section-heading {
-    max-width: 1100px; margin: 0 auto; padding: 2rem 2rem 0;
-  }
-  .section-heading h2 { color: #fff; margin-bottom: 0.5rem; }
-  .section-heading p { color: var(--text-muted); line-height: 1.6; }
-  .feature-card {
-    background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: 10px; padding: 1.5rem;
-    transition: border-color 0.2s, transform 0.2s;
-  }
-  .feature-card:hover { border-color: var(--copper); transform: translateY(-2px); }
-  .feature-card .piece {
-    display: inline-block; font-size: 0.7rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--copper); margin-bottom: 0.5rem;
-  }
-  .feature-card h3 {
-    font-size: 1.1rem; color: #fff; margin: 0 0 0.5rem;
-  }
-  .feature-card p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; margin: 0; }
-
-  /* ── Terminal demo ────────────────────────────────── */
-  .demo-section {
-    max-width: 800px; margin: 0 auto; padding: 2rem 2rem 3rem;
-  }
-  .demo-section h2 { text-align: center; color: #fff; margin-bottom: 1.5rem; }
-  .terminal {
-    background: #0d1117; border: 1px solid var(--border);
-    border-radius: 10px; overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-  }
-  .terminal-bar {
-    background: #161b22; padding: 0.5rem 1rem;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
-  .terminal-dot.red { background: #ff5f57; }
-  .terminal-dot.yellow { background: #febc2e; }
-  .terminal-dot.green { background: #28c840; }
-  .terminal-body {
-    padding: 1.25rem; font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 0.85rem; line-height: 1.7; color: var(--text);
-    overflow-x: auto;
-  }
-  .terminal-body .prompt-sign { color: var(--copper); }
-  .terminal-body .cmd { color: #fff; }
-  .terminal-body .output { color: var(--text-muted); }
-  .terminal-body .success { color: #28c840; }
-  .terminal-body .info { color: #58a6ff; }
-
-  /* ── Architecture ─────────────────────────────────── */
-  .arch-section {
-    max-width: 900px; margin: 0 auto; padding: 2rem;
-    text-align: center;
-  }
-  .arch-section h2 { color: #fff; margin-bottom: 1.5rem; }
-  .arch-section img {
-    max-width: 100%; border-radius: 10px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-  }
-
-  /* ── Screenshot gallery ───────────────────────────── */
-  .shots {
-    max-width: 1100px; margin: 0 auto; padding: 0 2rem 3rem;
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
-    gap: 1.5rem;
-  }
-  .shot-card {
-    background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: 10px; overflow: hidden;
-    transition: border-color 0.2s, transform 0.2s;
-  }
-  .shot-card:hover { border-color: var(--copper); transform: translateY(-2px); }
-  .shot-card img { width: 100%; display: block; }
-  .shot-card .caption { padding: 0.9rem 1.1rem; color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; }
-  .shot-card .caption b { color: #fff; display: block; font-size: 0.95rem; margin-bottom: 0.2rem; }
-
-  /* ── CTA ──────────────────────────────────────────── */
-  .cta {
-    text-align: center; padding: 3rem 2rem;
-    background: linear-gradient(135deg, var(--slate-light), var(--slate));
-    border-top: 1px solid var(--border);
-  }
-  .cta h2 { color: #fff; font-size: 1.8rem; margin-bottom: 1rem; }
-  .cta p { color: var(--text-muted); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
-
-  /* ── Footer ───────────────────────────────────────── */
-  .landing-footer {
-    text-align: center; padding: 2rem;
-    color: var(--text-muted); font-size: 0.85rem;
-    border-top: 1px solid var(--border);
-  }
-  .landing-footer a { color: var(--copper-light); text-decoration: none; }
-  .landing-footer a:hover { text-decoration: underline; }
-  .footer-links { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }
-</style>
+<link rel="stylesheet" href="/assets/css/landing.css">
 
 <!-- ════════════════════════════════════════════════════ -->
 <!-- Hero                                                 -->
@@ -241,8 +15,9 @@ image: /images/tumult-banner.png
   <img src="/images/tumult.png" alt="Tumult" class="hero-logo">
   <h1>Embrace the <span>Tumult</span></h1>
   <p class="tagline">
-    Rust-native chaos engineering, end to end. Define experiments, run them with
-    real telemetry, keep every result, and turn it into evidence.
+    Rust-native chaos engineering, end to end. Author experiments in the web UI,
+    approve them behind risk-tiered quorums, run them with real telemetry —
+    and keep every result as compliance-grade evidence.
   </p>
 
   <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
@@ -280,6 +55,7 @@ image: /images/tumult-banner.png
   <div class="stat"><div class="num">40</div><div class="label">MCP Tools</div></div>
   <div class="stat"><div class="num">16</div><div class="label">Plugins</div></div>
   <div class="stat"><div class="num">91</div><div class="label">Chaos Actions</div></div>
+  <div class="stat"><div class="num">T0–T3</div><div class="label">Approval Risk Tiers</div></div>
   <div class="stat"><div class="num">2</div><div class="label">Unsafe Blocks (audited — process-group kills)</div></div>
   <div class="stat"><div class="num">7</div><div class="label">Compliance Frameworks</div></div>
 </section>
@@ -295,8 +71,13 @@ image: /images/tumult-banner.png
   </p>
   <div class="flow">
     <div class="flow-step">
-      <div class="step-name">Define</div>
-      <div class="step-desc">Experiments in TOON, driven from the CLI</div>
+      <div class="step-name">Author</div>
+      <div class="step-desc">Catalog-driven wizard in the web UI, or TOON from the CLI</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Approve</div>
+      <div class="step-desc">Risk tiers T0–T3: quorum, TTL, content-hash pin</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
@@ -306,7 +87,7 @@ image: /images/tumult-banner.png
     <div class="flow-arrow">→</div>
     <div class="flow-step">
       <div class="step-name">Store</div>
-      <div class="step-desc">Journals and telemetry in the DuckDB analytics lake</div>
+      <div class="step-desc">OTLP ingest into the Kronika DuckDB lake</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
@@ -336,14 +117,19 @@ image: /images/tumult-banner.png
 </div>
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
-    <span class="piece">Define &amp; run</span>
-    <h3>CLI &amp; Plugins</h3>
-    <p>Write experiments in TOON and run them from one static binary. 16 plugins, 91 chaos actions: PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH, CPU/memory/IO stress. Write your own plugin in any language — it's just scripts and a manifest.</p>
+    <span class="piece">Author &amp; run</span>
+    <h3>Web UI Authoring &amp; CLI</h3>
+    <p>Pick a fault from the live plugin catalog and the Author wizard scaffolds validated TOON — one click into a registered, runnable definition. Or write TOON by hand and run it from one static binary: 16 plugins, 91 chaos actions across PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH, and CPU/memory/IO stress.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Govern</span>
+    <h3>Approvals, E-Stop &amp; Audit</h3>
+    <p>Every run is classified into a risk tier (T0–T3) at request time. Gated runs wait behind a hash-pinned, quorum- and TTL-bound approval with segregation of duties — the requester can never approve their own run. A two-step e-stop and a stop-all kill switch halt anything mid-method, and every action lands in a hash-chained, tamper-evident audit trail.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Store &amp; explore</span>
-    <h3>Analytics UI</h3>
-    <p>The daemon (<code>tumultd</code>) ingests OTLP traces, metrics, and logs into an embedded DuckDB store, then serves the web UI from the same binary. KPIs, experiment history, log/trace/metric explorers, run control with a live waterfall and a two-step e-stop. Or just ask a question in plain language over the store.</p>
+    <h3>Kronika Lake &amp; Analytics</h3>
+    <p>The daemon (<code>tumultd</code>) ingests OTLP traces, metrics, and logs around the clock into an embedded DuckDB store — Kronika — then serves the web UI from the same binary. KPIs, experiment history, log/trace/metric explorers, per-domain score rollups, parquet export. Or just ask a question in plain language over the store.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Prove it</span>
@@ -352,8 +138,8 @@ image: /images/tumult-banner.png
   </div>
   <div class="feature-card">
     <span class="piece">Close the loop</span>
-    <h3>MCP Server</h3>
-    <p>40 MCP tools over stdio or Streamable HTTP, with tool annotations, structured output schemas, and <code>tumult://</code> resources. Any MCP-compatible agent can discover plugins, run experiments, query the analytics lake, and recommend what to test next.</p>
+    <h3>MCP Server &amp; Agents</h3>
+    <p>40 MCP tools over stdio or Streamable HTTP, with tool annotations, structured output schemas, and <code>tumult://</code> resources. Any MCP-compatible agent can discover plugins, run experiments, query the analytics lake, and recommend what to test next — and Tumult can inject faults into agentic AI systems themselves.</p>
   </div>
 </section>
 
@@ -366,7 +152,7 @@ image: /images/tumult-banner.png
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
     <h3>Single Binary</h3>
-    <p>One static binary — no Python, no runtime dependencies. Pre-built for macOS (x86_64/aarch64) and Linux (x86_64 gnu/musl, aarch64 musl). Copy it to your PATH and run experiments.</p>
+    <p>One static binary — no Python, no runtime dependencies. The daemon embeds the lake, the schedulers, and the web UI in a single <code>tumultd</code>; the CLI is another. Pre-built for macOS (x86_64/aarch64) and Linux (x86_64 gnu/musl, aarch64 musl).</p>
   </div>
   <div class="feature-card">
     <h3>Native OpenTelemetry</h3>
@@ -454,7 +240,7 @@ Running Q2 PostgreSQL Resilience GameDay...
   Store: 67 experiments, 244 activities (DuckDB)</span>
     </div>
   </div>
-  <p style="text-align:center; color: var(--text-muted); font-size: 0.8rem; margin-top: 0.8rem;">Compliance reports are evidence summaries, not legal or audit attestations.</p>
+  <p style="text-align:center; color: var(--text-dim); font-size: 0.8rem; margin-top: 0.8rem;">Compliance reports are evidence summaries, not legal or audit attestations.</p>
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
@@ -462,29 +248,29 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section" style="padding-bottom: 1rem;">
   <h2>The Platform, Running</h2>
-  <p style="color: var(--text-muted); max-width: 700px; margin: 0 auto 1.5rem;">
-    Every screen below is the Tumult analytics UI on the seeded demo stack
+  <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
+    Every screen below is the Tumult web UI on the seeded demo stack
     (<code>docker compose -f docker/docker-compose.kronika.yml up -d</code>) —
-    from sign-in to an approved, executed, e-stopped and reported run.
+    from authoring to an approved, executed, e-stopped and reported run.
     The full click path is in the <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
   </p>
 </section>
 <section class="shots">
   <div class="shot-card">
-    <img src="assets/overview-dashboard.png" alt="Tumult analytics overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown">
+    <img src="assets/overview-dashboard.png" alt="Tumult overview dashboard — experiment KPIs, hypothesis pass and deviation rates, fault breakdown over the selected window">
     <div class="caption"><b>Overview</b>Resilience posture at a glance: hypothesis pass rate, deviation rate, experiments per day, fault breakdown — computed from the store, per window.</div>
   </div>
   <div class="shot-card">
-    <img src="assets/scores-rollup.png" alt="Scores page — company score 90.0 with coverage and a domain treemap">
-    <div class="caption"><b>Org rollup scores</b>Per-experiment scores roll up by domain to the company root, with coverage against expected evidence and the weakest member called out.</div>
-  </div>
-  <div class="shot-card">
-    <img src="assets/runs-new-dry-run.png" alt="New run page — pick a registered definition, dry-run the resolved plan, start the run">
-    <div class="caption"><b>One-click execution</b>Pick a validated definition from the registry, dry-run the exact resolved plan — hypothesis, method, rollbacks — then start.</div>
+    <img src="assets/author-catalog.png" alt="Author page — the live plugin fault catalog with network and database actions and probes, one click to scaffold an experiment">
+    <div class="caption"><b>Catalog-driven authoring</b>Every fault and probe from the live plugin catalog, searchable and documented — pick one and the wizard scaffolds a validated experiment.</div>
   </div>
   <div class="shot-card">
     <img src="assets/approvals-queue-review.png" alt="Approvals queue — an approver reviews a pending T2 run with its content-hash pin">
-    <div class="caption"><b>Approval workflows</b>Risk-tiered runs park behind a quorum with content-hash pinning and segregation of duties — the requester can never approve their own run.</div>
+    <div class="caption"><b>Approval workflows</b>Risk-tiered runs (T0–T3) park behind a quorum with content-hash pinning and segregation of duties — the requester can never approve their own run.</div>
+  </div>
+  <div class="shot-card">
+    <img src="assets/runs-stop-all.png" alt="Runs page — state filters, an aborted run with rollback completed, and the Halt all kill switch">
+    <div class="caption"><b>Stop-all kill switch</b>State filters over the run queue, and a two-click Halt all that stops every active run and unwinds rollbacks — with the actor in the audit trail.</div>
   </div>
   <div class="shot-card">
     <img src="assets/run-detail-waterfall.png" alt="Run detail — deviated run with live telemetry waterfall, consumed approval chain and hash-chained audit trail">
@@ -495,8 +281,8 @@ Running Q2 PostgreSQL Resilience GameDay...
     <div class="caption"><b>Two-step e-stop</b>Stop a run mid-method: the fault span halts, rollbacks unwind to a clean state, and the stop joins the audit trail with its actor.</div>
   </div>
   <div class="shot-card">
-    <img src="assets/manual-evidence.png" alt="Manual evidence register — draft, submitted and verified records with reviewer attribution">
-    <div class="caption"><b>Manual evidence</b>Game days and tabletops enter as attested records with a draft → submitted → verified lifecycle, reviewer ≠ enterer, append-only audit.</div>
+    <img src="assets/gamedays.png" alt="GameDays page — a registered campaign and the campaign TOON registration form">
+    <div class="caption"><b>GameDays</b>Coordinated campaigns registered from campaign TOON, executed under the same guardrails, scored and mapped to compliance articles.</div>
   </div>
   <div class="shot-card">
     <img src="assets/reports-evidence-pack.png" alt="Reports page — a generated R2 DORA evidence pack with SHA-256 and PDF download">
@@ -517,10 +303,10 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section">
   <h2>Native Observability</h2>
-  <p style="color: var(--text-muted); max-width: 700px; margin: 0 auto 1.5rem;">
+  <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
     Every experiment produces a full trace — hypothesis, actions, probes, rollbacks — visible in SigNoz, Jaeger, or any OTLP backend. No configuration required.
   </p>
-  <img src="/images/signoz-traces.png" alt="SigNoz showing Tumult experiment trace waterfall" style="border: 1px solid var(--border);">
+  <img src="/images/signoz-traces.png" alt="SigNoz showing Tumult experiment trace waterfall">
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
