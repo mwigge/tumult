@@ -42,6 +42,18 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
+      # The full test gate builds the instrumented workspace (duckdb/parquet/
+      # arrow + the typst/pdf stack) natively; without reclaim the runner disk
+      # fills and the linker dies mid-gate (v2.21.0 run 31066517731). Same
+      # reclaim as the Coverage workflow (~25 GB).
+      - name: Free runner disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/share/swift /usr/share/miniconda /opt/az /usr/lib/jvm
+          sudo docker system prune -af || true
+          df -h /
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
         with:
