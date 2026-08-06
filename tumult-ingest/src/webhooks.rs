@@ -3,8 +3,14 @@
 //!
 //! Mirrors the schedule scheduler: every tick, each enabled webhook receives
 //! the `run_audit` events newer than its delivery cursor as signed JSON
-//! POSTs. Payloads are signed `X-Tumult-Signature: sha256=<hmac-sha256>`
-//! with the webhook's secret.
+//! POSTs. Payloads carry three signing headers: `X-Tumult-Signature:
+//! sha256=<hmac-sha256(body)>` (the original scheme, unchanged so existing
+//! receivers keep verifying), plus `X-Tumult-Timestamp` (unix seconds) and
+//! `X-Tumult-Signature-V2: sha256=<hmac-sha256("{timestamp}.{body}")>` —
+//! additive replay protection. Receivers that want freshness guarantees
+//! verify the v2 signature and reject timestamps outside ±5 minutes
+//! ([`policy::verify_v2`]); receivers that ignore the new headers are
+//! unaffected.
 //!
 //! Delivery is bounded-retry with exponential backoff across ticks: a failed
 //! event holds the cursor (the batch is retried on a later tick, the
@@ -36,7 +42,7 @@ use crate::IngestWriter;
 mod dispatcher;
 mod policy;
 pub use dispatcher::Dispatcher;
-pub use policy::{hmac_sha256_hex, validate_webhook_url};
+pub use policy::{hmac_sha256_hex, validate_webhook_url, verify_v2, REPLAY_TOLERANCE_S};
 
 /// The dispatcher's tick interval from `TUMULTD_WEBHOOK_TICK_S` (default
 /// 15s, minimum 1s); invalid values fall back to the default.

@@ -291,16 +291,30 @@ async fn dispatch_one(
 /// POST one signed payload; `Err(reason)` on rejection or transport failure
 /// (already logged). Retries are the dispatcher's cross-tick backoff, not a
 /// hot loop here.
+///
+/// Three headers ride along: `X-Tumult-Signature` stays the body-only HMAC
+/// (receivers built before the timestamp scheme verify it unchanged), while
+/// `X-Tumult-Timestamp` (unix seconds) and `X-Tumult-Signature-V2` (HMAC
+/// over `"{timestamp}.{body}"`) are the additive replay protection —
+/// receivers opt into freshness checks with
+/// [`super::policy::verify_v2`].
 async fn post_signed(
     client: &reqwest::Client,
     hook: &WebhookRow,
     body: &str,
 ) -> Result<(), String> {
+    let timestamp_s = crate::now_ns() / 1_000_000_000;
     let signature = format!("sha256={}", hmac_sha256_hex(&hook.secret, body));
+    let signature_v2 = format!(
+        "sha256={}",
+        hmac_sha256_hex(&hook.secret, &format!("{timestamp_s}.{body}"))
+    );
     let result = client
         .post(&hook.url)
         .header("content-type", "application/json")
         .header("x-tumult-signature", &signature)
+        .header("x-tumult-timestamp", timestamp_s)
+        .header("x-tumult-signature-v2", &signature_v2)
         .body(body.to_string())
         .send()
         .await;

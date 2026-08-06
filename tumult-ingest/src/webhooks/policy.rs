@@ -82,6 +82,36 @@ pub fn hmac_sha256_hex(key: &str, msg: &str) -> String {
     out
 }
 
+/// Recommended receiver-side replay window for [`verify_v2`]: ±5 minutes,
+/// which tolerates ordinary clock skew between daemon and receiver while
+/// bounding how long a captured delivery can be replayed.
+pub const REPLAY_TOLERANCE_S: u64 = 300;
+
+/// Verify a timestamped delivery (the opt-in replay check behind
+/// `X-Tumult-Timestamp` + `X-Tumult-Signature-V2`): `signature_v2` must
+/// equal `sha256=<hmac-sha256(secret, "{timestamp_s}.{body}")>` and
+/// `timestamp_s` must lie within [`REPLAY_TOLERANCE_S`] of `now_s`. A
+/// tampered timestamp breaks the signature; a replayed delivery with a
+/// stale timestamp fails the freshness check. Receivers that only verify
+/// the body-only `X-Tumult-Signature` keep working unchanged.
+#[must_use]
+pub fn verify_v2(
+    secret: &str,
+    body: &str,
+    timestamp_s: i64,
+    signature_v2: &str,
+    now_s: i64,
+) -> bool {
+    if timestamp_s.abs_diff(now_s) > REPLAY_TOLERANCE_S {
+        return false;
+    }
+    let expected = format!(
+        "sha256={}",
+        hmac_sha256_hex(secret, &format!("{timestamp_s}.{body}"))
+    );
+    expected == signature_v2
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +149,27 @@ mod tests {
             hmac_sha256_hex("Jefe", "what do ya want for nothing?"),
             "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
         );
+    }
+
+    #[test]
+    fn v2_verification_accepts_fresh_and_rejects_tampered_or_stale() {
+        let body = "{\"event\":\"enqueued\"}";
+        let now: i64 = 1_700_000_000;
+        let sign = |ts: i64| format!("sha256={}", hmac_sha256_hex("s", &format!("{ts}.{body}")));
+
+        // A fresh, correctly signed delivery verifies; small clock skew is
+        // inside the window.
+        assert!(verify_v2("s", body, now, &sign(now), now));
+        let skewed = now - 299;
+        assert!(verify_v2("s", body, skewed, &sign(skewed), now));
+
+        // A tampered timestamp no longer matches the signature.
+        assert!(!verify_v2("s", body, now + 1, &sign(now), now));
+        // A replay outside the window fails freshness even when the
+        // signature itself is genuine.
+        let stale = now - REPLAY_TOLERANCE_S as i64 - 1;
+        assert!(!verify_v2("s", body, stale, &sign(stale), now));
+        // The wrong secret never verifies.
+        assert!(!verify_v2("other", body, now, &sign(now), now));
     }
 }

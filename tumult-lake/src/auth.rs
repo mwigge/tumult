@@ -158,6 +158,17 @@ impl Writer {
         Ok(())
     }
 
+    /// Delete every session owned by a user — any password change or reset
+    /// invalidates all existing logins, the caller's own included.
+    ///
+    /// # Errors
+    /// Returns an error if the delete fails.
+    pub fn delete_sessions_for_user(&self, user_id: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM sessions WHERE user_id = ?", params![user_id])?;
+        Ok(())
+    }
+
     /// Insert an API token record.
     ///
     /// # Errors
@@ -186,6 +197,19 @@ impl Writer {
     pub fn revoke_token(&self, id: &str) -> Result<(), StoreError> {
         self.conn
             .execute("UPDATE tokens SET revoked = true WHERE id = ?", params![id])?;
+        Ok(())
+    }
+
+    /// Revoke every token owned by a user — any password change or reset
+    /// invalidates all existing API tokens for that user.
+    ///
+    /// # Errors
+    /// Returns an error if the update fails.
+    pub fn revoke_tokens_for_user(&self, user_id: &str) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE tokens SET revoked = true WHERE user_id = ?",
+            params![user_id],
+        )?;
         Ok(())
     }
 

@@ -150,6 +150,9 @@ pub struct ChangePasswordRequest {
 
 /// `POST /api/auth/change-password {current_password, new_password}` — the
 /// authenticated user replaces their own password (clears `must_change`).
+/// Every existing session (the caller's included) and API token of the
+/// user is invalidated: a rotated credential must not leave older
+/// credentials live.
 pub async fn change_password(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -185,6 +188,10 @@ pub async fn change_password(
             .map_err(|e| internal(e.to_string()))?;
     exec_auth_write(&state, move |w| {
         w.set_user_password(&user_id, &new_hash)
+            .map_err(|e| e.to_string())?;
+        w.delete_sessions_for_user(&user_id)
+            .map_err(|e| e.to_string())?;
+        w.revoke_tokens_for_user(&user_id)
             .map_err(|e| e.to_string())
     })
     .await?;

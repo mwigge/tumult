@@ -212,6 +212,8 @@ pub struct ResetPasswordRequest {
 /// supplied one-time password and force `must_change` at next login (the
 /// recovery path for a user who can no longer authenticate; unlike
 /// `/api/auth/change-password`, which is self-service and clears the flag).
+/// Every existing session and API token of the user is revoked: a
+/// compromised credential must not survive the reset.
 pub async fn reset_password(
     State(state): State<ApiState>,
     Path(id): Path<String>,
@@ -228,7 +230,10 @@ pub async fn reset_password(
         .map_err(|e| internal(format!("hash task failed: {e}")))?
         .map_err(|e| internal(e.to_string()))?;
     exec_auth_write(&state, move |w| {
-        w.reset_user_password(&id, &hash).map_err(|e| e.to_string())
+        w.reset_user_password(&id, &hash)
+            .map_err(|e| e.to_string())?;
+        w.delete_sessions_for_user(&id).map_err(|e| e.to_string())?;
+        w.revoke_tokens_for_user(&id).map_err(|e| e.to_string())
     })
     .await?;
     Ok(Json(json!({"ok": true, "must_change": true})))

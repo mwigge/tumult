@@ -517,8 +517,7 @@ mod tests {
         for _ in 0..100 {
             if tokio::fs::read(&cmdline)
                 .await
-                .map(|c| String::from_utf8_lossy(&c).contains(PROXYD_BIN))
-                .unwrap_or(false)
+                .is_ok_and(|c| String::from_utf8_lossy(&c).contains(PROXYD_BIN))
             {
                 execd = true;
                 break;
