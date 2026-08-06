@@ -654,19 +654,25 @@ mod tests {
         drop(listener);
 
         // Grab an ephemeral port and release it so nothing is listening.
-        let closed = {
+        // On a shared runner another process can win the race and rebind the
+        // just-released port between the release and the readiness probe
+        // (observed on aarch64-apple-darwin in the v2.21.0 release gate), so
+        // retry with a fresh port a few times before calling it a failure.
+        let mut failing_elapsed = None;
+        for _ in 0..5 {
             let probe = std::net::TcpListener::bind(addr("127.0.0.1:0")).expect("bind ephemeral");
-            let free = probe.local_addr().unwrap();
+            let candidate = probe.local_addr().unwrap();
             drop(probe);
-            free
-        };
-        let started = std::time::Instant::now();
+            let started = std::time::Instant::now();
+            if !wait_ready(candidate).await {
+                failing_elapsed = Some(started.elapsed());
+                break;
+            }
+        }
+        let elapsed =
+            failing_elapsed.expect("a closed port must never report ready (5 attempts, all ready)");
         assert!(
-            !wait_ready(closed).await,
-            "a closed port must never report ready"
-        );
-        assert!(
-            started.elapsed() >= Duration::from_millis(1500),
+            elapsed >= Duration::from_millis(1500),
             "a closed port should only fail after the readiness deadline"
         );
     }
