@@ -390,8 +390,10 @@ async fn stop_unknown_terminal_and_running_runs() {
 
     // A running run: e-stop cancels mid-method, the runner's rollback path
     // unwinds, terminal state is aborted with the audit trail to prove it.
-    // STOP_TOON's `hold-*` steps keep the run in `running` for ~3s, so the
-    // stop request lands mid-method even on a loaded CI runner.
+    // STOP_TOON's `hold-*` steps pause 5s after each activity, keeping the
+    // run in `running` for ~15s, so the stop request lands mid-method even
+    // under tarpaulin's instrumented slowness (nightly run 31147094669
+    // raced: the run finished before the stop POST and 409'd).
     let stop_registry = register_toon(&srv.base, STOP_TOON).await;
     let stop_id = enqueue_approved(&srv.base, &stop_registry).await;
     // Wait for the run to actually start (running, not just queued).
@@ -549,7 +551,7 @@ async fn stop_all_halts_every_active_run() {
     let srv = spawn_server().await;
     let client = reqwest::Client::new();
 
-    // One executing run (STOP_TOON holds each step for 1s, so it cannot
+    // One executing run (STOP_TOON pauses 5s after each step, so it cannot
     // complete inside the stop-all window) and one gated run parked in
     // pending_approval. Park the gated run FIRST and enqueue the executing
     // run last: run_a's ~3s lifetime then only has to cover the

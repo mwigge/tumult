@@ -95,18 +95,21 @@ description: exercises e-stop against a genuinely running run
 method[3]:
   - name: hold-1
     activity_type: action
+    pause_after_s: 5
     provider:
       type: native
       plugin: test
       function: noop
   - name: hold-2
     activity_type: action
+    pause_after_s: 5
     provider:
       type: native
       plugin: test
       function: noop
   - name: hold-3
     activity_type: action
+    pause_after_s: 5
     provider:
       type: native
       plugin: test
