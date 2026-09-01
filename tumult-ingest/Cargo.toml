@@ -14,7 +14,7 @@ tumult-autopilot = { path = "../tumult-autopilot" }
 opentelemetry-proto.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
-hmac = "0.12"
+hmac = "0.13"
 tonic = { workspace = true, features = ["tls-aws-lc"] }
 prost.workspace = true
 axum.workspace = true
