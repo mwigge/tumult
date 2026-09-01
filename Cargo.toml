@@ -158,7 +158,7 @@ dirs-next = "2"
 # Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend; both
 # stay pinned to the versions already resolved in the workspace lockfile.
 ratatui = "0.30"
-crossterm = "0.28"
+crossterm = "0.29"
 
 # Temporary file/directory creation (dev-dependency across all crates)
 tempfile = "3"
