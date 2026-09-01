@@ -112,8 +112,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # arrow 58 for its appender-arrow/vtab-arrow interop; mixing arrow 58 and 59
 # RecordBatch types does not compile. Bump arrow/parquet once duckdb-rs
 # supports arrow 59.
-arrow = { version = "58", features = ["json", "ipc", "ffi"] }
-parquet = { version = "58", features = ["arrow", "snap", "zstd"] }
+arrow = { version = "59", features = ["json", "ipc", "ffi"] }
+parquet = { version = "59", features = ["arrow", "snap", "zstd"] }
 duckdb = { version = "1.10505", features = ["bundled", "appender-arrow", "vtab-arrow"] }
 
 # UUID
