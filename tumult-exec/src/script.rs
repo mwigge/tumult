@@ -99,13 +99,14 @@ pub(super) fn execute_script_provider(
         .collect();
     let timeout = timeout_s.map(|s| std::time::Duration::from_secs_f64(*s));
 
-    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    match sync_await(execute_script(
+    let result = sync_await(execute_script(
         &script_path,
         &discovered.root,
         &args,
         timeout,
-    )) {
+    ));
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match result {
         Ok(result) => {
             let success = result.succeeded();
             let stdout = result.stdout.trim();

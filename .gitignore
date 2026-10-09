@@ -60,3 +60,9 @@ demo-out/
 *.duckdb
 *.duckdb.wal
 *.duckdb.tmp
+
+# Browser verification artifacts
+web/playwright-report/
+web/test-results/
+
+.quality-venv/

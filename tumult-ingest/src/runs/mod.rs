@@ -17,6 +17,7 @@
 
 mod queue;
 mod reconcile;
+mod recovery_plan;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -71,9 +72,16 @@ async fn exec_write(
 
 /// Current state of one run, read on a fresh read-only connection.
 fn read_run_state(db_path: &Path, run_id: &str) -> Option<String> {
-    let reader = Store::at(db_path).read_only().ok()?;
-    let run = reader.run_get(run_id).ok()??;
-    run["state"].as_str().map(str::to_string)
+    let result = Store::at(db_path)
+        .read_only()
+        .and_then(|reader| reader.run_get(run_id));
+    match result {
+        Ok(run) => run.and_then(|run| run["state"].as_str().map(str::to_string)),
+        Err(error) => {
+            tracing::error!(%run_id, %error, "failed to read run state");
+            None
+        }
+    }
 }
 
 fn now_ns() -> i64 {

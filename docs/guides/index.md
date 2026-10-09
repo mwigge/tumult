@@ -31,6 +31,10 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Topology](topology.md) | Declared service topology, compliance lineage, and injection recommendations |
 | [Autopilot](autopilot.md) | Policy-gated autonomous fault injection with audit-before-act decisions |
 | [Experiment Scheduling](scheduling.md) | Recurring experiments and GameDays on a schedule |
+| [Data portability and recovery](data-portability.md) | Manifest archives, retention limits, complete backup and restore |
+| [Execution bindings](execution-bindings.md) | Authoritative environment and target bindings for daemon execution |
+| [Functional hardening review](hardening-review.md) | 2.22.0 finding coverage, acceptance scenarios and remaining limits |
+| [Quality and release checks](quality-and-release.md) | Source gates, dependency policy and release-artifact verification |
 | [Production Deployment](production-deployment.md) | Deploy Tumult in production: binaries, containers, hardening |
 | [Platform Walkthrough](platform-walkthrough.md) | Click-through of the Tumult web UI on the seeded demo: login → register → approve → run → e-stop → evidence pack, with screenshots |
 | [Windows Faults](windows-faults.md) | `tumult-windows`: native process-kill, CPU-stress, and firewall-blackhole faults, validated live against a Windows 11 guest |

@@ -1,26 +1,32 @@
-//! Run-system retention: `runs` and `run_audit` grow monotonically, so a
-//! tick task chained like the other daemon schedulers deletes terminal runs
-//! — and their audit trails — older than `TUMULTD_RUN_RETENTION_DAYS`
-//! (default 90). Deletes ride the single-writer channel like every other
-//! mutation; active runs are never touched.
+//! Run-history retention is disabled until reports can query archived evidence.
+//! Nonzero policies fail closed; terminal runs and audit trails remain intact.
 
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use tumult_lake::run_state;
 
-use crate::{Batch, IngestWriter};
+use crate::IngestWriter;
 
-/// Hot-store retention for terminal runs in days, from
-/// `TUMULTD_RUN_RETENTION_DAYS` (default 90, minimum 1); invalid values
-/// fall back to the default.
+/// Configured retention days (default zero). Startup validates that only zero
+/// is requested; direct sweeps independently refuse a nonzero policy.
 #[must_use]
 pub fn retention_days_from_env() -> u64 {
     std::env::var("TUMULTD_RUN_RETENTION_DAYS")
         .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&d| d > 0)
-        .unwrap_or(90)
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Validate a retention setting before starting any daemon tasks.
+///
+/// # Errors
+/// Rejects nonzero and malformed policies until archived evidence is queryable.
+pub fn validate_policy(name: &str, raw: Option<&str>) -> Result<(), String> {
+    let raw = raw.unwrap_or("0").trim();
+    if raw.is_empty() || raw.parse::<u64>() == Ok(0) {
+        return Ok(());
+    }
+    Err(format!("{name} must be 0: historical queries do not yet read archived snapshots; automatic deletion is disabled"))
 }
 
 /// The sweep interval from `TUMULTD_RUN_RETENTION_TICK_S` (default 3600s,
@@ -62,50 +68,28 @@ pub fn spawn_run_retention(
     })
 }
 
-/// One sweep: delete terminal runs whose `ended_at_ns` is older than the
-/// cutoff, together with their audit rows (audit first, so a crash between
-/// the two deletes never leaves a run whose trail is gone).
+/// Keep complete hot history until archive-aware reporting is available.
 ///
 /// # Errors
-/// Returns an error if the write fails.
-pub async fn sweep_expired_runs(ingest: &IngestWriter, retention_days: u64) -> Result<(), String> {
-    let cutoff = crate::now_ns() - (retention_days as i64) * 86_400 * 1_000_000_000;
-    let terminal = run_state::TERMINAL
-        .iter()
-        .map(|s| format!("'{s}'"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    ingest
-        .write(Batch::Exec(Box::new(move |writer| {
-            let audit_deleted = writer
-                .execute(
-                    &format!(
-                        "DELETE FROM run_audit WHERE run_id IN \
-                         (SELECT id FROM runs WHERE state IN ({terminal}) \
-                           AND ended_at_ns IS NOT NULL AND ended_at_ns < {cutoff})"
-                    ),
-                    [],
-                )
-                .map_err(|e| e.to_string())?;
-            let runs_deleted = writer
-                .execute(
-                    &format!(
-                        "DELETE FROM runs WHERE state IN ({terminal}) \
-                         AND ended_at_ns IS NOT NULL AND ended_at_ns < {cutoff}"
-                    ),
-                    [],
-                )
-                .map_err(|e| e.to_string())?;
-            if runs_deleted > 0 || audit_deleted > 0 {
-                tracing::info!(
-                    runs_deleted,
-                    audit_deleted,
-                    retention_days,
-                    "run retention sweep reclaimed terminal runs"
-                );
-            }
-            Ok(())
-        })))
-        .await
-        .map_err(|e| e.to_string())
+/// Returns an actionable error for nonzero retention; never deletes records.
+pub async fn sweep_expired_runs(_ingest: &IngestWriter, retention_days: u64) -> Result<(), String> {
+    validate_policy(
+        "TUMULTD_RUN_RETENTION_DAYS",
+        Some(&retention_days.to_string()),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_policy;
+    #[test]
+    fn policy_is_explicit_and_fail_closed() {
+        assert!(validate_policy("retention", None).is_ok());
+        assert!(validate_policy("retention", Some("0")).is_ok());
+        for value in ["1", "90", "18446744073709551615", "invalid", "-1"] {
+            assert!(validate_policy("retention", Some(value))
+                .unwrap_err()
+                .contains("historical"));
+        }
+    }
 }

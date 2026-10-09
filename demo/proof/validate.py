@@ -13,6 +13,7 @@ Usage:
 
 Requires only the Python standard library. Exits non-zero if any test fails.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,9 @@ _SID: str | None = None
 
 def _rpc(method: str, params: dict) -> dict:
     global _SID
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    body = json.dumps(
+        {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    ).encode()
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
@@ -48,11 +51,14 @@ def _rpc(method: str, params: dict) -> dict:
 
 
 def _init() -> None:
-    _rpc("initialize", {
-        "protocolVersion": "2025-11-25",
-        "capabilities": {},
-        "clientInfo": {"name": "demo-proof", "version": "1"},
-    })
+    _rpc(
+        "initialize",
+        {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "demo-proof", "version": "1"},
+        },
+    )
 
 
 def call(name: str, args: dict, token: str | None = None) -> dict:
@@ -78,15 +84,25 @@ def toks(chars: int) -> int:
 
 def run_demo(domain: str, times: int = 1) -> None:
     for _ in range(times):
-        structured("tumult_run_experiment", {"experiment_path": f"/demo/experiments/demo-{domain}.toon"})
+        structured(
+            "tumult_run_experiment",
+            {"experiment_path": f"/demo/experiments/demo-{domain}.toon"},
+        )
 
 
 def journal_bytes_total() -> tuple[int, int]:
     """(total_bytes, file_count) of raw journals the demo has written."""
     out = subprocess.run(
-        ["docker", "exec", MCP_CONTAINER, "sh", "-c",
-         f"cat {JOURNAL_DIR}/*.journal.toon 2>/dev/null | wc -c; ls {JOURNAL_DIR}/*.journal.toon 2>/dev/null | wc -l"],
-        capture_output=True, text=True,
+        [
+            "docker",
+            "exec",
+            MCP_CONTAINER,
+            "sh",
+            "-c",
+            f"cat {JOURNAL_DIR}/*.journal.toon 2>/dev/null | wc -c; ls {JOURNAL_DIR}/*.journal.toon 2>/dev/null | wc -l",
+        ],
+        capture_output=True,
+        text=True,
     )
     lines = [x for x in out.stdout.split() if x.strip()]
     return (int(lines[0]), int(lines[1])) if len(lines) >= 2 else (0, 0)
@@ -114,18 +130,34 @@ def test_token_efficiency() -> None:
     run_demo("net")
 
     # 1) A targeted structural query is small.
-    tg = structured("tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"})
+    tg = structured(
+        "tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"}
+    )
     tg_chars = jsize(tg)
-    check("targeted query is small", tg_chars < 1200,
-          f"neighbors(rel=targets) = {tg_chars} chars / ~{toks(tg_chars)} tok")
+    check(
+        "targeted query is small",
+        tg_chars < 1200,
+        f"neighbors(rel=targets) = {tg_chars} chars / ~{toks(tg_chars)} tok",
+    )
 
     # 2) THE claim: that answer is BOUNDED — running the experiment more times
     #    does not grow it, while reading journals would grow linearly.
-    before = jsize(structured("tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"}))
+    before = jsize(
+        structured(
+            "tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"}
+        )
+    )
     run_demo("net", times=5)
-    after = jsize(structured("tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"}))
-    check("targeted answer is bounded across runs", abs(after - before) <= 20,
-          f"{before} -> {after} chars after +5 runs (journals would add ~5x a full journal)")
+    after = jsize(
+        structured(
+            "tumult_chaosgraph_neighbors", {"node_id": NET_EXP, "rel": "targets"}
+        )
+    )
+    check(
+        "targeted answer is bounded across runs",
+        abs(after - before) <= 20,
+        f"{before} -> {after} chars after +5 runs (journals would add ~5x a full journal)",
+    )
 
     # 3) Per-run compaction: each run adds a tiny node to the graph vs a full
     #    journal to the raw corpus. Measure the ALL-neighbours delta per run.
@@ -133,14 +165,29 @@ def test_token_efficiency() -> None:
     run_demo("net", times=1)
     all_after = jsize(structured("tumult_chaosgraph_neighbors", {"node_id": NET_EXP}))
     per_run_graph = max(1, all_after - all_before)
-    one_journal = int(subprocess.run(
-        ["docker", "exec", MCP_CONTAINER, "sh", "-c", f"wc -c < {JOURNAL_DIR}/demo-net.journal.toon"],
-        capture_output=True, text=True).stdout.strip() or "1920")
+    one_journal = int(
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                MCP_CONTAINER,
+                "sh",
+                "-c",
+                f"wc -c < {JOURNAL_DIR}/demo-net.journal.toon",
+            ],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        or "1920"
+    )
     ratio = one_journal / per_run_graph
     # Conservative floor: a run costs the graph one node + its edges (~200 chars) vs a
     # full journal (~1900). ~8x in the demo; assert a comfortable floor.
-    check("per-run graph delta >= 5x smaller than a journal", ratio >= 5,
-          f"+{per_run_graph} chars/run in graph vs {one_journal} chars/journal = {ratio:.0f}x")
+    check(
+        "per-run graph delta >= 5x smaller than a journal",
+        ratio >= 5,
+        f"+{per_run_graph} chars/run in graph vs {one_journal} chars/journal = {ratio:.0f}x",
+    )
 
     # 4) Aggregate: enumerate every fault across the whole store in a fraction
     #    of the cost of reading all journals.
@@ -148,13 +195,19 @@ def test_token_efficiency() -> None:
     fchars = jsize(faults)
     total_journal_bytes, jcount = journal_bytes_total()
     agg_ratio = (total_journal_bytes / fchars) if fchars else 0
-    check("aggregate query beats reading all journals", jcount >= 2 and agg_ratio >= 5,
-          f"query(kind=fault)={fchars} chars vs {total_journal_bytes} chars across {jcount} journals = {agg_ratio:.0f}x")
+    check(
+        "aggregate query beats reading all journals",
+        jcount >= 2 and agg_ratio >= 5,
+        f"query(kind=fault)={fchars} chars vs {total_journal_bytes} chars across {jcount} journals = {agg_ratio:.0f}x",
+    )
 
     # 5) Small AND correct — the compact answer names the real service.
     svc_ids = [n["id"] for n in tg.get("nodes", []) if n["kind"] == "service"]
-    check("targeted answer is correct (names svc:demo-app)", "svc:demo-app" in svc_ids,
-          f"service nodes: {svc_ids}")
+    check(
+        "targeted answer is correct (names svc:demo-app)",
+        "svc:demo-app" in svc_ids,
+        f"service nodes: {svc_ids}",
+    )
 
 
 # ── MCP first-class tests ──────────────────────────────────────────
@@ -163,19 +216,36 @@ def test_mcp_first_class() -> None:
     tools = _rpc("tools/list", {}).get("result", {}).get("tools", [])
     names = {t["name"] for t in tools}
     check("tools/list returns >= 27 tools", len(tools) >= 27, f"{len(tools)} tools")
-    check("chaosgraph tools present", {"tumult_chaosgraph_query", "tumult_chaosgraph_neighbors",
-          "tumult_chaosgraph_coverage_gaps"} <= names, "3 chaosgraph tools listed")
+    check(
+        "chaosgraph tools present",
+        {
+            "tumult_chaosgraph_query",
+            "tumult_chaosgraph_neighbors",
+            "tumult_chaosgraph_coverage_gaps",
+        }
+        <= names,
+        "3 chaosgraph tools listed",
+    )
     annotated = [t for t in tools if t.get("annotations")]
-    check("every tool carries annotations", len(annotated) == len(tools),
-          f"{len(annotated)}/{len(tools)} annotated")
+    check(
+        "every tool carries annotations",
+        len(annotated) == len(tools),
+        f"{len(annotated)}/{len(tools)} annotated",
+    )
     with_schema = [t for t in tools if t.get("outputSchema")]
-    check("structured tools advertise outputSchema", len(with_schema) >= 16,
-          f"{len(with_schema)} tools with outputSchema")
+    check(
+        "structured tools advertise outputSchema",
+        len(with_schema) >= 16,
+        f"{len(with_schema)} tools with outputSchema",
+    )
 
     # a structured tool round-trips with structuredContent
     q = structured("tumult_chaosgraph_query", {"kind": "fault"})
-    check("tool round-trip returns structuredContent", isinstance(q, dict) and "count" in q,
-          f"chaosgraph_query keys: {sorted(q)[:4]}")
+    check(
+        "tool round-trip returns structuredContent",
+        isinstance(q, dict) and "count" in q,
+        f"chaosgraph_query keys: {sorted(q)[:4]}",
+    )
 
     # auth: a wrong token is rejected in-band
     bad = call("tumult_chaosgraph_query", {"kind": "fault"}, token="wrong-token")
@@ -184,7 +254,11 @@ def test_mcp_first_class() -> None:
 
     # isError on a real failure (unknown node)
     err = call("tumult_chaosgraph_neighbors", {"node_id": "exp:does-not-exist"})
-    check("failed call sets isError", err.get("isError") is True, "unknown node -> isError")
+    check(
+        "failed call sets isError",
+        err.get("isError") is True,
+        "unknown node -> isError",
+    )
 
 
 # ── Agentic trajectory tests ───────────────────────────────────────
@@ -197,16 +271,35 @@ def test_agentic_trajectories() -> None:
     }
     for pack, headline in packs.items():
         out = subprocess.run(
-            ["docker", "exec", MCP_CONTAINER, "sh", "-c",
-             f"tumult agentic trajectory --pack {pack}"],
-            capture_output=True, text=True).stdout
+            [
+                "docker",
+                "exec",
+                MCP_CONTAINER,
+                "sh",
+                "-c",
+                f"tumult agentic trajectory --pack {pack}",
+            ],
+            capture_output=True,
+            text=True,
+        ).stdout
         ran = "result: pass" in out
-        expected_line = [l for l in out.splitlines() if l.strip().startswith("expected:")]
-        actual_line = [l for l in out.splitlines() if l.strip().startswith("actual:")]
-        matched = bool(expected_line and actual_line and
-                       expected_line[0].split(":", 1)[1].strip() == actual_line[0].split(":", 1)[1].strip())
-        check(f"trajectory pack '{pack}' fires its contract", ran and matched,
-              (actual_line[0].strip() if actual_line else "no contract outcome"))
+        expected_line = [
+            line for line in out.splitlines() if line.strip().startswith("expected:")
+        ]
+        actual_line = [
+            line for line in out.splitlines() if line.strip().startswith("actual:")
+        ]
+        matched = bool(
+            expected_line
+            and actual_line
+            and expected_line[0].split(":", 1)[1].strip()
+            == actual_line[0].split(":", 1)[1].strip()
+        )
+        check(
+            f"trajectory pack '{pack}' fires its contract",
+            ran and matched,
+            (actual_line[0].strip() if actual_line else "no contract outcome"),
+        )
 
 
 def main() -> int:

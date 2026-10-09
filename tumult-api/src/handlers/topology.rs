@@ -1,8 +1,9 @@
 //! `GET /api/topology` — service/target call graph.
 
+use crate::error::ApiError;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -26,8 +27,12 @@ pub(crate) async fn topology(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<TopologyParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let mut window = String::new();
     let mut cwindow = String::new();
     if let Some(range) = &params.range {

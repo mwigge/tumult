@@ -1,9 +1,10 @@
 //! `GET /api/timeseries`, `GET /api/metrics` and the raw-metric explorer
 //! (`/api/metrics/catalog`, `/api/metrics/query`).
 
+use crate::error::ApiError;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -30,8 +31,12 @@ pub(crate) async fn timeseries(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<TimeseriesParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let Some(metric) = params.metric.filter(|m| !m.is_empty()) else {
         return Err(bad("missing query parameter: metric".into()));
     };
@@ -59,7 +64,8 @@ pub(crate) async fn timeseries(
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("metric {metric:?} not found; available: {available}")})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     let sql =
         tumult_metrics::to_sql_bucketed(def, bucket_s * 1_000_000_000, &[], Some((cur.0, cur.1)))
@@ -93,7 +99,7 @@ pub(crate) async fn timeseries(
 // ---------------------------------------------------------------------------
 // GET /api/metrics
 
-pub(crate) async fn list_metrics(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub(crate) async fn list_metrics(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let defs = tumult_metrics::load_dir(state.metrics_dir.as_ref())
         .map_err(|e| internal(format!("load metrics: {e}")))?;
     let metrics: Vec<Value> = defs
@@ -161,7 +167,7 @@ fn load_catalog(reader: &Reader, scopes: &[String]) -> Result<Vec<Value>, String
 pub(crate) async fn metrics_catalog(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let scopes = principal.env_scopes.clone();
     let metrics = with_reader(&state.db_path, move |reader| load_catalog(reader, &scopes)).await?;
     Ok(Json(json!({"metrics": metrics})))
@@ -231,8 +237,12 @@ pub(crate) async fn metrics_query(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<MetricQueryParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let Some(name) = params.name.filter(|n| !n.is_empty()) else {
         return Err(bad("missing query parameter: name".into()));
     };
@@ -384,6 +394,7 @@ pub(crate) async fn metrics_query(
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("metric {name:?} not found; see /api/metrics/catalog")})),
         )
-            .into_response()),
+            .into_response()
+            .into()),
     }
 }

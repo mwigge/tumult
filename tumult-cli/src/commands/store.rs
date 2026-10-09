@@ -80,41 +80,32 @@ pub fn cmd_store_stats() -> Result<()> {
     Ok(())
 }
 
-/// Backs up the analytics tables to parquet. Opens the store **read-only**,
-/// so the backup coexists with a live daemon holding the write lock — the
-/// same reader path the query API uses (see
-/// [`tumult_lake::AnalyticsStore::open_read_only`]).
+/// Back up the complete installation, including credentials. Stop the daemon first.
 ///
 /// # Errors
-///
-/// Returns an error if the store cannot be opened, the backup directory cannot
-/// be created, or the export operation fails.
+/// Refuses an existing destination or locked/unavailable source.
 #[must_use = "callers must handle backup errors"]
 pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
-    use tumult_lake::AnalyticsStore;
-
-    let db_path =
-        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
+    let db_path = tumult_lake::AnalyticsStore::default_path()?;
     if !db_path.exists() {
         bail!("no persistent store found at: {}", db_path.display());
     }
+    tumult_lake::backup::create(&db_path, output_dir)?;
+    println!(
+        "Complete operational backup: {} (includes credentials)",
+        output_dir.display()
+    );
+    Ok(())
+}
 
-    // Validate output dir is not a symlink before creating
-    if output_dir.exists() {
-        validate_path_no_symlink(output_dir)?;
-    }
-    std::fs::create_dir_all(output_dir)?;
-
-    let store = AnalyticsStore::open_read_only(&db_path)?;
-    let exp_path = output_dir.join("experiments.parquet");
-    let act_path = output_dir.join("activities.parquet");
-
-    store.export_tables(&exp_path, &act_path)?;
-
-    let stats = store.stats()?;
-    println!("Backed up to: {}", output_dir.display());
-    println!("  experiments.parquet — {} rows", stats.experiment_count);
-    println!("  activities.parquet — {} rows", stats.activity_count);
+/// Restore a complete backup to a new database path.
+///
+/// # Errors
+/// Rejects corrupted backups and existing destinations.
+#[must_use = "callers must handle restore errors"]
+pub fn cmd_store_restore(input: &Path, output: &Path) -> Result<()> {
+    tumult_lake::backup::restore(input, output)?;
+    println!("Restored database: {}", output.display());
     Ok(())
 }
 

@@ -36,9 +36,67 @@ pub fn encode_journal(journal: &Journal) -> Result<String, JournalError> {
 /// Returns [`JournalError::EncodeError`] if the journal cannot be serialized.
 /// Returns [`JournalError::WriteError`] if the file cannot be written.
 pub fn write_journal(journal: &Journal, path: &Path) -> Result<(), JournalError> {
-    let toon = encode_journal(journal)?;
-    std::fs::write(path, toon)?;
-    Ok(())
+    JournalOutput::prepare(path)?.write(&encode_journal(journal)?)
+}
+
+/// Reserved writable journal output. The temporary file is owner-only and is
+/// published atomically after execution; failed runs cannot truncate old evidence.
+pub struct JournalOutput {
+    file: tempfile::NamedTempFile,
+    destination: std::path::PathBuf,
+}
+
+impl JournalOutput {
+    /// Checks the destination and reserves a file before any fault executes.
+    ///
+    /// # Errors
+    /// Returns an error for a non-file destination or an unwritable parent.
+    pub fn prepare(path: &Path) -> Result<Self, JournalError> {
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if !metadata.file_type().is_file() => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "journal destination must be a regular file, not a directory or symlink",
+                )
+                .into());
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        Ok(Self {
+            file: tempfile::NamedTempFile::new_in(parent)?,
+            destination: path.to_path_buf(),
+        })
+    }
+
+    /// Writes encoded evidence and atomically publishes it at the reserved path.
+    ///
+    /// # Errors
+    /// Returns an error if writing, syncing or publication fails.
+    pub fn write(mut self, content: &str) -> Result<(), JournalError> {
+        use std::io::Write;
+        self.file.write_all(content.as_bytes())?;
+        self.file.as_file().sync_all()?;
+        #[cfg(unix)]
+        let parent = std::fs::File::open(
+            self.destination
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new(".")),
+        )?;
+        self.file
+            .persist(&self.destination)
+            .map_err(|error| error.error)?;
+        // Persist the directory entry as well as the temporary file's contents.
+        #[cfg(unix)]
+        parent.sync_all()?;
+        Ok(())
+    }
 }
 
 /// Read a journal from a TOON file.

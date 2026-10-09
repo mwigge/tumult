@@ -115,6 +115,7 @@ mod ask;
 pub mod auth;
 pub mod authoring;
 pub mod error;
+pub use error::ApiError;
 pub mod events;
 pub mod gamedays;
 pub mod handlers;

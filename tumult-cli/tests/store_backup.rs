@@ -1,22 +1,38 @@
-//! Regression: `tumult store backup` opens the store read-only, so it
-//! works against a live daemon (or any process) holding the write lock —
-//! previously it failed with `StoreLocked`.
+//! Complete CLI backups respect `DuckDB`'s cross-process writer lock.
 
+use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
-fn backup_works_while_another_process_holds_the_write_lock() {
+fn backup_refuses_a_live_writer_and_succeeds_after_shutdown() {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("lake.duckdb");
     // A writer holding the exclusive lock stands in for the live daemon.
-    let _daemon = tumult_lake::AnalyticsStore::open(&db_path).unwrap();
-    std::env::set_var("TUMULT_LAKE_PATH", &db_path);
-
+    let daemon = tumult_lake::AnalyticsStore::open(&db_path).unwrap();
     let out = dir.path().join("backup");
-    tumult_cli::commands::cmd_store_backup(&out)
-        .expect("backup must succeed against a locked (live) store");
+    let backup = || {
+        Command::new(env!("CARGO_BIN_EXE_tumult"))
+            .env("TUMULT_LAKE_PATH", &db_path)
+            .args(["store", "backup", "--output"])
+            .arg(&out)
+            .output()
+            .unwrap()
+    };
+    let locked = backup();
+    assert!(
+        !locked.status.success(),
+        "a separate writer must prevent backup"
+    );
+    assert!(!out.exists(), "a refused backup must not publish a bundle");
 
-    assert!(out.join("experiments.parquet").exists());
-    assert!(out.join("activities.parquet").exists());
-    std::env::remove_var("TUMULT_LAKE_PATH");
+    drop(daemon);
+    let completed = backup();
+    assert!(
+        completed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&completed.stderr)
+    );
+
+    assert!(out.join("store.duckdb").exists());
+    assert!(out.join("manifest.json").exists());
 }

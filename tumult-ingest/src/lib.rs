@@ -10,7 +10,7 @@
 //!   (`OTEL_EXPORTER_OTLP_ENDPOINT=http://host:4317`, bare host, no path).
 //! * **OTLP/HTTP protobuf** ([`http`]): what smedja's exporter talks
 //!   (`SMEDJA_OTLP_ENDPOINT=http://host:4318`, `/v1/*` paths).
-//! * **Single-writer channel** ([`writer`]): both servers funnel batches
+//! * **Single-writer channel** (`writer`): both servers funnel batches
 //!   through one bounded channel onto the store's single `DuckDB` writer.
 //! * **Manual import** ([`manual`]): CSV and tumult journal JSON files.
 //! * **Run queue** ([`runs`]): bounded in-process experiment execution for
@@ -21,6 +21,7 @@ pub mod config;
 pub mod daemon_metrics;
 pub mod daemon_task;
 mod error;
+pub mod execution_policy;
 pub mod gamedays;
 pub mod grpc;
 pub mod http;

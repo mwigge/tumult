@@ -240,3 +240,68 @@ fn v4_store_migrates_to_index_free_run_tables() {
     let reader = store.read_only().unwrap();
     assert!(reader.run_get("run-old").unwrap().is_some());
 }
+
+#[test]
+fn execution_pin_is_private_and_portable_audit_remains_verifiable() {
+    for gated in [false, true] {
+        let (dir, store) = fixture();
+        let writer = store.writer().unwrap();
+        let hash = "a".repeat(64);
+        let run = NewRun {
+            id: "private-pin".into(),
+            registry_id: "definition".into(),
+            params_json: None,
+            queued_at_ns: 1,
+            actor: Some("alice".into()),
+        };
+        let context =
+            serde_json::json!({"env":"staging","target":"db","execution_hash":hash}).to_string();
+        if gated {
+            let request = tumult_lake::ApprovalRequest {
+                run_id: run.id.clone(),
+                tier: "T1".into(),
+                pin_hash: "public-approval-pin".into(),
+                env: "staging".into(),
+                target: Some("db".into()),
+                quorum_required: 1,
+                requested_by: "alice".into(),
+                requested_at_ns: 1,
+                expires_at_ns: i64::MAX,
+            };
+            writer
+                .insert_gated_run_with_context(&run, &request, None, Some(&context))
+                .unwrap();
+        } else {
+            writer
+                .insert_run_with_context(&run, Some(&context))
+                .unwrap();
+        }
+        let reader = store.read_only().unwrap();
+        let audit = reader.run_audit_trail(&run.id).unwrap();
+        assert!(
+            !serde_json::to_string(&audit).unwrap().contains(&hash),
+            "public audit exposes a fast secret verifier"
+        );
+        assert!(reader.verify_run_audit_chain(&run.id).unwrap());
+        assert_eq!(
+            reader
+                .query_json_rows("SELECT execution_hash FROM run_execution_pins")
+                .unwrap()[0]["execution_hash"],
+            hash
+        );
+        let cfg = tumult_lake::lake::LakeConfig::new(dir.path().join("archive"), 0);
+        let report = tumult_lake::lake::export(&reader, &cfg).unwrap();
+        assert!(!report.tables.iter().any(|t| t.name == "run_execution_pins"));
+        let file = tumult_lake::lake::committed_file(&cfg, "run_audit").unwrap();
+        let archived = reader
+            .query_json_rows(&format!(
+                "SELECT * FROM read_parquet('{}') ORDER BY at_ns ASC",
+                file.display()
+            ))
+            .unwrap();
+        assert_eq!(
+            archived, audit,
+            "portable audit must preserve the exact verifiable chain"
+        );
+    }
+}

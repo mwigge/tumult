@@ -122,20 +122,22 @@ async fn stderr_is_captured_on_non_zero_exit() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn non_zero_exit_without_stderr_has_no_error_text() {
+async fn non_zero_exit_without_stderr_reports_exit_status() {
     let executor = ProviderExecutor::new();
     let outcome = executor.execute(&sh("exit 4", Some(5.0)));
     assert!(!outcome.success);
     assert_eq!(outcome.output, None);
-    assert_eq!(outcome.error, None);
+    let error = outcome
+        .error
+        .expect("unsuccessful exits must explain the failure");
+    assert!(error.contains("exit status: 4"), "{error}");
 }
 
 // ── Sync fallback (no Tokio runtime on the calling thread) ──
 
 /// The runner executes background activities on `std::thread::scope` threads,
-/// which never carry a Tokio runtime; the executor must fall back to
-/// `std::process::Command` there. Each scenario runs on its own plain thread
-/// to prove no runtime is involved.
+/// which never carry a Tokio runtime; the shared executor bridge must provide
+/// one there. Each scenario starts on its own plain thread without a runtime.
 #[test]
 fn sync_fallback_handles_success_failure_timeout_and_spawn_errors() {
     let run = |activity: Activity| {
@@ -216,4 +218,31 @@ fn unknown_native_plugin_is_a_failed_outcome_not_a_panic() {
         error.contains("unknown native plugin"),
         "unexpected error: {error}"
     );
+}
+
+#[cfg(unix)]
+fn assert_descendant_pipe_timeout() {
+    let executor = ProviderExecutor::new();
+    let start = std::time::Instant::now();
+    // The shell exits immediately. Its child retains stdout/stderr, so a
+    // timeout covering only wait() never bounds the subsequent pipe drain.
+    let outcome = executor.execute(&sh("sleep 2 & exit 0", Some(0.1)));
+    assert!(
+        !outcome.success,
+        "an inherited pipe must not bypass the execution timeout"
+    );
+    assert!(outcome.error.unwrap().contains("timed out"));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn timeout_includes_descendant_pipe_drain_async() {
+    assert_descendant_pipe_timeout();
+}
+
+#[cfg(unix)]
+#[test]
+fn timeout_includes_descendant_pipe_drain_plain_thread() {
+    assert_descendant_pipe_timeout();
 }

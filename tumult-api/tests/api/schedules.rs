@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 // ---------------------------------------------------------------------------
 // /api/schedules* — recurring-run CRUD (schema v10 run_schedules)
 
-const DEF_TOON: &str = "
+pub(crate) const DEF_TOON: &str = "
 title: schedule api test experiment
 method[1]:
   - name: action-1

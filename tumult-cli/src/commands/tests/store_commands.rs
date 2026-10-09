@@ -89,7 +89,7 @@ fn store_backup_requires_existing_store() {
 }
 
 #[test]
-fn store_backup_writes_both_parquet_files() {
+fn store_backup_writes_complete_operational_bundle() {
     let _guard = ENV_LOCK.lock().unwrap();
     let dir = TempDir::new().unwrap();
     let db = use_temp_store(dir.path());
@@ -98,8 +98,8 @@ fn store_backup_writes_both_parquet_files() {
 
     cmd_store_backup(&backup).unwrap();
 
-    assert!(backup.join("experiments.parquet").exists());
-    assert!(backup.join("activities.parquet").exists());
+    assert!(backup.join("store.duckdb").exists());
+    assert!(backup.join("manifest.json").exists());
 
     std::env::remove_var("TUMULT_LAKE_PATH");
 }

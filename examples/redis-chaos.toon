@@ -1,5 +1,5 @@
-title: Redis resilience — verify recovery after disruption
-description: Check Redis is alive, inject a disruption, confirm it recovers
+title: Redis connectivity — verify basic key operations
+description: Probe Redis availability and exercise SET, GET and DEL without injecting a fault
 
 tags[2]: redis, resilience
 

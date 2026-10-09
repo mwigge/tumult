@@ -1150,8 +1150,8 @@ async fn env_scoping_filters_experiment_reads() {
     let resp = scoped_get("/api/experiments/exp-staging").await.unwrap();
     assert_eq!(resp.status().as_u16(), 200);
 
-    // Runs without an experiment stay visible to a scoped user (queued);
-    // a run linked to an out-of-scope experiment is hidden.
+    // Legacy queued runs with no durable environment fail closed; a run
+    // linked to an out-of-scope experiment is also hidden.
     let registry = tumult_lake::RegisteredDefinition {
         id: "reg-scope".into(),
         name: "scope test".into(),
@@ -1192,9 +1192,21 @@ async fn env_scoping_filters_experiment_reads() {
         .iter()
         .filter_map(|r| r["id"].as_str())
         .collect();
-    assert_eq!(ids, ["run-queued"], "{ids:?}");
+    assert!(ids.is_empty(), "{ids:?}");
     let resp = scoped_get("/api/runs/run-prod").await.unwrap();
     assert_eq!(resp.status().as_u16(), 404);
+    let resp = scoped_get("/api/runs/run-queued").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+    exec_write(&srv, |w| {
+        w.insert_run_audit(
+            "run-queued",
+            "requested_context",
+            Some(r#"{"env":"staging"}"#),
+            None,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await;
     let resp = scoped_get("/api/runs/run-queued").await.unwrap();
     assert_eq!(resp.status().as_u16(), 200);
 

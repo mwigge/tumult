@@ -1,8 +1,8 @@
 //! Admin: `/api/tokens*` (create, revoke).
 
+use crate::error::ApiError;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -18,7 +18,7 @@ use super::Principal;
 /// `GET /api/tokens` — every token (newest first, including revoked) with
 /// the owner's username; never the token hash. Admin-only via the route
 /// table, like the rest of `/api/tokens*`.
-pub async fn list_tokens(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn list_tokens(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let tokens = with_reader(&state.db_path, |reader| {
         let usernames: std::collections::HashMap<String, String> = reader
             .list_users()
@@ -60,14 +60,14 @@ pub async fn create_token(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<CreateTokenRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
-        return Err(bad_request("name must not be empty".into()));
+        return Err(bad_request("name must not be empty"));
     }
     let now = now_ns();
     if req.expires_at_ns.is_some_and(|t| t <= now) {
-        return Err(bad_request("expires_at_ns must be in the future".into()));
+        return Err(bad_request("expires_at_ns must be in the future"));
     }
     let user_id = req
         .user_id
@@ -101,7 +101,7 @@ pub async fn create_token(
 pub async fn revoke_token(
     State(state): State<ApiState>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     exec_auth_write(&state, move |w| {
         w.revoke_token(&id).map_err(|e| e.to_string())
     })

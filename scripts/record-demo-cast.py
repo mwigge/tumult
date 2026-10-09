@@ -10,6 +10,7 @@ Run via scripts/demo-topology.sh's namespace wrapper (container hostnames
 must resolve) with the demo stack up:
     TUMULT_DEMO_NS=... see record-demo-cast.sh
 """
+
 import json
 import os
 import re
@@ -50,7 +51,7 @@ def run(cmd_display, argv, tail=None, grep=None, pause_after=1.4, env=None):
     out = (proc.stdout or "") + (proc.stderr or "")
     lines = out.rstrip("\n").splitlines()
     if grep:
-        lines = [l for l in lines if re.search(grep, l)]
+        lines = [line for line in lines if re.search(grep, line)]
     if tail:
         lines = lines[-tail:]
     for line in lines:
@@ -69,7 +70,10 @@ def run(cmd_display, argv, tail=None, grep=None, pause_after=1.4, env=None):
 
 def section(title):
     emit("\r\n", 0.8)
-    emit(f"{COPPER}{BOLD}── {title} {RESET}{DIM}{'─' * max(0, WIDTH - len(title) - 6)}{RESET}\r\n", 0.05)
+    emit(
+        f"{COPPER}{BOLD}── {title} {RESET}{DIM}{'─' * max(0, WIDTH - len(title) - 6)}{RESET}\r\n",
+        0.05,
+    )
     emit("", 0.7)
 
 
@@ -79,34 +83,67 @@ def comment(text):
 
 T = BIN
 section("tumult 2.16 · topology · compliance lineage · autopilot")
-run(f"tumult --version", [T, "--version"], pause_after=0.8)
+run("tumult --version", [T, "--version"], pause_after=0.8)
 
 section("1 · declare the service topology (reviewed TOML, never guessed)")
-run("tumult topology import demo/topology/topology.toml",
-    [T, "topology", "import", "demo/topology/topology.toml", "--store", STORE])
+run(
+    "tumult topology import demo/topology/topology.toml",
+    [T, "topology", "import", "demo/topology/topology.toml", "--store", STORE],
+)
 
 section("2 · run chaos with compliance mappings")
-comment("a latency drill on demo-app, mapped to DORA Art. 25 — completes, produces evidence")
-run("tumult run demo/experiments/demo-net.toon --force",
-    [T, "run", "demo/experiments/demo-net.toon", "--force"], grep=r"Running|Status|Method|Ingested")
-comment("pause the database behind a safety guard watching demo-app — the guard halts the run")
-run("tumult run demo/experiments/demo-guard-halt.toon --force",
-    [T, "run", "demo/experiments/demo-guard-halt.toon", "--force"], grep=r"Running|Status|Rollbacks|Ingested|halt")
+comment(
+    "a latency drill on demo-app, mapped to DORA Art. 25 — completes, produces evidence"
+)
+run(
+    "tumult run demo/experiments/demo-net.toon --force",
+    [T, "run", "demo/experiments/demo-net.toon", "--force"],
+    grep=r"Running|Status|Method|Ingested",
+)
+comment(
+    "pause the database behind a safety guard watching demo-app — the guard halts the run"
+)
+run(
+    "tumult run demo/experiments/demo-guard-halt.toon --force",
+    [T, "run", "demo/experiments/demo-guard-halt.toon", "--force"],
+    grep=r"Running|Status|Rollbacks|Ingested|halt",
+)
 
 section("3 · where does compliance break? (and WHY)")
-run("tumult topology map --framework DORA",
-    [T, "topology", "map", "--framework", "DORA", "--store", STORE], pause_after=2.2)
+run(
+    "tumult topology map --framework DORA",
+    [T, "topology", "map", "--framework", "DORA", "--store", STORE],
+    pause_after=2.2,
+)
 
 section("4 · weight decisions by real traffic (OTel span rates, straight from SigNoz)")
-run("docker exec demo-signoz clickhouse client -q 'SELECT serviceName, count() FROM ...'",
-    ["docker", "exec", "demo-signoz", "clickhouse", "client", "-q",
-     "SELECT serviceName, count() FROM signoz_traces.distributed_signoz_index_v3 "
-     "WHERE timestamp > now() - INTERVAL 60 MINUTE GROUP BY serviceName"])
+run(
+    "docker exec demo-signoz clickhouse client -q 'SELECT serviceName, count() FROM ...'",
+    [
+        "docker",
+        "exec",
+        "demo-signoz",
+        "clickhouse",
+        "client",
+        "-q",
+        "SELECT serviceName, count() FROM signoz_traces.distributed_signoz_index_v3 "
+        "WHERE timestamp > now() - INTERVAL 60 MINUTE GROUP BY serviceName",
+    ],
+)
 crit = subprocess.run(
-    ["docker", "exec", "demo-signoz", "clickhouse", "client", "-q",
-     "SELECT serviceName, count() FROM signoz_traces.distributed_signoz_index_v3 "
-     "WHERE timestamp > now() - INTERVAL 60 MINUTE GROUP BY serviceName FORMAT JSON"],
-    capture_output=True, text=True).stdout
+    [
+        "docker",
+        "exec",
+        "demo-signoz",
+        "clickhouse",
+        "client",
+        "-q",
+        "SELECT serviceName, count() FROM signoz_traces.distributed_signoz_index_v3 "
+        "WHERE timestamp > now() - INTERVAL 60 MINUTE GROUP BY serviceName FORMAT JSON",
+    ],
+    capture_output=True,
+    text=True,
+).stdout
 crit_path = "/tmp/tumult-cast-criticality.json"
 try:
     data = json.loads(crit)["data"]
@@ -115,29 +152,77 @@ try:
 except (json.JSONDecodeError, KeyError):
     with open(crit_path, "w") as f:
         f.write("{}")
-run("TUMULT_CRITICALITY_FILE=rates.json tumult topology recommend --limit 3",
+run(
+    "TUMULT_CRITICALITY_FILE=rates.json tumult topology recommend --limit 3",
     [T, "topology", "recommend", "--limit", "3", "--store", STORE],
-    env={"TUMULT_CRITICALITY_FILE": crit_path}, grep=r"svc:|observed traffic|score|reason|—|-", tail=12)
+    env={"TUMULT_CRITICALITY_FILE": crit_path},
+    grep=r"svc:|observed traffic|score|reason|—|-",
+    tail=12,
+)
 
 section("5 · the autopilot decides — and shows its work")
-comment("deterministic recommender + 14-rule gate; decisions persisted BEFORE anything runs")
-run("tumult autopilot once --policy demo/topology/autopilot.toml --execute --limit 4",
-    [T, "autopilot", "once", "--policy", "demo/topology/autopilot.toml",
-     "--execute", "--limit", "4", "--store", STORE], pause_after=2.0)
-comment("same pass minutes later: the cooldown rule downgrades the repeat to the human queue")
-out = run("tumult autopilot once --policy demo/topology/autopilot.toml --execute --limit 1",
-          [T, "autopilot", "once", "--policy", "demo/topology/autopilot.toml",
-           "--execute", "--limit", "1", "--store", STORE])
+comment(
+    "deterministic recommender + 14-rule gate; decisions persisted BEFORE anything runs"
+)
+run(
+    "tumult autopilot once --policy demo/topology/autopilot.toml --execute --limit 4",
+    [
+        T,
+        "autopilot",
+        "once",
+        "--policy",
+        "demo/topology/autopilot.toml",
+        "--execute",
+        "--limit",
+        "4",
+        "--store",
+        STORE,
+    ],
+    pause_after=2.0,
+)
+comment(
+    "same pass minutes later: the cooldown rule downgrades the repeat to the human queue"
+)
+out = run(
+    "tumult autopilot once --policy demo/topology/autopilot.toml --execute --limit 1",
+    [
+        T,
+        "autopilot",
+        "once",
+        "--policy",
+        "demo/topology/autopilot.toml",
+        "--execute",
+        "--limit",
+        "1",
+        "--store",
+        STORE,
+    ],
+)
 
-comment("structural consent: this policy variant does not enroll demo-postgres — injection is impossible")
-run("tumult autopilot once --policy demo/topology/autopilot-unenrolled.toml --limit 1",
-    [T, "autopilot", "once", "--policy", "demo/topology/autopilot-unenrolled.toml",
-     "--limit", "1", "--store", STORE])
+comment(
+    "structural consent: this policy variant does not enroll demo-postgres — injection is impossible"
+)
+run(
+    "tumult autopilot once --policy demo/topology/autopilot-unenrolled.toml --limit 1",
+    [
+        T,
+        "autopilot",
+        "once",
+        "--policy",
+        "demo/topology/autopilot-unenrolled.toml",
+        "--limit",
+        "1",
+        "--store",
+        STORE,
+    ],
+)
 
 section("6 · humans stay in the loop — vetoes are feedback")
 status = subprocess.run(
     [T, "autopilot", "status", "--store", STORE, "--format", "json"],
-    capture_output=True, text=True).stdout
+    capture_output=True,
+    text=True,
+).stdout
 deny_id = ""
 try:
     rows = json.loads(status)
@@ -149,23 +234,46 @@ try:
 except json.JSONDecodeError:
     pass
 if deny_id:
-    run(f'tumult autopilot deny {deny_id[:8]}… --reason "not this quarter"',
-        [T, "autopilot", "deny", deny_id, "--reason", "not this quarter", "--store", STORE])
+    run(
+        f'tumult autopilot deny {deny_id[:8]}… --reason "not this quarter"',
+        [
+            T,
+            "autopilot",
+            "deny",
+            deny_id,
+            "--reason",
+            "not this quarter",
+            "--store",
+            STORE,
+        ],
+    )
 run("tumult autopilot status", [T, "autopilot", "status", "--store", STORE], tail=8)
 
 section("7 · every decision is a graph citizen + an immutable archive")
-run("tumult chaosgraph query --kind recommendation",
-    [T, "chaosgraph", "query", "--kind", "recommendation", "--store", STORE], tail=6)
-run("tumult autopilot export ./archive",
-    [T, "autopilot", "export", "/tmp/tumult-cast-archive", "--store", STORE])
+run(
+    "tumult chaosgraph query --kind recommendation",
+    [T, "chaosgraph", "query", "--kind", "recommendation", "--store", STORE],
+    tail=6,
+)
+run(
+    "tumult autopilot export ./archive",
+    [T, "autopilot", "export", "/tmp/tumult-cast-archive", "--store", STORE],
+)
 
 emit("\r\n", 1.0)
-emit(f"{COPPER}{BOLD}every verdict reproducible from (policy hash, inputs) — tumult.rs{RESET}\r\n", 0.1)
+emit(
+    f"{COPPER}{BOLD}every verdict reproducible from (policy hash, inputs) — tumult.rs{RESET}\r\n",
+    0.1,
+)
 emit("", 2.5)
 
-header = {"version": 2, "width": WIDTH, "height": HEIGHT,
-          "timestamp": 1783800000,
-          "env": {"SHELL": "/bin/zsh", "TERM": "xterm-256color"}}
+header = {
+    "version": 2,
+    "width": WIDTH,
+    "height": HEIGHT,
+    "timestamp": 1783800000,
+    "env": {"SHELL": "/bin/zsh", "TERM": "xterm-256color"},
+}
 with open(sys.argv[1], "w") as f:
     f.write(json.dumps(header) + "\n")
     for ev in events:

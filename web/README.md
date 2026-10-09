@@ -19,12 +19,12 @@ the bar); `npm run dev` starts vite with `/api` proxied to
 
 ## Stack, and why
 
-| Choice | Why |
-|---|---|
-| **SvelteKit 2 + Svelte 5 (runes), adapter-static SPA** | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by tumultd for client-side routes. |
-| **ECharts, tree-shaken** (`echarts/core`, `web/src/lib/echarts.ts`) | Time-series bar, calendar heatmap (experiments/day) and donut (fault breakdown) with zoom/tooltip — only the registered chart types ship. |
-| **Custom span waterfall** (`Waterfall.svelte`) | The signature piece: ruler, indented span tree, status-coloured duration bars (Ok emerald / Error red / Unset slate), click → drawer with attributes, events and correlated logs. Owning it lets us encode `resilience.*` semantics directly. |
-| **Hand-rolled CSS** (`lib/theme.css`) | Near-black Grafana-caliber theme; saturated colour is reserved for status and data. No UI framework — fewer moving parts in the embedded build. |
+| Choice                                                              | Why                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SvelteKit 2 + Svelte 5 (runes), adapter-static SPA**              | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by tumultd for client-side routes.                   |
+| **ECharts, tree-shaken** (`echarts/core`, `web/src/lib/echarts.ts`) | Time-series bar, calendar heatmap (experiments/day) and donut (fault breakdown) with zoom/tooltip — only the registered chart types ship.                                                                                                     |
+| **Custom span waterfall** (`Waterfall.svelte`)                      | The signature piece: ruler, indented span tree, status-coloured duration bars (Ok emerald / Error red / Unset slate), click → drawer with attributes, events and correlated logs. Owning it lets us encode `resilience.*` semantics directly. |
+| **Hand-rolled CSS** (`lib/theme.css`)                               | Near-black Grafana-caliber theme; saturated colour is reserved for status and data. No UI framework — fewer moving parts in the embedded build.                                                                                               |
 
 Explicitly rejected: Tailwind/component kits (build weight for no benefit at
 this size), Plotly (too heavy), generic-BI dashboard aesthetics.

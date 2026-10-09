@@ -194,7 +194,7 @@ pub fn default_workers() -> usize {
 const WORKERS_HARD_CAP: usize = 256;
 
 /// Maximum worker count [`cpu_stress`] will ever spawn: four times the host's
-/// logical CPUs, hard-capped at [`WORKERS_HARD_CAP`]. `workers` arrives as an
+/// logical CPUs, hard-capped at `WORKERS_HARD_CAP`. `workers` arrives as an
 /// experiment argument, so an absurd value (a `u32` can name ~4 billion
 /// threads) must never reach the spawn loop.
 #[must_use]

@@ -1,6 +1,8 @@
 //! Credential resolution, the auth middleware and the response/cookie
 //! helpers shared by the auth endpoints.
 
+use crate::error::ApiError;
+pub(crate) use crate::error::{bad_request, forbidden, not_found, unavailable};
 use std::sync::{Arc, Mutex, Once};
 
 use axum::extract::{Request, State};
@@ -24,33 +26,17 @@ use super::{Principal, SESSION_COOKIE};
 // Middleware
 
 /// 401 JSON response.
-pub(crate) fn unauthorized(msg: &str) -> Response {
-    (StatusCode::UNAUTHORIZED, Json(json!({"error": msg}))).into_response()
-}
-
-/// 403 JSON response.
-pub(crate) fn forbidden(msg: &str) -> Response {
-    (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
-}
-
-/// 400 JSON response.
-pub(crate) fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
-}
-
-/// 404 JSON response.
-pub(crate) fn not_found(msg: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg}))).into_response()
+pub(crate) fn unauthorized(msg: &str) -> ApiError {
+    (StatusCode::UNAUTHORIZED, Json(json!({"error": msg})))
+        .into_response()
+        .into()
 }
 
 /// 429 JSON response (login throttling; generic body like the 401s).
-pub(crate) fn too_many_requests(msg: &str) -> Response {
-    (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg}))).into_response()
-}
-
-/// 503 JSON response (mutating endpoint without the daemon's writer).
-pub(crate) fn unavailable(msg: &str) -> Response {
-    (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
+pub(crate) fn too_many_requests(msg: &str) -> ApiError {
+    (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg})))
+        .into_response()
+        .into()
 }
 
 /// The `kro_session` cookie value, parsed by hand from the `Cookie` header.
@@ -195,8 +181,8 @@ pub async fn auth_middleware(
     .await;
     let resolved = match resolved {
         Ok(Ok(r)) => r,
-        Ok(Err(e)) => return internal(e),
-        Err(e) => return internal(format!("auth task failed: {e}")),
+        Ok(Err(e)) => return internal(e).into_response(),
+        Err(e) => return internal(format!("auth task failed: {e}")).into_response(),
     };
 
     match resolved {
@@ -207,7 +193,7 @@ pub async fn auth_middleware(
         }
         Resolve::Rejected => {
             if !is_login && !is_me {
-                return unauthorized("authentication required");
+                return unauthorized("authentication required").into_response();
             }
             // login / me pass through without a principal.
         }
@@ -228,11 +214,28 @@ pub async fn auth_middleware(
                     .await;
             }
             if principal.must_change && !PASSWORD_CHANGE_EXEMPT.contains(&path.as_str()) {
-                return forbidden("password_change_required");
+                return forbidden("password_change_required").into_response();
+            }
+            // Global resources have no environment ownership; scoped identities
+            // must not export all evidence, configure global event sinks, or
+            // grant themselves broader scopes through user/token administration.
+            let global_resource = [
+                "/report",
+                "/api/users",
+                "/api/tokens",
+                "/api/webhooks",
+                "/api/lake",
+                "/api/import/journal",
+            ]
+            .iter()
+            .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")));
+            if global_resource && !principal.env_scopes.is_empty() {
+                return forbidden("this global operation requires an unscoped principal")
+                    .into_response();
             }
             let required = required_role(&method, &path);
             if principal.role < required {
-                return forbidden("insufficient role");
+                return forbidden("insufficient role").into_response();
             }
             req.extensions_mut().insert(principal);
         }
@@ -250,7 +253,7 @@ pub async fn auth_middleware(
 pub(crate) async fn exec_auth_write(
     state: &ApiState,
     f: impl FnOnce(&Writer) -> Result<(), String> + Send + 'static,
-) -> Result<(), Response> {
+) -> Result<(), ApiError> {
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable("auth writes are not wired (no ingest handle)"));
     };

@@ -285,7 +285,7 @@ impl Writer {
     }
 
     /// Verify a submitted record. The reviewer must differ from the person
-    /// who entered the record (segregation of duties).
+    /// who entered, edited, submitted or attached its evidence (segregation of duties).
     ///
     /// # Errors
     /// Returns `NotFound`, `WrongStatus` (not submitted), or `SelfReview`.
@@ -299,7 +299,7 @@ impl Writer {
     }
 
     /// Reject a submitted record (a review note is mandatory). The reviewer
-    /// must differ from the person who entered the record.
+    /// must not have created, edited, submitted or attached its evidence.
     ///
     /// # Errors
     /// Returns `NotFound`, `WrongStatus`, `SelfReview`, or `Invalid` when the
@@ -339,7 +339,11 @@ impl Writer {
             if reviewer.trim().is_empty() {
                 return Err(ManualError::Invalid("reviewer must not be empty".into()));
             }
-            if reviewer == entered_by {
+            let contributed: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM manual_experiment_audit WHERE experiment_id = ? AND changed_by = ? AND action IN ('create', 'edit', 'submit', 'attach')",
+                params![id, reviewer], |row| row.get(0),
+            )?;
+            if reviewer == entered_by || contributed > 0 {
                 return Err(ManualError::SelfReview);
             }
             let prev_hash = row

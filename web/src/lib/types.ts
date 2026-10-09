@@ -1,216 +1,216 @@
 // Shared types mirroring the query API JSON shapes.
 
 export interface SparkPoint {
-  ts: number;
-  v: number;
+    ts: number;
+    v: number;
 }
 
 export interface Kpi {
-  name: string;
-  label: string;
-  unit: 'count' | 'ratio' | 'seconds';
-  value: number | null;
-  delta: number | null;
-  spark: SparkPoint[];
+    name: string;
+    label: string;
+    unit: 'count' | 'ratio' | 'seconds';
+    value: number | null;
+    delta: number | null;
+    spark: SparkPoint[];
 }
 
 export interface Overview {
-  range: string;
-  from_ns: number;
-  to_ns: number;
-  kpis: Kpi[];
-  experiments_per_day: SparkPoint[];
-  targets: { target: string; experiments: number; pass_rate: number | null }[];
-  faults: { fault_type: string; fault_subtype: string | null; count: number }[];
+    range: string;
+    from_ns: number;
+    to_ns: number;
+    kpis: Kpi[];
+    experiments_per_day: SparkPoint[];
+    targets: { target: string; experiments: number; pass_rate: number | null }[];
+    faults: { fault_type: string; fault_subtype: string | null; count: number }[];
 }
 
 export interface ExperimentRow {
-  id: string;
-  name: string | null;
-  started_ns: number;
-  duration_ns: number | null;
-  trace_id: string | null;
-  target_system: string | null;
-  target_technology: string | null;
-  target_environment: string | null;
-  status: string | null;
-  deviations: string | null;
-  duration_ms: string | null;
-  faults: string | null;
-  origin: 'automated' | 'manual' | null;
-  review_status: string | null;
+    id: string;
+    name: string | null;
+    started_ns: number;
+    duration_ns: number | null;
+    trace_id: string | null;
+    target_system: string | null;
+    target_technology: string | null;
+    target_environment: string | null;
+    status: string | null;
+    deviations: string | null;
+    duration_ms: string | null;
+    faults: string | null;
+    origin: 'automated' | 'manual' | null;
+    review_status: string | null;
 }
 
 /** One experiment run's time window, from `GET /api/experiments/windows`. */
 export interface ExperimentWindow {
-  id: string | null;
-  name: string | null;
-  start_ns: number;
-  end_ns: number;
-  outcome: string | null;
+    id: string | null;
+    name: string | null;
+    start_ns: number;
+    end_ns: number;
+    outcome: string | null;
 }
 
 export interface Span {
-  ts_ns: number;
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string | null;
-  span_name: string;
-  span_kind: string;
-  duration_ns: number;
-  status_code: string;
-  status_message: string;
-  service_name: string;
-  fault_type: string | null;
-  fault_subtype: string | null;
-  // Present on trace-detail rows (experiment roots carry these in tumult).
-  experiment_id?: string | null;
-  experiment_name?: string | null;
-  span_attrs: Record<string, string>;
-  events: unknown;
+    ts_ns: number;
+    trace_id: string;
+    span_id: string;
+    parent_span_id: string | null;
+    span_name: string;
+    span_kind: string;
+    duration_ns: number;
+    status_code: string;
+    status_message: string;
+    service_name: string;
+    fault_type: string | null;
+    fault_subtype: string | null;
+    // Present on trace-detail rows (experiment roots carry these in tumult).
+    experiment_id?: string | null;
+    experiment_name?: string | null;
+    span_attrs: Record<string, string>;
+    events: unknown;
 }
 
 export interface LogRow {
-  ts_ns: number;
-  severity_text: string | null;
-  body: string;
-  trace_id: string | null;
-  span_id: string | null;
-  log_attrs: Record<string, string>;
+    ts_ns: number;
+    severity_text: string | null;
+    body: string;
+    trace_id: string | null;
+    span_id: string | null;
+    log_attrs: Record<string, string>;
 }
 
 export interface MetricPoint {
-  kind: 'sum' | 'gauge';
-  ts_ns: number;
-  metric_name: string;
-  value: number;
-  outcome_status: string | null;
-  plugin_name: string | null;
+    kind: 'sum' | 'gauge';
+    ts_ns: number;
+    metric_name: string;
+    value: number;
+    outcome_status: string | null;
+    plugin_name: string | null;
 }
 
 export interface ExperimentDetail {
-  experiment: ExperimentRow;
-  spans: Span[];
-  logs: LogRow[];
-  metrics: MetricPoint[];
+    experiment: ExperimentRow;
+    spans: Span[];
+    logs: LogRow[];
+    metrics: MetricPoint[];
 }
 
 export interface Dimensions {
-  outcomes: string[];
-  targets: string[];
-  faults: string[];
-  experiments: string[];
+    outcomes: string[];
+    targets: string[];
+    faults: string[];
+    experiments: string[];
 }
 
 export interface MetricDefInfo {
-  name: string;
-  description: string | null;
+    name: string;
+    description: string | null;
 }
 
 export interface Timeseries {
-  metric: string;
-  description: string | null;
-  interval: string;
-  range: string;
-  points: { bucket_s: number; value: number | null }[];
+    metric: string;
+    description: string | null;
+    interval: string;
+    range: string;
+    points: { bucket_s: number; value: number | null }[];
 }
 
 export interface AskResponse {
-  configured: boolean;
-  source?: 'golden' | 'llm';
-  sql?: string;
-  rows?: Record<string, unknown>[];
-  error?: string;
+    configured: boolean;
+    source?: 'golden' | 'llm';
+    sql?: string;
+    rows?: Record<string, unknown>[];
+    error?: string;
 }
 
 export interface ReportFile {
-  name: string;
-  bytes: number;
-  modified_s: number;
+    name: string;
+    bytes: number;
+    modified_s: number;
 }
 
 export interface LogEntry {
-  ts_ns: number;
-  severity_text: string | null;
-  body: string;
-  trace_id: string | null;
-  span_id: string | null;
-  service_name: string | null;
-  experiment_id: string | null;
-  log_attrs: Record<string, string>;
-  resource_attrs: Record<string, string>;
+    ts_ns: number;
+    severity_text: string | null;
+    body: string;
+    trace_id: string | null;
+    span_id: string | null;
+    service_name: string | null;
+    experiment_id: string | null;
+    log_attrs: Record<string, string>;
+    resource_attrs: Record<string, string>;
 }
 
 export interface LogVolume {
-  interval: string;
-  bucket_s: number;
-  rows: { ts: number; severity: string; count: number }[];
+    interval: string;
+    bucket_s: number;
+    rows: { ts: number; severity: string; count: number }[];
 }
 
 export interface TraceRow {
-  trace_id: string;
-  started_ns: number;
-  duration_ns: number;
-  span_count: number;
-  error_count: number;
-  root_name: string | null;
-  service_name: string | null;
-  experiment_id: string | null;
-  experiment_name: string | null;
-  status: string | null;
+    trace_id: string;
+    started_ns: number;
+    duration_ns: number;
+    span_count: number;
+    error_count: number;
+    root_name: string | null;
+    service_name: string | null;
+    experiment_id: string | null;
+    experiment_name: string | null;
+    status: string | null;
 }
 
 export interface TraceDurations {
-  points: { trace_id: string; ts_ns: number; duration_ms: number }[];
-  p50_ms: number | null;
-  p95_ms: number | null;
-  p99_ms: number | null;
+    points: { trace_id: string; ts_ns: number; duration_ms: number }[];
+    p50_ms: number | null;
+    p95_ms: number | null;
+    p99_ms: number | null;
 }
 
 export interface TraceDetail {
-  trace_id: string;
-  spans: Span[];
-  logs: LogRow[];
+    trace_id: string;
+    spans: Span[];
+    logs: LogRow[];
 }
 
 export interface MetricCatalogEntry {
-  name: string;
-  types: ('sum' | 'gauge' | 'histogram')[];
-  dimensions: string[];
+    name: string;
+    types: ('sum' | 'gauge' | 'histogram')[];
+    dimensions: string[];
 }
 
 export interface MetricSeries {
-  group: string | null;
-  points: { ts: number; v?: number | null; avg?: number | null; p95?: number | null }[];
+    group: string | null;
+    points: { ts: number; v?: number | null; avg?: number | null; p95?: number | null }[];
 }
 
 export interface MetricQueryResult {
-  name: string;
-  type: 'sum' | 'gauge' | 'histogram';
-  interval: string;
-  range: string;
-  group_by: string | null;
-  series: MetricSeries[];
+    name: string;
+    type: 'sum' | 'gauge' | 'histogram';
+    interval: string;
+    range: string;
+    group_by: string | null;
+    series: MetricSeries[];
 }
 
 export interface TopologyNode {
-  id: string;
-  name: string;
-  type: 'service' | 'target';
-  runs: number;
-  errors: number;
-  avg_duration_ns: number | null;
+    id: string;
+    name: string;
+    type: 'service' | 'target';
+    runs: number;
+    errors: number;
+    avg_duration_ns: number | null;
 }
 
 export interface TopologyEdge {
-  from_id: string;
-  to_id: string;
-  weight: number;
+    from_id: string;
+    to_id: string;
+    weight: number;
 }
 
 export interface Topology {
-  nodes: TopologyNode[];
-  edges: TopologyEdge[];
+    nodes: TopologyNode[];
+    edges: TopologyEdge[];
 }
 
 // ---------------------------------------------------------------------------
@@ -219,48 +219,48 @@ export interface Topology {
 export type RunState = 'passed' | 'stale' | 'failed' | 'never_run';
 
 export interface ExperimentScore {
-  name: string;
-  target: string | null;
-  score: number;
-  state: RunState;
-  band: string;
-  last_run_ns: number | null;
-  last_outcome: string | null;
-  runs: number;
+    name: string;
+    target: string | null;
+    score: number;
+    state: RunState;
+    band: string;
+    last_run_ns: number | null;
+    last_outcome: string | null;
+    runs: number;
 }
 
 export interface TargetScore {
-  target: string;
-  score: number;
-  band: string;
-  runs: number;
-  last_run_ns: number | null;
+    target: string;
+    score: number;
+    band: string;
+    runs: number;
+    last_run_ns: number | null;
 }
 
 export interface Scorecard {
-  portfolio: number;
-  band: string;
-  delta: number | null;
-  as_of_ns: number;
-  targets: TargetScore[];
-  experiments: ExperimentScore[];
+    portfolio: number;
+    band: string;
+    delta: number | null;
+    as_of_ns: number;
+    targets: TargetScore[];
+    experiments: ExperimentScore[];
 }
 
 export type ReportTemplate = 'executive-digest' | 'game-day' | 'evidence-pack';
 
 export interface ReportMetaV2 {
-  doc_id: string;
-  type: ReportTemplate;
-  title: string;
-  created_ns: number;
-  data_as_of_ns: number;
-  bytes: number;
-  sha256: string;
-  params: {
-    period: string | null;
-    experiment_id: string | null;
-    framework: string | null;
-  };
+    doc_id: string;
+    type: ReportTemplate;
+    title: string;
+    created_ns: number;
+    data_as_of_ns: number;
+    bytes: number;
+    sha256: string;
+    params: {
+        period: string | null;
+        experiment_id: string | null;
+        framework: string | null;
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -269,101 +269,101 @@ export interface ReportMetaV2 {
 export type RunStateV5 = 'passed' | 'stale' | 'partial' | 'failed' | 'never_run';
 
 export interface OrgNodeScore {
-  path: string;
-  name: string;
-  kind: string;
-  score: number;
-  band: string;
-  coverage: number;
-  scored: number;
-  expected: number;
-  weakest: string | null;
-  weight: number;
-  children: OrgNodeScore[];
+    path: string;
+    name: string;
+    kind: string;
+    score: number;
+    band: string;
+    coverage: number;
+    scored: number;
+    expected: number;
+    weakest: string | null;
+    weight: number;
+    children: OrgNodeScore[];
 }
 
 export interface ScoreTree extends OrgNodeScore {
-  delta: number;
-  sparkline: [number, number][];
+    delta: number;
+    sparkline: [number, number][];
 }
 
 export interface ManualExperiment {
-  id: string;
-  experiment_name: string;
-  exercise_type: string;
-  executed_at_ns: number;
-  hypothesis: string;
-  method: string;
-  outcome_status: string;
-  hypothesis_met: boolean | null;
-  findings: string | null;
-  action_items: unknown;
-  target_system: string | null;
-  target_environment: string | null;
-  blast_radius: string | null;
-  recovery_time_s: number | null;
-  duration_s: number | null;
-  origin: string;
-  entered_by: string;
-  entered_at_ns: number;
-  attestation: string;
-  status: 'draft' | 'submitted' | 'verified' | 'rejected';
-  reviewed_by: string | null;
-  reviewed_at_ns: number | null;
-  review_note: string | null;
-  renewal_due_ns: number | null;
-  framework_refs: string[] | null;
-  batch_id: string | null;
-  content_hash: string;
+    id: string;
+    experiment_name: string;
+    exercise_type: string;
+    executed_at_ns: number;
+    hypothesis: string;
+    method: string;
+    outcome_status: string;
+    hypothesis_met: boolean | null;
+    findings: string | null;
+    action_items: unknown;
+    target_system: string | null;
+    target_environment: string | null;
+    blast_radius: string | null;
+    recovery_time_s: number | null;
+    duration_s: number | null;
+    origin: string;
+    entered_by: string;
+    entered_at_ns: number;
+    attestation: string;
+    status: 'draft' | 'submitted' | 'verified' | 'rejected';
+    reviewed_by: string | null;
+    reviewed_at_ns: number | null;
+    review_note: string | null;
+    renewal_due_ns: number | null;
+    framework_refs: string[] | null;
+    batch_id: string | null;
+    content_hash: string;
 }
 
 export interface ManualAuditRow {
-  id: string;
-  experiment_id: string;
-  changed_by: string;
-  changed_at_ns: number;
-  action: string;
-  diff: unknown;
-  prev_hash: string | null;
-  new_hash: string;
+    id: string;
+    experiment_id: string;
+    changed_by: string;
+    changed_at_ns: number;
+    action: string;
+    diff: unknown;
+    prev_hash: string | null;
+    new_hash: string;
 }
 
 export interface EvidenceAttachment {
-  id: string;
-  experiment_id: string;
-  kind: string;
-  uri: string;
-  label: string | null;
-  file_hash: string | null;
-  added_by: string;
-  added_at_ns: number;
+    id: string;
+    experiment_id: string;
+    kind: string;
+    uri: string;
+    label: string | null;
+    file_hash: string | null;
+    added_by: string;
+    added_at_ns: number;
 }
 
 export interface ManualDetail {
-  experiment: ManualExperiment;
-  audit: ManualAuditRow[];
-  attachments: EvidenceAttachment[];
+    experiment: ManualExperiment;
+    audit: ManualAuditRow[];
+    attachments: EvidenceAttachment[];
 }
 
 export interface ManualRecordInput {
-  experiment_name: string;
-  exercise_type: string;
-  executed_at_ns: number;
-  hypothesis: string;
-  method: string;
-  outcome_status: string;
-  hypothesis_met?: boolean | null;
-  findings?: string | null;
-  action_items?: string[];
-  target_system?: string | null;
-  target_environment?: string | null;
-  blast_radius?: string | null;
-  recovery_time_s?: number | null;
-  duration_s?: number | null;
-  entered_by: string;
-  attestation: string;
-  renewal_due_ns?: number | null;
-  framework_refs?: string[];
+    experiment_name: string;
+    exercise_type: string;
+    executed_at_ns: number;
+    hypothesis: string;
+    method: string;
+    outcome_status: string;
+    hypothesis_met?: boolean | null;
+    findings?: string | null;
+    action_items?: string[];
+    target_system?: string | null;
+    target_environment?: string | null;
+    blast_radius?: string | null;
+    recovery_time_s?: number | null;
+    duration_s?: number | null;
+    entered_by: string;
+    attestation: string;
+    renewal_due_ns?: number | null;
+    framework_refs?: string[];
 }
 
 // --- auth (tumultd session API) ---------------------------------------------
@@ -372,9 +372,9 @@ export type Role = 'viewer' | 'operator' | 'approver' | 'admin';
 
 /** `POST /api/auth/login` 200 body. */
 export interface LoginResponse {
-  username: string;
-  role: Role;
-  must_change: boolean;
+    username: string;
+    role: Role;
+    must_change: boolean;
 }
 
 /**
@@ -382,136 +382,136 @@ export interface LoginResponse {
  * users (open local mode); the UI then behaves as if auth did not exist.
  */
 export interface MeResponse {
-  auth_required: boolean;
-  authenticated: boolean;
-  username?: string;
-  role?: Role;
-  must_change?: boolean;
-  env_scopes?: string[];
+    auth_required: boolean;
+    authenticated: boolean;
+    username?: string;
+    role?: Role;
+    must_change?: boolean;
+    env_scopes?: string[];
 }
 
 // --- admin: user management (tumultd admin API, Admin role) -------------------
 
 /** `GET /api/users` row — never carries the password hash. */
 export interface AdminUser {
-  id: string;
-  username: string;
-  role: Role;
-  must_change: boolean;
-  disabled: boolean;
-  created_at_ns: number;
-  env_scopes: string[];
+    id: string;
+    username: string;
+    role: Role;
+    must_change: boolean;
+    disabled: boolean;
+    created_at_ns: number;
+    env_scopes: string[];
 }
 
 /** `POST /api/users` 201 body — `one_time_password` only when no password was supplied. */
 export interface CreateUserResponse {
-  id: string;
-  username: string;
-  role: Role;
-  must_change: boolean;
-  one_time_password?: string;
+    id: string;
+    username: string;
+    role: Role;
+    must_change: boolean;
+    one_time_password?: string;
 }
 
 /** `GET /api/tokens` row — never carries the token hash. */
 export interface ApiToken {
-  id: string;
-  user_id: string;
-  username: string | null;
-  name: string;
-  created_at_ns: number;
-  last_used_at_ns: number | null;
-  revoked: boolean;
-  expires_at_ns: number | null;
+    id: string;
+    user_id: string;
+    username: string | null;
+    name: string;
+    created_at_ns: number;
+    last_used_at_ns: number | null;
+    revoked: boolean;
+    expires_at_ns: number | null;
 }
 
 /** `POST /api/tokens` 201 body — `token` is the plaintext, returned exactly once. */
 export interface CreateTokenResponse {
-  id: string;
-  token: string;
-  expires_at_ns: number | null;
+    id: string;
+    token: string;
+    expires_at_ns: number | null;
 }
 
 /** `GET /api/webhooks` row — never carries the HMAC secret. */
 export interface Webhook {
-  id: string;
-  name: string;
-  url: string;
-  events: string[];
-  enabled: boolean;
-  created_by: string | null;
-  created_at_ns: number;
+    id: string;
+    name: string;
+    url: string;
+    events: string[];
+    enabled: boolean;
+    created_by: string | null;
+    created_at_ns: number;
 }
 
 /** `POST /api/webhooks` 201 body — `secret` is returned exactly once. */
 export interface CreateWebhookResponse extends Webhook {
-  secret: string;
+    secret: string;
 }
 
 /** `GET /api/events` row — one cross-run audit event (hash-chained). */
 export interface RunEvent {
-  run_id: string;
-  at_ns: number;
-  event: string;
-  detail: string | null;
-  actor: string | null;
-  prev_hash: string | null;
-  new_hash: string | null;
-  definition_name: string | null;
+    run_id: string;
+    at_ns: number;
+    event: string;
+    detail: string | null;
+    actor: string | null;
+    prev_hash: string | null;
+    new_hash: string | null;
+    definition_name: string | null;
 }
 
 /** `GET /api/gamedays` row — campaign metadata. */
 export interface GameDayEntry {
-  id: string;
-  name: string;
-  content_hash: string;
-  registered_at_ns: number;
-  registered_by: string | null;
+    id: string;
+    name: string;
+    content_hash: string;
+    registered_at_ns: number;
+    registered_by: string | null;
 }
 
 /** `GET /api/gamedays/{id}` — the parsed campaign plan. */
 export interface GameDayDetail {
-  id: string;
-  title: string;
-  description: string | null;
-  tags: string[];
-  regulatory: {
-    frameworks: string[];
-    requirements: { id: string; description: string; evidence: string }[];
-  } | null;
-  scoring: { pass_threshold: number; mttr_target_s: number; recovery_required: boolean };
-  experiments: {
-    path: string;
-    compliance_maps: string[];
-    registry_id: string;
-    name: string | null;
-  }[];
-  registered_at_ns: number;
-  registered_by: string | null;
+    id: string;
+    title: string;
+    description: string | null;
+    tags: string[];
+    regulatory: {
+        frameworks: string[];
+        requirements: { id: string; description: string; evidence: string }[];
+    } | null;
+    scoring: { pass_threshold: number; mttr_target_s: number; recovery_required: boolean };
+    experiments: {
+        path: string;
+        compliance_maps: string[];
+        registry_id: string;
+        name: string | null;
+    }[];
+    registered_at_ns: number;
+    registered_by: string | null;
 }
 
 /** `POST /api/gamedays/validate` response. */
 export interface ValidateGameDayResponse {
-  valid: boolean;
-  gameday_registry_id: string;
-  experiments: { path: string; registry_id: string }[];
+    valid: boolean;
+    gameday_registry_id: string;
+    experiments: { path: string; registry_id: string }[];
 }
 
 /** `GET /api/schedules` row (plus the joined definition name). */
 export interface Schedule {
-  id: string;
-  name: string;
-  registry_id: string;
-  definition_name: string | null;
-  interval_s: number;
-  vars_json: string | null;
-  env: string;
-  target: string | null;
-  enabled: boolean;
-  next_run_at_ns: number;
-  last_run_at_ns: number | null;
-  last_run_id: string | null;
-  created_by: string | null;
-  created_at_ns: number;
+    id: string;
+    name: string;
+    registry_id: string;
+    definition_name: string | null;
+    interval_s: number;
+    vars_json: string | null;
+    env: string;
+    target: string | null;
+    enabled: boolean;
+    next_run_at_ns: number;
+    last_run_at_ns: number | null;
+    last_run_id: string | null;
+    created_by: string | null;
+    created_at_ns: number;
 }
 
 // --- UI execution: run registry + runs (tumultd run-control API) ------------
@@ -523,65 +523,65 @@ export interface Schedule {
  * lapsed). (`RunState` above is already taken by the score-freshness enum.)
  */
 export type RunExecState =
-  | 'queued'
-  | 'validating'
-  | 'running'
-  | 'stopping'
-  | 'pending_approval'
-  | 'passed'
-  | 'deviated'
-  | 'failed'
-  | 'aborted'
-  | 'orphaned'
-  | 'rollback_pending'
-  | 'rejected'
-  | 'expired';
+    | 'queued'
+    | 'validating'
+    | 'running'
+    | 'stopping'
+    | 'pending_approval'
+    | 'passed'
+    | 'deviated'
+    | 'failed'
+    | 'aborted'
+    | 'orphaned'
+    | 'rollback_pending'
+    | 'rejected'
+    | 'expired';
 
 /** `GET /api/registry` row. */
 export interface RegistryEntry {
-  id: string;
-  name: string;
-  content_hash: string;
-  registered_at_ns: number;
-  registered_by: string | null;
+    id: string;
+    name: string;
+    content_hash: string;
+    registered_at_ns: number;
+    registered_by: string | null;
 }
 
 /** `GET /api/registry/{id}` — one definition including the TOON source. */
 export interface RegistryDefinition extends RegistryEntry {
-  definition_toon: string;
+    definition_toon: string;
 }
 
 /** One method/rollback/probe step in a dry-run plan. `timeout_s` lives on
     the provider for most provider types; both spots are tolerated. */
 export interface DryRunStep {
-  name: string;
-  activity_type: string;
-  provider: { type?: string; timeout_s?: number | null; [key: string]: unknown };
-  timeout_s?: number | null;
-  [key: string]: unknown;
+    name: string;
+    activity_type: string;
+    provider: { type?: string; timeout_s?: number | null; [key: string]: unknown };
+    timeout_s?: number | null;
+    [key: string]: unknown;
 }
 
 /** `POST /api/runs/dry-run` plan (valid:true). Only the fields the UI
     renders are typed in detail; the rest ride along. */
 export interface DryRunPlan {
-  title: string;
-  description: string;
-  tags: string[];
-  estimate: {
-    expected_outcome?: string;
-    expected_recovery_s?: number | null;
-    confidence?: string | null;
-    rationale?: string | null;
-  } | null;
-  baseline: unknown;
-  hypothesis: { title: string; probes: DryRunStep[] } | null;
-  guards: unknown;
-  method: DryRunStep[];
-  rollbacks: DryRunStep[];
-  controls: unknown;
-  regulatory: unknown;
-  blast_radius: string | null;
-  scope: DryRunScope;
+    title: string;
+    description: string;
+    tags: string[];
+    estimate: {
+        expected_outcome?: string;
+        expected_recovery_s?: number | null;
+        confidence?: string | null;
+        rationale?: string | null;
+    } | null;
+    baseline: unknown;
+    hypothesis: { title: string; probes: DryRunStep[] } | null;
+    guards: unknown;
+    method: DryRunStep[];
+    rollbacks: DryRunStep[];
+    controls: unknown;
+    regulatory: unknown;
+    blast_radius: string | null;
+    scope: DryRunScope;
 }
 
 /**
@@ -590,45 +590,57 @@ export interface DryRunPlan {
  * the concurrent-fault cap. Always present — nulls/empty when undeclared.
  */
 export interface DryRunScope {
-  blast_radius: string | null;
-  actions: {
-    step: string;
-    provider: string;
-    action: string;
-    targets: Record<string, unknown>;
-  }[];
-  guards: { name: string; probe: string; min_breaches: number }[];
-  max_concurrent_faults: number | null;
+    blast_radius: string | null;
+    actions: {
+        step: string;
+        provider: string;
+        action: string;
+        targets: Record<string, unknown>;
+    }[];
+    guards: { name: string; probe: string; min_breaches: number }[];
+    max_concurrent_faults: number | null;
 }
 
 export type DryRunResponse =
-  | { valid: true; registry_id: string; plan: DryRunPlan }
-  | { valid: false; error: string };
+    | {
+          valid: true;
+          registry_id: string;
+          plan: DryRunPlan;
+          execution_hash?: string;
+          binding_hash?: string;
+          execution_context?: {
+              env: string;
+              target?: string | null;
+              tier?: string;
+              error?: string | null;
+          } | null;
+      }
+    | { valid: false; error: string };
 
 /** `GET /api/runs` / `GET /api/runs/{id}` run row. */
 export interface RunRow {
-  id: string;
-  registry_id: string;
-  state: RunExecState;
-  /** Campaign parent when this run is a gameday child (schema v12). */
-  gameday_id?: string | null;
-  params_json: string | null;
-  experiment_id: string | null;
-  rollback_status: string | null;
-  error: string | null;
-  queued_at_ns: number;
-  started_at_ns: number | null;
-  ended_at_ns: number | null;
-  definition_name: string | null;
+    id: string;
+    registry_id: string;
+    state: RunExecState;
+    /** Campaign parent when this run is a gameday child (schema v12). */
+    gameday_id?: string | null;
+    params_json: string | null;
+    experiment_id: string | null;
+    rollback_status: string | null;
+    error: string | null;
+    queued_at_ns: number;
+    started_at_ns: number | null;
+    ended_at_ns: number | null;
+    definition_name: string | null;
 }
 
 /** `GET /api/runs/{id}` audit entry (oldest first). */
 export interface RunAuditEntry {
-  run_id: string;
-  at_ns: number;
-  event: string;
-  detail: string | null;
-  actor: string | null;
+    run_id: string;
+    at_ns: number;
+    event: string;
+    detail: string | null;
+    actor: string | null;
 }
 
 // --- T10: approval workflow --------------------------------------------------
@@ -641,26 +653,26 @@ export type ApprovalTier = 'T1' | 'T2' | 'T3';
  * `GET /api/approvals`.
  */
 export interface ApprovalRequest {
-  run_id: string;
-  state: string;
-  queued_at_ns: number;
-  params_json: string | null;
-  definition_name: string | null;
-  tier: ApprovalTier;
-  /** SHA-256 pin of the approved definition bytes (64 hex chars). */
-  pin_hash: string;
-  env: string;
-  target: string | null;
-  quorum_required: number;
-  requested_by: string;
-  requested_at_ns: number;
-  expires_at_ns: number;
-  /** Null while pending; set once the request was consumed (run dispatched). */
-  consumed_at_ns: number | null;
-  break_glass: boolean;
-  break_glass_by: string | null;
-  break_glass_justification: string | null;
-  approved_count: number;
+    run_id: string;
+    state: string;
+    queued_at_ns: number;
+    params_json: string | null;
+    definition_name: string | null;
+    tier: ApprovalTier;
+    /** SHA-256 pin of the approved definition bytes (64 hex chars). */
+    pin_hash: string;
+    env: string;
+    target: string | null;
+    quorum_required: number;
+    requested_by: string;
+    requested_at_ns: number;
+    expires_at_ns: number;
+    /** Null while pending; set once the request was consumed (run dispatched). */
+    consumed_at_ns: number | null;
+    break_glass: boolean;
+    break_glass_by: string | null;
+    break_glass_justification: string | null;
+    approved_count: number;
 }
 
 /** `GET /api/approvals` queue row — same shape as the embedded request. */
@@ -668,21 +680,21 @@ export type ApprovalQueueRow = ApprovalRequest;
 
 /** One approver decision, oldest first in `approval.decisions`. */
 export interface ApprovalDecision {
-  run_id: string;
-  approver: string;
-  decision: 'approved' | 'rejected';
-  note: string | null;
-  decided_at_ns: number;
+    run_id: string;
+    approver: string;
+    decision: 'approved' | 'rejected';
+    note: string | null;
+    decided_at_ns: number;
 }
 
 export interface RunDetail {
-  run: RunRow;
-  audit: RunAuditEntry[];
-  /** T10: always present; `request` is null when the run never gated. */
-  approval: {
-    request: ApprovalRequest | null;
-    decisions: ApprovalDecision[];
-  };
+    run: RunRow;
+    audit: RunAuditEntry[];
+    /** T10: always present; `request` is null when the run never gated. */
+    approval: {
+        request: ApprovalRequest | null;
+        decisions: ApprovalDecision[];
+    };
 }
 
 // --- Authoring: fault catalog + scaffold -------------------------------------
@@ -690,59 +702,59 @@ export interface RunDetail {
 /** One documented argument of a catalog action. Plugin manifests declare no
     typed parameter schema, so every arg renders as a plain text input. */
 export interface CatalogArg {
-  name: string;
-  required: boolean;
-  description: string;
+    name: string;
+    required: boolean;
+    description: string;
 }
 
 /** A single fault action or probe in the fault catalog. */
 export interface CatalogAction {
-  plugin: string;
-  name: string;
-  description: string;
-  kind: 'action' | 'probe';
-  args: CatalogArg[];
+    plugin: string;
+    name: string;
+    description: string;
+    kind: 'action' | 'probe';
+    args: CatalogArg[];
 }
 
 /** A fault domain and the actions grouped under it. */
 export interface CatalogDomain {
-  domain: string;
-  label: string;
-  actions: CatalogAction[];
+    domain: string;
+    label: string;
+    actions: CatalogAction[];
 }
 
 /** `GET /api/authoring/catalog` response. */
 export interface CatalogResponse {
-  action_count: number;
-  domains: CatalogDomain[];
+    action_count: number;
+    domains: CatalogDomain[];
 }
 
 /** `POST /api/authoring/scaffold` request — mirrors the MCP
     `tumult_scaffold_experiment` tool's argument schema. `plugin` is optional
     when `action` is fully qualified as `plugin::action`. */
 export interface ScaffoldRequest {
-  plugin?: string;
-  action: string;
-  args: Record<string, string>;
-  target: string;
-  probe_command?: string;
-  probe_url?: string;
-  probe_expect?: string;
-  title?: string;
+    plugin?: string;
+    action: string;
+    args: Record<string, string>;
+    target: string;
+    probe_command?: string;
+    probe_url?: string;
+    probe_expect?: string;
+    title?: string;
 }
 
 /** `POST /api/authoring/scaffold` response. `validation_error` is present
     only when `valid` is false. */
 export interface ScaffoldResponse {
-  action: string;
-  toon: string;
-  valid: boolean;
-  validation_error?: string;
+    action: string;
+    toon: string;
+    valid: boolean;
+    validation_error?: string;
 }
 
 /** `POST /api/runs/validate` response. The endpoint validates AND registers
     (content-hash deduped): `registered` is false when the same TOON was
     already in the registry. */
 export type ValidateToonResponse =
-  | { valid: true; registry_id: string; name: string; registered: boolean }
-  | { valid: false; error: string };
+    | { valid: true; registry_id: string; name: string; registered: boolean }
+    | { valid: false; error: string };

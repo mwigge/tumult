@@ -98,7 +98,8 @@ struct OtlpGrpc {
 }
 
 fn to_status(e: crate::error::IngestError) -> Status {
-    Status::internal(e.to_string())
+    tracing::error!(error = %e, "OTLP write failed");
+    Status::internal("telemetry write failed")
 }
 
 #[tonic::async_trait]
@@ -127,13 +128,12 @@ impl MetricsService for OtlpGrpc {
     ) -> Result<Response<ExportMetricsServiceResponse>, Status> {
         authorize(self.ingest_token.as_ref(), &request)?;
         let rows = tumult_otlp::metrics_request_to_rows(request.get_ref());
+        let response = crate::http::metrics_response(rows.rejected_data_points);
         self.ingest
             .write(Batch::Metrics(rows))
             .await
             .map_err(to_status)?;
-        Ok(Response::new(ExportMetricsServiceResponse {
-            partial_success: None,
-        }))
+        Ok(Response::new(response))
     }
 }
 

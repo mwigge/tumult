@@ -59,8 +59,14 @@ async fn metrics_export_round_trips() {
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
-    let body = response.text().await.unwrap();
-    assert_eq!(body, "0 data points ingested");
+    assert_eq!(response.headers()["content-type"], "application/x-protobuf");
+    let body = response.bytes().await.unwrap();
+    let decoded =
+        opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceResponse::decode(
+            body,
+        )
+        .unwrap();
+    assert!(decoded.partial_success.is_none());
     server.abort();
 }
 
@@ -85,6 +91,6 @@ async fn dead_writer_channel_is_a_server_error_not_a_hang() {
         .unwrap();
     assert_eq!(response.status(), 500);
     let body = response.text().await.unwrap();
-    assert!(body.contains("writer task stopped"), "{body}");
+    assert!(body.contains("telemetry write failed"), "{body}");
     server.abort();
 }

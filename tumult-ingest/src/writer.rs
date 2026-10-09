@@ -20,7 +20,7 @@ pub enum Batch {
     Spans(Vec<SpanRow>),
     Logs(Vec<LogRow>),
     Metrics(MetricRows),
-    /// See [`ExecFn`].
+    /// See `ExecFn`.
     Exec(ExecFn),
 }
 
@@ -305,6 +305,7 @@ mod tests {
         let store = Store::open(&d.path().join("k.duckdb")).unwrap();
         let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 4);
         let rows = tumult_otlp::MetricRows {
+            rejected_data_points: 0,
             sums: vec![tumult_lake::MetricSumRow {
                 ts_ns: 1,
                 metric_name: "demo.sum".into(),

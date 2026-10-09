@@ -4,7 +4,7 @@
 //! functions manage the `resilience.load` span and the background load process,
 //! enriching the span with result metrics when the load test is stopped.
 
-use super::{LoadExecutor, LoadHandle, RunConfig, TRACER_NAME};
+use super::{LoadExecutor, LoadHandle, RunConfig, RunnerError, TRACER_NAME};
 use crate::types::{Experiment, LoadResult};
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -18,7 +18,7 @@ use opentelemetry::KeyValue;
 pub(super) fn start_load(
     experiment: &Experiment,
     config: &RunConfig,
-) -> (Option<opentelemetry::ContextGuard>, Option<LoadHandle>) {
+) -> Result<(Option<opentelemetry::ContextGuard>, Option<LoadHandle>), RunnerError> {
     let load_tracer = opentelemetry::global::tracer(TRACER_NAME);
     let load_span_guard = if let Some(ref load_config) = experiment.load {
         let tool_name = format!("{}", load_config.tool);
@@ -55,15 +55,14 @@ pub(super) fn start_load(
                 Some(handle)
             }
             Err(e) => {
-                tracing::error!(error = %e, "failed to start load test");
-                None
+                return Err(RunnerError::LoadStart(e));
             }
         }
     } else {
         None
     };
 
-    (load_span_guard, load_handle)
+    Ok((load_span_guard, load_handle))
 }
 
 /// Stop the running load test, collect results, and enrich the current

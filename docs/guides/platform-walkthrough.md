@@ -8,14 +8,18 @@ nav_order: 22
 
 A click-through of the Tumult platform: sign in, register an
 experiment, run it behind an approval quorum, e-stop a gated run, and
-generate the compliance evidence pack. Every screenshot below is the
-embedded web UI on the seeded demo stack — nothing is mocked.
+generate an evidence pack. Screenshots illustrate earlier seeded demo runs;
+they are real captures, but do not establish that the current image and all
+provider journeys have been tested together. Current approval and binding
+requirements below take precedence over the pictured values.
 
 ## Start the demo stack
 
 ```bash
+cp .env.example .env
+# Set all three KRONIKA_* values in .env; use the generation commands there.
 docker compose -f docker/docker-compose.kronika.yml up -d --build
-# open http://localhost:14318/ — demo credentials are in the compose file
+# Open http://localhost:14318/ and sign in as admin with the password you set.
 ```
 
 The stack builds the UI and the `tumultd` binary, seeds an eight-experiment
@@ -107,16 +111,27 @@ method steps, rollbacks — and start.
 
 ## Approval gate
 
-Run creation is change management. The definition's frozen facts classify the
-run into a risk tier; this one is T2, so it parks in `pending_approval`
+Before starting, a deployment administrator must review the dry-run inputs,
+provider destinations and credentials and configure an
+[execution binding](execution-bindings.md). Select the same environment and
+target when creating the run. The demo does not authorize new definitions
+automatically. A missing binding results in T3 for unscoped operators and a
+binding error for scoped operators; T3 also requires the configured autopilot
+gate and cannot be approved just by following the old screenshot.
+
+Run creation is change management. Reviewed bindings and the definition's
+frozen facts classify the run into a risk tier. The pictured earlier run was
+T2 and parked in `pending_approval`
 behind a quorum of one approver, with a SHA-256 pin over the resolution
 inputs, a 24h TTL, and single-use consumption at dispatch.
 
 ![Run parked awaiting approval — approval chain card with pin](../assets/run-pending-approval.png)
 
 Segregation of duties is enforced by the writer: the requester can never
-approve their own run. A second identity — `bob-admin` — reviews the
-pending request in the queue against its pin and records a decision note.
+approve their own run. Sign in as the seeded `bob` approver to review it; the
+earlier screenshots use a separately provisioned `bob-admin` identity. The
+approver reviews the pending request in the queue against its pin and records
+a decision note.
 
 ![Bob reviews the pending T2 run in the approvals queue](../assets/approvals-queue-review.png)
 
@@ -136,8 +151,10 @@ chain with bob-admin's note, and the per-run hash-chained audit trail from
 
 A second gated run — the pause-container definition parked in
 `pending_approval` — is stopped before it ever dispatches. The two-step
-e-stop is deliberate: the first click arms, the confirm halts the run before
-the next activity and unwinds rollbacks.
+e-stop is deliberate: the first click arms and the confirm cancels dispatch.
+No fault ran in this example, so no rollback is needed. For an active run,
+cancellation prevents later dispatch and applies its rollback strategy; a
+provider call already in progress may finish or time out first.
 
 ![Two-step e-stop confirmation](../assets/run-estop-confirm.png)
 
@@ -156,6 +173,10 @@ Finally, the compliance story: R1 executive digests, R2 evidence packs
 store as document-controlled PDFs. The R2 pack includes the approval chain of
 every gated run in the window (SOC 2 CC8.1) — the two runs above,
 bob-admin's approval included.
+
+Reports summarize available evidence; they do not certify framework compliance
+or infer independent testing from a passing experiment. Unmapped clauses and
+unverified assertions remain explicit in the evidence pack.
 
 Reports respect the same per-user environment scopes as the rest of Tumult.
 A user scoped to specific environments generates digests, evidence packs and

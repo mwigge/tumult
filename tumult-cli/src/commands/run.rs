@@ -8,7 +8,7 @@ use tumult_core::engine::{
     resolve_config, resolve_secrets, validate_experiment,
 };
 use tumult_core::execution::RollbackStrategy;
-use tumult_core::journal::write_journal;
+use tumult_core::journal::{encode_journal, JournalOutput};
 use tumult_core::runner::{run_experiment, RunConfig};
 use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
@@ -34,6 +34,36 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     auto_ingest: bool,
     vars: std::collections::HashMap<String, String, S>,
     load_override: Option<tumult_core::types::LoadConfig>,
+) -> Result<()> {
+    cmd_run_with_baseline_mode(
+        experiment_path,
+        journal_path,
+        force,
+        dry_run,
+        rollback_strategy,
+        auto_ingest,
+        vars,
+        load_override,
+        tumult_core::runner::BaselineMode::Full,
+    )
+    .await
+}
+
+/// Runs an experiment with an explicitly enforced measurement mode.
+///
+/// # Errors
+/// Returns an error when validation, measurement, execution or journal writing fails.
+#[allow(clippy::too_many_arguments)]
+pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
+    experiment_path: &Path,
+    journal_path: &Path,
+    force: bool,
+    dry_run: bool,
+    rollback_strategy: RollbackStrategy,
+    auto_ingest: bool,
+    vars: std::collections::HashMap<String, String, S>,
+    load_override: Option<tumult_core::types::LoadConfig>,
+    baseline_mode: tumult_core::runner::BaselineMode,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = tokio::fs::metadata(experiment_path)
@@ -158,6 +188,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         };
 
     let run_config = RunConfig {
+        baseline_mode,
         rollback_strategy,
         cancellation_token: Some(cancel_token),
         parent_context: None,
@@ -167,9 +198,10 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
 
     println!("Running experiment: {}", experiment.title);
 
+    let output = JournalOutput::prepare(journal_path)?;
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
-    write_journal(&journal, journal_path)?;
+    output.write(&encode_journal(&journal)?)?;
 
     println!("Status: {:?}", journal.status);
     println!("Duration: {}ms", journal.duration_ms);
@@ -180,7 +212,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
     println!("Journal written to: {}", journal_path.display());
 
     // Auto-ingest into persistent analytics store
-    if auto_ingest {
+    if auto_ingest && baseline_mode != tumult_core::runner::BaselineMode::Only {
         match auto_ingest_journal(&journal, &experiment).await {
             Ok((true, via)) => println!(
                 "Ingested into persistent analytics store{}",

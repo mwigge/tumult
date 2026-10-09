@@ -27,22 +27,25 @@ Tumult speaks OTLP only. The OTel Collector routes telemetry to your backend of 
 The fastest way to see traces locally:
 
 ```bash
-cd docker/
-docker compose up -d
+docker compose -f docker/docker-compose.observability.yml up -d --wait
 ```
 
 This starts:
 - **OTel Collector** on `localhost:14317` (gRPC) and `localhost:14318` (HTTP)
-- **SigNoz UI** on `http://localhost:13301`
-- **Jaeger UI** (classic stack) on `http://localhost:16686`
+- **SigNoz UI** on `http://localhost:3301`
+
+Jaeger is optional: add `--profile classic` before `up` to expose its UI at
+`http://localhost:16686`. Run these commands from the repository root.
 
 Then run an experiment:
 
 ```bash
+tumult init
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run experiment.toon
 ```
 
-Open SigNoz at `http://localhost:13301` → Services → `tumult`, and you'll see the experiment trace with all phases.
+Open SigNoz at `http://localhost:3301` → Services → `tumult`, and inspect the spans for the activities that ran. Baseline-only observations
+and experiments without optional phases do not emit a complete fault lifecycle.
 
 ## Configuration
 
@@ -54,7 +57,8 @@ Open SigNoz at `http://localhost:13301` → Services → `tumult`, and you'll se
 | `TUMULT_OTEL_CONSOLE` | `false` | Also print spans to stdout |
 | `TUMULT_MCP_TOKEN` | — | Bearer token for MCP server auth (unset = no auth) |
 | `TUMULT_CLICKHOUSE_URL` | — | ClickHouse URL for SigNoz cross-correlation mode |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP collector endpoint |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (no export) | OTLP/gRPC endpoint, e.g. `http://localhost:14317` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | unset | Export authorization metadata, e.g. `authorization=Bearer <ingest-token>` |
 | `OTEL_SERVICE_NAME` | `tumult` | Service name in telemetry |
 | `OTEL_RESOURCE_ATTRIBUTES` | — | Additional resource attributes (e.g., `deployment.environment=staging`) |
 
@@ -76,14 +80,13 @@ Reference configs are provided in the `collector/` directory:
 | `otel-collector-dev.yaml` | Jaeger | Local development with docker-compose |
 | `otel-collector-signoz.yaml` | SigNoz | All-in-one observability |
 | `otel-collector-grafana.yaml` | Tempo + Mimir + Loki | Grafana stack |
-| `otel-collector-e2e.yaml` | Multi-backend | E2E test environment |
 
 ### SigNoz
 
 ```bash
 # Start via Docker (recommended — see docker/README.md)
 make up-observe
-open http://localhost:13301
+open http://localhost:3301
 
 # Or run the collector standalone:
 otelcol --config collector/otel-collector-signoz.yaml
@@ -101,7 +104,11 @@ otelcol --config collector/otel-collector-grafana.yaml
 
 ## Span Hierarchy
 
-Every experiment produces the following span tree. The root span is `resilience.experiment`; all nested spans are children.
+A fault run uses `resilience.experiment` as its root span. The following
+inventory shows instrumentation available across the crates; only executed
+paths emit spans. Statistical baseline acquisition is separate from the
+ordinary runner. With MCP, the tool-call span is a parent of the experiment,
+not its child.
 
 ```
 resilience.experiment                    (root — tumult-core runner)
@@ -310,8 +317,8 @@ The MCP handler extracts the `traceparent` header and wires it into `RunConfig.p
 
 **No traces appearing?**
 1. Check `TUMULT_OTEL_ENABLED` is not `false`
-2. Verify the collector is running: `curl -v localhost:4317`
-3. Check collector logs: `docker compose logs otel-collector`
+2. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317`; gRPC port 4317 is not an HTTP health endpoint
+3. Check collector health at `http://localhost:13133` and logs with `docker compose -f docker/docker-compose.observability.yml logs tumult-collector`
 4. Try `TUMULT_OTEL_CONSOLE=true tumult run experiment.toon` to dump spans to stdout
 
 **Traces appear but no metrics?**

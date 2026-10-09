@@ -6,383 +6,141 @@ nav_order: 1
 
 # Tumult Data Lifecycle
 
-Five-phase data lifecycle for resilience testing experiments. Every experiment progresses through these phases sequentially. The journal captures all five phases as structured evidence.
+This reference describes the journal fields produced by the current runner.
+The five-phase model also reserves fields for future measurement features;
+a field in the schema does not imply that the runner populates it. Optional
+results are absent when their phase does not run.
+
+| Phase | Current behavior | Limits |
+|---|---|---|
+| Estimate | Preserve the optional operator estimate in the journal. | A prediction is not a measured result. |
+| Baseline | Evaluate the declared steady-state probes before faults. | Statistical baseline acquisition is a separate library capability; ordinary runs do not acquire or apply derived tolerances. |
+| During | Sample hypothesis probes while the method executes. | Probe timing, errors and tolerance breaches are measured; degradation onset, peak and shape classification are reserved. |
+| Post | Sample hypothesis probes after method completion, before final hypothesis and rollback. | Stops after one round in which all probes pass, cancellation, or timeout. This is not sustained recovery after cleanup. |
+| Analysis | Compare an optional estimate to the run outcome. | Runner scores are binary indicators; cross-run trends and report scoring are separate analytics operations. |
+
+Continuous steady-state verification is a separate operating mode, not a
+sixth phase of an experiment.
+
+## Baseline modes
+
+| `tumult run --baseline-mode` | Behavior |
+|---|---|
+| `full` (default) | Run probes and the method with the declared tolerances. |
+| `skip` | Use the same declared tolerances; automatic statistical acquisition is not integrated. |
+| `only` | Evaluate steady-state probes once; exclude definition controls, method actions, load and rollback. Requires hypothesis probes. |
+
+Baseline-only journals are labeled as observations and are not automatically
+ingested as fault-execution evidence. Probe implementations must themselves be
+safe to run: declaring a shell command a probe does not sandbox its effects.
+See [Statistical Baselines](guides/baseline-guide.md) for the separate statistics
+library and [Execution Flow](guides/execution-flow.md) for runtime ordering.
+
+## During results
+
+`during_result` records the sampling window, actual `sample_interval_s`, and
+per-probe sample count, mean/min/max execution duration in milliseconds,
+error rate and tolerance breaches. The default interval is one second, with
+at most 300 sampling rounds. There is no sampling when the experiment has no
+hypothesis probes.
+
+These `DuringResult` fields are reserved and remain absent (`None`):
+
+- `degradation_onset_s`
+- `degradation_peak_s`
+- `degradation_magnitude`
+- `graceful_degradation`
+
+The duration statistics describe execution of the probe, not arbitrary numeric
+values printed by it. A database integrity check must be supplied as an
+explicit probe with an appropriate tolerance.
+
+## Post results
+
+`post_result` records observations starting immediately after the method
+finishes. Probes use their declared tolerances and the same sampling interval
+as the during phase. Sampling stops at the first round in which every probe
+passes, on cancellation, or at the recovery timeout (default 30 seconds).
+The runner does not require ten consecutive successful samples.
+
+`full_recovery` reports whether all probes were observed to recover;
+`recovery_time_s` and per-probe timings measure from the post-phase start.
+`mttr_s` is absent if recovery was not observed. Always inspect the recovery
+flag alongside timings: a duration alone does not prove recovery. Final
+hypothesis and rollback results are separate evidence.
+
+These `PostResult` fields are reserved and remain absent (`None`):
+
+- `residual_degradation`
+- `data_integrity_verified`
+- `data_loss_detected`
+
+The runner does not automatically verify data integrity or assert absence of
+data loss. Post sampling precedes rollback, so a fault requiring explicit
+rollback can remain active during this window. Supply and inspect cleanup
+steps; a Completed status does not imply every resource was restored.
+
+## Analysis results
+
+When an estimate is present, the runner populates `estimate_accuracy` and
+`resilience_score` with coarse 0/1 outcome indicators. The journal's
+`estimate_recovery_delta_s` and `trend` fields remain absent. Use the analytics
+commands for cross-run analysis; report scorecards use their own scoring
+model. Evidence reports summarize observations and disclose unverified
+mappings; they do not establish regulatory compliance.
+
+## Time and persistence
+
+Fields ending in `_ns` are epoch nanoseconds; `_ms` durations are milliseconds;
+`_s` durations are seconds. Read the field's unit rather than assuming one unit
+for every duration.
+
+The CLI writes a TOON journal, then optionally imports journal detail into the
+DuckDB lake. When a daemon owns the database, use the daemon import API rather
+than opening the database from another writing process. OTLP traces/metrics
+are a separate export path and require `OTEL_EXPORTER_OTLP_ENDPOINT`; they can
+be sent directly to `tumultd` or through an OTel Collector. The collector routes
+signals to the chosen backend. See [Observability Setup](guides/observability-setup.md).
+
+Normal queries and reports read the hot database. Parquet archives are read
+through their committed manifest and are not automatically unioned into hot
+queries. Retention is disabled until that completeness guarantee exists.
+[Data portability and recovery](guides/data-portability.md) defines archive
+coverage, credential exclusions and complete operational backup/restore.
+Local Parquet files and hash chains do not enforce WORM storage or protect
+against an administrator who can rewrite both evidence and hashes.
 
----
+## SQL over imported journals
 
-## Phase Overview
+The implemented journal-detail tables are `experiments`, `activity_results`
+and `load_results`; there is no `journals` table. Detailed recovery fields
+remain in the TOON journal and are not columns in `experiments`.
 
-```mermaid
-flowchart LR
-    accTitle: Five-phase Tumult data lifecycle
-    accDescr: An estimate is followed by baseline measurement, observation during fault injection, post-fault recovery measurement, and cross-run analysis.
-    estimate[0 Estimate<br/>prediction] --> baseline[1 Baseline<br/>measure normal]
-    baseline --> during[2 During<br/>inject and sample]
-    during --> post[3 Post<br/>measure recovery]
-    post --> analysis[4 Analysis<br/>compare runs]
-```
-
-Continuous steady-state verification is a separate operating mode. It emits
-`resilience.verify.*` data but is not a sixth phase of one experiment run.
-
----
-
-## Phase 0 — ESTIMATE (prediction)
-
-The operator declares the expected outcome BEFORE any measurement occurs. This is not optional decoration — comparing prediction vs actual is how teams learn. An experiment without an estimate is a measurement without a hypothesis.
-
-### Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `expected_outcome` | `string` | One of: `no_impact`, `degraded`, `partial_outage`, `full_outage` |
-| `expected_recovery_s` | `f64` | Predicted recovery time in seconds |
-| `expected_degradation` | `f64` | Predicted degradation magnitude (0.0 to 1.0) |
-| `expected_data_loss` | `bool` | Whether data loss is expected |
-| `confidence` | `f64` | Operator confidence in prediction (0.0 to 1.0) |
-| `rationale` | `string` | Free-text explanation of why this outcome is expected |
-
-### Attributes
-
-```
-resilience.estimate.expected_outcome     = "degraded"
-resilience.estimate.expected_recovery_s  = 30.0
-resilience.estimate.expected_degradation = 0.15
-resilience.estimate.expected_data_loss   = false
-resilience.estimate.confidence           = 0.7
-resilience.estimate.rationale            = "Kafka replication factor 3, killing 1 broker should cause brief consumer rebalance"
-```
-
-### AQE tracking
-
-Over many runs, the AQE (Agentic QE) fleet can track prediction accuracy per team, per system, per failure mode. Teams that consistently over-estimate resilience are learning something different from teams that under-estimate it. Both patterns are valuable signals.
-
----
-
-## Phase 1 — BASELINE (measurement before fault)
-
-Connect to all probe targets and establish what "normal" looks like before injecting any fault. The baseline is the ruler against which all subsequent phases are measured.
-
-### Procedure
-
-1. **Connect** to all probe targets (SSH, HTTP, database, Kafka JMX, etc.)
-2. **Warmup** — discard the first N samples (settling time after connection establishment)
-3. **Sample** at the configured interval for the configured duration
-4. **Derive** statistical baseline from the collected samples
-5. **Detect** if the baseline itself is anomalous (system already degraded before fault injection)
-
-### Statistical Methods
-
-| Method | Formula | When to use |
-|--------|---------|-------------|
-| `percentile` | p50, p90, p95, p99 of samples | Latency measurements |
-| `mean-stddev` | mean +/- N * stddev (default N=2) | Normally distributed metrics |
-| `iqr` | Q1 - 1.5*IQR to Q3 + 1.5*IQR | Skewed distributions, outlier-resistant |
-| `error-rate` | errors / total requests | HTTP error rates, query failure rates |
-| `availability` | uptime / (uptime + downtime) | Service availability probes |
-
-### Baseline Output
-
-```
-resilience.baseline.method           = "mean-stddev"
-resilience.baseline.samples          = 120
-resilience.baseline.interval_s       = 1.0
-resilience.baseline.warmup_samples   = 10
-resilience.baseline.mean             = 45.2
-resilience.baseline.stddev           = 3.8
-resilience.baseline.p50              = 44.0
-resilience.baseline.p90              = 50.1
-resilience.baseline.p95              = 52.3
-resilience.baseline.p99              = 58.7
-resilience.baseline.iqr              = 5.2
-resilience.baseline.anomalous        = false
-```
-
-### Anomaly detection
-
-If the baseline itself is anomalous (e.g., error rate already elevated, latency already spiking), the experiment should emit a warning and optionally abort. Running a chaos experiment on an already-degraded system produces meaningless results.
-
----
-
-## Phase 2 — DURING (observation under fault)
-
-Continuous sampling while the fault is active. This phase captures the degradation curve — the shape of the system's response to the injected fault.
-
-### Procedure
-
-1. **Continue sampling** with the same probes and interval as baseline
-2. **Detect onset** — the timestamp when metrics first breach the baseline threshold
-3. **Track peak** — the maximum deviation from baseline
-4. **Classify shape** — graceful degradation (curve) vs catastrophic failure (cliff)
-5. **Record threshold breaches** in real-time as OTel events on the active span
-
-### The Degradation Curve
-
-```
- Response
- Time (ms)
-    ^
-    |
-200 |                          * *
-    |                        *     *        <-- peak degradation
-180 |                      *         *
-    |                    *             *
-160 |                  *                 *
-    |                *                     *
-140 |              *                         *
-    |           *                               *
-120 |         *                                   *
-    |       *                                       * * * * *
-100 |  * * *                                                    * * * *
-    |  baseline                                                 recovered
- 80 |
-    +-----+--------+-----------+----------+-----------+-----------> time
-          |        |           |          |           |
-       baseline  onset      peak      rollback    recovered
-        ends    detected   reached    initiated
-```
-
-### Graceful vs Catastrophic
-
-```
- GRACEFUL (curve)                    CATASTROPHIC (cliff)
-
-    ^                                    ^
-    |       . * * .                      |
-    |     .         .                    |          * * * * * * *
-    |    .            .                  |          |
-    |  .                .                |          |
-    | .                   .              |          |
-    |.                      .            |  * * * * |
-    +------------------------->          +------------------------->
-```
-
-### Attributes
-
-```
-resilience.during.onset_epoch_ns     = 1711234567890123456
-resilience.during.peak_epoch_ns      = 1711234578901234567
-resilience.during.peak_value          = 198.4
-resilience.during.peak_deviation      = 153.2          # absolute deviation from baseline mean
-resilience.during.peak_deviation_pct  = 338.9          # percentage deviation
-resilience.during.shape               = "graceful"     # or "catastrophic"
-resilience.during.threshold_breaches  = 47
-resilience.during.samples             = 60
-```
-
-All data is streamed as OTel metrics via OTLP. The collector routes to storage.
-
----
-
-## Phase 3 — POST (recovery measurement)
-
-Measurement after the fault has been removed or rolled back. Uses the same probes, same interval, and same duration as the baseline phase — the two phases must be directly comparable.
-
-### Procedure
-
-1. **Roll back** or remove the fault (automated by the experiment's rollback steps)
-2. **Continue sampling** with identical probe configuration as Phase 1
-3. **Track recovery time** per probe — the duration from rollback initiation to metric returning within baseline thresholds
-4. **Verify data integrity** — for stateful systems, confirm no data loss or corruption
-5. **Calculate MTTR** — Mean Time To Recovery across all probes
-
-### Recovery Detection
-
-A probe is "recovered" when its value returns to within the baseline threshold for a sustained period (configurable, default: 10 consecutive samples within threshold).
-
-### Attributes
-
-```
-resilience.post.recovery_epoch_ns         = 1711234600123456789
-resilience.post.recovery_duration_s       = 32.5
-resilience.post.mttr_s                    = 32.5
-resilience.post.data_integrity_verified   = true
-resilience.post.data_loss_detected        = false
-resilience.post.fully_recovered           = true
-resilience.post.recovery_samples          = 120
-resilience.post.samples_within_threshold  = 118
-```
-
----
-
-## Phase 4 — ANALYSIS (cross-run learning)
-
-Post-experiment analysis that spans multiple experiment runs. This is where individual experiments become organizational knowledge.
-
-### Capabilities
-
-1. **Estimate vs Actual** — compare Phase 0 predictions with Phase 2/3 observations
-2. **Trend detection** — track recovery time, degradation magnitude, and prediction accuracy across runs
-3. **Resilience scoring** — compute a composite resilience score from the experiment evidence
-4. **Regulatory evidence generation** — produce audit-ready reports mapping experiment results to DORA, NIS2, PCI-DSS requirements (see `docs/regulatory-mapping.md`)
-5. **AQE pattern learning** (Phase 3 of the project) — the AQE fleet learns which failure modes produce unexpected results and adjusts experiment selection
-
-### Attributes
-
-```
-resilience.analysis.estimate_accuracy     = 0.82
-resilience.analysis.estimate_outcome_match = false    # predicted no_impact, observed degraded
-resilience.analysis.trend_direction        = "improving"
-resilience.analysis.trend_run_count        = 15
-resilience.analysis.resilience_score       = 0.76
-resilience.analysis.regulatory_frameworks  = "DORA,NIS2,PCI-DSS"
-```
-
----
-
-## Time Standard
-
-All timestamps in the Tumult data model use a consistent convention:
-
-| Quantity | Type | Unit | Example |
-|----------|------|------|---------|
-| Point in time | `i64` | Epoch nanoseconds | `1711234567890123456` |
-| Duration | `f64` | Seconds | `32.5` |
-
-Epoch nanoseconds provide sub-microsecond precision and align with OTel's timestamp format. Seconds for durations provide human readability while retaining millisecond precision in the fractional part.
-
----
-
-## Data Flow
-
-```
- experiment.toon                          OTel Collector
- (experiment                              (fan-out)
-  definition)                                 │
-      │                                       ├──> Jaeger (traces)
-      ▼                                       ├──> Prometheus (metrics)
- ┌──────────┐    OTLP (gRPC/HTTP)            ├──> Loki (logs)
- │  tumult   │ ──────────────────────────────>│
- │  engine   │                                └──> DuckDB/Parquet
- │           │                                     (journals +
- │           │                                      analytics)
- │           │──── journal.toon
- │           │     (structured experiment
- └──────────┘      output in TOON format)
-```
-
-### Integration Principle
-
-The OTel Collector is THE integration point. Tumult speaks OTLP only — it does not integrate directly with Jaeger, Prometheus, Loki, or any other backend. The Collector receives OTLP and routes (fans out) to all configured backends.
-
-This means:
-
-- Tumult has exactly one export dependency: OTLP
-- Adding a new backend (Grafana Tempo, Elastic APM, Datadog) is a Collector config change, not a Tumult code change
-- The Collector handles sampling, batching, retry, and back-pressure
-
-### Local Analytics: DuckDB + Parquet
-
-For local analysis without a full observability stack, journals are stored in DuckDB (embedded, zero-dependency) and exported as Parquet files for portability.
-
-```
-journal.toon ──> tumult-report ──> DuckDB (embedded)
-                                       │
-                                       ├──> SQL queries (interactive)
-                                       └──> Parquet export (share/archive)
-```
-
-DuckDB is chosen because:
-- Embedded — no server process, no network, no setup
-- Columnar — efficient for analytical queries over experiment metrics
-- Parquet-native — reads and writes Parquet directly
-- SQL — familiar query language for ad-hoc analysis
-
----
-
-## Example SQL Queries Against Journals
-
-### Recovery time trend over last 30 days
+### Recent run outcomes
 
 ```sql
-SELECT
-    experiment_title,
-    DATE_TRUNC('day', started_at) AS run_date,
-    AVG(recovery_duration_s) AS avg_recovery_s,
-    MIN(recovery_duration_s) AS best_recovery_s,
-    MAX(recovery_duration_s) AS worst_recovery_s,
-    COUNT(*) AS run_count
-FROM journals
-WHERE started_at > CURRENT_TIMESTAMP - INTERVAL '30 days'
-GROUP BY experiment_title, run_date
-ORDER BY experiment_title, run_date;
-```
-
-### Estimate accuracy by team
-
-```sql
-SELECT
-    tags->>'team' AS team,
-    COUNT(*) AS experiments,
-    AVG(CASE WHEN estimate_outcome = actual_outcome THEN 1.0 ELSE 0.0 END) AS outcome_accuracy,
-    AVG(ABS(estimate_recovery_s - actual_recovery_s)) AS avg_recovery_error_s,
-    AVG(estimate_confidence) AS avg_confidence
-FROM journals
-WHERE estimate_outcome IS NOT NULL
-GROUP BY tags->>'team'
-ORDER BY outcome_accuracy DESC;
-```
-
-### Systems with degrading resilience (recovery time trending upward)
-
-```sql
-WITH ranked AS (
-    SELECT
-        target_system,
-        started_at,
-        recovery_duration_s,
-        LAG(recovery_duration_s) OVER (
-            PARTITION BY target_system ORDER BY started_at
-        ) AS prev_recovery_s
-    FROM journals
-    WHERE status = 'completed' AND recovery_duration_s IS NOT NULL
-)
-SELECT
-    target_system,
-    COUNT(*) AS runs,
-    AVG(recovery_duration_s - prev_recovery_s) AS avg_delta_s,
-    CASE
-        WHEN AVG(recovery_duration_s - prev_recovery_s) > 5.0 THEN 'DEGRADING'
-        WHEN AVG(recovery_duration_s - prev_recovery_s) < -5.0 THEN 'IMPROVING'
-        ELSE 'STABLE'
-    END AS trend
-FROM ranked
-WHERE prev_recovery_s IS NOT NULL
-GROUP BY target_system
-ORDER BY avg_delta_s DESC;
-```
-
-### Experiments with worst estimate-vs-actual deviation
-
-```sql
-SELECT
-    experiment_title,
-    started_at,
-    estimate_outcome,
-    actual_outcome,
-    estimate_recovery_s,
-    recovery_duration_s AS actual_recovery_s,
-    ABS(estimate_recovery_s - recovery_duration_s) AS recovery_error_s,
-    estimate_confidence
-FROM journals
-WHERE estimate_outcome IS NOT NULL
-    AND estimate_outcome != actual_outcome
-ORDER BY recovery_error_s DESC
+SELECT title, status, started_at_ns, duration_ms,
+       hypothesis_before_met, hypothesis_after_met
+FROM experiments
+ORDER BY started_at_ns DESC
 LIMIT 20;
 ```
 
----
+### Failed activities with their run
 
-## Attribute Namespace Summary
+```sql
+SELECT e.experiment_id, e.title, a.name, a.phase, a.status, a.error
+FROM experiments e
+JOIN activity_results a ON a.experiment_id = e.experiment_id
+WHERE a.status = 'failed'
+ORDER BY a.started_at_ns DESC;
+```
 
-All resilience testing attributes live under the `resilience.*` namespace:
+### Available estimate comparisons
 
-| Prefix | Phase | Purpose |
-|--------|-------|---------|
-| `resilience.estimate.*` | 0 | Operator predictions before experiment |
-| `resilience.baseline.*` | 1 | Statistical baseline before fault |
-| `resilience.during.*` | 2 | Observations under active fault |
-| `resilience.post.*` | 3 | Recovery measurements after rollback |
-| `resilience.analysis.*` | 4 | Cross-run analysis and scoring |
-
-The `tumult.*` namespace is reserved for engine-level instrumentation (see the design doc for the full attribute list). The `resilience.*` namespace is the domain-level data model for the experiment lifecycle.
+```sql
+SELECT experiment_id, title, started_at_ns, estimate_accuracy, resilience_score
+FROM experiments
+WHERE estimate_accuracy IS NOT NULL
+ORDER BY started_at_ns DESC;
+```

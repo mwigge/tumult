@@ -194,6 +194,7 @@ pub fn run_gameday_with_wiring(
             break;
         }
         let exp_config = RunConfig {
+            baseline_mode: super::BaselineMode::default(),
             rollback_strategy: config.rollback_strategy.clone(),
             cancellation_token: config.cancellation_token.clone(),
             parent_context: Some(opentelemetry::Context::current()),

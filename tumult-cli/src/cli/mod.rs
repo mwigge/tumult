@@ -82,11 +82,11 @@ impl From<RecommendFormat> for tumult_intelligence::OutputFormat {
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BaselineMode {
-    /// Run full baseline then inject fault (default)
+    /// Run hypothesis checks and faults with declared tolerances (default)
     Full,
-    /// Skip baseline, use static tolerances
+    /// Run with static tolerances (statistical baseline capture is not integrated)
     Skip,
-    /// Run baseline only, no fault injection
+    /// Measure steady-state probes once; exclude controls, faults, load and rollback
     Only,
 }
 

@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 // /api/gamedays* — GameDay registration and inspection (campaign execution
 // lands separately)
 
-const EXP_A: &str = "
+pub(crate) const EXP_A: &str = "
 title: campaign step A
 method[1]:
   - name: action-1
@@ -23,7 +23,7 @@ rollbacks[1]:
       function: noop
 ";
 
-const EXP_B: &str = "
+pub(crate) const EXP_B: &str = "
 title: campaign step B
 method[1]:
   - name: action-1

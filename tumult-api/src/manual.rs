@@ -10,17 +10,18 @@
 //! existed. The store enforces the lifecycle rules (draft mutability,
 //! attestation on submit, reviewer ≠ enterer) regardless.
 
+use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
-    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Writer,
+    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Store, Writer,
 };
 
 use crate::auth::Principal;
@@ -44,14 +45,16 @@ fn actor_or(
 }
 
 /// Map a lifecycle error to an HTTP response.
-fn manual_error(err: &ManualError) -> Response {
+fn manual_error(err: &ManualError) -> ApiError {
     let status = match err {
         ManualError::Invalid(_) | ManualError::SelfReview => StatusCode::BAD_REQUEST,
         ManualError::NotFound(_) => StatusCode::NOT_FOUND,
         ManualError::WrongStatus { .. } => StatusCode::CONFLICT,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
-    (status, Json(json!({"error": err.to_string()}))).into_response()
+    (status, Json(json!({"error": err.to_string()})))
+        .into_response()
+        .into()
 }
 
 /// Run a typed manual-evidence mutation on the single writer and surface
@@ -59,8 +62,10 @@ fn manual_error(err: &ManualError) -> Response {
 /// the channel ack stays clean; the real outcome travels in `slot`).
 async fn exec_manual<T>(
     state: &ApiState,
+    principal: &Principal,
+    resource_id: Option<&str>,
     f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
-) -> Result<T, Response>
+) -> Result<T, ApiError>
 where
     T: Send + 'static,
 {
@@ -69,13 +74,32 @@ where
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error": "manual evidence writes are not wired (no ingest handle)"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
+    let scopes = principal.env_scopes.clone();
+    let resource_id = resource_id.map(str::to_owned);
+    let db = state.db_path.as_ref().clone();
     let slot = Arc::new(Mutex::new(None));
     let slot2 = Arc::clone(&slot);
     ingest
         .write(Batch::Exec(Box::new(move |writer: &Writer| {
-            *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(f(writer));
+            // Resolve scope inside the serialized writer operation: an edit cannot
+            // move the record between authorization and mutation.
+            let result = (|| {
+                if let Some(id) = resource_id.filter(|_| !scopes.is_empty()) {
+                    let detail = Store::at(&db).read_only()?.manual_experiment_detail(&id)?;
+                    let allowed = detail
+                        .as_ref()
+                        .and_then(|d| d.experiment["target_environment"].as_str())
+                        .is_some_and(|env| scopes.iter().any(|s| s == env));
+                    if !allowed {
+                        return Err(ManualError::NotFound(id));
+                    }
+                }
+                f(writer)
+            })();
+            *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
             Ok(())
         })))
         .await
@@ -141,7 +165,7 @@ impl ManualRecordRequest {
     }
 }
 
-fn bad_request(err: ManualError) -> Response {
+fn bad_request(err: ManualError) -> ApiError {
     manual_error(&err)
 }
 
@@ -150,11 +174,15 @@ pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ManualRecordRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let entered_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
+    check_environment(&principal, req.target_environment.as_deref())?;
     let new = req.into_new(entered_by).map_err(bad_request)?;
-    let id = exec_manual(&state, move |w| w.create_manual_draft(&new)).await?;
+    let id = exec_manual(&state, &principal, None, move |w| {
+        w.create_manual_draft(&new)
+    })
+    .await?;
     Ok((StatusCode::CREATED, Json(json!({"id": id}))))
 }
 
@@ -166,13 +194,18 @@ pub struct ListParams {
 /// `GET /api/manual/experiments?status=` — list records (newest first).
 pub async fn list(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let status = params.status.clone();
     let rows = with_reader(&state.db_path, move |reader| {
-        reader
+        let mut rows = reader
             .manual_experiments(status.as_deref())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        rows.retain(|row| {
+            principal.env_allowed(row["target_environment"].as_str().unwrap_or_default())
+        });
+        Ok(rows)
     })
     .await?;
     Ok(Json(json!({"records": rows})))
@@ -185,20 +218,14 @@ pub async fn detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let detail = with_reader(&state.db_path, move |reader| {
         reader
             .manual_experiment_detail(&id)
             .map_err(|e| e.to_string())
     })
     .await?;
-    let not_found = || {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "manual experiment not found"})),
-        )
-            .into_response()
-    };
+    let not_found = || crate::error::not_found("manual experiment not found");
     let Some(detail) = detail else {
         return Err(not_found());
     };
@@ -219,11 +246,13 @@ pub async fn update(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<ManualRecordRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let changed_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
+    check_environment(&principal, req.target_environment.as_deref())?;
     let new = req.into_new(changed_by.clone()).map_err(bad_request)?;
-    exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.update_manual_draft(&id, &new, &changed_by)
     })
     .await?;
@@ -242,9 +271,10 @@ pub async fn submit(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<SubmitRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let by = actor_or(&principal, req.by.clone(), "by").map_err(bad_request)?;
-    exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.submit_manual(&id, req.attestation.as_deref(), &by)
     })
     .await?;
@@ -263,9 +293,10 @@ pub async fn verify(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<VerifyRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.verify_manual(&id, &reviewer, req.note.as_deref())
     })
     .await?;
@@ -284,9 +315,13 @@ pub async fn reject(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<RejectRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    exec_manual(&state, move |w| w.reject_manual(&id, &reviewer, &req.note)).await?;
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
+        w.reject_manual(&id, &reviewer, &req.note)
+    })
+    .await?;
     Ok(Json(json!({"ok": true})))
 }
 
@@ -305,7 +340,7 @@ pub async fn attach(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<AttachmentRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let kind = match req.kind.as_str() {
         "url" => AttachmentKind::Url,
         "ticket" => AttachmentKind::Ticket,
@@ -316,11 +351,13 @@ pub async fn attach(
                     "attachment kind '{other}' not accepted (url|ticket only; no file storage)"
                 )})),
             )
-                .into_response());
+                .into_response()
+                .into());
         }
     };
     let added_by = actor_or(&principal, req.added_by.clone(), "added_by").map_err(bad_request)?;
-    let attachment_id = exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    let attachment_id = exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.add_manual_attachment(&id, kind, &req.uri, req.label.as_deref(), None, &added_by)
     })
     .await?;
@@ -340,18 +377,30 @@ pub async fn import(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ImportRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let mut items = Vec::with_capacity(req.records.len());
     for record in req.records {
+        check_environment(&principal, record.target_environment.as_deref())?;
         let entered_by =
             actor_or(&principal, record.entered_by.clone(), "entered_by").map_err(bad_request)?;
         items.push(record.into_new(entered_by).map_err(bad_request)?);
     }
     let label = req.label.clone();
-    let (batch_id, ids) =
-        exec_manual(&state, move |w| w.import_manual_drafts(&items, label)).await?;
+    let (batch_id, ids) = exec_manual(&state, &principal, None, move |w| {
+        w.import_manual_drafts(&items, label)
+    })
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(json!({"batch_id": batch_id, "ids": ids})),
     ))
+}
+
+fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), ApiError> {
+    if !principal.env_allowed(env.unwrap_or_default()) {
+        return Err(crate::error::forbidden(
+            "environment is outside the principal's scopes",
+        ));
+    }
+    Ok(())
 }

@@ -40,19 +40,17 @@ pub mod run_state {
     /// `pending_approval` is deliberately NOT active — no execution is in
     /// flight, nothing to roll back, and the request survives the restart
     /// (an approval after restart dispatches from the stored request row).
-    pub const ACTIVE: [&str; 4] = [QUEUED, VALIDATING, RUNNING, STOPPING];
-
-    /// Terminal states (a run in one of these can never transition again).
-    pub const TERMINAL: [&str; 8] = [
-        PASSED,
-        DEVIATED,
-        FAILED,
-        ABORTED,
+    pub const ACTIVE: [&str; 6] = [
+        QUEUED,
+        VALIDATING,
+        RUNNING,
+        STOPPING,
         ORPHANED,
         ROLLBACK_PENDING,
-        REJECTED,
-        EXPIRED,
     ];
+
+    /// Terminal states (a run in one of these can never transition again).
+    pub const TERMINAL: [&str; 6] = [PASSED, DEVIATED, FAILED, ABORTED, REJECTED, EXPIRED];
 }
 
 /// `runs.rollback_status` values.
@@ -183,6 +181,18 @@ impl Writer {
     /// # Errors
     /// Returns an error if the rows fail to insert.
     pub fn insert_run(&self, run: &NewRun) -> Result<(), StoreError> {
+        self.insert_run_with_context(run, None)
+    }
+
+    /// Enqueue a run and its immutable environment/fingerprint in one transaction.
+    ///
+    /// # Errors
+    /// Returns an error if any row or audit event cannot be persisted.
+    pub fn insert_run_with_context(
+        &self,
+        run: &NewRun,
+        context: Option<&str>,
+    ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             self.conn.execute(
                 "INSERT INTO runs (id, registry_id, state, params_json, queued_at_ns) \
@@ -195,8 +205,41 @@ impl Writer {
                     run.queued_at_ns
                 ],
             )?;
-            self.insert_run_audit(&run.id, "enqueued", None, run.actor.as_deref())
+            self.insert_run_audit(&run.id, "enqueued", None, run.actor.as_deref())?;
+            if let Some(context) = context {
+                self.insert_run_context(&run.id, context, run.actor.as_deref())?;
+            }
+            Ok(())
         })
+    }
+
+    /// Persist the private credential verifier separately from the public,
+    /// hash-chained environment context. Caller owns the enclosing transaction.
+    pub(crate) fn insert_run_context(
+        &self,
+        run_id: &str,
+        context: &str,
+        actor: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let mut context: serde_json::Value = serde_json::from_str(context)?;
+        let fields = context
+            .as_object_mut()
+            .ok_or_else(|| StoreError::Internal("execution context must be an object".into()))?;
+        if let Some(hash) = fields.remove("execution_hash") {
+            let hash = hash.as_str().ok_or_else(|| {
+                StoreError::Internal("execution fingerprint must be a string".into())
+            })?;
+            self.conn.execute(
+                "INSERT INTO run_execution_pins (run_id, execution_hash) VALUES (?, ?)",
+                params![run_id, hash],
+            )?;
+        }
+        self.insert_run_audit(
+            run_id,
+            "requested_context",
+            Some(&serde_json::to_string(&context)?),
+            actor,
+        )
     }
 
     /// Transition a run to `state` (no timestamp side effects) and record an
@@ -223,10 +266,11 @@ impl Writer {
         actor: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            self.conn.execute(
-                "UPDATE runs SET state = ? WHERE id = ?",
-                params![state, run_id],
+            let changed = self.conn.execute(
+                "UPDATE runs SET state = ? WHERE id = ? AND state NOT IN ('passed','deviated','failed','aborted','rejected','expired') AND (? <> 'queued' OR state = 'pending_approval')",
+                params![state, run_id, state],
             )?;
+            require_transition(changed, run_id)?;
             self.insert_run_audit(run_id, audit_event.unwrap_or(state), audit_detail, actor)
         })
     }
@@ -244,12 +288,101 @@ impl Writer {
         experiment_id: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            self.conn.execute(
+            let changed = self.conn.execute(
                 "UPDATE runs SET state = ?, started_at_ns = ?, \
-                 experiment_id = COALESCE(?, experiment_id) WHERE id = ?",
+                 experiment_id = COALESCE(?, experiment_id) WHERE id = ? AND state IN ('queued', 'validating')",
                 params![run_state::RUNNING, now_ns(), experiment_id, run_id],
             )?;
+            require_transition(changed, run_id)?;
             self.insert_run_audit(run_id, "started", experiment_id, None)
+        })
+    }
+
+    /// Claim a queued run for validation without resurrecting a stopped run.
+    ///
+    /// # Errors
+    /// Returns an error if the run is no longer queued or persistence fails.
+    pub fn claim_run(&self, run_id: &str) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            let changed = self.conn.execute(
+                "UPDATE runs SET state = 'validating' WHERE id = ? AND state = 'queued'",
+                params![run_id],
+            )?;
+            require_transition(changed, run_id)?;
+            self.insert_run_audit(run_id, "validating", None, None)
+        })
+    }
+
+    /// Atomically persist cleanup bindings, consume approval and mark execution
+    /// started. No provider may run unless this transaction commits.
+    ///
+    /// # Errors
+    /// Returns an error for cancellation, expired/consumed approval or store failure.
+    pub fn begin_run_execution(
+        &self,
+        run_id: &str,
+        plan_json: &str,
+        approval_pin: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            let now = now_ns();
+            let changed = self.conn.execute(
+                "UPDATE runs SET state = 'running', started_at_ns = ? WHERE id = ? AND state = 'validating'",
+                params![now, run_id],
+            )?;
+            require_transition(changed, run_id)?;
+            if let Some(pin) = approval_pin {
+                let changed = self.conn.execute(
+                    "UPDATE approval_requests SET consumed_at_ns = ? WHERE run_id = ? AND pin_hash = ? AND consumed_at_ns IS NULL AND (break_glass = TRUE OR expires_at_ns >= ?)",
+                    params![now, run_id, pin, now],
+                )?;
+                require_transition(changed, run_id)?;
+                self.insert_run_audit(run_id, "consumed", Some(pin), None)?;
+            }
+            self.conn.execute(
+                "INSERT INTO run_recovery_plans (run_id, plan_json) VALUES (?, CAST(? AS JSON))",
+                params![run_id, plan_json],
+            )?;
+            self.insert_run_audit(run_id, "started", None, None)
+        })
+    }
+
+    /// Durably stop a run, checking its current state on the single writer.
+    ///
+    /// # Errors
+    /// Returns an error if the run ended before the stop was persisted.
+    pub fn request_run_stop(&self, run_id: &str, actor: Option<&str>) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            let changed = self.conn.execute(
+                "UPDATE runs SET state = CASE WHEN started_at_ns IS NULL THEN 'aborted' ELSE 'stopping' END, ended_at_ns = CASE WHEN started_at_ns IS NULL THEN ? ELSE ended_at_ns END, rollback_status = CASE WHEN started_at_ns IS NULL THEN 'not_needed' ELSE rollback_status END, error = CASE WHEN started_at_ns IS NULL THEN 'cancelled before start' ELSE error END WHERE id = ? AND state IN ('queued','validating','running','stopping','pending_approval')",
+                params![now_ns(), run_id],
+            )?;
+            require_transition(changed, run_id)?;
+            self.insert_run_audit(run_id, "stop_requested", None, actor)?;
+            let state: String = self.conn.query_row(
+                "SELECT state FROM runs WHERE id = ?",
+                params![run_id],
+                |row| row.get(0),
+            )?;
+            self.insert_run_audit(run_id, &state, None, actor)
+        })
+    }
+
+    /// Record failure without overwriting a cancellation. Started runs remain
+    /// eligible for restart cleanup instead of losing their fault ownership.
+    ///
+    /// # Errors
+    /// Returns an error if persistence fails.
+    pub fn fail_run(&self, run_id: &str, error: &str) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            let changed = self.conn.execute(
+                "UPDATE runs SET state = CASE WHEN started_at_ns IS NULL THEN 'failed' ELSE 'rollback_pending' END, error = ?, ended_at_ns = CASE WHEN started_at_ns IS NULL THEN ? ELSE ended_at_ns END WHERE id = ? AND state IN ('queued','validating','running','stopping')",
+                params![error, now_ns(), run_id],
+            )?;
+            if changed == 0 {
+                return Ok(());
+            }
+            self.insert_run_audit(run_id, "execution_failed", Some(error), None)
         })
     }
 
@@ -268,19 +401,22 @@ impl Writer {
         error: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            self.conn.execute(
+            let pending_only = matches!(state, run_state::REJECTED | run_state::EXPIRED);
+            let changed = self.conn.execute(
                 "UPDATE runs SET state = ?, ended_at_ns = ?, \
                  experiment_id = COALESCE(?, experiment_id), rollback_status = ?, error = ? \
-                 WHERE id = ?",
+                 WHERE id = ? AND (NOT ? OR state = 'pending_approval')",
                 params![
                     state,
                     now_ns(),
                     experiment_id,
                     rollback_status,
                     error,
-                    run_id
+                    run_id,
+                    pending_only
                 ],
             )?;
+            require_transition(changed, run_id)?;
             self.insert_run_audit(run_id, state, error, None)
         })
     }
@@ -302,15 +438,15 @@ impl Writer {
         actor: Option<&str>,
     ) -> Result<(), StoreError> {
         let at_ns = now_ns();
-        let prev_hash: Option<String> = self
-            .conn
-            .prepare(&format!(
-                "SELECT new_hash FROM run_audit WHERE run_id = '{}' \
-                 ORDER BY at_ns DESC, rowid DESC LIMIT 1",
-                run_id.replace('\'', "''")
-            ))
-            .and_then(|mut stmt| stmt.query_row(params![], |row| row.get(0)))
-            .ok();
+        let prev_hash: Option<String> = match self.conn.query_row(
+            "SELECT new_hash FROM run_audit WHERE run_id = ? ORDER BY at_ns DESC, rowid DESC LIMIT 1",
+            params![run_id],
+            |row| row.get::<_, Option<String>>(0),
+        ) {
+            Ok(hash) => hash,
+            Err(duckdb::Error::QueryReturnedNoRows) => None,
+            Err(error) => return Err(error.into()),
+        };
         let new_hash = crate::approvals::audit_chain_hash(
             run_id,
             at_ns,
@@ -329,6 +465,22 @@ impl Writer {
 }
 
 impl Reader {
+    /// Private dispatch verifier; never include in public audit or portable exports.
+    ///
+    /// # Errors
+    /// Returns an error when the private lookup fails.
+    pub fn run_execution_hash(&self, run_id: &str) -> Result<Option<String>, StoreError> {
+        match self.conn.query_row(
+            "SELECT execution_hash FROM run_execution_pins WHERE run_id = ?",
+            params![run_id],
+            |row| row.get(0),
+        ) {
+            Ok(hash) => Ok(Some(hash)),
+            Err(duckdb::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     /// Fetch a registry definition by id (includes the `.toon` source).
     ///
     /// # Errors
@@ -433,8 +585,9 @@ impl Reader {
             .collect::<Vec<_>>()
             .join(", ");
         self.query_json_rows(&format!(
-            "SELECT r.*, g.name AS definition_name, g.definition_toon FROM runs r \
+            "SELECT r.*, g.name AS definition_name, g.definition_toon, p.plan_json AS recovery_plan_json FROM runs r \
              JOIN run_registry g ON g.id = r.registry_id \
+             LEFT JOIN run_recovery_plans p ON p.run_id = r.id \
              WHERE r.state IN ({states}) AND g.kind IS DISTINCT FROM 'gameday' \
              ORDER BY r.queued_at_ns"
         ))
@@ -454,4 +607,13 @@ fn row_to_definition(v: &serde_json::Value) -> RegisteredDefinition {
         registered_at_ns: v["registered_at_ns"].as_i64().unwrap_or(0),
         registered_by: v["registered_by"].as_str().map(str::to_string),
     }
+}
+
+fn require_transition(changed: usize, run_id: &str) -> Result<(), StoreError> {
+    if changed != 1 {
+        return Err(StoreError::Internal(format!(
+            "run {run_id}: state changed or approval unavailable; refusing execution"
+        )));
+    }
+    Ok(())
 }

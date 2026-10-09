@@ -2,7 +2,7 @@
 //! SHA-256 content-hash dedup (`reg-<first 12 hex>` id derivation) plus the
 //! hash-lookup-then-insert flow over the daemon's single-writer channel.
 
-use axum::response::Response;
+use crate::error::ApiError;
 use tumult_lake::RegisteredDefinition;
 
 use crate::error::unavailable;
@@ -41,7 +41,7 @@ pub(crate) async fn register_definition(
     actor: Option<String>,
     gameday: bool,
     not_wired: &'static str,
-) -> Result<Registration, Response> {
+) -> Result<Registration, ApiError> {
     let hash = content_hash(text);
     let lookup = hash.clone();
     let existing = with_reader(&state.db_path, move |reader| {

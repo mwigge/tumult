@@ -137,6 +137,20 @@ impl Writer {
         req: &ApprovalRequest,
         detail: Option<&str>,
     ) -> Result<(), StoreError> {
+        self.insert_gated_run_with_context(run, req, detail, None)
+    }
+
+    /// Persist a gated request and resolved execution fingerprint atomically.
+    ///
+    /// # Errors
+    /// Returns an error if any request, run or audit write fails.
+    pub fn insert_gated_run_with_context(
+        &self,
+        run: &crate::NewRun,
+        req: &ApprovalRequest,
+        detail: Option<&str>,
+        context: Option<&str>,
+    ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             self.conn.execute(
                 "INSERT INTO runs (id, registry_id, state, params_json, queued_at_ns) \
@@ -150,7 +164,11 @@ impl Writer {
                 ],
             )?;
             self.insert_approval_request(req)?;
-            self.insert_run_audit(&run.id, "requested", detail, run.actor.as_deref())
+            self.insert_run_audit(&run.id, "requested", detail, run.actor.as_deref())?;
+            if let Some(context) = context {
+                self.insert_run_context(&run.id, context, run.actor.as_deref())?;
+            }
+            Ok(())
         })
     }
 
@@ -231,6 +249,49 @@ impl Writer {
             ],
         )?;
         Ok(())
+    }
+
+    /// Record a decision only while its run still awaits approval.
+    /// Call on the serialized writer to prevent stale HTTP decisions.
+    ///
+    /// # Errors
+    /// Returns an error for a non-pending run or an invalid decision.
+    pub fn insert_pending_approval_decision(
+        &self,
+        dec: &ApprovalDecision,
+    ) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            self.require_pending_approval(&dec.run_id)?;
+            self.insert_approval_decision(dec)
+        })
+    }
+
+    fn require_pending_approval(&self, run_id: &str) -> Result<(), StoreError> {
+        let pending: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM runs WHERE id = ? AND state = ?",
+            params![run_id, crate::run_state::PENDING_APPROVAL],
+            |row| row.get(0),
+        )?;
+        if pending != 1 {
+            return Err(StoreError::Internal("run not awaiting approval".into()));
+        }
+        Ok(())
+    }
+
+    /// Override only while the run still awaits approval.
+    ///
+    /// # Errors
+    /// Returns an error for a non-pending run or a failed update.
+    pub fn mark_pending_break_glass(
+        &self,
+        run_id: &str,
+        by: &str,
+        justification: &str,
+    ) -> Result<(), StoreError> {
+        crate::with_tx(&self.conn, || {
+            self.require_pending_approval(run_id)?;
+            self.mark_break_glass(run_id, by, justification)
+        })
     }
 
     /// Stamp the approval consumed — single-use: one dispatch consumes one

@@ -31,7 +31,7 @@ pub(crate) fn evaluate_hypothesis(
     let mut all_met = true;
 
     for probe in &hypothesis.probes {
-        let result = execute_single_activity(probe, executor, controls);
+        let result = execute_single_activity(probe, executor, controls, None);
 
         if !probe_outcome_ok(
             probe,
@@ -53,11 +53,14 @@ pub(crate) fn evaluate_hypothesis(
 
 /// Check whether a probe outcome satisfies the probe's tolerance.
 ///
-/// When a tolerance is defined, the output is parsed as JSON (falling back
+/// Execution must succeed first. When a tolerance is defined, output is parsed as JSON (falling back
 /// to a raw string) and evaluated against it; a missing output cannot be
 /// evaluated and counts as a failure. When no tolerance is defined, plain
 /// execution success counts.
 pub(crate) fn probe_outcome_ok(probe: &Activity, success: bool, output: Option<&str>) -> bool {
+    if !success {
+        return false;
+    }
     let Some(ref tolerance) = probe.tolerance else {
         return success;
     };
@@ -77,6 +80,7 @@ fn execute_single_activity(
     activity: &Activity,
     executor: &dyn ActivityExecutor,
     controls: &ControlRegistry,
+    cancellation: Option<&CancellationToken>,
 ) -> ActivityResult {
     let tracer = opentelemetry::global::tracer(TRACER_NAME);
 
@@ -106,6 +110,21 @@ fn execute_single_activity(
 
     let started_at_ns = epoch_nanos_now();
     let start = std::time::Instant::now();
+    // Controls can block or request stop themselves. Recheck at the provider
+    // dispatch boundary, after BeforeActivity has returned.
+    if is_cancelled(cancellation) {
+        return ActivityResult {
+            name: activity.name.clone(),
+            activity_type: activity.activity_type.clone(),
+            status: ActivityStatus::Skipped,
+            started_at_ns,
+            duration_ms: 0,
+            output: None,
+            error: Some("cancelled before provider dispatch".into()),
+            trace_id: current_trace_id(),
+            span_id: current_span_id(),
+        };
+    }
     let outcome = executor.execute(activity);
     set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
 
@@ -159,9 +178,10 @@ fn execute_foreground_activity(
     activity: &Activity,
     executor: &dyn ActivityExecutor,
     controls: &ControlRegistry,
+    cancellation: Option<&CancellationToken>,
 ) -> ActivityResult {
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        execute_single_activity(activity, executor, controls)
+        execute_single_activity(activity, executor, controls, cancellation)
     }));
     outcome.unwrap_or_else(|panic| {
         let message = panic_message(&*panic);
@@ -219,25 +239,32 @@ impl FaultGate {
     /// active, updating the observed peak. The returned [`GatePermit`]
     /// releases the slot on drop, so a panic in the gated activity cannot
     /// leak the slot and deadlock threads waiting on the condvar.
-    fn acquire(&self) -> GatePermit<'_> {
+    fn acquire(&self, cancellation: Option<&CancellationToken>) -> Option<GatePermit<'_>> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(cap) = self.cap {
             while state.active >= cap {
+                if is_cancelled(cancellation) {
+                    return None;
+                }
                 state = self
                     .available
-                    .wait(state)
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    .wait_timeout(state, CANCEL_POLL_INTERVAL)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .0;
             }
+        }
+        if is_cancelled(cancellation) {
+            return None;
         }
         state.active += 1;
         // Background fault counts never approach u32::MAX.
         #[allow(clippy::cast_possible_truncation)]
         let active = state.active as u32;
         state.peak = state.peak.max(active);
-        GatePermit { gate: self }
+        Some(GatePermit { gate: self })
     }
 
     /// Release a slot, waking one waiter.
@@ -303,90 +330,45 @@ pub(crate) fn execute_activities(
     // sequentially inside the same scope.  `std::thread::scope` guarantees all
     // background threads are joined before the scope exits (i.e. after foreground
     // completes), giving us true concurrency without unsafe lifetime extension.
-    let bg_results: Vec<std::result::Result<ActivityResult, _>> = std::thread::scope(|scope| {
-        // 1. Spawn background threads immediately. Each acquires a gate slot
-        //    before executing, so no more than `max_concurrent_faults` run at
-        //    the same time. Scoped OS threads don't inherit the thread-local
-        //    OTel context, so capture it here and attach it inside each
-        //    thread — that way all activities of a run share one trace.
-        let parent_cx = opentelemetry::Context::current();
-        let handles: Vec<_> = background
-            .iter()
-            .map(|&activity| {
-                let parent_cx = parent_cx.clone();
-                scope.spawn(move || {
-                    // RAII permit: releases the gate slot even if the activity
-                    // panics, so other gated threads can never deadlock.
-                    let _permit = gate_ref.acquire();
-                    let _cx_guard = parent_cx.attach();
-                    execute_single_activity(activity, executor, controls)
+    let bg_results: Vec<std::result::Result<Option<ActivityResult>, _>> =
+        std::thread::scope(|scope| {
+            // 1. Spawn background threads immediately. Each acquires a gate slot
+            //    before executing, so no more than `max_concurrent_faults` run at
+            //    the same time. Scoped OS threads don't inherit the thread-local
+            //    OTel context, so capture it here and attach it inside each
+            //    thread — that way all activities of a run share one trace.
+            let parent_cx = opentelemetry::Context::current();
+            let handles: Vec<_> = background
+                .iter()
+                .map(|&activity| {
+                    let parent_cx = parent_cx.clone();
+                    scope.spawn(move || {
+                        // RAII permit: releases the gate slot even if the activity
+                        // panics, so other gated threads can never deadlock.
+                        let _permit = gate_ref.acquire(cancellation_token)?;
+                        let _cx_guard = parent_cx.attach();
+                        execute_pending_activity(activity, executor, controls, cancellation_token)
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        // 2. Run foreground activities sequentially while background threads run.
-        //    Note: pause_before_s / pause_after_s use std::thread::sleep here
-        //    because we are inside a synchronous scope closure.  Background
-        //    threads are already running concurrently so blocking the OS thread
-        //    here is acceptable.
-        for &activity in &foreground {
-            // Check cancellation before each activity.
-            if let Some(token) = cancellation_token {
-                if token.is_cancelled() {
-                    tracing::warn!(
-                        activity = %activity.name,
-                        "cancelled before activity execution"
-                    );
+            // Foreground and background dispatch share cancellation-aware pauses.
+            for &activity in &foreground {
+                let Some(result) =
+                    execute_pending_activity(activity, executor, controls, cancellation_token)
+                else {
                     break;
-                }
+                };
+                fg_results.push(result);
             }
 
-            if let Some(pause) = activity.pause_before_s {
-                if pause > 0.0 {
-                    opentelemetry::Context::current().span().add_event(
-                        "experiment.pause.before",
-                        vec![
-                            KeyValue::new("activity.name", activity.name.clone()),
-                            KeyValue::new("pause_seconds", pause),
-                        ],
-                    );
-                    std::thread::sleep(std::time::Duration::from_secs_f64(pause));
-                    opentelemetry::Context::current().span().add_event(
-                        "experiment.resume.before",
-                        vec![KeyValue::new("activity.name", activity.name.clone())],
-                    );
-                }
-            }
-
-            let result = execute_foreground_activity(activity, executor, controls);
-
-            if let Some(pause) = activity.pause_after_s {
-                if pause > 0.0 {
-                    opentelemetry::Context::current().span().add_event(
-                        "experiment.pause.after",
-                        vec![
-                            KeyValue::new("activity.name", activity.name.clone()),
-                            KeyValue::new("pause_seconds", pause),
-                        ],
-                    );
-                    std::thread::sleep(std::time::Duration::from_secs_f64(pause));
-                    opentelemetry::Context::current().span().add_event(
-                        "experiment.resume.after",
-                        vec![KeyValue::new("activity.name", activity.name.clone())],
-                    );
-                }
-            }
-
-            fg_results.push(result);
-        }
-
-        // 3. Join background threads (scope exit would also do this, but collect
-        //    the results explicitly so we can handle panics below).
-        handles
-            .into_iter()
-            .map(std::thread::ScopedJoinHandle::join)
-            .collect()
-    });
+            // 3. Join background threads (scope exit would also do this, but collect
+            //    the results explicitly so we can handle panics below).
+            handles
+                .into_iter()
+                .map(std::thread::ScopedJoinHandle::join)
+                .collect()
+        });
 
     // Foreground results first, then background -- preserving the expected ordering
     // (foreground is the "primary" execution path; background runs alongside it).
@@ -395,7 +377,8 @@ pub(crate) fn execute_activities(
 
     for (activity, join_result) in background.iter().zip(bg_results) {
         match join_result {
-            Ok(activity_result) => results.push(activity_result),
+            Ok(Some(activity_result)) => results.push(activity_result),
+            Ok(None) => {}
             Err(_panic) => {
                 tracing::error!(activity = %activity.name, "background activity panicked");
                 results.push(ActivityResult {
@@ -414,6 +397,67 @@ pub(crate) fn execute_activities(
     }
 
     (results, gate.peak())
+}
+
+/// Bound stop latency while waiting on a synchronous pause or fault gate.
+const CANCEL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+
+pub(super) fn is_cancelled(token: Option<&CancellationToken>) -> bool {
+    token.is_some_and(CancellationToken::is_cancelled)
+}
+
+fn wait_pause(seconds: Option<f64>, token: Option<&CancellationToken>) -> bool {
+    let Some(seconds) = seconds.filter(|s| *s > 0.0 && s.is_finite()) else {
+        return !is_cancelled(token);
+    };
+    let duration = std::time::Duration::from_secs_f64(seconds);
+    let started = std::time::Instant::now();
+    while started.elapsed() < duration {
+        if is_cancelled(token) {
+            return false;
+        }
+        std::thread::sleep(CANCEL_POLL_INTERVAL.min(duration.saturating_sub(started.elapsed())));
+    }
+    !is_cancelled(token)
+}
+
+fn pause_activity(
+    activity: &Activity,
+    phase: &str,
+    seconds: Option<f64>,
+    token: Option<&CancellationToken>,
+) -> bool {
+    let Some(seconds) = seconds.filter(|s| *s > 0.0 && s.is_finite()) else {
+        return !is_cancelled(token);
+    };
+    let cx = opentelemetry::Context::current();
+    cx.span().add_event(
+        format!("experiment.pause.{phase}"),
+        vec![
+            KeyValue::new("activity.name", activity.name.clone()),
+            KeyValue::new("pause_seconds", seconds),
+        ],
+    );
+    let continued = wait_pause(Some(seconds), token);
+    cx.span().add_event(
+        format!("experiment.resume.{phase}"),
+        vec![KeyValue::new("activity.name", activity.name.clone())],
+    );
+    continued
+}
+
+fn execute_pending_activity(
+    activity: &Activity,
+    executor: &dyn ActivityExecutor,
+    controls: &ControlRegistry,
+    token: Option<&CancellationToken>,
+) -> Option<ActivityResult> {
+    if !pause_activity(activity, "before", activity.pause_before_s, token) {
+        return None;
+    }
+    let result = execute_foreground_activity(activity, executor, controls, token);
+    pause_activity(activity, "after", activity.pause_after_s, token);
+    Some(result)
 }
 
 /// Run `experiment`'s rollback activities, if any, and if `strategy` calls
@@ -465,7 +509,7 @@ fn execute_rollback_activities(
     activities
         .iter()
         .map(|activity| {
-            let result = execute_single_activity(activity, executor, controls);
+            let result = execute_foreground_activity(activity, executor, controls, None);
             if result.status == ActivityStatus::Failed {
                 tracing::warn!(
                     activity = %activity.name,

@@ -1,6 +1,6 @@
-//! Report builders: store queries → [`ReportDoc`] for each template.
+//! Report builders: store queries → [`ReportDoc`](crate::model::ReportDoc) for each template.
 //!
-//! All SQL values that flow from parameters go through [`q`] (single-quote
+//! All SQL values that flow from parameters go through `q` (single-quote
 //! doubling). Numbers (`i64` timestamps) are formatted directly.
 
 mod evidence_pack;

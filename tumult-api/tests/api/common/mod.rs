@@ -369,6 +369,29 @@ pub async fn spawn_server() -> TestServer {
     )
     .unwrap();
     let pass_log_ts = seed(&db_path);
+    // Explicit operator-owned bindings for the reviewed harmless test fixtures.
+    // No wildcard policy: changing target variables requires another fingerprint.
+    let mut bindings = Vec::new();
+    for toon in [
+        RUN_TOON,
+        STOP_TOON,
+        crate::scopes::SCOPE_TOON,
+        crate::schedules::DEF_TOON,
+        crate::gamedays::EXP_A,
+        crate::gamedays::EXP_B,
+        crate::runs::PROBE_ONLY_TOON,
+    ] {
+        let (experiment, injected) = tumult_ingest::prepare_run(toon, &Default::default()).unwrap();
+        let hash = tumult_ingest::execution_policy::execution_hash(&experiment, &injected).unwrap();
+        for env in ["dev", "staging", "prod", "production"] {
+            bindings.push(serde_json::json!({"sha256":hash,"env":env,"target":null}));
+        }
+    }
+    std::fs::write(
+        db_path.with_extension("execution-bindings.json"),
+        serde_json::to_vec(&bindings).unwrap(),
+    )
+    .unwrap();
 
     let metrics_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../metrics")

@@ -26,7 +26,10 @@ RestartSec=5
 
 # Persistent analytics/graph store lives under this state dir (~/.tumult).
 StateDirectory=tumult
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/tumult
 Environment=HOME=/var/lib/tumult
+UMask=0077
 
 # --- Hardening ---
 DynamicUser=yes

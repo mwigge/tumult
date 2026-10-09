@@ -162,7 +162,7 @@ fn evidence_pack_approval_chain_empty_message() {
     let doc = build_evidence_pack(&reader, "soc2", None, BASE_NS, &[]).unwrap();
     assert!(doc.blocks.iter().any(|b| matches!(
         b,
-        Block::Paragraph(p) if p == "No approval-gated runs in the period."
+        Block::Paragraph(p) if p == "No approval-gated runs in the selected sample for this scope and period."
     )));
 }
 
@@ -176,7 +176,7 @@ fn evidence_pack_approval_chain_respects_period() {
     let doc = build_evidence_pack(&reader, "soc2", Some(HOUR_NS), now, &[]).unwrap();
     assert!(doc.blocks.iter().any(|b| matches!(
         b,
-        Block::Paragraph(p) if p == "No approval-gated runs in the period."
+        Block::Paragraph(p) if p == "No approval-gated runs in the selected sample for this scope and period."
     )));
 
     // A period reaching back past run-b but not run-a only keeps run-b.
@@ -395,7 +395,7 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
         b,
         Block::Paragraph(p) if p.contains("DORA") && p.contains('–') && p.contains("experiments are on record")
     )));
-    // Traceability matrix: one row per DORA clause, tested summary joined.
+    // Every clause stays unmapped until evidence applicability is reviewed.
     let matrix = doc
         .blocks
         .iter()
@@ -406,7 +406,10 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
         })
         .expect("traceability matrix");
     assert_eq!(matrix.len(), 3);
-    assert!(row_text(&matrix[0]).contains("flaky-exp, drill-exp"));
+    assert!(matrix.iter().all(|row| row_text(row).contains("Unmapped")));
+    assert!(matrix
+        .iter()
+        .all(|row| !row_text(row).contains("flaky-exp") && !row_text(row).contains("drill-exp")));
 
     // Register: the manual record carries entered/verifier provenance.
     let register = register_table(&doc);
@@ -455,7 +458,7 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
 }
 
 #[test]
-fn evidence_pack_traceability_defers_to_register_past_three_experiments() {
+fn evidence_pack_does_not_infer_clause_coverage_from_many_experiments() {
     let d = tempfile::TempDir::new().unwrap();
     let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
     let writer = store.writer().unwrap();
@@ -486,7 +489,12 @@ fn evidence_pack_traceability_defers_to_register_past_three_experiments() {
             _ => None,
         })
         .expect("traceability matrix");
-    assert!(row_text(&matrix[0]).contains("See test register (4)"));
+    assert!(matrix.iter().all(|row| row_text(row).contains("Unmapped")));
+    assert_eq!(
+        register_table(&doc).len(),
+        4,
+        "tests remain visible as evidence candidates"
+    );
 }
 
 #[test]
@@ -935,4 +943,21 @@ fn game_day_scoped_hides_out_of_scope_run() {
     assert!(build_game_day(&reader, "exp-prd", now, &[])
         .unwrap()
         .is_some());
+}
+
+#[test]
+fn evidence_pack_does_not_assert_unverified_independence_or_clause_coverage() {
+    let (_dir, store) = gated_fixture();
+    let doc = build_evidence_pack(
+        &store.read_only().unwrap(),
+        "dora",
+        None,
+        BASE_NS + 2 * HOUR_NS,
+        &[],
+    )
+    .unwrap();
+    let text = format!("{doc:?}");
+    assert!(!text.contains("Testing performed in line with"));
+    assert!(text.contains("Independence has not been verified"));
+    assert!(text.contains("Unmapped"));
 }

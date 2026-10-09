@@ -63,6 +63,11 @@
 //! advances a cursor past a failed event without recording it here.
 //! Additive and index-free under the same rule as the v11 webhook tables.
 //!
+//! v14 adds private run_recovery_plans containing immutable input references
+//! and configuration hashes; no resolved credentials are persisted.
+//!
+//! v15 keeps private execution fingerprints out of public audit chains.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -77,7 +82,7 @@ mod telemetry;
 
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 13;
+pub const CURRENT_SCHEMA_VERSION: i64 = 15;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on

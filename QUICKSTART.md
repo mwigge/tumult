@@ -1,6 +1,6 @@
 # Quickstart
 
-Get Tumult running in 5 minutes. This is the CLI-only path; for the full
+Build Tumult and run your first local experiment. This is the CLI-only path; for the full
 platform (daemon, web UI, approvals, compliance reports) see
 [the daemon, lake and web UI](README.md#the-daemon-lake-and-web-ui) in
 README.md — or jump straight to the
@@ -36,7 +36,7 @@ flowchart LR
 curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
 ```
 
-Builds the binary, starts Docker targets, runs a verification experiment. Requires [Rust](https://rustup.rs/) and Docker.
+Builds the CLI and TCP proxy helper, waits for Docker targets to become ready, and runs a separate self-contained CLI verification. Requires [Rust](https://rustup.rs/), Git, Make and Docker with Compose. The initial source build can take several minutes. If `/usr/local/bin` is not writable, follow the printed PATH instructions in your own shell.
 
 ### Option B: Docker (no Rust toolchain needed)
 
@@ -67,10 +67,17 @@ Without a token the HTTP server binds to loopback only; a bearer token
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult
-cargo build --release -p tumult-cli -p tumult-mcp
+cargo build --release --locked -p tumult-cli -p tumult-mcp -p tumult-net
+export PATH="$PWD/target/release:$PATH"
 ```
 
 ### 2. Start infrastructure
+
+The remaining commands use the local CLI from option A or C and run from the
+repository root. If the installer cloned into `tumult/`, enter that directory
+first. The Docker commands above demonstrate discovery and server startup;
+container execution additionally needs the workspace and target access in the
+[deployment guide](docs/guides/production-deployment.md#provider-capabilities).
 
 ```bash
 make up-targets
@@ -88,7 +95,7 @@ This starts 5 chaos targets on the `tumult-e2e` Docker network:
 
 ### 3. Run your first chaos experiment
 
-**Redis resilience test** — verify Redis handles a disruption and recovers:
+**Redis connectivity smoke test** — probe availability and exercise SET, GET and DEL. This example injects no fault and does not demonstrate outage recovery:
 
 ```bash
 tumult run examples/redis-chaos.toon
@@ -96,7 +103,7 @@ tumult run examples/redis-chaos.toon
 
 Output:
 ```
-Running experiment: Redis resilience — verify recovery after disruption
+Running experiment: Redis connectivity — verify basic key operations
 Status: Completed
 Duration: 297ms
 Method steps: 3 executed
@@ -106,20 +113,20 @@ Journal written to: journal.toon
 **PostgreSQL failover** — kill idle connections and verify PG recovers:
 
 ```bash
-tumult run examples/postgres-failover.toon
+tumult run examples/postgres-failover.toon --journal-path postgres.journal.toon
 ```
 
 **Pumba network latency** — inject 200ms latency into a container:
 
 ```bash
-tumult run examples/pumba-latency.toon
+tumult run examples/pumba-latency.toon --journal-path pumba.journal.toon
 ```
 
 **SSH remote stress test** — run stress-ng on a remote host via SSH:
 
 ```bash
 make ssh-key  # extract test SSH key first
-tumult run examples/ssh-remote.toon
+tumult run examples/ssh-remote.toon --journal-path ssh.journal.toon
 ```
 
 ### 4. Explore your data
@@ -176,7 +183,7 @@ read the analytics store (`~/.tumult/lake.duckdb`, or `--store <path>`):
 tumult chaosgraph query --kind fault
 
 # The neighbourhood of one experiment (nodes + edges within N hops)
-tumult chaosgraph neighbors --node "exp:Redis resilience — verify recovery after disruption"
+tumult chaosgraph neighbors --node "exp:Redis connectivity — verify basic key operations"
 
 # Chaos actions never exercised by a tested run
 tumult chaosgraph coverage-gaps --framework dora
@@ -202,7 +209,7 @@ Output (trimmed — the script wraps each stage in a banner and indents the Game
   Running... (this takes ~30 seconds)
 
   GameDay: Q2 PostgreSQL Resilience Programme
-  Status:  4/4 PASS (compliant)
+  Status:  4/4 PASS (compliant)  # historical demo label, not a compliance attestation
   Duration: 27.3s
 
     #1 [PASS] PostgreSQL connection kill under load (2197ms)
@@ -238,7 +245,7 @@ Start the full stack with SigNoz dashboards:
 Then run experiments with OpenTelemetry tracing:
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run examples/redis-chaos.toon
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run examples/redis-chaos.toon --journal-path observed-redis.journal.toon
 ```
 
 Open SigNoz at http://localhost:3301 to see traces, metrics, and dashboards.

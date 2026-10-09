@@ -1,8 +1,9 @@
 //! `GET /api/logs` and `GET /api/logs/volume`.
 
+use crate::error::ApiError;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -90,8 +91,12 @@ pub(crate) async fn logs(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<LogsParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let wheres = log_wheres(
         params.range.as_deref(),
         params.severity.as_deref(),
@@ -120,8 +125,12 @@ pub(crate) async fn logs_volume(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<LogsVolumeParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let interval = params.interval.unwrap_or_else(|| "1h".into());
     let Some(bucket_s) = parse_interval(&interval) else {
         return Err(bad(format!(

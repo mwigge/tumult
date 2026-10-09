@@ -1,9 +1,10 @@
 //! `GET /api/overview` — KPI cards, experiments per day, target
 //! leaderboard, fault breakdown.
 
+use crate::error::ApiError;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -197,14 +198,15 @@ pub(crate) async fn overview(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<OverviewParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let range = params.range.unwrap_or_else(|| "24h".into());
     let Some((cur, prev)) = windows(&range) else {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": format!("invalid range {range:?}; expected 24h|7d|14d")})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     // Short ranges get hourly sparkline buckets, longer ones daily.
     let bucket_s: i64 = if range == "24h" { 3_600 } else { 86_400 };

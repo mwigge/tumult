@@ -142,23 +142,40 @@ pub fn prepare_run(
     definition_toon: &str,
     vars: &HashMap<String, String>,
 ) -> Result<(Experiment, HashMap<String, String>), String> {
+    let experiment = tumult_core::engine::parse_experiment(definition_toon)
+        .map_err(|e| format!("parse: {e}"))?;
+    let config = tumult_core::engine::resolve_config(&experiment.configuration)
+        .map_err(|e| format!("config: {e}"))?;
+    prepare_definition(&experiment, vars, &config)
+}
+
+pub(super) fn prepare_definition(
+    definition: &Experiment,
+    vars: &HashMap<String, String>,
+    config: &HashMap<String, String>,
+) -> Result<(Experiment, HashMap<String, String>), String> {
     use tumult_core::engine::{
-        apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
-        resolve_config, resolve_secrets, validate_experiment,
+        apply_template_vars, build_config_env, build_secret_env, flatten_secrets, resolve_secrets,
+        validate_experiment,
     };
-    let experiment = parse_experiment(definition_toon).map_err(|e| format!("parse: {e}"))?;
-    let config = resolve_config(&experiment.configuration).map_err(|e| format!("config: {e}"))?;
+    let experiment = definition.clone();
     let secrets = resolve_secrets(&experiment.secrets).map_err(|e| format!("secrets: {e}"))?;
     let secrets_flat = flatten_secrets(&secrets);
     let experiment = if vars.is_empty() && config.is_empty() && secrets_flat.is_empty() {
         experiment
     } else {
-        apply_template_vars(&experiment, vars, &config, &secrets_flat)
+        apply_template_vars(&experiment, vars, config, &secrets_flat)
             .map_err(|e| format!("template: {e}"))?
     };
     validate_experiment(&experiment).map_err(|e| format!("validate: {e}"))?;
-    let (config_env, _skipped) = build_config_env(&config);
-    let (secret_env, _skipped) = build_secret_env(&secrets_flat);
+    let (config_env, skipped_config) = build_config_env(config);
+    let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
+    for key in skipped_config {
+        tracing::warn!(%key, "configuration key cannot be injected as an environment variable");
+    }
+    for key in skipped_secrets {
+        tracing::warn!(%key, "secret reference cannot be injected as an environment variable");
+    }
     let mut injected = config_env;
     injected.extend(secret_env);
     Ok((experiment, injected))
@@ -270,6 +287,16 @@ impl RunQueue {
         request: RunRequest,
         actor: Option<String>,
     ) -> Result<String, EnqueueError> {
+        self.enqueue_checked(request, actor, None).await
+    }
+
+    /// Enqueue only if inputs still match the caller's resolved preview.
+    pub async fn enqueue_checked(
+        &self,
+        request: RunRequest,
+        actor: Option<String>,
+        expected_hash: Option<String>,
+    ) -> Result<String, EnqueueError> {
         let permit = self
             .waiting
             .clone()
@@ -288,8 +315,23 @@ impl RunQueue {
             queued_at_ns: now_ns(),
             actor,
         };
+        let (resolved, injected) = prepare_run(&request.definition_toon, &request.vars)
+            .map_err(|_| EnqueueError::Store("execution inputs cannot be resolved".into()))?;
+        let execution_hash = crate::execution_policy::execution_hash(&resolved, &injected)
+            .map_err(EnqueueError::Store)?;
+        if expected_hash
+            .as_deref()
+            .is_some_and(|expected| expected != execution_hash)
+        {
+            return Err(EnqueueError::Store(
+                "execution inputs changed since preview; request again".into(),
+            ));
+        }
+        let context = serde_json::json!({"env": request.env, "target": request.target, "execution_hash": execution_hash}).to_string();
         exec_write(&self.shared.ingest, move |writer| {
-            writer.insert_run(&new_run).map_err(|e| e.to_string())
+            writer
+                .insert_run_with_context(&new_run, Some(&context))
+                .map_err(|e| e.to_string())
         })
         .await
         .map_err(EnqueueError::Store)?;
@@ -319,6 +361,17 @@ impl RunQueue {
         request: RunRequest,
         tier: Tier,
         actor: Option<String>,
+    ) -> Result<String, EnqueueError> {
+        self.request_gated_checked(request, tier, actor, None).await
+    }
+
+    /// Request approval only if inputs still match the classified artifact.
+    pub async fn request_gated_checked(
+        &self,
+        request: RunRequest,
+        tier: Tier,
+        actor: Option<String>,
+        expected_hash: Option<String>,
     ) -> Result<String, EnqueueError> {
         let run_id = uuid::Uuid::new_v4().to_string();
         let params: BTreeMap<String, String> = request.vars.clone().into_iter().collect();
@@ -359,9 +412,36 @@ impl RunQueue {
             tier.ttl_ns() / 3_600_000_000_000,
             pin
         );
+        let (resolved, injected) = prepare_run(&request.definition_toon, &request.vars)
+            .map_err(|_| EnqueueError::Store("execution inputs cannot be resolved".into()))?;
+        let current_tier = crate::execution_policy::classify_execution(
+            &self.shared.db_path,
+            &resolved,
+            &injected,
+            &request.env,
+            request.target.as_deref(),
+            false,
+        )
+        .map_err(EnqueueError::Store)?;
+        if current_tier > tier {
+            return Err(EnqueueError::Store(
+                "execution inputs changed risk tier; preview and request again".into(),
+            ));
+        }
+        let execution_hash = crate::execution_policy::execution_hash(&resolved, &injected)
+            .map_err(EnqueueError::Store)?;
+        if expected_hash
+            .as_deref()
+            .is_some_and(|expected| expected != execution_hash)
+        {
+            return Err(EnqueueError::Store(
+                "execution inputs changed since preview; request again".into(),
+            ));
+        }
+        let context = serde_json::json!({"env": request.env, "target": request.target, "execution_hash": execution_hash}).to_string();
         exec_write(&self.shared.ingest, move |writer| {
             writer
-                .insert_gated_run(&new_run, &approval, Some(&detail))
+                .insert_gated_run_with_context(&new_run, &approval, Some(&detail), Some(&context))
                 .map_err(|e| e.to_string())
         })
         .await

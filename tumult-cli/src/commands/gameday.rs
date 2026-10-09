@@ -179,6 +179,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     });
 
     let config = RunConfig {
+        baseline_mode: tumult_core::runner::BaselineMode::default(),
         rollback_strategy: tumult_core::execution::RollbackStrategy::OnDeviation,
         cancellation_token: Some(cancel_token),
         parent_context: None,

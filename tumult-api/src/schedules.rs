@@ -3,11 +3,11 @@
 //! them). Reads run on a fresh read-only connection; mutations ride the
 //! daemon's single-writer channel.
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -44,7 +44,11 @@ fn schedule_json(s: &ScheduleRow, definition_name: Option<&str>) -> Value {
 }
 
 /// Fetch one schedule by id, or a 404 response.
-async fn schedule_or_404(state: &ApiState, id: &str) -> Result<ScheduleRow, Response> {
+async fn schedule_or_404(
+    state: &ApiState,
+    principal: &Principal,
+    id: &str,
+) -> Result<ScheduleRow, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("schedule id too long"));
     }
@@ -57,13 +61,18 @@ async fn schedule_or_404(state: &ApiState, id: &str) -> Result<ScheduleRow, Resp
             .find(|s| s.id == lookup))
     })
     .await?;
-    found.ok_or_else(|| not_found("unknown schedule"))
+    found
+        .filter(|s| principal.env_allowed(&s.env))
+        .ok_or_else(|| not_found("unknown schedule"))
 }
 
 /// `GET /api/schedules` — every schedule with its definition name, ordered
 /// by name.
-pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
-    let rows = with_reader(&state.db_path, |reader| {
+pub async fn list(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<Value>, ApiError> {
+    let rows = with_reader(&state.db_path, move |reader| {
         let names: HashMap<String, String> = reader
             .registry_list(500)
             .map_err(|e| e.to_string())?
@@ -77,6 +86,9 @@ pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, Response
             .collect();
         let mut out = Vec::new();
         for s in reader.list_schedules().map_err(|e| e.to_string())? {
+            if !principal.env_allowed(&s.env) {
+                continue;
+            }
             out.push(schedule_json(
                 &s,
                 names.get(&s.registry_id).map(String::as_str),
@@ -117,7 +129,7 @@ pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<CreateScheduleRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     if !principal.env_allowed(&req.env) {
         return Err(forbidden(format!(
             "environment {:?} is outside the principal's scopes",
@@ -144,11 +156,17 @@ pub async fn create(
     })
     .await?
     .ok_or_else(|| not_found("unknown registry id"))?;
-    if let Err(e) = tumult_ingest::prepare_run(&def.definition_toon, &req.vars) {
-        return Err(bad_request(format!(
-            "definition does not resolve with these parameters: {e}"
-        )));
-    }
+    let (experiment, injected) =
+        crate::runs::prepare_for_api(&def.definition_toon, &req.vars).map_err(bad_request)?;
+    tumult_ingest::execution_policy::classify_execution(
+        &state.db_path,
+        &experiment,
+        &injected,
+        &req.env,
+        req.target.as_deref(),
+        !principal.env_scopes.is_empty(),
+    )
+    .map_err(forbidden)?;
 
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(
@@ -198,10 +216,11 @@ pub struct EnableScheduleRequest {
 /// `POST /api/schedules/{id}/enable {enabled}` — flip a schedule on or off.
 pub async fn set_enabled(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<EnableScheduleRequest>,
-) -> Result<Json<Value>, Response> {
-    schedule_or_404(&state, &id).await?;
+) -> Result<Json<Value>, ApiError> {
+    schedule_or_404(&state, &principal, &id).await?;
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(
             "schedule storage is not wired (no ingest handle)",
@@ -223,9 +242,10 @@ pub async fn set_enabled(
 /// fired are untouched.
 pub async fn delete(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
-    schedule_or_404(&state, &id).await?;
+) -> Result<Json<Value>, ApiError> {
+    schedule_or_404(&state, &principal, &id).await?;
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(
             "schedule storage is not wired (no ingest handle)",

@@ -6,8 +6,9 @@
 //!
 //! Lifecycle: `draft` (fully mutable) → `submitted` (locked; requires a
 //! non-empty attestation) → `verified` / `rejected` by a reviewer who must
-//! NOT be the person who entered the record (segregation of duties, after
-//! DORA Art. 24(7) / ISO 27001 A.5.35). Every mutation appends an
+//! NOT have created, edited, submitted or attached evidence to the record.
+//! This separates contributor and reviewer identities; organizational
+//! independence requires external verification. Every mutation appends an
 //! audit row whose `prev_hash`/`new_hash` chain the record's `content_hash`
 //! (SHA-256 over the canonical JSON content), making silent edits
 //! tamper-evident. `verified` records score exactly like automated runs;
@@ -146,7 +147,7 @@ pub enum ManualError {
     NotFound(String),
     /// The record's current status does not allow this action.
     WrongStatus { status: String, action: String },
-    /// Reviewer must differ from the person who entered the record.
+    /// Reviewer must not have contributed to the record.
     SelfReview,
     /// Underlying store failure.
     Store(StoreError),
@@ -163,7 +164,7 @@ impl fmt::Display for ManualError {
             Self::SelfReview => {
                 write!(
                     f,
-                    "reviewer must differ from the person who entered the record"
+                    "reviewer must not have created, edited, submitted, or attached evidence to the record"
                 )
             }
             Self::Store(e) => write!(f, "store error: {e}"),
@@ -311,7 +312,7 @@ mod tests {
         );
         assert_eq!(
             ManualError::SelfReview.to_string(),
-            "reviewer must differ from the person who entered the record"
+            "reviewer must not have created, edited, submitted, or attached evidence to the record"
         );
     }
 

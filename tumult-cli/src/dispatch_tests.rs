@@ -446,7 +446,8 @@ async fn dispatch_store_lifecycle() {
     ])
     .await
     .unwrap();
-    assert!(backup.join("experiments.parquet").exists());
+    assert!(backup.join("store.duckdb").exists());
+    assert!(backup.join("manifest.json").exists());
 
     // The fixture journals are dated months in the past, so a 30-day purge
     // removes them all.
@@ -458,14 +459,25 @@ async fn dispatch_store_lifecycle() {
         assert_eq!(store.experiment_count().unwrap(), 0);
     }
 
-    // Importing the backup restores both experiments.
-    run_argv(&["tumult", "import", backup.to_str().unwrap()])
-        .await
-        .unwrap();
+    // A complete backup restores to a fresh path, leaving the old store intact.
+    let restored = dir.path().join("restored.duckdb");
+    run_argv(&[
+        "tumult",
+        "store",
+        "restore",
+        "--input",
+        backup.to_str().unwrap(),
+        "--output",
+        restored.to_str().unwrap(),
+    ])
+    .await
+    .unwrap();
 
     std::env::remove_var("TUMULT_LAKE_PATH");
 
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(store.experiment_count().unwrap(), 0);
+    let store = tumult_lake::AnalyticsStore::open_read_only(&restored).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 2);
 }
 

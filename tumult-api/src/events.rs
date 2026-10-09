@@ -4,9 +4,10 @@
 //! along so the UI can show the trail is tamper-evident; per-run chain
 //! verification stays on `/api/runs/{id}/audit/verify`.
 
+use crate::error::ApiError;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -15,8 +16,10 @@ use crate::auth::Principal;
 use crate::sql_util::{sql_string, with_reader};
 use crate::ApiState;
 
-fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
+fn bad_request(msg: String) -> ApiError {
+    (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+        .into_response()
+        .into()
 }
 
 /// Query params: `run_id` and `event` are exact-match filters, `limit`
@@ -32,12 +35,12 @@ pub struct ListParams {
 
 /// `GET /api/events` — every run's audit events, newest first. Scoped
 /// principals see only runs in their environments (same rule as the run
-/// list: runs without a linked experiment stay visible to everyone).
+/// list, including queued runs with durable request context).
 pub async fn list(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if params
         .run_id
         .as_deref()
@@ -66,14 +69,7 @@ pub async fn list(
             clauses.push(format!("a.at_ns < {before}"));
         }
         if !scopes.is_empty() {
-            let env_list = scopes
-                .iter()
-                .map(|s| sql_string(s))
-                .collect::<Vec<_>>()
-                .join(", ");
-            clauses.push(format!(
-                "(e.env IN ({env_list}) OR r.experiment_id IS NULL)"
-            ));
+            clauses.push(crate::auth::scopes::run_scope_sql(&scopes));
         }
         let where_clause = if clauses.is_empty() {
             String::new()

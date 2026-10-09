@@ -45,6 +45,7 @@ fn full_experiment_run_produces_complete_journal() {
     let controls = Arc::new(controls);
 
     let config = RunConfig {
+        baseline_mode: tumult_core::runner::BaselineMode::default(),
         rollback_strategy: RollbackStrategy::Always,
         cancellation_token: None,
         parent_context: None,

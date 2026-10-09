@@ -89,6 +89,12 @@ pub fn run_experiment_with_sampling(
     config: &RunConfig,
     sampling: &SamplingConfig,
 ) -> Result<Journal, RunnerError> {
+    if config.baseline_mode == super::BaselineMode::Only {
+        return run_probe_only(experiment, executor, config);
+    }
+    if experiment.load.is_some() && config.load_executor.is_none() {
+        return Err(RunnerError::MissingLoadExecutor);
+    }
     if experiment.method.is_empty() {
         return Err(RunnerError::EmptyMethod);
     }
@@ -219,7 +225,7 @@ pub fn run_experiment_with_sampling(
     }
 
     // -- Start load test (background, if configured)
-    let (load_span_guard, load_handle) = load::start_load(experiment, config);
+    let (load_span_guard, load_handle) = load::start_load(experiment, config)?;
 
     // -- Phase 2: Execute Method (DURING)
     controls.emit(&LifecycleEvent::BeforeMethod);
@@ -428,21 +434,29 @@ pub fn run_experiment_with_sampling(
     drop(load_span_guard);
 
     // -- Hypothesis AFTER
-    let hypothesis_after = run_hypothesis_phase(
-        experiment,
-        executor.as_ref(),
-        controls.as_ref(),
-        "resilience.hypothesis.after",
-    );
+    let hypothesis_after = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
+        None
+    } else {
+        run_hypothesis_phase(
+            experiment,
+            executor.as_ref(),
+            controls.as_ref(),
+            "resilience.hypothesis.after",
+        )
+    };
 
     let hypothesis_after_met = hypothesis_after.as_ref().map(|h| h.met);
 
     // -- Determine status
-    let status = determine_status(
-        hypothesis_before_met,
-        hypothesis_after_met,
-        actions_succeeded,
-    );
+    let status = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
+        ExperimentStatus::Interrupted
+    } else {
+        determine_status(
+            hypothesis_before_met,
+            hypothesis_after_met,
+            actions_succeeded && (experiment.load.is_none() || load_result.is_some()),
+        )
+    };
 
     // -- Rollbacks
     // Deviation calls for cleanup; so does a failure after a fault-injecting
@@ -452,7 +466,10 @@ pub fn run_experiment_with_sampling(
         .iter()
         .any(|r| r.activity_type == ActivityType::Action);
     let needs_rollback = status == ExperimentStatus::Deviated
-        || (status == ExperimentStatus::Failed && fault_started);
+        || (matches!(
+            status,
+            ExperimentStatus::Failed | ExperimentStatus::Interrupted
+        ) && fault_started);
     let rollback_results = run_rollbacks(
         experiment,
         executor,
@@ -460,6 +477,12 @@ pub fn run_experiment_with_sampling(
         &config.rollback_strategy,
         needs_rollback,
     );
+
+    let status = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
+        ExperimentStatus::Interrupted
+    } else {
+        status
+    };
 
     // -- Phase 4: Analysis
     let analysis = compute_analysis(experiment, &status);
@@ -571,4 +594,47 @@ fn record_experiment_outcome(started: &Instant, success: bool) {
         started.elapsed().as_secs_f64(),
         success,
     );
+}
+
+/// Probe-only observations deliberately have no experiment root span or fault
+/// completion event: they must not count as fault-execution evidence.
+fn run_probe_only(
+    experiment: &Experiment,
+    executor: &Arc<dyn ActivityExecutor>,
+    config: &RunConfig,
+) -> Result<Journal, RunnerError> {
+    let hypothesis = experiment
+        .steady_state_hypothesis
+        .as_ref()
+        .filter(|h| {
+            !h.probes.is_empty()
+                && h.probes
+                    .iter()
+                    .all(|p| p.activity_type == ActivityType::Probe)
+        })
+        .ok_or(RunnerError::MissingBaselineProbes)?;
+    let started = Instant::now();
+    let now = epoch_nanos_now();
+    if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
+        return Ok(make_interrupted_journal(experiment, now));
+    }
+    // Definition controls may execute actions; only a fresh empty registry is
+    // appropriate for a promised fault-free observation.
+    let result = evaluate_hypothesis(hypothesis, executor.as_ref(), &ControlRegistry::new());
+    let status = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
+        ExperimentStatus::Interrupted
+    } else if result.met {
+        ExperimentStatus::Completed
+    } else {
+        ExperimentStatus::Aborted
+    };
+    let mut journal =
+        Journal::for_experiment(experiment, uuid::Uuid::new_v4().to_string(), status, now);
+    journal
+        .experiment_title
+        .push_str(" [baseline-only observation]");
+    journal.ended_at_ns = epoch_nanos_now();
+    journal.duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    journal.steady_state_before = Some(result);
+    Ok(journal)
 }

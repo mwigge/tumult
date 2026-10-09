@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.21.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.22.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
@@ -32,7 +32,7 @@ Prerequisites: Rust 1.92.0 or newer and Docker with Compose.
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult
-cargo build --release -p tumult-cli
+cargo build --release --locked -p tumult-cli -p tumult-net
 docker compose -f docker/docker-compose.yml up -d --wait postgres redis kafka mysql sshd
 target/release/tumult validate examples/redis-chaos.toon
 target/release/tumult run examples/redis-chaos.toon
@@ -44,8 +44,9 @@ analysis, observability, GameDays, and MCP usage.
 
 ## Capabilities
 
-- A five-phase experiment lifecycle with steady-state probes, fault actions,
-  controls, recovery sampling, and rollback.
+- Steady-state probes, fault actions, controls, post-method sampling and
+  explicit rollback. The [data lifecycle](docs/data-lifecycle.md) distinguishes
+  measured results from reserved baseline and recovery fields.
 - Script plugins for containers, databases, Kafka, load testing, network
   faults, processes, Pumba, stress, and time-related failure modes.
 - Native Rust executors for SSH, userspace TCP fault injection, Kubernetes,
@@ -134,15 +135,15 @@ flowchart LR
   CSV files and tumult journal JSON by hand (`tumultd import <file>`).
 - **Unified DuckDB store + parquet lake** — telemetry, run state, manual
   evidence and the analytics family in one store behind one writer.
-  Incremental, watermark-driven export writes immutable day-partitioned
-  parquet (`KRONIKA_LAKE_DIR`, `KRONIKA_LAKE_INTERVAL`,
-  `POST /api/lake/export`). Retention is optional
-  (`KRONIKA_RETENTION_DAYS`, default keep forever; the manual-evidence
-  tables are never deleted). Write-once parquet plus hash-chained audit
-  trails form a WORM-shaped evidence trail (ADR-010).
+  Manifest-based Parquet snapshots include late-arriving and changed records
+  (`KRONIKA_LAKE_DIR`, `KRONIKA_LAKE_INTERVAL`, `POST /api/lake/export`).
+  Automatic hot retention is disabled because reports do not yet query the
+  archive. Local files and hash chains do not enforce WORM retention locks.
+  [Data portability and recovery](docs/guides/data-portability.md) describes
+  archive exclusions and complete database backup/restore.
 - **Semantic metrics layer** — YAML metric views (`metrics/*.yaml`)
   compiled to strictly validated SQL.
-- **Compliance-grade reports** — R1 executive resilience digest (with
+- **Evidence reports** — R1 executive resilience digest (with
   org-hierarchy rollups), R3 per-run game-day report, and an R2 evidence
   pack (DORA/NIS2/ISO 27001/SOC 2, including the approval-chain
   change-management section). Rendered as embedded-Typst PDFs plus
@@ -170,7 +171,9 @@ demo experiment suite plus manual-evidence records, and exports a report
 into `demo-out/`. To build locally instead, run
 `cd web && npm ci && npm run build` before compiling `tumultd` — the binary
 embeds `web/build/`. The CLI-only path above needs none of this: `tumult
-run` writes its journal and ingests into the same unified store. If you
+run` writes its journal and, when no daemon holds the database, ingests into
+the unified store. Set `TUMULT_DAEMON_URL` and `TUMULT_DAEMON_TOKEN` to import
+through a running daemon instead. If you
 have older standalone database files lying around, `tumult store
 import-legacy` pulls their data into that store (see the
 [CLI reference](docs/guides/cli-reference.md)).
@@ -251,8 +254,12 @@ authentication, pagination, schemas, and client examples.
 | `TUMULT_CLICKHOUSE_URL` | Enable ClickHouse/SigNoz correlation. |
 | `CLAUDE_CODE_BIN`, `CODEX_BIN` | Override local agent adapter binaries. |
 
-Provider-specific credentials use their standard environment variables. Tumult
-does not store those credentials in journals.
+Provider-specific credentials use their standard environment variables.
+Keep secrets out of activity arguments and output: journals retain provider
+output, which can contain sensitive data. Restrict access to journals and
+exports. See [execution bindings](docs/guides/execution-bindings.md) for daemon
+execution authorization and [provider prerequisites](docs/guides/production-deployment.md#provider-capabilities)
+for the shipped images.
 
 ## Safety and evidence scope
 
@@ -276,17 +283,16 @@ See [SECURITY.md](SECURITY.md) for the supported-version policy.
 - [Data lifecycle](docs/data-lifecycle.md)
 - [Security assessment](docs/security-assessment.md)
 - [Verification protocol](docs/testprotocol.md)
+- [2.22.0 hardening review](docs/guides/hardening-review.md)
+- [Quality and release checks](docs/guides/quality-and-release.md)
 
 ## Contributing
 
-Before submitting a change, run:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
-cargo test --workspace
-cargo audit && cargo deny check && cargo machete --with-metadata
-```
+Before submitting a change, run the
+[quality gates](docs/guides/quality-and-release.md), including the web build
+before Rust compilation, language checks, tests and dependency policy. The
+guide distinguishes advisory exceptions from an exception-free audit and
+source verification from release/deployment verification.
 
 Keep commit messages focused on delivered behavior and evidence. Do not include
 development-tool or review-process metadata in commit messages.

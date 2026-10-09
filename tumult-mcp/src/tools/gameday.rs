@@ -224,6 +224,9 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         ..RunConfig::default()
     };
 
+    let journal_path = path.with_extension("journal.toon");
+    let journal_output = tumult_core::journal::JournalOutput::prepare(&journal_path)
+        .map_err(|e| ToolError::Execution(format!("journal preflight failed: {e}")))?;
     let journal = run_gameday_with_wiring(
         &gameday,
         &experiments,
@@ -232,11 +235,12 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
     )
     .map_err(|e| ToolError::Execution(format!("gameday failed: {e}")))?;
 
-    // Write journal
-    let journal_path = path.with_extension("journal.toon");
+    // Publish the journal to the preflighted destination.
     let toon_out = toon_format::encode_default(&journal)
         .map_err(|e| ToolError::Execution(format!("failed to encode journal: {e}")))?;
-    std::fs::write(&journal_path, &toon_out)?;
+    journal_output
+        .write(&toon_out)
+        .map_err(|e| ToolError::Execution(format!("failed to write journal: {e}")))?;
 
     let mut output = String::new();
     writeln!(output, "GameDay: {}", journal.title).ok();

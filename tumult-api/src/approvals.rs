@@ -17,6 +17,7 @@
 //! the daemon's single-writer channel — this module never opens a write
 //! connection.
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -40,24 +41,32 @@ use crate::auth::Principal;
 use crate::sql_util::{internal, now_ns, with_reader};
 use crate::ApiState;
 
-fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
+fn bad_request(msg: String) -> ApiError {
+    (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+        .into_response()
+        .into()
 }
 
-fn not_found(msg: String) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg}))).into_response()
+fn not_found(msg: String) -> ApiError {
+    (StatusCode::NOT_FOUND, Json(json!({"error": msg})))
+        .into_response()
+        .into()
 }
 
-fn unavailable(msg: &str) -> Response {
-    (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg}))).into_response()
+fn unavailable(msg: &str) -> ApiError {
+    (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": msg})))
+        .into_response()
+        .into()
 }
 
-fn conflict(body: Value) -> Response {
-    (StatusCode::CONFLICT, Json(body)).into_response()
+fn conflict(body: Value) -> ApiError {
+    (StatusCode::CONFLICT, Json(body)).into_response().into()
 }
 
-fn unprocessable(body: Value) -> Response {
-    (StatusCode::UNPROCESSABLE_ENTITY, Json(body)).into_response()
+fn unprocessable(body: Value) -> ApiError {
+    (StatusCode::UNPROCESSABLE_ENTITY, Json(body))
+        .into_response()
+        .into()
 }
 
 /// Run `f` on the daemon's single writer; the closure's own outcome travels
@@ -66,7 +75,7 @@ fn unprocessable(body: Value) -> Response {
 async fn exec_write<T>(
     state: &ApiState,
     f: impl FnOnce(&Writer) -> Result<T, String> + Send + 'static,
-) -> Result<Result<T, String>, Response>
+) -> Result<Result<T, String>, ApiError>
 where
     T: Send + 'static,
 {
@@ -93,10 +102,15 @@ where
 
 /// Map a decision-write failure: self-approval → 403 (segregation of
 /// duties), a second decision by the same approver → 409, anything else 500.
-fn decision_error(msg: String) -> Response {
+fn decision_error(msg: String) -> ApiError {
     if msg.contains("self-approval") {
-        (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
-    } else if msg.contains("already decided") {
+        (StatusCode::FORBIDDEN, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    } else if msg.contains("already decided")
+        || msg.contains("not awaiting approval")
+        || msg.contains("state changed or approval unavailable")
+    {
         conflict(json!({"error": msg}))
     } else {
         internal(msg)
@@ -106,7 +120,7 @@ fn decision_error(msg: String) -> Response {
 /// The run row for `id`, requiring it to exist and await approval.
 /// Anything else — unknown, queued, running, terminal (including `expired`)
 /// — is a 404/409; an expired request must be re-requested.
-async fn pending_run(state: &ApiState, id: &str) -> Result<Value, Response> {
+async fn pending_run(state: &ApiState, id: &str) -> Result<Value, ApiError> {
     let lookup = id.to_string();
     let run = with_reader(&state.db_path, move |reader| {
         reader.run_get(&lookup).map_err(|e| e.to_string())
@@ -152,7 +166,7 @@ enum GateCheck {
 /// Fetch the approval request and, for T3, re-run the autopilot gate
 /// against current ambient facts. A missing approval request is a 500 via
 /// [`with_reader`]'s error mapping.
-async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck, Response> {
+async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck, ApiError> {
     let lookup = id.to_string();
     let run = run.clone();
     let policy = state.autopilot_policy();
@@ -181,7 +195,7 @@ async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck
                     .collect()
             })
             .unwrap_or_default();
-        let (experiment, _env) = tumult_ingest::prepare_run(&definition.definition_toon, &vars)?;
+        let (experiment, _env) = crate::runs::prepare_for_api(&definition.definition_toon, &vars)?;
         let intro = introspect(&experiment);
         let now = now_ns();
         let runs_today = reader
@@ -231,7 +245,7 @@ async fn dispatch_response(
     queue: &RunQueue,
     id: &str,
     break_glass: bool,
-) -> Result<Response, Response> {
+) -> Result<Response, ApiError> {
     match queue.dispatch_approved(id).await {
         Ok(()) => {
             let mut body = json!({"run_id": id, "state": run_state::QUEUED});
@@ -249,8 +263,11 @@ async fn dispatch_response(
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"error": "run queue full; retry before the approval TTL lapses"})),
         )
-            .into_response()),
-        Err(DispatchError::NotPending) => Err(internal("run is no longer pending approval".into())),
+            .into_response()
+            .into()),
+        Err(DispatchError::NotPending) => Err(conflict(
+            json!({"error": "run is no longer pending approval"}),
+        )),
         Err(DispatchError::Store(e)) => Err(internal(e)),
     }
 }
@@ -260,9 +277,14 @@ async fn dispatch_response(
 
 /// `GET /api/approvals` — the pending approval queue (oldest first), each
 /// entry carrying its request, definition name and approvals collected.
-pub async fn queue(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
-    let rows = with_reader(&state.db_path, |reader| {
-        reader.approvals_queue().map_err(|e| e.to_string())
+pub async fn queue(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<Value>, ApiError> {
+    let rows = with_reader(&state.db_path, move |reader| {
+        let mut rows = reader.approvals_queue().map_err(|e| e.to_string())?;
+        rows.retain(|row| principal.env_allowed(row["env"].as_str().unwrap_or_default()));
+        Ok(rows)
     })
     .await?;
     Ok(Json(json!({"count": rows.len(), "queue": rows})))
@@ -290,10 +312,11 @@ pub async fn approve(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<DecisionRequest>,
-) -> Result<Response, Response> {
+) -> Result<Response, ApiError> {
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     let run = pending_run(&state, &id).await?;
     let policy_hash = match gate_check(&state, &id, &run).await? {
         GateCheck::Clear(hash) => hash,
@@ -312,7 +335,7 @@ pub async fn approve(
             })
             .await?;
             if let Err(e) = result {
-                return Err(internal(e));
+                return Err(decision_error(e));
             }
             return Err(conflict(
                 json!({"error": "approval expired", "state": run_state::EXPIRED}),
@@ -365,7 +388,7 @@ pub async fn approve(
     let actor = principal.actor();
     let result = exec_write(&state, move |writer| {
         writer
-            .insert_approval_decision(&decision_row)
+            .insert_pending_approval_decision(&decision_row)
             .map_err(|e| e.to_string())?;
         writer
             .insert_run_audit(&id2, "approved", detail.as_deref(), actor.as_deref())
@@ -392,7 +415,8 @@ pub async fn reject(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<DecisionRequest>,
-) -> Result<Response, Response> {
+) -> Result<Response, ApiError> {
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     pending_run(&state, &id).await?;
     let decision_row = ApprovalDecision {
         run_id: id.clone(),
@@ -406,7 +430,7 @@ pub async fn reject(
     let note = req.note.clone();
     let result = exec_write(&state, move |writer| {
         writer
-            .insert_approval_decision(&decision_row)
+            .insert_pending_approval_decision(&decision_row)
             .map_err(|e| e.to_string())?;
         writer
             .finish_run(
@@ -453,13 +477,14 @@ pub async fn break_glass(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<BreakGlassRequest>,
-) -> Result<Response, Response> {
+) -> Result<Response, ApiError> {
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
     if req.justification.trim().chars().count() < 10 {
         return Err(bad_request("justification too short (min 10 chars)".into()));
     }
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     pending_run(&state, &id).await?;
 
     // The override and its audit event.
@@ -469,7 +494,7 @@ pub async fn break_glass(
     let justification = req.justification.clone();
     let result = exec_write(&state, move |writer| {
         writer
-            .mark_break_glass(&id2, &username, &justification)
+            .mark_pending_break_glass(&id2, &username, &justification)
             .map_err(|e| e.to_string())?;
         writer
             .insert_run_audit(&id2, "overridden", Some(&justification), actor.as_deref())
@@ -477,7 +502,7 @@ pub async fn break_glass(
     })
     .await?;
     if let Err(e) = result {
-        return Err(internal(e));
+        return Err(decision_error(e));
     }
 
     // The pinned request's env/target/pin flavor the retrospective record.

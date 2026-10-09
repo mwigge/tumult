@@ -2,8 +2,8 @@
 //! approval chain (`GET /api/runs/{id}`), and the audit hash-chain check
 //! (`GET /api/runs/{id}/audit/verify`).
 
+use crate::error::ApiError;
 use axum::extract::{Path, Query, State};
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -41,14 +41,13 @@ pub struct ListParams {
 
 /// `GET /api/runs?state=&limit=` — runs, newest first (limit defaults to
 /// 100, capped at 500). Runs whose experiment's environment is outside the
-/// principal's scopes are hidden; runs without an experiment yet (still
-/// queued) stay visible to everyone — the environment is known only once
-/// execution links the journal's `experiment_id` (documented behaviour).
+/// principal's scopes are hidden, including queued runs. Durable request
+/// context takes precedence over telemetry; unknown legacy scope fails closed.
 pub async fn list(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if let Some(state) = params.state.as_deref().filter(|s| !s.is_empty()) {
         if !STATES.contains(&state) {
             return Err(bad_request(format!(
@@ -83,12 +82,7 @@ pub async fn list(
         let scope_clause = if scopes.is_empty() {
             String::from("TRUE")
         } else {
-            let env_list = scopes
-                .iter()
-                .map(|s| sql_string(s))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("(e.env IN ({env_list}) OR r.experiment_id IS NULL)")
+            crate::auth::scopes::run_scope_sql(&scopes)
         };
         reader
             .query_json_rows(&format!(
@@ -109,12 +103,12 @@ pub async fn list(
 /// its approval chain: `approval.request` (the pinned request, `null` for
 /// T0 runs that never gate) and `approval.decisions` (oldest first).
 /// Runs in an environment outside the principal's scopes 404 (same rule as
-/// the list; runs without an experiment stay visible).
+/// the list, including runs that have not produced telemetry yet).
 pub async fn detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("run id too long"));
     }
@@ -124,11 +118,7 @@ pub async fn detail(
         let run = if scopes.is_empty() {
             reader.run_get(&lookup).map_err(|e| e.to_string())?
         } else {
-            let env_list = scopes
-                .iter()
-                .map(|s| sql_string(s))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
             reader
                 .query_json_rows(&format!(
                     "SELECT r.*, g.name AS definition_name FROM runs r \
@@ -136,7 +126,7 @@ pub async fn detail(
                      LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
                                 FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
                      WHERE r.id = {} \
-                       AND (e.env IN ({env_list}) OR r.experiment_id IS NULL)",
+                       AND ({scope_predicate})",
                     sql_string(&lookup)
                 ))
                 .map_err(|e| e.to_string())?
@@ -177,7 +167,7 @@ pub async fn audit_verify(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("run id too long"));
     }
@@ -190,18 +180,14 @@ pub async fn audit_verify(
                 .map_err(|e| e.to_string())?
                 .is_some()
         } else {
-            let env_list = scopes
-                .iter()
-                .map(|s| sql_string(s))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
             !reader
                 .query_json_rows(&format!(
                     "SELECT r.id FROM runs r \
                      LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
                                 FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
                      WHERE r.id = {} \
-                       AND (e.env IN ({env_list}) OR r.experiment_id IS NULL)",
+                       AND ({scope_predicate})",
                     sql_string(&lookup)
                 ))
                 .map_err(|e| e.to_string())?

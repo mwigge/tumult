@@ -1,6 +1,7 @@
 //! `GET /api/reports*` (v1 digests and v2 compliance reports) and
 //! `GET /api/scores*` (resilience scorecard, org tree rollup).
 
+use crate::error::ApiError;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
@@ -138,14 +139,15 @@ pub(crate) async fn generate_report(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<GenerateRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let metric = req.metric.trim().to_string();
     if metric.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "metric must not be empty"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     }
     let metrics_dir = state.metrics_dir.as_ref().clone();
     let reports_dir = state.reports_dir.as_ref().clone();
@@ -174,7 +176,8 @@ pub(crate) async fn generate_report(
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("metric {metric:?} not found; see /api/metrics")})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     // Best-effort LLM narrative: unreachable/unconfigured LLM or a reply
     // with no grounded sentences leaves the digest unchanged.
@@ -213,14 +216,15 @@ pub(crate) async fn scores(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(q): Query<ScoresQuery>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let range = q.range.as_deref().unwrap_or("7d");
     let Some(((from, to), _)) = windows(range) else {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "range must be one of 24h|7d|14d"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     let scopes = principal.env_scopes.clone();
     let card = with_reader(&state.db_path, move |reader| {
@@ -256,7 +260,7 @@ pub(crate) async fn scores_tree(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<TreeParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let node = params.node.unwrap_or_default();
     let node = node.trim_matches('/').to_string();
     if state.org.resolve(&node).is_none() {
@@ -264,14 +268,16 @@ pub(crate) async fn scores_tree(
             StatusCode::BAD_REQUEST,
             Json(json!({"error": format!("unknown org node {node:?}")})),
         )
-            .into_response());
+            .into_response()
+            .into());
     }
     let Some(secs) = parse_range(params.range.as_deref().unwrap_or("7d")) else {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "range must be one of 24h|7d|14d"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     let period_ns = secs * 1_000_000_000;
     let as_of = now_ns();
@@ -359,8 +365,12 @@ pub(crate) async fn generate_report_v2(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<GenerateV2Request>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let Ok(kind) = serde_json::from_value::<tumult_compliance::TemplateKind>(json!(req.kind))
     else {
         return Err(bad(format!(
@@ -441,7 +451,8 @@ pub(crate) async fn generate_report_v2(
             StatusCode::NOT_FOUND,
             Json(json!({"error": "experiment_id not found"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
 
     let pdf =

@@ -30,4 +30,4 @@ http-body-util = "0.1"
 # Test binaries link both `ring` and `aws-lc-rs` via the workspace tree, so
 # rustls has no process-level default provider; the tests install one
 # explicitly, mirroring `tumultd::serve`.
-rustls = { version = "0.23", features = ["aws-lc-rs"] }
+rustls = { version = "0.23.45", features = ["aws-lc-rs"] }

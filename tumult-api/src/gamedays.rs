@@ -9,11 +9,11 @@
 //! `{"toon": <campaign toon>, "experiments": [{path, registry_id}]}` — the
 //! resolved mapping the campaign runner (separate change) dispatches from.
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -47,7 +47,7 @@ pub async fn validate(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ValidateGameDayRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if req.toon.chars().count() > 256_000 {
         return Err(bad_request("gameday too large (max 256k chars)"));
     }
@@ -65,7 +65,7 @@ pub async fn validate(
                 "experiment {path:?} referenced by the gameday was not supplied"
             )));
         };
-        if let Err(e) = tumult_ingest::prepare_run(toon, &HashMap::new()) {
+        if let Err(e) = crate::runs::prepare_for_api(toon, &HashMap::new()) {
             return Err(bad_request(format!("experiment {path:?}: {e}")));
         }
     }
@@ -75,8 +75,8 @@ pub async fn validate(
     for step in &gameday.experiments {
         let path = step.path.to_string_lossy().into_owned();
         let toon = req.experiments[&path].clone();
-        let (experiment, _env) =
-            tumult_ingest::prepare_run(&toon, &HashMap::new()).map_err(internal)?;
+        let experiment =
+            crate::runs::preview_experiment(&toon, &HashMap::new()).map_err(bad_request)?;
         let registration = crate::registry::register_definition(
             &state,
             &toon,
@@ -113,7 +113,7 @@ pub async fn validate(
 }
 
 /// `GET /api/gamedays` — registered campaigns (metadata only), newest first.
-pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let rows = with_reader(&state.db_path, |reader| {
         reader
             .query_json_rows(
@@ -128,7 +128,7 @@ pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, Response
 }
 
 /// Fetch one gameday registry row, or a 404 response.
-async fn gameday_or_404(state: &ApiState, id: &str) -> Result<Value, Response> {
+async fn gameday_or_404(state: &ApiState, id: &str) -> Result<Value, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("gameday id too long"));
     }
@@ -153,7 +153,7 @@ async fn gameday_or_404(state: &ApiState, id: &str) -> Result<Value, Response> {
 pub async fn detail(
     State(state): State<ApiState>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let row = gameday_or_404(&state, &id).await?;
     let envelope: Value = serde_json::from_str(row["definition_toon"].as_str().unwrap_or("{}"))
         .map_err(|e| internal(e.to_string()))?;
@@ -231,7 +231,7 @@ pub async fn start_campaign(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<CreateCampaignRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     if !principal.env_allowed(&req.env) {
         return Err(forbidden(format!(
             "environment {:?} is outside the principal's scopes",
@@ -241,6 +241,23 @@ pub async fn start_campaign(
     let row = gameday_or_404(&state, &id).await?;
     let envelope: Value = serde_json::from_str(row["definition_toon"].as_str().unwrap_or("{}"))
         .map_err(|e| internal(e.to_string()))?;
+    for step in envelope["experiments"].as_array().into_iter().flatten() {
+        let definition =
+            crate::runs::registry_or_404(&state, step["registry_id"].as_str().unwrap_or_default())
+                .await?;
+        let (experiment, injected) =
+            crate::runs::prepare_for_api(&definition.definition_toon, &HashMap::new())
+                .map_err(bad_request)?;
+        tumult_ingest::execution_policy::classify_execution(
+            &state.db_path,
+            &experiment,
+            &injected,
+            &req.env,
+            None,
+            !principal.env_scopes.is_empty(),
+        )
+        .map_err(forbidden)?;
+    }
     let steps = envelope["experiments"].as_array().map_or(0, Vec::len);
 
     let Some(ingest) = state.ingest_handle() else {

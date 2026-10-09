@@ -4,8 +4,8 @@
 //! tick fires each due, enabled schedule through the **normal run path** —
 //! the same parse/resolve/validate pipeline, tier classification and
 //! approval gating as `POST /api/runs` — so a scheduled production run still
-//! parks for approval. Fired runs are recorded with actor
-//! `schedule:<name>`; fire bookkeeping (last run, next fire) rides the
+//! parks for approval. Fired runs retain the authenticated schedule author;
+//! fire bookkeeping (last run, next fire) rides the
 //! daemon's single-writer channel.
 //!
 //! Missed-fire policy: each fire advances `next_run_at_ns` to
@@ -21,7 +21,8 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tumult_lake::{ScheduleRow, Store};
 
-use crate::approvals::{classify, introspect, Tier, TierInput};
+use crate::approvals::Tier;
+use crate::execution_policy::classify_execution;
 use crate::runs::{prepare_run, RunQueue, RunRequest};
 use crate::{Batch, IngestWriter};
 
@@ -149,7 +150,18 @@ async fn fire_one(db_path: &Path, runs: &RunQueue, schedule: &ScheduleRow) -> Op
             return None;
         }
     };
-    let actor = format!("schedule:{}", schedule.name);
+    let actor = schedule.created_by.clone();
+    let require_binding = match crate::execution_policy::actor_requires_binding(
+        db_path,
+        actor.as_deref(),
+        &schedule.env,
+    ) {
+        Ok(required) => required,
+        Err(error) => {
+            tracing::warn!(schedule = %schedule.id, %error, "scheduled execution owner rejected");
+            return None;
+        }
+    };
     let request = RunRequest {
         registry_id: definition.id,
         definition_toon: definition.definition_toon,
@@ -157,22 +169,41 @@ async fn fire_one(db_path: &Path, runs: &RunQueue, schedule: &ScheduleRow) -> Op
         env: schedule.env.clone(),
         target: schedule.target.clone(),
     };
-    let experiment = match prepare_run(&request.definition_toon, &request.vars) {
-        Ok((experiment, _env)) => experiment,
-        Err(e) => {
-            tracing::warn!(schedule = %schedule.id, error = %e, "scheduled definition failed to resolve");
+    let (experiment, injected) = match prepare_run(&request.definition_toon, &request.vars) {
+        Ok(prepared) => prepared,
+        Err(_) => {
+            // Resolved parser/validation errors can quote credential values.
+            tracing::warn!(schedule = %schedule.id, "scheduled definition failed to resolve; check definition and configured sources");
             return None;
         }
     };
-    let tier = classify(&TierInput {
-        env: schedule.env.clone(),
-        catalog_matched: false,
-        introspection: introspect(&experiment),
-    });
+    let tier = match classify_execution(
+        db_path,
+        &experiment,
+        &injected,
+        &schedule.env,
+        schedule.target.as_deref(),
+        require_binding,
+    ) {
+        Ok(tier) => tier,
+        Err(e) => {
+            tracing::warn!(schedule = %schedule.id, error = %e, "scheduled execution binding rejected");
+            return None;
+        }
+    };
+    let expected_hash = match crate::execution_policy::execution_hash(&experiment, &injected) {
+        Ok(hash) => hash,
+        Err(error) => {
+            tracing::warn!(%error, "schedule fingerprint failed");
+            return None;
+        }
+    };
     let outcome = if tier == Tier::T0 {
-        runs.enqueue(request, Some(actor)).await
+        runs.enqueue_checked(request, actor, Some(expected_hash))
+            .await
     } else {
-        runs.request_gated(request, tier, Some(actor)).await
+        runs.request_gated_checked(request, tier, actor, Some(expected_hash))
+            .await
     };
     match outcome {
         Ok(run_id) => Some(run_id),

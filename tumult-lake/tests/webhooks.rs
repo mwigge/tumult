@@ -25,13 +25,13 @@ fn webhook(id: &str, enabled: bool) -> WebhookRow {
 }
 
 #[test]
-fn schema_is_v13() {
+fn schema_is_v15() {
     let (_d, store) = fixture();
     assert_eq!(
         store.writer().unwrap().schema_version().unwrap(),
         CURRENT_SCHEMA_VERSION
     );
-    assert_eq!(CURRENT_SCHEMA_VERSION, 13);
+    assert_eq!(CURRENT_SCHEMA_VERSION, 15);
 }
 
 #[test]

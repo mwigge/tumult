@@ -109,30 +109,15 @@ pub fn build_evidence_pack(
         )),
         Block::H2("Independence".into()),
         Block::Paragraph(
-            "Testing performed in line with the independence expectations of DORA \
-             Art. 24(4): experiment design and execution are separated from the \
-             teams operating the affected services. Automated results are recorded \
-             without manual editing; manually executed tests are entered under an \
-             attestation and verified by a reviewer other than the person who \
-             entered them (segregation of duties)."
+            "Independence has not been verified by this report. Organizational \
+             separation of test design/execution from service operation requires \
+             a reviewed attestation. Manual evidence review records identify the \
+             enterer and verifier; those identities alone do not prove organizational independence."
                 .into(),
         ),
     ];
 
     blocks.push(Block::H2("Traceability matrix".into()));
-    let tested_names: Vec<String> = card
-        .experiments
-        .iter()
-        .filter(|e| e.state != RunState::NeverRun)
-        .map(|e| e.name.clone())
-        .collect();
-    let tested_summary = if tested_names.is_empty() {
-        "—".to_string()
-    } else if tested_names.len() <= 3 {
-        tested_names.join(", ")
-    } else {
-        format!("See test register ({})", tested_names.len())
-    };
     blocks.push(Block::Table {
         headers: vec![
             "Clause".into(),
@@ -146,10 +131,10 @@ pub fn build_evidence_pack(
             .map(|clause| {
                 vec![
                     Cell::text(*clause),
-                    Cell::text(tested_summary.clone()),
-                    Cell::status(card.band.clone()),
-                    Cell::text("—"),
-                    Cell::text("—"),
+                    Cell::text("No reviewed clause mapping"),
+                    Cell::status("Unmapped"),
+                    Cell::text("Clause applicability and coverage not verified"),
+                    Cell::text("Map evidence and obtain independent review"),
                 ]
             })
             .collect(),
@@ -162,27 +147,27 @@ pub fn build_evidence_pack(
     if card.experiments.is_empty() {
         blocks.push(Block::Paragraph("No experiments on record.".into()));
     } else {
-        // Provenance for verified manual records, latest record per name.
+        // Provenance joins the exact scored manual record, never a display name.
         let manual_rows = reader
             .query_json_rows(&format!(
-                "SELECT experiment_name AS name, executed_at_ns, entered_by, entered_at_ns, \
+                "SELECT id, experiment_name AS name, executed_at_ns, entered_by, entered_at_ns, \
                  reviewed_by, reviewed_at_ns FROM manual_experiments \
                  WHERE status = 'verified'{} ORDER BY executed_at_ns DESC",
                 scoring::and_env(scoring::env_in("target_environment", envs)),
             ))
             .map_err(|e| e.to_string())?;
-        let mut manual_by_name: std::collections::BTreeMap<String, &serde_json::Value> =
+        let mut manual_by_id: std::collections::BTreeMap<String, &serde_json::Value> =
             std::collections::BTreeMap::new();
         for row in &manual_rows {
-            if let Some(name) = cell(row, "name") {
-                manual_by_name.entry(name.to_string()).or_insert(row);
+            if let Some(id) = cell(row, "id") {
+                manual_by_id.insert(id.to_string(), row);
             }
         }
         blocks.push(Block::Table {
             headers: vec![
                 "Experiment".into(),
                 "Origin".into(),
-                "Target".into(),
+                "Target / environment".into(),
                 "Executed".into(),
                 "Entered".into(),
                 "Verifier".into(),
@@ -193,7 +178,9 @@ pub fn build_evidence_pack(
                 .experiments
                 .iter()
                 .map(|e| {
-                    let manual = manual_by_name.get(&e.name);
+                    let manual = (e.origin == "manual")
+                        .then(|| e.evidence_id.as_ref().and_then(|id| manual_by_id.get(id)))
+                        .flatten();
                     let entered = manual
                         .and_then(|m| m.get("entered_at_ns"))
                         .and_then(serde_json::Value::as_i64);
@@ -201,7 +188,11 @@ pub fn build_evidence_pack(
                     vec![
                         Cell::text(e.name.clone()),
                         Cell::status(e.origin.clone()),
-                        Cell::text(e.target.clone().unwrap_or("—".into())),
+                        Cell::text(format!(
+                            "{} / {}",
+                            e.target.as_deref().unwrap_or("—"),
+                            e.environment.as_deref().unwrap_or("—")
+                        )),
                         Cell::text(e.last_run_ns.map_or("never".into(), fmt_date)),
                         Cell::text(entered.map_or("—".into(), fmt_date)),
                         Cell::text(verifier.unwrap_or("—")),
@@ -230,6 +221,12 @@ pub fn build_evidence_pack(
          full id and pin hash are available via the run-detail API."
             .into(),
     ));
+    blocks.push(Block::Paragraph(
+        "Approval-chain appendix: at most the 500 newest installation records are sampled, \
+         then filtered to this scope and period. This appendix is not a complete approval \
+         export; use the portable run_audit and approval tables for complete evidence."
+            .into(),
+    ));
     let approvals = reader.approvals_list(500).map_err(|e| e.to_string())?;
     let approvals: Vec<&serde_json::Value> = approvals
         .iter()
@@ -248,7 +245,7 @@ pub fn build_evidence_pack(
         .collect();
     if approvals.is_empty() {
         blocks.push(Block::Paragraph(
-            "No approval-gated runs in the period.".into(),
+            "No approval-gated runs in the selected sample for this scope and period.".into(),
         ));
     } else {
         let ns_of =

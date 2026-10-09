@@ -23,6 +23,8 @@ pub struct MetricRows {
     pub sums: Vec<MetricSumRow>,
     pub gauges: Vec<MetricGaugeRow>,
     pub histograms: Vec<MetricHistogramRow>,
+    /// Valid OTLP points whose types are not supported by the store.
+    pub rejected_data_points: i64,
 }
 
 struct PromotedDims {
@@ -121,7 +123,15 @@ pub fn metrics_request_to_rows(request: &ExportMetricsServiceRequest) -> MetricR
                             });
                         }
                     }
-                    _ => {}
+                    Some(metric::Data::ExponentialHistogram(value)) => {
+                        out.rejected_data_points +=
+                            i64::try_from(value.data_points.len()).unwrap_or(i64::MAX);
+                    }
+                    Some(metric::Data::Summary(value)) => {
+                        out.rejected_data_points +=
+                            i64::try_from(value.data_points.len()).unwrap_or(i64::MAX);
+                    }
+                    None => {}
                 }
             }
         }
