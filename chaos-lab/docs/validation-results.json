@@ -1,0 +1,23 @@
+{
+  "validated_on": "2026-10-09",
+  "environment": "Linux amd64 Docker Compose, Tumult 2.22.0",
+  "python_tests": 165,
+  "agent_line_coverage_percent": 99.44,
+  "browser": {
+    "completed_run": "f8e910cf058244a7b8022253b6d0011b",
+    "stopped_run": "c7c96efa34bb4d269ef295435847e376",
+    "baseline_p95_ms": 8.23,
+    "during_p95_ms": 410.35,
+    "recovery_p95_ms": 8.1,
+    "browser_errors": []
+  },
+  "restart": {
+    "fault_after_lab_crash": "latency",
+    "expiry_seconds_after_crash": 11.27,
+    "target_recovered_without_lab": true,
+    "interrupted_run": "104065364f5a4cc988e222c1dfbb94be",
+    "saved_completed_runs": 2,
+    "credentials_cleared": true
+  },
+  "live_model_inference_tested": false
+}

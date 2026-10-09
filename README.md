@@ -28,6 +28,26 @@ flowchart LR
 
 ## Quick start
 
+### Learn in your browser — Docker only
+
+The [Tumult Chaos Lab](chaos-lab/README.md) runs four guided fault simulations with
+live baseline, fault, and recovery measurements. An optional AI tutor supports
+OpenAI, Claude, and Ollama. Start with Docker running:
+
+```sh
+git clone https://github.com/mwigge/tumult.git
+cd tumult/chaos-lab
+docker compose up -d --build --wait
+```
+
+Open **[http://localhost:8089](http://localhost:8089)** and select **Slow responses**.
+Read the hypothesis, tick the sandbox acknowledgement, then click **Run experiment**.
+No AI key is needed for the lessons. To add a tutor, open **AI settings** and enter
+your provider key. See the [lab README](chaos-lab/README.md) for your first experiment,
+Ollama setup, and stopping or resuming the lab.
+
+### Run experiments from the CLI
+
 Prerequisites: Rust 1.92.0 or newer and Docker with Compose.
 
 ```bash
@@ -277,6 +297,7 @@ See [SECURITY.md](SECURITY.md) for the supported-version policy.
 
 ## Documentation
 
+- [Chaos Lab: learn in your browser](chaos-lab/README.md)
 - [Quickstart](QUICKSTART.md)
 - [Guides](docs/guides/index.md)
 - [Plugin reference](docs/plugins/index.md)

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#132c32" />
+    <title>Tumult Chaos Lab · Learn by breaking things</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to experiments</a>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Tumult Chaos Lab home"
+        ><span class="brand-mark" aria-hidden="true">↯</span
+        ><span>TUMULT <span class="brand-light">CHAOS LAB</span></span></a
+      >
+      <div class="header-actions">
+        <a class="button quiet" href="/guide.html">Learning guide</a>
+        <span class="local-badge">LOCAL SANDBOX</span
+        ><button id="settings-open" class="button quiet">AI settings</button>
+      </div>
+    </header>
+    <main id="main">
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">BREAK SOMETHING. UNDERSTAND WHY.</p>
+          <h1 id="page-title">A little chaos.<br />A lot of understanding.</h1>
+          <p class="intro-copy">
+            Inject a controlled fault, watch what changes, and follow the
+            evidence back to a more resilient system.
+          </p>
+        </div>
+        <aside class="system-status" aria-label="Lab readiness">
+          <span class="eyebrow">YOUR LAB</span>
+          <p id="engine-status">Connecting to Tumult…</p>
+          <p id="target-status">Checking the sandbox…</p>
+          <span class="status-caption">Guided experiments need no AI key.</span>
+        </aside>
+      </section>
+      <div id="notice" class="notice" role="alert" hidden></div>
+      <section class="scope-note">
+        <strong>A real experiment in a contained simulation.</strong> Tumult
+        changes the behavior of a bundled application dependency. Responses and
+        timings are measured live. These labs do not inject kernel or host
+        network faults.
+      </section>
+      <div class="workspace">
+        <section class="experiment-workspace" aria-labelledby="labs-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">01 / CHOOSE A QUESTION</p>
+              <h2 id="labs-title">The experiment bench</h2>
+            </div>
+            <span class="small muted">Observe → inject → recover</span>
+          </div>
+          <div
+            id="scenarios"
+            class="scenario-list"
+            aria-label="Available experiments"
+          >
+            <p class="muted">Loading guided experiments…</p>
+          </div>
+          <section
+            id="scenario-detail"
+            class="panel scenario-detail"
+            hidden
+            aria-labelledby="selected-title"
+          >
+            <div class="section-heading">
+              <h3 id="selected-title"></h3>
+              <span id="scenario-duration" class="tag"></span>
+            </div>
+            <p id="scenario-description"></p>
+            <div class="hypothesis">
+              <span class="eyebrow">HYPOTHESIS TO TEST</span>
+              <p id="scenario-hypothesis"></p>
+            </div>
+            <div class="scenario-meta">
+              <span id="scenario-target"></span
+              ><span id="scenario-fault"></span>
+            </div>
+            <h4>What you’ll learn</h4>
+            <ul id="scenario-learning"></ul>
+            <div class="run-controls">
+              <label class="arm-label"
+                ><input id="armed" type="checkbox" />
+                <span
+                  >I understand this changes only the bundled sandbox, and I’m
+                  ready to run.</span
+                ></label
+              ><button id="run-start" class="button primary" disabled>
+                Run experiment
+              </button>
+              <p class="small muted">
+                One experiment at a time. Every run attempts cleanup, including
+                when stopped.
+              </p>
+            </div>
+          </section>
+          <section
+            id="run-panel"
+            class="panel"
+            hidden
+            aria-labelledby="run-title"
+          >
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">02 / FOLLOW THE EVIDENCE</p>
+                <h3 id="run-title">Experiment results</h3>
+              </div>
+              <span id="run-status" class="tag"></span>
+            </div>
+            <ol class="phase-track" aria-label="Experiment phases">
+              <li data-phase="baseline">Baseline</li>
+              <li data-phase="during">Fault active</li>
+              <li data-phase="recovery">Recovery</li>
+            </ol>
+            <p id="run-description" class="muted" aria-live="polite"></p>
+            <div
+              id="metrics"
+              class="metrics-grid"
+              aria-label="Measured experiment results"
+            ></div>
+            <div class="chart-heading">
+              <h4>Response time · p95</h4>
+              <span class="small muted"
+                >Measured milliseconds; lower is faster</span
+              >
+            </div>
+            <div
+              id="latency-chart"
+              class="latency-chart"
+              role="img"
+              aria-label="Waiting for measurements"
+            ></div>
+            <div id="verdict-panel" class="verdict" hidden>
+              <h4 id="verdict-title"></h4>
+              <p id="verdict-explanation"></p>
+            </div>
+            <div class="evidence-actions">
+              <button id="run-stop" class="button danger" hidden>
+                Stop experiment</button
+              ><a id="export-run" class="button secondary" hidden
+                >Export evidence</a
+              ><a id="export-experiment" class="button quiet" hidden
+                >Experiment definition</a
+              ><a id="export-journal" class="button quiet" hidden
+                >Tumult journal</a
+              >
+            </div>
+            <details class="events">
+              <summary>Experiment timeline</summary>
+              <ol id="run-events"></ol>
+            </details>
+          </section>
+        </section>
+        <aside class="side-column">
+          <section class="panel tutor" aria-labelledby="tutor-title">
+            <p class="eyebrow">YOUR THINKING PARTNER</p>
+            <h2 id="tutor-title">Make sense of the chaos.</h2>
+            <p class="muted">
+              Ask about the mechanism or explore your latest results. Your tutor
+              explains; only you start experiments.
+            </p>
+            <span id="provider-status" class="provider-status"
+              >Optional · connect a model in AI settings</span
+            >
+            <div class="prompt-list">
+              <button
+                class="prompt"
+                data-question="Explain this experiment’s fault mechanism and what the hypothesis tests."
+              >
+                How does this fault work?
+                <span aria-hidden="true">↗</span></button
+              ><button
+                class="prompt"
+                data-question="Explain the baseline, fault, and recovery measurements from this run. What can and cannot be concluded?"
+              >
+                Walk me through the evidence
+                <span aria-hidden="true">↗</span></button
+              ><button
+                class="prompt"
+                data-question="What would be a useful follow-up experiment, and what would it teach me?"
+              >
+                What should I try next? <span aria-hidden="true">↗</span>
+              </button>
+            </div>
+            <form id="tutor-form">
+              <label for="tutor-question">Ask your tutor</label
+              ><textarea
+                id="tutor-question"
+                rows="3"
+                maxlength="4000"
+                placeholder="Why did latency rise without errors?"
+                required
+              ></textarea
+              ><button id="tutor-submit" class="button primary">
+                Ask tutor
+              </button>
+            </form>
+            <p class="small muted">
+              Your question and selected run evidence go to your chosen
+              provider. AI explanations may be wrong; check them against the
+              measurements.
+            </p>
+            <div
+              id="tutor-answer"
+              class="tutor-answer"
+              aria-live="polite"
+              hidden
+            ></div>
+          </section>
+          <section class="panel history" aria-labelledby="history-title">
+            <div class="section-heading">
+              <h2 id="history-title">Your experiments</h2>
+              <button id="refresh-history" class="button quiet small">
+                Refresh
+              </button>
+            </div>
+            <p class="small muted">Saved runs on this workstation.</p>
+            <div id="history-list">
+              <p class="empty-state">
+                Your first run starts a trail of evidence.
+              </p>
+            </div>
+          </section>
+        </aside>
+      </div>
+      <footer>
+        Built with Tumult <span aria-hidden="true">/</span> A learning sandbox,
+        one hypothesis at a time.
+      </footer>
+    </main>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <form id="settings-form">
+        <div class="section-heading">
+          <h2 id="settings-title">Connect your AI tutor</h2>
+          <button
+            id="settings-close"
+            class="button quiet"
+            type="button"
+            aria-label="Close settings"
+          >
+            Close
+          </button>
+        </div>
+        <p>
+          All guided experiments work without a model. Add one when you want a
+          conversation about what you’re seeing.
+        </p>
+        <label for="provider">Provider</label
+        ><select id="provider">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic · Claude</option>
+          <option value="ollama">Ollama · local model</option></select
+        ><label for="model">Model</label
+        ><input
+          id="model"
+          name="model"
+          type="text"
+          maxlength="160"
+          required
+          placeholder="Enter an available model ID"
+        /><label for="api-key">API key</label
+        ><input
+          id="api-key"
+          name="api-key"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="512"
+        />
+        <p id="provider-help" class="small muted"></p>
+        <p class="privacy-note">
+          Keys stay in server memory for this browser session. They are never
+          stored in your browser, evidence exports, or experiment files.
+          Restarting the lab clears them.
+        </p>
+        <div id="settings-error" class="notice" role="alert" hidden></div>
+        <div class="settings-actions">
+          <button id="settings-save" class="button primary">
+            Save connection</button
+          ><button id="settings-clear" class="button secondary" type="button">
+            Disconnect
+          </button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

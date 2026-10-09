@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#132c32" />
+    <title>Learning guide · Tumult Chaos Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#guide">Skip to learning guide</a>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Tumult Chaos Lab home"
+        ><span class="brand-mark" aria-hidden="true">↯</span
+        ><span>TUMULT <span class="brand-light">CHAOS LAB</span></span></a
+      >
+      <a class="button secondary" href="/">Back to the lab</a>
+    </header>
+    <main id="guide" class="learning-guide">
+      <section class="intro" aria-labelledby="guide-title">
+        <div>
+          <p class="eyebrow">THE FIELD GUIDE</p>
+          <h1 id="guide-title">Turn a fault into understanding.</h1>
+          <p class="intro-copy">
+            A useful experiment ends with an explanation you can defend. Follow
+            this process with any of the four lessons. No AI key required.
+          </p>
+        </div>
+      </section>
+      <nav class="guide-nav" aria-label="Guide sections">
+        <a href="#process">The process</a
+        ><a href="#mechanisms">Fault mechanisms</a
+        ><a href="#results">Reading results</a><a href="#next">Go deeper</a>
+      </nav>
+      <section id="process" class="panel" aria-labelledby="process-title">
+        <p class="eyebrow">01 / ASK, OBSERVE, EXPLAIN</p>
+        <h2 id="process-title">One question. Three measured phases.</h2>
+        <ol class="guide-steps">
+          <li>
+            <h3>Predict before you click.</h3>
+            <p>
+              Read the hypothesis: every sampled request succeeds and p95
+              latency stays at or below 200 ms. Predict whether this fault will
+              cause slow responses, errors, or both. Write down what would
+              contradict your prediction.
+            </p>
+          </li>
+          <li>
+            <h3>Establish the baseline.</h3>
+            <p>
+              Tumult measures eight requests before applying the fault. If the
+              service is already failing or slow, resolve that first. You cannot
+              attribute an existing problem to a fault you have not injected.
+            </p>
+          </li>
+          <li>
+            <h3>Change one behavior.</h3>
+            <p>
+              Acknowledge the sandbox scope and run the lesson. The real Tumult
+              executor enables the selected behavior in the bundled teaching
+              API, then measures responses while it is active. Your question to
+              the tutor never starts an experiment.
+            </p>
+          </li>
+          <li>
+            <h3>Verify recovery.</h3>
+            <p>
+              Compare the recovery samples with baseline after cleanup. Stop
+              experiment requests cancellation and cleanup; a target-enforced
+              lease also bounds fault lifetime. No recovery samples means that
+              run has not demonstrated recovery.
+            </p>
+          </li>
+          <li>
+            <h3>Reflect on the evidence.</h3>
+            <p>
+              Explain what changed, whether your prediction held, and what
+              remains unknown. Export the result before proposing the next
+              experiment. A weakness discovered is useful evidence.
+            </p>
+          </li>
+        </ol>
+      </section>
+      <section id="mechanisms" class="panel" aria-labelledby="mechanisms-title">
+        <p class="eyebrow">02 / KNOW WHAT YOU ARE CHANGING</p>
+        <h2 id="mechanisms-title">
+          Four mechanisms, four different questions.
+        </h2>
+        <div class="guide-lessons">
+          <article>
+            <h3>Slow responses</h3>
+            <p>
+              <strong>Mechanism:</strong> adds 400 ms of application delay
+              before responding.
+            </p>
+            <p>
+              <strong>Look for:</strong> a latency objective breaking even when
+              requests succeed.
+            </p>
+            <p>
+              <strong>Ask:</strong> would your monitoring notice a service that
+              is available but too slow to use?
+            </p>
+          </article>
+          <article>
+            <h3>HTTP failures</h3>
+            <p>
+              <strong>Mechanism:</strong> returns HTTP 503 while the fault is
+              active.
+            </p>
+            <p>
+              <strong>Look for:</strong> fast responses that are nevertheless
+              failures.
+            </p>
+            <p>
+              <strong>Ask:</strong> how could a latency-only dashboard make this
+              outage appear healthy?
+            </p>
+          </article>
+          <article>
+            <h3>Unavailable cache</h3>
+            <p>
+              <strong>Mechanism:</strong> application code simulates an
+              unavailable cache and fails the request.
+            </p>
+            <p>
+              <strong>Look for:</strong> dependency failure becoming a
+              user-visible failure.
+            </p>
+            <p>
+              <strong>Ask:</strong> should the endpoint return a stale value,
+              fetch an uncached result, or fail explicitly?
+            </p>
+          </article>
+          <article>
+            <h3>Database timeout</h3>
+            <p>
+              <strong>Mechanism:</strong> waits 600 ms, then returns HTTP 503.
+            </p>
+            <p>
+              <strong>Look for:</strong> latency and availability degrading
+              together.
+            </p>
+            <p>
+              <strong>Ask:</strong> which deadline should expire first: the
+              dependency timeout or the whole request budget?
+            </p>
+          </article>
+        </div>
+        <div class="hypothesis">
+          <h3>The responses are real. The dependencies are simulated.</h3>
+          <p>
+            There is no Redis or PostgreSQL server to stop in these lessons. An
+            application delay is not kernel packet loss or retransmission. These
+            measurements teach the mechanism in this sandbox; they do not
+            certify a production network or database.
+          </p>
+        </div>
+      </section>
+      <section id="results" class="panel" aria-labelledby="results-title">
+        <p class="eyebrow">03 / READ THE RESULT HONESTLY</p>
+        <h2 id="results-title">
+          Execution success and resilience are different questions.
+        </h2>
+        <p>
+          The native <strong>Tumult journal</strong> records the generated
+          experiment's activities, rollback, and steady-state checks. It can
+          report <strong>Completed</strong> when the method finishes and the
+          post-fault state recovers.
+        </p>
+        <p>
+          The <strong>lab verdict</strong> compares the measured fault window
+          with baseline and recovery:
+        </p>
+        <dl class="guide-definitions">
+          <dt>Deviated</dt>
+          <dd>
+            Baseline and recovery met the objective, but the injected fault
+            broke it. The experiment exposed a weakness.
+          </dd>
+          <dt>Held</dt>
+          <dd>
+            The available phase measurements satisfied the objective in this
+            run. This is bounded evidence, not a general guarantee.
+          </dd>
+          <dt>Inconclusive</dt>
+          <dd>
+            The intended comparison was not established, for example because
+            baseline or recovery failed or execution stopped.
+          </dd>
+        </dl>
+        <p>
+          A completed native journal and a deviated lab result can therefore
+          both be correct. The executor did its job; the service failed the
+          objective during injection.
+        </p>
+        <h3>Eight samples are a demonstration, not a production SLO.</h3>
+        <p>
+          Each phase samples eight sequential requests. The nearest-rank p95
+          calculation is <code>ceil(8 × 0.95) = 8</code>, so the displayed p95
+          is the <strong>largest observed latency</strong> in that phase. One
+          failure is 12.5% of this sample; it is not a reliable estimate of
+          production availability.
+        </p>
+        <p>
+          Use these observations to understand a controlled change.
+          Representative workload, longer measurement windows, and repeated
+          independent runs are needed before drawing broader conclusions. Host
+          load and scheduling can affect every measured value.
+        </p>
+        <h3>Keep three pieces of evidence together.</h3>
+        <ul>
+          <li>
+            <strong>Experiment definition:</strong> the generated
+            <code>.toon</code> plan explains what Tumult was asked to do.
+          </li>
+          <li>
+            <strong>Export evidence:</strong> JSON contains the lab's measured
+            phases, raw samples, events, and verdict.
+          </li>
+          <li>
+            <strong>Tumult journal:</strong> the native
+            <code>.toon</code> execution record shows what the executor
+            recorded, when available.
+          </li>
+        </ul>
+        <p>
+          The download links appear with run results. See the
+          <a href="https://tumult.rs/guides/experiment-format.html"
+            >Tumult experiment-format reference</a
+          >
+          for native fields.
+        </p>
+      </section>
+      <section id="next" class="panel" aria-labelledby="next-title">
+        <p class="eyebrow">04 / MAKE THE NEXT EXPERIMENT USEFUL</p>
+        <h2 id="next-title">Turn the observation into a better question.</h2>
+        <p>
+          Write a conclusion with your actual numbers: “Fault-window latency
+          exceeded 200 ms while all requests succeeded. Recovery returned below
+          the threshold. This supports a latency failure caused by the simulated
+          application delay; it does not establish how real network delay would
+          affect retries.”
+        </p>
+        <p>
+          The lab provides fixed lessons. The following are development
+          exercises for a separate copy of the teaching target, not switches
+          already built into this interface:
+        </p>
+        <ul>
+          <li>
+            <strong>Cache fallback:</strong> can requests succeed without the
+            cache, and what happens to freshness or downstream work?
+          </li>
+          <li>
+            <strong>Bounded retries:</strong> can transient failures recover
+            inside the request budget without amplifying load or duplicating
+            work?
+          </li>
+          <li>
+            <strong>Timeout budgets:</strong> can the dependency stop consuming
+            time before the overall request deadline expires?
+          </li>
+          <li>
+            <strong>Circuit breakers:</strong> can repeated failures avoid
+            repeated expensive calls, and how does recovery probing work?
+          </li>
+          <li>
+            <strong>Concurrency limits:</strong> can one slow dependency avoid
+            occupying all available workers?
+          </li>
+        </ul>
+        <p>
+          Add tests for a chosen change, rerun the same lesson, and compare
+          evidence. To study a real dependency or network fault, use a separate
+          disposable environment containing that dependency and define its own
+          bounded experiment.
+        </p>
+        <div class="hypothesis">
+          <span class="eyebrow">A USEFUL TUTOR QUESTION</span>
+          <p>
+            “Which parts of my conclusion are measured, which are inferred, and
+            what single follow-up experiment would distinguish the
+            alternatives?”
+          </p>
+        </div>
+        <a class="button primary" href="/">Choose your next experiment</a>
+      </section>
+      <footer>
+        Tumult Chaos Lab <span aria-hidden="true">/</span> Predict, measure,
+        recover, reflect.
+      </footer>
+    </main>
+  </body>
+</html>

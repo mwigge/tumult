@@ -1,0 +1,11 @@
+-r agent/requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+black==26.10.0
+ruff==0.16.10
+mypy==2.4.0
+bandit==1.9.4
+pip-audit==2.10.1
+PyYAML==6.0.3
+playwright==1.63.0

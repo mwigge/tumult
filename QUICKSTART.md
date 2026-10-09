@@ -9,6 +9,9 @@ click-through of the web UI on the seeded demo stack.
 
 ## Choosing your path
 
+- **Learn in your browser** → [Chaos Lab](chaos-lab/README.md). Docker-only setup,
+  four guided fault simulations, and an optional OpenAI/Claude/Ollama tutor.
+  No Rust build or AI key is needed for the lessons.
 - **Ad-hoc local experiments** → the CLI path below. About 10 minutes from
   clone to first run; no daemon, no secrets.
 - **Team governance** — approvals, schedules, audit trails, compliance
