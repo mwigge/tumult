@@ -23,7 +23,7 @@ fn log_ts(record: &LogRecord, received_at_ns: i64) -> i64 {
 
 /// Convert an OTLP logs export request into store rows (pure).
 /// `received_at_ns` is the wall-clock time the export reached kronika, used
-/// only for records that carry no timestamp of their own (see [`log_ts`]).
+/// only for records that carry no timestamp of their own (see `log_ts`).
 #[must_use]
 pub fn logs_request_to_rows(
     request: &ExportLogsServiceRequest,

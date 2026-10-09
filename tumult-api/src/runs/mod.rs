@@ -11,9 +11,9 @@
 //! run on a fresh read-only connection, all mutations ride the daemon's
 //! single-writer channel — this module never opens a write connection.
 //!
-//! Split by feature area: [`registry`] (registry reads + validate),
-//! [`plan`] (dry-run + scope summary), [`control`] (create/stop/stop-all),
-//! [`read`] (list/detail/audit_verify).
+//! Split by feature area: `registry` (registry reads + validate),
+//! `plan` (dry-run + scope summary), `control` (create/stop/stop-all),
+//! `read` (list/detail/audit_verify).
 
 mod control;
 mod plan;

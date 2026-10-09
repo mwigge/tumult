@@ -20,7 +20,7 @@ pub enum Batch {
     Spans(Vec<SpanRow>),
     Logs(Vec<LogRow>),
     Metrics(MetricRows),
-    /// See [`ExecFn`].
+    /// See `ExecFn`.
     Exec(ExecFn),
 }
 

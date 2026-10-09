@@ -141,7 +141,7 @@ pub struct Introspection {
     /// among method actions. Seven repetitions of the same sleep step are
     /// one fault kind; a kill plus a network partition are two.
     pub fault_kinds: usize,
-    /// Any action matched [`DESTRUCTIVE_FRAGMENTS`].
+    /// Any action matched `DESTRUCTIVE_FRAGMENTS`.
     pub destructive: bool,
     /// (plugin, function) — or (process path, "") — of the first fault, for
     /// the T3 gate's candidate.

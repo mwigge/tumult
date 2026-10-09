@@ -1,6 +1,6 @@
 //! The `tumultd serve` wiring: config, TLS ([`tls`]), the OTLP gRPC/HTTP
 //! servers, the background supervisors, and the shutdown drain. The
-//! embedded web UI lives in [`ui`], tests in [`tests`].
+//! embedded web UI lives in [`ui`], tests in `tests`.
 
 #[cfg(test)]
 mod tests;

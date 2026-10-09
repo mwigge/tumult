@@ -9,7 +9,7 @@ use crate::runs::{exec_write, now_ns, WorkItem};
 
 impl RunQueue {
     /// Dispatch a run whose approval cleared: flips `pending_approval` back
-    /// to `queued` and hands the worker a [`WorkItem`] carrying the approved
+    /// to `queued` and hands the worker a `WorkItem` carrying the approved
     /// pin (re-verified before execution). All approval checks are re-read
     /// from the store here — the approve endpoint and break-glass both funnel
     /// through this one gate. Break-glass requests bypass quorum and TTL (the
