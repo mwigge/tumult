@@ -168,6 +168,72 @@ connections, or multi-tenant isolation. Verify health plus a harmless process
 experiment, its persisted journal, and restart behavior in local Kubernetes
 before using the same release on GKE.
 
+**Daemon on Kubernetes** (`deploy/k8s/tumultd.yaml`) — API/UI, ingest and
+background execution use the published daemon image and one persistent `/data`
+workspace. The image's UID/GID is `10001`; the pod uses that identity and
+`fsGroup` for the PVC. Bundled semantic metrics stay at `/etc/kronika/metrics`;
+a bounded `/tmp` volume supports provider temporary files. Both retention
+settings must remain zero.
+
+For a new, empty database, provision the initial admin and probe credentials
+before applying the manifest. Run these commands in Bash; use a unique admin
+password of at least 12 characters:
+
+```bash
+read -r -s -p "Initial admin password: " TUMULT_INITIAL_ADMIN_PASSWORD
+printf '\n'
+TUMULT_INITIAL_PROBE_TOKEN="kro_$(openssl rand -hex 32)"
+kubectl create secret generic tumultd-secrets \
+  --from-literal=ingest-token="$(openssl rand -hex 32)" \
+  --from-literal=bootstrap-admin-password="$TUMULT_INITIAL_ADMIN_PASSWORD" \
+  --from-literal=bootstrap-api-token="$TUMULT_INITIAL_PROBE_TOKEN"
+kubectl create secret generic tumultd-probe-token \
+  --from-literal=token="$TUMULT_INITIAL_PROBE_TOKEN"
+unset TUMULT_INITIAL_ADMIN_PASSWORD TUMULT_INITIAL_PROBE_TOKEN
+kubectl apply -f deploy/k8s/tumultd.yaml
+kubectl rollout status deployment/tumultd
+```
+
+The initial probe token belongs to the bootstrap admin. Replace it before
+opening production ingress: as an administrator, create a dedicated Viewer
+identity, complete that user's required first password change, then mint a
+token for its `user_id` through `POST /api/tokens`. A token created before the
+password change is revoked by that change. Give the probe identity only the
+environment scopes it needs. Replace the `token` key in the separate
+`tumultd-probe-token` Secret with the Viewer token and restart the deployment
+(`kubectl rollout restart deployment/tumultd`); environment credentials refresh
+only when pods restart. Confirm both probes pass, then revoke the bootstrap
+token and remove `KRONIKA_BOOTSTRAP_ADMIN_PASSWORD` and
+`KRONIKA_BOOTSTRAP_TOKEN` from your deployed manifest and their keys from
+`tumultd-secrets`. Keep your normal administrator access and ingest credential.
+
+Existing databases skip bootstrap provisioning. Supply a token belonging to an
+existing enabled user who has completed the password change; copying a new
+value into the bootstrap Secret does not create or rotate a database token.
+Exec probes send the independent `TUMULTD_PROBE_TOKEN` and require a successful
+HTTP response. Missing, expired or revoked credentials fail the probes; do not
+replace them with unauthenticated requests. If you enable daemon-side TLS,
+change probe URLs to `https` and provide the trusted CA/hostname configuration.
+
+**Daemon under systemd** (`deploy/systemd/tumultd.service`) uses
+`/var/lib/tumult` as its persistent working directory and keeps automatic
+retention disabled. Install `tumultd` and `tumult-net-proxyd` together in
+`/usr/local/bin`. Before enabling the service, copy semantic metric definitions
+from the matching release's source checkout (the binary archive alone does
+not install these data files):
+
+```bash
+sudo install -d -m 0755 /var/lib/tumult/metrics
+sudo install -m 0644 metrics/*.yaml /var/lib/tumult/metrics/
+```
+
+Install the selected script plugins and their tools separately, and set
+`TUMULT_PLUGIN_PATH` in `/etc/tumult/tumultd.env` to that readable plugin
+directory. Supply the ingest credential and provision an administrator using
+`create-admin` while the service is stopped; follow the unit's remaining
+installation instructions. Do not point the host service at the image-only
+`/etc/kronika/metrics` path unless you also install definitions there.
+
 **Health probes.** The health path differs per binary: `tumultd` / the ingest
 servers answer `GET /healthz`, while `tumult-mcp` answers `GET /health`.
 Configure liveness/readiness probes with the right path for the binary they

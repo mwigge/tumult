@@ -169,3 +169,5 @@ jobs:
       - run: .quality-venv/bin/ruff check scripts demo/proof
       - run: .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
       - run: python3 scripts/test-distribution.py
+      - run: bash -n scripts/smoke-daemon-image.sh
+      - run: python3 scripts/test-smoke-daemon-image.py

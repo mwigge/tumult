@@ -2,19 +2,15 @@
 # OTLP ingest, control-plane API + web UI, run queue, schedules, webhooks,
 # GameDay campaigns.
 #
-#   1. Create the secrets (do NOT commit real values):
-#        kubectl create secret generic tumultd-secrets \
-#          --from-literal=ingest-token="$(openssl rand -hex 32)" \
-#          --from-literal=bootstrap-admin-password="<initial admin password>"
-#   2. kubectl apply -f deploy/k8s/tumultd.yaml
-#   3. API/UI on :4318, OTLP/HTTP on :4318 (/v1/*), OTLP/gRPC on :4317.
-#      Expose externally only through an Ingress that terminates TLS.
+# Create the bootstrap and separate probe-token Secrets as documented in
+# docs/guides/production-deployment.md, then apply this manifest. The initial
+# probe token must equal the bootstrap API token; rotate it to a Viewer token
+# after provisioning. Never put actual token values into this manifest.
 #
-# The image is built from docker/Dockerfile.tumultd (see the release
-# workflow). Probes hit /healthz and /readyz: with auth on they answer 401
-# to unauthenticated probes, which kubelet still treats as success (any
-# status < 400); a dead daemon answers nothing.
-# See docs/guides/production-deployment.md.
+# The release publishes docker/Dockerfile.tumultd as the pinned image below.
+# API/UI and OTLP/HTTP use :4318, OTLP/gRPC uses :4317. Expose externally only
+# through an Ingress that terminates TLS. Authenticated exec probes fail closed
+# on missing/invalid credentials, an unhealthy store or an unready daemon.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,12 +28,14 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65532
-        fsGroup: 65532
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: tumultd
-          image: ghcr.io/mwigge/tumultd:latest
+          image: ghcr.io/mwigge/tumultd:2.22.0
+          workingDir: /data
           # The image's default CMD runs the daemon (`tumultd` defaults to
           # `serve`); no args needed.
           ports:
@@ -52,7 +50,7 @@ spec:
             - name: KRONIKA_OTLP_HTTP_ADDR
               value: "0.0.0.0:4318"
             - name: KRONIKA_METRICS_DIR
-              value: /data/metrics
+              value: /etc/kronika/metrics
             # REQUIRED — bearer token for /v1/* and OTLP/gRPC ingest.
             - name: KRONIKA_INGEST_TOKEN
               valueFrom:
@@ -61,6 +59,13 @@ spec:
             - name: KRONIKA_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef: { name: tumultd-secrets, key: bootstrap-admin-password }
+            - name: KRONIKA_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef: { name: tumultd-secrets, key: bootstrap-api-token }
+            # Independently replace with a Viewer token, then roll out the pod.
+            - name: TUMULTD_PROBE_TOKEN
+              valueFrom:
+                secretKeyRef: { name: tumultd-probe-token, key: token }
             # --- Tick / queue / webhook knobs (defaults shown) ---
             - { name: TUMULTD_SCHEDULE_TICK_S, value: "30" }
             - { name: TUMULTD_WEBHOOK_TICK_S, value: "15" }
@@ -68,7 +73,7 @@ spec:
             - { name: TUMULTD_RUN_CONCURRENCY, value: "2" }
             - { name: TUMULTD_RUN_QUEUE_DEPTH, value: "32" }
             - { name: TUMULTD_APPROVAL_SWEEP_S, value: "60" }
-            - { name: TUMULTD_RUN_RETENTION_DAYS, value: "90" }
+            - { name: TUMULTD_RUN_RETENTION_DAYS, value: "0" }
             - { name: TUMULTD_RUN_RETENTION_TICK_S, value: "3600" }
             # Webhook delivery: bounded retries then dead-letter; per-endpoint budget.
             - { name: TUMULTD_WEBHOOK_MAX_ATTEMPTS, value: "5" }
@@ -80,12 +85,16 @@ spec:
             # - { name: KRONIKA_LAKE_INTERVAL, value: "6h" }
             # - { name: KRONIKA_RETENTION_DAYS, value: "0" }  # 0 = keep forever
           livenessProbe:
-            httpGet: { path: /healthz, port: http }
+            exec:
+              command: ["/bin/sh", "-ec", "test -n \"$TUMULTD_PROBE_TOKEN\"; exec curl --fail --silent --show-error --max-time 3 -H \"Authorization: Bearer $TUMULTD_PROBE_TOKEN\" http://127.0.0.1:4318/healthz"]
+            timeoutSeconds: 5
             initialDelaySeconds: 10
             periodSeconds: 15
             failureThreshold: 3
           readinessProbe:
-            httpGet: { path: /readyz, port: http }
+            exec:
+              command: ["/bin/sh", "-ec", "test -n \"$TUMULTD_PROBE_TOKEN\"; exec curl --fail --silent --show-error --max-time 3 -H \"Authorization: Bearer $TUMULTD_PROBE_TOKEN\" http://127.0.0.1:4318/readyz"]
+            timeoutSeconds: 5
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 6
@@ -98,9 +107,12 @@ spec:
             limits: { cpu: "2", memory: "2Gi" }
           volumeMounts:
             - { name: store, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
       volumes:
         - name: store
           persistentVolumeClaim: { claimName: tumultd-store }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
 ---
 apiVersion: v1
 kind: Service
