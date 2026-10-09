@@ -18,7 +18,7 @@ RUN npm run build
 # Stage 2: cargo builder — tumultd and tumult-cli from the same workspace
 # source tree, so the daemon and the experiment engine can never drift
 # apart. The release profile (thin LTO) is set in the workspace Cargo.toml.
-FROM rust:1-bookworm AS builder
+FROM rust:1.92.0-bookworm AS builder
 WORKDIR /build
 COPY . .
 COPY --from=web /web/build ./web/build
@@ -31,7 +31,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
         docker.io openssh-client wget psmisc procps stress-ng \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 kronika
+    && useradd --create-home --user-group --uid 10001 kronika
 
 COPY --from=builder /build/target/release/tumultd /usr/local/bin/tumultd
 COPY --from=builder /build/target/release/tumult /usr/local/bin/tumult

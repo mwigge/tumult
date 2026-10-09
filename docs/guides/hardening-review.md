@@ -15,7 +15,7 @@ This release addresses the functional review made against 2.20.0, revalidated ag
 | F04–F05 | Atomic durable start, conditional state transitions, retryable cleanup and original target/config checks. | Worker transaction, state-race, credential-drift and repeated-crash tests. |
 | F06–F08 | Masked previews, authoritative operator bindings, private execution pins and uniform resource/environment scopes. | API scope and execution-policy regressions. |
 | F09/F19 | Committed full-table snapshots, schema/content identity, file checksums and serialized publication. | Late/tied arrivals, publication retry, corruption, schema-change and symlink tests. |
-| F10 | Correct image argv, writable persisted workspace and container runtime assets. | Local distribution contracts and composed-argument checks completed. Tagged container builds, version and entrypoint-help checks await the release workflow; deployed startup/persistence is a separate acceptance check. |
+| F10 | Correct image argv, writable persisted workspace and container runtime assets. | Local distribution contracts and composed-argument checks completed. Daemon templates additionally cover authenticated probes, zero retention, packaged metrics and writable temporary storage. Tagged container builds and daemon startup/persistence checks await the release workflow; Kubernetes deployment remains a separate acceptance check. |
 | F11 | Shared CLI/MCP/daemon provider composition and explicit load execution failure. | MCP provider dispatch and core load tests. |
 | F12 | Draft resume/edit/submit, idempotent retry and exact-preview start protection. | Browser journeys against mocked API contracts, plus real API integration tests. |
 | F13/F18 | Protobuf OTLP responses/errors and unsupported-point accounting. | HTTP/gRPC protocol and mixed metric batch tests. |
@@ -32,9 +32,10 @@ it is not a declaration that the release has been published or deployed. Final
 source gate results belong in the PR evidence. At this review point, the
 tagged release workflow has not completed. Its bounded container checks run
 the CLI `--version` and `mcp serve --help`, plus the MCP image's own entrypoint
-with deployment arguments and `--help`. These check executable packaging
-without starting a server. They do not validate listeners, the daemon image,
-Kubernetes deployment, persisted journals or restart cleanup.
+with deployment arguments and `--help`. The daemon image also has an authenticated
+readiness and database-persistence check across replacement containers. These
+checks do not validate Kubernetes deployment, fault journals or rollback
+recovery.
 
 Before accepting a deployment, start the exact release image with its intended
 identity and mounts, run a harmless authorized experiment, verify journal and

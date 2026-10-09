@@ -28,9 +28,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Reports distinguish unmapped clauses and unverified independence; scores preserve distinct targets/environments with the same experiment name.
 - Manual drafts can be resumed, edited and submitted without duplication. Stale previews cannot authorize changed inputs.
 - Kubernetes/systemd workspace configuration, daemon provider assets, installer failure handling and published quickstarts match tested behavior.
+- Daemon deployment templates disable unsupported retention, authenticate probes, use packaged metrics and provide writable workspace/temp storage. Binary archives include the native TCP proxy helper.
 
 ### Added
 
+- Published daemon container with authenticated startup and database-persistence checks in the release workflow.
 - Complete private database backup and verified restore to a new path. Portable evidence export remains a separate format that excludes credential tables.
 - Browser journey regressions and CI gates for Prettier, ESLint, Python Black/Ruff, PostgreSQL SQLFluff and distribution contracts.
 

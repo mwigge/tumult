@@ -4,10 +4,13 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import Thread
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,6 +47,122 @@ class DistributionTests(unittest.TestCase):
         )
         self.assertRegex(image, r"COPY plugins/ /opt/tumult/plugins/")
         self.assertIn("TUMULT_PLUGIN_PATH=/opt/tumult/plugins", image)
+
+    def test_daemon_templates_disable_automatic_retention(self):
+        manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
+        unit = (ROOT / "deploy/systemd/tumultd.service").read_text()
+        self.assertRegex(manifest, r'name: TUMULTD_RUN_RETENTION_DAYS, value: "0"')
+        self.assertIn("Environment=TUMULTD_RUN_RETENTION_DAYS=0\n", unit)
+
+    def test_daemon_uses_packaged_metrics(self):
+        manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
+        path = re.search(r"name: KRONIKA_METRICS_DIR\s+value: (.+)", manifest)[1]
+        image = (ROOT / "docker/Dockerfile.tumultd").read_text()
+        self.assertIn(f"COPY metrics/ {path}/", image)
+
+    def test_daemon_workspaces_and_temporary_files_are_writable(self):
+        manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
+        self.assertIn("workingDir: /data", manifest)
+        self.assertIn("runAsUser: 10001", manifest)
+        self.assertIn("fsGroup: 10001", manifest)
+        mounts = re.findall(r"mountPath: ([^ }]+)", manifest)
+        self.assertIn("/data", mounts)
+        self.assertIn("/tmp", mounts)
+        self.assertRegex(manifest, r"emptyDir: \{ sizeLimit: [^}]+\}")
+        unit = (ROOT / "deploy/systemd/tumultd.service").read_text()
+        state = re.search(r"^StateDirectory=(.+)$", unit, re.M)[1]
+        self.assertIn(f"WorkingDirectory=/var/lib/{state}", unit)
+
+    def test_daemon_probe_credential_can_rotate_separately_from_bootstrap(self):
+        manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
+        secrets = {}
+        for name in ("KRONIKA_BOOTSTRAP_TOKEN", "TUMULTD_PROBE_TOKEN"):
+            ref = re.search(
+                rf"name: {name}\s+valueFrom:\s+secretKeyRef: \{{ name: ([^,]+), key: ([^ }}]+) \}}",
+                manifest,
+            )
+            self.assertIsNotNone(ref, f"{name} must come from a required Secret")
+            secrets[name] = ref.groups()
+        self.assertNotEqual(*secrets.values())
+
+    @unittest.skipUnless(shutil.which("curl"), "curl required for real probe execution")
+    def test_daemon_probes_authenticate_and_fail_closed(self):
+        manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
+        commands = []
+        for name, endpoint in (
+            ("livenessProbe", "/healthz"),
+            ("readinessProbe", "/readyz"),
+        ):
+            probe = manifest.split(f"          {name}:\n", 1)[1]
+            probe = probe.split("            initialDelaySeconds:", 1)[0]
+            match = re.search(r"command: (\[.+\])", probe)
+            self.assertIsNotNone(match, "authenticated probes must use exec")
+            command = json.loads(match[1])
+            self.assertIn(endpoint, command[-1])
+            commands.append(command)
+        requests = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                token = self.headers.get("Authorization")
+                requests.append((self.path, token))
+                self.send_response(
+                    200 if token == "Bearer synthetic-valid-token" else 401
+                )
+                self.end_headers()
+
+            def log_message(self, *_args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for command in commands:
+                command[-1] = command[-1].replace(":4318/", f":{server.server_port}/")
+                for token, expected in (
+                    ("synthetic-valid-token", 0),
+                    ("invalid", 22),
+                    ("", 1),
+                ):
+                    with self.subTest(probe=command[-1], token=token):
+                        before = len(requests)
+                        result = subprocess.run(
+                            command,
+                            env={**os.environ, "TUMULTD_PROBE_TOKEN": token},
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        self.assertEqual(result.returncode, expected, result.stderr)
+                        self.assertEqual(len(requests) - before, 1 if token else 0)
+                        if token:
+                            self.assertEqual(requests[-1][1], f"Bearer {token}")
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+
+    def test_release_archives_include_the_native_network_helper(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        for command in ("cargo build --release", "cross build --release"):
+            line = next(line for line in release.splitlines() if command in line)
+            self.assertIn("-p tumult-net", line)
+        for archive in ("ARCHIVE", "ARCHIVE_D"):
+            self.assertRegex(
+                release,
+                rf'cp [^\n]*release/tumult-net-proxyd[^\n]*"\$\{{{archive}\}}/"',
+            )
+
+    def test_release_publishes_the_pinned_daemon_image(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertIn("file: docker/Dockerfile.tumultd", release)
+        self.assertIn("/tumultd:${{ steps.version.outputs.version }}", release)
+        version = re.search(
+            r'^version = "([^"]+)"', (ROOT / "Cargo.toml").read_text(), re.M
+        )[1]
+        manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
+        self.assertIn(f"image: ghcr.io/mwigge/tumultd:{version}\n", manifest)
 
     def test_authenticated_demo_healthcheck_can_reach_the_api(self):
         compose = (ROOT / "docker/docker-compose.kronika.yml").read_text()

@@ -30,6 +30,9 @@ RestartSec=5
 # Persistent store (DuckDB + parquet lake + reports) lives under this state
 # dir; TUMULT_LAKE_PATH below resolves inside it.
 StateDirectory=tumult
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/tumult
+UMask=0077
 Environment=HOME=/var/lib/tumult
 
 # --- Core configuration (override in /etc/tumult/tumultd.env) ---
@@ -38,6 +41,8 @@ Environment=TUMULT_LAKE_PATH=/var/lib/tumult/lake.duckdb
 Environment=KRONIKA_OTLP_GRPC_ADDR=127.0.0.1:4317
 Environment=KRONIKA_OTLP_HTTP_ADDR=127.0.0.1:4318
 Environment=KRONIKA_METRICS_DIR=/var/lib/tumult/metrics
+# Install the bundled metrics definitions at /var/lib/tumult/metrics before
+# starting this host service; see docs/guides/production-deployment.md.
 # REQUIRED in the env file: KRONIKA_INGEST_TOKEN (bearer for /v1/* and gRPC).
 # First-boot identity (create-admin also available interactively):
 #   KRONIKA_BOOTSTRAP_ADMIN_PASSWORD / KRONIKA_BOOTSTRAP_TOKEN
@@ -50,7 +55,7 @@ Environment=TUMULTD_GAMEDAY_TICK_S=15
 Environment=TUMULTD_RUN_CONCURRENCY=2
 Environment=TUMULTD_RUN_QUEUE_DEPTH=32
 Environment=TUMULTD_APPROVAL_SWEEP_S=60
-Environment=TUMULTD_RUN_RETENTION_DAYS=90
+Environment=TUMULTD_RUN_RETENTION_DAYS=0
 Environment=TUMULTD_RUN_RETENTION_TICK_S=3600
 # Webhook delivery: bounded retries then dead-letter; per-endpoint budget.
 Environment=TUMULTD_WEBHOOK_MAX_ATTEMPTS=5

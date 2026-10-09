@@ -33,6 +33,8 @@ npm --prefix web run test:e2e
 .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
 python3 scripts/check-docs.py
 python3 scripts/test-distribution.py
+bash -n scripts/smoke-daemon-image.sh
+python3 scripts/test-smoke-daemon-image.py
 ```
 
 On machines with many logical CPUs, set `CARGO_BUILD_JOBS=4` and pass `-- --test-threads=2` to Cargo tests to bound linker and DuckDB concurrency. Browser tests use one worker and the production static build. CI also enforces workspace coverage on main; its 90% floor is unchanged. A passing unit suite is not a coverage measurement or proof of remote-provider support.
@@ -41,7 +43,7 @@ Review changes for duplicated business rules before extracting utilities. Shared
 
 Security checks combine dependency advisories with manual authorization, injection, credential, filesystem and fault-cleanup review. `deny.toml` records narrowly scoped pre-existing transitive advisory exceptions. Raw `cargo audit` output can therefore differ from the policy gate; release evidence must disclose that difference and recheck upstream availability rather than calling an exception-free scan successful.
 
-Published releases are built from the merged version tag. Release notes must document execution-binding, archive and retention migrations. The release workflow builds platform archives, checksums and the CLI/MCP containers. Bounded checks invoke `--version`, the CLI image's `mcp serve --help`, and the MCP image's own entrypoint with deployment arguments and `--help`. These validate executable packaging without starting listeners or deploying Kubernetes. The daemon image is built separately by the platform Compose path. A tag or successful source test does not alone establish that release assets were published or that deployed experiments work.
+Published releases are built from the merged version tag. Release notes must document execution-binding, archive and retention migrations. The release workflow builds platform archives (including the native TCP proxy helper), checksums and the CLI/MCP/daemon containers. Bounded checks invoke `--version`, the CLI image's `mcp serve --help`, and the MCP image's own entrypoint with deployment arguments and `--help`. These validate executable packaging without starting listeners or deploying Kubernetes. The daemon image additionally runs authenticated readiness checks with a read-only root, writable temporary storage and a persistent database volume; a fresh container must reuse its stored identity without bootstrap provisioning. These checks do not execute faults or certify a Kubernetes deployment. A tag or successful source test does not alone establish that release assets were published or that deployed experiments work.
 
 Record workflow results and artifact identities after publication, then test
 the exact image and deployment configuration against a disposable target.
