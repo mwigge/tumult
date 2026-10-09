@@ -2,9 +2,9 @@
 //! sinks (schema v11). The HMAC secret is returned exactly once, at
 //! creation (one-time-password idiom); list rows never carry it.
 
+use crate::error::ApiError;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -29,7 +29,7 @@ fn webhook_json(w: &WebhookRow) -> Value {
 }
 
 /// Fetch one webhook by id, or a 404 response.
-async fn webhook_or_404(state: &ApiState, id: &str) -> Result<WebhookRow, Response> {
+async fn webhook_or_404(state: &ApiState, id: &str) -> Result<WebhookRow, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("webhook id too long"));
     }
@@ -46,7 +46,7 @@ async fn webhook_or_404(state: &ApiState, id: &str) -> Result<WebhookRow, Respon
 }
 
 /// `GET /api/webhooks` — every webhook (never the secrets), ordered by name.
-pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let hooks = with_reader(&state.db_path, |reader| {
         Ok(reader
             .list_webhooks()
@@ -76,7 +76,7 @@ pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<CreateWebhookRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(bad_request("name must not be empty"));
@@ -134,7 +134,7 @@ pub async fn set_enabled(
     State(state): State<ApiState>,
     Path(id): Path<String>,
     Json(req): Json<EnableWebhookRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     webhook_or_404(&state, &id).await?;
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(
@@ -158,7 +158,7 @@ pub async fn set_enabled(
 pub async fn delete(
     State(state): State<ApiState>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     webhook_or_404(&state, &id).await?;
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(

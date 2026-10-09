@@ -6,6 +6,7 @@
 //! inline `mod tests` of `lib.rs`, moved with the handlers they cover).
 
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use serde_json::{json, Value};
 use tumult_api::handlers::metrics::{hist_quantile, valid_attr_key};
 use tumult_api::sql_util::internal;
@@ -46,7 +47,8 @@ fn attr_key_charset_is_strict() {
 /// text) are logged server-side, never returned to the client.
 #[tokio::test]
 async fn internal_error_hides_store_details() {
-    let resp = internal("duckdb: IO Error: cannot open /var/lib/tumult/k.duckdb".into());
+    let resp =
+        internal("duckdb: IO Error: cannot open /var/lib/tumult/k.duckdb".into()).into_response();
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
     let body: Value = serde_json::from_slice(&bytes).unwrap();

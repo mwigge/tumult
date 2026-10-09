@@ -6,11 +6,12 @@
 //! rides the daemon's single-writer channel via [`tumult_ingest::Batch::Exec`];
 //! this handler never opens a write connection of its own.
 
+use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -36,13 +37,14 @@ pub struct ImportJournalRequest {
 pub async fn import_journal(
     State(state): State<ApiState>,
     Json(req): Json<ImportJournalRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let Some(ingest) = state.ingest_handle() else {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error": "journal import is not wired (no ingest handle)"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     let experiment_id = req.journal.experiment_id.clone();
     let journal = req.journal;

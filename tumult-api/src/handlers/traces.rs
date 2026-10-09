@@ -1,8 +1,9 @@
 //! `GET /api/traces` (+ `/durations`, `/{id}`).
 
+use crate::error::ApiError;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -54,8 +55,12 @@ pub(crate) async fn traces(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<TracesParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
 
     // Span-level window (traces are grouped only from spans inside it).
     let mut span_wheres = Vec::new();
@@ -163,8 +168,12 @@ pub(crate) async fn trace_durations(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<TraceDurationsParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let mut span_where = "parent_span_id IS NULL".to_string();
     if let Some(exists) = env_trace_exists("spans", &principal.env_scopes) {
         span_where.push_str(&format!(" AND {exists}"));
@@ -206,13 +215,14 @@ pub(crate) async fn trace_detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if id.chars().count() > 200 {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "trace id too long"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     }
     // Traces outside the principal's scopes look exactly like a missing
     // trace (404 — no existence leak across scopes).
@@ -250,6 +260,7 @@ pub(crate) async fn trace_detail(
             StatusCode::NOT_FOUND,
             Json(json!({"error": "trace not found"})),
         )
-            .into_response()),
+            .into_response()
+            .into()),
     }
 }

@@ -122,20 +122,22 @@ async fn stderr_is_captured_on_non_zero_exit() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn non_zero_exit_without_stderr_has_no_error_text() {
+async fn non_zero_exit_without_stderr_reports_exit_status() {
     let executor = ProviderExecutor::new();
     let outcome = executor.execute(&sh("exit 4", Some(5.0)));
     assert!(!outcome.success);
     assert_eq!(outcome.output, None);
-    assert_eq!(outcome.error, None);
+    let error = outcome
+        .error
+        .expect("unsuccessful exits must explain the failure");
+    assert!(error.contains("exit status: 4"), "{error}");
 }
 
 // ── Sync fallback (no Tokio runtime on the calling thread) ──
 
 /// The runner executes background activities on `std::thread::scope` threads,
-/// which never carry a Tokio runtime; the executor must fall back to
-/// `std::process::Command` there. Each scenario runs on its own plain thread
-/// to prove no runtime is involved.
+/// which never carry a Tokio runtime; the shared executor bridge must provide
+/// one there. Each scenario starts on its own plain thread without a runtime.
 #[test]
 fn sync_fallback_handles_success_failure_timeout_and_spawn_errors() {
     let run = |activity: Activity| {

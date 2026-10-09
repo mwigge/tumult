@@ -2,11 +2,12 @@
 //! environment scoping, the read-only-reader wrapper and small row→JSON
 //! reducers used by the query handlers.
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
 use tumult_lake::{Reader, Store};
@@ -258,13 +259,14 @@ pub(crate) fn attr_wheres(
 /// 500 JSON error response. The full error is logged server-side — store
 /// errors carry schema, file paths and internal state that must not reach
 /// clients, so the body is a fixed generic message.
-pub fn internal(msg: String) -> Response {
+pub fn internal(msg: String) -> ApiError {
     tracing::error!(error = %msg, "internal error");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({"error": "internal error"})),
     )
         .into_response()
+        .into()
 }
 
 /// Run `f` with a fresh read-only reader on a blocking thread; map any
@@ -272,7 +274,7 @@ pub fn internal(msg: String) -> Response {
 pub(crate) async fn with_reader<T>(
     db_path: &std::path::Path,
     f: impl FnOnce(&Reader) -> Result<T, String> + Send + 'static,
-) -> Result<T, Response>
+) -> Result<T, ApiError>
 where
     T: Send + 'static,
 {

@@ -1,11 +1,11 @@
 //! Dry-run plan preview (`POST /api/runs/dry-run`) and the blast-radius
 //! scope summary it carries.
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 
 use crate::auth::Principal;
 use axum::extract::State;
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -33,7 +33,7 @@ pub async fn dry_run(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<DryRunRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if req
         .env
         .as_deref()

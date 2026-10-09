@@ -1,5 +1,6 @@
 //! `POST /api/auth/login` + `/logout` + `/change-password`, `GET /api/me`.
 
+use crate::error::ApiError;
 use std::net::SocketAddr;
 
 use axum::extract::{ConnectInfo, State};
@@ -41,7 +42,7 @@ pub async fn login(
     State(state): State<ApiState>,
     connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(req): Json<LoginRequest>,
-) -> Result<Response, Response> {
+) -> Result<Response, ApiError> {
     let Some(_) = state.ingest_handle() else {
         return Err(unavailable("auth writes are not wired (no ingest handle)"));
     };
@@ -157,14 +158,12 @@ pub async fn change_password(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ChangePasswordRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if principal.synthetic {
-        return Err(bad_request("authentication is not enabled".into()));
+        return Err(bad_request("authentication is not enabled"));
     }
     if req.new_password.chars().count() < 12 {
-        return Err(bad_request(
-            "new_password must be at least 12 characters".into(),
-        ));
+        return Err(bad_request("new_password must be at least 12 characters"));
     }
     let user_id = principal.user_id.clone();
     let lookup = user_id.clone();

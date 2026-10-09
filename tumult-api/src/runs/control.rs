@@ -1,6 +1,7 @@
 //! Run control: enqueue (`POST /api/runs`), e-stop (`POST /api/runs/{id}/stop`)
 //! and the global halt (`POST /api/runs/stop-all`).
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
@@ -50,7 +51,7 @@ pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<CreateRunRequest>,
-) -> Result<Response, Response> {
+) -> Result<Response, ApiError> {
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
@@ -111,7 +112,8 @@ pub async fn create(
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(json!({"error": "run queue full; retry later"})),
             )
-                .into_response()),
+                .into_response()
+                .into()),
             Err(EnqueueError::Store(e)) => Err(internal(e)),
         };
     }
@@ -128,7 +130,8 @@ pub async fn create(
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"error": "run queue full; retry later"})),
         )
-            .into_response()),
+            .into_response()
+            .into()),
         Err(EnqueueError::Store(e)) => Err(internal(e)),
     }
 }
@@ -141,7 +144,7 @@ pub async fn stop(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
@@ -153,7 +156,8 @@ pub async fn stop(
             StatusCode::CONFLICT,
             Json(json!({"error": "run already terminal", "state": state})),
         )
-            .into_response()),
+            .into_response()
+            .into()),
         Err(StopError::Store(e)) => Err(internal(e)),
     }
 }
@@ -182,7 +186,7 @@ const HALTABLE_STATES: &[&str] = &[
 pub async fn stop_all(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };

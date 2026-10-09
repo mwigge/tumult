@@ -1,11 +1,11 @@
 //! Resource authorization shared by run reads, controls, approvals and events.
 use super::Principal;
+use crate::error::ApiError;
 use crate::{
     error::not_found,
     sql_util::{sql_string, with_reader},
     ApiState,
 };
-use axum::response::Response;
 
 /// Predicate for a query with runs aliased `r` and telemetry environment `e`.
 /// Durable request context takes precedence over telemetry supplied by clients.
@@ -31,7 +31,7 @@ pub(crate) async fn authorize_run(
     state: &ApiState,
     principal: &Principal,
     id: &str,
-) -> Result<(), Response> {
+) -> Result<(), ApiError> {
     if principal.env_scopes.is_empty() {
         return Ok(());
     }

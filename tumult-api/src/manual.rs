@@ -10,11 +10,12 @@
 //! existed. The store enforces the lifecycle rules (draft mutability,
 //! attestation on submit, reviewer ≠ enterer) regardless.
 
+use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -44,14 +45,16 @@ fn actor_or(
 }
 
 /// Map a lifecycle error to an HTTP response.
-fn manual_error(err: &ManualError) -> Response {
+fn manual_error(err: &ManualError) -> ApiError {
     let status = match err {
         ManualError::Invalid(_) | ManualError::SelfReview => StatusCode::BAD_REQUEST,
         ManualError::NotFound(_) => StatusCode::NOT_FOUND,
         ManualError::WrongStatus { .. } => StatusCode::CONFLICT,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
-    (status, Json(json!({"error": err.to_string()}))).into_response()
+    (status, Json(json!({"error": err.to_string()})))
+        .into_response()
+        .into()
 }
 
 /// Run a typed manual-evidence mutation on the single writer and surface
@@ -62,7 +65,7 @@ async fn exec_manual<T>(
     principal: &Principal,
     resource_id: Option<&str>,
     f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
-) -> Result<T, Response>
+) -> Result<T, ApiError>
 where
     T: Send + 'static,
 {
@@ -71,7 +74,8 @@ where
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error": "manual evidence writes are not wired (no ingest handle)"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     let scopes = principal.env_scopes.clone();
     let resource_id = resource_id.map(str::to_owned);
@@ -161,7 +165,7 @@ impl ManualRecordRequest {
     }
 }
 
-fn bad_request(err: ManualError) -> Response {
+fn bad_request(err: ManualError) -> ApiError {
     manual_error(&err)
 }
 
@@ -170,7 +174,7 @@ pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ManualRecordRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let entered_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
     check_environment(&principal, req.target_environment.as_deref())?;
@@ -192,7 +196,7 @@ pub async fn list(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let status = params.status.clone();
     let rows = with_reader(&state.db_path, move |reader| {
         let mut rows = reader
@@ -214,20 +218,14 @@ pub async fn detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let detail = with_reader(&state.db_path, move |reader| {
         reader
             .manual_experiment_detail(&id)
             .map_err(|e| e.to_string())
     })
     .await?;
-    let not_found = || {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "manual experiment not found"})),
-        )
-            .into_response()
-    };
+    let not_found = || crate::error::not_found("manual experiment not found");
     let Some(detail) = detail else {
         return Err(not_found());
     };
@@ -248,7 +246,7 @@ pub async fn update(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<ManualRecordRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let changed_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
     check_environment(&principal, req.target_environment.as_deref())?;
@@ -273,7 +271,7 @@ pub async fn submit(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<SubmitRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let by = actor_or(&principal, req.by.clone(), "by").map_err(bad_request)?;
     let resource_id = id.clone();
     exec_manual(&state, &principal, Some(&resource_id), move |w| {
@@ -295,7 +293,7 @@ pub async fn verify(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<VerifyRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
     let resource_id = id.clone();
     exec_manual(&state, &principal, Some(&resource_id), move |w| {
@@ -317,7 +315,7 @@ pub async fn reject(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<RejectRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
     let resource_id = id.clone();
     exec_manual(&state, &principal, Some(&resource_id), move |w| {
@@ -342,7 +340,7 @@ pub async fn attach(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<AttachmentRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let kind = match req.kind.as_str() {
         "url" => AttachmentKind::Url,
         "ticket" => AttachmentKind::Ticket,
@@ -353,7 +351,8 @@ pub async fn attach(
                     "attachment kind '{other}' not accepted (url|ticket only; no file storage)"
                 )})),
             )
-                .into_response());
+                .into_response()
+                .into());
         }
     };
     let added_by = actor_or(&principal, req.added_by.clone(), "added_by").map_err(bad_request)?;
@@ -378,7 +377,7 @@ pub async fn import(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ImportRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let mut items = Vec::with_capacity(req.records.len());
     for record in req.records {
         check_environment(&principal, record.target_environment.as_deref())?;
@@ -397,7 +396,7 @@ pub async fn import(
     ))
 }
 
-fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), Response> {
+fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), ApiError> {
     if !principal.env_allowed(env.unwrap_or_default()) {
         return Err(crate::error::forbidden(
             "environment is outside the principal's scopes",

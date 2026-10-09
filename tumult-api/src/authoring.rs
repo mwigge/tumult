@@ -25,7 +25,7 @@ fn bad_request(msg: String) -> (StatusCode, Json<Value>) {
 
 /// 500 body: details are logged server-side, the client gets a fixed
 /// generic message (same contract as [`crate::sql_util::internal`]). Not
-/// delegated: `sql_util::internal` returns `Response`, while this
+/// delegated: `sql_util::internal` returns `ApiError`, while this
 /// module's error channel is the smaller `(StatusCode, Json<Value>)`
 /// tuple (`clippy::result_large_err`), and the two can't be reconciled
 /// without converting one representation into the other.

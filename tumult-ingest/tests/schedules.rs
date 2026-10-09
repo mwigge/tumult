@@ -68,7 +68,7 @@ async fn fixture() -> Fixture {
     let db_path = tmp.path().join("kronika.duckdb");
     let store = Store::open(&db_path).unwrap();
     let bindings: Vec<_> = [FAULT_TOON, PROBE_TOON].iter().map(|toon| {
-        let (experiment, injected) = tumult_ingest::prepare_run(toon, &Default::default()).unwrap();
+        let (experiment, injected) = tumult_ingest::prepare_run(toon, &std::collections::HashMap::new()).unwrap();
         serde_json::json!({"sha256":tumult_ingest::execution_policy::execution_hash(&experiment,&injected).unwrap(),"env":"dev","target":null})
     }).collect();
     std::fs::write(

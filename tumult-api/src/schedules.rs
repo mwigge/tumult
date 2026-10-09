@@ -3,11 +3,11 @@
 //! them). Reads run on a fresh read-only connection; mutations ride the
 //! daemon's single-writer channel.
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -48,7 +48,7 @@ async fn schedule_or_404(
     state: &ApiState,
     principal: &Principal,
     id: &str,
-) -> Result<ScheduleRow, Response> {
+) -> Result<ScheduleRow, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("schedule id too long"));
     }
@@ -71,7 +71,7 @@ async fn schedule_or_404(
 pub async fn list(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let rows = with_reader(&state.db_path, move |reader| {
         let names: HashMap<String, String> = reader
             .registry_list(500)
@@ -129,7 +129,7 @@ pub async fn create(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<CreateScheduleRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     if !principal.env_allowed(&req.env) {
         return Err(forbidden(format!(
             "environment {:?} is outside the principal's scopes",
@@ -219,7 +219,7 @@ pub async fn set_enabled(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<EnableScheduleRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     schedule_or_404(&state, &principal, &id).await?;
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(
@@ -244,7 +244,7 @@ pub async fn delete(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     schedule_or_404(&state, &principal, &id).await?;
     let Some(ingest) = state.ingest_handle() else {
         return Err(unavailable(

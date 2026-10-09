@@ -1,10 +1,10 @@
 //! Registry reads and definition registration (`GET /api/registry*`,
 //! `POST /api/runs/validate`).
 
+use crate::error::ApiError;
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -24,7 +24,7 @@ pub struct ValidateRequest {
 
 /// `GET /api/registry` — registered definitions (metadata only), newest
 /// first: the UI's registry picker.
-pub async fn registry_list(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn registry_list(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let rows = with_reader(&state.db_path, |reader| {
         reader.registry_list(500).map_err(|e| e.to_string())
     })
@@ -37,7 +37,7 @@ pub async fn registry_list(State(state): State<ApiState>) -> Result<Json<Value>,
 pub async fn registry_detail(
     State(state): State<ApiState>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let def = super::registry_or_404(&state, &id).await?;
     Ok(Json(json!({"definition": def})))
 }
@@ -49,7 +49,7 @@ pub async fn validate(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Json(req): Json<ValidateRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if req.toon.chars().count() > 256_000 {
         return Err(bad_request("definition too large (max 256k chars)"));
     }

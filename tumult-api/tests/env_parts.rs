@@ -4,12 +4,13 @@
 
 //! Daemon-side configuration: `ApiState::from_env_parts` loads the org tree
 //! and the autopilot policy from `KRONIKA_*` env vars (falling back
-//! closed/safe on bad input), and `POST /api/lake/export` enforces retention
-//! only when it is configured *and* the ingest handle is wired.
+//! closed/safe on bad input), and `POST /api/lake/export` rejects nonzero
+//! retention regardless of whether the ingest handle is wired.
 //!
 //! These tests mutate process env, so they live in their own integration
 //! binary and serialise on `ENV_LOCK`.
 
+use axum::response::IntoResponse;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -118,7 +119,10 @@ async fn retention_export_fails_closed_even_with_ingest_handle() {
     let err = tumult_api::lake::export_now(axum::extract::State(state))
         .await
         .unwrap_err();
-    assert_eq!(err.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        err.into_response().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
 
     // Wiring a writer does not permit loss of historical query evidence.
     let (ingest, _task) = tumult_ingest::IngestWriter::spawn(store.writer().unwrap(), 4);
@@ -136,7 +140,10 @@ async fn retention_export_fails_closed_even_with_ingest_handle() {
     let err = tumult_api::lake::export_now(axum::extract::State(state))
         .await
         .unwrap_err();
-    assert_eq!(err.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        err.into_response().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
     assert!(
         !tmp.path().join("lake/_meta.json").exists(),
         "reject policy before exporting"

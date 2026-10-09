@@ -115,7 +115,7 @@ async fn write(
 /// referencing them in order, and start the parent campaign run.
 async fn seed_campaign(fx: &Fixture, steps: &[(&str, &str)]) {
     let bindings: Vec<_> = steps.iter().map(|(_,toon)| {
-        let (experiment, injected) = tumult_ingest::prepare_run(toon, &Default::default()).unwrap();
+        let (experiment, injected) = tumult_ingest::prepare_run(toon, &std::collections::HashMap::new()).unwrap();
         json!({"sha256":tumult_ingest::execution_policy::execution_hash(&experiment,&injected).unwrap(),"env":"dev","target":null})
     }).collect();
     std::fs::write(

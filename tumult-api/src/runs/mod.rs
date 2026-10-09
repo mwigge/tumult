@@ -20,7 +20,7 @@ mod plan;
 mod read;
 mod registry;
 
-use axum::response::Response;
+use crate::error::ApiError;
 use tumult_lake::RegisteredDefinition;
 
 use crate::error::{bad_request, not_found};
@@ -36,7 +36,7 @@ pub use registry::{registry_detail, registry_list, validate, ValidateRequest};
 pub(crate) async fn registry_or_404(
     state: &ApiState,
     registry_id: &str,
-) -> Result<RegisteredDefinition, Response> {
+) -> Result<RegisteredDefinition, ApiError> {
     if registry_id.chars().count() > 100 {
         return Err(bad_request("registry id too long"));
     }

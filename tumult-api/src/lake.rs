@@ -2,9 +2,10 @@
 //! observability and its manual trigger (the scheduled job in `kronikad`
 //! runs the same `tumult_lake::lake::export` on an interval).
 
+use crate::error::ApiError;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
 use tumult_lake::lake::{self, LakeConfig};
@@ -17,7 +18,7 @@ fn cfg(state: &ApiState) -> LakeConfig {
 }
 
 /// `GET /api/lake/status` — watermarks per table, file/byte totals, policy.
-pub async fn status(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn status(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let cfg = cfg(&state);
     let status = tokio::task::spawn_blocking(move || lake::status(&cfg).map_err(|e| e.to_string()))
         .await
@@ -30,12 +31,12 @@ pub async fn status(State(state): State<ApiState>) -> Result<Json<Value>, Respon
 
 /// `POST /api/lake/export` — commit a portable snapshot. Automatic deletion
 /// is unavailable until historical reports support archive queries.
-pub async fn export_now(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn export_now(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let cfg = cfg(&state);
     if cfg.retention_days > 0 {
         return Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({
             "error": "KRONIKA_RETENTION_DAYS must be 0: historical queries do not yet read archived snapshots; no data was deleted"
-        }))).into_response());
+        }))).into_response().into());
     }
     let report = with_reader(&state.db_path, move |reader| {
         lake::export(reader, &cfg).map_err(|e| e.to_string())

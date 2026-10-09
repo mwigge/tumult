@@ -130,6 +130,42 @@ fn classify_bound(
     }))
 }
 
+/// Revalidate a recurring execution's original author, including disabled users,
+/// demotions and scope changes made after schedule/campaign creation.
+pub fn actor_requires_binding(
+    db_path: &std::path::Path,
+    actor: Option<&str>,
+    env: &str,
+) -> Result<bool, String> {
+    let reader = tumult_lake::Store::at(db_path)
+        .read_only()
+        .map_err(|_| "cannot authorize execution owner".to_string())?;
+    if !reader
+        .real_users_exist()
+        .map_err(|_| "cannot authorize execution owner".to_string())?
+    {
+        return Ok(false);
+    }
+    let actor = actor.ok_or_else(|| "execution has no authenticated owner".to_string())?;
+    let user = reader
+        .user_by_username(actor)
+        .map_err(|_| "cannot authorize execution owner".to_string())?
+        .ok_or_else(|| "execution owner no longer exists".to_string())?;
+    if user.disabled
+        || tumult_auth::Role::parse(&user.role)
+            .is_none_or(|role| role < tumult_auth::Role::Operator)
+    {
+        return Err("execution owner is disabled or no longer an operator".into());
+    }
+    let scopes = reader
+        .user_env_scopes(&user.id)
+        .map_err(|_| "cannot authorize execution owner".to_string())?;
+    if !scopes.is_empty() && !scopes.iter().any(|scope| scope == env) {
+        return Err("execution environment is outside its owner's scopes".into());
+    }
+    Ok(!scopes.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,40 +288,4 @@ mod tests {
         )
         .is_err());
     }
-}
-
-/// Revalidate a recurring execution's original author, including disabled users,
-/// demotions and scope changes made after schedule/campaign creation.
-pub fn actor_requires_binding(
-    db_path: &std::path::Path,
-    actor: Option<&str>,
-    env: &str,
-) -> Result<bool, String> {
-    let reader = tumult_lake::Store::at(db_path)
-        .read_only()
-        .map_err(|_| "cannot authorize execution owner".to_string())?;
-    if !reader
-        .real_users_exist()
-        .map_err(|_| "cannot authorize execution owner".to_string())?
-    {
-        return Ok(false);
-    }
-    let actor = actor.ok_or_else(|| "execution has no authenticated owner".to_string())?;
-    let user = reader
-        .user_by_username(actor)
-        .map_err(|_| "cannot authorize execution owner".to_string())?
-        .ok_or_else(|| "execution owner no longer exists".to_string())?;
-    if user.disabled
-        || tumult_auth::Role::parse(&user.role)
-            .is_none_or(|role| role < tumult_auth::Role::Operator)
-    {
-        return Err("execution owner is disabled or no longer an operator".into());
-    }
-    let scopes = reader
-        .user_env_scopes(&user.id)
-        .map_err(|_| "cannot authorize execution owner".to_string())?;
-    if !scopes.is_empty() && !scopes.iter().any(|scope| scope == env) {
-        return Err("execution environment is outside its owner's scopes".into());
-    }
-    Ok(!scopes.is_empty())
 }

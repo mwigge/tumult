@@ -1,8 +1,9 @@
 //! `GET /api/experiments` (+ `/windows`, `/{id}`) and `GET /api/dimensions`.
 
+use crate::error::ApiError;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -42,8 +43,12 @@ pub(crate) async fn experiments(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<ExperimentParams>,
-) -> Result<Json<Value>, Response> {
-    let bad = |msg: String| (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+) -> Result<Json<Value>, ApiError> {
+    let bad = |msg: String| -> ApiError {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            .into_response()
+            .into()
+    };
     let mut wheres = vec!["s.span_name = 'resilience.experiment'".to_string()];
     // Per-user environment scoping (empty scopes = all environments).
     if let Some(env) = env_scope_where("s.target_environment", &principal.env_scopes) {
@@ -187,20 +192,22 @@ pub(crate) async fn experiment_windows(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<ExperimentWindowsParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let (Some(from), Some(to)) = (params.from, params.to) else {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "missing query parameters: from and to (epoch ns)"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     };
     if from >= to {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "from must be before to"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     }
     // The rollup view has no environment column; scope binds through the
     // root span's `target_environment` by experiment_id.
@@ -231,13 +238,14 @@ pub(crate) async fn experiment_detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if id.chars().count() > 100 {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "experiment id too long"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     }
     // Environments outside the principal's scopes look exactly like a
     // missing experiment (404 — no existence leak across scopes).
@@ -318,7 +326,8 @@ pub(crate) async fn experiment_detail(
             StatusCode::NOT_FOUND,
             Json(json!({"error": "experiment not found"})),
         )
-            .into_response()),
+            .into_response()
+            .into()),
     }
 }
 
@@ -327,7 +336,7 @@ pub(crate) async fn experiment_detail(
 pub(crate) async fn dimensions(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
         // targets/experiments bind the root span's own environment column;

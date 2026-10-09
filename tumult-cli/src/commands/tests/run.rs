@@ -490,7 +490,7 @@ async fn baseline_only_never_creates_fault_or_rollback_markers() {
     std::fs::write(
         &experiment,
         format!(
-            r#"
+            r"
 title: Safe measurement
 steady_state_hypothesis:
   title: Healthy
@@ -515,7 +515,7 @@ rollbacks[1]:
       type: process
       path: touch
       arguments[1]: {}
-"#,
+",
             marker.display(),
             rollback.display()
         ),

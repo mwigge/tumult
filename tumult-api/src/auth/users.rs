@@ -1,8 +1,9 @@
 //! Admin: `/api/users*` (list, create, role, disable, scopes, password).
 
+use crate::error::ApiError;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -19,7 +20,7 @@ use super::Principal;
 // Admin: /api/users* + /api/tokens*
 
 /// `GET /api/users` — every user (never the password hash) with env scopes.
-pub async fn list_users(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
+pub async fn list_users(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let users = with_reader(&state.db_path, |reader| {
         let users = reader.list_users().map_err(|e| e.to_string())?;
         let mut out = Vec::with_capacity(users.len());
@@ -55,18 +56,16 @@ pub struct CreateUserRequest {
 pub async fn create_user(
     State(state): State<ApiState>,
     Json(req): Json<CreateUserRequest>,
-) -> Result<(StatusCode, Json<Value>), Response> {
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let username = req.username.trim().to_string();
     if username.is_empty() {
-        return Err(bad_request("username must not be empty".into()));
+        return Err(bad_request("username must not be empty"));
     }
     // A supplied password meets the same ≥12-character minimum as the admin
     // reset endpoint; omitting it keeps the generated one-time-password path.
     if let Some(p) = req.password.as_deref().filter(|p| !p.is_empty()) {
         if p.chars().count() < 12 {
-            return Err(bad_request(
-                "password must be at least 12 characters".into(),
-            ));
+            return Err(bad_request("password must be at least 12 characters"));
         }
     }
     let Some(role) = Role::parse(&req.role) else {
@@ -85,7 +84,8 @@ pub async fn create_user(
             StatusCode::CONFLICT,
             Json(json!({"error": "username exists"})),
         )
-            .into_response());
+            .into_response()
+            .into());
     }
     let (password, one_time) = match req.password.filter(|p| !p.is_empty()) {
         Some(p) => (p, None),
@@ -140,7 +140,7 @@ pub async fn set_role(
     State(state): State<ApiState>,
     Path(id): Path<String>,
     Json(req): Json<SetRoleRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     let Some(role) = Role::parse(&req.role) else {
         return Err(bad_request(format!(
             "unknown role {:?}; expected viewer|operator|approver|admin",
@@ -168,9 +168,9 @@ pub async fn set_disabled(
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
     Json(req): Json<SetDisabledRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if !principal.synthetic && principal.user_id == id {
-        return Err(bad_request("cannot disable yourself".into()));
+        return Err(bad_request("cannot disable yourself"));
     }
     user_or_404(&state, &id).await?;
     let disabled = req.disabled;
@@ -193,7 +193,7 @@ pub async fn set_scopes(
     State(state): State<ApiState>,
     Path(id): Path<String>,
     Json(req): Json<SetScopesRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     user_or_404(&state, &id).await?;
     let envs = req.environments.clone();
     exec_auth_write(&state, move |w| {
@@ -218,11 +218,9 @@ pub async fn reset_password(
     State(state): State<ApiState>,
     Path(id): Path<String>,
     Json(req): Json<ResetPasswordRequest>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if req.password.chars().count() < 12 {
-        return Err(bad_request(
-            "password must be at least 12 characters".into(),
-        ));
+        return Err(bad_request("password must be at least 12 characters"));
     }
     user_or_404(&state, &id).await?;
     let hash = tokio::task::spawn_blocking(move || tumult_auth::hash_password(&req.password))
@@ -240,7 +238,7 @@ pub async fn reset_password(
 }
 
 /// 404 unless the user id exists.
-pub(crate) async fn user_or_404(state: &ApiState, id: &str) -> Result<UserRow, Response> {
+pub(crate) async fn user_or_404(state: &ApiState, id: &str) -> Result<UserRow, ApiError> {
     let lookup = id.to_string();
     let user = with_reader(&state.db_path, move |reader| {
         reader.user_by_id(&lookup).map_err(|e| e.to_string())

@@ -2,8 +2,8 @@
 //! approval chain (`GET /api/runs/{id}`), and the audit hash-chain check
 //! (`GET /api/runs/{id}/audit/verify`).
 
+use crate::error::ApiError;
 use axum::extract::{Path, Query, State};
-use axum::response::Response;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -47,7 +47,7 @@ pub async fn list(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if let Some(state) = params.state.as_deref().filter(|s| !s.is_empty()) {
         if !STATES.contains(&state) {
             return Err(bad_request(format!(
@@ -108,7 +108,7 @@ pub async fn detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("run id too long"));
     }
@@ -167,7 +167,7 @@ pub async fn audit_verify(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, Response> {
+) -> Result<Json<Value>, ApiError> {
     if id.chars().count() > 100 {
         return Err(bad_request("run id too long"));
     }
