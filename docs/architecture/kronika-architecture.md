@@ -173,13 +173,16 @@ behaves exactly as before, so upgrades and loopback dev are unaffected.
 Primitives live in the shared `tumult-auth` crate (also used by the MCP
 server): argon2id password hashing at OWASP parameters, opaque ids, and
 the `host_is_loopback` bind policy. Browser sessions are 256-bit opaque
-cookies (`HttpOnly`, `SameSite=Strict`, `Secure` off loopback, 12h);
+cookies (`HttpOnly`, `SameSite=Strict`, `Secure` when direct TLS is enabled, 12h);
 automation uses `kro_`-prefixed bearer tokens. Both are stored only as
 sha256 hashes in the index-free v6 auth tables (`users`, `sessions`,
 `tokens`, `user_env_scopes`) behind the single writer. Authorization is a
 middleware over a single route table (`viewer < operator < approver <
 admin`; unmatched routes fail closed to admin) plus optional per-user
-environment scopes that filter experiment/run visibility. Run-audit
+environment scopes that restrict experiment/run reads and mutations. Global
+operations without environment ownership require an unscoped identity. See
+[Execution bindings](../guides/execution-bindings.md) for authoritative
+execution context and migration requirements. Run-audit
 events and manual-evidence mutations record the authenticated username;
 pre-auth free-text actors are attributed to a disabled `legacy` backfill
 user seeded by the migration. Bootstrap: `tumultd create-admin` (one-time
@@ -224,38 +227,21 @@ approve/reject/break-glass endpoints (route-table roles), the
 
 ## Parquet lake + retention (durability story)
 
-Two tiers, one guarantee: **nothing leaves the hot store before an
-immutable copy exists in the lake.**
+The DuckDB database is the hot query and operational state store. Portable
+Parquet export now publishes complete content-addressed table snapshots via
+an atomic manifest, including late and changed records. Consumers read only
+the files listed in that manifest; globbing every historical file can duplicate
+data. Credential and operational-secret tables are excluded from the portable
+archive and are covered by a separate complete database backup.
 
-- **Hot tier** — the embedded DuckDB store: ACID, single-writer, WAL-backed
-  (crash-safe to the last committed batch). Optimised for the recent-query
-  workload of the UI and reports.
-- **Cold tier** — the parquet lake (`KRONIKA_LAKE_DIR`, default
-  `<db dir>/lake`): per table, one write-once file per day-partition
-  (`spans/date=2026-07-29/data-<run>.parquet`). Files are never rewritten —
-  *immutability as a compliance feature*: next to the v0.5.0 hash-chained
-  manual-evidence audit, the trail of what the daemon recorded is
-  WORM-shaped and tamper-evident, and readable by any parquet-capable
-  tool (`read_parquet('lake/spans/date=*/*.parquet')`).
-- **Export** — incremental against a per-table event-time watermark in
-  `<lake>/_meta.json` (tmp+rename, advanced only after every table
-  succeeded → idempotent retries). `manual_experiments` exports as a full
-  snapshot per run (records mutate through their review lifecycle;
-  fingerprint-gated so an unchanged register writes no new file); its
-  audit table exports incrementally on `changed_at_ns`. Runs on
-  `KRONIKA_LAKE_INTERVAL` (default `24h`) or on demand via
-  `POST /api/lake/export`; `GET /api/lake/status` shows watermarks, files
-  and bytes.
-- **Retention** — `KRONIKA_RETENTION_DAYS=0` (default) keeps everything.
-  When >0, hot rows older than the cutoff are deleted **only if already
-  exported** (`ts_ns <= watermark`), through the single-writer channel.
-  `manual_experiment_audit` and `manual_experiments` are never deleted:
-  append-only compliance evidence in both tiers.
-
-Caveat (event-time watermarking): rows arriving with `ts_ns` at or below
-the current watermark are invisible to incremental export — irrelevant for
-real-time telemetry; re-export from scratch after hand-backfills. See
-ADR-010.
+Automatic hot deletion is disabled (`KRONIKA_RETENTION_DAYS=0` and
+`TUMULTD_RUN_RETENTION_DAYS=0`) because current reports do not combine hot and
+archived evidence. Nonzero retention settings are rejected. Local Parquet and
+hash chains do not provide administrator-proof WORM or object-lock retention.
+See [Data portability and recovery](../guides/data-portability.md) for the
+current format, exclusions, integrity checks and restore procedure. ADR-010
+records the earlier event-time-watermark design; its export/retention behavior
+has been superseded by this implementation.
 
 ## Schema v2
 

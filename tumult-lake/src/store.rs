@@ -100,8 +100,7 @@ impl Store {
     }
 
     /// A handle to an existing store file WITHOUT opening any connection.
-    /// Use this for read-only access that must not touch the exclusive write
-    /// lock (e.g. `kronikad report` while the daemon holds the writer).
+    /// Readers in other processes require the daemon writer to be stopped.
     #[must_use]
     pub fn at(path: &Path) -> Self {
         Self {
@@ -123,8 +122,9 @@ impl Store {
     }
 
     /// Open a read-only connection (`access_mode = READ_ONLY`). Multiple
-    /// read-only connections coexist across processes, including next to an
-    /// open writer. The store must already exist and be migrated.
+    /// read-only connections coexist across processes only when no process
+    /// holds a writer. Within one process they share the existing instance.
+    /// The store must already exist and be migrated.
     ///
     /// The connection pins its snapshot at open: it does NOT observe writes
     /// committed afterwards — open a fresh reader per unit of work (the API

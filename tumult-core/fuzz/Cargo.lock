@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "2.20.0"
+version = "2.22.0"
 dependencies = [
  "chrono",
  "indexmap",
@@ -2553,7 +2553,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "2.20.0"
+version = "2.22.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-appender-tracing",

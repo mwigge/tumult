@@ -3,7 +3,8 @@ use std::path::Path;
 
 use tumult_lake::{rollback_status, run_state, Store};
 
-use super::queue::build_controls;
+use super::queue::{build_controls, prepare_run};
+use super::recovery_plan::RecoveryPlan;
 use super::{exec_write, ExecutorFactory};
 use crate::IngestWriter;
 
@@ -70,8 +71,14 @@ pub async fn reconcile_orphans(
             tracing::error!(run_id = %run_id, error = %e, "orphan state write failed; attempting rollback anyway");
         }
 
-        let outcome = if prior == run_state::RUNNING || prior == run_state::STOPPING {
-            attempt_orphan_rollback(ingest, &run_id, &toon, factory).await
+        let execution_started = orphan["started_at_ns"].is_number()
+            || matches!(
+                prior.as_str(),
+                run_state::RUNNING | run_state::STOPPING | run_state::ROLLBACK_PENDING
+            );
+        let outcome = if execution_started {
+            let prepared = prepare_orphan(&orphan, &toon);
+            attempt_orphan_rollback(ingest, &run_id, prepared, factory).await
         } else {
             OrphanOutcome::NothingExecuted
         };
@@ -115,24 +122,31 @@ pub async fn reconcile_orphans(
 async fn attempt_orphan_rollback(
     ingest: &IngestWriter,
     run_id: &str,
-    toon: &str,
+    prepared: Result<(tumult_core::types::Experiment, HashMap<String, String>), String>,
     factory: &ExecutorFactory,
 ) -> OrphanOutcome {
     let id = run_id.to_string();
-    let _ = exec_write(ingest, move |writer| {
+    if let Err(error) = exec_write(ingest, move |writer| {
         writer
             .insert_run_audit(&id, "rollback_started", Some("orphan recovery"), None)
             .map_err(|e| e.to_string())
     })
-    .await;
+    .await
+    {
+        tracing::error!(%run_id, %error, "rollback start audit failed");
+    }
 
-    let experiment = match tumult_core::engine::parse_experiment(toon) {
-        Ok(exp) => exp,
-        Err(e) => return OrphanOutcome::RollbackFailed(format!("definition unparseable: {e}")),
+    let (experiment, injected_env) = match prepared {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            return OrphanOutcome::RollbackFailed(if error.starts_with("parse:") {
+                format!("definition unparseable: {error}")
+            } else {
+                error
+            })
+        }
     };
-    // Orphan recovery cannot re-resolve secrets from the crashed run's
-    // context; rollbacks run with the daemon's current environment.
-    let executor = factory(HashMap::new());
+    let executor = factory(injected_env);
     let controls = build_controls(&experiment, &executor);
     let results = tokio::task::spawn_blocking(move || {
         tumult_core::runner::run_orphan_rollback(&experiment, &executor, &controls)
@@ -164,11 +178,34 @@ async fn attempt_orphan_rollback(
         ),
     };
     let id = run_id.to_string();
-    let _ = exec_write(ingest, move |writer| {
+    if let Err(error) = exec_write(ingest, move |writer| {
         writer
             .insert_run_audit(&id, event, None, None)
             .map_err(|e| e.to_string())
     })
-    .await;
+    .await
+    {
+        tracing::error!(%run_id, %error, "rollback outcome audit failed");
+    }
     outcome
+}
+
+/// New runs use their durable snapshot. Legacy runs resolve saved variables;
+/// failures retain rollback_pending instead of dispatching unresolved targets.
+fn prepare_orphan(
+    orphan: &serde_json::Value,
+    toon: &str,
+) -> Result<(tumult_core::types::Experiment, HashMap<String, String>), String> {
+    if !orphan["recovery_plan_json"].is_null() {
+        let plan: RecoveryPlan = serde_json::from_value(orphan["recovery_plan_json"].clone())
+            .map_err(|e| format!("invalid persisted recovery plan: {e}"))?;
+        return plan.prepare();
+    }
+    let vars = if orphan["params_json"].is_null() {
+        HashMap::new()
+    } else {
+        serde_json::from_value(orphan["params_json"].clone())
+            .map_err(|e| format!("invalid saved parameters: {e}"))?
+    };
+    prepare_run(toon, &vars)
 }

@@ -32,8 +32,11 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: tumult-mcp
-          image: ghcr.io/mwigge/tumult-mcp:latest
+          image: ghcr.io/mwigge/tumult-mcp:2.22.0
+          # Explicit command also supports older images with flags in ENTRYPOINT.
+          command: ["tumult-mcp"]
           args: ["--transport", "http", "--host", "0.0.0.0", "--port", "3100"]
+          workingDir: /home/tumult/.tumult
           ports:
             - { name: mcp, containerPort: 3100 }
             - { name: health, containerPort: 3101 }
@@ -43,9 +46,8 @@ spec:
             - name: TUMULT_MCP_TOKEN # REQUIRED — server refuses non-loopback HTTP without it
               valueFrom:
                 secretKeyRef: { name: tumult-mcp-token, key: token }
-            # Bring your own collector; omit to disable telemetry export.
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "" # e.g. http://otel-collector.observability:4317
+            # To export telemetry, add OTEL_EXPORTER_OTLP_ENDPOINT with a
+            # nonempty gRPC URL, e.g. http://otel-collector.observability:4317.
           livenessProbe:
             httpGet: { path: /health, port: health }
             initialDelaySeconds: 10
@@ -63,9 +65,12 @@ spec:
             limits: { cpu: "1", memory: "1Gi" }
           volumeMounts:
             - { name: store, mountPath: /home/tumult/.tumult }
+            - { name: tmp, mountPath: /tmp }
       volumes:
         - name: store
           persistentVolumeClaim: { claimName: tumult-store }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
 ---
 apiVersion: v1
 kind: Service

@@ -37,18 +37,31 @@ pub(crate) fn service_from_arguments(
 pub(crate) fn normalize_service(raw: &str) -> String {
     // Drop a scheme (`http://`, `tcp://`, …).
     let no_scheme = raw.split_once("://").map_or(raw, |(_, rest)| rest);
-    // Drop any path/query.
-    let authority = no_scheme.split(['/', '?']).next().unwrap_or(no_scheme);
-    // Drop a `:port` suffix.
-    let host = authority
-        .rsplit_once(':')
-        .map_or(authority, |(host, port)| {
-            if port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty() {
-                host
-            } else {
-                authority
-            }
-        });
+    // Keep credentials out of persisted graph labels and strip path/query/fragment.
+    let authority = no_scheme.split(['/', '?', '#']).next().unwrap_or(no_scheme);
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    // A bracketed IPv6 host may have a port; an unbracketed IPv6 address
+    // contains several colons and must not lose its final address segment.
+    if authority.starts_with('[') {
+        if let Some(end) = authority.find(']') {
+            return authority[..=end].to_string();
+        }
+    }
+    let host = if authority.matches(':').count() == 1 {
+        authority
+            .rsplit_once(':')
+            .map_or(authority, |(host, port)| {
+                if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) {
+                    host
+                } else {
+                    authority
+                }
+            })
+    } else {
+        authority
+    };
     host.trim().to_string()
 }
 
@@ -290,5 +303,22 @@ mod tests {
             service_from_process("docker", &args(&["exec", "demo-postgres", "pg_isready"])),
             Some("demo-postgres".to_string())
         );
+    }
+}
+
+#[cfg(test)]
+mod credential_regression {
+    use super::normalize_service;
+    #[test]
+    fn service_labels_never_include_url_credentials() {
+        assert_eq!(
+            normalize_service("https://user:password@api.example:443/check"),
+            "api.example"
+        );
+        assert_eq!(
+            normalize_service("https://user:password@[2001:db8::1]:443/check"),
+            "[2001:db8::1]"
+        );
+        assert_eq!(normalize_service("2001:db8::1"), "2001:db8::1");
     }
 }

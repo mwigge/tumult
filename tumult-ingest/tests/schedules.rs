@@ -67,6 +67,16 @@ async fn fixture() -> Fixture {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
     let store = Store::open(&db_path).unwrap();
+    let bindings: Vec<_> = [FAULT_TOON, PROBE_TOON].iter().map(|toon| {
+        let (experiment, injected) = tumult_ingest::prepare_run(toon, &Default::default()).unwrap();
+        serde_json::json!({"sha256":tumult_ingest::execution_policy::execution_hash(&experiment,&injected).unwrap(),"env":"dev","target":null})
+    }).collect();
+    std::fs::write(
+        db_path.with_extension("execution-bindings.json"),
+        serde_json::to_vec(&bindings).unwrap(),
+    )
+    .unwrap();
+
     let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 64);
     let runs = RunQueue::spawn(
         ingest.clone(),
@@ -159,7 +169,10 @@ async fn due_schedule_fires_through_the_normal_run_path() {
         .iter()
         .find(|e| e["event"] == "requested")
         .expect("gated run records a requested event");
-    assert_eq!(requested["actor"], "schedule:s-fault");
+    assert_eq!(
+        requested["actor"], "test",
+        "scheduled runs retain their author for authorization and segregation of duties"
+    );
 
     // The probe run classifies T0 and executes to passed.
     let probe = runs

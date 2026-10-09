@@ -43,6 +43,7 @@ info "Checking prerequisites..."
 command -v git >/dev/null 2>&1 || fail "git is required. Install it first."
 command -v cargo >/dev/null 2>&1 || fail "Rust toolchain required. Install from https://rustup.rs"
 command -v docker >/dev/null 2>&1 || fail "Docker is required. Install Docker Desktop or Colima."
+command -v make >/dev/null 2>&1 || fail "make is required. Install your system's build tools."
 
 # Check Docker is running
 docker info >/dev/null 2>&1 || fail "Docker daemon is not running. Start Docker Desktop or 'colima start'."
@@ -64,7 +65,7 @@ fi
 # ── Build ──────────────────────────────────────────────────────
 
 info "Building tumult (release mode)..."
-cargo build --release -p tumult-cli 2>&1 | tail -3
+cargo build --release --locked -p tumult-cli -p tumult-net || fail "Build failed; existing binaries were not installed"
 
 TUMULT_BIN="$TUMULT_DIR/target/release/$BINARY_NAME"
 if [ ! -f "$TUMULT_BIN" ]; then
@@ -77,17 +78,18 @@ ok "Built: $TUMULT_BIN"
 INSTALL_DIR="/usr/local/bin"
 if [ -w "$INSTALL_DIR" ]; then
     cp "$TUMULT_BIN" "$INSTALL_DIR/$BINARY_NAME"
+    cp "$TUMULT_DIR/target/release/tumult-net-proxyd" "$INSTALL_DIR/tumult-net-proxyd"
     ok "Installed to $INSTALL_DIR/$BINARY_NAME"
 else
     warn "Cannot write to $INSTALL_DIR — run: sudo cp $TUMULT_BIN $INSTALL_DIR/$BINARY_NAME"
-    warn "Or add target/release to your PATH"
-    export PATH="$TUMULT_DIR/target/release:$PATH"
+    warn "Also install target/release/tumult-net-proxyd beside tumult for TCP faults."
+    warn "Or add $TUMULT_DIR/target/release to PATH in your shell configuration, then open a new shell."
 fi
 
 # ── Start Docker infrastructure ────────────────────────────────
 
-info "Starting chaos targets + observability..."
-make up-targets 2>&1 | tail -5
+info "Starting chaos targets and waiting for readiness..."
+make up-targets || fail "Docker targets failed to start; verification was not run"
 
 ok "Docker targets started"
 
@@ -105,7 +107,7 @@ make ssh-key 2>/dev/null || warn "SSH key extraction failed — sshd container m
 # (The old code ran `experiment.toon`, which is produced by `tumult init` and is
 # NOT committed — so a fresh clone failed here.)
 
-info "Running verification experiment..."
+info "Running self-contained CLI verification (no fault injection into Docker targets)..."
 VERIFY_DIR="$(mktemp -d)"
 VERIFY_OK=0
 if ( cd "$VERIFY_DIR" \
@@ -124,7 +126,7 @@ ok "========================================="
 echo ""
 info "Quick start:"
 echo "  tumult discover                       — list plugins and actions"
-echo "  tumult run examples/redis-chaos.toon  — run Redis chaos experiment"
+echo "  tumult run examples/redis-chaos.toon  — run Redis connectivity smoke test"
 echo "  tumult run examples/postgres-failover.toon — run PG failover test"
 echo "  tumult analyze --query 'SELECT * FROM experiments' — SQL analytics"
 echo "  tumult init                           — create your own experiment"

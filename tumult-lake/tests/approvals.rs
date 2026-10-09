@@ -255,3 +255,48 @@ fn audit_chain_verifies_and_detects_tampering() {
     let reader = store.read_only().unwrap();
     assert!(!reader.verify_run_audit_chain("run-1").unwrap());
 }
+
+#[test]
+fn stale_decisions_cannot_change_dispatched_governance() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    writer
+        .insert_gated_run(
+            &NewRun {
+                id: "run-race".into(),
+                registry_id: "registry-race".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: Some("alice".into()),
+            },
+            &request("run-race"),
+            None,
+        )
+        .unwrap();
+    writer.set_run_state("run-race", run_state::QUEUED).unwrap();
+    writer
+        .set_run_state("run-race", run_state::RUNNING)
+        .unwrap();
+    for choice in [decision::APPROVED, decision::REJECTED] {
+        let error = writer
+            .insert_pending_approval_decision(&decision("run-race", "bob", choice))
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("not awaiting approval"),
+            "{error}"
+        );
+    }
+    assert!(writer
+        .mark_pending_break_glass("run-race", "admin", "late override")
+        .is_err());
+    let reader = store.read_only().unwrap();
+    assert!(reader.approval_decisions("run-race").unwrap().is_empty());
+    assert_eq!(
+        reader.approval_request("run-race").unwrap().unwrap()["break_glass"],
+        false
+    );
+    assert_eq!(
+        reader.run_get("run-race").unwrap().unwrap()["state"],
+        run_state::RUNNING
+    );
+}

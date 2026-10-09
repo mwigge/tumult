@@ -35,11 +35,16 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm audit --audit-level=moderate
       # Generate .svelte-kit/tsconfig.json before type-checking — a clean
       # checkout has no .svelte-kit, so bare svelte-check fails.
       - run: npx svelte-kit sync
       - run: npx svelte-check --tsconfig ./tsconfig.json
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   fmt:
     name: Format
@@ -151,3 +156,16 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - run: python3 scripts/check-docs.py
+
+  scripts-quality:
+    name: Python, SQL and distribution checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: python3 -m venv .quality-venv
+      - run: .quality-venv/bin/pip install -r requirements-quality.txt
+      - run: .quality-venv/bin/black --check scripts demo/proof
+      - run: .quality-venv/bin/ruff check scripts demo/proof
+      - run: .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
+      - run: python3 scripts/test-distribution.py

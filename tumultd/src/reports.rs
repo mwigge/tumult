@@ -443,6 +443,16 @@ condition: { column: span_name, equals: "resilience.experiment" }
         let resp = http_get(port, "/report?metric=experiment_count", Some(&token)).await;
         assert!(resp.contains(" 200 OK"), "{resp}");
         assert!(resp.contains("Tumult — experiment_count"), "{resp}");
+
+        writer
+            .set_user_env_scopes("u-rep", &["staging".into()])
+            .unwrap();
+        let resp = http_get(port, "/report?metric=experiment_count", Some(&token)).await;
+        assert!(
+            resp.contains(" 403 "),
+            "scoped viewer must not read global report: {resp}"
+        );
+        assert!(!resp.contains("Tumult — experiment_count"));
     }
 
     #[tokio::test]

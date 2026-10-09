@@ -62,7 +62,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             force,
             dry_run,
             rollback_strategy,
-            baseline_mode: _,
+            baseline_mode,
             no_ingest,
             output_format,
             vars,
@@ -80,7 +80,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             };
             let var_map = parse_var_args(&vars)?;
             let load_override = build_load_override(load, load_script, load_vus, load_duration)?;
-            commands::cmd_run(
+            commands::cmd_run_with_baseline_mode(
                 &experiment,
                 &journal_path,
                 force,
@@ -89,6 +89,11 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 !no_ingest,
                 var_map,
                 load_override,
+                match baseline_mode {
+                    cli::BaselineMode::Full => tumult_core::runner::BaselineMode::Full,
+                    cli::BaselineMode::Skip => tumult_core::runner::BaselineMode::Skip,
+                    cli::BaselineMode::Only => tumult_core::runner::BaselineMode::Only,
+                },
             )
             .await?;
             // If --output-format json was specified, print the journal as JSON to stdout
@@ -166,6 +171,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
         Commands::Store { action } => match action {
             StoreAction::Stats => commands::cmd_store_stats()?,
             StoreAction::Backup { output } => commands::cmd_store_backup(&output)?,
+            StoreAction::Restore { input, output } => commands::cmd_store_restore(&input, &output)?,
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
             StoreAction::Migrate => commands::cmd_store_migrate().await?,

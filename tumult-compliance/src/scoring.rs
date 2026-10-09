@@ -77,6 +77,10 @@ pub fn band(score: f64) -> &'static str {
 pub struct ExperimentScore {
     pub name: String,
     pub target: Option<String>,
+    /// Environment is part of the logical experiment identity.
+    pub environment: Option<String>,
+    /// Exact latest source record for provenance (manual id or automated run id).
+    pub evidence_id: Option<String>,
     pub score: u32,
     pub state: RunState,
     pub band: String,
@@ -113,17 +117,20 @@ pub struct Scorecard {
 /// Latest run per experiment: (ts_ns, outcome) for the most recent root
 /// span, plus run counts. Outcome joins tumult's `experiment.completed` log.
 /// Verified manual records (excluding inconclusive outcomes) are UNIONed in
-/// with `origin = 'manual'`; the latest row is picked per (name, origin), so
-/// an experiment name present in both worlds yields one row per origin.
+/// with `origin = 'manual'`; the latest row is picked per (name, target, environment, origin).
+/// Display names cannot merge distinct deployment targets or environments.
 /// `{ENV_*}` placeholders take the environment-scope predicates (empty when
 /// unscoped): automated rows bind `target_environment` directly on the root
 /// span, manual rows on the manual record.
 const LATEST_SQL: &str = "SELECT * FROM ( \
      SELECT s.experiment_name AS name, s.target_system AS target, \
      s.ts_ns AS ts, s.fault_severity AS severity, l.log_attrs['status'] AS status, \
-     'automated' AS origin, \
+     'automated' AS origin, s.target_environment AS environment, s.experiment_id AS evidence_id, \
      (SELECT COUNT(*) FROM spans r WHERE r.span_name = 'resilience.experiment' \
-      AND r.experiment_name = s.experiment_name AND r.ts_ns <= {AS_OF}{ENV_R}) AS runs \
+      AND r.experiment_name = s.experiment_name \
+      AND r.target_system IS NOT DISTINCT FROM s.target_system \
+      AND r.target_environment IS NOT DISTINCT FROM s.target_environment \
+      AND r.ts_ns <= {AS_OF}{ENV_R}) AS runs \
      FROM spans s LEFT JOIN logs l \
        ON l.log_attrs['experiment_id'] = s.experiment_id \
       AND l.body = 'experiment.completed' \
@@ -131,11 +138,11 @@ const LATEST_SQL: &str = "SELECT * FROM ( \
        AND s.ts_ns <= {AS_OF}{ENV_S} \
      UNION ALL \
      SELECT m.experiment_name, m.target_system, m.executed_at_ns, NULL, \
-     m.outcome_status, 'manual', 1 \
+     m.outcome_status, 'manual', m.target_environment, m.id, 1 \
      FROM manual_experiments m \
      WHERE m.status = 'verified' AND m.outcome_status != 'inconclusive' \
        AND m.executed_at_ns <= {AS_OF}{ENV_M} \
-     ) QUALIFY ROW_NUMBER() OVER (PARTITION BY name, origin ORDER BY ts DESC) = 1";
+     ) QUALIFY ROW_NUMBER() OVER (PARTITION BY name, target, environment, origin ORDER BY ts DESC, evidence_id DESC) = 1";
 
 /// Compute the scorecard as of `as_of_ns`, unscoped (all environments);
 /// `delta` compares against the portfolio as of `as_of_ns - period_ns` when
@@ -254,6 +261,14 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
         experiments.push(ExperimentScore {
             name: name.to_string(),
             target,
+            environment: row
+                .get("environment")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            evidence_id: row
+                .get("evidence_id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
             score,
             state,
             band: band(f64::from(score)).to_string(),
@@ -367,6 +382,35 @@ mod tests {
             score_run(Some((now - DAY, false)), now),
             (50, RunState::Failed)
         );
+    }
+
+    #[test]
+    fn same_name_preserves_distinct_target_and_environment_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = tumult_lake::Store::open(&dir.path().join("db")).unwrap();
+        let writer = store.writer().unwrap();
+        for (id, target, env, ts) in [
+            ("one", "payments", "prod", 1),
+            ("two", "catalog", "prod", 2),
+            ("three", "payments", "staging", 3),
+        ] {
+            writer
+                .insert_spans(&[tumult_lake::SpanRow {
+                    span_name: "resilience.experiment".into(),
+                    experiment_name: Some("same".into()),
+                    experiment_id: Some(id.into()),
+                    target_system: Some(target.into()),
+                    target_environment: Some(env.into()),
+                    ts_ns: ts,
+                    trace_id: id.into(),
+                    span_id: id.into(),
+                    ..Default::default()
+                }])
+                .unwrap();
+        }
+        let card = compute(&store.read_only().unwrap(), 10, None).unwrap();
+        assert_eq!(card.experiments.len(), 3);
+        assert!(card.experiments.iter().all(|e| e.runs == 1));
     }
 
     #[test]

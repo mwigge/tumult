@@ -10,7 +10,8 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC_FILES = [
-    ROOT / name for name in ("README.md", "QUICKSTART.md", "SECURITY.md", "CHANGELOG.md")
+    ROOT / name
+    for name in ("README.md", "QUICKSTART.md", "SECURITY.md", "CHANGELOG.md")
 ] + sorted((ROOT / "docs").rglob("*.md"))
 
 
@@ -24,7 +25,14 @@ def check_links(errors: list[str]) -> None:
         text = path.read_text(encoding="utf-8")
         for raw in link_re.findall(text):
             target = raw.strip().split(maxsplit=1)[0].strip("<>")
-            if not target or "{{" in target or "{%" in target or target.startswith(("#", "http://", "https://", "mailto:", "tumult://")):
+            if (
+                not target
+                or "{{" in target
+                or "{%" in target
+                or target.startswith(
+                    ("#", "http://", "https://", "mailto:", "tumult://")
+                )
+            ):
                 continue
             local = unquote(target.split("#", 1)[0])
             resolved = (path.parent / local).resolve()
@@ -64,16 +72,24 @@ def check_blog(errors: list[str]) -> None:
 
 def check_mcp_inventory(errors: list[str]) -> None:
     schema_dir = ROOT / "tumult-mcp/src/handler/schema"
-    source = "\n".join(path.read_text(encoding="utf-8") for path in schema_dir.glob("*.rs"))
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in schema_dir.glob("*.rs")
+    )
     tools = set(re.findall(r'name\s*=\s*"(tumult_[a-z0-9_]+)"', source))
     if len(tools) != 40:
         errors.append(f"MCP schemas: expected 40 named tools, found {len(tools)}")
 
-    output = (ROOT / "tumult-mcp/src/handler/output_schema.rs").read_text(encoding="utf-8")
+    output = (ROOT / "tumult-mcp/src/handler/output_schema.rs").read_text(
+        encoding="utf-8"
+    )
     match = re.search(r"STRUCTURED_TOOLS:\s*&\[&str\]\s*=\s*&\[(.*?)\];", output, re.S)
-    structured = set(re.findall(r'"(tumult_[a-z0-9_]+)"', match.group(1))) if match else set()
+    structured = (
+        set(re.findall(r'"(tumult_[a-z0-9_]+)"', match.group(1))) if match else set()
+    )
     if len(structured) != 30:
-        errors.append(f"structured MCP schemas: expected 30 tools, found {len(structured)}")
+        errors.append(
+            f"structured MCP schemas: expected 30 tools, found {len(structured)}"
+        )
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     documented = set(re.findall(r"`(tumult_[a-z0-9_]+)`", readme))
@@ -82,13 +98,23 @@ def check_mcp_inventory(errors: list[str]) -> None:
     if missing:
         errors.append(f"README MCP inventory missing: {', '.join(missing)}")
     if extra:
-        errors.append(f"README MCP inventory contains unknown tools: {', '.join(extra)}")
-    if "exposes 40 tools" not in readme or "Thirty tools return structured content" not in readme:
+        errors.append(
+            f"README MCP inventory contains unknown tools: {', '.join(extra)}"
+        )
+    if (
+        "exposes 40 tools" not in readme
+        or "Thirty tools return structured content" not in readme
+    ):
         errors.append("README MCP totals do not match the checked wording")
 
 
 def check_stale_claims(errors: list[str]) -> None:
-    active = [ROOT / "README.md", ROOT / "QUICKSTART.md", ROOT / "SECURITY.md", ROOT / "docs/blog/index.md"]
+    active = [
+        ROOT / "README.md",
+        ROOT / "QUICKSTART.md",
+        ROOT / "SECURITY.md",
+        ROOT / "docs/blog/index.md",
+    ]
     stale = ("2.12.1", "1,026 tests", "1026 tests", "18 structured", "13-rule")
     for path in active:
         text = path.read_text(encoding="utf-8").lower()
@@ -102,7 +128,14 @@ def check_homepage_claims(errors: list[str]) -> None:
     text = path.read_text(encoding="utf-8")
     if "40 MCP" not in text:
         fail(errors, path, "homepage must state the current 40-tool MCP surface")
-    banned = ("24 MCP", "13 plugin", "64 actions", "921 tests", "1,026 tests", "15 crates")
+    banned = (
+        "24 MCP",
+        "13 plugin",
+        "64 actions",
+        "921 tests",
+        "1,026 tests",
+        "15 crates",
+    )
     lowered = text.lower()
     for phrase in banned:
         if phrase.lower() in lowered:

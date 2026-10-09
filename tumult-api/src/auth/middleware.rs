@@ -230,6 +230,22 @@ pub async fn auth_middleware(
             if principal.must_change && !PASSWORD_CHANGE_EXEMPT.contains(&path.as_str()) {
                 return forbidden("password_change_required");
             }
+            // Global resources have no environment ownership; scoped identities
+            // must not export all evidence, configure global event sinks, or
+            // grant themselves broader scopes through user/token administration.
+            let global_resource = [
+                "/report",
+                "/api/users",
+                "/api/tokens",
+                "/api/webhooks",
+                "/api/lake",
+                "/api/import/journal",
+            ]
+            .iter()
+            .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")));
+            if global_resource && !principal.env_scopes.is_empty() {
+                return forbidden("this global operation requires an unscoped principal");
+            }
             let required = required_role(&method, &path);
             if principal.role < required {
                 return forbidden("insufficient role");

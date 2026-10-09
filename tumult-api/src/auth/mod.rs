@@ -22,6 +22,7 @@
 mod middleware;
 mod rate_limit;
 mod route_table;
+pub(crate) mod scopes;
 mod session;
 mod tokens;
 mod users;

@@ -65,7 +65,7 @@ pub async fn validate(
                 "experiment {path:?} referenced by the gameday was not supplied"
             )));
         };
-        if let Err(e) = tumult_ingest::prepare_run(toon, &HashMap::new()) {
+        if let Err(e) = crate::runs::prepare_for_api(toon, &HashMap::new()) {
             return Err(bad_request(format!("experiment {path:?}: {e}")));
         }
     }
@@ -75,8 +75,8 @@ pub async fn validate(
     for step in &gameday.experiments {
         let path = step.path.to_string_lossy().into_owned();
         let toon = req.experiments[&path].clone();
-        let (experiment, _env) =
-            tumult_ingest::prepare_run(&toon, &HashMap::new()).map_err(internal)?;
+        let experiment =
+            crate::runs::preview_experiment(&toon, &HashMap::new()).map_err(bad_request)?;
         let registration = crate::registry::register_definition(
             &state,
             &toon,
@@ -241,6 +241,23 @@ pub async fn start_campaign(
     let row = gameday_or_404(&state, &id).await?;
     let envelope: Value = serde_json::from_str(row["definition_toon"].as_str().unwrap_or("{}"))
         .map_err(|e| internal(e.to_string()))?;
+    for step in envelope["experiments"].as_array().into_iter().flatten() {
+        let definition =
+            crate::runs::registry_or_404(&state, step["registry_id"].as_str().unwrap_or_default())
+                .await?;
+        let (experiment, injected) =
+            crate::runs::prepare_for_api(&definition.definition_toon, &HashMap::new())
+                .map_err(bad_request)?;
+        tumult_ingest::execution_policy::classify_execution(
+            &state.db_path,
+            &experiment,
+            &injected,
+            &req.env,
+            None,
+            !principal.env_scopes.is_empty(),
+        )
+        .map_err(forbidden)?;
+    }
     let steps = envelope["experiments"].as_array().map_or(0, Vec::len);
 
     let Some(ingest) = state.ingest_handle() else {

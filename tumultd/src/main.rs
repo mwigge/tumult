@@ -32,11 +32,11 @@
 //! lists them. Automatic reporting is off by default.
 //!
 //! The parquet lake job runs on `KRONIKA_LAKE_INTERVAL` (default `24h`,
-//! `0`/`off` disables): incremental export of every table into
-//! `KRONIKA_LAKE_DIR` (default `<db dir>/lake`), then — only when
-//! `KRONIKA_RETENTION_DAYS > 0` — deletion of already-exported hot rows
-//! older than that many days (the manual-evidence tables are never
-//! deleted). `POST /api/lake/export` triggers the same job on demand.
+//! `0`/`off` disables): portable manifest-selected Parquet snapshots in
+//! `KRONIKA_LAKE_DIR` (default `<db dir>/lake`). Automatic retention must
+//! remain zero until reports can read cold history. `POST /api/lake/export`
+//! triggers the same snapshot job on demand. Operational backups use the
+//! separate `tumult store backup` / `restore` commands.
 //!
 //! The daemon also executes experiments itself: `/api/runs*` (validate,
 //! dry-run, enqueue, e-stop) is backed by a bounded in-process run queue

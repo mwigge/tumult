@@ -15,6 +15,7 @@ name = "tumult-mcp"
 path = "src/main.rs"
 
 [dependencies]
+tumult-exec = { path = "../tumult-exec" }
 tumult-core = { path = "../tumult-core" }
 tumult-lake = { path = "../tumult-lake" }
 tumult-query = { path = "../tumult-query" }

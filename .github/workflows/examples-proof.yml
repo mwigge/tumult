@@ -78,15 +78,9 @@ jobs:
 
       - name: Gate — every run must be `completed`
         run: |
-          fail=0
-          for j in examples/recorded/*.journal.toon gamedays/q2-postgres-resilience.gameday.journal.toon; do
-            if grep -qE '^status: completed|status: completed' "$j" 2>/dev/null || grep -q 'completed' "$j"; then
-              echo "ok       $j"
-            else
-              echo "NOT-DONE $j"; fail=1
-            fi
-          done
-          exit $fail
+          python3 scripts/check-proof-journals.py \
+            examples/recorded/*.journal.toon \
+            gamedays/q2-postgres-resilience.gameday.journal.toon
 
       - name: Upload journals as evidence
         if: always()

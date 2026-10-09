@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
-    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Writer,
+    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Store, Writer,
 };
 
 use crate::auth::Principal;
@@ -59,6 +59,8 @@ fn manual_error(err: &ManualError) -> Response {
 /// the channel ack stays clean; the real outcome travels in `slot`).
 async fn exec_manual<T>(
     state: &ApiState,
+    principal: &Principal,
+    resource_id: Option<&str>,
     f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
 ) -> Result<T, Response>
 where
@@ -71,11 +73,29 @@ where
         )
             .into_response());
     };
+    let scopes = principal.env_scopes.clone();
+    let resource_id = resource_id.map(str::to_owned);
+    let db = state.db_path.as_ref().clone();
     let slot = Arc::new(Mutex::new(None));
     let slot2 = Arc::clone(&slot);
     ingest
         .write(Batch::Exec(Box::new(move |writer: &Writer| {
-            *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(f(writer));
+            // Resolve scope inside the serialized writer operation: an edit cannot
+            // move the record between authorization and mutation.
+            let result = (|| {
+                if let Some(id) = resource_id.filter(|_| !scopes.is_empty()) {
+                    let detail = Store::at(&db).read_only()?.manual_experiment_detail(&id)?;
+                    let allowed = detail
+                        .as_ref()
+                        .and_then(|d| d.experiment["target_environment"].as_str())
+                        .is_some_and(|env| scopes.iter().any(|s| s == env));
+                    if !allowed {
+                        return Err(ManualError::NotFound(id));
+                    }
+                }
+                f(writer)
+            })();
+            *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
             Ok(())
         })))
         .await
@@ -153,8 +173,12 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<Value>), Response> {
     let entered_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
+    check_environment(&principal, req.target_environment.as_deref())?;
     let new = req.into_new(entered_by).map_err(bad_request)?;
-    let id = exec_manual(&state, move |w| w.create_manual_draft(&new)).await?;
+    let id = exec_manual(&state, &principal, None, move |w| {
+        w.create_manual_draft(&new)
+    })
+    .await?;
     Ok((StatusCode::CREATED, Json(json!({"id": id}))))
 }
 
@@ -166,13 +190,18 @@ pub struct ListParams {
 /// `GET /api/manual/experiments?status=` — list records (newest first).
 pub async fn list(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<ListParams>,
 ) -> Result<Json<Value>, Response> {
     let status = params.status.clone();
     let rows = with_reader(&state.db_path, move |reader| {
-        reader
+        let mut rows = reader
             .manual_experiments(status.as_deref())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        rows.retain(|row| {
+            principal.env_allowed(row["target_environment"].as_str().unwrap_or_default())
+        });
+        Ok(rows)
     })
     .await?;
     Ok(Json(json!({"records": rows})))
@@ -222,8 +251,10 @@ pub async fn update(
 ) -> Result<Json<Value>, Response> {
     let changed_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
+    check_environment(&principal, req.target_environment.as_deref())?;
     let new = req.into_new(changed_by.clone()).map_err(bad_request)?;
-    exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.update_manual_draft(&id, &new, &changed_by)
     })
     .await?;
@@ -244,7 +275,8 @@ pub async fn submit(
     Json(req): Json<SubmitRequest>,
 ) -> Result<Json<Value>, Response> {
     let by = actor_or(&principal, req.by.clone(), "by").map_err(bad_request)?;
-    exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.submit_manual(&id, req.attestation.as_deref(), &by)
     })
     .await?;
@@ -265,7 +297,8 @@ pub async fn verify(
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<Value>, Response> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.verify_manual(&id, &reviewer, req.note.as_deref())
     })
     .await?;
@@ -286,7 +319,11 @@ pub async fn reject(
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<Value>, Response> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    exec_manual(&state, move |w| w.reject_manual(&id, &reviewer, &req.note)).await?;
+    let resource_id = id.clone();
+    exec_manual(&state, &principal, Some(&resource_id), move |w| {
+        w.reject_manual(&id, &reviewer, &req.note)
+    })
+    .await?;
     Ok(Json(json!({"ok": true})))
 }
 
@@ -320,7 +357,8 @@ pub async fn attach(
         }
     };
     let added_by = actor_or(&principal, req.added_by.clone(), "added_by").map_err(bad_request)?;
-    let attachment_id = exec_manual(&state, move |w| {
+    let resource_id = id.clone();
+    let attachment_id = exec_manual(&state, &principal, Some(&resource_id), move |w| {
         w.add_manual_attachment(&id, kind, &req.uri, req.label.as_deref(), None, &added_by)
     })
     .await?;
@@ -343,15 +381,27 @@ pub async fn import(
 ) -> Result<(StatusCode, Json<Value>), Response> {
     let mut items = Vec::with_capacity(req.records.len());
     for record in req.records {
+        check_environment(&principal, record.target_environment.as_deref())?;
         let entered_by =
             actor_or(&principal, record.entered_by.clone(), "entered_by").map_err(bad_request)?;
         items.push(record.into_new(entered_by).map_err(bad_request)?);
     }
     let label = req.label.clone();
-    let (batch_id, ids) =
-        exec_manual(&state, move |w| w.import_manual_drafts(&items, label)).await?;
+    let (batch_id, ids) = exec_manual(&state, &principal, None, move |w| {
+        w.import_manual_drafts(&items, label)
+    })
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(json!({"batch_id": batch_id, "ids": ids})),
     ))
+}
+
+fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), Response> {
+    if !principal.env_allowed(env.unwrap_or_default()) {
+        return Err(crate::error::forbidden(
+            "environment is outside the principal's scopes",
+        ));
+    }
+    Ok(())
 }

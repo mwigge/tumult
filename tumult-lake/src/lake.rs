@@ -1,97 +1,45 @@
-//! Parquet lake export + retention — clean-room, DuckDB-native.
+//! Portable, manifest-selected Parquet snapshots.
 //!
-//! The hot DuckDB store is the fast recent-query tier; the lake is the
-//! immutable long-term tier: per table, `COPY (SELECT …) TO
-//! '<lake>/<table>/date=<d>/data-<run>.parquet' (FORMAT PARQUET)` writes one
-//! file per day-partition directory. Exports are **incremental** against a
-//! persisted watermark (`<lake>/_meta.json`), so re-runs are idempotent: no
-//! new rows, no new files.
-//!
-//! Retention reclaims the hot store only for rows the watermark proves were
-//! already exported (`ts_ns <= watermark`), and only when
-//! `KRONIKA_RETENTION_DAYS > 0`. Two tables are exempt from deletion:
-//! `manual_experiment_audit` (append-only compliance evidence) and
-//! `manual_experiments` (the evidence register itself — exported as a full
-//! snapshot per run instead of incrementally, since records mutate through
-//! their review lifecycle).
-//!
-//! The run system is covered as well: `run_audit` / `webhook_dead_letters`
-//! export incrementally on `at_ns`; `runs`, `run_registry`, `run_schedules`,
-//! `webhooks`, `webhook_cursors`, `approval_*` and `users` export as
-//! fingerprint-guarded snapshots. Their hot-store retention is the daemon's
-//! `TUMULTD_RUN_RETENTION_DAYS` sweep, not the watermark guard here.
-//!
-//! Two operational caveats, both inherited from event-time watermarking:
-//!
-//! * **Snapshot readers.** A read-only `DuckDB` connection pins its snapshot
-//!   at open; open a *fresh* [`Reader`] per export run or it will not see
-//!   rows committed since it was opened.
-//! * **Backdated late arrivals.** The watermark is event time (`ts_ns`).
-//!   Rows arriving with an event time at or below the current watermark are
-//!   invisible to incremental export (tumult/smedja telemetry arrives in
-//!   real time, so this only matters for hand-backfilled data — do full
-//!   re-exports for those). Retention never deletes rows above the
-//!   watermark, so unexported late rows at least cannot be reclaimed.
+//! Each table snapshot is content addressed and immutable. `_meta.json` is
+//! atomically published only after every table has been written, so consumers
+//! must read its `snapshots` map, never glob historical files. Late arrivals,
+//! tied event timestamps and mutable rows are covered by complete snapshots.
+//! Credentials and operational recovery state are deliberately excluded; use
+//! [`crate::backup`] for a complete privileged installation backup.
+//! Hot retention is disabled until historical queries can read the archive.
 
 use std::collections::BTreeMap;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::file_integrity::checksum;
+use crate::{Reader, StoreError, Writer};
 use serde::{Deserialize, Serialize};
 
-use crate::{Reader, StoreError, Writer};
+#[doc(hidden)]
+pub const AUDIT_TABLE: &str = "manual_experiment_audit";
+#[doc(hidden)]
+pub const MANUAL_TABLE: &str = "manual_experiments";
 
-/// Telemetry tables: `ts_ns` watermark column, incremental export, eligible
-/// for retention deletes once exported.
-const TELEMETRY_TABLES: [&str; 5] = [
+// An explicit portable-data contract. Adding a platform table requires a
+// classification decision; full operational backups discover all schema data.
+const TABLES: &[&str] = &[
     "spans",
     "logs",
     "metric_sums",
     "metric_gauges",
     "metric_histograms",
-];
-
-/// Append-only audit: incremental export on `changed_at_ns`, never deleted.
-#[doc(hidden)]
-pub const AUDIT_TABLE: &str = "manual_experiment_audit";
-const AUDIT_TS_COL: &str = "changed_at_ns";
-
-/// The evidence register: full snapshot per run (records mutate through the
-/// draft → submitted → verified lifecycle), never deleted.
-#[doc(hidden)]
-pub const MANUAL_TABLE: &str = "manual_experiments";
-
-/// Journal-detail tables: incremental on `started_at_ns` and
-/// retention-eligible under the same watermark guard as telemetry.
-const JOURNAL_TABLES: [&str; 3] = ["experiments", "activity_results", "load_results"];
-const JOURNAL_TS_COL: &str = "started_at_ns";
-
-/// Append-only run-system tables: incremental export on `at_ns`, never
-/// deleted by the lake watermark guard (hot-store run retention is the
-/// daemon's `TUMULTD_RUN_RETENTION_DAYS` sweep, not the lake's). These are
-/// the hash-chained run trail and the webhook dead-letter record — the
-/// rows a restore cannot afford to lose.
-const RUN_SYSTEM_INCREMENTAL_TABLES: [(&str, &str); 2] =
-    [("run_audit", "at_ns"), ("webhook_dead_letters", "at_ns")];
-
-/// INSERT-ONLY autopilot history: snapshot-exported (rows are few and the
-/// tables are event-sourced), retention-eligible ONLY while the current
-/// fingerprint matches the last exported one — fingerprint equality proves
-/// every hot row is already in the lake.
-const AUTOPILOT_SNAPSHOT_TABLES: [(&str, &str); 3] = [
-    ("autopilot_decisions", "decided_at_ns"),
-    ("autopilot_events", "at_ns"),
-    ("autopilot_change_events", "at_ns"),
-];
-
-/// Mutable or timestamp-less tables: snapshot-exported, never deleted.
-/// `graph_edges` rows are rewritten with `ts = 0` by topology refreshes, so
-/// a watermark would lose updates and retention would delete fresh rows;
-/// the `agentic_*` tables have no timestamp column at all. The run-system
-/// tables (`runs` and friends) mutate through their lifecycle, so they get
-/// full snapshots too. Note the snapshots carry what the store carries —
-/// `webhooks.secret`, `users.password_hash` — so the lake directory must be
-/// protected like the database file itself.
-const SNAPSHOT_ONLY_TABLES: [&str; 14] = [
+    "manual_experiment_audit",
+    "manual_experiments",
+    "evidence_attachments",
+    "import_batches",
+    "experiments",
+    "activity_results",
+    "load_results",
+    "autopilot_decisions",
+    "autopilot_events",
+    "autopilot_change_events",
     "graph_nodes",
     "graph_edges",
     "agentic_runs",
@@ -100,46 +48,42 @@ const SNAPSHOT_ONLY_TABLES: [&str; 14] = [
     "agentic_replay_outcomes",
     "runs",
     "run_registry",
+    "run_audit",
     "run_schedules",
-    "webhooks",
-    "webhook_cursors",
     "approval_requests",
     "approval_decisions",
+    "webhook_cursors",
+    "webhook_dead_letters",
+];
+const EXCLUDED: &[&str] = &[
     "users",
+    "sessions",
+    "tokens",
+    "user_env_scopes",
+    "webhooks",
+    "run_recovery_plans",
+    "run_execution_pins",
+    "schema_meta",
 ];
 
-/// Content fingerprint for a snapshot table: md5 over the ordered per-row
-/// hashes of the full row JSON. Manual evidence uses its cheaper, stable
-/// `content_hash` column instead.
 #[doc(hidden)]
 pub fn fingerprint_sql(table: &str) -> String {
-    if table == MANUAL_TABLE {
-        format!(
-            "SELECT md5(COALESCE(string_agg(content_hash, ',' ORDER BY id), '')) AS fp \
-             FROM {table}"
-        )
-    } else {
-        format!(
-            "SELECT md5(COALESCE(string_agg(h, ',' ORDER BY h), '')) AS fp \
-             FROM (SELECT md5(CAST(row_to_json(t) AS VARCHAR)) AS h FROM {table} t)"
-        )
-    }
+    format!(
+        "SELECT sha256( \
+          (SELECT COALESCE(string_agg(sha256(CAST(row_to_json(c) AS VARCHAR)), ',' ORDER BY ordinal_position), '') \
+           FROM (SELECT column_name, data_type, is_nullable, column_default, ordinal_position \
+                 FROM information_schema.columns WHERE table_schema = 'main' AND table_name = '{table}') c) \
+          || ':' || COALESCE(string_agg(h, ',' ORDER BY h), '')) AS fp \
+         FROM (SELECT sha256(CAST(row_to_json(t) AS VARCHAR)) AS h FROM {table} t)"
+    )
 }
 
-/// Day-partition expression for a watermark column (UTC, `YYYY-MM-DD`).
-fn day_expr(ts_col: &str) -> String {
-    format!("strftime(to_timestamp({ts_col} / 1000000000.0), '%Y-%m-%d')")
-}
-
-/// Lake layout + retention policy.
 #[derive(Clone, Debug)]
 pub struct LakeConfig {
-    /// Root of the parquet lake (created on first export).
     pub dir: PathBuf,
-    /// Hot-store retention in days; `0` keeps rows forever (default).
+    /// Only zero is supported until hot+cold query views are implemented.
     pub retention_days: u64,
 }
-
 impl LakeConfig {
     #[must_use]
     pub fn new(dir: PathBuf, retention_days: u64) -> Self {
@@ -148,16 +92,14 @@ impl LakeConfig {
             retention_days,
         }
     }
-
-    /// From `KRONIKA_LAKE_DIR` (default `<db dir>/lake`) and
-    /// `KRONIKA_RETENTION_DAYS` (default `0` = keep forever).
     #[must_use]
     pub fn from_env(db_path: &Path) -> Self {
         let dir = std::env::var_os("KRONIKA_LAKE_DIR").map_or_else(
             || {
                 db_path
                     .parent()
-                    .map_or_else(|| PathBuf::from("lake"), |d| d.join("lake"))
+                    .unwrap_or_else(|| Path::new("."))
+                    .join("lake")
             },
             PathBuf::from,
         );
@@ -169,19 +111,15 @@ impl LakeConfig {
     }
 }
 
-/// One table's slice of an export run.
 #[derive(Clone, Debug, Serialize)]
 pub struct TableExport {
     pub name: String,
-    /// Rows written this run (0 when the watermark was already current).
+    /// Complete snapshot row count when changed; zero for an unchanged table.
     pub rows: u64,
-    /// Watermark after this run (rows up to and including this are exported).
+    /// Compatibility field: snapshot publication time, NOT an event-time cursor.
     pub watermark_ns: i64,
-    /// Parquet files written this run, relative to the lake dir.
     pub files: Vec<String>,
 }
-
-/// What one export run did.
 #[derive(Clone, Debug, Serialize)]
 pub struct ExportReport {
     pub ran_at_ns: i64,
@@ -189,253 +127,184 @@ pub struct ExportReport {
     pub retention_days: u64,
     pub tables: Vec<TableExport>,
 }
-
-/// Point-in-time lake summary for `GET /api/lake/status`.
 #[derive(Clone, Debug, Serialize)]
 pub struct LakeStatus {
     pub lake_dir: String,
     pub retention_days: u64,
     pub last_export_ns: Option<i64>,
-    /// Per-table export watermark (rows up to and including are in the lake).
     pub watermarks: BTreeMap<String, i64>,
     pub files: u64,
     pub bytes: u64,
 }
-
-/// Persisted watermark state (`<lake>/_meta.json`).
 #[derive(Default, Serialize, Deserialize)]
 struct LakeMeta {
+    #[serde(default)]
+    format_version: u32,
     last_export_ns: Option<i64>,
     #[serde(default)]
     tables: BTreeMap<String, i64>,
-    /// Legacy field: the pre-generalization fingerprint for
-    /// `manual_experiments`. Seeded into `fingerprints` on read and never
-    /// written again.
-    #[serde(default, skip_serializing)]
-    manual_fingerprint: Option<String>,
-    /// Per-table content fingerprint for snapshot-exported tables; a
-    /// snapshot is rewritten only when its fingerprint changes.
     #[serde(default)]
     fingerprints: BTreeMap<String, String>,
+    #[serde(default)]
+    snapshots: BTreeMap<String, String>,
+    #[serde(default)]
+    file_checksums: BTreeMap<String, String>,
+    #[serde(default)]
+    excluded_tables: Vec<String>,
 }
-
 #[doc(hidden)]
 pub fn meta_path(dir: &Path) -> PathBuf {
     dir.join("_meta.json")
 }
-
 fn read_meta(dir: &Path) -> Result<LakeMeta, StoreError> {
-    let mut meta = match std::fs::read_to_string(meta_path(dir)) {
-        Ok(raw) => serde_json::from_str::<LakeMeta>(&raw)
-            .map_err(|e| StoreError::Internal(format!("corrupt lake watermark file: {e}")))?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => LakeMeta::default(),
-        Err(e) => return Err(StoreError::from(e)),
-    };
-    // Migrate the legacy manual-only fingerprint field into the generic map.
-    if let Some(fp) = meta.manual_fingerprint.take() {
-        meta.fingerprints
-            .entry(MANUAL_TABLE.to_string())
-            .or_insert(fp);
+    match std::fs::read_to_string(meta_path(dir)) {
+        Ok(raw) => Ok(serde_json::from_str(&raw)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(LakeMeta::default()),
+        Err(e) => Err(e.into()),
     }
-    Ok(meta)
 }
-
-/// Write the watermark file atomically (tmp + rename) so a crash mid-export
-/// never leaves a torn watermark claiming rows that were not exported.
 fn write_meta(dir: &Path, meta: &LakeMeta) -> Result<(), StoreError> {
-    let raw = serde_json::to_string_pretty(meta)
-        .map_err(|e| StoreError::Internal(format!("serialize lake meta: {e}")))?;
-    let tmp = dir.join("_meta.json.tmp");
-    std::fs::write(&tmp, raw)?;
-    std::fs::rename(&tmp, meta_path(dir))?;
+    let temp = dir.join("_meta.json.tmp");
+    match std::fs::remove_file(&temp) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    // Never follow a leftover or concurrently planted temporary symlink.
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temp)?;
+    file.write_all(&serde_json::to_vec_pretty(meta)?)?;
+    file.sync_all()?;
+    std::fs::rename(temp, meta_path(dir))?;
+    #[cfg(unix)]
+    File::open(dir)?.sync_all()?;
     Ok(())
 }
-
 #[doc(hidden)]
 pub fn now_ns() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos() as i64)
+        .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
+}
+fn sql_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\'', "''")
 }
 
-/// Export one watermark-column table incrementally: one parquet file per
-/// day-partition with rows newer than the stored watermark. Returns the
-/// table report; advances nothing on its own (the caller persists meta).
-fn export_incremental(
-    reader: &Reader,
-    cfg: &LakeConfig,
-    table: &str,
-    ts_col: &str,
-    watermark: i64,
-    run_ns: i64,
-) -> Result<TableExport, StoreError> {
-    let day = day_expr(ts_col);
-    let days = reader.query_json_rows(&format!(
-        "SELECT DISTINCT {day} AS d FROM {table} WHERE {ts_col} > {watermark} ORDER BY d"
-    ))?;
-    let mut files = Vec::new();
-    let mut rows: u64 = 0;
-    for d in days {
-        let Some(day_str) = d.get("d").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        let rel = format!("{table}/date={day_str}/data-{run_ns}.parquet");
-        let path = cfg.dir.join(&rel);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let count = reader.query_json_rows(&format!(
-            "SELECT count(*) AS n FROM {table} \
-             WHERE {ts_col} > {watermark} AND {day} = '{day_str}'"
-        ))?;
-        let n = count
-            .first()
-            .and_then(|r| r.get("n"))
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        if n == 0 {
-            continue;
-        }
-        reader.execute_batch(&format!(
-            "COPY (SELECT * FROM {table} \
-             WHERE {ts_col} > {watermark} AND {day} = '{day_str}') \
-             TO '{}' (FORMAT PARQUET)",
-            path.display()
-        ))?;
-        rows += n;
-        files.push(rel);
-    }
-    let new_watermark = if rows == 0 {
-        watermark
-    } else {
-        reader
-            .query_json_rows(&format!("SELECT max({ts_col}) AS m FROM {table}"))?
-            .first()
-            .and_then(|r| r.get("m"))
-            .and_then(serde_json::Value::as_i64)
-            .unwrap_or(watermark)
-            .max(watermark)
-    };
-    Ok(TableExport {
-        name: table.to_string(),
-        rows,
-        watermark_ns: new_watermark,
-        files,
-    })
-}
-
-/// Full-snapshot export for a mutable or event-sourced table: latest
-/// snapshot wins; consumers take the newest file. Rewritten only when the
-/// table's content fingerprint changes, so idempotent re-runs write nothing
-/// here either.
-fn export_snapshot(
-    reader: &Reader,
-    cfg: &LakeConfig,
-    table: &str,
-    run_ns: i64,
-    prior_fingerprint: Option<&str>,
-) -> Result<(TableExport, String), StoreError> {
-    let fp = reader
-        .query_json_rows(&fingerprint_sql(table))?
-        .first()
-        .and_then(|r| r.get("fp"))
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default();
-    let unchanged = prior_fingerprint == Some(fp.as_str());
-    let count = reader.query_json_rows(&format!("SELECT count(*) AS n FROM {table}"))?;
-    let n = count
-        .first()
-        .and_then(|r| r.get("n"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    let mut files = Vec::new();
-    let mut rows = 0;
-    if n > 0 && !unchanged {
-        let day = reader
-            .query_json_rows(&format!(
-                "SELECT strftime(to_timestamp({run_ns} / 1000000000.0), '%Y-%m-%d') AS d"
-            ))?
-            .first()
-            .and_then(|r| r.get("d"))
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_else(|| "unknown".to_string());
-        let rel = format!("{table}/date={day}/data-{run_ns}.parquet");
-        let path = cfg.dir.join(&rel);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        reader.execute_batch(&format!(
-            "COPY (SELECT * FROM {table}) TO '{}' (FORMAT PARQUET)",
-            path.display()
-        ))?;
-        files.push(rel);
-        rows = n;
-    }
-    Ok((
-        TableExport {
-            name: table.to_string(),
-            rows,
-            watermark_ns: run_ns,
-            files,
-        },
-        fp,
-    ))
-}
-
-/// Run one export pass over all tables. The watermark file is advanced only
-/// after every table exported successfully, so a failed run is retried from
-/// the last good watermark (idempotent).
+/// Export complete table versions and atomically commit their manifest.
+/// Existing v1 archives are rejected: select a new directory and reconcile
+/// any previously purged history separately. No old metadata is overwritten.
 ///
 /// # Errors
-/// Returns an error if any table's export or the watermark write fails.
+/// Returns a filesystem/store error without advancing the manifest. Retries
+/// reuse verified committed files and rebuild uncommitted or damaged files.
 pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreError> {
     std::fs::create_dir_all(&cfg.dir)?;
-    let run_ns = now_ns();
-    let mut meta = read_meta(&cfg.dir)?;
-    let mut tables = Vec::new();
-
-    for table in TELEMETRY_TABLES {
-        let wm = meta.tables.get(table).copied().unwrap_or(0);
-        let t = export_incremental(reader, cfg, table, "ts_ns", wm, run_ns)?;
-        meta.tables.insert(table.to_string(), t.watermark_ns);
-        tables.push(t);
-    }
-    let audit_wm = meta.tables.get(AUDIT_TABLE).copied().unwrap_or(0);
-    let audit = export_incremental(reader, cfg, AUDIT_TABLE, AUDIT_TS_COL, audit_wm, run_ns)?;
-    meta.tables
-        .insert(AUDIT_TABLE.to_string(), audit.watermark_ns);
-    tables.push(audit);
-
-    for table in JOURNAL_TABLES {
-        let wm = meta.tables.get(table).copied().unwrap_or(0);
-        let t = export_incremental(reader, cfg, table, JOURNAL_TS_COL, wm, run_ns)?;
-        meta.tables.insert(table.to_string(), t.watermark_ns);
-        tables.push(t);
-    }
-
-    for (table, ts_col) in RUN_SYSTEM_INCREMENTAL_TABLES {
-        let wm = meta.tables.get(table).copied().unwrap_or(0);
-        let t = export_incremental(reader, cfg, table, ts_col, wm, run_ns)?;
-        meta.tables.insert(table.to_string(), t.watermark_ns);
-        tables.push(t);
-    }
-
-    for table in std::iter::once(&MANUAL_TABLE)
-        .chain(AUTOPILOT_SNAPSHOT_TABLES.iter().map(|(t, _)| t))
-        .chain(SNAPSHOT_ONLY_TABLES.iter())
+    #[cfg(unix)]
     {
-        let (t, fp) = export_snapshot(
-            reader,
-            cfg,
-            table,
-            run_ns,
-            meta.fingerprints.get(*table).map(String::as_str),
-        )?;
-        meta.tables.insert((*table).to_string(), t.watermark_ns);
-        meta.fingerprints.insert((*table).to_string(), fp);
-        tables.push(t);
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&cfg.dir, std::fs::Permissions::from_mode(0o700))?;
     }
-
+    // The OS releases the lock on process exit, including crashes. Protects
+    // publication across both scheduler/API calls and independent processes.
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(cfg.dir.join(".export.lock"))?;
+    lock.lock()?;
+    let previous = read_meta(&cfg.dir)?;
+    if previous.format_version != 2
+        && (previous.last_export_ns.is_some() || !previous.tables.is_empty())
+    {
+        return Err(StoreError::Internal("legacy lake archive: preserve its files and set KRONIKA_LAKE_DIR to a new empty directory for manifest v2; previously purged rows require separate reconciliation".into()));
+    }
+    if previous.format_version > 2 {
+        return Err(StoreError::Internal(
+            "unsupported lake manifest version".into(),
+        ));
+    }
+    let mut meta = LakeMeta {
+        format_version: 2,
+        excluded_tables: EXCLUDED.iter().map(|s| (*s).into()).collect(),
+        ..Default::default()
+    };
+    let run_ns = now_ns();
+    let mut tables = Vec::new();
+    // One explicit transaction ensures all tables belong to one database snapshot.
+    reader.execute_batch("BEGIN TRANSACTION")?;
+    let result = (|| {
+        for table in TABLES {
+            let fp = reader.query_json_rows(&fingerprint_sql(table))?[0]["fp"]
+                .as_str()
+                .ok_or_else(|| StoreError::Internal("missing table fingerprint".into()))?
+                .to_owned();
+            let rel = format!("snapshots/{table}/{fp}.parquet");
+            let path = cfg.dir.join(&rel);
+            // A content-derived filename alone does not establish file integrity.
+            // Legacy/uncommitted files without a verified byte digest are rebuilt.
+            let existing_checksum = path.is_file().then(|| checksum(&path)).transpose()?;
+            let unchanged = previous.format_version == 2
+                && previous.snapshots.get(*table) == Some(&rel)
+                && existing_checksum.is_some()
+                && previous.file_checksums.get(*table) == existing_checksum.as_ref();
+            let rows = reader.query_json_rows(&format!("SELECT count(*) AS n FROM {table}"))?[0]
+                ["n"]
+                .as_u64()
+                .ok_or_else(|| StoreError::Internal("missing table count".into()))?;
+            if !unchanged {
+                let parent = path.parent().expect("snapshot path has a parent");
+                std::fs::create_dir_all(parent)?;
+                let temp = path.with_extension("parquet.tmp");
+                // A crashed export can leave an incomplete temporary file.
+                match std::fs::remove_file(&temp) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                }
+                reader.execute_batch(&format!(
+                    "COPY (SELECT * FROM {table}) TO '{}' (FORMAT PARQUET)",
+                    sql_path(&temp)
+                ))?;
+                File::open(&temp)?.sync_all()?;
+                std::fs::rename(temp, &path)?;
+                #[cfg(unix)]
+                File::open(parent)?.sync_all()?;
+            }
+            let file_checksum = match existing_checksum {
+                Some(digest) if unchanged => digest,
+                _ => checksum(&path)?,
+            };
+            meta.file_checksums.insert((*table).into(), file_checksum);
+            meta.snapshots.insert((*table).into(), rel.clone());
+            meta.fingerprints.insert((*table).into(), fp);
+            let published = if unchanged {
+                previous.tables.get(*table).copied().unwrap_or(run_ns)
+            } else {
+                run_ns
+            };
+            meta.tables.insert((*table).into(), published);
+            tables.push(TableExport {
+                name: (*table).into(),
+                rows: if unchanged { 0 } else { rows },
+                watermark_ns: published,
+                files: if unchanged { vec![] } else { vec![rel] },
+            });
+        }
+        Ok::<_, StoreError>(())
+    })();
+    if let Err(error) = result {
+        if let Err(rollback) = reader.execute_batch("ROLLBACK") {
+            tracing::error!(error = %rollback, "failed to roll back export snapshot");
+        }
+        return Err(error);
+    }
+    reader.execute_batch("COMMIT")?;
     meta.last_export_ns = Some(run_ns);
     write_meta(&cfg.dir, &meta)?;
     Ok(ExportReport {
@@ -446,99 +315,84 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
     })
 }
 
-/// Delete hot-store rows older than `retention_days` that the lake provably
-/// holds. Telemetry and journal-detail tables use the watermark guard (rows
-/// above the watermark survive); autopilot snapshot tables are purged only
-/// while the current fingerprint matches the last exported one (equality
-/// proves every row is in the lake). Audit, manual-evidence, graph and
-/// agentic tables are never touched (append-only compliance evidence, or
-/// mutable/timestamp-less rows a watermark cannot protect). No-op when
-/// `retention_days == 0`.
+/// Return the single committed version of a portable table. Never glob files.
 ///
 /// # Errors
-/// Returns an error if the watermark file cannot be read or a delete fails.
-pub fn enforce_retention(
-    writer: &Writer,
-    cfg: &LakeConfig,
-) -> Result<BTreeMap<String, u64>, StoreError> {
-    let mut deleted = BTreeMap::new();
-    if cfg.retention_days == 0 {
-        return Ok(deleted);
-    }
+/// Rejects pre-manifest archives, invalid table names and missing snapshots.
+pub fn committed_file(cfg: &LakeConfig, table: &str) -> Result<PathBuf, StoreError> {
     let meta = read_meta(&cfg.dir)?;
-    let cutoff = now_ns() - (cfg.retention_days as i64) * 86_400 * 1_000_000_000;
-    for table in TELEMETRY_TABLES {
-        let wm = meta.tables.get(table).copied().unwrap_or(0);
-        let n = writer.execute(
-            &format!("DELETE FROM {table} WHERE ts_ns < {cutoff} AND ts_ns <= {wm}"),
-            [],
-        )?;
-        deleted.insert(table.to_string(), n as u64);
+    if meta.format_version != 2 {
+        return Err(StoreError::Internal(
+            "archive requires a v2 snapshot export".into(),
+        ));
     }
-    for table in JOURNAL_TABLES {
-        let wm = meta.tables.get(table).copied().unwrap_or(0);
-        let n = writer.execute(
-            &format!(
-                "DELETE FROM {table} WHERE {JOURNAL_TS_COL} < {cutoff} AND {JOURNAL_TS_COL} <= {wm}"
-            ),
-            [],
-        )?;
-        deleted.insert(table.to_string(), n as u64);
+    let relative = meta
+        .snapshots
+        .get(table)
+        .ok_or_else(|| StoreError::Internal("table is not in the portable export".into()))?;
+    let fingerprint = meta
+        .fingerprints
+        .get(table)
+        .ok_or_else(|| StoreError::Internal("missing fingerprint".into()))?;
+    if !TABLES.contains(&table)
+        || fingerprint.len() != 64
+        || !fingerprint.bytes().all(|b| b.is_ascii_hexdigit())
+        || relative != &format!("snapshots/{table}/{fingerprint}.parquet")
+    {
+        return Err(StoreError::Internal(
+            "invalid snapshot manifest path".into(),
+        ));
     }
-    for (table, ts_col) in AUTOPILOT_SNAPSHOT_TABLES {
-        let Some(exported_fp) = meta.fingerprints.get(table) else {
-            // Never exported: nothing in the lake, nothing may be deleted.
-            continue;
-        };
-        let current_fp = writer
-            .query_json_rows(&fingerprint_sql(table))?
-            .first()
-            .and_then(|r| r.get("fp"))
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_default();
-        if &current_fp != exported_fp {
-            // Rows exist that are not in the lake yet: keep everything.
-            continue;
-        }
-        let n = writer.execute(
-            &format!("DELETE FROM {table} WHERE {ts_col} < {cutoff}"),
-            [],
-        )?;
-        deleted.insert(table.to_string(), n as u64);
+    let path = cfg.dir.join(relative);
+    if !path.is_file() {
+        return Err(StoreError::Internal(
+            "committed snapshot file is missing".into(),
+        ));
     }
-    Ok(deleted)
+    let expected = meta.file_checksums.get(table).ok_or_else(|| {
+        StoreError::Internal(
+            "snapshot integrity metadata missing; export again before reading".into(),
+        )
+    })?;
+    if checksum(&path)? != *expected {
+        return Err(StoreError::Internal(
+            "committed snapshot checksum mismatch; export again to repair from retained rows"
+                .into(),
+        ));
+    }
+    Ok(path)
 }
 
-/// Lake summary for `GET /api/lake/status`: watermarks from the meta file
-/// plus a recursive file/byte count over `*.parquet`.
+/// Retention is unavailable until reports and queries can read cold snapshots.
 ///
 /// # Errors
-/// Returns an error if the meta file is corrupt or the dir cannot be read.
+/// A nonzero policy fails closed; no rows are deleted.
+pub fn enforce_retention(
+    _writer: &Writer,
+    cfg: &LakeConfig,
+) -> Result<BTreeMap<String, u64>, StoreError> {
+    if cfg.retention_days != 0 {
+        return Err(StoreError::Internal("KRONIKA_RETENTION_DAYS must be 0: historical queries do not yet read archived snapshots; no data was deleted".into()));
+    }
+    Ok(BTreeMap::new())
+}
+
+/// Status of the committed archive, excluding historical and uncommitted files.
+///
+/// # Errors
+/// Returns errors for unreadable manifests or missing committed files.
 pub fn status(cfg: &LakeConfig) -> Result<LakeStatus, StoreError> {
     let meta = read_meta(&cfg.dir)?;
-    let mut files: u64 = 0;
-    let mut bytes: u64 = 0;
-    let mut stack = vec![cfg.dir.clone()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue; // lake not created yet
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "parquet") {
-                files += 1;
-                bytes += entry.metadata().map_or(0, |m| m.len());
-            }
-        }
+    let mut bytes = 0;
+    for table in meta.snapshots.keys() {
+        bytes += std::fs::metadata(committed_file(cfg, table)?)?.len();
     }
     Ok(LakeStatus {
         lake_dir: cfg.dir.display().to_string(),
         retention_days: cfg.retention_days,
         last_export_ns: meta.last_export_ns,
         watermarks: meta.tables,
-        files,
+        files: meta.snapshots.len() as u64,
         bytes,
     })
 }

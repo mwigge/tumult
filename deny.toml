@@ -9,7 +9,7 @@ ignore = [
     { id = "RUSTSEC-2025-0141", reason = "both versions are transitive through syntect and grafeo; no safe compatible upgrade is available" },
     # quick-xml 0.38 is pinned by citationberg 0.7 -> hayagriva 0.10 -> typst 0.15.
     # All three are already at their latest crates.io releases (verified
-    # 2026-07-31: typst 0.15.1, hayagriva 0.10.1, citationberg 0.7.0 — the
+    # 2026-10-09: typst 0.15.1, hayagriva 0.10.1, citationberg 0.7.0 — the
     # latter still depends on quick-xml 0.38), so NO upgrade path exists
     # upstream yet. Exposure is nil: tumult-compliance renders bundled,
     # trusted Typst templates only and never parses untrusted XML — the

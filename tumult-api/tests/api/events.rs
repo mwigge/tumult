@@ -71,7 +71,16 @@ async fn events_feed_newest_first_with_hash_chain() {
     // Newest first: aborted (terminal) precedes the stop request, which
     // precedes the run's approval request.
     let names: Vec<&str> = events.iter().filter_map(|e| e["event"].as_str()).collect();
-    assert_eq!(names, ["aborted", "stop_requested", "requested"], "{body}");
+    assert_eq!(
+        names,
+        [
+            "aborted",
+            "stop_requested",
+            "requested_context",
+            "requested"
+        ],
+        "{body}"
+    );
     // Every row carries its hash-chain links and the joined definition name.
     for e in events {
         assert!(e["new_hash"].as_str().is_some(), "{e}");

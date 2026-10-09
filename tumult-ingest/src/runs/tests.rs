@@ -84,6 +84,18 @@ async fn fixture() -> Fixture {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
     let store = Store::open(&db_path).unwrap();
+    let (experiment, injected) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let fingerprint = crate::execution_policy::execution_hash(&experiment, &injected).unwrap();
+    let bindings: Vec<_> = ["dev", "staging", "prod", "production"]
+        .iter()
+        .map(|env| serde_json::json!({"sha256": fingerprint, "env": env, "target": null}))
+        .collect();
+    std::fs::write(
+        db_path.with_extension("execution-bindings.json"),
+        serde_json::to_vec(&bindings).unwrap(),
+    )
+    .unwrap();
+
     let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 64);
     let executed = Arc::new(Mutex::new(Vec::new()));
     // The registry write rides the same channel as production.
@@ -199,9 +211,15 @@ async fn run_executes_to_passed_and_ingests_journal() {
     );
 
     let run_id = queue
-        .enqueue(request(), Some("tester".to_string()))
+        .request_gated(
+            request(),
+            crate::approvals::Tier::T1,
+            Some("tester".to_string()),
+        )
         .await
         .unwrap();
+    approve(&fx, &run_id, "reviewer").await;
+    queue.dispatch_approved(&run_id).await.unwrap();
     assert_eq!(await_terminal(&fx, &run_id).await, run_state::PASSED);
 
     let run = run_row(&fx, &run_id);
@@ -209,7 +227,7 @@ async fn run_executes_to_passed_and_ingests_journal() {
         run["rollback_status"],
         serde_json::json!(rollback_status::NOT_NEEDED)
     );
-    // The enqueued audit event carries the enqueueing actor; the
+    // The request audit event carries the requesting actor; the
     // system-driven transitions (started, passed) carry none.
     let trail = Store::at(&fx.db_path)
         .read_only()
@@ -217,7 +235,7 @@ async fn run_executes_to_passed_and_ingests_journal() {
         .run_audit_trail(&run_id)
         .unwrap();
     let by_event = |e: &str| trail.iter().find(|r| r["event"] == e).unwrap();
-    assert_eq!(by_event("enqueued")["actor"], serde_json::json!("tester"));
+    assert_eq!(by_event("requested")["actor"], serde_json::json!("tester"));
     assert!(by_event("passed")["actor"].is_null());
     let experiment_id = run["experiment_id"].as_str().unwrap();
     assert!(!experiment_id.is_empty());
@@ -530,10 +548,14 @@ async fn orphan_reconciliation_leaves_gameday_campaign_parents_untouched() {
 /// clock so TTL edge cases can be tested).
 async fn insert_gated(fx: &Fixture, run_id: &str, expires_at_ns: i64) {
     let id = run_id.to_string();
+    let (experiment, injected) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let hash = crate::execution_policy::execution_hash(&experiment, &injected).unwrap();
+    let context =
+        serde_json::json!({"env": "dev", "target": null, "execution_hash": hash}).to_string();
     exec_write(&fx.ingest, move |writer| {
         let params = std::collections::BTreeMap::new();
         writer
-            .insert_gated_run(
+            .insert_gated_run_with_context(
                 &NewRun {
                     id: id.clone(),
                     registry_id: "reg-1".into(),
@@ -558,6 +580,7 @@ async fn insert_gated(fx: &Fixture, run_id: &str, expires_at_ns: i64) {
                     expires_at_ns,
                 },
                 Some("test gated run"),
+                Some(&context),
             )
             .map_err(|e| e.to_string())
     })
@@ -1120,5 +1143,266 @@ async fn orphan_rollback_failure_marks_rollback_pending_with_names() {
     let events = audit_events(&fx, "run-doomed");
     for want in ["rollback_started", "rollback_failed"] {
         assert!(events.contains(&want.to_string()), "{events:?}");
+    }
+}
+
+#[tokio::test]
+async fn interrupted_orphan_cleanup_is_retried_after_second_restart() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "double-crash".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.mark_run_started("double-crash", None))
+            .and_then(|()| writer.set_run_state("double-crash", run_state::ORPHANED))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let count = reconcile_orphans(
+        &fx.ingest,
+        &fx.db_path,
+        &recording_factory(&fx.executed, Duration::ZERO),
+    )
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "cleanup in progress must survive another crash");
+    assert_eq!(fx.executed.lock().unwrap().as_slice(), ["rollback-1"]);
+}
+
+#[tokio::test]
+async fn aborted_run_cannot_be_marked_running() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "stopped".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.finish_run("stopped", run_state::ABORTED, None, None, None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let result = exec_write(&fx.ingest, |writer| {
+        writer
+            .mark_run_started("stopped", None)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    assert!(
+        result.is_err(),
+        "terminal cancellation must never be overwritten by worker start"
+    );
+    assert_eq!(run_row(&fx, "stopped")["state"], run_state::ABORTED);
+}
+
+#[tokio::test]
+async fn durable_start_failure_prevents_provider_dispatch() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .execute("DROP TABLE run_recovery_plans", [])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::ZERO),
+    );
+    let id = queue.enqueue(request(), None).await.unwrap();
+    await_terminal(&fx, &id).await;
+    assert!(
+        fx.executed.lock().unwrap().is_empty(),
+        "failed start transaction must prevent all execution"
+    );
+    let row = run_row(&fx, &id);
+    assert!(
+        row["started_at_ns"].is_null(),
+        "failed transaction must roll back its running marker"
+    );
+    assert_eq!(row["state"], run_state::FAILED);
+}
+
+#[tokio::test]
+async fn consumed_approval_rolls_back_execution_start_transaction() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "atomic-start".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.claim_run("atomic-start"))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    // Missing/consumed approval must both affect zero rows, failing closed.
+    let result = exec_write(&fx.ingest, |writer| {
+        writer
+            .begin_run_execution("atomic-start", "{}", Some("unavailable-approval"))
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    assert!(result.is_err());
+    let row = run_row(&fx, "atomic-start");
+    assert_eq!(row["state"], run_state::VALIDATING);
+    assert!(row["started_at_ns"].is_null());
+}
+
+#[tokio::test]
+async fn recovered_snapshot_uses_original_parameter_binding() {
+    let fx = fixture().await;
+    let toon = TEST_TOON.replace("name: rollback-1", "name: ${target}");
+    let plan = super::recovery_plan::RecoveryPlan::capture(
+        &toon,
+        &HashMap::from([("target".into(), "original-cleanup-target".into())]),
+    )
+    .unwrap();
+    let encoded = serde_json::to_string(&plan).unwrap();
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "snapshot".into(),
+                registry_id: "reg-1".into(),
+                params_json: Some("{\"target\":\"wrong-new-target\"}".into()),
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.claim_run("snapshot"))
+            .and_then(|()| writer.begin_run_execution("snapshot", &encoded, None))
+            .and_then(|()| writer.set_run_state("snapshot", run_state::ORPHANED))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    reconcile_orphans(
+        &fx.ingest,
+        &fx.db_path,
+        &recording_factory(&fx.executed, Duration::ZERO),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        fx.executed.lock().unwrap().as_slice(),
+        ["original-cleanup-target"]
+    );
+}
+
+#[tokio::test]
+async fn credential_drift_after_approval_refuses_worker_dispatch() {
+    let fx = fixture().await;
+    let secret = fx._tmp.path().join("credential");
+    std::fs::write(&secret, "original-credential").unwrap();
+    let toon = format!(
+        "secrets:\n  account:\n    token:\n      type: file\n      path: {}\n{}",
+        secret.display(),
+        TEST_TOON
+    );
+    let stored_toon = toon.clone();
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .register_definition(&RegisteredDefinition {
+                id: "secret-reg".into(),
+                name: "credential drift".into(),
+                definition_toon: stored_toon,
+                content_hash: "secret-reg-hash".into(),
+                registered_at_ns: 1,
+                registered_by: Some("alice".into()),
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::ZERO),
+    );
+    let run_id = queue
+        .request_gated(
+            RunRequest {
+                registry_id: "secret-reg".into(),
+                definition_toon: toon,
+                ..request()
+            },
+            crate::approvals::Tier::T3,
+            Some("alice".into()),
+        )
+        .await
+        .unwrap();
+    approve(&fx, &run_id, "bob").await;
+    approve(&fx, &run_id, "carol").await;
+    std::fs::write(&secret, "rotated-after-approval").unwrap();
+    queue.dispatch_approved(&run_id).await.unwrap();
+    assert_eq!(await_terminal(&fx, &run_id).await, run_state::FAILED);
+    assert!(fx.executed.lock().unwrap().is_empty());
+    assert!(run_row(&fx, &run_id)["error"]
+        .as_str()
+        .unwrap()
+        .contains("changed after submission"));
+}
+
+#[tokio::test]
+async fn late_approval_rejection_cannot_erase_running_cleanup_ownership() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "reject-race".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.mark_run_started("reject-race", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let requeue = exec_write(&fx.ingest, |writer| {
+        writer
+            .set_run_state("reject-race", run_state::QUEUED)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    assert!(
+        requeue.is_err(),
+        "duplicate approved dispatch must not requeue an already running run"
+    );
+    for terminal in [run_state::REJECTED, run_state::EXPIRED] {
+        let result = exec_write(&fx.ingest, move |writer| {
+            writer
+                .finish_run("reject-race", terminal, None, None, None)
+                .map_err(|e| e.to_string())
+        })
+        .await;
+        assert!(result.is_err());
+        assert_eq!(run_row(&fx, "reject-race")["state"], run_state::RUNNING);
     }
 }

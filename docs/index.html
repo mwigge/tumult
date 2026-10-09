@@ -17,7 +17,7 @@ image: /images/tumult-banner.png
   <p class="tagline">
     Rust-native chaos engineering, end to end. Author experiments in the web UI,
     approve them behind risk-tiered quorums, run them with real telemetry —
-    and keep every result as compliance-grade evidence.
+    and keep every result as resilience evidence.
   </p>
 
   <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
@@ -152,11 +152,11 @@ image: /images/tumult-banner.png
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
     <h3>Single Binary</h3>
-    <p>One static binary — no Python, no runtime dependencies. The daemon embeds the lake, the schedulers, and the web UI in a single <code>tumultd</code>; the CLI is another. Pre-built for macOS (x86_64/aarch64) and Linux (x86_64 gnu/musl, aarch64 musl).</p>
+    <p>Rust binaries embed the engine and analytics libraries. The daemon embeds the lake, schedulers and web UI in <code>tumultd</code>; the CLI is another binary. Selected providers need external tools, target permissions and, for TCP faults, the bundled proxy helper. Pre-built for macOS (x86_64/aarch64) and Linux (x86_64 gnu/musl, aarch64 musl).</p>
   </div>
   <div class="feature-card">
     <h3>Native OpenTelemetry</h3>
-    <p>Every experiment emits real OTel spans across SSH, Kubernetes, plugins, baselines, analytics, and MCP dispatch. Traces show up in Jaeger, SigNoz, or any OTLP backend — no configuration.</p>
+    <p>Built-in instrumentation covers executed SSH, Kubernetes, plugin, analytics and MCP paths. Set an OTLP/gRPC endpoint to send the executed activities to Jaeger, SigNoz, or another compatible backend.</p>
   </div>
   <div class="feature-card">
     <h3>Memory Safe</h3>
@@ -304,7 +304,7 @@ Running Q2 PostgreSQL Resilience GameDay...
 <section class="arch-section">
   <h2>Native Observability</h2>
   <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
-    Every experiment produces a full trace — hypothesis, actions, probes, rollbacks — visible in SigNoz, Jaeger, or any OTLP backend. No configuration required.
+    Configured telemetry records the hypothesis, actions, probes and rollbacks that execute. Set OTEL_EXPORTER_OTLP_ENDPOINT and any required credentials to send traces to SigNoz, Jaeger, or another OTLP/gRPC backend.
   </p>
   <img src="/images/signoz-traces.png" alt="SigNoz showing Tumult experiment trace waterfall">
 </section>

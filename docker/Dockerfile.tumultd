@@ -22,18 +22,21 @@ FROM rust:1-bookworm AS builder
 WORKDIR /build
 COPY . .
 COPY --from=web /web/build ./web/build
-RUN cargo build --release -p tumultd -p tumult-cli \
-    && strip target/release/tumultd target/release/tumult
+RUN cargo build --release --locked -p tumultd -p tumult-cli -p tumult-net \
+    && strip target/release/tumultd target/release/tumult target/release/tumult-net-proxyd
 
 # Stage 3: slim runtime.
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
+        docker.io openssh-client wget psmisc procps stress-ng \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 kronika
 
 COPY --from=builder /build/target/release/tumultd /usr/local/bin/tumultd
 COPY --from=builder /build/target/release/tumult /usr/local/bin/tumult
+COPY --from=builder /build/target/release/tumult-net-proxyd /usr/local/bin/tumult-net-proxyd
+COPY plugins/ /opt/tumult/plugins/
 # Semantic metric definitions used by `tumultd report` and the /report endpoint.
 COPY metrics/ /etc/kronika/metrics/
 
@@ -41,6 +44,7 @@ COPY metrics/ /etc/kronika/metrics/
 # stay KRONIKA_* (stable identifiers, kept for compatibility). KRONIKA_DB still works
 # as a deprecated alias.
 ENV TUMULT_LAKE_PATH=/data/lake.duckdb \
+    TUMULT_PLUGIN_PATH=/opt/tumult/plugins \
     KRONIKA_METRICS_DIR=/etc/kronika/metrics \
     KRONIKA_OTLP_GRPC_ADDR=0.0.0.0:4317 \
     KRONIKA_OTLP_HTTP_ADDR=0.0.0.0:4318
@@ -48,6 +52,7 @@ ENV TUMULT_LAKE_PATH=/data/lake.duckdb \
 RUN mkdir -p /data && chown kronika:kronika /data
 VOLUME /data
 USER kronika
+WORKDIR /data
 EXPOSE 4317 4318
 
 # Default: run the daemon. The demo's seed/report containers override the

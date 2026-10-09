@@ -83,4 +83,15 @@ CREATE TABLE IF NOT EXISTS approval_decisions (
 -- `Reader::verify_run_audit_chain`.
 ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS prev_hash VARCHAR;
 ALTER TABLE run_audit ADD COLUMN IF NOT EXISTS new_hash VARCHAR;
+
+-- v14: immutable cleanup target bindings; secret references only.
+CREATE TABLE IF NOT EXISTS run_recovery_plans (
+    run_id VARCHAR NOT NULL,
+    plan_json JSON NOT NULL
+);
+-- v15: resolved execution fingerprints are credential verifiers, not public audit.
+CREATE TABLE IF NOT EXISTS run_execution_pins (
+    run_id VARCHAR NOT NULL,
+    execution_hash VARCHAR NOT NULL
+);
 ";

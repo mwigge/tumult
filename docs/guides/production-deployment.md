@@ -142,11 +142,13 @@ TUMULT_MCP_TOKEN=<openssl rand -hex 32>
 OTEL_EXPORTER_OTLP_ENDPOINT=http://your-collector:4317
 EOF
 cp deploy/systemd/tumult-mcp.service /etc/systemd/system/
+systemctl daemon-reload
 systemctl enable --now tumult-mcp
 ```
 
 **Kubernetes** (`deploy/k8s/tumult-mcp.yaml`) — Deployment + Service + PVC; the
-token comes from a Secret:
+token comes from a Secret. The template pins the release tag; verify the
+published image digest for that release before applying it:
 
 ```bash
 kubectl create secret generic tumult-mcp-token --from-literal=token="$(openssl rand -hex 32)"
@@ -155,7 +157,16 @@ kubectl apply -f deploy/k8s/tumult-mcp.yaml
 
 The pod binds `0.0.0.0` (so the Service can reach it) — safe **only** because the
 token is required. Expose externally through a TLS Ingress. Run a **single writer**:
-`replicas: 1`, `strategy: Recreate` (see §4).
+`replicas: 1`, `strategy: Recreate` (see §4). The pod's working directory is
+the persisted `/home/tumult/.tumult` volume, so generated definitions and
+journals survive restart. A bounded `/tmp` volume supports temporary provider
+files while the root filesystem stays read-only. The systemd unit similarly
+uses its writable `/var/lib/tumult` state directory as the workspace.
+
+This manifest deploys MCP only; it does not install the daemon, web UI, target
+connections, or multi-tenant isolation. Verify health plus a harmless process
+experiment, its persisted journal, and restart behavior in local Kubernetes
+before using the same release on GKE.
 
 **Health probes.** The health path differs per binary: `tumultd` / the ingest
 servers answer `GET /healthz`, while `tumult-mcp` answers `GET /health`.
@@ -167,34 +178,48 @@ existing probes. `tumultd` additionally serves `GET /readyz` (readiness) and
 ## 3. Observability — bring your own collector
 
 Telemetry is off unless you point it at a collector. Set
-`OTEL_EXPORTER_OTLP_ENDPOINT` to your own OTLP endpoint (gRPC `:4317` or HTTP
-`:4318`); no collector is baked into the binary. Every experiment emits
+`OTEL_EXPORTER_OTLP_ENDPOINT` to your own OTLP/gRPC endpoint (usually `:4317`);
+the built-in exporter uses gRPC. The daemon can also ingest OTLP/HTTP from
+other clients on `:4318`. No collector is baked into the binary. Every experiment emits
 `resilience.*` spans. The demo ships a SigNoz/collector stack as an *example* —
 in production, point Tumult at whatever collector you already run
 (see [observability-setup](observability-setup.md)).
 
 ## 4. The analytics store — single-writer model
 
-The persistent store (`~/.tumult/lake.duckdb`, DuckDB) allows **one writer**.
+A native DuckDB database permits a writing process to own the file. The
+daemon's readers coexist with its writer **inside that process**. A separate
+CLI or MCP process cannot open the same file while the daemon holds it, even
+for read-only queries. Use daemon APIs, a separate database, or an exported
+snapshot for independent consumers. Run one daemon replica with `Recreate`;
+a shared PVC does not make multiple writers safe.
 
-- **One writer:** the running server (it ingests runs and refreshes derived data).
-- **Readers coexist:** `tumult analyze`, `tumult chaosgraph query|neighbors`, and
-  the MCP read tools open the store **read-only** and run concurrently with the
-  writer.
-- **Two writers conflict:** a second process opening for write (a CLI `tumult run`
-  ingest, or a second server replica) gets a clear `StoreLocked` error. Do not run
-  concurrent writers against one store — give CI its own `--store` path, or write
-  through the single server. This is why the k8s Deployment is `replicas: 1` /
-  `Recreate`.
-- For heavy multi-consumer analytics, export to Parquet (`tumult store backup`)
-  and query that from your warehouse instead of contending on the live store.
+To ingest a CLI journal while the daemon owns the lake, configure
+`TUMULT_DAEMON_URL` and an authorized `TUMULT_DAEMON_TOKEN`. Portable data export
+uses `POST /api/lake/export`; read the files named in its committed manifest
+rather than globbing historical Parquet files.
 
 ## 5. Backup & DR
 
-The store is a plaintext file. Back it up with `tumult store backup <dir>`
-(Parquet export) on a schedule, ship the output offsite, and host the volume on
-encrypted storage. Restore is a fresh store re-ingesting journals, or querying the
-Parquet archive directly.
+Stop every writer before running a complete operational backup:
+
+```bash
+TUMULT_LAKE_PATH=/srv/tumult/lake.duckdb tumult store backup --output /secure-backups/tumult-20261008
+tumult store restore --input /secure-backups/tumult-20261008 --output /srv/tumult/restored.duckdb
+```
+
+Backup copies the full database and writes a schema/version/checksum manifest.
+Restore verifies the backup and refuses to overwrite an existing database.
+Credentials and operational state are included, so protect the backup like
+the live database. Back up external secrets, TLS keys, reports, org hierarchy,
+plugin installations, attachment content and archives separately. Prove
+restore in an isolated environment before relying on the backup policy.
+
+Automatic retention is disabled: keep `KRONIKA_RETENTION_DAYS=0` and
+`TUMULTD_RUN_RETENTION_DAYS=0`. Reports currently read hot data, so removing
+archived history would make reports incomplete. Nonzero automatic retention
+settings are rejected. [Data portability and recovery](data-portability.md)
+defines archive exclusions, manifest handling and the complete restore path.
 
 ## 6. Blast radius — what actually limits impact
 
@@ -221,10 +246,9 @@ Two distinct fields:
 
 ## 8. `tumultd` runtime flags (`TUMULTD_*`)
 
-All daemon tunables are environment variables. Every one is optional; an
-unset, unparsable, or zero value falls back to the default (minimum accepted
-value is always 1). None of these need changing for a normal deployment —
-tune them only when the defaults measurably don't fit.
+Daemon tunables are environment variables. The concurrency/timing knobs below
+use positive defaults. Retention is an exception: its only supported value is
+zero while reports cannot query archived history.
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -236,7 +260,7 @@ tune them only when the defaults measurably don't fit.
 | `TUMULTD_WEBHOOK_MAX_ATTEMPTS` | `5` | Consecutive failing ticks per endpoint before its pending events are moved to `webhook_dead_letters` and the cursor advances. |
 | `TUMULTD_WEBHOOK_ENDPOINT_BUDGET_S` | `120` | Per-endpoint per-tick wall-clock budget; a hung receiver is abandoned at the budget and retried under backoff without stalling other endpoints. The per-request HTTP timeout is fixed at 2s. |
 | `TUMULTD_GAMEDAY_TICK_S` | `15` | Seconds between GameDay supervisor ticks (campaign advancement). |
-| `TUMULTD_RUN_RETENTION_DAYS` | `90` | Terminal runs (and their audit rows) older than this are deleted from the hot store. |
+| `TUMULTD_RUN_RETENTION_DAYS` | `0` | Automatic deletion disabled; nonzero values are rejected to preserve report completeness. |
 | `TUMULTD_RUN_RETENTION_TICK_S` | `3600` | Seconds between retention sweeps. |
 
 **Escape hatches — demo/test only, never production:**
@@ -258,8 +282,11 @@ any user exists, and production should run `tumultd create-admin` instead.
 `tumultd` exposes its own SLIs — separate from the experiment/product metrics
 in `metrics/*.yaml` — via three endpoints on the HTTP listener. All three sit
 behind the API auth middleware (Viewer); while the store has no users they
-answer unauthenticated so loopback probes keep working, and k8s' probe
-contract (any 2xx/3xx — and 401 — is "alive") still holds once auth is on.
+answer unauthenticated. Once auth is enabled, supply a Viewer API token to
+health/readiness probes. Kubernetes HTTP probes treat only 200–399 as success;
+401 is a failed probe. Use an exec probe that reads a mounted Secret or an
+explicitly secured probe configuration. The demo Compose healthcheck sends
+its bootstrap API token and requires a successful store check.
 
 - **`GET /healthz`** — liveness: the single-writer channel round-trips and
   the store answers a probe query. 200 `ok` or 503 with the failing probe.
@@ -311,3 +338,26 @@ scrape_configs:
     static_configs:
       - targets: ["tumultd.internal:4318"]
 ```
+
+## Provider capabilities
+
+| Runtime | Included | Deployment prerequisites |
+|---|---|---|
+| Source CLI/MCP | Shared process, script and native dispatch | Build `tumult-net` alongside the CLI/MCP for `tumult-net-proxyd`; keep plugin manifests/scripts discoverable and install their declared tools. |
+| CLI/MCP image | Shared executors, bundled scripts/examples, TCP helper, Docker CLI and SSH client | Supply a writable workspace and explicit credentials/target access. Container-local paths are not host paths. |
+| Daemon image | CLI, daemon/UI, script plugins, TCP helper, Docker CLI, SSH client and stress-ng | Authorize execution bindings; supply target credentials and external tools appropriate to the selected action. |
+| MCP Kubernetes template | Authenticated MCP, persistent workspace, bounded temp directory | No target permissions or Docker socket are granted. Configure service accounts/RBAC, networking and secrets for the specific target. |
+
+A provider appearing in `discover` means its implementation is available; it
+does not establish access to a target or prove that dependencies are installed.
+Docker actions require access to a Docker daemon; Podman actions need Podman.
+CLI, MCP and daemon wire the k6 load executor. Load experiments still need a
+compatible k6 binary and a readable script; missing tools or startup failures
+reject execution before the fault method runs. Cloud and Windows
+providers require their own credentials, platform and reachability. The demo
+stack does not grant host Docker control automatically.
+
+Before enabling a provider, verify its prerequisites and run a harmless probe
+in the exact image and deployment identity. Then exercise a bounded fault and
+rollback only against a disposable target. Source/unit tests and a healthy pod
+are not a live-provider certification.

@@ -196,3 +196,5 @@ fn fast_sampling() -> SamplingConfig {
         recovery_timeout: std::time::Duration::from_millis(80),
     }
 }
+
+mod safety_tests;

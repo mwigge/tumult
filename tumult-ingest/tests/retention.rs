@@ -61,41 +61,27 @@ async fn seed(ingest: &IngestWriter) {
 }
 
 #[tokio::test]
-async fn sweep_deletes_old_terminal_runs_and_their_audit_trails() {
+async fn retention_refuses_to_destroy_report_and_audit_history() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let db_path = tmp.path().join("kronika.duckdb");
-    let store = Store::open(&db_path).unwrap();
+    let store = Store::open(&tmp.path().join("db")).unwrap();
     let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 64);
     seed(&ingest).await;
-
-    tumult_ingest::retention::sweep_expired_runs(&ingest, 90)
+    let error = tumult_ingest::retention::sweep_expired_runs(&ingest, 90)
+        .await
+        .unwrap_err();
+    assert!(error.contains("historical"), "{error}");
+    tumult_ingest::retention::sweep_expired_runs(&ingest, 0)
         .await
         .unwrap();
-
     let reader = store.read_only().unwrap();
-    let runs = reader
-        .query_json_rows("SELECT id FROM runs ORDER BY id")
-        .unwrap();
-    let ids: Vec<&str> = runs.iter().filter_map(|r| r["id"].as_str()).collect();
-    assert_eq!(ids, ["run-active", "run-recent"], "{ids:?}");
-    // The old run's audit trail went with it; the others' trails survive.
-    let audit = reader
-        .query_json_rows("SELECT run_id FROM run_audit WHERE run_id = 'run-old'")
-        .unwrap();
-    assert!(audit.is_empty(), "{audit:?}");
-    let kept = reader
-        .query_json_rows(
-            "SELECT run_id FROM run_audit WHERE run_id IN ('run-recent', 'run-active')",
-        )
-        .unwrap();
-    assert!(!kept.is_empty());
-
-    // A second sweep is a no-op (nothing aged out since).
-    tumult_ingest::retention::sweep_expired_runs(&ingest, 90)
-        .await
-        .unwrap();
-    let runs = reader
-        .query_json_rows("SELECT id FROM runs ORDER BY id")
-        .unwrap();
-    assert_eq!(runs.len(), 2);
+    assert_eq!(
+        reader
+            .query_json_rows("SELECT count(*) AS n FROM runs")
+            .unwrap()[0]["n"],
+        3
+    );
+    assert!(!reader
+        .query_json_rows("SELECT * FROM run_audit WHERE run_id = 'run-old'")
+        .unwrap()
+        .is_empty());
 }

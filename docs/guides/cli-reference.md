@@ -22,7 +22,7 @@ tumult run <experiment.toon> [OPTIONS]
 | `--force` | `false` | Overwrite the journal file if it already exists |
 | `--dry-run` | `false` | Validate and show plan without executing |
 | `--rollback-strategy <s>` | `on-deviation` | `always`, `on-deviation`, or `never` (`deviated` is accepted as an alias for `on-deviation`) |
-| `--baseline-mode <m>` | `full` | `full`, `skip`, or `only` |
+| `--baseline-mode <m>` | `full` | `full`/`skip`: declared tolerances; `only`: one probe-only observation, no fault/load/control/rollback |
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
 | `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
@@ -46,7 +46,7 @@ tumult run experiment.toon --journal-path results/run-001.toon
 # Always rollback regardless of outcome
 tumult run experiment.toon --rollback-strategy always
 
-# Skip baseline acquisition, use static tolerances
+# Use declared tolerances (automatic statistical acquisition is not integrated)
 tumult run experiment.toon --baseline-mode skip
 
 # Skip auto-ingest into persistent DuckDB store
@@ -310,7 +310,8 @@ tumult report <journal.toon> [OPTIONS]
 
 ## tumult import
 
-Import journals from a Parquet backup directory.
+Import the legacy two-table Parquet analytics export. This does not restore a
+complete operational backup; use `tumult store restore` for that.
 
 ```
 tumult import <parquet-dir>
@@ -329,7 +330,8 @@ tumult store <subcommand>
 | Subcommand | Description |
 |------------|-------------|
 | `stats` | Show experiment/activity counts and store file size |
-| `backup [--output <dir>]` | Dump store to Parquet files |
+| `backup [--output <dir>]` | Copy the complete database and checksum manifest; stop writers first, protect credentials in backup |
+| `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
 | `purge --older-than-days <N>` | Delete experiments older than N days |
 | `path` | Print the store file path |
 | `migrate` | Migrate data from DuckDB to ClickHouse backend |
@@ -339,11 +341,16 @@ tumult store <subcommand>
 
 ```bash
 tumult store stats
-tumult store backup --output ~/tumult-backup-2026-03
+tumult store backup --output ~/tumult-backup-2026-10
+tumult store restore --input ~/tumult-backup-2026-10 --output ~/tumult-restored.duckdb
 tumult store purge --older-than-days 90
 tumult store migrate   # requires TUMULT_CLICKHOUSE_URL
 tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb
 ```
+
+See [Data portability and recovery](data-portability.md) for archive coverage,
+backup assets and restoration checks. A Parquet archive is not an operational
+backup; ordinary queries do not automatically read cold archive files.
 
 ## tumult recommend
 
@@ -486,7 +493,7 @@ tumult chaosgraph coverage-gaps [--framework <fw>] [--domain <plugin>]
 tumult chaosgraph query --kind fault
 
 # What one experiment touched — nodes and edges within 1 hop
-tumult chaosgraph neighbors --node "exp:Redis resilience — verify recovery after disruption"
+tumult chaosgraph neighbors --node "exp:Redis connectivity — verify basic key operations"
 
 # Untested actions, with DORA articles still lacking evidence
 tumult chaosgraph coverage-gaps --framework dora

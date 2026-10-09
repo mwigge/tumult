@@ -94,7 +94,7 @@ async fn serve(state: ApiState) -> String {
 }
 
 #[tokio::test]
-async fn retention_export_requires_the_ingest_handle() {
+async fn retention_export_fails_closed_even_with_ingest_handle() {
     let _guard = ENV_LOCK.lock().await;
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("k.duckdb");
@@ -120,8 +120,7 @@ async fn retention_export_requires_the_ingest_handle() {
         .unwrap_err();
     assert_eq!(err.status(), StatusCode::SERVICE_UNAVAILABLE);
 
-    // With the handle wired, the export runs and reports what retention
-    // deleted (nothing, on an empty store).
+    // Wiring a writer does not permit loss of historical query evidence.
     let (ingest, _task) = tumult_ingest::IngestWriter::spawn(store.writer().unwrap(), 4);
     let state = ApiState::new(
         db_path,
@@ -134,11 +133,14 @@ async fn retention_export_requires_the_ingest_handle() {
         None,
         false,
     );
-    let axum::Json(body) = tumult_api::lake::export_now(axum::extract::State(state))
+    let err = tumult_api::lake::export_now(axum::extract::State(state))
         .await
-        .unwrap();
-    assert!(body["deleted"].is_object(), "{body}");
-    assert!(body["tables"].is_array(), "{body}");
+        .unwrap_err();
+    assert_eq!(err.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        !tmp.path().join("lake/_meta.json").exists(),
+        "reject policy before exporting"
+    );
 
     std::env::remove_var("KRONIKA_LAKE_DIR");
     std::env::remove_var("KRONIKA_RETENTION_DAYS");

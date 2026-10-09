@@ -82,7 +82,7 @@ fn script_provider_scenarios() {
     );
     tree.write(
         "cov-test-plugin/actions/greet.sh",
-        "echo \"$TUMULT_GREETING:$TUMULT_COUNT\"\n",
+        "sleep 0.08\necho \"$TUMULT_GREETING:$TUMULT_COUNT\"\n",
     );
     tree.write(
         "cov-test-plugin/actions/fail-with-stderr.sh",
@@ -153,6 +153,11 @@ fn script_provider_scenarios() {
     let outcome = executor.execute(&script_activity("cov-test-plugin", "greet", arguments));
     assert!(outcome.success, "{:?}", outcome.error);
     assert_eq!(outcome.output.as_deref(), Some("hi:3"));
+    assert!(
+        outcome.duration_ms >= 60,
+        "script duration must include execution: {}",
+        outcome.duration_ms
+    );
 
     // A function missing from actions falls back to the manifest's probes.
     let outcome = executor.execute(&script_activity(

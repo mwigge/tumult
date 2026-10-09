@@ -6,10 +6,17 @@ use std::path::PathBuf;
 pub(crate) enum StoreAction {
     /// Show store statistics
     Stats,
-    /// Export entire store to Parquet backup
+    /// Back up the complete installation including credentials (daemon stopped)
     Backup {
         /// Output directory for backup files
         #[arg(long, default_value = "tumult-backup")]
+        output: PathBuf,
+    },
+    /// Restore a complete backup into a new database file
+    Restore {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
         output: PathBuf,
     },
     /// Purge experiments older than N days

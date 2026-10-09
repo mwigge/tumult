@@ -217,3 +217,30 @@ fn unknown_native_plugin_is_a_failed_outcome_not_a_panic() {
         "unexpected error: {error}"
     );
 }
+
+#[cfg(unix)]
+fn assert_descendant_pipe_timeout() {
+    let executor = ProviderExecutor::new();
+    let start = std::time::Instant::now();
+    // The shell exits immediately. Its child retains stdout/stderr, so a
+    // timeout covering only wait() never bounds the subsequent pipe drain.
+    let outcome = executor.execute(&sh("sleep 2 & exit 0", Some(0.1)));
+    assert!(
+        !outcome.success,
+        "an inherited pipe must not bypass the execution timeout"
+    );
+    assert!(outcome.error.unwrap().contains("timed out"));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn timeout_includes_descendant_pipe_drain_async() {
+    assert_descendant_pipe_timeout();
+}
+
+#[cfg(unix)]
+#[test]
+fn timeout_includes_descendant_pipe_drain_plain_thread() {
+    assert_descendant_pipe_timeout();
+}

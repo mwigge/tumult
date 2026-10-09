@@ -32,14 +32,18 @@ pub(crate) fn lake_interval_from_env() -> Option<std::time::Duration> {
     }
 }
 
-/// One export pass: fresh read-only reader (a long-lived reader pins its
-/// snapshot), then retention deletes on the single writer when the policy
-/// asks for them.
+/// One export pass. Reject retention before writing: reports still require
+/// the complete hot-store history.
 async fn run_lake_job(
     db_path: &std::path::Path,
-    ingest: &IngestWriter,
+    _ingest: &IngestWriter,
     cfg: &tumult_lake::lake::LakeConfig,
 ) -> Result<()> {
+    tumult_ingest::retention::validate_policy(
+        "KRONIKA_RETENTION_DAYS",
+        Some(&cfg.retention_days.to_string()),
+    )
+    .map_err(anyhow::Error::msg)?;
     let (db, cfg2) = (db_path.to_path_buf(), cfg.clone());
     let report = tokio::task::spawn_blocking(move || -> Result<_> {
         let store = Store::at(&db);
@@ -54,36 +58,11 @@ async fn run_lake_job(
         dir = %report.lake_dir,
         "lake export complete"
     );
-    if cfg.retention_days > 0 {
-        let cfg3 = cfg.clone();
-        let slot = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let slot2 = std::sync::Arc::clone(&slot);
-        ingest
-            .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
-                *slot2.lock().unwrap_or_else(|e| e.into_inner()) = Some(
-                    tumult_lake::lake::enforce_retention(writer, &cfg3).map_err(|e| e.to_string()),
-                );
-                Ok(())
-            })))
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        match slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
-            Some(Ok(deleted)) => {
-                let total: u64 = deleted.values().sum();
-                if total > 0 {
-                    tracing::info!(rows = total, "lake retention reclaimed hot rows");
-                }
-            }
-            Some(Err(e)) => anyhow::bail!("retention failed: {e}"),
-            None => anyhow::bail!("retention did not run"),
-        };
-    }
     Ok(())
 }
 
-/// Spawn the lake scheduler: one export (+ optional retention) per interval.
-/// Failures are logged and the schedule continues — the watermark makes the
-/// next run retry from the last good state. The task holds an `IngestWriter`
+/// Spawn the lake scheduler: one manifest snapshot export per interval.
+/// Failures are logged; content-addressed snapshots make retries idempotent. The task holds an `IngestWriter`
 /// clone, so it must stop on `shutdown` (dropping the clone) before the
 /// daemon's drain waits for the writer channel to close; the returned handle
 /// lets the caller wait for exactly that. An export already in flight runs
@@ -185,7 +164,7 @@ mod tests {
     }
 
     /// Import `csv` into a fresh store, then hand the writer to the ingest
-    /// channel the lake job uses for retention deletes.
+    /// channel to model a live daemon writer.
     fn store_with_spans(
         dir: &std::path::Path,
         csv: &str,
@@ -214,7 +193,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_lake_job_writes_parquet_and_the_watermark() {
+    async fn run_lake_job_writes_parquet_and_the_committed_manifest() {
         let dir = tempfile::tempdir().unwrap();
         let (db_path, _store, ingest, writer_task) = store_with_spans(
             dir.path(),
@@ -233,7 +212,7 @@ mod tests {
         assert!(!parquet.is_empty(), "no parquet file written");
         assert!(
             lake_dir.join("_meta.json").exists(),
-            "watermark file written"
+            "committed manifest written"
         );
 
         drop(ingest);
@@ -254,7 +233,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_lake_job_with_retention_deletes_only_old_exported_rows() {
+    async fn run_lake_job_refuses_retention_and_keeps_complete_history() {
         let dir = tempfile::tempdir().unwrap();
         let now_ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -266,22 +245,18 @@ mod tests {
         let (db_path, store, ingest, writer_task) = store_with_spans(dir.path(), &csv);
         assert_eq!(span_count(&store), 2);
 
-        run_lake_job(
+        let error = run_lake_job(
             &db_path,
             &ingest,
             &tumult_lake::lake::LakeConfig::new(dir.path().join("lake"), 30),
         )
         .await
-        .unwrap();
+        .unwrap_err();
 
-        // The 60-day-old row was exported and reclaimed; the fresh row stays.
-        assert_eq!(span_count(&store), 1);
-        let rows = store
-            .read_only()
-            .unwrap()
-            .query_json_rows("SELECT service_name FROM spans")
-            .unwrap();
-        assert_eq!(rows[0]["service_name"].as_str(), Some("fresh"));
+        assert!(error.to_string().contains("historical"));
+        // Historical reports retain their complete source evidence.
+        assert_eq!(span_count(&store), 2);
+        assert!(!dir.path().join("lake/_meta.json").exists());
 
         drop(ingest);
         writer_task.await.unwrap();

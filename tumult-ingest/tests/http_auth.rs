@@ -52,7 +52,7 @@ async fn v1_routes_require_bearer_when_token_configured() {
     let srv = serve(Some("kro_secret".into())).await;
     let client = reqwest::Client::new();
 
-    // No header → 401 with the JSON error body.
+    // No header → 401 with an OTLP protobuf status.
     let response = client
         .post(format!("{}/v1/traces", srv.base))
         .header("content-type", "application/x-protobuf")
@@ -61,8 +61,14 @@ async fn v1_routes_require_bearer_when_token_configured() {
         .await
         .unwrap();
     assert_eq!(response.status(), 401);
-    let body: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(body["error"], "unauthorized");
+    assert_eq!(response.headers()["content-type"], "application/x-protobuf");
+    #[derive(prost::Message)]
+    struct Status {
+        #[prost(string, tag = "2")]
+        message: String,
+    }
+    let body = Status::decode(response.bytes().await.unwrap()).unwrap();
+    assert_eq!(body.message, "unauthorized");
 
     // Wrong token → 401.
     let response = client

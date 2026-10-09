@@ -21,6 +21,7 @@ pub mod config;
 pub mod daemon_metrics;
 pub mod daemon_task;
 mod error;
+pub mod execution_policy;
 pub mod gamedays;
 pub mod grpc;
 pub mod http;

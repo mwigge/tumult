@@ -36,6 +36,9 @@ impl Config {
     /// Returns an error string if an address fails to parse or the home
     /// directory cannot be determined for the default DB path.
     pub fn from_env() -> Result<Self, String> {
+        for name in ["KRONIKA_RETENTION_DAYS", "TUMULTD_RUN_RETENTION_DAYS"] {
+            crate::retention::validate_policy(name, std::env::var(name).ok().as_deref())?;
+        }
         let db_path = match std::env::var("TUMULT_LAKE_PATH") {
             Ok(p) if !p.is_empty() => PathBuf::from(p),
             _ => match std::env::var("KRONIKA_DB") {

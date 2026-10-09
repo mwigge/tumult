@@ -38,8 +38,7 @@ up:
 	@echo "OTLP endpoint:  http://localhost:14317"
 
 up-targets:
-	$(COMPOSE_TARGETS) up -d
-	@sleep 3
+	$(COMPOSE_TARGETS) up -d --wait --wait-timeout 120
 	$(COMPOSE_TARGETS) ps
 
 up-observe:
@@ -47,7 +46,7 @@ up-observe:
 	@sleep 5
 	$(COMPOSE_OBSERVE) ps
 	@echo ""
-	@echo "SigNoz UI:      http://localhost:13301"
+	@echo "SigNoz UI:      http://localhost:3301"
 	@echo "OTLP endpoint:  http://localhost:14317"
 
 up-classic:

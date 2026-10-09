@@ -53,19 +53,20 @@ pub async fn validate(
     if req.toon.chars().count() > 256_000 {
         return Err(bad_request("definition too large (max 256k chars)"));
     }
-    let (experiment, _env) = match tumult_ingest::prepare_run(&req.toon, &req.vars) {
+    let (_experiment, _injected) = match crate::runs::prepare_for_api(&req.toon, &req.vars) {
         Ok(prepared) => prepared,
         Err(e) => {
             return Ok(Json(json!({"valid": false, "error": e})));
         }
     };
 
+    let preview = super::preview_experiment(&req.toon, &req.vars).map_err(bad_request)?;
     // Register through the single-writer channel (content-hash dedup).
     // The authenticated principal when auth is enabled; "api" while open.
     let registration = crate::registry::register_definition(
         &state,
         &req.toon,
-        &experiment.title,
+        &preview.title,
         principal.actor().or_else(|| Some("api".into())),
         /* gameday */ false,
         "run registration is not wired (no ingest handle)",

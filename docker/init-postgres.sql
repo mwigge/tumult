@@ -11,18 +11,18 @@ CREATE TABLE IF NOT EXISTS app_sessions (
 
 -- Insert sample data for probe testing
 INSERT INTO app_sessions (user_id, active) VALUES
-    ('user-001', true),
-    ('user-002', true),
-    ('user-003', false),
-    ('user-004', true),
-    ('user-005', true);
+('user-001', TRUE),
+('user-002', TRUE),
+('user-003', FALSE),
+('user-004', TRUE),
+('user-005', TRUE);
 
 -- Connection tracking view (used by pool-utilization probe)
 CREATE OR REPLACE VIEW connection_stats AS
 SELECT
-    count(*) AS total_connections,
-    count(*) FILTER (WHERE state = 'active') AS active_connections,
-    count(*) FILTER (WHERE state = 'idle') AS idle_connections
+    COUNT(*) AS total_connections,
+    COUNT(*) FILTER (WHERE state = 'active') AS active_connections,
+    COUNT(*) FILTER (WHERE state = 'idle') AS idle_connections
 FROM pg_stat_activity
 WHERE datname = 'tumult_test';
 

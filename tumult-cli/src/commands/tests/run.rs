@@ -480,3 +480,66 @@ fn template_uses_plugin_name() {
     let template = generate_template(Some("tumult-db"));
     assert!(template.contains("tumult-db"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn baseline_only_never_creates_fault_or_rollback_markers() {
+    let dir = TempDir::new().unwrap();
+    let marker = dir.path().join("fault-marker");
+    let rollback = dir.path().join("rollback-marker");
+    let experiment = dir.path().join("baseline.toon");
+    std::fs::write(
+        &experiment,
+        format!(
+            r#"
+title: Safe measurement
+steady_state_hypothesis:
+  title: Healthy
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: echo
+        arguments[1]: OK
+method[1]:
+  - name: fault
+    activity_type: action
+    provider:
+      type: process
+      path: touch
+      arguments[1]: {}
+rollbacks[1]:
+  - name: rollback
+    activity_type: action
+    provider:
+      type: process
+      path: touch
+      arguments[1]: {}
+"#,
+            marker.display(),
+            rollback.display()
+        ),
+    )
+    .unwrap();
+    let journal = dir.path().join("journal.toon");
+    cmd_run_with_baseline_mode(
+        &experiment,
+        &journal,
+        false,
+        false,
+        RollbackStrategy::Always,
+        false,
+        std::collections::HashMap::new(),
+        None,
+        tumult_core::runner::BaselineMode::Only,
+    )
+    .await
+    .unwrap();
+    assert!(!marker.exists());
+    assert!(!rollback.exists());
+    let journal = tumult_core::journal::read_journal(&journal).unwrap();
+    assert!(journal.method_results.is_empty() && journal.rollback_results.is_empty());
+    assert!(journal
+        .experiment_title
+        .ends_with("[baseline-only observation]"));
+}

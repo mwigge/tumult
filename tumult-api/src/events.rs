@@ -32,7 +32,7 @@ pub struct ListParams {
 
 /// `GET /api/events` — every run's audit events, newest first. Scoped
 /// principals see only runs in their environments (same rule as the run
-/// list: runs without a linked experiment stay visible to everyone).
+/// list, including queued runs with durable request context).
 pub async fn list(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -66,14 +66,7 @@ pub async fn list(
             clauses.push(format!("a.at_ns < {before}"));
         }
         if !scopes.is_empty() {
-            let env_list = scopes
-                .iter()
-                .map(|s| sql_string(s))
-                .collect::<Vec<_>>()
-                .join(", ");
-            clauses.push(format!(
-                "(e.env IN ({env_list}) OR r.experiment_id IS NULL)"
-            ));
+            clauses.push(crate::auth::scopes::run_scope_sql(&scopes));
         }
         let where_clause = if clauses.is_empty() {
             String::new()

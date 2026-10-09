@@ -2,7 +2,7 @@
 //!
 //! The runner coordinates:
 //! 1. Estimate recording (Phase 0)
-//! 2. Baseline acquisition (Phase 1)
+//! 2. Optional probe-only observation (statistical acquisition remains external)
 //! 3. Hypothesis evaluation (before)
 //! 4. Method execution with during-phase sampling (Phase 2)
 //! 5. Post-phase recovery measurement (Phase 3)
@@ -42,6 +42,12 @@ pub enum RunnerError {
     /// The experiment's method section contains no steps.
     #[error("experiment has no method steps")]
     EmptyMethod,
+    #[error("baseline-only requires at least one steady-state probe")]
+    MissingBaselineProbes,
+    #[error("declared load requires a load executor")]
+    MissingLoadExecutor,
+    #[error("load startup failed: {0}")]
+    LoadStart(String),
     /// A `GameDay` declares a different number of experiments than were provided.
     #[error("gameday declares {declared} experiments but {provided} were provided")]
     ExperimentCountMismatch { declared: usize, provided: usize },
@@ -125,15 +131,29 @@ pub trait LoadExecutor: Send + Sync {
     fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String>;
 }
 
+/// Selects the probe-only measurement path or ordinary fault execution.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BaselineMode {
+    /// Runs the ordinary experiment using its declared static tolerances.
+    #[default]
+    Full,
+    /// Runs the ordinary experiment without statistical baseline acquisition.
+    Skip,
+    /// Measures hypothesis probes only; never runs controls, load or faults.
+    Only,
+}
+
 /// Configuration for an experiment run.
 ///
-/// Dry-run and baseline-skip are handled at the CLI layer before
-/// calling `run_experiment`, so they are not part of this config.
+/// Dry-run is handled before calling the runner.
 pub struct RunConfig {
+    /// Baseline-only measurement is enforced by the runner before any actions.
+    pub baseline_mode: BaselineMode,
     /// When to execute rollbacks (defaults to `RollbackStrategy::OnDeviation`).
     pub rollback_strategy: RollbackStrategy,
     /// Optional cancellation token. When cancelled, the runner stops before
-    /// executing the next foreground activity, runs rollbacks for any fault
+    /// dispatching waiting foreground/background activities, interrupts pauses,
+    /// runs rollbacks for any fault
     /// already injected, and ends the run with `ExperimentStatus::Interrupted`
     /// — a cancelled run is never reported `Completed`.
     pub cancellation_token: Option<CancellationToken>,
@@ -155,6 +175,7 @@ pub struct RunConfig {
 impl Default for RunConfig {
     fn default() -> Self {
         Self {
+            baseline_mode: BaselineMode::Full,
             rollback_strategy: RollbackStrategy::OnDeviation,
             cancellation_token: None,
             parent_context: None,

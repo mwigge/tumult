@@ -8,6 +8,14 @@ nav_order: 4
 
 Tumult's baseline engine replaces static thresholds with data-driven tolerance derivation. Instead of guessing "latency must be < 500ms", the engine measures the system and derives "latency should stay within 2 standard deviations of the measured 45ms mean."
 
+The following statistical methods belong to the `tumult-baseline` library.
+The normal experiment runner does not acquire a statistical baseline or apply
+these configuration snippets automatically. `tumult run --baseline-mode only`
+evaluates the declared probes once without faults; `full` and `skip` use
+static declared tolerances. See [Data Lifecycle](../data-lifecycle.md) for
+current runner behavior. A custom integration must collect numeric samples,
+invoke the library, and explicitly apply derived tolerances.
+
 ## Baseline Methods
 
 ### Static
@@ -81,9 +89,9 @@ Before deriving thresholds, the engine checks if the baseline data itself is ano
 - **Extreme range**: max - min > 10× the median
 - **Insufficient samples**: fewer than the minimum required
 
-If an anomaly is detected, the experiment can either:
-- Abort with a warning (default)
-- Continue with a flag in the journal
+The library reports anomalies to its caller. A custom integration must decide
+whether to abort or continue and record that decision; ordinary experiment
+execution does not automatically perform this statistical gate.
 
 The anomaly check emits a `anomaly.detected` span event on the `baseline.acquire` span, visible in your OTel backend. The span status is set to `ERROR` when an anomaly is found.
 
@@ -100,28 +108,28 @@ The proportion of post-fault samples within tolerance bounds. A ratio of 1.0 mea
 For advanced use cases (custom probes, incremental data feeds), `tumult-baseline` exposes `AcquisitionStream` — a streaming interface that accepts samples one at a time rather than collecting a full dataset upfront:
 
 ```rust
-use tumult_baseline::{AcquisitionStream, BaselineConfig};
+use tumult_baseline::{AcquisitionStream, AcquisitionConfig, Method};
 
-let config = BaselineConfig {
-    method: BaselineMethod::MeanStddev,
-    sigma: 2.0,
-    ..Default::default()
+let config = AcquisitionConfig {
+    method: Method::MeanStddev { sigma: 2.0 },
+    min_samples: 3,
 };
 
-let mut stream = AcquisitionStream::new("api-latency", config);
+let mut stream = AcquisitionStream::new("api-latency".into(), config);
 
 // Feed samples incrementally (e.g., from a live probe loop)
-stream.push(45.2);
-stream.push(47.8);
-stream.push(43.1);
+stream.push_sample(45.2);
+stream.push_sample(47.8);
+stream.push_sample(43.1);
 
 // Derive tolerance bounds at any point
-if let Some(result) = stream.derive() {
-    println!("lower={}, upper={}", result.lower, result.upper);
+if let Ok(result) = stream.derive() {
+    println!("lower={}, upper={}", result.tolerance_lower, result.tolerance_upper);
 }
 ```
 
-This is used internally by the runner for live baseline capture and is also available to custom integrations.
+This stream is available to custom integrations; the ordinary runner does not
+wire it into live baseline capture.
 
 ## Choosing a Method
 

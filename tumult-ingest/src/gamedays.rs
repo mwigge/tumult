@@ -21,7 +21,8 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use tumult_lake::{rollback_status, run_state, Store};
 
-use crate::approvals::{classify, introspect, Tier, TierInput};
+use crate::approvals::Tier;
+use crate::execution_policy::classify_execution;
 use crate::runs::{prepare_run, EnqueueError, RunQueue, RunRequest};
 use crate::IngestWriter;
 
@@ -133,12 +134,21 @@ async fn advance_one(
         .as_str()
         .unwrap_or("dev")
         .to_string();
-    let (experiment, _env) = prepare_run(&def.definition_toon, &HashMap::new())?;
-    let tier = classify(&TierInput {
-        env: env.clone(),
-        catalog_matched: false,
-        introspection: introspect(&experiment),
-    });
+    let actor = reader
+        .run_audit_trail(&parent_id)
+        .map_err(|e| e.to_string())?
+        .iter()
+        .find(|event| event["event"] == "enqueued")
+        .and_then(|event| event["actor"].as_str())
+        .map(str::to_string);
+    let require_binding =
+        crate::execution_policy::actor_requires_binding(db_path, actor.as_deref(), &env)?;
+    let (experiment, injected) =
+        prepare_run(&def.definition_toon, &HashMap::new()).map_err(|_| {
+            "campaign definition failed to resolve; check definition and configured sources"
+                .to_string()
+        })?;
+    let tier = classify_execution(db_path, &experiment, &injected, &env, None, require_binding)?;
     let request = RunRequest {
         registry_id: def.id,
         definition_toon: def.definition_toon,
@@ -146,11 +156,13 @@ async fn advance_one(
         env,
         target: None,
     };
-    let actor = format!("gameday:{parent_id}");
+    let expected_hash = crate::execution_policy::execution_hash(&experiment, &injected)?;
     let child_id = match if tier == Tier::T0 {
-        runs.enqueue(request, Some(actor)).await
+        runs.enqueue_checked(request, actor, Some(expected_hash))
+            .await
     } else {
-        runs.request_gated(request, tier, Some(actor)).await
+        runs.request_gated_checked(request, tier, actor, Some(expected_hash))
+            .await
     } {
         Ok(id) => id,
         Err(EnqueueError::Full) => {

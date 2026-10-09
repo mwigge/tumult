@@ -292,7 +292,7 @@ async fn run_audit_verify_reports_chain_validity() {
 /// run): all 8 burst requests are handled while the first run still
 /// occupies the single executor slot, even on a loaded CI runner (200ms
 /// probes raced — a freed permit accepted a 6th run).
-const PROBE_ONLY_TOON: &str = r#"
+pub(crate) const PROBE_ONLY_TOON: &str = r#"
 title: probe-only health check
 method[2]:
   - name: hold-1
@@ -433,7 +433,7 @@ async fn stop_unknown_terminal_and_running_runs() {
 /// Definition with a declared blast radius, a guard, a fault cap and one
 /// targeted action (plus a probe step and a non-target argument) to exercise
 /// the dry-run scope summary.
-const SCOPE_TOON: &str = r#"
+pub(crate) const SCOPE_TOON: &str = r#"
 title: scope preview experiment
 blast_radius: demo stack only
 max_concurrent_faults: 2

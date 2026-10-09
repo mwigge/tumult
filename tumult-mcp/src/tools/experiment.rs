@@ -108,7 +108,7 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
         apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
         resolve_config, resolve_secrets, validate_experiment,
     };
-    use tumult_core::journal::{encode_journal, write_journal};
+    use tumult_core::journal::{encode_journal, JournalOutput};
     use tumult_core::runner::{run_experiment as run, ActivityExecutor, RunConfig};
 
     if request.format != "json" && request.format != "toon" {
@@ -181,18 +181,22 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
     }
     let controls = Arc::new(controls_registry);
     let config = RunConfig {
+        baseline_mode: tumult_core::runner::BaselineMode::default(),
         rollback_strategy: strategy,
         cancellation_token: None,
         parent_context: request.parent_context,
-        load_executor: None,
+        load_executor: Some(Arc::new(tumult_core::runner::k6::K6LoadExecutor)),
         max_concurrent_faults: None,
     };
 
+    let output = JournalOutput::prepare(request.journal_path)
+        .map_err(|e| ToolError::Execution(format!("journal preflight failed: {e}")))?;
     let journal = run(&experiment, &executor, &controls, &config)
         .map_err(|e| ToolError::Execution(e.to_string()))?;
 
     // Persist the journal (CLI parity: `tumult run` always writes it).
-    write_journal(&journal, request.journal_path)
+    output
+        .write(&encode_journal(&journal).map_err(|e| ToolError::Execution(e.to_string()))?)
         .map_err(|e| ToolError::Execution(format!("failed to write journal: {e}")))?;
 
     // Auto-ingest into the persistent analytics store (CLI parity:
@@ -353,6 +357,29 @@ mod tests {
             format,
             parent_context: None,
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn invalid_journal_destination_prevents_method_execution() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("must-not-execute");
+        let path = dir.path().join("experiment.toon");
+        std::fs::write(&path, format!(
+            "title: Journal preflight\nmethod[1]:\n  - name: mark\n    activity_type: action\n    provider:\n      type: process\n      path: touch\n      arguments[1]: {}\nrollbacks[0]:\n", marker.display()
+        )).unwrap();
+        let result = run_experiment(run_request(
+            path.to_str().unwrap(),
+            "on-deviation",
+            dir.path(),
+            "unused",
+            true,
+            "json",
+        ));
+        assert!(result.is_err());
+        assert!(
+            !marker.exists(),
+            "fault ran before journal destination was checked"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

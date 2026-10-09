@@ -16,4 +16,5 @@
 ARG BASE=tumult
 FROM ${BASE}
 
-ENTRYPOINT ["tumult-mcp", "--transport", "http", "--host", "0.0.0.0"]
+ENTRYPOINT ["tumult-mcp"]
+CMD ["--transport", "http", "--host", "0.0.0.0"]

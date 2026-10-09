@@ -96,7 +96,10 @@ where
 fn decision_error(msg: String) -> Response {
     if msg.contains("self-approval") {
         (StatusCode::FORBIDDEN, Json(json!({"error": msg}))).into_response()
-    } else if msg.contains("already decided") {
+    } else if msg.contains("already decided")
+        || msg.contains("not awaiting approval")
+        || msg.contains("state changed or approval unavailable")
+    {
         conflict(json!({"error": msg}))
     } else {
         internal(msg)
@@ -181,7 +184,7 @@ async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck
                     .collect()
             })
             .unwrap_or_default();
-        let (experiment, _env) = tumult_ingest::prepare_run(&definition.definition_toon, &vars)?;
+        let (experiment, _env) = crate::runs::prepare_for_api(&definition.definition_toon, &vars)?;
         let intro = introspect(&experiment);
         let now = now_ns();
         let runs_today = reader
@@ -250,7 +253,9 @@ async fn dispatch_response(
             Json(json!({"error": "run queue full; retry before the approval TTL lapses"})),
         )
             .into_response()),
-        Err(DispatchError::NotPending) => Err(internal("run is no longer pending approval".into())),
+        Err(DispatchError::NotPending) => Err(conflict(
+            json!({"error": "run is no longer pending approval"}),
+        )),
         Err(DispatchError::Store(e)) => Err(internal(e)),
     }
 }
@@ -260,9 +265,14 @@ async fn dispatch_response(
 
 /// `GET /api/approvals` — the pending approval queue (oldest first), each
 /// entry carrying its request, definition name and approvals collected.
-pub async fn queue(State(state): State<ApiState>) -> Result<Json<Value>, Response> {
-    let rows = with_reader(&state.db_path, |reader| {
-        reader.approvals_queue().map_err(|e| e.to_string())
+pub async fn queue(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<Value>, Response> {
+    let rows = with_reader(&state.db_path, move |reader| {
+        let mut rows = reader.approvals_queue().map_err(|e| e.to_string())?;
+        rows.retain(|row| principal.env_allowed(row["env"].as_str().unwrap_or_default()));
+        Ok(rows)
     })
     .await?;
     Ok(Json(json!({"count": rows.len(), "queue": rows})))
@@ -294,6 +304,7 @@ pub async fn approve(
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     let run = pending_run(&state, &id).await?;
     let policy_hash = match gate_check(&state, &id, &run).await? {
         GateCheck::Clear(hash) => hash,
@@ -312,7 +323,7 @@ pub async fn approve(
             })
             .await?;
             if let Err(e) = result {
-                return Err(internal(e));
+                return Err(decision_error(e));
             }
             return Err(conflict(
                 json!({"error": "approval expired", "state": run_state::EXPIRED}),
@@ -365,7 +376,7 @@ pub async fn approve(
     let actor = principal.actor();
     let result = exec_write(&state, move |writer| {
         writer
-            .insert_approval_decision(&decision_row)
+            .insert_pending_approval_decision(&decision_row)
             .map_err(|e| e.to_string())?;
         writer
             .insert_run_audit(&id2, "approved", detail.as_deref(), actor.as_deref())
@@ -393,6 +404,7 @@ pub async fn reject(
     Path(id): Path<String>,
     Json(req): Json<DecisionRequest>,
 ) -> Result<Response, Response> {
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     pending_run(&state, &id).await?;
     let decision_row = ApprovalDecision {
         run_id: id.clone(),
@@ -406,7 +418,7 @@ pub async fn reject(
     let note = req.note.clone();
     let result = exec_write(&state, move |writer| {
         writer
-            .insert_approval_decision(&decision_row)
+            .insert_pending_approval_decision(&decision_row)
             .map_err(|e| e.to_string())?;
         writer
             .finish_run(
@@ -460,6 +472,7 @@ pub async fn break_glass(
     if req.justification.trim().chars().count() < 10 {
         return Err(bad_request("justification too short (min 10 chars)".into()));
     }
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     pending_run(&state, &id).await?;
 
     // The override and its audit event.
@@ -469,7 +482,7 @@ pub async fn break_glass(
     let justification = req.justification.clone();
     let result = exec_write(&state, move |writer| {
         writer
-            .mark_break_glass(&id2, &username, &justification)
+            .mark_pending_break_glass(&id2, &username, &justification)
             .map_err(|e| e.to_string())?;
         writer
             .insert_run_audit(&id2, "overridden", Some(&justification), actor.as_deref())
@@ -477,7 +490,7 @@ pub async fn break_glass(
     })
     .await?;
     if let Err(e) = result {
-        return Err(internal(e));
+        return Err(decision_error(e));
     }
 
     // The pinned request's env/target/pin flavor the retrospective record.

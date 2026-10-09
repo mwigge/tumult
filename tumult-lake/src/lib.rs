@@ -21,7 +21,8 @@
 //! * **Reads** go through [`Store::read_only`] /
 //!   [`AnalyticsStore::open_read_only`], opened with
 //!   `access_mode = READ_ONLY`, which does not take the exclusive write lock —
-//!   multiple readers coexist, including alongside an open writer.
+//!   multiple readers coexist across processes only when no process holds a writer.
+//!   Within the daemon process, readers share its writer instance.
 //! * A conflicting second opener gets the opaque `DuckDB` lock error mapped to
 //!   the clear [`StoreError::StoreLocked`] / [`AnalyticsError::StoreLocked`].
 //!
@@ -49,6 +50,8 @@ pub mod duckdb_store;
 pub mod error;
 #[cfg(feature = "duckdb")]
 pub mod export;
+#[cfg(feature = "duckdb")]
+mod file_integrity;
 #[cfg(feature = "duckdb")]
 pub mod lake;
 #[cfg(feature = "duckdb")]
@@ -121,3 +124,6 @@ pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
 
 #[cfg(all(test, feature = "duckdb"))]
 mod tests;
+
+#[cfg(feature = "duckdb")]
+pub mod backup;

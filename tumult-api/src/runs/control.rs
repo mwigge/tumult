@@ -28,6 +28,7 @@ pub struct CreateRunRequest {
     env: String,
     #[serde(default)]
     target: Option<String>,
+    execution_hash: Option<String>,
 }
 
 fn default_env() -> String {
@@ -62,15 +63,29 @@ pub async fn create(
         )));
     }
     let def = super::registry_or_404(&state, &req.registry_id).await?;
-    let (experiment, _env) =
-        tumult_ingest::prepare_run(&def.definition_toon, &req.vars).map_err(bad_request)?;
-    let introspection = tumult_ingest::approvals::introspect(&experiment);
-    let tier = tumult_ingest::approvals::classify(&tumult_ingest::approvals::TierInput {
-        env: req.env.clone(),
-        // No T0 pre-approved catalog is configured yet.
-        catalog_matched: false,
-        introspection,
-    });
+    let (experiment, injected) =
+        crate::runs::prepare_for_api(&def.definition_toon, &req.vars).map_err(bad_request)?;
+    if let Some(expected) = req.execution_hash.as_deref() {
+        let actual = tumult_ingest::execution_policy::execution_hash(&experiment, &injected)
+            .map_err(bad_request)?;
+        let token = tumult_ingest::execution_policy::preview_token(&actual);
+        if !tumult_auth::constant_time_eq(expected, &token) {
+            return Err(crate::error::conflict(
+                "execution inputs changed or preview expired after restart; dry-run again",
+            ));
+        }
+    }
+    let tier = tumult_ingest::execution_policy::classify_execution(
+        &state.db_path,
+        &experiment,
+        &injected,
+        &req.env,
+        req.target.as_deref(),
+        !principal.env_scopes.is_empty(),
+    )
+    .map_err(forbidden)?;
+    let expected_hash = tumult_ingest::execution_policy::execution_hash(&experiment, &injected)
+        .map_err(bad_request)?;
     let request = RunRequest {
         registry_id: def.id,
         definition_toon: def.definition_toon,
@@ -79,7 +94,10 @@ pub async fn create(
         target: req.target,
     };
     if tier != tumult_ingest::approvals::Tier::T0 {
-        return match queue.request_gated(request, tier, principal.actor()).await {
+        return match queue
+            .request_gated_checked(request, tier, principal.actor(), Some(expected_hash))
+            .await
+        {
             Ok(run_id) => Ok((
                 StatusCode::ACCEPTED,
                 Json(json!({
@@ -97,7 +115,10 @@ pub async fn create(
             Err(EnqueueError::Store(e)) => Err(internal(e)),
         };
     }
-    match queue.enqueue(request, principal.actor()).await {
+    match queue
+        .enqueue_checked(request, principal.actor(), Some(expected_hash))
+        .await
+    {
         Ok(run_id) => Ok((
             StatusCode::ACCEPTED,
             Json(json!({"run_id": run_id, "state": run_state::QUEUED})),
@@ -124,6 +145,7 @@ pub async fn stop(
     let Some(queue) = state.runs_handle() else {
         return Err(unavailable("run queue is not wired"));
     };
+    crate::auth::scopes::authorize_run(&state, &principal, &id).await?;
     match queue.stop(&id, principal.actor().as_deref()).await {
         Ok(()) => Ok(Json(json!({"run_id": id, "stop": "requested"}))),
         Err(StopError::NotFound) => Err(not_found(format!("unknown run id {id:?}"))),
@@ -178,18 +200,14 @@ pub async fn stop_all(
                 ))
                 .map_err(|e| e.to_string());
         }
-        let env_list = scopes
-            .iter()
-            .map(|s| sql_string(s))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
         reader
             .query_json_rows(&format!(
                 "SELECT r.id FROM runs r \
                  LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
                             FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
                  WHERE r.state IN ({state_list}) \
-                   AND (e.env IN ({env_list}) OR r.experiment_id IS NULL)"
+                   AND ({scope_predicate})"
             ))
             .map_err(|e| e.to_string())
     })
