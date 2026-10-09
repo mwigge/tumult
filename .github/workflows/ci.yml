@@ -79,11 +79,10 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    # Warm cache lands in the 10-20 min band; a cold cache (new Cargo.lock or
-    # a new shared-key lineage) needs ~45-55 min — the timeout must outlive
-    # the cache save or every retry stays cold (the first run of this
-    # pipeline died at exactly 45m mid-link and saved nothing).
-    timeout-minutes: 75
+    # The 2.22 cold-cache run needed 65 min before cache saving. Bundled
+    # JSON/Parquet add native compilation; allow that work and cache upload
+    # to finish so the next run does not repeat another cold build.
+    timeout-minutes: 105
     env:
       # Linking the big test binaries (duckdb/parquet static libs) with full
       # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
@@ -171,3 +170,4 @@ jobs:
       - run: python3 scripts/test-distribution.py
       - run: bash -n scripts/smoke-daemon-image.sh
       - run: python3 scripts/test-smoke-daemon-image.py
+      - run: python3 scripts/test-smoke-daemon-binary.py

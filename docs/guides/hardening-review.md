@@ -25,6 +25,8 @@ This release addresses the functional review made against 2.20.0, revalidated ag
 | Documentation findings | Current lifecycle/capability descriptions, working startup prerequisites, checked installer/proof commands and accurate backup/concurrency guidance. | Documentation checks and distribution regression suite. |
 | Execution review: script timing | Measure script duration after execution, including failures. | Script-provider elapsed-time regression. |
 
+A final packaged-binary check found that required DuckDB JSON/Parquet support depended on cached or downloaded extensions. Both are now explicit bundled features; offline database regressions and host-compatible binary startup/persistence checks prevent that dependency from being hidden by developer caches.
+
 ## Release verification boundary
 
 This matrix describes implemented corrections and their regression coverage;

@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Reports distinguish unmapped clauses and unverified independence; scores preserve distinct targets/environments with the same experiment name.
 - Manual drafts can be resumed, edited and submitted without duplication. Stale previews cannot authorize changed inputs.
 - Kubernetes/systemd workspace configuration, daemon provider assets, installer failure handling and published quickstarts match tested behavior.
+- Bundle DuckDB JSON and Parquet extensions so fresh installations do not download required database functionality at startup or during export. Offline regressions and host-compatible release-binary startup checks prevent cached extensions from hiding packaging failures.
 - Daemon deployment templates disable unsupported retention, authenticate probes, use packaged metrics and provide writable workspace/temp storage. Binary archives include the native TCP proxy helper.
 
 ### Added

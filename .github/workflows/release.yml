@@ -109,6 +109,20 @@ jobs:
         if: matrix.cross
         run: cross build --release --target ${{ matrix.target }} -p tumult-cli -p tumultd -p tumult-net
 
+      - name: Verify host-compatible release binaries
+        timeout-minutes: 5
+        run: |
+          case "${{ runner.arch }}:${{ matrix.target }}" in
+            X64:x86_64-*|ARM64:aarch64-*)
+              target/${{ matrix.target }}/release/tumult --version
+              python3 scripts/smoke-daemon-binary.py \
+                target/${{ matrix.target }}/release/tumultd --metrics-dir metrics
+              ;;
+            *)
+              echo "Runtime smoke requires target-compatible hardware; this job verifies cross-compilation."
+              ;;
+          esac
+
       - name: Strip binaries (Linux)
         if: contains(matrix.target, 'linux') && !matrix.cross
         run: strip target/${{ matrix.target }}/release/tumult target/${{ matrix.target }}/release/tumultd target/${{ matrix.target }}/release/tumult-net-proxyd
