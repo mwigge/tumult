@@ -1,3 +1,4 @@
+use tokio::io::AsyncReadExt;
 use tumult_core::runner::ActivityOutcome;
 use tumult_core::sync_bridge::sync_await;
 
@@ -42,8 +43,9 @@ pub(super) fn execute_process(
         let process_group = child.id();
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        let completion =
-            async { tokio::try_join!(child.wait(), read_optional(stdout), read_optional(stderr)) };
+        let completion = Box::pin(async {
+            tokio::try_join!(child.wait(), read_optional(stdout), read_optional(stderr))
+        });
         let result = match timeout {
             Some(duration) => match tokio::time::timeout(duration, completion).await {
                 Ok(result) => result,
@@ -102,7 +104,6 @@ async fn read_optional<R: tokio::io::AsyncRead + Unpin>(
     let Some(mut reader) = reader else {
         return Ok((Vec::new(), false));
     };
-    use tokio::io::AsyncReadExt;
     let mut bytes = Vec::new();
     let mut chunk = [0u8; 8192];
     let mut truncated = false;

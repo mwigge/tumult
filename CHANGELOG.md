@@ -4,13 +4,15 @@ All notable changes to the Tumult project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
 
 ## [2.22.0] - 2026-10-09
 
 ### Security
 
-- Enforce environment scopes consistently across evidence, runs, approvals and recurring execution. Scoped identities cannot administer global exports, credentials or webhooks.
+- Enforce environment scopes consistently across evidence, runs, approvals and recurring execution. Scoped identities cannot access global metric reports or administer global exports, credentials or webhooks.
 - Return redacted previews and bind approval/dispatch to the exact resolved execution inputs. Operator-owned destination bindings are required for scoped execution; unbound plans require T3 review, including caller-declared probes.
+- Keep credential fingerprints private, return opaque preview tokens, and prevent rotated-secret validation errors from reaching run evidence or daemon logs.
 - Prevent evidence contributors from verifying their own changes and reject stale approval decisions that conflict with active execution.
 - Update TLS, HTTP/2 and web dependencies to patched releases; strip URL credentials from graph service labels.
 
@@ -20,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Stop requests block paused/waiting actions and remain effective through validation, post sampling and completion. Durable start/approval writes must commit before execution.
 - Restart cleanup survives repeated crashes, retains the original definition/parameters and refuses changed configuration. Failed cleanup remains visible and retryable.
 - MCP uses the shared native/script/process provider executor; declared load is executed or fails before faults. CLI and MCP reserve writable journal output before execution.
+- Process deadlines cover descendants holding output pipes open; journal publication syncs both contents and its directory entry.
 - Script durations include execution. OTLP replies use protobuf and account for unsupported metric points.
 - Archive publication includes late/tied data, schema changes and run/evidence provenance, with content checksums and atomic manifests. Historical queries cannot silently lose data through automatic retention.
 - Reports distinguish unmapped clauses and unverified independence; scores preserve distinct targets/environments with the same experiment name.
@@ -33,13 +36,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- The web toolchain uses patched SvelteKit 3 and Vite 8 releases and requires Node 22.17 or later.
 - **Upgrade actions:** automatic lake and run retention must be zero until archive-aware queries exist. Nonzero settings fail startup explicitly.
 - Manifest v2 uses committed full-table snapshots. Preserve old archives and select a new archive directory; legacy-only history needs explicit reconciliation.
 - Review the [execution binding](docs/guides/execution-bindings.md) and [data portability](docs/guides/data-portability.md) guides before upgrading. Restore is offline and never overwrites an existing database.
 - Baseline-only is one observation round; integrated statistical baseline acquisition, automatic degradation classification and data-integrity verification are not claimed.
-
-
-## [Unreleased]
 
 ## [2.21.0] — 2026-08-06
 

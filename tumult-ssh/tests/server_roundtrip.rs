@@ -6,6 +6,7 @@
 //! is asserted end to end through the real SSH protocol.
 
 use std::collections::HashMap;
+use std::future::{ready, Future};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -53,35 +54,66 @@ struct TestHandler {
 impl server::Handler for TestHandler {
     type Error = russh::Error;
 
-    async fn auth_publickey(
+    fn auth_publickey(
         &mut self,
         _user: &str,
         _key: &ssh_key::PublicKey,
-    ) -> Result<Auth, Self::Error> {
-        if self.reject_auth {
+    ) -> impl Future<Output = Result<Auth, Self::Error>> + Send {
+        ready(if self.reject_auth {
             Ok(Auth::Reject {
                 proceed_with_methods: None,
                 partial_success: false,
             })
         } else {
             Ok(Auth::Accept)
-        }
+        })
     }
 
-    async fn channel_open_session(
+    fn channel_open_session(
         &mut self,
         _channel: Channel<Msg>,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
+    ) -> impl Future<Output = Result<bool, Self::Error>> + Send {
+        ready(Ok(true))
     }
 
-    async fn exec_request(
+    fn exec_request(
         &mut self,
         channel: ChannelId,
         data: &[u8],
         session: &mut Session,
-    ) -> Result<(), Self::Error> {
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        ready(self.handle_exec_request(channel, data, session))
+    }
+
+    fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        _session: &mut Session,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        if let Some((_, buf)) = self.in_flight.get_mut(&channel) {
+            buf.extend_from_slice(data);
+        }
+        ready(Ok(()))
+    }
+
+    fn channel_eof(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        ready(self.handle_channel_eof(channel, session))
+    }
+}
+
+impl TestHandler {
+    fn handle_exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), russh::Error> {
         let command = String::from_utf8_lossy(data).to_string();
         session.channel_success(channel)?;
         match command.as_str() {
@@ -145,23 +177,11 @@ impl server::Handler for TestHandler {
         Ok(())
     }
 
-    async fn data(
-        &mut self,
-        channel: ChannelId,
-        data: &[u8],
-        _session: &mut Session,
-    ) -> Result<(), Self::Error> {
-        if let Some((_, buf)) = self.in_flight.get_mut(&channel) {
-            buf.extend_from_slice(data);
-        }
-        Ok(())
-    }
-
-    async fn channel_eof(
+    fn handle_channel_eof(
         &mut self,
         channel: ChannelId,
         session: &mut Session,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), russh::Error> {
         if let Some((path, buf)) = self.in_flight.remove(&channel) {
             if path.starts_with("/missing/") {
                 let msg = format!("cat: {path}: No such file or directory\n");

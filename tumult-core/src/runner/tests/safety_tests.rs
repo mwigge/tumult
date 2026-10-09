@@ -215,7 +215,7 @@ fn declared_load_without_executor_fails_before_faults() {
 fn cancellation_from_before_activity_control_prevents_dispatch() {
     struct StopControl(CancellationToken);
     impl crate::controls::ControlHandler for StopControl {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "stop-before-dispatch"
         }
         fn on_event(&self, event: &LifecycleEvent) {
