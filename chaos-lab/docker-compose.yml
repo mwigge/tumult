@@ -1,0 +1,93 @@
+name: tumult-chaos-lab
+services:
+  setup:
+    image: python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+    user: "0:0"
+    command: ["python", "/setup.py"]
+    volumes:
+      - control:/control
+      - ./scripts/setup.py:/setup.py:ro
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 16
+    restart: "no"
+
+  lab:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    image: tumult-chaos-lab:1.0.0
+    user: "10001:10001"
+    init: true
+    ports: ["127.0.0.1:${LAB_PORT:-8089}:8000"]
+    environment:
+      LAB_CONTROL_TOKEN_FILE: /control/token
+      LAB_TARGET_URL: http://target:5000
+      LAB_DATA_DIR: /data
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - control:/control:ro
+      - evidence:/data
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [default, sandbox]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      target:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    mem_limit: 768m
+    cpus: 2
+    pids_limit: 128
+    stop_grace_period: 30s
+    restart: unless-stopped
+    logging:
+      options: {max-size: "5m", max-file: "2"}
+
+  target:
+    build: ./targets/api
+    image: tumult-chaos-lab-target:1.0.0
+    user: "10001:10001"
+    init: true
+    environment:
+      LAB_CONTROL_TOKEN_FILE: /control/token
+    volumes: ["control:/control:ro"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [sandbox]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    mem_limit: 128m
+    cpus: 1
+    pids_limit: 64
+    restart: unless-stopped
+    logging:
+      options: {max-size: "5m", max-file: "2"}
+
+networks:
+  sandbox:
+    internal: true
+volumes:
+  control: {}
+  evidence: {}

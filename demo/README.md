@@ -1,5 +1,8 @@
 # Tumult 2.2 — One-command demo
 
+For guided browser lessons with an optional AI tutor, start with the
+[Chaos Lab](../chaos-lab/README.md). It needs only Docker to run the experiments.
+
 A single, self-contained chaos-engineering showcase. One command stands up a
 small but real system — an OTel-instrumented order service backed by Postgres,
 under continuous load — plus the full Tumult platform (MCP chaos engine, OTel

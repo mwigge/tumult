@@ -13,3 +13,6 @@ node_modules/
 **/node_modules/
 target-deb-cp/
 target-win/
+
+# The standalone lab has its own build context.
+chaos-lab/

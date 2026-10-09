@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Browser-based Chaos Lab with four bounded fault simulations, measured recovery, downloadable Tumult evidence, a learning guide, and optional OpenAI/Claude/Ollama tutoring. Start from `chaos-lab/` with Docker Compose.
+
 ## [2.22.0] - 2026-10-09
 
 ### Security

@@ -1,0 +1,20 @@
+{
+  "name": "tumult-chaos-lab-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.17"
+  },
+  "scripts": {
+    "format": "prettier --write web tests/ui.test.mjs",
+    "format:check": "prettier --check web tests/ui.test.mjs",
+    "lint": "eslint web/app.js tests/ui.test.mjs",
+    "test": "node --test tests/ui.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "eslint": "10.0.3",
+    "prettier": "3.8.1"
+  }
+}

@@ -1,5 +1,8 @@
 # Tumult Docker Infrastructure
 
+For guided browser lessons with an optional AI tutor, start with the
+[Chaos Lab](../chaos-lab/README.md). It needs only Docker to run the experiments.
+
 Four composable bundles for a complete chaos engineering lab.
 
 ## Pre-built Images
