@@ -75,8 +75,8 @@ impl LockedReader {
     ///
     /// Values are converted from typed `DuckDB` values rather than
     /// `row_to_json` (which `tumult_lake::Reader::query_json_rows` uses):
-    /// with external access disabled the JSON extension cannot autoload, so
-    /// JSON SQL functions are unavailable on this connection by design.
+    /// this conversion does not depend on extension SQL functions. The
+    /// connection still disables external access even with bundled extensions.
     ///
     /// # Errors
     /// Returns [`LockedReaderError::Query`] if the query fails to prepare or

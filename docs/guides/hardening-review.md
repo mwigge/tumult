@@ -17,13 +17,15 @@ This release addresses the functional review made against 2.20.0, revalidated ag
 | F09/F19 | Committed full-table snapshots, schema/content identity, file checksums and serialized publication. | Late/tied arrivals, publication retry, corruption, schema-change and symlink tests. |
 | F10 | Correct image argv, writable persisted workspace and container runtime assets. | Local distribution contracts and composed-argument checks completed. Daemon templates additionally cover authenticated probes, zero retention, packaged metrics and writable temporary storage. Tagged container builds and daemon startup/persistence checks await the release workflow; Kubernetes deployment remains a separate acceptance check. |
 | F11 | Shared CLI/MCP/daemon provider composition and explicit load execution failure. | MCP provider dispatch and core load tests. |
-| F12 | Draft resume/edit/submit, idempotent retry and exact-preview start protection. | Browser journeys against mocked API contracts, plus real API integration tests. |
+| F12 | Draft resume/edit/submit, idempotent retry and exact-preview start protection. | Mocked-contract browser journeys, API integration tests, and a real-daemon browser journey confirming login, draft reopening, edit/submit of the same record, and exactly one create/update/submit. |
 | F13/F18 | Protobuf OTLP responses/errors and unsupported-point accounting. | HTTP/gRPC protocol and mixed metric batch tests. |
 | F14 | Separate portable evidence snapshots from complete private database backup/restore. | Future-table/view/credential restore, tamper, destination and permission tests. |
 | F15–F16 | Unverified independence, unmapped clauses and target/environment-aware scoring. | Report wording and same-name distinct-target tests. |
 | F17 | Explicitly reject automatic retention while queries remain hot-only. | Both daemon retention settings and direct sweep refusal tests. |
 | Documentation findings | Current lifecycle/capability descriptions, working startup prerequisites, checked installer/proof commands and accurate backup/concurrency guidance. | Documentation checks and distribution regression suite. |
 | Execution review: script timing | Measure script duration after execution, including failures. | Script-provider elapsed-time regression. |
+
+A final packaged-binary check found that required DuckDB JSON/Parquet support depended on cached or downloaded extensions. Both are now explicit bundled features; offline database regressions and host-compatible binary startup/persistence checks prevent that dependency from being hidden by developer caches.
 
 ## Release verification boundary
 
@@ -66,6 +68,8 @@ As a platform operator, I want complete and verified data recovery so that a bac
 
 - Given a private database backup, when I restore to a fresh destination, then all database tables and credentials are restored and verified without overwriting a live file.
 - Given late telemetry, corrupt archive bytes or an interrupted publication, when I export/read evidence, then committed records remain recoverable and invalid content is rejected or repaired.
+- Given a fresh installation without an extension cache or network access, when the daemon starts, then its required JSON and Parquet functions are already bundled.
+- Given a persisted database and replacement process without bootstrap credentials, when it starts, then the existing authorized identity still reaches readiness and unauthenticated requests are rejected.
 
 ## Security assessment
 
