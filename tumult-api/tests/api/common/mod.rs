@@ -1,7 +1,7 @@
 //! Shared harness: seeded store on an ephemeral port, HTTP helpers.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -28,9 +28,8 @@ pub fn now_ns() -> i64 {
         .as_nanos() as i64
 }
 
-/// Every activity succeeds after a sleep: 200ms for ordinary steps, 1s for
-/// the `hold-*` steps of STOP_TOON — slow enough that an HTTP test can catch
-/// a run mid-method for the e-stop endpoint, even on a loaded CI runner.
+/// Default successful executor for HTTP fixtures. Cancellation and queue
+/// capacity tests use `HoldingExecutor` for explicit scheduling instead.
 pub struct SlowNoopExecutor;
 impl tumult_core::runner::ActivityExecutor for SlowNoopExecutor {
     fn execute(
@@ -85,31 +84,26 @@ rollbacks[1]:
       function: noop
 "#;
 
-/// Same shape as RUN_TOON, but the SlowNoopExecutor holds each `hold-*`
-/// step for 1s: the run stays in `running` for ~3s instead of ~600ms, so
-/// the e-stop test's stop request cannot race the method's end on a loaded
-/// CI runner (it did exactly that — stop landed after `passed` → 409).
+/// Stop fixture: the test's held executor pins the first `hold-*` action
+/// until the HTTP stop request has durably completed.
 pub const STOP_TOON: &str = r#"
 title: api run stop test experiment
 description: exercises e-stop against a genuinely running run
 method[3]:
   - name: hold-1
     activity_type: action
-    pause_after_s: 5
     provider:
       type: native
       plugin: test
       function: noop
   - name: hold-2
     activity_type: action
-    pause_after_s: 5
     provider:
       type: native
       plugin: test
       function: noop
   - name: hold-3
     activity_type: action
-    pause_after_s: 5
     provider:
       type: native
       plugin: test
@@ -337,6 +331,86 @@ pub fn seed(db_path: &std::path::Path) -> i64 {
     now - 1800 * NS
 }
 
+/// An explicit provider-entry/release handshake for cancellation tests.
+/// Drop also releases the synchronous executor if an assertion panics.
+pub struct ActivityHold {
+    state: Arc<HoldState>,
+}
+
+struct HoldState {
+    entered: tokio::sync::Notify,
+    released: Mutex<bool>,
+    release: Condvar,
+}
+
+impl ActivityHold {
+    pub async fn wait_until_entered(&self) {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            self.state.entered.notified(),
+        )
+        .await
+        .expect("held provider never entered");
+    }
+
+    pub fn release(&self) {
+        *self.state.released.lock().unwrap() = true;
+        self.state.release.notify_all();
+    }
+}
+
+impl Drop for ActivityHold {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+struct HoldingExecutor {
+    state: Arc<HoldState>,
+}
+
+impl tumult_core::runner::ActivityExecutor for HoldingExecutor {
+    fn execute(
+        &self,
+        activity: &tumult_core::types::Activity,
+    ) -> tumult_core::runner::ActivityOutcome {
+        if !activity.name.starts_with("hold-") {
+            return tumult_core::runner::ActivityExecutor::execute(&SlowNoopExecutor, activity);
+        }
+        self.state.entered.notify_one();
+        let released = self.state.released.lock().unwrap();
+        drop(
+            self.state
+                .release
+                .wait_while(released, |released| !*released)
+                .unwrap(),
+        );
+        tumult_core::runner::ActivityOutcome {
+            success: true,
+            output: Some(format!("ok: {}", activity.name)),
+            error: None,
+            duration_ms: 0,
+        }
+    }
+}
+
+pub async fn spawn_server_with_held_activity() -> (TestServer, ActivityHold) {
+    let state = Arc::new(HoldState {
+        entered: tokio::sync::Notify::new(),
+        released: Mutex::new(false),
+        release: Condvar::new(),
+    });
+    let hold = ActivityHold {
+        state: state.clone(),
+    };
+    let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(move |_| {
+        Arc::new(HoldingExecutor {
+            state: state.clone(),
+        })
+    });
+    (spawn_server_with_factory(factory).await, hold)
+}
+
 pub struct TestServer {
     pub base: String,
     pub _tmp: tempfile::TempDir,
@@ -359,6 +433,10 @@ pub async fn exec_write(
 }
 
 pub async fn spawn_server() -> TestServer {
+    spawn_server_with_factory(Arc::new(|_env| Arc::new(SlowNoopExecutor))).await
+}
+
+async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory) -> TestServer {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("k.duckdb");
     let reports_dir = tmp.path().join("reports");
@@ -408,7 +486,6 @@ pub async fn spawn_server() -> TestServer {
     // plus a real bounded run queue over a slow noop executor (HTTP tests can
     // catch a run mid-method for the e-stop endpoint).
     let ingest = tumult_ingest::IngestWriter::spawn(Store::at(&db_path).writer().unwrap(), 16).0;
-    let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(|_env| Arc::new(SlowNoopExecutor));
     let run_queue = tumult_ingest::RunQueue::spawn(
         ingest.clone(),
         db_path.clone(),

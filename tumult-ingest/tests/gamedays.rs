@@ -53,18 +53,21 @@ impl ActivityExecutor for NoopExecutor {
     }
 }
 
-/// Like `NoopExecutor` but holds each activity for 500ms, so a run is still
-/// executing when the test e-stops it.
-struct SlowExecutor;
-impl ActivityExecutor for SlowExecutor {
-    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-        std::thread::sleep(Duration::from_millis(500));
-        ActivityOutcome {
-            success: true,
-            output: Some("ok".into()),
-            error: None,
-            duration_ms: 500,
-        }
+/// Holds each activity until the test explicitly releases it. Dropping the
+/// sender on a test failure also unblocks the executor instead of hanging it.
+struct GatedExecutor {
+    started: Arc<tokio::sync::Notify>,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+}
+impl ActivityExecutor for GatedExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        self.started.notify_one();
+        self.release
+            .lock()
+            .unwrap()
+            .recv()
+            .expect("test must release the activity");
+        NoopExecutor.execute(activity)
     }
 }
 
@@ -292,11 +295,15 @@ async fn campaign_advances_sequentially_and_parks_at_approvals() {
 #[tokio::test]
 async fn campaign_parent_deviates_below_the_pass_threshold() {
     // Two probe steps; the second is e-stopped (aborted). Pass rate 1/2 is
-    // below the 0.75 threshold, so the parent ends deviated. The slow
-    // executor keeps the child running long enough for the stop to land.
-    let fx = fixture_with(Arc::new(|_| {
-        Arc::new(SlowExecutor) as Arc<dyn ActivityExecutor>
-    }));
+    // below the 0.75 threshold, so the parent ends deviated. Hold each
+    // activity until released, so scheduler delays cannot outrun the stop.
+    let started = Arc::new(tokio::sync::Notify::new());
+    let (release, receiver) = std::sync::mpsc::channel();
+    let executor = Arc::new(GatedExecutor {
+        started: Arc::clone(&started),
+        release: std::sync::Mutex::new(receiver),
+    });
+    let fx = fixture_with(Arc::new(move |_| executor.clone()));
     seed_campaign(&fx, &[("probe one", PROBE_TOON), ("probe two", PROBE_TOON)]).await;
 
     tumult_ingest::gamedays::advance_campaigns(&fx.db_path, &fx.ingest, &fx.runs)
@@ -304,6 +311,10 @@ async fn campaign_parent_deviates_below_the_pass_threshold() {
         .unwrap();
     let kids = children_of(&fx, "parent-1");
     let child1 = kids[0]["id"].as_str().unwrap().to_string();
+    tokio::time::timeout(Duration::from_secs(10), started.notified())
+        .await
+        .expect("first child must enter its activity");
+    release.send(()).unwrap();
     assert_eq!(await_terminal(&fx, &child1).await, "passed");
 
     tumult_ingest::gamedays::advance_campaigns(&fx.db_path, &fx.ingest, &fx.runs)
@@ -311,7 +322,11 @@ async fn campaign_parent_deviates_below_the_pass_threshold() {
         .unwrap();
     let kids = children_of(&fx, "parent-1");
     let child2 = kids[1]["id"].as_str().unwrap().to_string();
+    tokio::time::timeout(Duration::from_secs(10), started.notified())
+        .await
+        .expect("second child must enter its activity before stopping it");
     fx.runs.stop(&child2, Some("tester")).await.unwrap();
+    release.send(()).unwrap();
     assert_eq!(await_terminal(&fx, &child2).await, "aborted");
 
     tumult_ingest::gamedays::advance_campaigns(&fx.db_path, &fx.ingest, &fx.runs)

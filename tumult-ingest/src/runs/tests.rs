@@ -73,6 +73,65 @@ fn recording_factory(executed: &Arc<Mutex<Vec<String>>>, delay: Duration) -> Exe
     })
 }
 
+/// Holds the first matching activity until the test releases it. Dropping the
+/// sender on a test failure unblocks the receiver with an explicit error.
+struct GatedRecordingExecutor {
+    inner: RecordingExecutor,
+    activity: &'static str,
+    started: Arc<tokio::sync::Notify>,
+    release: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl ActivityExecutor for GatedRecordingExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        let outcome = self.inner.execute(activity);
+        if activity.name == self.activity {
+            let release = self.release.lock().unwrap().take();
+            if let Some(release) = release {
+                self.started.notify_one();
+                release.recv().expect("test must release the activity");
+            }
+        }
+        outcome
+    }
+}
+
+struct ActivityGate {
+    started: Arc<tokio::sync::Notify>,
+    release: std::sync::mpsc::Sender<()>,
+}
+
+impl ActivityGate {
+    async fn wait(&self) {
+        tokio::time::timeout(Duration::from_secs(10), self.started.notified())
+            .await
+            .expect("run must enter the gated activity");
+    }
+
+    fn release(self) {
+        self.release.send(()).unwrap();
+    }
+}
+
+fn gated_recording_factory(
+    executed: &Arc<Mutex<Vec<String>>>,
+    activity: &'static str,
+) -> (ExecutorFactory, ActivityGate) {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let (release, receiver) = std::sync::mpsc::channel();
+    let executor = Arc::new(GatedRecordingExecutor {
+        inner: RecordingExecutor {
+            executed: Arc::clone(executed),
+            delay: Duration::ZERO,
+        },
+        activity,
+        started: Arc::clone(&started),
+        release: Mutex::new(Some(receiver)),
+    });
+    let factory: ExecutorFactory = Arc::new(move |_| executor.clone());
+    (factory, ActivityGate { started, release })
+}
+
 struct Fixture {
     _tmp: tempfile::TempDir,
     db_path: PathBuf,
@@ -256,6 +315,7 @@ async fn run_executes_to_passed_and_ingests_journal() {
 #[tokio::test]
 async fn enqueue_rejects_beyond_queue_depth() {
     let fx = fixture().await;
+    let (factory, gate) = gated_recording_factory(&fx.executed, "action-1");
     let queue = RunQueue::spawn(
         fx.ingest.clone(),
         fx.db_path.clone(),
@@ -264,13 +324,11 @@ async fn enqueue_rejects_beyond_queue_depth() {
             queue_depth: 1,
             sweep_interval: Duration::from_secs(3600),
         },
-        // Slow steps on purpose: r3 must be rejected while r2 still holds
-        // the waiting permit, i.e. before r1 finishes — a wall-clock window
-        // that tarpaulin's instrumentation can stretch past short steps.
-        recording_factory(&fx.executed, Duration::from_millis(2000)),
+        factory,
     );
 
     let r1 = queue.enqueue(request(), None).await.unwrap();
+    gate.wait().await;
     await_state(&fx, &r1, run_state::RUNNING).await;
     // r2 takes the only waiting permit; r3 must be rejected, not queued.
     let r2 = queue.enqueue(request(), None).await.unwrap();
@@ -287,6 +345,7 @@ async fn enqueue_rejects_beyond_queue_depth() {
         .unwrap();
     assert_eq!(runs.len(), 2);
 
+    gate.release();
     assert_eq!(await_terminal(&fx, &r1).await, run_state::PASSED);
     assert_eq!(await_terminal(&fx, &r2).await, run_state::PASSED);
 }
@@ -294,6 +353,7 @@ async fn enqueue_rejects_beyond_queue_depth() {
 #[tokio::test]
 async fn stop_mid_method_runs_rollback_and_aborts() {
     let fx = fixture().await;
+    let (factory, gate) = gated_recording_factory(&fx.executed, "action-2");
     let queue = RunQueue::spawn(
         fx.ingest.clone(),
         fx.db_path.clone(),
@@ -302,21 +362,14 @@ async fn stop_mid_method_runs_rollback_and_aborts() {
             queue_depth: 4,
             sweep_interval: Duration::from_secs(3600),
         },
-        // Slow steps on purpose: the e-stop must land mid-method — a
-        // wall-clock window that tarpaulin's instrumentation can stretch
-        // past short steps.
-        recording_factory(&fx.executed, Duration::from_millis(2000)),
+        factory,
     );
 
     let run_id = queue.enqueue(request(), None).await.unwrap();
-    // Wait until the first activity finished (second is sleeping).
-    for _ in 0..100 {
-        if !fx.executed.lock().unwrap().is_empty() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
+    // The first activity completed and the second cannot return before stop.
+    gate.wait().await;
     queue.stop(&run_id, Some("tester")).await.unwrap();
+    gate.release();
     assert_eq!(await_terminal(&fx, &run_id).await, run_state::ABORTED);
 
     let events = audit_events(&fx, &run_id);
@@ -347,6 +400,7 @@ async fn stop_mid_method_runs_rollback_and_aborts() {
 #[tokio::test]
 async fn stop_queued_run_cancels_before_start() {
     let fx = fixture().await;
+    let (factory, gate) = gated_recording_factory(&fx.executed, "action-1");
     let queue = RunQueue::spawn(
         fx.ingest.clone(),
         fx.db_path.clone(),
@@ -355,18 +409,15 @@ async fn stop_queued_run_cancels_before_start() {
             queue_depth: 4,
             sweep_interval: Duration::from_secs(3600),
         },
-        // Slow steps on purpose: the test must observe r1 RUNNING and then
-        // cancel r2 while r1 is still going. That window is wall-clock —
-        // under tarpaulin's instrumentation the test's own code path can
-        // take several seconds, so short steps here let r1 finish and r2
-        // run to completion before the stop lands (CI flake).
-        recording_factory(&fx.executed, Duration::from_millis(2000)),
+        factory,
     );
 
     let r1 = queue.enqueue(request(), None).await.unwrap();
+    gate.wait().await;
     await_state(&fx, &r1, run_state::RUNNING).await;
     let r2 = queue.enqueue(request(), None).await.unwrap();
     queue.stop(&r2, None).await.unwrap();
+    gate.release();
 
     assert_eq!(await_terminal(&fx, &r2).await, run_state::ABORTED);
     let run = run_row(&fx, &r2);

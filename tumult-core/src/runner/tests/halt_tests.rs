@@ -5,27 +5,45 @@
 use super::*;
 use crate::controls::ControlRegistry;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
+// The guard worker drops its thread-local sender only after returning from
+// guard evaluation. This proves that cancellation has been applied before the
+// method resumes, without assuming when the OS schedules the monitor thread.
+thread_local! {
+    static GUARD_EXIT: std::cell::RefCell<Option<mpsc::Sender<()>>> = const { std::cell::RefCell::new(None) };
+}
+
 /// Executor where the guard probe always reports an unsafe value (breaching a
-/// `regex "ok"` safe-condition), method actions are slow, and rollbacks are
+/// `regex "ok"` safe-condition), method actions wait for the guard, and rollbacks are
 /// recorded. Distinguishes roles by activity type / name.
 struct HaltingExecutor {
     method_calls: Arc<Mutex<Vec<String>>>,
     rollback_ran: Arc<AtomicBool>,
+    guard_exit_sender: Mutex<Option<mpsc::Sender<()>>>,
+    guard_exit_receiver: Mutex<mpsc::Receiver<()>>,
 }
 
 impl ActivityExecutor for HaltingExecutor {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
         match activity.activity_type {
             // The guard's probe: always outside the safe condition.
-            ActivityType::Probe => ActivityOutcome {
-                success: true,
-                output: Some("UNSAFE".into()),
-                error: None,
-                duration_ms: 1,
-            },
+            ActivityType::Probe => {
+                let sender = self
+                    .guard_exit_sender
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("unsafe guard must halt after its first probe");
+                GUARD_EXIT.with(|slot| *slot.borrow_mut() = Some(sender));
+                ActivityOutcome {
+                    success: true,
+                    output: Some("UNSAFE".into()),
+                    error: None,
+                    duration_ms: 1,
+                }
+            }
             ActivityType::Action => {
                 if activity.name.starts_with("rollback") {
                     self.rollback_ran.store(true, Ordering::SeqCst);
@@ -34,15 +52,20 @@ impl ActivityExecutor for HaltingExecutor {
                         .lock()
                         .unwrap()
                         .push(activity.name.clone());
-                    // Slow enough that the 10ms-interval guard monitor breaches
-                    // and cancels the method before every action has run.
-                    std::thread::sleep(Duration::from_millis(60));
+                    assert_eq!(
+                        self.guard_exit_receiver
+                            .lock()
+                            .unwrap()
+                            .recv_timeout(Duration::from_secs(5)),
+                        Err(mpsc::RecvTimeoutError::Disconnected),
+                        "guard worker must finish before the method continues"
+                    );
                 }
                 ActivityOutcome {
                     success: true,
                     output: Some("ok".into()),
                     error: None,
-                    duration_ms: 60,
+                    duration_ms: 0,
                 }
             }
         }
@@ -75,9 +98,12 @@ fn guard_breach_halts_experiment_and_runs_rollback() {
 
     let method_calls = Arc::new(Mutex::new(Vec::new()));
     let rollback_ran = Arc::new(AtomicBool::new(false));
+    let (guard_exit_sender, guard_exit_receiver) = mpsc::channel();
     let executor: Arc<dyn ActivityExecutor> = Arc::new(HaltingExecutor {
         method_calls: method_calls.clone(),
         rollback_ran: rollback_ran.clone(),
+        guard_exit_sender: Mutex::new(Some(guard_exit_sender)),
+        guard_exit_receiver: Mutex::new(guard_exit_receiver),
     });
     let controls = Arc::new(ControlRegistry::new());
 

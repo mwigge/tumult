@@ -286,12 +286,9 @@ async fn run_audit_verify_reports_chain_validity() {
     assert_eq!(status, 404);
 }
 
-/// A probe-only definition classifies T0 (no faults, no rollback), so it
-/// enqueues directly — the shape needed to exercise queue backpressure. The
-/// `hold-*` names make the SlowNoopExecutor hold each step for 1s (~2s per
-/// run): all 8 burst requests are handled while the first run still
-/// occupies the single executor slot, even on a loaded CI runner (200ms
-/// probes raced — a freed permit accepted a 6th run).
+/// A bound probe-only definition classifies T0 and enqueues directly.
+/// The held executor pins its first probe while the backpressure test fills
+/// every waiting slot, independent of HTTP scheduling or machine speed.
 pub(crate) const PROBE_ONLY_TOON: &str = r#"
 title: probe-only health check
 method[2]:
@@ -311,28 +308,29 @@ method[2]:
 
 #[tokio::test]
 async fn run_create_backpressure_returns_429_on_overload() {
-    let srv = spawn_server().await;
+    let (srv, hold) = spawn_server_with_held_activity().await;
     let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/api/runs/validate", srv.base))
-        .json(&json!({"toon": PROBE_ONLY_TOON}))
+    let registry_id = register_toon(&srv.base, PROBE_ONLY_TOON).await;
+
+    // Occupy the sole worker before filling its four waiting slots.
+    let first = client
+        .post(format!("{}/api/runs", srv.base))
+        .json(&json!({"registry_id": registry_id}))
         .send()
         .await
         .unwrap();
-    let body: Value = resp.json().await.unwrap();
-    assert_eq!(body["valid"], true, "{body}");
-    let registry_id = body["registry_id"].as_str().unwrap();
+    assert_eq!(first.status().as_u16(), 202);
+    let first: Value = first.json().await.unwrap();
+    let mut accepted = vec![first["run_id"].as_str().unwrap().to_string()];
+    hold.wait_until_entered().await;
 
-    // The harness queue: concurrency 1, depth 4 → capacity 5. Fire the
-    // whole burst concurrently so every request lands within the first
-    // run's ~2s lifetime (two 1s hold probes): at most 5 accepted,
-    // the rest rejected 429 — never silently queued. A sequential burst is
-    // racy: under suite load it can outlive a run and free a permit.
+    // Eight total requests against capacity five: exactly three are rejected.
+    // The blocked worker cannot free a waiting slot while this burst runs.
     let mut handles = Vec::new();
-    for _ in 0..8 {
+    for _ in 0..7 {
         let client = client.clone();
         let base = srv.base.clone();
-        let rid = registry_id.to_string();
+        let rid = registry_id.clone();
         handles.push(tokio::spawn(async move {
             client
                 .post(format!("{base}/api/runs"))
@@ -342,26 +340,46 @@ async fn run_create_backpressure_returns_429_on_overload() {
                 .unwrap()
         }));
     }
-    let mut accepted = 0;
     let mut overloaded = 0;
     for handle in handles {
         let resp = handle.await.unwrap();
         match resp.status().as_u16() {
-            202 => accepted += 1,
+            202 => {
+                let body: Value = resp.json().await.unwrap();
+                accepted.push(body["run_id"].as_str().unwrap().to_string());
+            }
             429 => overloaded += 1,
             other => panic!("unexpected status {other}"),
         }
     }
-    assert!(accepted <= 5, "{accepted} accepted beyond queue capacity");
-    assert!(
-        overloaded >= 3,
-        "only {overloaded} × 429 from a burst of 8 against capacity 5"
+    assert_eq!(accepted.len(), 5);
+    assert_eq!(overloaded, 3);
+    let (status, body) = get(&srv.base, "/api/runs").await;
+    assert_eq!(status, 200);
+    let runs = body["runs"].as_array().unwrap();
+    assert_eq!(runs.len(), 5, "rejected requests must not persist runs");
+    for id in &accepted {
+        assert!(runs.iter().any(|run| run["id"] == *id));
+    }
+    assert_eq!(
+        runs.iter().filter(|run| run["state"] == "running").count(),
+        1
     );
+    assert_eq!(
+        runs.iter().filter(|run| run["state"] == "queued").count(),
+        4
+    );
+
+    hold.release();
+    for id in accepted {
+        let detail = await_terminal_run(&srv.base, &id).await;
+        assert_eq!(detail["run"]["state"], "passed", "{detail}");
+    }
 }
 
 #[tokio::test]
 async fn stop_unknown_terminal_and_running_runs() {
-    let srv = spawn_server().await;
+    let (srv, hold) = spawn_server_with_held_activity().await;
     let registry_id = register_run_def(&srv.base).await;
     let client = reqwest::Client::new();
     // Every enqueue gates (T1) and clears through the approval flow.
@@ -390,34 +408,19 @@ async fn stop_unknown_terminal_and_running_runs() {
 
     // A running run: e-stop cancels mid-method, the runner's rollback path
     // unwinds, terminal state is aborted with the audit trail to prove it.
-    // STOP_TOON's `hold-*` steps pause 5s after each activity, keeping the
-    // run in `running` for ~15s, so the stop request lands mid-method even
-    // under tarpaulin's instrumented slowness (nightly run 31147094669
-    // raced: the run finished before the stop POST and 409'd).
+    // Wait for provider entry, then keep it blocked until stop is persisted.
     let stop_registry = register_toon(&srv.base, STOP_TOON).await;
     let stop_id = enqueue_approved(&srv.base, &stop_registry).await;
-    // Wait for the run to actually start (running, not just queued).
-    let mut running = false;
-    for _ in 0..400 {
-        let resp = client
-            .get(format!("{}/api/runs/{stop_id}", srv.base))
-            .send()
-            .await
-            .unwrap();
-        let body: Value = resp.json().await.unwrap();
-        if body["run"]["state"] == "running" {
-            running = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    assert!(running, "run {stop_id} never reached `running`");
+    hold.wait_until_entered().await;
+    let (_, detail) = get(&srv.base, &format!("/api/runs/{stop_id}")).await;
+    assert_eq!(detail["run"]["state"], "running");
     let resp = client
         .post(format!("{}/api/runs/{stop_id}/stop", srv.base))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200);
+    hold.release();
     let detail = await_terminal_run(&srv.base, &stop_id).await;
     assert_eq!(detail["run"]["state"], "aborted", "{detail}");
     assert_eq!(detail["run"]["rollback_status"], "completed");
@@ -548,16 +551,11 @@ async fn dry_run_scope_defaults_when_nothing_declared() {
 /// before dispatch — and is a no-op 200 when nothing is active.
 #[tokio::test]
 async fn stop_all_halts_every_active_run() {
-    let srv = spawn_server().await;
+    let (srv, hold) = spawn_server_with_held_activity().await;
     let client = reqwest::Client::new();
 
-    // One executing run (STOP_TOON pauses 5s after each step, so it cannot
-    // complete inside the stop-all window) and one gated run parked in
-    // pending_approval. Park the gated run FIRST and enqueue the executing
-    // run last: run_a's ~3s lifetime then only has to cover the
-    // approval → halt gap, not the gated run's registration — under
-    // tarpaulin instrumentation that registration alone outlives 3s and
-    // the halt found run_a already terminal (requested: 1).
+    // Keep one provider blocked and one run parked in pending_approval.
+    // Neither can become terminal before the stop-all request is persisted.
     let gated_reg = register_run_def(&srv.base).await;
     let resp = client
         .post(format!("{}/api/runs", srv.base))
@@ -572,6 +570,7 @@ async fn stop_all_halts_every_active_run() {
 
     let stop_reg = register_toon(&srv.base, STOP_TOON).await;
     let run_a = enqueue_approved(&srv.base, &stop_reg).await;
+    hold.wait_until_entered().await;
 
     let resp = client
         .post(format!("{}/api/runs/stop-all", srv.base))
@@ -583,6 +582,8 @@ async fn stop_all_halts_every_active_run() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["requested"], 2, "{body}");
     assert_eq!(body["stopped"], 2, "{body}");
+
+    hold.release();
 
     for id in [&run_a, &gated] {
         let detail = await_terminal_run(&srv.base, id).await;
