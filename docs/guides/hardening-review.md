@@ -27,6 +27,8 @@ This release addresses the functional review made against 2.20.0, revalidated ag
 
 A final packaged-binary check found that required DuckDB JSON/Parquet support depended on cached or downloaded extensions. Both are now explicit bundled features; offline database regressions and host-compatible binary startup/persistence checks prevent that dependency from being hidden by developer caches.
 
+The macOS release gate also exposed a test that assumed a cancellation thread would run within a short wall-clock window. Cancellation, guard, API stop/backpressure and GameDay/queue regressions now synchronize on explicit events or provider entry/release; they retain their dispatch, rollback, audit and persisted-state assertions without depending on runner speed.
+
 ## Release verification boundary
 
 This matrix describes implemented corrections and their regression coverage;

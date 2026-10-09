@@ -12,36 +12,85 @@ fn failed_probe_with_matching_output_never_passes() {
     ));
 }
 
+/// Observe a pause boundary on this test's context only. Cancelling inside the
+/// synchronous event callback avoids scheduling a helper thread against a timer.
+struct CancelAtPause {
+    context: opentelemetry::trace::SpanContext,
+    event: &'static str,
+    token: CancellationToken,
+    observed: Arc<AtomicUsize>,
+}
+
+impl opentelemetry::trace::Span for CancelAtPause {
+    fn add_event_with_timestamp<T: Into<std::borrow::Cow<'static, str>>>(
+        &mut self,
+        name: T,
+        _timestamp: std::time::SystemTime,
+        _attributes: Vec<opentelemetry::KeyValue>,
+    ) {
+        if name.into() == self.event {
+            self.observed.fetch_add(1, Ordering::SeqCst);
+            self.token.cancel();
+        }
+    }
+    fn span_context(&self) -> &opentelemetry::trace::SpanContext {
+        &self.context
+    }
+    fn is_recording(&self) -> bool {
+        true
+    }
+    fn set_attribute(&mut self, _attribute: opentelemetry::KeyValue) {}
+    fn set_status(&mut self, _status: opentelemetry::trace::Status) {}
+    fn update_name<T: Into<std::borrow::Cow<'static, str>>>(&mut self, _name: T) {}
+    fn add_link(
+        &mut self,
+        _context: opentelemetry::trace::SpanContext,
+        _attributes: Vec<opentelemetry::KeyValue>,
+    ) {
+    }
+    fn end_with_timestamp(&mut self, _timestamp: std::time::SystemTime) {}
+}
+
+fn assert_pause_cancellation_prevents_dispatch(event: &'static str) {
+    use opentelemetry::trace::TraceContextExt;
+
+    // Exercise the shared pause handling through both dispatch paths.
+    for background in [false, true] {
+        let mut action = test_action("paused-action");
+        action.background = background;
+        action.pause_before_s = Some(0.001);
+        let executor = MockExecutor::always_succeed();
+        let token = CancellationToken::new();
+        let observed = Arc::new(AtomicUsize::new(0));
+        let context = opentelemetry::Context::new().with_span(CancelAtPause {
+            context: opentelemetry::trace::SpanContext::NONE,
+            event,
+            token: token.clone(),
+            observed: observed.clone(),
+        });
+        let _guard = context.attach();
+        let (results, _) = super::super::activity::execute_activities(
+            &[action],
+            &executor,
+            &ControlRegistry::new(),
+            Some(&token),
+            Some(1),
+        );
+        assert_eq!(observed.load(Ordering::SeqCst), 1, "{event}");
+        assert!(token.is_cancelled());
+        assert_eq!(executor.call_count.load(Ordering::SeqCst), 0);
+        assert!(results.iter().all(|r| r.status == ActivityStatus::Skipped));
+    }
+}
+
 #[test]
 fn cancellation_during_pause_never_dispatches_action() {
-    let mut exp = minimal_experiment();
-    exp.method[0].pause_before_s = Some(0.1);
-    let mock = MockExecutor::always_succeed();
-    let calls = mock.call_count.clone();
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(mock);
-    let token = CancellationToken::new();
-    let cancel = token.clone();
-    let handle = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(20));
-        cancel.cancel();
-    });
-    let journal = run_experiment(
-        &exp,
-        &executor,
-        &Arc::new(ControlRegistry::new()),
-        &RunConfig {
-            cancellation_token: Some(token),
-            ..RunConfig::default()
-        },
-    )
-    .unwrap();
-    handle.join().unwrap();
-    assert_eq!(journal.status, ExperimentStatus::Interrupted);
-    assert_eq!(
-        calls.load(Ordering::SeqCst),
-        0,
-        "paused fault must not start after stop"
-    );
+    assert_pause_cancellation_prevents_dispatch("experiment.pause.before");
+}
+
+#[test]
+fn cancellation_at_pause_resume_never_dispatches_action() {
+    assert_pause_cancellation_prevents_dispatch("experiment.resume.before");
 }
 
 #[test]
