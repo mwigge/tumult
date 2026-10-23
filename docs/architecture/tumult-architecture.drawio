@@ -1,124 +1,108 @@
-<mxfile host="app.diagrams.net" modified="2026-03-29" agent="Tumult" version="24.0.0" type="device">
+<mxfile host="app.diagrams.net" agent="Tumult" version="24.0.0" type="device">
   <diagram id="tumult-high-level" name="High-Level Architecture">
-    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+    <mxGraphModel dx="2000" dy="1760" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2040" pageHeight="1780" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <!-- Title -->
-        <mxCell id="title" value="Tumult — High-Level Architecture" style="text;html=1;fontSize=20;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="500" y="20" width="400" height="40" as="geometry" />
+        <mxCell id="title" value="Tumult — Architecture (v2.22.0)" style="text;html=1;fontSize=30;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1920" height="60" as="geometry" />
         </mxCell>
-
-        <!-- CLI Adapter -->
-        <mxCell id="cli" value="tumult-cli&#xa;(clap)&#xa;&#xa;tumult run&#xa;tumult validate&#xa;tumult discover&#xa;tumult report" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=center;" vertex="1" parent="1">
-          <mxGeometry x="120" y="100" width="180" height="130" as="geometry" />
+        <mxCell id="cli" value="Operator: tumult-cli / tumult-tui&#xa;&#xa;run · validate · discover · analyze · export&#xa;gameday · topology · autopilot · agentic&#xa;TUI: read-only analytics dashboard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="110" width="400" height="150" as="geometry" />
         </mxCell>
-
-        <!-- MCP Adapter -->
-        <mxCell id="mcp" value="tumult-mcp&#xa;(Phase 3)&#xa;&#xa;MCP Server&#xa;for AQE Fleet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=center;strokeDashPattern=8 8;" vertex="1" parent="1">
-          <mxGeometry x="120" y="260" width="180" height="100" as="geometry" />
+        <mxCell id="mcp" value="MCP clients → tumult-mcp&#xa;&#xa;40 tools · 30 structured outputs&#xa;stdio / Streamable HTTP (:3100)&#xa;viewer / operator role gates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="470" y="110" width="310" height="150" as="geometry" />
         </mxCell>
-
-        <!-- Core Engine -->
-        <mxCell id="core" value="tumult-core&#xa;(Engine)&#xa;&#xa;• Experiment Loader (.toon)&#xa;• Config &amp; Secret Resolution&#xa;• Steady-State Hypothesis&#xa;• Method Execution&#xa;• Rollback Handler&#xa;• Controls Lifecycle&#xa;• Journal Writer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="400" y="100" width="260" height="200" as="geometry" />
+        <mxCell id="agent-cli" value="Agent CLI adapters&#xa;tumult-agent-cli&#xa;&#xa;Claude Code / Codex&#xa;Recommendation enhancement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="110" width="250" height="150" as="geometry" />
         </mxCell>
-
-        <!-- Plugin Registry -->
-        <mxCell id="registry" value="tumult-plugin&#xa;(Plugin Registry)&#xa;&#xa;• TumultPlugin trait&#xa;• Script manifest loader&#xa;• Plugin discovery&#xa;• Provider resolution" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="400" y="340" width="260" height="130" as="geometry" />
+        <mxCell id="web-users" value="Web UI users → embedded SvelteKit SPA&#xa;&#xa;Overview · Scores · Experiments · Runs · Author · GameDays · Approvals · Manual evidence&#xa;Logs · Traces · Metrics · Topology · Ask · Reports · Events · Schedules · Users / Webhooks (admin)&#xa;Same daemon HTTP listener: :4318 (Docker demo host: :14318)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="110" width="810" height="150" as="geometry" />
         </mxCell>
-
-        <!-- OTel Layer -->
-        <mxCell id="otel" value="tumult-otel&#xa;(Always-On Observability)&#xa;&#xa;Traces → OTLP&#xa;Metrics → OTLP&#xa;Logs → OTLP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1">
-          <mxGeometry x="400" y="510" width="260" height="100" as="geometry" />
+        <mxCell id="core" value="Engine: tumult-core&#xa;&#xa;TOON parse / resolve / validate · controls&#xa;Hypotheses · method · sampling · guards · rollback&#xa;tumult-authoring: catalog / scaffold / templates&#xa;tumult-baseline: statistical acquisition / tolerances" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="350" width="480" height="150" as="geometry" />
         </mxCell>
-
-        <!-- Native Plugins Group -->
-        <mxCell id="native-group" value="Native Rust Plugins (feature-flagged)" style="swimlane;startSize=25;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="760" y="100" width="400" height="170" as="geometry" />
+        <mxCell id="exec" value="Shared activity dispatch: tumult-exec&#xa;&#xa;ProviderExecutor: CLI + tumultd + MCP wrapper&#xa;Explicit provider type: process / script / native&#xa;tumult-plugin: discovery, manifests, script runner,&#xa;NativeExecutorRegistry (5 native executors)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="580" y="350" width="480" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="p-k8s" value="tumult-&#xa;kubernetes&#xa;(kube-rs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="native-group">
-          <mxGeometry x="10" y="35" width="90" height="60" as="geometry" />
+        <mxCell id="providers" value="Fault / probe providers — prerequisites and permissions apply" style="swimlane;html=1;startSize=40;container=1;pointerEvents=0;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=17;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="580" width="1020" height="290" as="geometry" />
         </mxCell>
-        <mxCell id="p-ssh" value="tumult-&#xa;ssh&#xa;(russh)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="native-group">
-          <mxGeometry x="110" y="35" width="80" height="60" as="geometry" />
+        <mxCell id="scripts" value="Script plugins: plugin.toon + shell scripts&#xa;&#xa;tumult-containers · tumult-db-mysql&#xa;tumult-db-postgres · tumult-db-redis&#xa;tumult-kafka · tumult-loadtest · tumult-network&#xa;tumult-process · tumult-pumba&#xa;tumult-stress · tumult-timewarp&#xa;&#xa;11 manifests · 56 actions · 26 probes&#xa;Process providers can invoke external tools directly" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;spacing=12;" vertex="1" parent="providers">
+          <mxGeometry x="20" y="60" width="420" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="p-aws" value="tumult-&#xa;cloud-aws" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;strokeDashPattern=8 8;" vertex="1" parent="native-group">
-          <mxGeometry x="200" y="35" width="80" height="60" as="geometry" />
+        <mxCell id="native" value="Native Rust executors&#xa;&#xa;tumult-ssh: remote commands&#xa;tumult-net: userspace TCP faults&#xa;  + tumult-net-proxyd&#xa;tumult-kubernetes: cluster APIs&#xa;tumult-cloud: AWS / Azure / GCP&#xa;tumult-windows: OS-specific faults&#xa;&#xa;35 registered functions (includes probes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;spacing=12;" vertex="1" parent="providers">
+          <mxGeometry x="470" y="60" width="310" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="p-gcp" value="tumult-&#xa;cloud-gcp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;strokeDashPattern=8 8;" vertex="1" parent="native-group">
-          <mxGeometry x="290" y="35" width="80" height="60" as="geometry" />
+        <mxCell id="agentic" value="tumult-agentic&#xa;&#xa;Separate agentic path&#xa;via CLI / MCP tools&#xa;&#xa;Deterministic scenarios&#xa;Live HTTP fault proxy&#xa;Contracts / replay /&#xa;resilience scoring" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;spacing=12;" vertex="1" parent="providers">
+          <mxGeometry x="810" y="60" width="190" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="p-db" value="tumult-db" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="native-group">
-          <mxGeometry x="10" y="105" width="80" height="50" as="geometry" />
+        <mxCell id="targets" value="Target systems&#xa;Containers · databases · Kafka · processes · remote hosts · TCP services · Kubernetes · cloud resources · Windows · AI agents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=16;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="950" width="1020" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="p-http" value="tumult-http" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="native-group">
-          <mxGeometry x="100" y="105" width="80" height="50" as="geometry" />
+        <mxCell id="otel" value="Observability: tumult-otel&#xa;&#xa;Traces / metrics / structured logs → OTLP gRPC&#xa;OTEL_EXPORTER_OTLP_ENDPOINT / HEADERS&#xa;Daemon runs export to their own ingest listener&#xa;Direct daemon ingest or optional collector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1140" width="480" height="150" as="geometry" />
         </mxCell>
-
-        <!-- Script Plugins Group -->
-        <mxCell id="script-group" value="Script Plugins (community, plugin.toon manifest)" style="swimlane;startSize=25;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=11;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="760" y="300" width="400" height="170" as="geometry" />
+        <mxCell id="collector" value="Optional observability backend&#xa;&#xa;OTel Collector → SigNoz / ClickHouse&#xa;tumult-clickhouse: external analytics backend&#xa;and trace correlation&#xa;Alternative to embedded journal analytics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="580" y="1140" width="480" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="sp-stress" value="tumult-&#xa;stress&#xa;(stress-ng)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="script-group">
-          <mxGeometry x="10" y="35" width="90" height="55" as="geometry" />
+        <mxCell id="evidence" value="Evidence and analytics — journals, queries and decision support" style="swimlane;html=1;startSize=40;container=1;pointerEvents=0;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=17;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1370" width="1020" height="230" as="geometry" />
         </mxCell>
-        <mxCell id="sp-containers" value="tumult-&#xa;containers&#xa;(docker/podman)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="script-group">
-          <mxGeometry x="110" y="35" width="90" height="55" as="geometry" />
+        <mxCell id="query" value="TOON journals → tumult-lake / Arrow / DuckDB&#xa;tumult-query: read-side graph / topology / autopilot&#xa;Parquet / CSV / JSON / Arrow IPC journal export&#xa;CLI import: direct store when unlocked, or daemon API&#xa;(ClickHouse configuration takes precedence)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=15;spacing=12;" vertex="1" parent="evidence">
+          <mxGeometry x="20" y="60" width="480" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="sp-process" value="tumult-&#xa;process&#xa;(kill/signal)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="script-group">
-          <mxGeometry x="210" y="35" width="80" height="55" as="geometry" />
+        <mxCell id="analytics" value="tumult-graph + tumult-cypher: ChaosGraph / topology&#xa;tumult-intelligence: recommendations / guarded NL→SQL&#xa;tumult-autopilot: policy, validator, gate, decision ladder&#xa;tumult-report: metric digests / narrative&#xa;tumult-compliance: scoring / evidence reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=15;spacing=12;" vertex="1" parent="evidence">
+          <mxGeometry x="530" y="60" width="470" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="sp-kafka" value="tumult-&#xa;kafka&#xa;(JMX/CLI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="script-group">
-          <mxGeometry x="300" y="35" width="80" height="55" as="geometry" />
+        <mxCell id="daemon" value="tumultd — daemon, governed execution and unified lake" style="swimlane;html=1;startSize=40;container=1;pointerEvents=0;fillColor=#f5f5f5;strokeColor=#666666;fontSize=19;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="350" width="810" height="1250" as="geometry" />
         </mxCell>
-        <mxCell id="sp-community" value="Your Plugin&#xa;Here!&#xa;&#xa;plugin.toon + scripts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=10;fontStyle=2;" vertex="1" parent="script-group">
-          <mxGeometry x="10" y="100" width="370" height="50" as="geometry" />
+        <mxCell id="ingest" value="tumult-ingest + tumult-otlp&#xa;OTLP receive / protobuf translation: :4317 gRPC / :4318 HTTP (/v1/*)&#xa;CSV / journal JSON manual import · API journal import&#xa;Bounded channel: telemetry + operational writes → one writer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="30" y="60" width="750" height="130" as="geometry" />
         </mxCell>
-
-        <!-- OTel Collector -->
-        <mxCell id="collector" value="OTel Collector&#xa;(Jaeger / Tempo / Datadog / ...)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="760" y="510" width="200" height="80" as="geometry" />
+        <mxCell id="runs" value="Run registry / bounded worker queue&#xa;tumult-ingest → tumult-core + tumult-exec&#xa;&#xa;Validate / dry-run / execute / e-stop&#xa;Orphan rollback reconciliation&#xa;Schedules / GameDay supervisor / webhooks&#xa;Hash-chained run audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="30" y="230" width="350" height="180" as="geometry" />
         </mxCell>
-
-        <!-- TOON Files -->
-        <mxCell id="toon-in" value="experiment.toon" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=14;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="20" y="140" width="80" height="50" as="geometry" />
+        <mxCell id="approvals" value="Approvals: risk tiers T0–T3&#xa;&#xa;Hash pin / quorum / TTL / single use&#xa;Segregation of duties&#xa;T3: fail-closed autopilot approval gate&#xa;Admin break-glass: audited override&#xa;Execution pin still enforced" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="420" y="230" width="360" height="180" as="geometry" />
         </mxCell>
-        <mxCell id="toon-out" value="journal.toon" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=14;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="20" y="210" width="80" height="50" as="geometry" />
+        <mxCell id="lake" value="tumult-lake — single-writer DuckDB&#xa;&#xa;~/.tumult/lake.duckdb (TUMULT_LAKE_PATH override)&#xa;Telemetry · journal analytics · ChaosGraph · agentic results · autopilot decisions&#xa;Run registry / state / audits · approvals · auth · manual evidence&#xa;Readers coexist inside daemon; external processes cannot share its write-open file" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="30" y="490" width="750" height="180" as="geometry" />
         </mxCell>
-
-        <!-- Edges -->
-        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="cli" target="core" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="api" value="tumult-api: JSON API (/api/*)&#xa;Embedded UI on the HTTP listener&#xa;&#xa;tumult-auth: sessions / API tokens&#xa;RBAC: viewer &lt; operator &lt; approver &lt; admin&#xa;Optional environment scopes&#xa;Mutations use the single-writer channel&#xa;Ask: tumult-intelligence::sql_guard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="30" y="750" width="350" height="190" as="geometry" />
         </mxCell>
-        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;strokeDashPattern=8 8;" edge="1" source="mcp" target="core" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="reports" value="tumult-metrics: YAML → validated SQL&#xa;tumult-report: ad-hoc / scheduled digest&#xa;tumult-compliance: PDF / print HTML&#xa;&#xa;R1: executive digest / org rollups&#xa;R2: DORA / NIS2 / ISO 27001 / SOC 2&#xa;R3: per-run report · resilience scores&#xa;Manual evidence: draft → submitted → verified" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="420" y="750" width="360" height="190" as="geometry" />
         </mxCell>
-        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="core" target="registry" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="parquet" value="Portable Parquet lake export&#xa;Complete content-addressed snapshots selected by atomic manifest&#xa;KRONIKA_LAKE_DIR / KRONIKA_LAKE_INTERVAL / POST /api/lake/export&#xa;Credential / recovery-secret tables excluded; full backup is separate&#xa;Automatic hot deletion disabled · local files are not WORM storage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+          <mxGeometry x="30" y="1010" width="750" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="registry" target="native-group" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="test-only" value="Build inventory: 32 workspace crates · workspace version 2.22.0 (daemon analytics crates retain 0.7.0)&#xa;Test-only: tumult-test-utils — shared fixtures / helpers; outside the runtime path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;fontSize=15;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1680" width="1920" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="registry" target="script-group" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="core" target="otel" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="otel" target="collector" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e8" edge="1" source="toon-in" target="cli" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e9" edge="1" source="cli" target="toon-out" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
+        <mxCell id="e-cli" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" edge="1" source="cli" target="core" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-mcp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" edge="1" source="mcp" target="core" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="630" y="300" /><mxPoint x="400" y="300" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-core" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="core" target="exec" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-exec" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.7;entryY=0;" edge="1" source="exec" target="providers" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-target" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="providers" target="targets" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-telemetry" value="execution telemetry" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;exitX=0;exitY=0.7;entryX=0;entryY=0.5;" edge="1" source="core" target="otel" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="10" y="460" /><mxPoint x="10" y="1210" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-collector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="otel" target="collector" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-ingest" value="OTLP gRPC :4317" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;strokeColor=#9673a6;exitX=0.5;exitY=0;entryX=0;entryY=0.5;" edge="1" source="otel" target="ingest" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="280" y="1100" /><mxPoint x="1100" y="1100" /><mxPoint x="1100" y="470" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-journal" value="TOON journal" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;strokeColor=#d79b00;exitX=0;exitY=0.9;entryX=0;entryY=0.5;" edge="1" source="core" target="evidence" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="0" y="490" /><mxPoint x="0" y="1490" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-agent" value="tumult-intelligence calls adapters" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;dashed=1;exitX=0.9;exitY=0;entryX=1;entryY=0.5;" edge="1" source="analytics" target="agent-cli" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1090" y="1400" /><mxPoint x="1090" y="190" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-web" value="UI / JSON API" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="web-users" target="api" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2000" y="190" /><mxPoint x="2000" y="1070" /><mxPoint x="1550" y="1070" /><mxPoint x="1550" y="1200" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-run-exec" value="shared engine / providers" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;exitX=0;exitY=0.2;entryX=1;entryY=0.9;" edge="1" source="runs" target="exec" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1130" y="620" /><mxPoint x="1130" y="530" /><mxPoint x="1090" y="530" /><mxPoint x="1090" y="490" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-approve" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="approvals" target="runs" parent="daemon"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-run-store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" edge="1" source="runs" target="lake" parent="daemon"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-approval-store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" edge="1" source="approvals" target="lake" parent="daemon"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-ingest-store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="ingest" target="lake" parent="daemon"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="800" y="120" /><mxPoint x="800" y="580" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-api" value="reads / channel writes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=13;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" source="lake" target="api" parent="daemon"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-reports" value="read-only queries" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=13;exitX=0.75;exitY=1;entryX=0.5;entryY=0;" edge="1" source="lake" target="reports" parent="daemon"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-parquet" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.7;entryX=0;entryY=0.5;" edge="1" source="lake" target="parquet" parent="daemon"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="10" y="620" /><mxPoint x="10" y="1080" /></Array></mxGeometry></mxCell>
+        <mxCell id="e-evidence-store" value="journal import / analytics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;exitX=1;exitY=0.7;entryX=0;entryY=0.8;" edge="1" source="evidence" target="lake" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1120" y="1540" /><mxPoint x="1120" y="980" /></Array></mxGeometry></mxCell>
       </root>
     </mxGraphModel>
   </diagram>
@@ -130,7 +114,7 @@
 
         <!-- Title -->
         <mxCell id="df-title" value="Tumult — Experiment Data Flow" style="text;html=1;fontSize=20;fontStyle=1;align=center;" vertex="1" parent="1">
-          <mxGeometry x="450" y="20" width="400" height="40" as="geometry" />
+          <mxGeometry x="450" y="20" width="400" height="60" as="geometry" />
         </mxCell>
 
         <!-- Input -->
@@ -140,42 +124,42 @@
 
         <!-- Parse -->
         <mxCell id="df-parse" value="Parse &amp; Validate&#xa;&#xa;toon-format crate&#xa;serde deserialize&#xa;→ Experiment struct" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="320" y="120" width="180" height="80" as="geometry" />
+          <mxGeometry x="320" y="110" width="180" height="100" as="geometry" />
         </mxCell>
 
         <!-- Resolve -->
-        <mxCell id="df-resolve" value="Resolve&#xa;&#xa;• Env vars → values&#xa;• Secret refs → secrets&#xa;• Plugin refs → providers&#xa;• Var overrides applied" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="320" y="230" width="180" height="100" as="geometry" />
+        <mxCell id="df-resolve" value="Resolve configuration&#xa;&#xa;• Env vars / secret refs&#xa;• Variable overrides&#xa;• ProviderExecutor receives&#xa;  resolved process/script env&#xa;• Validate definition" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="230" width="200" height="120" as="geometry" />
         </mxCell>
 
         <!-- SSH Before -->
         <mxCell id="df-ssh-before" value="Steady-State&#xa;Hypothesis&#xa;BEFORE&#xa;&#xa;Run probes&#xa;Check tolerances" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="580" y="100" width="150" height="100" as="geometry" />
+          <mxGeometry x="580" y="100" width="150" height="110" as="geometry" />
         </mxCell>
 
         <!-- Method -->
-        <mxCell id="df-method" value="Execute Method&#xa;&#xa;For each step:&#xa;1. Run controls.before&#xa;2. OTel: START span&#xa;3. Execute action/probe&#xa;4. OTel: END span&#xa;5. Run controls.after&#xa;6. Record result&#xa;7. Pause if specified" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="580" y="230" width="180" height="180" as="geometry" />
+        <mxCell id="df-method" value="Execute Method&#xa;&#xa;Controls / activity spans / results&#xa;tumult-exec dispatches explicit&#xa;process / script / native providers&#xa;Sequential + background activities&#xa;Concurrent probe sampling&#xa;Load (if configured) + auto-halt&#xa;guards + cancellation token&#xa;Pauses / timeouts / fault cap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="580" y="230" width="240" height="180" as="geometry" />
         </mxCell>
 
         <!-- SSH After -->
-        <mxCell id="df-ssh-after" value="Steady-State&#xa;Hypothesis&#xa;AFTER&#xa;&#xa;Re-run probes&#xa;Deviation?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="580" y="440" width="150" height="100" as="geometry" />
+        <mxCell id="df-ssh-after" value="Post-method sampling&#xa;until recovery / timeout&#xa;Stop load; hypothesis AFTER&#xa;Determine outcome&#xa;(halt/cancel bypass this path)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="440" width="240" height="100" as="geometry" />
         </mxCell>
 
         <!-- Rollbacks -->
-        <mxCell id="df-rollback" value="Rollbacks&#xa;(if deviated)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="580" y="570" width="150" height="60" as="geometry" />
+        <mxCell id="df-rollback" value="Rollbacks (configured strategy)&#xa;Always / OnDeviation / Never&#xa;Cleanup need: deviation, abort, halt,&#xa;or failure/cancel after fault start&#xa;Then analysis / final journal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="580" width="240" height="100" as="geometry" />
         </mxCell>
 
         <!-- Journal Output -->
-        <mxCell id="df-journal" value="journal.toon&#xa;&#xa;• experiment summary&#xa;• status (completed/failed/&#xa;  interrupted/aborted)&#xa;• timestamps + durations&#xa;• SSH results (before/after)&#xa;• method results (tabular!)&#xa;• rollback results&#xa;• trace_id per activity" style="shape=document;whiteSpace=wrap;html=1;size=20;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="850" y="250" width="210" height="220" as="geometry" />
+        <mxCell id="df-journal" value="journal.toon (final result)&#xa;&#xa;• completed / deviated / failed /&#xa;  interrupted / aborted / halted&#xa;• timestamps + durations&#xa;• steady_state_before / after&#xa;• method / rollback results&#xa;• during / post samples, load&#xa;• halt / blast radius / analysis&#xa;• trace_id + span_id per activity&#xa;&#xa;CLI: optional auto-ingest into&#xa;DuckDB / daemon API / ClickHouse" style="shape=document;whiteSpace=wrap;html=1;size=20;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="920" y="250" width="260" height="240" as="geometry" />
         </mxCell>
 
         <!-- OTel Export -->
         <mxCell id="df-otel" value="OTel OTLP Export&#xa;&#xa;Traces (spans per activity)&#xa;Metrics (counters, histograms)&#xa;Logs (structured events)" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="850" y="520" width="210" height="100" as="geometry" />
+          <mxGeometry x="920" y="540" width="260" height="120" as="geometry" />
         </mxCell>
 
         <!-- Edges -->
@@ -185,8 +169,8 @@
         <mxCell id="de2" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="df-parse" target="df-resolve" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="de3" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="df-resolve" target="df-ssh-before" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="de3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.2;entryX=0;entryY=0.5;" edge="1" source="df-resolve" target="df-ssh-before" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="540" y="250" /><mxPoint x="540" y="160" /></Array></mxGeometry>
         </mxCell>
         <mxCell id="de4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="df-ssh-before" target="df-method" parent="1">
           <mxGeometry relative="1" as="geometry" />
@@ -197,21 +181,24 @@
         <mxCell id="de6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="df-ssh-after" target="df-rollback" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="de7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="df-method" target="df-journal" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="de7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.8;entryX=0;entryY=0.9;" edge="1" source="df-rollback" target="df-journal" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="900" y="660" /><mxPoint x="900" y="470" /></Array></mxGeometry>
         </mxCell>
-        <mxCell id="de8" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="df-method" target="df-otel" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="de8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.3;entryX=0.5;entryY=0;" edge="1" source="df-method" target="df-otel" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="850" y="280" /><mxPoint x="850" y="520" /><mxPoint x="1050" y="520" /></Array></mxGeometry>
         </mxCell>
 
         <!-- FAIL path from SSH before -->
-        <mxCell id="de-fail" value="FAIL → abort" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;fontColor=#b85450;fontSize=10;" edge="1" source="df-ssh-before" target="df-rollback" parent="1">
+        <mxCell id="de-fail" value="FAIL → abort" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#b85450;fontColor=#b85450;fontSize=10;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="df-ssh-before" target="df-rollback" parent="1">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="770" y="150" />
-              <mxPoint x="770" y="600" />
+              <mxPoint x="550" y="150" />
+              <mxPoint x="550" y="630" />
             </Array>
           </mxGeometry>
+        </mxCell>
+        <mxCell id="de-halt" value="halt / interrupt → cleanup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;fontSize=10;exitX=1;exitY=0.8;entryX=1;entryY=0.2;" edge="1" source="df-method" target="df-rollback" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="870" y="400" /><mxPoint x="870" y="600" /></Array></mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>
@@ -224,42 +211,42 @@
 
         <!-- Title -->
         <mxCell id="ps-title" value="Tumult — Plugin System" style="text;html=1;fontSize=20;fontStyle=1;align=center;" vertex="1" parent="1">
-          <mxGeometry x="500" y="20" width="300" height="40" as="geometry" />
+          <mxGeometry x="500" y="20" width="300" height="60" as="geometry" />
         </mxCell>
 
         <!-- Experiment references plugin -->
-        <mxCell id="ps-exp" value="experiment.toon&#xa;&#xa;plugin: tumult-kafka&#xa;action: kill-broker&#xa;arguments:&#xa;  broker_id: 2" style="shape=document;whiteSpace=wrap;html=1;size=20;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+        <mxCell id="ps-exp" value="experiment.toon&#xa;&#xa;provider:&#xa;  type: script&#xa;  plugin: tumult-kafka&#xa;  function: kill-broker&#xa;  arguments: ..." style="shape=document;whiteSpace=wrap;html=1;size=20;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
           <mxGeometry x="40" y="100" width="200" height="130" as="geometry" />
         </mxCell>
 
         <!-- Plugin Registry -->
-        <mxCell id="ps-registry" value="Plugin Registry&#xa;&#xa;Discovery Order:&#xa;1. ./plugins/ (local)&#xa;2. ~/.tumult/plugins/ (user)&#xa;3. TUMULT_PLUGIN_PATH (env)&#xa;4. Compiled-in native plugins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="340" y="80" width="240" height="130" as="geometry" />
+        <mxCell id="ps-registry" value="tumult-plugin: script discovery&#xa;&#xa;1. Explicit config.plugin_paths&#xa;2. ./plugins/ (current directory)&#xa;3. ~/.tumult/plugins/ (user)&#xa;4. TUMULT_PLUGIN_PATH (colon-separated)&#xa;First name wins; malformed/shadowed warn&#xa;Native registry is separate, not a search path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="80" width="300" height="150" as="geometry" />
         </mxCell>
 
         <!-- Resolve -->
-        <mxCell id="ps-resolve" value="Resolve Provider&#xa;&#xa;Is 'tumult-kafka'&#xa;native or script?" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="370" y="260" width="180" height="100" as="geometry" />
+        <mxCell id="ps-resolve" value="tumult-exec&#xa;ProviderExecutor&#xa;Dispatch declared type" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="370" y="280" width="230" height="80" as="geometry" />
         </mxCell>
 
         <!-- Native path -->
-        <mxCell id="ps-native" value="Native Plugin&#xa;&#xa;Call TumultPlugin::&#xa;execute_action()&#xa;directly in-process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="140" y="420" width="180" height="100" as="geometry" />
+        <mxCell id="ps-native" value="Native provider&#xa;&#xa;NativeExecutorRegistry::dispatch&#xa;NativeExecutor::execute (async)&#xa;In-process; validate plugin/function&#xa;ssh / net / kubernetes / cloud / windows" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="270" height="120" as="geometry" />
         </mxCell>
 
         <!-- Script path -->
-        <mxCell id="ps-script" value="Script Plugin&#xa;&#xa;1. Read plugin.toon manifest&#xa;2. Find script path&#xa;3. Set TUMULT_* env vars&#xa;4. Execute script&#xa;5. Capture stdout/stderr/exit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="580" y="400" width="220" height="130" as="geometry" />
+        <mxCell id="ps-script" value="Script provider&#xa;&#xa;1. Discover plugin.toon + canonical root&#xa;2. Find function: actions, then probes&#xa;3. Validate path / args; TUMULT_* env&#xa;4. /bin/sh subprocess (POSIX only)&#xa;5. Capture stdout/stderr/exit; timeout kills group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="420" width="300" height="130" as="geometry" />
         </mxCell>
 
         <!-- OTel Wrapper -->
-        <mxCell id="ps-otel" value="OTel Execution Wrapper&#xa;&#xa;START span tumult.plugin.execute&#xa;  tumult.plugin.name = tumult-kafka&#xa;  tumult.action.name = kill-broker&#xa;  tumult.target.type = broker&#xa;&#xa;  ← execute (native or script) →&#xa;&#xa;  tumult.outcome = success/failure&#xa;  tumult.duration_ms = 342&#xa;END span" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="280" y="590" width="340" height="180" as="geometry" />
+        <mxCell id="ps-otel" value="Execution evidence / telemetry&#xa;&#xa;Runner activity spans: resilience.action / .probe&#xa;Script child span: script.execute&#xa;  script.path / script.timeout_seconds&#xa;  script.started / completed / timed_out events&#xa;Native providers add their own domain spans&#xa;ActivityOutcome → ActivityResult (journal)&#xa;trace_id / span_id / output / error / duration_ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="650" width="500" height="150" as="geometry" />
         </mxCell>
 
         <!-- Execution Target -->
-        <mxCell id="ps-target" value="Execution Target&#xa;&#xa;┌─ Local (default)&#xa;├─ SSH → remote host&#xa;├─ Container → docker exec&#xa;└─ KubeExec → kubectl exec" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
-          <mxGeometry x="700" y="590" width="220" height="120" as="geometry" />
+        <mxCell id="ps-target" value="Execution location is provider-defined&#xa;&#xa;Process / script: local subprocess (may call docker / kubectl)&#xa;Native SSH: remote command via tumult-ssh&#xa;Native Kubernetes / cloud: target APIs&#xa;Native net: local userspace TCP proxy&#xa;ExecutionTarget model is not a generic transport dispatcher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="650" width="410" height="150" as="geometry" />
         </mxCell>
 
         <!-- Edges -->
@@ -278,12 +265,14 @@
         <mxCell id="pe5" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ps-native" target="ps-otel" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="pe6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ps-script" target="ps-otel" parent="1">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="pe6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.4;exitY=1;entryX=0.8;entryY=0;" edge="1" source="ps-script" target="ps-otel" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="780" y="610" /><mxPoint x="440" y="610" /></Array></mxGeometry>
         </mxCell>
         <mxCell id="pe7" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="ps-script" target="ps-target" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="ps-process" value="Process provider&#xa;Command + arguments + environment&#xa;Local child process / configured timeout" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1"><mxGeometry x="340" y="440" width="290" height="80" as="geometry" /></mxCell>
+        <mxCell id="pe-process" value="process" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="ps-resolve" target="ps-process" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
       </root>
     </mxGraphModel>
   </diagram>

@@ -58,8 +58,9 @@ target/release/tumult validate examples/redis-chaos.toon
 target/release/tumult run examples/redis-chaos.toon
 ```
 
-The run writes a TOON journal and, unless disabled, ingests it into the embedded
-DuckDB analytics store. Follow the [guided walkthrough](QUICKSTART.md) for
+The run writes a TOON journal and, unless disabled, ingests it into the unified
+DuckDB store, a configured daemon, or the configured ClickHouse backend. Follow
+the [guided walkthrough](QUICKSTART.md) for
 analysis, observability, GameDays, and MCP usage.
 
 ## Capabilities
@@ -90,7 +91,7 @@ bets on four things:
 
 - **Agent-first.** A 40-tool MCP server where every tool declares safety
   annotations and role gating (read-only tools need `viewer`, writers and
-  fault executors need `operator`) — plus deterministic and live-proxy fault
+  live fault executors need `operator`) — plus deterministic and live-proxy fault
   injection for agentic AI systems themselves
   (`demo/experiments/demo-agentic*.toon`).
 - **Always-on evidence.** The `tumultd` daemon ingests OTLP telemetry
@@ -193,7 +194,8 @@ into `demo-out/`. To build locally instead, run
 embeds `web/build/`. The CLI-only path above needs none of this: `tumult
 run` writes its journal and, when no daemon holds the database, ingests into
 the unified store. Set `TUMULT_DAEMON_URL` and `TUMULT_DAEMON_TOKEN` to import
-through a running daemon instead. If you
+through a running daemon instead, unless `TUMULT_CLICKHOUSE_URL` selects the
+ClickHouse backend. If you
 have older standalone database files lying around, `tumult store
 import-legacy` pulls their data into that store (see the
 [CLI reference](docs/guides/cli-reference.md)).
@@ -254,7 +256,8 @@ TUMULT_MCP_TOKEN='replace-with-a-secret' tumult-mcp --transport http --port 3100
 
 Thirty tools return structured content with an advertised output schema. Every
 tool declares MCP safety annotations. Read-only tools require the `viewer` role;
-writers and fault executors require `operator`. The destructive tools are four:
+writers and live fault executors require `operator`. The deterministic bundled
+agentic test tools remain viewer-level. The destructive tools are four:
 `tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run` (when
 `execute=true`), and `tumult_autopilot_respond` (when `approve=true`).
 
@@ -265,7 +268,7 @@ authentication, pagination, schemas, and client examples.
 
 | Variable | Purpose |
 |---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for traces and metrics. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for traces, metrics and logs. |
 | `TUMULT_LAKE_PATH` | Override the persistent DuckDB store path (default `~/.tumult/lake.duckdb`). |
 | `TUMULT_PLUGIN_PATH` | Add script-plugin discovery directories. |
 | `TUMULT_MCP_TOKEN` | Configure one MCP operator bearer token. |
