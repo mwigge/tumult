@@ -59,7 +59,7 @@ export HF_HOME=${HF_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/huggingface}
 MEMORY=${FORECASTD_MEMORY:-12G}
 # The weights forecastd is pinned to by default (forecastd/forecastd/model.py).
 PINNED_REVISION=bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f
-PINNED_SHA256=4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a
+PINNED_SHA256=577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e
 COOLDOWN_S=5
 FORECAST="/api/forecast?metric=experiment_count&range=24h"
 

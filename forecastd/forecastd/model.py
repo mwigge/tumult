@@ -16,12 +16,15 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shutil
+import tempfile
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 from statistics import NormalDist
-from typing import Protocol
+from typing import Any, BinaryIO, Protocol
 
 import numpy as np
 
@@ -42,7 +45,7 @@ DEFAULT_MODEL_ID = "mistralai/Timestral-5M"
 # ``mistralai/Timestral-5M`` and the ``hash_weights`` digest of its files.
 # Weights with any other digest are refused before they are loaded.
 DEFAULT_MODEL_REVISION = "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f"
-DEFAULT_WEIGHTS_SHA256 = "4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a"
+DEFAULT_WEIGHTS_SHA256 = "577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 # The two files Timestral reads from a checkpoint directory. Only these are
 # hashed, so a download that also brought a README or the hub's bookkeeping
@@ -145,42 +148,60 @@ class StubModel:
         return out
 
 
-def _weight_files(root: Path, only: tuple[str, ...] | None) -> list[Path]:
+def _weight_files(root: Path, only: tuple[str, ...] | None) -> list[tuple[str, Path]]:
+    """The files that are hashed, each with the name it is hashed under
+    (its path below ``root``), sorted by that name."""
     if root.is_file():
-        return [root]
+        return [(root.name, root)]
     if only is None:
-        return sorted(p for p in root.rglob("*") if p.is_file())
-    files = [root / name for name in sorted(only)]
-    missing = [file.name for file in files if not file.is_file()]
+        files = (p for p in root.rglob("*") if p.is_file())
+        return sorted((p.relative_to(root).as_posix(), p) for p in files)
+    missing = [name for name in sorted(only) if not (root / name).is_file()]
     if missing:
         raise FileNotFoundError(f"{root} has no {' or '.join(missing)}")
-    return files
+    return [(name, root / name) for name in sorted(only)]
+
+
+def _hash_file(digest: Any, name: str, source: Path, sink: BinaryIO | None = None) -> None:
+    """Add one file to ``digest``, writing the bytes that were hashed to
+    ``sink`` when there is one.
+
+    Each file is framed: the length of its name, the name, the length of
+    its content, the content (lengths as 8 bytes, big-endian). Without the
+    lengths two different sets of files could share one byte stream, a
+    byte moved from the end of one file to the start of the next."""
+    encoded = name.encode()
+    with source.open("rb") as handle:
+        size = os.fstat(handle.fileno()).st_size
+        digest.update(len(encoded).to_bytes(8, "big") + encoded + size.to_bytes(8, "big"))
+        read = 0
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            read += len(chunk)
+            digest.update(chunk)
+            if sink is not None:
+                sink.write(chunk)
+    if read != size:
+        raise WeightsMismatch(
+            f"{source} changed while it was read: {read} bytes where {size} were announced"
+        )
 
 
 def hash_weights(
     path: str | os.PathLike[str] | None, only: tuple[str, ...] | None = None
 ) -> str:
-    """SHA-256 over every file under ``path`` (sorted by name), or
-    ``unverified`` when there is no path to read. ``only`` names the files
-    in the directory that count; all of them must exist."""
+    """SHA-256 over every file under ``path`` (sorted by name, framed as
+    ``_hash_file`` describes), or ``unverified`` when there is no path to
+    read. ``only`` names the files in the directory that count; all of
+    them must exist."""
     if path is None:
         return "unverified"
     digest = hashlib.sha256()
-    for file in _weight_files(Path(path), only):
-        digest.update(file.name.encode())
-        with file.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1 << 20), b""):
-                digest.update(chunk)
+    for name, file in _weight_files(Path(path), only):
+        _hash_file(digest, name, file)
     return digest.hexdigest()
 
 
-def verify_weights(
-    path: str | os.PathLike[str], expected: str, only: tuple[str, ...] | None = None
-) -> str:
-    """Hash the files under ``path`` and return the digest when it is the
-    expected one. Raises ``WeightsMismatch`` otherwise: the caller has not
-    opened the weights yet and must not."""
-    actual = hash_weights(path, only)
+def _require_pin(actual: str, expected: str, path: str | os.PathLike[str]) -> str:
     if actual != expected:
         raise WeightsMismatch(
             f"the weights at {path} hash to {actual}, not the pinned {expected}; "
@@ -188,6 +209,103 @@ def verify_weights(
             "where the files came from)"
         )
     return actual
+
+
+def verify_weights(
+    path: str | os.PathLike[str], expected: str, only: tuple[str, ...] | None = None
+) -> str:
+    """Hash the files under ``path`` and return the digest when it is the
+    expected one. Raises ``WeightsMismatch`` otherwise. This checks a
+    path; to load what was checked, use ``stage_weights``."""
+    return _require_pin(hash_weights(path, only), expected, path)
+
+
+def _copy_hashed(digest: Any, name: str, source: Path, target: Path) -> None:
+    """Copy ``source`` to a new file only this user can read, adding the
+    bytes written to ``digest``."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as sink:
+        _hash_file(digest, name, source, sink)
+    target.chmod(0o400)
+
+
+def discard_staged(staged: Path) -> None:
+    """Remove a directory ``stage_weights`` made."""
+    staged.chmod(0o700)
+    shutil.rmtree(staged)
+
+
+def stage_weights(
+    path: str | os.PathLike[str], expected: str, only: tuple[str, ...] | None = None
+) -> tuple[Path, str]:
+    """Copy the weights under ``path`` into a new private directory and
+    return it with its digest, when the digest is the expected one.
+
+    The digest is taken over the bytes as they are written to the copy, and
+    the copy (mode 0500, files 0400, in the temporary directory) belongs to
+    this process alone. Loading from it loads exactly what was checked:
+    replacing the files at ``path`` afterwards changes nothing. On a
+    mismatch the copy is removed and ``WeightsMismatch`` is raised. The
+    caller removes the directory with ``discard_staged``."""
+    staged = Path(tempfile.mkdtemp(prefix="forecastd-weights-"))
+    try:
+        digest = hashlib.sha256()
+        for name, source in _weight_files(Path(path), only):
+            _copy_hashed(digest, name, source, staged / name)
+        actual = _require_pin(digest.hexdigest(), expected, path)
+        staged.chmod(0o500)
+    except BaseException:
+        discard_staged(staged)
+        raise
+    return staged, actual
+
+
+def load_verified(
+    checkpoint: Path, expected: str, load: Callable[[Path], Any]
+) -> tuple[Any, str]:
+    """Call ``load`` on a verified private copy of the checkpoint and
+    return what it made with the digest. ``load`` is not called at all
+    when the weights are not the expected ones; the copy is removed
+    either way."""
+    staged, digest = stage_weights(checkpoint, expected, CHECKPOINT_FILES)
+    try:
+        return load(staged), digest
+    finally:
+        discard_staged(staged)
+
+
+@dataclass(frozen=True)
+class Backend:
+    """What the service takes from torch and timestral, as three calls, so
+    the order they are made in can be tested without either installed."""
+
+    # ``resolve(source, revision=...)``: the checkpoint directory of a
+    # model id (through the hub cache) or of a local path.
+    resolve: Callable[..., str | os.PathLike[str]]
+    # ``load(directory)``: the forecaster read from that directory.
+    load: Callable[[Path], Any]
+    set_threads: Callable[[int], None]
+
+
+def timestral_backend() -> Backend:
+    """The real thing. Imported here, so nothing needs torch until a
+    Timestral model is asked for."""
+    try:
+        import torch  # noqa: PLC0415 (lazy on purpose)
+        from timestral import TimestralForecaster  # noqa: PLC0415
+        from timestral.loading import resolve_checkpoint  # noqa: PLC0415
+    except ImportError as error:  # pragma: no cover - depends on the environment
+        raise RuntimeError(
+            "torch and the timestral package are required for FORECASTD_MODEL=timestral: "
+            f"pip install 'timestral @ {TIMESTRAL_SOURCE}' "
+            "(or set FORECASTD_MODEL=stub for the offline stand-in)"
+        ) from error
+    return Backend(
+        resolve=resolve_checkpoint,
+        load=TimestralForecaster.from_pretrained,
+        set_threads=torch.set_num_threads,
+    )
 
 
 def _default_model(env: dict[str, str]) -> bool:
@@ -234,10 +352,11 @@ class TimestralModel:
     ``weights_path`` points at a local directory holding ``config.json``
     and ``model.safetensors`` (air-gapped deployments); otherwise the model
     id is fetched through the Hugging Face hub cache at ``revision``.
-    Either way the files are hashed and compared with ``weights_sha256``
-    before the forecaster opens them; a mismatch raises ``WeightsMismatch``
-    and nothing is loaded. The weights carry a modified-MIT licence; they
-    are never bundled in the container image — see the README.
+    Either way the files are copied to a private directory, the copy is
+    hashed and compared with ``weights_sha256``, and the forecaster opens
+    the copy (``load_verified``); a mismatch raises ``WeightsMismatch`` and
+    nothing is loaded. The weights carry a modified-MIT licence; they are
+    never bundled in the container image — see the README.
     """
 
     def __init__(
@@ -248,25 +367,16 @@ class TimestralModel:
         weights_path: str | None = None,
         revision: str | None = None,
         threads: int | None = None,
+        backend: Backend | None = None,
     ) -> None:
         if size not in MODEL_SIZES:
             raise ValueError(f"unknown Timestral size {size!r}; expected one of {MODEL_SIZES}")
-        try:
-            import torch  # noqa: PLC0415 (lazy on purpose)
-            from timestral import TimestralForecaster  # noqa: PLC0415
-            from timestral.loading import resolve_checkpoint  # noqa: PLC0415
-        except ImportError as error:  # pragma: no cover - depends on the environment
-            raise RuntimeError(
-                "torch and the timestral package are required for FORECASTD_MODEL=timestral: "
-                f"pip install 'timestral @ {TIMESTRAL_SOURCE}' "
-                "(or set FORECASTD_MODEL=stub for the offline stand-in)"
-            ) from error
+        backend = backend or timestral_backend()
         if threads is not None:
-            torch.set_num_threads(threads)
+            backend.set_threads(threads)
         resolved_id = model_id or f"mistralai/Timestral-{size}"
-        checkpoint = Path(resolve_checkpoint(weights_path or resolved_id, revision=revision))
-        weights_hash = verify_weights(checkpoint, weights_sha256, CHECKPOINT_FILES)
-        self._forecaster = TimestralForecaster.from_pretrained(checkpoint)
+        checkpoint = Path(backend.resolve(weights_path or resolved_id, revision=revision))
+        self._forecaster, weights_hash = load_verified(checkpoint, weights_sha256, backend.load)
         self._lock = threading.Lock()
         self.levels = tuple(float(level) for level in self._forecaster.quantile_levels)
         self.info = ModelInfo(
@@ -328,14 +438,17 @@ def _optional_int(value: str | None, name: str) -> int | None:
     return number
 
 
-def load_model_from_env(environ: dict[str, str] | None = None) -> ForecastModel:
+def load_model_from_env(
+    environ: dict[str, str] | None = None, backend: Backend | None = None
+) -> ForecastModel:
     """Pick the model from ``FORECASTD_MODEL``: ``timestral`` (the default,
     the real model) or ``stub`` (the offline stand-in, no torch and no
     weights). ``FORECASTD_MODEL_SIZE`` (5M), ``FORECASTD_MODEL_ID``,
     ``FORECASTD_MODEL_REVISION``, ``FORECASTD_WEIGHTS_SHA256``,
     ``FORECASTD_WEIGHTS_PATH`` and ``FORECASTD_THREADS`` (4, or fewer on a
     smaller host) configure the real one; see ``weights_pin`` for which
-    weights it will agree to load."""
+    weights it will agree to load. ``backend`` stands in for torch and
+    timestral in tests."""
     env = os.environ if environ is None else environ
     kind = env.get("FORECASTD_MODEL", "timestral").lower()
     if kind == "stub":
@@ -351,4 +464,5 @@ def load_model_from_env(environ: dict[str, str] | None = None) -> ForecastModel:
         revision=revision,
         threads=_optional_int(env.get("FORECASTD_THREADS"), "FORECASTD_THREADS")
         or default_threads(),
+        backend=backend,
     )

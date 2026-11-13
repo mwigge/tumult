@@ -34,7 +34,7 @@ levels snap to the nearest of Timestral's 21 (0.01, 0.05, 0.10 … 0.90, 0.95,
 | `FORECASTD_MODEL_SIZE` | `5M` | `5M`, `28M`, `123M`, `209M`. Start with 5M (CPU, tens of ms per forecast); evaluate a larger one on your own series before switching |
 | `FORECASTD_MODEL_ID` | `mistralai/Timestral-<size>` | Hub repository id when not loading from a path |
 | `FORECASTD_MODEL_REVISION` | `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` for the default model | Hub commit to load. Required for any other size or repository, unless `FORECASTD_WEIGHTS_PATH` is set |
-| `FORECASTD_WEIGHTS_SHA256` | `4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a` for the default model | Digest the weights must have (SHA-256 over `config.json` and `model.safetensors`). Required for any other size or repository |
+| `FORECASTD_WEIGHTS_SHA256` | `577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e` for the default model | Digest the weights must have (SHA-256 over `config.json` and `model.safetensors`). Required for any other size or repository |
 | `FORECASTD_WEIGHTS_PATH` | unset | Local snapshot directory. Set it for offline and air-gapped hosts |
 | `FORECASTD_THREADS` | `4` (fewer on a smaller host) | PyTorch CPU threads. The 5M model gains nothing past four, and on a busy host more threads make each forecast slower |
 | `FORECASTD_LOG_LEVEL` | `INFO` | Python log level |

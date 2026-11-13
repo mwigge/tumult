@@ -316,7 +316,7 @@ class WeightsPinTests(unittest.TestCase):
         self.assertEqual(DEFAULT_MODEL_REVISION, "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f")
         self.assertEqual(
             DEFAULT_WEIGHTS_SHA256,
-            "4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a",
+            "577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e",
         )
         self.assertEqual(weights_pin({}), (DEFAULT_MODEL_REVISION, DEFAULT_WEIGHTS_SHA256))
         explicit = {"FORECASTD_MODEL_SIZE": "5M", "FORECASTD_MODEL_ID": "mistralai/Timestral-5M"}
