@@ -8,9 +8,11 @@
 //! close the stream; only a failed stream read does.
 
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
-use tonic::codegen::CompressionEncoding;
+use tonic::codegen::{http, CompressionEncoding, Service};
+use tonic::server::NamedService;
 use tonic::{Request, Response, Status, Streaming};
 
 use super::decode::StreamConsumer;
@@ -44,22 +46,28 @@ impl OtapGrpc {
 
     /// The traces service with the compressions the Collector's exporter
     /// uses enabled.
-    pub fn traces(self) -> ArrowTracesServiceServer<Self> {
-        ArrowTracesServiceServer::new(self)
-            .accept_compressed(CompressionEncoding::Zstd)
-            .accept_compressed(CompressionEncoding::Gzip)
+    pub fn traces(self) -> ZstdArrowAlias<ArrowTracesServiceServer<Self>> {
+        ZstdArrowAlias(
+            ArrowTracesServiceServer::new(self)
+                .accept_compressed(CompressionEncoding::Zstd)
+                .accept_compressed(CompressionEncoding::Gzip),
+        )
     }
 
-    pub fn logs(self) -> ArrowLogsServiceServer<Self> {
-        ArrowLogsServiceServer::new(self)
-            .accept_compressed(CompressionEncoding::Zstd)
-            .accept_compressed(CompressionEncoding::Gzip)
+    pub fn logs(self) -> ZstdArrowAlias<ArrowLogsServiceServer<Self>> {
+        ZstdArrowAlias(
+            ArrowLogsServiceServer::new(self)
+                .accept_compressed(CompressionEncoding::Zstd)
+                .accept_compressed(CompressionEncoding::Gzip),
+        )
     }
 
-    pub fn metrics(self) -> ArrowMetricsServiceServer<Self> {
-        ArrowMetricsServiceServer::new(self)
-            .accept_compressed(CompressionEncoding::Zstd)
-            .accept_compressed(CompressionEncoding::Gzip)
+    pub fn metrics(self) -> ZstdArrowAlias<ArrowMetricsServiceServer<Self>> {
+        ZstdArrowAlias(
+            ArrowMetricsServiceServer::new(self)
+                .accept_compressed(CompressionEncoding::Zstd)
+                .accept_compressed(CompressionEncoding::Gzip),
+        )
     }
 
     fn start(
@@ -192,4 +200,54 @@ impl ArrowMetricsService for OtapGrpc {
     ) -> Result<Response<Self::ArrowMetricsStream>, Status> {
         self.start(request, "metrics", convert_metrics)
     }
+}
+
+/// Accepts the Collector exporter's default gRPC compression.
+///
+/// The `otelarrow` exporter compresses messages with zstd but announces
+/// them as `grpc-encoding: zstdarrow<level>` (level 1 to 9, default 5); the
+/// level only configures its encoder, each message is an ordinary zstd
+/// frame. tonic knows a fixed set of encoding names and answers anything
+/// else with `UNIMPLEMENTED`, so the name is rewritten to `zstd` before the
+/// generated service sees it. Other unknown encodings still get tonic's
+/// `UNIMPLEMENTED` status naming them.
+#[derive(Clone)]
+pub struct ZstdArrowAlias<S>(S);
+
+impl<S: NamedService> NamedService for ZstdArrowAlias<S> {
+    const NAME: &'static str = S::NAME;
+}
+
+impl<S, B> Service<http::Request<B>> for ZstdArrowAlias<S>
+where
+    S: Service<http::Request<B>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.0.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut request: http::Request<B>) -> Self::Future {
+        let aliased = request
+            .headers()
+            .get(GRPC_ENCODING)
+            .is_some_and(|v| is_zstdarrow(v.as_bytes()));
+        if aliased {
+            tracing::debug!("zstdarrow gRPC encoding accepted as zstd");
+            request
+                .headers_mut()
+                .insert(GRPC_ENCODING, http::HeaderValue::from_static("zstd"));
+        }
+        self.0.call(request)
+    }
+}
+
+const GRPC_ENCODING: &str = "grpc-encoding";
+
+/// `zstdarrow1` to `zstdarrow9`, the names the exporter registers.
+fn is_zstdarrow(encoding: &[u8]) -> bool {
+    matches!(encoding.strip_prefix(b"zstdarrow"), Some([b'1'..=b'9']))
 }

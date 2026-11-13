@@ -20,6 +20,7 @@ use opentelemetry_proto::tonic::trace::v1::span::Event;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span, Status};
 use tumult_lake::SpanRow;
 
+use super::proto::arrow_metrics_service_client::ArrowMetricsServiceClient;
 use super::proto::arrow_traces_service_client::ArrowTracesServiceClient;
 use super::proto::{ArrowPayload, BatchArrowRecords, StatusCode};
 use super::test_encoder::Encoder;
@@ -762,4 +763,147 @@ async fn write_failure_is_reported_as_internal_in_the_batch_status() {
     let ack = acks.message().await.unwrap().unwrap();
     assert_eq!(ack.status_code, StatusCode::Internal as i32);
     assert_eq!(ack.status_message, "telemetry write failed");
+}
+
+#[tokio::test]
+async fn multivariate_batch_is_refused_by_id_and_univariate_metrics_still_land() {
+    let served = serve(None).await;
+    let mut client = ArrowMetricsServiceClient::connect(format!("http://{}", served.addr))
+        .await
+        .unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel(4);
+    let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+    let mut acks = client
+        .arrow_metrics(tonic::Request::new(outbound))
+        .await
+        .unwrap()
+        .into_inner();
+
+    // A well-formed Arrow payload labelled as the multivariate table.
+    let mut multivariate = Encoder::new(true).metrics(&metrics_fixture());
+    multivariate.batch_id = 41;
+    multivariate.arrow_payloads.truncate(1);
+    multivariate.arrow_payloads[0].r#type =
+        super::proto::ArrowPayloadType::MultivariateMetrics as i32;
+    multivariate.arrow_payloads[0].schema_id = "MULTIVARIATE_METRICS-1".into();
+    tx.send(multivariate).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(ack.batch_id, 41);
+    assert_eq!(ack.status_code, StatusCode::InvalidArgument as i32);
+    assert!(
+        ack.status_message.contains("MULTIVARIATE_METRICS"),
+        "{}",
+        ack.status_message
+    );
+
+    // The stream is still open and a univariate batch is stored.
+    let mut encoder = Encoder::new(true);
+    let good = encoder.metrics(&metrics_fixture());
+    let good_id = good.batch_id;
+    tx.send(good).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(
+        (ack.batch_id, ack.status_code),
+        (good_id, StatusCode::Ok as i32)
+    );
+    let rows = served
+        .store
+        .read_only()
+        .unwrap()
+        .query_json_rows(
+            "SELECT (SELECT count(*) FROM metric_sums) AS sums, \
+             (SELECT count(*) FROM metric_gauges) AS gauges, \
+             (SELECT count(*) FROM metric_histograms) AS histograms",
+        )
+        .unwrap();
+    assert_eq!(rows[0]["sums"], 2, "{rows:?}");
+    assert_eq!(rows[0]["gauges"], 1, "{rows:?}");
+    assert_eq!(rows[0]["histograms"], 1, "{rows:?}");
+}
+
+type GrpcRequest = tonic::codegen::http::Request<tonic::body::Body>;
+
+/// A client channel that renames the `grpc-encoding` of every request, the
+/// way the Collector's exporter labels its zstd-compressed messages.
+#[derive(Clone)]
+struct Relabel(tonic::transport::Channel, &'static str);
+
+impl tonic::codegen::Service<GrpcRequest> for Relabel {
+    type Response = <tonic::transport::Channel as tonic::codegen::Service<GrpcRequest>>::Response;
+    type Error = tonic::transport::Error;
+    type Future = <tonic::transport::Channel as tonic::codegen::Service<GrpcRequest>>::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.0.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: GrpcRequest) -> Self::Future {
+        req.headers_mut().insert(
+            "grpc-encoding",
+            tonic::codegen::http::HeaderValue::from_static(self.1),
+        );
+        self.0.call(req)
+    }
+}
+
+async fn relabelled(
+    addr: std::net::SocketAddr,
+    encoding: &'static str,
+) -> ArrowTracesServiceClient<Relabel> {
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{addr}"))
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    ArrowTracesServiceClient::new(Relabel(channel, encoding))
+        .send_compressed(tonic::codegen::CompressionEncoding::Zstd)
+}
+
+#[tokio::test]
+async fn exporter_default_zstdarrow_grpc_encoding_is_accepted() {
+    for encoding in ["zstdarrow1", "zstdarrow5", "zstdarrow9"] {
+        let served = serve(None).await;
+        let mut client = relabelled(served.addr, encoding).await;
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut acks = client
+            .arrow_traces(tonic::Request::new(outbound))
+            .await
+            .unwrap()
+            .into_inner();
+        tx.send(Encoder::new(true).traces(&traces_fixture()))
+            .await
+            .unwrap();
+        let ack = acks.message().await.unwrap().unwrap();
+        assert_eq!(ack.status_code, StatusCode::Ok as i32, "{encoding}");
+        let rows = served
+            .store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT count(*) AS n FROM spans")
+            .unwrap();
+        assert_eq!(rows[0]["n"], 3, "{encoding}: {rows:?}");
+    }
+}
+
+#[tokio::test]
+async fn unknown_grpc_encoding_is_refused_by_name() {
+    let served = serve(None).await;
+    for encoding in ["zstdarrow0", "zstdarrow10", "snappy"] {
+        let mut client = relabelled(served.addr, encoding).await;
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tx.send(Encoder::new(false).traces(&traces_fixture()))
+            .await
+            .unwrap();
+        let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+        let err = match client.arrow_traces(tonic::Request::new(outbound)).await {
+            Err(status) => status,
+            Ok(response) => response.into_inner().message().await.unwrap_err(),
+        };
+        assert_eq!(err.code(), tonic::Code::Unimplemented, "{encoding}");
+        assert!(err.message().contains(encoding), "{}", err.message());
+    }
 }
