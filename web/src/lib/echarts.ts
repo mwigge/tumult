@@ -2,6 +2,8 @@
 import * as echarts from 'echarts/core';
 import {
     BarChart,
+    CustomChart,
+    GaugeChart,
     GraphChart,
     HeatmapChart,
     LineChart,
@@ -29,6 +31,8 @@ echarts.use([
     ScatterChart,
     GraphChart,
     TreemapChart,
+    CustomChart,
+    GaugeChart,
     GridComponent,
     TooltipComponent,
     DataZoomComponent,

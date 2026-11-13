@@ -413,6 +413,34 @@
                     {/each}
                 </tbody>
             </table>
+            <div class="malformed" data-testid="malformed-ids">
+                {#if (conformance.malformed_entity_ids ?? []).length === 0}
+                    <span class="badge ok">0 malformed ict.entity.id</span>
+                    <span class="muted">
+                        every id received matches
+                        <span class="mono"
+                            >{conformance.entity_id_pattern ?? 'the canonical form'}</span
+                        >
+                    </span>
+                {:else}
+                    <span class="badge fail">
+                        {conformance.malformed_entity_ids.length} malformed ict.entity.id
+                    </span>
+                    <span class="muted">
+                        stored as received; fix them at the sender (expected
+                        <span class="mono">{conformance.entity_id_pattern}</span>, e.g. cif-0042)
+                    </span>
+                    <ul>
+                        {#each conformance.malformed_entity_ids as bad (bad.service + bad.entity_id)}
+                            <li>
+                                <span class="mono">{bad.entity_id}</span> from
+                                <span class="mono">{bad.service}</span>, {bad.spans} spans:
+                                {bad.reason}
+                            </li>
+                        {/each}
+                    </ul>
+                {/if}
+            </div>
         </section>
     {/if}
 
@@ -592,5 +620,13 @@
     td {
         padding: 6px 8px;
         border-bottom: 1px solid var(--border);
+    }
+    .malformed {
+        margin-top: 10px;
+        font-size: 12.5px;
+    }
+    .malformed ul {
+        margin: 6px 0 0;
+        padding-left: 18px;
     }
 </style>

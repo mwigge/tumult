@@ -1,6 +1,7 @@
 <script lang="ts">
     // Org hierarchy rollups: root = KPI cards + treemap; drill by click with
     // breadcrumb + ?node= URL state; non-root = indented tree table.
+    // `?view=dora` shows DORA coverage and the maturity level instead.
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import { api } from '#lib/api.js';
@@ -10,16 +11,37 @@
     import EChart from '#lib/components/EChart.svelte';
     import Sparkline from '#lib/components/Sparkline.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
+    import DoraScore from '#lib/components/DoraScore.svelte';
 
     const node = $derived(page.url.searchParams.get('node') ?? '');
     const range = $derived(page.url.searchParams.get('range') ?? '7d');
 
+    const view = $derived(page.url.searchParams.get('view') === 'dora' ? 'dora' : 'org');
+    const lei = $derived(page.url.searchParams.get('lei') ?? '');
+
     let tree: ScoreTree | null = $state(null);
     let error: string | null = $state(null);
+
+    function setView(next: 'org' | 'dora') {
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local calculation; no retained reactive state.
+        const params = new URLSearchParams(page.url.searchParams.toString());
+        if (next === 'dora') params.set('view', 'dora');
+        else params.delete('view');
+        goto(`?${params}`, { reset: false });
+    }
+
+    function setLei(next: string) {
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local calculation; no retained reactive state.
+        const params = new URLSearchParams(page.url.searchParams.toString());
+        if (next) params.set('lei', next);
+        else params.delete('lei');
+        goto(`?${params}`, { replace: true, reset: false });
+    }
 
     $effect(() => {
         const n = node;
         const r = range;
+        if (view === 'dora') return;
         let cancelled = false;
         tree = null;
         error = null;
@@ -137,22 +159,31 @@
 
 <div class="page-head">
     <h1>Scores</h1>
-    <nav class="crumbs" aria-label="org breadcrumb">
-        <button class:current={node === ''} onclick={() => drill('')}>company</button>
-        {#each crumbs as seg, i (i)}
-            <span class="sep">/</span>
-            <button
-                class:current={i === crumbs.length - 1}
-                onclick={() => drill(crumbs.slice(0, i + 1).join('/'))}>{seg}</button
-            >
-        {/each}
-    </nav>
-    <div class="controls">
-        <RangeSwitch value={range} onchange={setRange} />
+    <div class="views" role="group" aria-label="score view">
+        <button class:on={view === 'org'} onclick={() => setView('org')}>Org scores</button>
+        <button class:on={view === 'dora'} onclick={() => setView('dora')}>DORA and maturity</button
+        >
     </div>
+    {#if view === 'org'}
+        <nav class="crumbs" aria-label="org breadcrumb">
+            <button class:current={node === ''} onclick={() => drill('')}>company</button>
+            {#each crumbs as seg, i (i)}
+                <span class="sep">/</span>
+                <button
+                    class:current={i === crumbs.length - 1}
+                    onclick={() => drill(crumbs.slice(0, i + 1).join('/'))}>{seg}</button
+                >
+            {/each}
+        </nav>
+        <div class="controls">
+            <RangeSwitch value={range} onchange={setRange} />
+        </div>
+    {/if}
 </div>
 
-{#if error}
+{#if view === 'dora'}
+    <DoraScore {lei} onlei={setLei} />
+{:else if error}
     <div class="panel"><div class="state error">Failed to load org scores: {error}</div></div>
 {:else if !tree}
     <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
@@ -258,6 +289,31 @@
 {/if}
 
 <style>
+    .views {
+        display: flex;
+        margin-left: 12px;
+    }
+    .views button {
+        background: var(--bg-raised);
+        color: var(--text-dim);
+        border: 1px solid var(--border-strong);
+        padding: 3px 10px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .views button:first-child {
+        border-radius: 4px 0 0 4px;
+    }
+    .views button:last-child {
+        border-radius: 0 4px 4px 0;
+        border-left: none;
+    }
+    .views button.on {
+        color: var(--text);
+        background: var(--bg-hover);
+        border-color: var(--accent);
+    }
     .crumbs {
         display: flex;
         align-items: center;

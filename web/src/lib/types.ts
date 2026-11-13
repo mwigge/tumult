@@ -958,6 +958,210 @@ export interface ConformanceReport {
     as_of_ns: number;
     range: string;
     contract: { target: string[]; spine: string[]; recommended: string[] };
-    summary: { services: number; spine: number; target: number; none: number };
+    summary: {
+        services: number;
+        spine: number;
+        target: number;
+        none: number;
+        malformed_entity_ids: number;
+    };
     services: ServiceConformance[];
+    /** The canonical form of `ict.entity.id`, as a pattern. */
+    entity_id_pattern: string;
+    /** Ids that do not match it, exactly as the service sent them. */
+    malformed_entity_ids: MalformedEntityId[];
+}
+
+export interface MalformedEntityId {
+    service: string;
+    entity_id: string;
+    spans: number;
+    last_seen_ns: number | null;
+    flagged_at_ingest: boolean;
+    reason: string;
+}
+
+// --- DORA coverage and maturity (`/api/dora`, `/api/maturity`) ---
+
+export type EntityProfile = 'full' | 'simplified' | 'microenterprise';
+
+export interface LegalEntityRef {
+    lei: string;
+    name: string;
+    profile: string;
+}
+
+/** Fields every score document opens with. */
+export interface ScoreHeader {
+    as_of_ns: number;
+    registry_version: string;
+    lei: string | null;
+    entity_name: string | null;
+    profile: string;
+    profile_label: string;
+    profile_flags: string[];
+    legal_entities: LegalEntityRef[];
+    disclaimer?: string;
+}
+
+export type CellState = 'known' | 'unknown' | 'no_events';
+export type EvidenceStatus =
+    'na' | 'unknown' | 'no_events' | 'none' | 'designed' | 'existing' | 'operating';
+export type Standing = 'meets' | 'gap' | 'unknown' | 'no_events' | 'na';
+
+export interface DoraRow {
+    entity_id: string;
+    label: string;
+    tier: string | null;
+}
+
+export interface DoraFunction {
+    entity_id: string;
+    name: string;
+    tier: string;
+    registered: boolean;
+    register_codes: string[];
+    org_unit: string | null;
+    rto_s: number | null;
+    rpo_s: number | null;
+    last_assessed_ns: number | null;
+    last_assessed: string | null;
+    coverage: number | null;
+    unknown: number;
+    band: string;
+}
+
+export interface DoraArticle {
+    article: string;
+    title: string;
+    coverage: number | null;
+    unknown: number;
+    band: string;
+    na: number;
+    na_rows: number;
+    status: Record<Standing, number> | null;
+    sources: Record<'otel_only' | 'tested' | 'manual' | 'none' | 'unknown', number>;
+}
+
+export interface DoraCell {
+    article: string;
+    entity_id: string;
+    coverage: number | null;
+    unknown: number;
+    state: CellState;
+    status: EvidenceStatus;
+    status_rank: number;
+    gaps: number;
+}
+
+export interface DoraExpectation {
+    id: string;
+    article: string;
+    cite: string;
+    title: string;
+    weight: number;
+    expected: string;
+    actual: EvidenceStatus;
+    gap: number;
+    standing: Standing;
+    criticality: number;
+    priority: number;
+    short: string[];
+    oldest_evidence_ns: number | null;
+    oldest_evidence_date: string | null;
+    days_until_operating: number | null;
+    evidence: { id: string; source: string } | null;
+    reason: string | null;
+}
+
+export interface DoraReadiness {
+    functions: number;
+    registered: number;
+    with_rto: number;
+    with_rpo: number;
+    with_assessment: number;
+    complete: number;
+    register: {
+        connected: boolean;
+        reconciled_ns: number | null;
+        signed_by: string | null;
+        signed_at: string | null;
+        rows: number;
+    };
+    unmapped_services: string[];
+}
+
+/** `GET /api/dora` */
+export interface DoraReport extends ScoreHeader {
+    by: 'entity' | 'org';
+    portfolio: { coverage: number | null; unknown: number; band: string };
+    status: Record<Standing, number>;
+    rows: DoraRow[];
+    functions: DoraFunction[];
+    articles: DoraArticle[];
+    cells: DoraCell[];
+    expectations: DoraExpectation[];
+    na: { count: number; rows: { id: string; article: string; cite: string }[] };
+    readiness: DoraReadiness;
+}
+
+export type MaturityComponent = 'conformance' | 'coverage' | 'slo' | 'recovery' | 'loop';
+
+export interface PillarState {
+    value: number | null;
+    state: string;
+    reason: string | null;
+}
+
+export interface MaturityNode {
+    id: string;
+    kind: string;
+    label: string;
+    parent: string | null;
+    index: number;
+    level: number;
+    target: number;
+    own: number | null;
+    pillars: Record<string, PillarState>;
+    rollup: { mean: number | null; weight: number; children: number };
+    unknown_share: number;
+    unknown: boolean;
+    critical: boolean;
+    cap: {
+        rule: string;
+        level: number | null;
+        node_ids: string[];
+        origin: string[];
+        origin_state: string | null;
+        reason: string | null;
+    };
+    drag: number | null;
+    note: string | null;
+}
+
+/** `GET /api/maturity` */
+export interface MaturityReport extends ScoreHeader {
+    scale: { internal: boolean; source: string; levels: string[] };
+    level: number;
+    index: number;
+    target: number;
+    headline: string;
+    gate_level: number;
+    capped: boolean;
+    cap: {
+        level: number | null;
+        blocked_level?: number;
+        component: string | null;
+        reason: string | null;
+    };
+    components: Record<MaturityComponent, number | null>;
+    component_states: Record<MaturityComponent, PillarState>;
+    weights: Record<MaturityComponent, number>;
+    gates: { level: number; passed: boolean; failing: string[] }[];
+    unknown_share: number;
+    history: { quarter: string; as_of_ns: number; level: number; index: number }[];
+    rollup: MaturityNode | null;
+    rollup_headline: string | null;
+    by: 'node' | 'entity' | 'org' | null;
+    nodes: MaturityNode[];
 }

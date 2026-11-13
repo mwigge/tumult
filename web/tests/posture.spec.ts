@@ -139,7 +139,18 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
                     ],
                     recommended: ['resilience.target.component', 'service.version'],
                 },
-                summary: { services: 2, spine: 1, target: 0, none: 1 },
+                summary: { services: 2, spine: 1, target: 0, none: 1, malformed_entity_ids: 1 },
+                entity_id_pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)+$',
+                malformed_entity_ids: [
+                    {
+                        service: 'legacy-batch',
+                        entity_id: 'CF-0042',
+                        spans: 12,
+                        last_seen_ns: 1,
+                        flagged_at_ingest: true,
+                        reason: 'must start with a lower-case letter',
+                    },
+                ],
                 services: [
                     {
                         service: 'checkout',
@@ -260,6 +271,11 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     await expect(contract).toContainText('legacy-batch');
     await expect(contract).toContainText('resilience.target.system, ict.entity.id');
     await expect(contract.locator('tbody tr').nth(0)).toContainText('spine');
+    // A malformed ict.entity.id is listed as received, never repaired.
+    const malformed = page.getByTestId('malformed-ids');
+    await expect(malformed).toContainText('1 malformed ict.entity.id');
+    await expect(malformed).toContainText('CF-0042');
+    await expect(malformed).toContainText('must start with a lower-case letter');
 
     // Accepting a finding posts the reason and the list refreshes.
     await list.nth(0).getByRole('button', { name: 'accept' }).click();
