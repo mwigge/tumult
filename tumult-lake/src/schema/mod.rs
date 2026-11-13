@@ -79,12 +79,20 @@
 //! regression verdict between two `service.version`s of a target —
 //! additive and index-free apart from the target lookup index.
 //!
+//! v19 is reserved for the forecast tables, which land separately; this
+//! build does not create them. v20 adds the function register (`ict.rs`):
+//! `ict_legal_entities`, `ict_functions`, `ict_function_services` and the
+//! daily `requirement_status_daily` snapshots — additive and index-free.
+//! Every statement is `IF NOT EXISTS`, so a database at v18 or at v19
+//! migrates to v20 the same way.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
 
 mod analytics;
 mod auth;
+mod ict;
 mod manual;
 mod migrations;
 mod objectives;
@@ -96,7 +104,7 @@ mod telemetry;
 
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 18;
+pub const CURRENT_SCHEMA_VERSION: i64 = 20;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -111,6 +119,7 @@ pub const CREATE_TABLES: &[&str] = &[
     objectives::DDL,
     risk::DDL,
     perf::DDL,
+    ict::DDL,
 ];
 
 /// Rollup view: one row per experiment run, over the experiment root spans
