@@ -19,6 +19,40 @@ use crate::reports::{
 use tls::{load_tls, warn_if_plaintext_on_network};
 use ui::ui_handler;
 
+/// One listener task and how it ended.
+type Listener<E> = tokio::task::JoinHandle<std::result::Result<(), E>>;
+
+async fn stopped<E>(listener: &mut Listener<E>, name: &'static str) -> Result<()>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    listener
+        .await
+        .with_context(|| format!("{name} task panicked"))?
+        .context(name)
+}
+
+/// Waits until both listeners have stopped. A listener that fails ends
+/// the wait at once and stops the other one: a daemon that could not
+/// bind its HTTP address must not stay up answering gRPC only.
+async fn until_both_stop<G, H>(mut grpc: Listener<G>, mut http: Listener<H>) -> Result<()>
+where
+    G: std::error::Error + Send + Sync + 'static,
+    H: std::error::Error + Send + Sync + 'static,
+{
+    let outcome = tokio::try_join!(
+        stopped(&mut grpc, "gRPC server"),
+        stopped(&mut http, "HTTP server"),
+    );
+    let Err(error) = outcome else {
+        return Ok(());
+    };
+    tracing::error!(error = %format!("{error:#}"), "a listener failed; stopping the daemon");
+    grpc.abort();
+    http.abort();
+    Err(error)
+}
+
 /// Wait for SIGTERM or SIGINT.
 async fn shutdown_signal(name: &'static str) {
     #[cfg(unix)]
@@ -309,13 +343,7 @@ pub(crate) async fn serve() -> Result<()> {
         result
     });
 
-    let (grpc_result, http_result) = tokio::join!(grpc_server, http_server);
-    grpc_result
-        .context("gRPC server task panicked")?
-        .context("gRPC server")?;
-    http_result
-        .context("HTTP server task panicked")?
-        .context("HTTP server")?;
+    until_both_stop(grpc_server, http_server).await?;
     if let Some(task) = internal_grpc_server {
         task.await
             .context("internal gRPC loopback task panicked")?

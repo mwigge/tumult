@@ -1,6 +1,7 @@
 use super::serve;
 use super::tls::load_tls;
 use super::ui::{ui_handler, UiAssets};
+use super::until_both_stop;
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::path::PathBuf;
@@ -218,6 +219,94 @@ async fn http_get(port: u16, path: &str) -> std::io::Result<String> {
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf).await?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+type Listener = tokio::task::JoinHandle<std::io::Result<()>>;
+
+/// A listener task that serves until it is stopped, and a receiver that
+/// resolves once the task is gone.
+fn serving() -> (Listener, tokio::sync::oneshot::Receiver<()>) {
+    let (alive, gone) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let _alive = alive;
+        std::future::pending::<std::io::Result<()>>().await
+    });
+    (task, gone)
+}
+
+fn failing(why: &'static str) -> Listener {
+    tokio::spawn(async move { Err(std::io::Error::other(why)) })
+}
+
+#[tokio::test]
+async fn a_failed_http_listener_stops_the_grpc_one() {
+    let (grpc, grpc_gone) = serving();
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        until_both_stop(grpc, failing("address in use")),
+    )
+    .await
+    .expect("the wait ends with the first failure");
+    let error = format!("{:#}", outcome.expect_err("a failed listener is an error"));
+    assert!(error.contains("HTTP server"), "{error}");
+    assert!(error.contains("address in use"), "{error}");
+    // The receiver errors because the task, and the sender in it, is gone.
+    assert!(grpc_gone.await.is_err());
+}
+
+#[tokio::test]
+async fn a_failed_grpc_listener_stops_the_http_one() {
+    let (http, http_gone) = serving();
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        until_both_stop(failing("no certificate"), http),
+    )
+    .await
+    .expect("the wait ends with the first failure");
+    let error = format!("{:#}", outcome.expect_err("a failed listener is an error"));
+    assert!(error.contains("gRPC server"), "{error}");
+    assert!(http_gone.await.is_err());
+}
+
+#[tokio::test]
+async fn two_listeners_that_stop_cleanly_are_a_clean_stop() {
+    let stopped = || -> Listener { tokio::spawn(async { Ok(()) }) };
+    until_both_stop(stopped(), stopped())
+        .await
+        .expect("clean stop");
+}
+
+/// A daemon whose HTTP address is taken must not stay up serving gRPC
+/// only: whoever holds the port would answer its health checks.
+#[allow(clippy::await_holding_lock)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn serve_exits_when_the_http_address_is_taken() {
+    let _guard = crate::test_support::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let http_port = taken.local_addr().unwrap().port();
+    let grpc_port = free_port();
+    std::env::set_var("TUMULT_LAKE_PATH", dir.path().join("lake.duckdb"));
+    std::env::set_var("KRONIKA_METRICS_DIR", dir.path().join("metrics"));
+    std::env::set_var("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"));
+    std::env::set_var("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"));
+    std::env::set_var("KRONIKA_LAKE_INTERVAL", "off");
+    std::env::remove_var("KRONIKA_INGEST_TOKEN");
+    std::env::remove_var("KRONIKA_REPORT_INTERVAL");
+    std::env::remove_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD");
+    std::env::remove_var("KRONIKA_BOOTSTRAP_TOKEN");
+
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
+        .await
+        .expect("the daemon exits instead of serving gRPC alone");
+    let error = format!("{:#}", outcome.expect_err("a taken address is an error"));
+    assert!(error.contains("HTTP server"), "{error}");
+    // Nothing of the daemon is left listening.
+    let grpc = tokio::net::TcpStream::connect(("127.0.0.1", grpc_port)).await;
+    assert!(grpc.is_err(), "the gRPC listener is closed");
+    drop(taken);
 }
 
 /// The whole daemon in-process: bind both listeners on loopback, serve
