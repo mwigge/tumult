@@ -26,6 +26,7 @@ tumult run <experiment.toon> [OPTIONS]
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
 | `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
+| `--target-version <v>` | — | The version of the target this run measures, recorded in the journal as `declared` (overrides `target.version`; an error when the definition has no `target` block). Without it and without `target.version`, a run that auto-ingests asks the daemon (or the local lake) once at its end which `service.version` the target's spans carried during the run and records it as `observed` |
 | `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `none`) |
 | `--load-script <path>` | — | Path to load test script (k6 `.js`) |
 | `--load-vus <n>` | — | Number of virtual users for the load test |
@@ -616,7 +617,7 @@ Verdicts: `pass` (score at or above the floor, fresh evidence, no failing experi
 
 ## tumult perf
 
-Ask the daemon for a target's performance regression verdict (`GET /api/perf/{target}`; with `--store`, `POST /api/perf/{target}/verdicts`): the latency samples of its latest two `service.version`s compared with a bootstrap confidence interval. Exit non-zero on a regression. Meant for the pipeline step after a build has been deployed and exercised.
+Ask the daemon for a target's performance regression verdict (`GET /api/perf/{target}`; with `--store`, `POST /api/perf/{target}/verdicts`): the latency samples of two of its `service.version`s inside one environment — by default the two deployed last — compared with a bootstrap confidence interval. Exit non-zero on a regression. Meant for the pipeline step after a build has been deployed and exercised.
 
 ```bash
 export TUMULT_DAEMON_URL=http://tumultd.internal:4318
@@ -630,13 +631,15 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 | `--quantile p50\|p95\|p99` | Quantile the verdict is keyed on (daemon default p95) |
 | `--min-samples <n>` | Fewer samples on either side is inconclusive (daemon default 20) |
 | `--margin-pct <n>` | Noise margin as a percentage of the baseline quantile (daemon default 5) |
-| `--env <name>` | Restrict the compared runs to one environment, matched exactly (403 outside a scoped token's environments; 404 when the target has no telemetry tagged with it) |
+| `--env <name>` | The environment the verdict is for, matched exactly (403 outside a scoped token's environments; 404 when the target has no telemetry tagged with it). Required when the target has versions in several environments and the named versions do not single one out |
+| `--candidate <version>` | The version judged, instead of the one deployed last |
+| `--baseline <version>` | The version compared against, instead of the one deployed just before the candidate |
 | `--store` | Append the verdict to the daemon's `perf_verdicts` history (`POST`, operator role); without it the command only reads. A retry with the same evidence appends nothing and still counts as stored. Exits non-zero when the daemon did not store, whatever `--fail-on` says |
 | `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
 | `--fail-on regressed\|inconclusive\|never` | Which verdicts exit non-zero (default `regressed`) |
 | `--json` | Print the daemon's JSON answer |
 
-Verdicts: `improved`, `unchanged`, `regressed`, `inconclusive` (too few samples, one version only, an interval too wide to tell, or a significant shift whose size against the margin is unresolved). With `--store` the verdict is appended to the lake's `perf_verdicts` table. See the [Performance Regression guide](performance-regression.md) for the rules.
+Verdicts: `improved`, `unchanged`, `regressed`, `inconclusive` (too few samples, one version only, an interval too wide to tell, a significant shift whose size against the margin is unresolved, or a side that lost more than a tenth of its load windows to silence). With `--store` the verdict is appended to the lake's `perf_verdicts` table. See the [Performance Regression guide](performance-regression.md) for the rules.
 
 ## tumult tui
 

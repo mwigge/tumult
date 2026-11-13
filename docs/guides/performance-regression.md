@@ -14,41 +14,70 @@ auditable later.
 
 ## How a verdict is computed
 
-1. **Versions.** A target's versions are the `service.version` resource
-   values on the telemetry whose `service.name` is the target — the
-   service's own spans arriving over OTLP. A version is *live* when, in
-   some environment in scope, its last span lies within 60 seconds of that
-   environment's latest span of the target. The *candidate* is the live
-   version first seen most recently and the *baseline* the next one; when
-   fewer than two are live, the versions that fell silent follow, the one
-   heard last first. Old and new builds reporting side by side (two
-   environments, a canary, a rolling deploy) therefore rank by when each
-   was deployed, not by which one happened to speak last, and a build that
-   was rolled back stops being the candidate once the build that replaced
-   it has reported for a minute. Within that minute a rollback cannot be
-   told from a canary.
-2. **Runs.** Every experiment run against the target (root spans with
-   `resilience.target.system`) is attributed to one version from the
-   target's spans **in the run's own environment** (a run without an
-   environment is matched against every environment in scope):
+1. **Runs and the version each measured.** A run is an experiment against
+   the target (root spans with `resilience.target.system`) that started
+   inside the lookback `range` (30 days by default). Its window is the
+   experiment's root span: from the run's start to its end. The version a
+   run measured is, in this order:
 
-   1. the version with the most spans inside the run's window, from its
-      first load or probe sample to the end of its last. A build that was
-      idle until the load reached it owns the run it answered;
-   2. on a tie, the version deployed last in that environment (first seen
-      latest), then the greater version string;
-   3. with no span inside the window, the version of the environment's
-      last span at or before the run's start;
-   4. otherwise the run is left out.
+   1. **the version the run recorded** — `declared` when the experiment's
+      `target.version` or `tumult run --target-version` named it,
+      `observed` when the runner read it at the end of the run from the
+      target's own spans inside the run's window in the run's environment
+      and froze it in the journal (`target_version` with
+      `version_source`). The lake keeps it per run;
+   2. **`inferred`**, for a run that recorded none (older journals, or a
+      target that was silent when the run ended): the version carried by
+      most of the target's spans (`service.name` is the target) inside the
+      run's window; on a tie the version first seen latest in that
+      environment, then the greater version number (`1.10.0` is above
+      `1.9.0`; plain string order only when a version is not a number).
+      With no span inside the window, the version of the target's last
+      span before the run's start, when that span is at most one hour old;
+   3. otherwise **none**. The run is not dropped quietly: it is counted in
+      `unattributed_runs` with its reason
+      (`no_target_telemetry_in_environment` when the target never reported
+      a version in the run's environment, `no_target_spans_near_run` when
+      it did but not near this run) and takes part in nothing.
 
-   Telemetry from another environment never decides: with 1.0.0 busy in
-   prod and 1.1.0 soaked in demo, the demo run belongs to 1.1.0 however the
-   two streams interleave. A run against a canary taking a minority of
-   one environment's traffic goes to the majority version; give the canary
-   its own environment name (or its own target) to judge it by itself. The
-   evidence is aggregated in SQL (one row per version and environment, and
-   per run and version), so the cost of a read does not grow with the
-   number of spans returned.
+   Only spans of exactly the run's environment are read for a run. A run
+   that names no environment is read from the spans that name none, never
+   from another environment's. With 1.0.0 busy in prod and 1.1.0 soaked in
+   demo, the demo run belongs to 1.1.0 however the two streams interleave.
+   Recording the version is the reliable path: declare it in the pipeline
+   that knows what it deployed, and inference never has to guess. A run
+   against a canary taking a minority of one environment's traffic is
+   otherwise observed as the majority version; declare the version, or
+   give the canary its own environment name.
+2. **One environment, two versions.** An answer is for one environment:
+   the one `env` names, else the only one in which the target has versions,
+   else the only one that can answer (it has two versions, or every
+   version the request names). When several could, the answer is a 400
+   that asks for `env` or for explicit versions; one environment's
+   baseline is never compared with another's candidate.
+
+   Inside that environment the versions are put in **deployment order**:
+   by first sight, latest first, then by the greater version number. A
+   version a run recorded counts as seen from that run's start. The
+   *candidate* is the version deployed last and the *baseline* the one
+   deployed just before it, unless `candidate` and `baseline` name them;
+   `selection` in the answer says which (`deployment_order` or
+   `explicit`). The order does not depend on which version reported last:
+   an old build that keeps emitting spans, or resumes after a rollback,
+   changes nothing, and two identical requests with no new run in between
+   return the same verdict. To judge a rollback, name the versions.
+
+   **What a read costs.** Versions come from a rollup the writer keeps
+   while it inserts spans (`service_version_sightings`: one row per
+   service, version and environment with its first and last sighting), so
+   listing them never scans the spans. Runs are the experiment root spans
+   inside the lookback. The target's own spans are read only for the runs
+   that recorded no version, only inside the lookback plus the one-hour
+   staleness limit, and aggregated in SQL to at most runs × versions rows.
+   The cost is therefore bounded by `range` and by the number of runs in
+   it, but it is not constant: a read that has to infer many old runs
+   against a busy target scans that target's spans for the lookback.
+   Shorten `range`, or record versions on the runs, to keep it small.
 3. **Samples.** For each side, the `during`-phase `probe_samples` rows of its
    runs for one series — by default `load.latency_p95_ms`, the per-window p95
    a streaming load adapter writes (see the
@@ -58,6 +87,16 @@ auditable later.
    series it does have. Any series works: a
    hypothesis probe's duration (`probe_name` = the probe's name) or another
    `load.*` metric.
+
+   **Partial runs.** A run whose load was aborted or truncated (windows
+   skipped because earlier ones overran) is counted per side in `partial`
+   and its samples are left out; `include=partial` keeps them. Halted and
+   deviated runs are counted too and stay in. A load window in which
+   nothing answered leaves no latency sample, so it could flatter a build
+   that stopped answering: each side reports its `windows` (`planned`,
+   `completed`, `unanswered`, `unanswered_share`), and a side that lost
+   more than a tenth of its windows that way is not comparable — the
+   verdict is `inconclusive` with that reason first, never `unchanged`.
 4. **Statistics** (`tumult-perf`). Nearest-rank p50/p95/p99 of each side, the
    candidate − baseline difference at the chosen quantile (p95 by default),
    and a percentile-bootstrap confidence interval on that difference: 2000
@@ -80,8 +119,10 @@ auditable later.
 ## The endpoints
 
 ```
-GET  /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=
-POST /api/perf/{target}/verdicts?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=
+GET  /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=&baseline=&candidate=&range=&include=
+POST /api/perf/{target}/verdicts   (same query string)
+GET  /api/perf?range=
+GET  /api/perf/{target}/version?env=&from_ns=&to_ns=
 ```
 
 | Parameter | Default | Meaning |
@@ -91,27 +132,50 @@ POST /api/perf/{target}/verdicts?probe=&quantile=&confidence=&min_samples=&margi
 | `confidence` | `0.95` | Bootstrap interval level, in (0, 1) |
 | `min_samples` | `20` | Fewer on either side is inconclusive |
 | `margin_pct` | `5` | Noise margin as a percentage of the baseline quantile |
-| `env` | all in scope | Restrict the versions, runs and history to one environment (403 outside a scoped token's environments, 400 when empty) |
+| `env` | the only environment that can answer | The environment the answer is for (403 outside a scoped token's environments, 400 when empty) |
+| `candidate` | the version deployed last | The version judged; alone, its baseline is the version deployed just before it |
+| `baseline` | the version deployed before the candidate | The version compared against; alone, its candidate is the latest other version |
+| `range` | `30d` | Lookback for runs and versions: a number followed by `s`, `m`, `h`, `d` or `w` |
+| `include` | — | `partial` keeps the samples of aborted and truncated runs |
 
-The answer carries both sides (`version`, `runs`, `samples`, `p50`/`p95`/
-`p99`), the `comparison` (`delta`, `delta_pct`, `ci_low`, `ci_high`,
-`margin`, `iterations`, `seed`), `verdict`, `reasons`, the `versions_seen`
-in candidate-first order with their first/last timestamps and `live`,
-`stored`, `duplicate`, and `history` — the last ten
-stored verdicts for the target. An unknown target (no `service.version`
-seen in the environments asked for) is a 404 that names those environments;
-a target with one version is a 200 `inconclusive`.
+The answer carries the `environment` it is for (and `environments_seen`),
+the `range` and `since_ns`, `selection` (`explicit` or
+`deployment_order`), both sides, the `comparison` (`delta`, `delta_pct`,
+`ci_low`, `ci_high`, `margin`, `iterations`, `seed`), `verdict`,
+`reasons`, the environment's `versions_seen` in deployment order with
+their first and last timestamps, `unattributed_runs` (`count`, `reasons`,
+`runs`), `stored`, `duplicate`, and `history` — the last ten verdicts
+stored for the target in that environment. Each side has `version`,
+`runs`, `samples`, `p50`/`p95`/`p99`, `attribution` (how many of its runs
+were `declared`, `observed`, `inferred`), `run_details` (per run: the
+attribution, the status, whether it was truncated or aborted, whether its
+samples are included), `partial` (`truncated`, `aborted`, `halted`,
+`deviated`, `excluded`), `windows` and the `distribution` of its samples.
+
+An unknown target (no `service.version` seen in the environments asked
+for) is a 404 that names those environments; a target with one version is
+a 200 `inconclusive`; a named version the environment has not seen inside
+the range is a 400 that lists the ones it has; a target with versions in
+several environments and nothing to single one out is a 400 that lists
+them.
+
+`GET /api/perf` lists the targets experiments ran against inside the
+range, with the environments of those runs, within the caller's scopes.
+`GET /api/perf/{target}/version` answers which version most of the
+target's spans carried between two instants in exactly one environment
+(`null` when it reported none); it is what `tumult run` asks once at the
+end of a run to record an `observed` version.
 
 `GET` is a pure read (viewer role): dashboards can ask as often as they
-like without growing the lake. A `GET` carrying a `store` parameter, with
-any value, is refused with 400 and the name of the `POST` route rather
-than answered as if it had stored.
+like without growing the lake. A `store` parameter, with any value, is refused with 400 on both routes:
+on `GET` with the name of the `POST` route rather than an answer that
+looks as if it had stored, on `POST` because the route always stores.
 `POST …/verdicts` (operator role, in the route table like every other
 mutation) computes the same answer and appends it to the lake's
 `perf_verdicts` table (schema v18): target, probe, both versions, both
 sides' percentiles, the interval, the margin, the verdict and its reasons,
-when it was computed, and the environments it was computed under (`envs`,
-null when the caller was unscoped and passed no `env`). It answers 201 with
+when it was computed, and the environment it was computed for (`envs`,
+null for telemetry that names no environment). It answers 201 with
 `stored: true`, 409 when there is only one version and so nothing to store,
 and 503 when the daemon has no writable lake. Rows are never updated, so a
 recomputation after more runs adds a newer row and the older one stays.
@@ -140,12 +204,14 @@ environments):
 3. the resource attribute `deployment.environment.name`
 4. the resource attribute `deployment.environment`
 
-A service whose telemetry carries none of them is in no environment: an
-unscoped request without `env` still sees it, but `?env=staging` or a
-scoped token gets a 404 saying that no `service.version` was seen for the
-target *in environment staging* and listing the attributes above. That is
-deliberately fail-closed — untagged telemetry is never assumed to belong to
-the environment someone asked for.
+A service whose telemetry carries none of them forms an environment of its
+own (`environment: null` in the answer). An unscoped request without `env`
+is answered for it when it is the only one that can answer; `?env=staging`
+or a scoped token gets a 404 saying that no `service.version` was seen for
+the target *in environment staging* and listing the attributes above. That
+is deliberately fail-closed — untagged telemetry is never assumed to
+belong to the environment someone asked for, and it cannot be selected by
+name.
 
 ## The CLI
 
@@ -157,12 +223,20 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 
 ```
 perf checkout: REGRESSED (p95 of load.latency_p95_ms)
-  baseline  1.4.0: 100.0 ms over 40 sample(s)
-  candidate 1.5.0: 150.0 ms over 40 sample(s)
+  versions: the two deployed last, in environment staging
+  baseline  1.4.0: 100.0 ms over 40 sample(s) in 2 run(s)
+  candidate 1.5.0: 150.0 ms over 40 sample(s) in 2 run(s)
+      1 run(s) attributed from spans; 1 partial run(s) left out
   delta +50.0 ms (+50.0%), CI [31.0, 70.0], margin ±5.0
   - p95 difference interval [31.00, 70.00] against a noise margin of ±5.00 lies entirely above the margin
   verdict stored in perf_verdicts
 ```
+
+`--baseline <version>` and `--candidate <version>` name the versions
+instead of taking the two deployed last (the `versions:` line then reads
+`named on the request`). A side that lost load windows to silence adds
+`N of M load window(s) went unanswered`, and runs without a version add
+`N run(s) could not be attributed to a version`.
 
 `--fail-on regressed` (default) exits non-zero on a regression;
 `--fail-on inconclusive` also fails when there is not enough evidence to
@@ -177,14 +251,19 @@ single version (409), or an answer without `stored: true` — whatever
 
 ## A pipeline shape that works
 
-1. Deploy build *N* of `checkout` to staging; its spans arrive with
-   `service.version = N`.
+1. Deploy build *N* of `checkout` to staging.
 2. Run a `kind: performance` (or `load`) experiment against `checkout` with
-   `tool: oha` and a soak profile long enough for 20+ windows. The default
-   series (`load.latency_p95_ms`) exists only for oha runs; with k6, pass
-   `--probe` a series the run does write, such as a hypothesis probe's name.
-3. `tumult perf checkout --env staging --store` compares *N* against *N−1*,
-   records the verdict and fails the job on `regressed`.
+   `tool: oha` and a soak profile long enough for 20+ windows, and say
+   which build it measures: `tumult run soak.toon --target-version N` (or
+   `target.version` in the definition). Without it the runner records the
+   version the target's spans carried during the run, which needs the
+   service to export traces with `service.version = N` to the daemon. The
+   default series (`load.latency_p95_ms`) exists only for oha runs; with
+   k6, pass `--probe` a series the run does write, such as a hypothesis
+   probe's name.
+3. `tumult perf checkout --env staging --store` compares *N* against the
+   build deployed before it, records the verdict and fails the job on
+   `regressed`.
 
 ## Error rates: oha and k6 differ
 
@@ -209,7 +288,12 @@ never return are counted as timeout errors; a window in which nothing was
 answered has no latency sample at all, is counted in the journal
 (`execution.unanswered_windows`), and fails the run only through a declared
 threshold such as `error_rate` (see the
-[Load Testing Guide](load-testing-guide.md)).
+[Load Testing Guide](load-testing-guide.md)). A window skipped because the
+one before it went unanswered is counted with the unanswered ones
+(`execution.lost_to_unanswered`), not as truncation, so a blackout alone
+does not make the run deviate. The verdict still sees it: unanswered
+windows are reported per side and too many of them make the comparison
+inconclusive.
 
 ## What is deferred
 

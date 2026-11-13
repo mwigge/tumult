@@ -106,7 +106,7 @@ tumult run experiment-with-load.toon
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TUMULT_OHA_BINARY` | oha | oha binary path |
-| `TUMULT_OHA_REQUEST_TIMEOUT_S` | the window's length, at least 2 and at most 30 | Seconds oha waits for one answer before counting the request as a `timeout` error |
+| `TUMULT_OHA_REQUEST_TIMEOUT_S` | the window's length, at most 30; three quarters of it for a window under 2 s | Seconds oha waits for one answer before counting the request as a `timeout` error |
 
 oha needs no script: `load.script` is the URL. The adapter runs
 `oha --no-tui --output-format json -c <vus> -z <window> -w -t <timeout> <url>`
@@ -120,10 +120,13 @@ requests still in flight when a window's time is up, so a slow answer lands
 in that window's percentiles, and `-t` turns one that never comes into a
 `timeout` error. A window can therefore outlast its slot by up to the
 request timeout. By default that timeout is the window's own planned
-length, never below 2 seconds nor above 30, so a one-second sampling window
-against a hung target ends within about three seconds and a normal stop
-never waits half a minute with the fault still injected; set
-`TUMULT_OHA_REQUEST_TIMEOUT_S` when one answer may legitimately take
+length, never above 30 seconds, so a normal stop never waits half a minute
+with the fault still injected. A window shorter than two seconds gives up
+after three quarters of its length instead: a one-second sampling window
+against a hung target ends within about 1.75 seconds, inside the first
+half of the next window's slot, so one hung request cannot by itself cost
+the next window its place. Set `TUMULT_OHA_REQUEST_TIMEOUT_S` when one
+answer may legitimately take
 longer. A window is killed (and reported as failed) only after its length
 plus the timeout plus a ten-second grace. Each sample's `duration_s` is the
 time the window really ran, not the planned length.
@@ -145,7 +148,12 @@ plan its place: a ramp reaches its peak when the plan says so, and a
 
 **Planned against completed.** The load result carries an `execution`
 block in the journal: `planned_windows`, `completed_windows`,
-`unanswered_windows`, `aborted`, and `reasons`. A plan that fell short —
+`unanswered_windows`, `lost_to_unanswered`, `aborted`, and `reasons`; the
+lake keeps them per run, with the time the load really sampled. A slot
+lost behind a window in which nothing answered is part of that blackout
+(`lost_to_unanswered`), not a truncation: it fails the run only through a
+declared threshold, like the unanswered window itself. A plan that fell
+short —
 windows skipped because their predecessors overran, a window that failed,
 windows never started because the method ended first — never meets its
 thresholds (`thresholds_met: false`, the reason says how many of how many

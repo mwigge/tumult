@@ -94,7 +94,8 @@ analysis, observability, GameDays, and MCP usage.
 - Load profiles (ramp, spike, soak) on k6 and oha behind one adapter
   boundary, streamed load samples in the lake, and performance regression
   verdicts per `service.version` with a bootstrap confidence interval
-  (`tumult perf`, `GET /api/perf/{target}`).
+  (`tumult perf`, `GET /api/perf/{target}`, the `/performance` page); each
+  run records the version it measured (`tumult run --target-version`).
 - Deterministic and live-proxy fault injection for AI agents, plus adapters for
   Claude Code and Codex.
 
