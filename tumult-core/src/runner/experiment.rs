@@ -18,13 +18,14 @@ use opentelemetry::KeyValue;
 
 use super::activity::{evaluate_hypothesis, execute_activities, run_rollbacks};
 use super::guard::{finish_guard_monitor, spawn_guard_monitor};
+use super::load::{self, LoadEnd};
 use super::nfr;
 use super::phases::{
     build_post_result, collect_post_samples, compute_analysis, samples_for_journal,
 };
 use super::sampler::{finish_during_sampler, spawn_during_sampler};
 use super::telemetry::{epoch_nanos_now, make_interrupted_journal};
-use super::{load, ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
+use super::{ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
 
 /// Execute only the rollback phase of `experiment` — orphan recovery for a
 /// run whose owning process died mid-fault (e.g. tumultd killed with
@@ -292,10 +293,11 @@ pub fn run_experiment_with_sampling(
     );
 
     // -- Auto-halt path: a guard breached mid-experiment. Skip post-phase and
-    // hypothesis-after (we pulled the plug), stop load, run rollbacks
+    // hypothesis-after (we pulled the plug), end the load at once, run rollbacks
     // (treating the halt as needing rollback), and mark the run `Halted`.
     if let Some(mut halt) = halt {
-        let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+        let load_result =
+            load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Abort);
         drop(load_span_guard);
 
         let rollback_started = Instant::now();
@@ -359,10 +361,11 @@ pub fn run_experiment_with_sampling(
 
     // -- Mid-method cancellation: the caller's token fired while the method
     // ran (SIGINT broke the foreground loop). The run must never be reported
-    // `Completed` from here on — stop load, run rollbacks (a fault may still
+    // `Completed` from here on — end the load at once, run rollbacks (a fault may still
     // be injected), and mark it `Interrupted`.
     if method_token.is_cancelled() {
-        let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+        let load_result =
+            load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Abort);
         drop(load_span_guard);
 
         let rollback_results = run_rollbacks(
@@ -438,7 +441,7 @@ pub fn run_experiment_with_sampling(
         });
 
     // -- Stop load test, collect results, and enrich the span
-    let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+    let load_result = load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Stop);
 
     // -- Objectives: every declared NFR and recovery target gets a verdict
     // from the measurements above. A breached *blocking* objective turns a
@@ -480,9 +483,14 @@ pub fn run_experiment_with_sampling(
         let status = determine_status(
             hypothesis_before_met,
             hypothesis_after_met,
-            actions_succeeded && (experiment.load.is_none() || load_result.is_some()),
+            // A declared load that left no evidence is a failed run, not a
+            // completed one that happens to lack numbers.
+            actions_succeeded && load::load_has_evidence(experiment, load_result.as_ref()),
         );
-        if status == ExperimentStatus::Completed && blocking_breach {
+        // A load that missed its thresholds is a deviation, like a breached
+        // blocking objective.
+        let breached = blocking_breach || load::load_missed_thresholds(load_result.as_ref());
+        if status == ExperimentStatus::Completed && breached {
             ExperimentStatus::Deviated
         } else {
             status

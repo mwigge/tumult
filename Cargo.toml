@@ -86,17 +86,17 @@ tokio-netem = "0.1.1"
 clap = { version = "4", features = ["derive"] }
 
 # OpenTelemetry
-opentelemetry = { version = "0.32", features = ["trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.32", features = ["trace", "metrics", "logs", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "trace", "metrics", "logs"] }
-opentelemetry-semantic-conventions = "0.32"
-opentelemetry-stdout = { version = "0.32", features = ["trace"] }
+opentelemetry = { version = "0.33", features = ["trace", "metrics", "logs"] }
+opentelemetry_sdk = { version = "0.33", features = ["trace", "metrics", "logs", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "trace", "metrics", "logs"] }
+opentelemetry-semantic-conventions = "0.33"
+opentelemetry-stdout = { version = "0.33", features = ["trace"] }
 
 # Tracing (Rust idiomatic) + OTel bridge
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry", "fmt"] }
-tracing-opentelemetry = "0.33"
-opentelemetry-appender-tracing = "0.32"
+tracing-opentelemetry = "0.34"
+opentelemetry-appender-tracing = "0.33"
 
 # HTTP
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -179,9 +179,13 @@ tumult-api = { path = "tumult-api" }
 tumult-intelligence = { path = "tumult-intelligence" }
 
 # OTLP receive side (tumult-otlp / tumult-ingest)
-opentelemetry-proto = { version = "0.32", features = ["gen-tonic"] }
+opentelemetry-proto = { version = "0.33", features = ["gen-tonic"] }
 tonic = "0.14"
 prost = "0.14"
+# OTel-Arrow (OTAP) receive side (tumult-ingest): codec for the vendored
+# arrow_service.proto and the CBOR carrier of map/array attribute values.
+tonic-prost = "0.14"
+ciborium = "0.2"
 
 # Analytics reports, manual import, embedded web UI
 serde_yaml = "0.9"

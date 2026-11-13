@@ -193,8 +193,18 @@ pub fn compare(baseline: &[f64], candidate: &[f64], opts: &CompareOptions) -> Co
             )
         })
         .collect::<Vec<_>>();
-    if !too_few.is_empty() || opts.iterations == 0 {
+    // An empty side can never be resampled, whatever `min_samples` says.
+    let empty: Vec<String> = [
+        ("baseline", base.is_empty()),
+        ("candidate", cand.is_empty()),
+    ]
+    .into_iter()
+    .filter(|(_, is_empty)| *is_empty)
+    .map(|(side, _)| format!("{side} has no samples"))
+    .collect();
+    if !too_few.is_empty() || !empty.is_empty() || opts.iterations == 0 {
         reasons.extend(too_few);
+        reasons.extend(empty);
         if opts.iterations == 0 {
             reasons.push("bootstrap iterations is 0".into());
         }
@@ -229,6 +239,24 @@ fn classify(ci: Interval, margin: f64, q: Quantile) -> (Verdict, String) {
         return (
             Verdict::Inconclusive,
             format!("{q} difference interval {band} reaches past the margin in both directions"),
+        );
+    }
+    // Significant (zero excluded) but straddling the margin: the change is
+    // real, whether it matters is not settled.
+    if ci.low > 0.0 && ci.high > margin {
+        return (
+            Verdict::Inconclusive,
+            format!(
+                "{q} difference interval {band} is significant but its magnitude against the margin is unresolved"
+            ),
+        );
+    }
+    if ci.high < 0.0 && ci.low < -margin {
+        return (
+            Verdict::Inconclusive,
+            format!(
+                "{q} difference interval {band} is a significant improvement but its magnitude against the margin is unresolved"
+            ),
         );
     }
     (
@@ -292,6 +320,89 @@ mod tests {
         };
         let c = compare(&base, &cand, &opts);
         assert_eq!(c.verdict, Verdict::Unchanged, "{c:?}");
+    }
+
+    #[test]
+    fn a_significant_shift_straddling_the_margin_is_inconclusive() {
+        let base = around(100.0, 200, 1.0);
+        let cand = around(106.0, 200, 1.0);
+        // Put the margin inside the (deterministic) interval, so the shift
+        // is clearly real but whether it exceeds the margin is not.
+        let first = compare(&base, &cand, &CompareOptions::default());
+        let ci = first.interval.expect("interval");
+        assert!(ci.low > 0.0, "{first:?}");
+        let mid = f64::midpoint(ci.low, ci.high);
+        let opts = CompareOptions {
+            noise_margin_pct: mid / first.baseline.p95.unwrap() * 100.0,
+            ..CompareOptions::default()
+        };
+        let c = compare(&base, &cand, &opts);
+        assert!(c.interval == Some(ci), "same seed, same interval");
+        assert!(c.margin > ci.low && c.margin < ci.high, "{c:?}");
+        assert_eq!(c.verdict, Verdict::Inconclusive, "{c:?}");
+        assert!(
+            c.reasons.last().unwrap().contains("unresolved"),
+            "{:?}",
+            c.reasons
+        );
+        // Mirrored for an improvement of the same size (the margin is
+        // relative to the new baseline, so it is re-derived).
+        let swapped = compare(&cand, &base, &CompareOptions::default());
+        let ci = swapped.interval.expect("interval");
+        let opts = CompareOptions {
+            noise_margin_pct: -f64::midpoint(ci.low, ci.high) / swapped.baseline.p95.unwrap()
+                * 100.0,
+            ..CompareOptions::default()
+        };
+        let c = compare(&cand, &base, &opts);
+        assert!(c.margin > -ci.high && c.margin < -ci.low, "{c:?}");
+        assert_eq!(c.verdict, Verdict::Inconclusive, "{c:?}");
+        assert!(c.reasons.last().unwrap().contains("improvement"));
+        // The pure rule, with the reviewer's numbers.
+        let (v, _) = classify(
+            Interval {
+                low: 4.0,
+                high: 12.0,
+            },
+            5.0,
+            Quantile::P95,
+        );
+        assert_eq!(v, Verdict::Inconclusive);
+        let (v, _) = classify(
+            Interval {
+                low: -12.0,
+                high: -4.0,
+            },
+            5.0,
+            Quantile::P95,
+        );
+        assert_eq!(v, Verdict::Inconclusive);
+        let (v, _) = classify(
+            Interval {
+                low: 1.0,
+                high: 4.0,
+            },
+            5.0,
+            Quantile::P95,
+        );
+        assert_eq!(v, Verdict::Unchanged);
+    }
+
+    #[test]
+    fn an_empty_side_is_inconclusive_even_with_min_samples_zero() {
+        let base = around(100.0, 30, 5.0);
+        let opts = CompareOptions {
+            min_samples: 0,
+            ..CompareOptions::default()
+        };
+        let c = compare(&base, &[], &opts);
+        assert_eq!(c.verdict, Verdict::Inconclusive);
+        assert!(c
+            .reasons
+            .iter()
+            .any(|r| r.contains("candidate has no samples")));
+        let c = compare(&[], &[], &opts);
+        assert_eq!(c.verdict, Verdict::Inconclusive);
     }
 
     #[test]

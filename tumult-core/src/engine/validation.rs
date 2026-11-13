@@ -293,11 +293,14 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());
     };
-    let Some(profile) = load.profile.as_ref() else {
-        return Ok(());
-    };
     let invalid = |reason: &str| EngineError::LoadProfileInvalid {
         reason: reason.to_string(),
+    };
+    if load.vus == Some(0) {
+        return Err(invalid("vus must be at least 1"));
+    }
+    let Some(profile) = load.profile.as_ref() else {
+        return Ok(());
     };
     let Some(duration_s) = load.duration_s else {
         return Err(invalid("a profile requires duration_s"));
@@ -311,13 +314,16 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         }
         Err(invalid(&format!("{name} must be finite and positive")))
     };
-    let vus = load.vus.unwrap_or(10);
+    let vus = load.vus.unwrap_or(crate::runner::load_profile::DEFAULT_VUS);
     match profile {
         LoadProfile::Ramp {
             start_vus,
             ramp_up_s,
         } => {
             positive("ramp_up_s", *ramp_up_s)?;
+            if *start_vus == 0 {
+                return Err(invalid("start_vus must be at least 1"));
+            }
             if *ramp_up_s > duration_s {
                 return Err(invalid("ramp_up_s must not exceed duration_s"));
             }
@@ -331,6 +337,9 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
             hold_s,
         } => {
             positive("hold_s", *hold_s)?;
+            if *peak_vus == 0 {
+                return Err(invalid("peak_vus must be at least 1"));
+            }
             if !(after_s.is_finite() && *after_s >= 0.0) {
                 return Err(invalid("after_s must be finite and non-negative"));
             }
@@ -343,6 +352,11 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         }
         LoadProfile::Soak { sample_interval_s } => {
             positive("sample_interval_s", *sample_interval_s)?;
+            if *sample_interval_s < crate::runner::load_profile::MIN_WINDOW_S {
+                return Err(invalid(
+                    "sample_interval_s must be at least 1 second: a shorter window measures too few requests",
+                ));
+            }
             if *sample_interval_s > duration_s {
                 return Err(invalid("sample_interval_s must not exceed duration_s"));
             }

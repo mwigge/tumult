@@ -4,7 +4,12 @@ This is the architecture of Tumult's analytics half: the `tumultd` daemon,
 its embedded web UI, and the crates behind them. The daemon ingests
 chaos/resilience telemetry (OTLP + manual files), stores it in the
 embedded DuckDB lake, executes registered experiment definitions under an
-approval workflow, and serves the web UI plus compliance reports.
+approval workflow, and serves the web UI plus compliance reports. Next to
+OTLP/gRPC and OTLP/HTTP, the gRPC listener also speaks OTel-Arrow (OTAP,
+the Collector's `otelarrow` exporter): `tumult-ingest::otap` decodes the
+Arrow IPC tables back into the OTLP request types, so the same
+`tumult-otlp` conversion and the same single-writer channel serve both
+carriers and the rows are identical whichever one delivered them.
 Everything lives in this repository as first-class `tumult-*` crates.
 
 The daemon's configuration surface keeps `KRONIKA_*` environment variable
@@ -26,7 +31,8 @@ not being renamed.
                         ┌────────────────────────────────────────────┐
                         │                  tumultd                   │
                         │                                            │
- tumult ──OTLP/gRPC──▶  │  tumult-ingest (grpc :4317)                │
+ tumult ──OTLP/gRPC──▶  │  tumult-ingest (grpc :4317, OTLP +         │
+ Collector ─OTAP────▶   │                 OTel-Arrow streams)         │
  (TUMULT_OTEL_ENABLED, │  tumult-ingest (http :4318, /v1/*,          │
   OTEL_EXPORTER_       │                          /healthz)          │
   OTLP_ENDPOINT)       │        │ decode prost (opentelemetry-proto) │
@@ -205,7 +211,7 @@ non-loopback bind refuses to start unauthenticated.
 `POST /api/users/{id}/password` is the admin recovery path for a
 locked-out user: a supplied one-time password with `must_change`
 re-armed.
-`KRONIKA_INGEST_TOKEN` guards OTLP `/v1/*` HTTP and gRPC ingest;
+`KRONIKA_INGEST_TOKEN` guards OTLP `/v1/*` HTTP, gRPC and OTel-Arrow ingest;
 clients authenticate with the standard `OTEL_EXPORTER_OTLP_HEADERS`, and
 the CLI sends `TUMULT_DAEMON_TOKEN` on journal import.
 

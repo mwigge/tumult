@@ -134,6 +134,19 @@ pub trait LoadExecutor: Send + Sync {
     ///
     /// Returns an error if the process cannot be stopped or metrics cannot be parsed.
     fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String>;
+
+    /// Ends the load test at once because the run was halted or
+    /// interrupted: nothing may keep hitting the target while a fault is
+    /// still injected and rollbacks wait. Whatever had been measured is
+    /// kept. The default is [`LoadExecutor::stop`], for tools whose stop
+    /// never waits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool had measured nothing yet.
+    fn abort(&self, handle: LoadHandle) -> Result<LoadResult, String> {
+        self.stop(handle)
+    }
 }
 
 /// The adapter for a configured load tool. `jmeter` is accepted by the
@@ -146,7 +159,7 @@ pub trait LoadExecutor: Send + Sync {
 pub fn load_executor_for(tool: &LoadTool) -> Result<std::sync::Arc<dyn LoadExecutor>, String> {
     match tool {
         LoadTool::K6 => Ok(std::sync::Arc::new(k6::K6LoadExecutor)),
-        LoadTool::Oha => Ok(std::sync::Arc::new(oha::OhaLoadExecutor)),
+        LoadTool::Oha => Ok(std::sync::Arc::new(oha::OhaLoadExecutor::default())),
         LoadTool::Jmeter => Err("no load adapter for jmeter; supported tools: k6, oha".into()),
     }
 }

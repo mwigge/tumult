@@ -576,3 +576,32 @@ fn validate_rejects_soak_interval_longer_than_the_run() {
     };
     assert!(load_error(&with_load(Some(soak), None, Some(60.0))).contains("sample_interval_s"));
 }
+
+#[test]
+fn validate_rejects_a_soak_interval_below_one_second() {
+    let soak = LoadProfile::Soak {
+        sample_interval_s: 0.5,
+    };
+    let error = load_error(&with_load(Some(soak), None, Some(60.0)));
+    assert!(error.contains("at least 1 second"), "{error}");
+    let soak = LoadProfile::Soak {
+        sample_interval_s: 1.0,
+    };
+    assert!(validate_experiment(&with_load(Some(soak), None, Some(60.0))).is_ok());
+}
+
+#[test]
+fn validate_rejects_zero_users_anywhere() {
+    assert!(load_error(&with_load(None, Some(0), None)).contains("vus"));
+    let ramp = LoadProfile::Ramp {
+        start_vus: 0,
+        ramp_up_s: 10.0,
+    };
+    assert!(load_error(&with_load(Some(ramp), Some(5), Some(60.0))).contains("start_vus"));
+    let spike = LoadProfile::Spike {
+        peak_vus: 0,
+        after_s: 1.0,
+        hold_s: 1.0,
+    };
+    assert!(load_error(&with_load(Some(spike), None, Some(60.0))).contains("peak_vus"));
+}

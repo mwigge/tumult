@@ -55,7 +55,7 @@ method[1]:
         delay_ms: 150
         jitter_ms: 20
         seed: 7
-    pause_after_s: 120.0
+    pause_after_s: 180.0
 
 rollbacks[1]:
   - name: stop-proxy

@@ -152,6 +152,9 @@ impl AnalyticsStore {
     ///     rollback_failures: 0,
     ///     halt: None,
     ///     blast_radius: None,
+    ///     kind: TestKind::default(),
+    ///     objectives: None,
+    ///     probe_samples: vec![],
     /// };
     ///
     /// store.ingest_journal(&journal).unwrap();

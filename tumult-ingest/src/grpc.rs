@@ -1,8 +1,11 @@
-//! OTLP/gRPC services (what tumult's exporter talks: bare `host:4317`).
+//! OTLP/gRPC services (what tumult's exporter talks: bare `host:4317`),
+//! plus the OTel-Arrow stream services ([`crate::otap`]) on the same
+//! listener.
 //!
 //! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
-//! export call must carry an `authorization: Bearer <token>` metadata entry;
-//! anything else is rejected with `UNAUTHENTICATED`.
+//! export call (and every Arrow stream) must carry an
+//! `authorization: Bearer <token>` metadata entry; anything else is rejected
+//! with `UNAUTHENTICATED`.
 
 use opentelemetry_proto::tonic::collector::logs::v1::logs_service_server::{
     LogsService, LogsServiceServer,
@@ -55,6 +58,7 @@ pub fn router_with_token_tls(
         Some(identity) => builder.tls_config(ServerTlsConfig::new().identity(identity))?,
         None => builder,
     };
+    let otap = crate::otap::service::OtapGrpc::new(ingest.clone(), token.clone());
     Ok(builder
         .add_service(TraceServiceServer::new(OtlpGrpc {
             ingest: ingest.clone(),
@@ -67,13 +71,17 @@ pub fn router_with_token_tls(
         .add_service(LogsServiceServer::new(OtlpGrpc {
             ingest,
             ingest_token: token,
-        })))
+        }))
+        // OTel-Arrow: same listener, same token, same writer channel.
+        .add_service(otap.clone().traces())
+        .add_service(otap.clone().logs())
+        .add_service(otap.metrics()))
 }
 
 /// Bearer-token check for one incoming call: `None` token accepts
 /// everything; otherwise the `authorization` metadata must be exactly
 /// `Bearer <token>` (constant-time compare).
-fn authorize<T>(
+pub(crate) fn authorize<T>(
     ingest_token: Option<&std::sync::Arc<String>>,
     request: &Request<T>,
 ) -> Result<(), Status> {

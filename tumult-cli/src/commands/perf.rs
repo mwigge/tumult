@@ -1,6 +1,9 @@
 //! `tumult perf <target>` — ask the daemon for a target's performance
 //! regression verdict (`GET /api/perf/{target}`) and turn it into an exit
-//! code a pipeline can act on, like `tumult gate`.
+//! code a pipeline can act on, like `tumult gate`. With `--store` the
+//! verdict is also appended to the daemon's history
+//! (`POST /api/perf/{target}/verdicts`), and a verdict the daemon did not
+//! store is an error.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -30,6 +33,10 @@ pub struct PerfArgs {
     pub min_samples: Option<u32>,
     pub margin_pct: Option<f64>,
     pub env: Option<String>,
+    /// Have the daemon append the verdict to `perf_verdicts` (operator
+    /// role); without it the command only reads. The command fails when
+    /// the verdict was not stored.
+    pub store: bool,
     pub daemon_url: Option<String>,
     pub fail_on: PerfFailOn,
     pub json: bool,
@@ -185,27 +192,44 @@ pub fn render(resp: &PerfResponse) -> String {
     out
 }
 
-/// Query the daemon and print the verdict. Returns `Ok(true)` when the
-/// verdict passes under `fail_on`; the caller turns `false` into a
-/// non-zero exit.
-///
-/// # Errors
-///
-/// Returns an error when no daemon URL is configured, the daemon is
-/// unreachable, or it answers with an error status.
-pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
-    let base = args
-        .daemon_url
-        .clone()
-        .or_else(|| std::env::var(DAEMON_URL_ENV).ok())
-        .filter(|s| !s.is_empty())
-        .with_context(|| format!("no daemon URL: pass --daemon-url or set {DAEMON_URL_ENV}"))?;
-    let url = format!(
+/// The request for the daemon: a read of the verdict, or with `--store`
+/// the POST that also appends it. Pure.
+#[must_use]
+pub fn endpoint(base: &str, args: &PerfArgs) -> (reqwest::Method, String) {
+    let read = format!(
         "{}/api/perf/{}",
         base.trim_end_matches('/'),
         super::gate::encode_segment(&args.target)
     );
-    let mut query: Vec<(&str, String)> = Vec::new();
+    if args.store {
+        return (reqwest::Method::POST, format!("{read}/verdicts"));
+    }
+    (reqwest::Method::GET, read)
+}
+
+/// `--store` asked for a stored verdict: anything else is a failure, never
+/// a quiet read.
+///
+/// # Errors
+///
+/// Returns an error when `--store` was given and the daemon's answer does
+/// not say the verdict was stored.
+pub fn ensure_stored(args: &PerfArgs, resp: &PerfResponse) -> Result<()> {
+    if args.store && !resp.stored {
+        bail!(
+            "the daemon did not store the {} verdict for {}",
+            resp.verdict,
+            resp.target
+        );
+    }
+    Ok(())
+}
+
+/// The query string for the daemon: only what the caller set, so the
+/// daemon's defaults apply to the rest. Pure.
+#[must_use]
+pub fn query_params(args: &PerfArgs) -> Vec<(&'static str, String)> {
+    let mut query = Vec::new();
     if let Some(p) = &args.probe {
         query.push(("probe", p.clone()));
     }
@@ -221,12 +245,33 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
     if let Some(env) = &args.env {
         query.push(("env", env.clone()));
     }
+    query
+}
+
+/// Query the daemon and print the verdict. Returns `Ok(true)` when the
+/// verdict passes under `fail_on`; the caller turns `false` into a
+/// non-zero exit.
+///
+/// # Errors
+///
+/// Returns an error when no daemon URL is configured, the daemon is
+/// unreachable, it answers with an error status, or `--store` was given
+/// and the verdict was not stored.
+pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
+    let base = args
+        .daemon_url
+        .clone()
+        .or_else(|| std::env::var(DAEMON_URL_ENV).ok())
+        .filter(|s| !s.is_empty())
+        .with_context(|| format!("no daemon URL: pass --daemon-url or set {DAEMON_URL_ENV}"))?;
+    let (method, url) = endpoint(&base, args);
+    let query = query_params(args);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .context("failed to build HTTP client")?;
-    let mut request = client.get(&url).query(&query);
+    let mut request = client.request(method, &url).query(&query);
     if let Ok(token) = std::env::var(DAEMON_TOKEN_ENV) {
         if !token.is_empty() {
             request = request.bearer_auth(token);
@@ -249,6 +294,7 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
         bail!("perf answered HTTP {status}: {msg}");
     }
     let parsed = PerfResponse::from_value(&body)?;
+    ensure_stored(args, &parsed)?;
     if args.json {
         println!("{}", serde_json::to_string_pretty(&body)?);
     } else {
@@ -324,19 +370,67 @@ mod tests {
         assert!(PerfResponse::from_value(&v).is_err());
     }
 
-    #[tokio::test]
-    async fn cmd_perf_requires_a_daemon_url() {
-        std::env::remove_var("TUMULT_DAEMON_URL");
-        let args = PerfArgs {
+    fn args() -> PerfArgs {
+        PerfArgs {
             target: "checkout".into(),
             probe: None,
             quantile: None,
             min_samples: None,
             margin_pct: None,
             env: None,
+            store: false,
             daemon_url: None,
             fail_on: PerfFailOn::Regressed,
             json: false,
+        }
+    }
+
+    #[test]
+    fn store_is_a_post_to_the_verdicts_route_and_never_a_query_flag() {
+        assert!(query_params(&args()).is_empty());
+        let (method, url) = endpoint("http://d:1/", &args());
+        assert_eq!(method, reqwest::Method::GET);
+        assert_eq!(url, "http://d:1/api/perf/checkout");
+
+        let stored = PerfArgs {
+            store: true,
+            env: Some("demo".into()),
+            quantile: Some("p99".into()),
+            ..args()
+        };
+        let (method, url) = endpoint("http://d:1", &stored);
+        assert_eq!(method, reqwest::Method::POST);
+        assert_eq!(url, "http://d:1/api/perf/checkout/verdicts");
+        assert_eq!(
+            query_params(&stored),
+            vec![("quantile", "p99".to_string()), ("env", "demo".to_string())]
+        );
+    }
+
+    #[test]
+    fn store_fails_when_the_daemon_did_not_store() {
+        let stored = PerfResponse::from_value(&answer()).unwrap();
+        let mut v = answer();
+        v["stored"] = false.into();
+        let unstored = PerfResponse::from_value(&v).unwrap();
+        let asking = PerfArgs {
+            store: true,
+            ..args()
+        };
+        assert!(ensure_stored(&asking, &stored).is_ok());
+        let err = ensure_stored(&asking, &unstored).unwrap_err();
+        assert!(err.to_string().contains("did not store"), "{err}");
+        // A plain read never expects a stored verdict.
+        assert!(ensure_stored(&args(), &unstored).is_ok());
+    }
+
+    #[tokio::test]
+    async fn cmd_perf_requires_a_daemon_url() {
+        // An explicit empty URL is rejected before the environment is
+        // consulted, so the test does not touch process-wide state.
+        let args = PerfArgs {
+            daemon_url: Some(String::new()),
+            ..args()
         };
         let err = cmd_perf(&args).await.unwrap_err();
         assert!(err.to_string().contains("no daemon URL"), "{err}");

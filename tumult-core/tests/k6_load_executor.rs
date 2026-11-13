@@ -277,3 +277,40 @@ fn stop_rejects_a_handle_from_another_executor() {
 
     assert_eq!(error, "invalid load handle");
 }
+
+#[test]
+fn abort_kills_a_running_k6_at_once() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_k6(&dir, "#!/bin/sh\nexec sleep 30\n");
+
+    let executor = K6LoadExecutor;
+    let handle = executor.start(&config()).expect("fake k6 starts");
+    let started = std::time::Instant::now();
+    let outcome = executor.abort(handle);
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "abort blocked for {elapsed:?}"
+    );
+    let Err(error) = outcome else {
+        panic!("a k6 killed mid-run has no summary");
+    };
+    assert!(error.contains("aborted"), "{error}");
+}
+
+#[test]
+fn abort_collects_a_k6_that_already_finished() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_k6(&dir, FAKE_K6_WITH_SUMMARY);
+
+    let executor = K6LoadExecutor;
+    let handle = executor.start(&config()).expect("fake k6 starts");
+    // Let the fake exit before the run is aborted.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let result = executor.abort(handle).expect("a finished k6 is collected");
+
+    assert_eq!(result.total_requests, 300);
+}

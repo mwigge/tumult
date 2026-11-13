@@ -106,17 +106,63 @@ tumult run experiment-with-load.toon
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TUMULT_OHA_BINARY` | oha | oha binary path |
+| `TUMULT_OHA_REQUEST_TIMEOUT_S` | 30 | Seconds oha waits for one answer before counting the request as a `timeout` error |
 
 oha needs no script: `load.script` is the URL. The adapter runs
-`oha --no-tui -j -c <vus> -z <window> <url>` per window and reads the JSON
-summary (`summary.successRate`, `summary.requestsPerSec`,
+`oha --no-tui --output-format json -c <vus> -z <window> -w -t <timeout> <url>`
+per window (oha 1.x; older releases that only know `-j` are not supported)
+and reads the JSON summary (`summary.requestsPerSec`,
 `latencyPercentiles.p50/p95/p99`, `statusCodeDistribution`,
-`errorDistribution`). Percentiles of the whole run are request-weighted means
-of the window percentiles, since oha does not expose raw latencies; the
-windows themselves are kept exactly. `thresholds` are checked by the adapter
-against the aggregate (see the experiment format), because oha has no
-threshold language of its own. On `stop`, windows not yet started are
-skipped and the in-flight one gets ten seconds to finish before it is killed.
+`errorDistribution`).
+
+**Slow requests are measured, not dropped.** `-w` makes oha wait for the
+requests still in flight when a window's time is up, so a slow answer lands
+in that window's percentiles, and `-t` turns one that never comes into a
+`timeout` error. A window therefore lasts up to its length plus the request
+timeout: a soak against a service with a slow tail takes longer than
+`duration_s`, and a window is killed (and reported as failed) only after its
+length plus the timeout plus a ten-second grace. A soak's
+`sample_interval_s` below one second is rejected at validation, and the
+planner never slices a stage into windows shorter than one second (a short
+remainder joins the window before it), because a window that short measures
+mostly its own start-up.
+
+The error rate is (transport errors + answers outside 2xx/3xx) / requests —
+oha's own `successRate` only knows about transport errors, so a run of 503s
+would otherwise look clean. Should oha still report requests as
+`aborted due to deadline`, one per connection is how a window ends and is
+not counted; any beyond that are errors. A count oha prints that is not a
+whole number fails the window instead of reading as zero. Percentiles of the
+whole run are request-weighted means of the window percentiles, since oha
+does not expose raw latencies; the windows themselves are kept exactly.
+`thresholds` are checked by the adapter against the aggregate (see the
+experiment format), because oha has no threshold language of its own.
+
+**How a load ends.**
+
+| The run … | The load … |
+|---|---|
+| reaches the end of its method | finishes the window in flight (a flat load is one window, so it runs its whole `duration_s`) and starts no further one |
+| is halted by a guard, or interrupted (Ctrl-C, e-stop) | is killed at once, process group and all, before the rollbacks run; the windows already completed are kept, the one that was cut is dropped |
+
+Keep the method at least as long as `load.duration_s` when you want every
+planned window. Cancellation is checked between activities and during
+`pause_before_s` / `pause_after_s`; an activity's own process that is already
+running is not interrupted, so hold a long experiment open with a pause
+rather than a `sleep` command.
+
+**What the load does to the run.** A declared load is evidence the run
+depends on:
+
+| The load … | Run status |
+|---|---|
+| could not be collected (the tool failed, no window completed) or sent no request at all | `failed` |
+| ran but missed its `thresholds` — including a target that accepted connections and never answered | `deviated` |
+| met its thresholds | unchanged |
+
+`thresholds_met` is true only when at least one request was sent, every
+window completed with an answer, and every bound holds. The same rules
+apply to k6: an interrupted k6 is killed at once and leaves no result.
 
 ```bash
 tumult run examples/checkout-spike-oha.toon

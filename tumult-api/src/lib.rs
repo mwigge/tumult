@@ -104,8 +104,10 @@
 //!   missing: the first stop when a target is absent from the posture page.
 //! * `GET /api/perf/{target}?probe=&quantile=&env=` — performance regression
 //!   verdict (`improved|unchanged|regressed|inconclusive`) between the
-//!   target's latest two `service.version`s, with a bootstrap interval;
-//!   appended to `perf_verdicts`.
+//!   target's latest two `service.version`s, with a bootstrap interval and
+//!   the stored history; a pure read.
+//!   `POST /api/perf/{target}/verdicts` computes the same verdict and
+//!   appends it to `perf_verdicts` (Operator).
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -361,6 +363,7 @@ pub fn router(state: ApiState) -> Router {
             get(handlers::conformance::conformance),
         )
         .route("/api/perf/{target}", get(handlers::perf::perf))
+        .route("/api/perf/{target}/verdicts", post(handlers::perf::store))
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

@@ -128,10 +128,11 @@ SELECT
     max(s.duration_ns) AS duration_ns,
     any_value(coalesce(s.outcome_status, l.log_attrs['status'])) AS outcome_status,
     any_value(s.hypothesis_met) AS hypothesis_met
-FROM spans s
-LEFT JOIN logs l
-    ON l.log_attrs['experiment_id'] = s.experiment_id
-    AND l.body = 'experiment.completed'
+FROM spans AS s
+LEFT JOIN logs AS l
+    ON
+        l.log_attrs['experiment_id'] = s.experiment_id
+        AND l.body = 'experiment.completed'
 WHERE s.span_name = 'resilience.experiment'
 GROUP BY s.experiment_id;
 ";

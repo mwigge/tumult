@@ -40,6 +40,9 @@ pub struct PerfVerdictRow {
     /// JSON array of strings.
     pub reasons: Vec<String>,
     pub computed_at_ns: i64,
+    /// The environments the evidence was restricted to; `None` when the
+    /// comparison read every environment.
+    pub envs: Option<Vec<String>>,
 }
 
 impl Writer {
@@ -50,6 +53,12 @@ impl Writer {
     pub fn insert_perf_verdict(&self, row: &PerfVerdictRow) -> Result<(), StoreError> {
         let reasons = serde_json::to_string(&row.reasons)
             .map_err(|e| StoreError::Internal(format!("perf verdict reasons: {e}")))?;
+        let envs = row
+            .envs
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| StoreError::Internal(format!("perf verdict envs: {e}")))?;
         self.conn.execute(
             "INSERT INTO perf_verdicts (
                 target, probe, baseline_version, candidate_version, quantile,
@@ -57,8 +66,8 @@ impl Writer {
                 baseline_p50, baseline_p95, baseline_p99,
                 candidate_p50, candidate_p95, candidate_p99,
                 delta, delta_pct, ci_low, ci_high, confidence, margin,
-                verdict, reasons, computed_at_ns
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                verdict, reasons, computed_at_ns, envs
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 row.target,
                 row.probe,
@@ -82,6 +91,7 @@ impl Writer {
                 row.verdict,
                 reasons,
                 row.computed_at_ns,
+                envs,
             ],
         )?;
         Ok(())
@@ -91,24 +101,41 @@ impl Writer {
 impl Reader {
     /// The stored verdicts for `target`, newest first, at most `limit`
     /// rows, as JSON objects with the column names of `perf_verdicts`
-    /// (`reasons` decoded to an array).
+    /// (`reasons` and `envs` decoded to arrays).
+    ///
+    /// `scopes` restricts the rows to verdicts whose evidence came only
+    /// from those environments; a verdict computed across every
+    /// environment (`envs` NULL) is hidden from a scoped reader. An empty
+    /// `scopes` reads every row.
     ///
     /// # Errors
     /// Returns an error if the query fails.
-    pub fn perf_verdicts(&self, target: &str, limit: usize) -> Result<Vec<Value>, StoreError> {
+    pub fn perf_verdicts(
+        &self,
+        target: &str,
+        scopes: &[String],
+        limit: usize,
+    ) -> Result<Vec<Value>, StoreError> {
+        let scopes_json = serde_json::to_string(scopes)
+            .map_err(|e| StoreError::Internal(format!("perf verdict scopes: {e}")))?;
+        let unscoped = scopes.is_empty();
         let mut stmt = self.conn.prepare(
             "SELECT target, probe, baseline_version, candidate_version, quantile,
                     baseline_n, candidate_n,
                     baseline_p50, baseline_p95, baseline_p99,
                     candidate_p50, candidate_p95, candidate_p99,
                     delta, delta_pct, ci_low, ci_high, confidence, margin,
-                    verdict, CAST(reasons AS VARCHAR), computed_at_ns
+                    verdict, CAST(reasons AS VARCHAR), computed_at_ns,
+                    CAST(envs AS VARCHAR)
              FROM perf_verdicts WHERE target = ?
+               AND (? OR (envs IS NOT NULL AND list_has_all(
+                    CAST(CAST(? AS JSON) AS VARCHAR[]), CAST(envs AS VARCHAR[]))))
              ORDER BY computed_at_ns DESC LIMIT ?",
         )?;
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-        let rows = stmt.query_map(params![target, limit], |r| {
+        let rows = stmt.query_map(params![target, unscoped, scopes_json, limit], |r| {
             let reasons: String = r.get(20)?;
+            let envs: Option<String> = r.get(22)?;
             Ok(serde_json::json!({
                 "target": r.get::<_, String>(0)?,
                 "probe": r.get::<_, String>(1)?,
@@ -132,6 +159,9 @@ impl Reader {
                 "verdict": r.get::<_, String>(19)?,
                 "reasons": serde_json::from_str::<Value>(&reasons).unwrap_or(Value::Array(vec![])),
                 "computed_at_ns": r.get::<_, i64>(21)?,
+                "envs": envs
+                    .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+                    .unwrap_or(Value::Null),
             }))
         })?;
         let mut out = Vec::new();
@@ -171,7 +201,76 @@ mod tests {
             verdict: verdict.into(),
             reasons: vec!["p95 difference interval lies above the margin".into()],
             computed_at_ns,
+            envs: None,
         }
+    }
+
+    /// `perf_verdicts` as the first release created it: the lookup index
+    /// and no `envs` column.
+    const FIRST_SHAPE: &str = "
+CREATE TABLE perf_verdicts (
+    target VARCHAR NOT NULL, probe VARCHAR NOT NULL,
+    baseline_version VARCHAR NOT NULL, candidate_version VARCHAR NOT NULL,
+    quantile VARCHAR NOT NULL,
+    baseline_n BIGINT NOT NULL, candidate_n BIGINT NOT NULL,
+    baseline_p50 DOUBLE, baseline_p95 DOUBLE, baseline_p99 DOUBLE,
+    candidate_p50 DOUBLE, candidate_p95 DOUBLE, candidate_p99 DOUBLE,
+    delta DOUBLE, delta_pct DOUBLE, ci_low DOUBLE, ci_high DOUBLE,
+    confidence DOUBLE NOT NULL, margin DOUBLE NOT NULL,
+    verdict VARCHAR NOT NULL, reasons JSON NOT NULL,
+    computed_at_ns BIGINT NOT NULL
+);
+CREATE INDEX idx_perf_verdicts_target ON perf_verdicts (target);
+INSERT INTO perf_verdicts VALUES (
+    'checkout', 'load.latency_p95_ms', '1.3.0', '1.4.0', 'p95', 40, 40,
+    40.0, 100.0, 150.0, 41.0, 101.0, 151.0, 1.0, 1.0, -2.0, 4.0,
+    0.95, 5.0, 'unchanged', '[\"inside the margin\"]', 100
+);
+";
+
+    #[test]
+    fn a_lake_with_the_first_perf_verdicts_shape_upgrades_and_keeps_its_rows() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = dir.path().join("lake.duckdb");
+        // A raw connection: `Store::open` would migrate at once.
+        duckdb::Connection::open(&db)
+            .expect("open")
+            .execute_batch(FIRST_SHAPE)
+            .expect("first shape");
+
+        let store = Store::open(&db).expect("the old lake opens");
+        let writer = store.writer().expect("writer");
+        let scoped = PerfVerdictRow {
+            envs: Some(vec!["demo".into()]),
+            ..row("regressed", 200)
+        };
+        writer
+            .insert_perf_verdict(&scoped)
+            .expect("the upgraded table takes a row with envs");
+
+        let reader = store.read_only().expect("reader");
+        let all = reader.perf_verdicts("checkout", &[], 10).expect("read");
+        assert_eq!(all.len(), 2, "{all:?}");
+        assert_eq!(all[0]["verdict"], "regressed");
+        assert_eq!(all[0]["envs"], serde_json::json!(["demo"]));
+        // The row written before the upgrade survived, unscoped.
+        assert_eq!(all[1]["verdict"], "unchanged");
+        assert_eq!(all[1]["candidate_version"], "1.4.0");
+        assert!(all[1]["envs"].is_null(), "{all:?}");
+        let demo = reader
+            .perf_verdicts("checkout", &["demo".into()], 10)
+            .expect("scoped read");
+        assert_eq!(demo.len(), 1, "{demo:?}");
+
+        // Opening it again changes nothing.
+        drop((reader, writer, store));
+        let store = Store::open(&db).expect("reopen");
+        let again = store
+            .read_only()
+            .expect("reader")
+            .perf_verdicts("checkout", &[], 10)
+            .expect("read");
+        assert_eq!(again.len(), 2, "{again:?}");
     }
 
     #[test]
@@ -183,7 +282,7 @@ mod tests {
         writer.insert_perf_verdict(&row("regressed", 20)).unwrap();
 
         let reader = store.read_only().unwrap();
-        let rows = reader.perf_verdicts("checkout", 10).unwrap();
+        let rows = reader.perf_verdicts("checkout", &[], 10).unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["verdict"], "regressed");
         assert_eq!(rows[0]["computed_at_ns"], 20);
@@ -195,8 +294,47 @@ mod tests {
         );
         assert_eq!(rows[1]["verdict"], "unchanged");
 
-        assert_eq!(reader.perf_verdicts("checkout", 1).unwrap().len(), 1);
-        assert!(reader.perf_verdicts("other", 10).unwrap().is_empty());
+        assert_eq!(reader.perf_verdicts("checkout", &[], 1).unwrap().len(), 1);
+        assert!(reader.perf_verdicts("other", &[], 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn scoped_readers_see_only_verdicts_from_their_environments() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let with_envs = |verdict: &str, at: i64, envs: Option<&[&str]>| PerfVerdictRow {
+            envs: envs.map(|e| e.iter().map(ToString::to_string).collect()),
+            ..row(verdict, at)
+        };
+        writer
+            .insert_perf_verdict(&with_envs("unchanged", 1, None))
+            .unwrap();
+        writer
+            .insert_perf_verdict(&with_envs("regressed", 2, Some(&["demo"])))
+            .unwrap();
+        writer
+            .insert_perf_verdict(&with_envs("improved", 3, Some(&["demo", "prod"])))
+            .unwrap();
+
+        let reader = store.read_only().unwrap();
+        let verdicts = |scopes: &[&str]| -> Vec<String> {
+            let scopes: Vec<String> = scopes.iter().map(ToString::to_string).collect();
+            reader
+                .perf_verdicts("checkout", &scopes, 10)
+                .unwrap()
+                .iter()
+                .map(|r| r["verdict"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(verdicts(&[]), vec!["improved", "regressed", "unchanged"]);
+        assert_eq!(verdicts(&["demo"]), vec!["regressed"]);
+        assert_eq!(verdicts(&["prod", "demo"]), vec!["improved", "regressed"]);
+        assert!(verdicts(&["staging"]).is_empty());
+
+        let rows = reader.perf_verdicts("checkout", &[], 10).unwrap();
+        assert_eq!(rows[0]["envs"], serde_json::json!(["demo", "prod"]));
+        assert!(rows[2]["envs"].is_null());
     }
 
     #[test]
@@ -214,7 +352,7 @@ mod tests {
         let rows = store
             .read_only()
             .unwrap()
-            .perf_verdicts("checkout", 10)
+            .perf_verdicts("checkout", &[], 10)
             .unwrap();
         assert!(rows[0]["candidate_p95"].is_null());
         assert!(rows[0]["ci_low"].is_null());
