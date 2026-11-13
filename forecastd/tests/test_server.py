@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import threading
 import unittest
 import urllib.error
@@ -11,7 +12,7 @@ import urllib.request
 from forecastd import service
 from forecastd.__main__ import parse_bind
 from forecastd.model import StubModel
-from forecastd.server import REQUEST_TIMEOUT_S, make_handler, serve
+from forecastd.server import BODY_DEADLINE_S, REQUEST_TIMEOUT_S, make_handler, serve
 from forecastd.service import Gate
 
 GOOD = b'{"context": [1.0, 2.0, 3.0], "horizon": 1}'
@@ -45,6 +46,39 @@ def post(base: str, body: bytes, path: str = "/forecast") -> tuple[int, dict, di
     except urllib.error.HTTPError as error:
         with error:
             return error.code, json.loads(error.read()), lowered(error.headers)
+
+
+class QuarterClock:
+    """A clock that moves a quarter of the body deadline every time it is
+    read, and lets the test wait for a reading."""
+
+    def __init__(self) -> None:
+        self.readings = 0
+        self.read = threading.Semaphore(0)
+
+    def __call__(self) -> float:
+        now = self.readings * BODY_DEADLINE_S / 4
+        self.readings += 1
+        self.read.release()
+        return now
+
+
+def drip(case: unittest.TestCase, base: str, clock: QuarterClock) -> bytes:
+    """Announce a long body and send it a byte at a time, each byte only
+    when the server has come back to the clock for the one before. Returns
+    what the server answered before it closed the connection."""
+    port = int(base.rsplit(":", 1)[1])
+    with socket.create_connection(("127.0.0.1", port), timeout=20) as client:
+        client.sendall(b"POST /forecast HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\n{")
+        # The deadline is set, then the clock is read before every piece.
+        for readings in (3, 1):
+            for _ in range(readings):
+                case.assertTrue(clock.read.acquire(timeout=10), "the server reads its clock")
+            client.sendall(b" ")
+        answer = bytearray()
+        while piece := client.recv(4096):
+            answer.extend(piece)
+        return bytes(answer)
 
 
 class ServerTests(unittest.TestCase):
@@ -156,8 +190,8 @@ class GateTests(unittest.TestCase):
     """At most ``limit`` forecast requests in hand; the next one is told
     the service is busy instead of queueing without bound."""
 
-    def start(self, model: StubModel, limit: int) -> str:
-        server = serve(model, "127.0.0.1", 0, Gate(limit))
+    def start(self, model: StubModel, limit: int, clock: QuarterClock | None = None) -> str:
+        server = serve(model, "127.0.0.1", 0, Gate(limit), *([clock] if clock else []))
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
@@ -208,6 +242,38 @@ class GateTests(unittest.TestCase):
         for _ in range(3):
             status, body, _ = post(base, large)
             self.assertEqual(status, 503, body)
+        model.go.set()
+        holder.join(timeout=20)
+
+    def test_a_dripped_body_is_408_at_the_deadline_and_gives_its_slot_back(self) -> None:
+        # Three bytes of a thousand, each well inside the idle timeout: the
+        # whole body has a deadline of its own.
+        clock = QuarterClock()
+        base = self.start(StubModel(), 1, clock)
+        with self.assertLogs("forecastd", level="WARNING") as seen:
+            answer = drip(self, base, clock)
+        head, _, body = answer.partition(b"\r\n\r\n")
+        self.assertIn(b" 408 ", head.split(b"\r\n", 1)[0])
+        self.assertIn("did not arrive in time", json.loads(body)["error"])
+        self.assertEqual([record.event for record in seen.records], ["http.body_timeout"])
+        self.assertEqual(seen.records[0].fields["deadline_s"], BODY_DEADLINE_S)
+        self.assertEqual(seen.records[0].fields["received"], 3)
+        self.assertEqual(post(base, GOOD)[0], 200)
+
+    def test_a_dripped_body_with_no_slot_is_503_at_the_deadline(self) -> None:
+        model = HeldModel()
+        self.addCleanup(model.go.set)
+        clock = QuarterClock()
+        base = self.start(model, 1, clock)
+        holder = threading.Thread(target=post, args=(base, GOOD))
+        holder.start()
+        self.assertTrue(model.entered.acquire(timeout=10))
+        # The held request has read the clock for its own body.
+        while clock.read.acquire(blocking=False):
+            pass
+        with self.assertLogs("forecastd", level="WARNING"):
+            answer = drip(self, base, clock)
+        self.assertIn(b" 503 ", answer.split(b"\r\n", 1)[0])
         model.go.set()
         holder.join(timeout=20)
 

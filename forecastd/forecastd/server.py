@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -21,7 +23,18 @@ log = logging.getLogger("forecastd")
 # How long a connection may sit without sending or taking bytes. The
 # forecast itself is not socket time and is not bounded by this.
 REQUEST_TIMEOUT_S = 30
-_DISCARD_CHUNK = 64 << 10
+# How long a whole request body may take to arrive, however steadily its
+# bytes come.
+BODY_DEADLINE_S = 30
+_CHUNK = 64 << 10
+
+
+class _BodyLate(Exception):
+    """The body deadline passed with ``received`` bytes of it in."""
+
+    def __init__(self, received: int) -> None:
+        super().__init__("the body did not arrive in time")
+        self.received = received
 
 
 def _content_length(header: str | None) -> int | None:
@@ -39,7 +52,13 @@ def _host(address: Any) -> str:
     return str(address)
 
 
-def make_handler(model: ForecastModel, gate: Gate | None = None) -> type[BaseHTTPRequestHandler]:
+def make_handler(
+    model: ForecastModel,
+    gate: Gate | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> type[BaseHTTPRequestHandler]:
+    """The request handler. ``clock`` is what the body deadline is measured
+    with (seconds, monotonic)."""
     gate = gate or Gate()
 
     class Handler(BaseHTTPRequestHandler):
@@ -84,22 +103,50 @@ def make_handler(model: ForecastModel, gate: Gate | None = None) -> type[BaseHTT
             self.end_headers()
             self.wfile.write(data)
 
+        def _read_body(self, length: int, keep: bool) -> bytes:
+            """Up to ``length`` bytes of body, a piece at a time, all of it
+            within ``BODY_DEADLINE_S``: a client that sends a byte now and
+            then stays inside the idle timeout and still runs out of time.
+            Raises ``_BodyLate`` at the deadline. ``keep`` false drops the
+            pieces."""
+            deadline = clock() + BODY_DEADLINE_S
+            pieces: list[bytes] = []
+            left = length
+            try:
+                while left > 0:
+                    piece = self._read_piece(left, deadline - clock(), length - left)
+                    if not piece:
+                        break
+                    left -= len(piece)
+                    if keep:
+                        pieces.append(piece)
+            finally:
+                self.connection.settimeout(REQUEST_TIMEOUT_S)
+            return b"".join(pieces)
+
+        def _read_piece(self, left: int, remaining: float, received: int) -> bytes:
+            """What has arrived of the body, waiting for no longer than the
+            deadline allows."""
+            if remaining <= 0:
+                raise _BodyLate(received)
+            self.connection.settimeout(min(remaining, REQUEST_TIMEOUT_S))
+            try:
+                return self.rfile.read1(min(left, _CHUNK))
+            except TimeoutError as error:
+                raise _BodyLate(received) from error
+
         def _discard_body(self) -> None:
-            """Read and drop a body nobody will look at, a piece at a time,
-            so the answer is not lost to a connection reset. A body with no
-            usable length, or one over the cap, is left and the connection
-            closes."""
+            """Read and drop a body nobody will look at, so the answer is
+            not lost to a connection reset. A body with no usable length,
+            one over the cap, or one that does not arrive in time is left
+            and the connection closes."""
             left = _content_length(self.headers.get("content-length"))
             if left is None or left > service.MAX_BODY:
                 self.close_connection = True
                 return
             try:
-                while left > 0:
-                    piece = self.rfile.read(min(left, _DISCARD_CHUNK))
-                    if not piece:
-                        break
-                    left -= len(piece)
-            except TimeoutError:
+                self._read_body(left, keep=False)
+            except _BodyLate:
                 self.close_connection = True
 
         def _busy(self) -> None:
@@ -116,6 +163,20 @@ def make_handler(model: ForecastModel, gate: Gate | None = None) -> type[BaseHTT
                 {"error": service.BUSY},
                 retry_after=service.RETRY_AFTER_S,
             )
+
+        def _late(self, length: int, received: int) -> None:
+            event(
+                log,
+                logging.WARNING,
+                "http.body_timeout",
+                "the request body did not arrive in time",
+                client=_host(self.client_address),
+                deadline_s=BODY_DEADLINE_S,
+                announced=length,
+                received=received,
+            )
+            self.close_connection = True
+            self._send(HTTPStatus.REQUEST_TIMEOUT, {"error": "the body did not arrive in time"})
 
         def do_GET(self) -> None:  # noqa: N802 - http.server naming
             if self.path.split("?", 1)[0] == "/healthz":
@@ -151,17 +212,9 @@ def make_handler(model: ForecastModel, gate: Gate | None = None) -> type[BaseHTT
                 )
                 return
             try:
-                raw = self.rfile.read(length)
-            except TimeoutError:
-                event(
-                    log,
-                    logging.WARNING,
-                    "http.body_timeout",
-                    "the request body did not arrive in time",
-                    client=_host(self.client_address),
-                    timeout_s=REQUEST_TIMEOUT_S,
-                )
-                self.close_connection = True
+                raw = self._read_body(length, keep=True)
+            except _BodyLate as late:
+                self._late(length, late.received)
                 return
             try:
                 self._send(HTTPStatus.OK, handle_forecast(parse_body(raw), model))
@@ -180,9 +233,15 @@ class Server(ThreadingHTTPServer):
 
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], model: ForecastModel, gate: Gate | None) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        model: ForecastModel,
+        gate: Gate | None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.gate = gate or Gate()
-        super().__init__(address, make_handler(model, self.gate))
+        super().__init__(address, make_handler(model, self.gate, clock))
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         del request
@@ -196,7 +255,13 @@ class Server(ThreadingHTTPServer):
         )
 
 
-def serve(model: ForecastModel, host: str, port: int, gate: Gate | None = None) -> Server:
+def serve(
+    model: ForecastModel,
+    host: str,
+    port: int,
+    gate: Gate | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> Server:
     """Bind and return the server; the caller runs ``serve_forever``.
     ``gate`` bounds the forecast requests in hand (four when not given)."""
-    return Server((host, port), model, gate)
+    return Server((host, port), model, gate, clock)

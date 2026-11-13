@@ -21,8 +21,9 @@ names the model that produced it.
 `null`; a string, a boolean, `NaN` or an infinity is a `400`, and so is a
 body nested too deeply to parse and an input the model itself refuses (the
 answer says that the model refused; what it said is in the log). A body
-over 8 MiB is a `413`, one that takes more than 30 seconds to arrive a
-`408`, and a request that finds every slot taken (`FORECASTD_MAX_CONCURRENT`)
+over 8 MiB is a `413`, one that takes more than 30 seconds in all to arrive
+a `408` (stalled or dripped, on either server), and a request that finds
+every slot taken (`FORECASTD_MAX_CONCURRENT`)
 a `503` with `retry-after: 1`. Covariate
 rows (8 at most of each kind) are as long as the context (`past_covariates`)
 or the context plus the horizon (`known_covariates`). Requested quantile

@@ -359,7 +359,10 @@ Requests in hand are bounded. A request takes one of
 `FORECASTD_MAX_CONCURRENT` slots before its body is read and gives it back
 with its answer; when every slot is taken the next request gets `503` at
 once instead of queueing behind the model. A body that takes more than 30
-seconds to arrive is a `408`, so a stalled upload cannot hold a slot. The
+seconds to arrive is a `408` and the connection is closed, so neither a
+stalled upload nor one dripped a byte at a time can hold a slot: the 30
+seconds are for the whole body, not for each piece of it. That holds for
+the uvicorn server and for the standard-library one alike. The
 daemon treats that `503` (it carries `retry-after`) as `busy`: the one
 request is answered by Holt-Winters and the circuit stays closed. A `408`
 is a `timeout` and opens the circuit.
