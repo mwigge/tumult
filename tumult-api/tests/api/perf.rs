@@ -1,6 +1,7 @@
 //! `GET /api/perf/{target}` — the performance regression verdict between a
 //! target's latest two `service.version`s, computed from the `during`
-//! load samples of the runs attributed to each version.
+//! load samples of the runs attributed to each version — and
+//! `POST /api/perf/{target}/verdicts`, which appends it to the history.
 
 use crate::common::*;
 use tumult_core::types::{ExperimentStatus, LoadResult, LoadSample, LoadTool};
@@ -37,6 +38,17 @@ fn service_span(id: &str, version: &str, ts: i64) -> SpanRow {
         resource_attrs: vec![],
         events: "[]".into(),
     }
+}
+
+/// POST with no body and no credentials; returns (status, body).
+async fn post(base: &str, path: &str) -> (u16, serde_json::Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}{path}"))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
 }
 
 /// A tumult experiment root span against the `checkout` target.
@@ -157,8 +169,15 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
     let (_, body) = get(&srv.base, "/api/perf/checkout").await;
     assert_eq!(body["history"].as_array().unwrap().len(), 0, "{body}");
 
+    // The read has no storing variant any more: the old flag is ignored.
     let (status, body) = get(&srv.base, "/api/perf/checkout?store=true").await;
     assert_eq!(status, 200, "{body}");
+    assert_eq!(body["stored"], false);
+    let (_, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(body["history"].as_array().unwrap().len(), 0, "{body}");
+
+    let (status, body) = post(&srv.base, "/api/perf/checkout/verdicts").await;
+    assert_eq!(status, 201, "{body}");
     assert_eq!(body["target"], "checkout");
     assert_eq!(body["probe"], "load.latency_p95_ms");
     assert_eq!(body["verdict"], "regressed", "{body}");
@@ -207,6 +226,12 @@ async fn perf_single_version_is_inconclusive_not_404() {
         .unwrap()
         .contains("only one service.version"));
     assert_eq!(body["stored"], false);
+
+    // With nothing to compare there is no verdict to store.
+    let (status, body) = post(&srv.base, "/api/perf/search/verdicts").await;
+    assert_eq!(status, 409, "{body}");
+    let (_, body) = get(&srv.base, "/api/perf/search").await;
+    assert_eq!(body["history"].as_array().unwrap().len(), 0, "{body}");
 }
 
 #[tokio::test]
@@ -219,6 +244,61 @@ async fn perf_unknown_target_is_404_and_bad_options_are_400() {
     assert_eq!(status, 400);
     let (status, _) = get(&srv.base, "/api/perf/checkout?confidence=1").await;
     assert_eq!(status, 400);
+    // An empty environment is a malformed filter, not "every environment".
+    let (status, body) = get(&srv.base, "/api/perf/checkout?env=").await;
+    assert_eq!(status, 400, "{body}");
+    let (status, body) = post(&srv.base, "/api/perf/checkout/verdicts?env=%20").await;
+    assert_eq!(status, 400, "{body}");
+    let (status, body) = post(&srv.base, "/api/perf/no-such-service/verdicts").await;
+    assert_eq!(status, 404, "{body}");
+}
+
+/// A service whose spans carry no environment is visible to an unscoped
+/// read, and invisible — with a message that says why — to an environment
+/// filter or a scoped principal.
+#[tokio::test]
+async fn perf_untagged_service_is_outside_every_environment() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |writer| {
+        let untagged = |id: &str, version: &str, ts: i64| SpanRow {
+            service_name: "ledger".into(),
+            target_environment: None,
+            ..service_span(id, version, ts)
+        };
+        writer
+            .insert_spans(&[
+                untagged("l1", "3.0.0", now - 300 * NS),
+                untagged("l2", "3.1.0", now - 100 * NS),
+            ])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/perf/ledger").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["versions_seen"].as_array().unwrap().len(), 2);
+
+    let (status, body) = get(&srv.base, "/api/perf/ledger?env=demo").await;
+    assert_eq!(status, 404, "{body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("in environment demo"), "{error}");
+    assert!(error.contains("deployment.environment.name"), "{error}");
+    assert!(!error.contains("no service.version seen for target ledger;"));
+
+    // Fail closed for a scoped principal, with the same explanation.
+    let scoped = add_scoped_token(&srv, "ledger-viewer", "viewer", &["demo"]).await;
+    let (status, body) = get_auth(&srv.base, "/api/perf/ledger", &scoped).await;
+    assert_eq!(status, 404, "{body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("in environment demo"), "{error}");
+
+    // A target nobody has seen at all says so plainly.
+    let admin = add_scoped_token(&srv, "ledger-admin", "admin", &[]).await;
+    let (status, body) = get_auth(&srv.base, "/api/perf/nothing", &admin).await;
+    assert_eq!(status, 404, "{body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(!error.contains("in environment"), "{error}");
 }
 
 #[tokio::test]
@@ -269,12 +349,31 @@ async fn perf_store_needs_operator_and_history_is_environment_scoped() {
     let srv = spawn_server().await;
     seed_perf(&srv).await;
     let viewer = add_scoped_token(&srv, "perf-viewer", "viewer", &["demo"]).await;
-    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=true", &viewer).await;
+    let none = serde_json::Value::Null;
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/perf/checkout/verdicts",
+        &viewer,
+        none.clone(),
+    )
+    .await;
     assert_eq!(status, 403, "{body}");
+    // The old storing read stores nothing for anyone.
+    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=true", &viewer).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["stored"], false);
 
     let operator = add_scoped_token(&srv, "perf-operator", "operator", &["demo"]).await;
-    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=true", &operator).await;
-    assert_eq!(status, 200, "{body}");
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/perf/checkout/verdicts?env=prod",
+        &operator,
+        none.clone(),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+    let (status, body) = post_auth(&srv.base, "/api/perf/checkout/verdicts", &operator, none).await;
+    assert_eq!(status, 201, "{body}");
     assert_eq!(body["stored"], true);
 
     // The demo-scoped viewer sees the stored row, with its environments.

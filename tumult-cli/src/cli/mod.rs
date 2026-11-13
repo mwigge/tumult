@@ -381,7 +381,8 @@ pub(crate) enum Commands {
         json: bool,
     },
     /// Performance gate: ask the daemon for a target's regression verdict
-    /// between its latest two service.versions (`GET /api/perf/{target}`)
+    /// between its latest two service.versions (`GET /api/perf/{target}`;
+    /// `--store` posts to `/api/perf/{target}/verdicts`)
     Perf {
         /// Target system as recorded on the experiments (e.g. `payments-api`)
         target: String,
