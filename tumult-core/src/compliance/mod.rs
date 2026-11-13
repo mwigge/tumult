@@ -22,7 +22,7 @@ pub use evidence::{EvidenceStrength, EvidenceType};
 pub use framework::ComplianceFramework;
 pub use ids::{
     check_entity_id, entity_id_is_valid, lei_is_valid, EntityIdError, ENTITY_ID_ATTR,
-    ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN,
+    ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN, ENTITY_ID_PATTERN,
 };
 pub use requirements::{
     applicable, article_title, requirement, EntityFlags, EntityProfile, EvidenceClass, Feed,

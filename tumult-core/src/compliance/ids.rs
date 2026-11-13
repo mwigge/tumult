@@ -11,6 +11,10 @@
 //! alphanumerics whose last two characters are ISO/IEC 7064 MOD 97-10
 //! check digits.
 
+/// The canonical form of an `ict.entity.id`, as shown to people. The
+/// check itself is [`check_entity_id`], which also bounds the length.
+pub const ENTITY_ID_PATTERN: &str = "^[a-z][a-z0-9]*(-[a-z0-9]+)+$";
+
 /// Longest accepted `ict.entity.id`, in bytes.
 pub const ENTITY_ID_MAX_LEN: usize = 63;
 

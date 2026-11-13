@@ -5,11 +5,19 @@
 //! carried (target columns, promoted from span or resource attributes; the
 //! ICT spine from `resource_attrs`), the resulting level and what is
 //! missing. Scoped principals see only their environments.
+//!
+//! The report also lists every `ict.entity.id` that is not in the
+//! canonical form, exactly as received, per service. The ingest path
+//! flags such resources; ids stored before that check existed are found
+//! by running the same check here.
 
 use axum::extract::{Query, State};
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tumult_core::compliance::{
+    check_entity_id, ENTITY_ID_ATTR, ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_PATTERN,
+};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, ApiError};
@@ -150,6 +158,48 @@ fn sql(from_ns: i64, scope: &str) -> String {
     )
 }
 
+/// One malformed `ict.entity.id` as a service sent it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct MalformedEntityId {
+    service: String,
+    /// The value exactly as received: never lower-cased or repaired.
+    entity_id: String,
+    spans: u64,
+    last_seen_ns: Option<i64>,
+    /// Whether the ingest check marked it; `false` for older rows.
+    flagged_at_ingest: bool,
+    reason: &'static str,
+}
+
+/// Every distinct (`service.name`, `ict.entity.id`) pair of the window.
+fn entity_ids_sql(from_ns: i64, scope: &str) -> String {
+    let attr = |key: &str| format!("COALESCE(resource_attrs['{key}'], span_attrs['{key}'])");
+    format!(
+        "SELECT service_name, {id} AS entity_id, COUNT(*) AS spans, \
+         MAX(ts_ns) AS last_seen_ns, \
+         COUNT(*) FILTER (WHERE {flag} = 'true') AS flagged \
+         FROM spans WHERE ts_ns >= {from_ns} AND service_name <> '' \
+         AND {id} IS NOT NULL{scope} \
+         GROUP BY 1, 2 ORDER BY 1, 2",
+        id = attr(ENTITY_ID_ATTR),
+        flag = attr(ENTITY_ID_MALFORMED_ATTR),
+    )
+}
+
+/// The row as a malformed id, or `None` when the id is canonical.
+fn malformed_from(row: &Value) -> Option<MalformedEntityId> {
+    let entity_id = row.get("entity_id")?.as_str()?;
+    let fault = check_entity_id(entity_id).err()?;
+    Some(MalformedEntityId {
+        service: row.get("service_name")?.as_str()?.to_string(),
+        entity_id: fault.value,
+        spans: row.get("spans").and_then(Value::as_u64).unwrap_or(0),
+        last_seen_ns: row.get("last_seen_ns").and_then(Value::as_i64),
+        flagged_at_ingest: row.get("flagged").and_then(Value::as_u64).unwrap_or(0) > 0,
+        reason: fault.reason,
+    })
+}
+
 pub(crate) async fn conformance(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -172,11 +222,19 @@ pub(crate) async fn conformance(
     let as_of_ns = now_ns();
     let scope = and_pred(env_scope_where("target_environment", &envs));
     let query = sql(as_of_ns - range_ns, &scope);
-    let services: Vec<ServiceConformance> = with_reader(&state.db_path, move |reader| {
-        let rows = reader.query_json_rows(&query).map_err(|e| e.to_string())?;
-        Ok(rows.iter().filter_map(service_from).collect())
-    })
-    .await?;
+    let ids_query = entity_ids_sql(as_of_ns - range_ns, &scope);
+    let (services, malformed): (Vec<ServiceConformance>, Vec<MalformedEntityId>) =
+        with_reader(&state.db_path, move |reader| {
+            let rows = reader.query_json_rows(&query).map_err(|e| e.to_string())?;
+            let ids = reader
+                .query_json_rows(&ids_query)
+                .map_err(|e| e.to_string())?;
+            Ok((
+                rows.iter().filter_map(service_from).collect(),
+                ids.iter().filter_map(malformed_from).collect(),
+            ))
+        })
+        .await?;
     let summary = |level: Level| services.iter().filter(|s| s.level == level).count();
     Ok(Json(serde_json::json!({
         "as_of_ns": as_of_ns,
@@ -186,13 +244,16 @@ pub(crate) async fn conformance(
             "spine": SPINE_KEYS,
             "recommended": RECOMMENDED_KEYS,
         },
+        "entity_id_pattern": ENTITY_ID_PATTERN,
         "summary": {
             "services": services.len(),
             "spine": summary(Level::Spine),
             "target": summary(Level::Target),
             "none": summary(Level::None),
+            "malformed_entity_ids": malformed.len(),
         },
         "services": services,
+        "malformed_entity_ids": malformed,
     })))
 }
 
@@ -264,6 +325,35 @@ mod tests {
         assert_eq!(s.level, Level::Spine);
         assert_eq!(s.keys.len(), 9);
         assert_eq!(s.keys[8].key, "service.version");
+    }
+
+    #[test]
+    fn only_non_canonical_ids_fold_into_the_malformed_list() {
+        let row = |id: &str, flagged: u64| {
+            serde_json::json!({
+                "service_name": "checkout", "entity_id": id, "spans": 4,
+                "last_seen_ns": 7, "flagged": flagged,
+            })
+        };
+        assert_eq!(malformed_from(&row("cif-0042", 0)), None);
+        let bad = malformed_from(&row("CF-0042", 4)).unwrap();
+        assert_eq!(bad.entity_id, "CF-0042", "kept as received");
+        assert_eq!((bad.spans, bad.last_seen_ns), (4, Some(7)));
+        assert!(bad.flagged_at_ingest);
+        assert_eq!(bad.reason, "must start with a lower-case letter");
+        assert!(
+            !malformed_from(&row("cif_0042", 0))
+                .unwrap()
+                .flagged_at_ingest
+        );
+    }
+
+    #[test]
+    fn the_id_query_reads_the_id_and_the_ingest_flag() {
+        let q = entity_ids_sql(100, " AND target_environment IN ('demo')");
+        assert!(q.contains("resource_attrs['ict.entity.id']"));
+        assert!(q.contains("resource_attrs['tumult.ict.entity.id.malformed']"));
+        assert!(q.contains("ts_ns >= 100") && q.contains("IN ('demo')"));
     }
 
     #[test]

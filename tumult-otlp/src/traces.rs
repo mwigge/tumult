@@ -455,7 +455,7 @@ mod tests {
                     "resilience.target.technology",
                     Value::StringValue("jvm".into()),
                 ),
-                kv("ict.entity.id", Value::StringValue("CF-0042".into())),
+                kv("ict.entity.id", Value::StringValue("cif-0042".into())),
             ],
         );
         let rows = trace_request_to_spans(&req);
@@ -467,7 +467,7 @@ mod tests {
         assert!(
             row.resource_attrs
                 .iter()
-                .any(|(k, v)| k == "ict.entity.id" && v == "CF-0042"),
+                .any(|(k, v)| k == "ict.entity.id" && v == "cif-0042"),
             "spine attributes stay queryable in resource_attrs: {:?}",
             row.resource_attrs
         );

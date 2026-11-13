@@ -8305,6 +8305,7 @@ version = "0.7.0"
 dependencies = [
  "opentelemetry-proto",
  "serde_json",
+ "tumult-core",
  "tumult-lake",
 ]
 

@@ -35,7 +35,7 @@ services:
         resilience.target.tier=backend,
         resilience.target.criticality=high,
         ict.schema.version=0.1.0,
-        ict.entity.id=CF-0042,
+        ict.entity.id=cif-0042,
         ict.entity.tier=critical,
         ict.entity.owner=team-checkout
       # --- transport ------------------------------------------------------

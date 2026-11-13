@@ -3,6 +3,7 @@
 
 use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
 use opentelemetry_proto::tonic::resource::v1::Resource;
+use tumult_core::compliance::{entity_id_is_valid, ENTITY_ID_ATTR, ENTITY_ID_MALFORMED_ATTR};
 
 /// The promoted, materialized `resilience.*` span attributes. Everything else
 /// lands in the attribute maps.
@@ -172,7 +173,7 @@ impl ResourceCtx {
             target_environment: attr_string(attrs, keys::TARGET_ENVIRONMENT)
                 .or_else(|| attr_string(attrs, keys::DEPLOYMENT_ENVIRONMENT_NAME))
                 .or_else(|| attr_string(attrs, keys::DEPLOYMENT_ENVIRONMENT)),
-            resource_attrs: unpromoted_attrs(
+            resource_attrs: flag_malformed_entity_id(unpromoted_attrs(
                 attrs,
                 &[
                     keys::SERVICE_NAME,
@@ -184,15 +185,98 @@ impl ResourceCtx {
                     keys::TARGET_TECHNOLOGY,
                     keys::TARGET_ENVIRONMENT,
                 ],
-            ),
+            )),
         }
     }
+}
+
+/// Mark a resource whose `ict.entity.id` is not in the canonical form
+/// with [`ENTITY_ID_MALFORMED_ATTR`]. The id itself is stored exactly as
+/// received: lower-casing it here would hide the sender's mistake and
+/// could merge two different ids. A flag the sender set is dropped, so the
+/// attribute always states this check's own verdict.
+fn flag_malformed_entity_id(mut attrs: Vec<(String, String)>) -> Vec<(String, String)> {
+    attrs.retain(|(key, _)| key != ENTITY_ID_MALFORMED_ATTR);
+    let malformed = attrs
+        .iter()
+        .any(|(key, value)| key == ENTITY_ID_ATTR && !entity_id_is_valid(value));
+    if malformed {
+        attrs.push((ENTITY_ID_MALFORMED_ATTR.to_string(), "true".to_string()));
+    }
+    attrs
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use opentelemetry_proto::tonic::common::v1::any_value::Value;
+
+    fn resource_with(attrs: &[(&str, &str)]) -> Resource {
+        Resource {
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| kv(k, Value::StringValue((*v).into())))
+                .collect(),
+            dropped_attributes_count: 0,
+            entity_refs: vec![],
+        }
+    }
+
+    fn flagged(attrs: &[(String, String)]) -> bool {
+        attrs
+            .iter()
+            .any(|(k, v)| k == ENTITY_ID_MALFORMED_ATTR && v == "true")
+    }
+
+    #[test]
+    fn a_malformed_entity_id_is_flagged_and_kept_as_received() {
+        let resource = resource_with(&[("service.name", "checkout"), ("ict.entity.id", "CF-0042")]);
+        let ctx = ResourceCtx::from_resource(Some(&resource));
+        assert!(flagged(&ctx.resource_attrs), "{:?}", ctx.resource_attrs);
+        assert!(
+            ctx.resource_attrs
+                .iter()
+                .any(|(k, v)| k == "ict.entity.id" && v == "CF-0042"),
+            "the id is not lower-cased or rewritten: {:?}",
+            ctx.resource_attrs
+        );
+    }
+
+    #[test]
+    fn a_canonical_entity_id_carries_no_flag() {
+        let resource = resource_with(&[("ict.entity.id", "cif-0042")]);
+        let ctx = ResourceCtx::from_resource(Some(&resource));
+        assert!(!flagged(&ctx.resource_attrs));
+        assert_eq!(
+            ctx.resource_attrs,
+            vec![("ict.entity.id".to_string(), "cif-0042".to_string())]
+        );
+        let none = ResourceCtx::from_resource(Some(&resource_with(&[("k", "v")])));
+        assert!(!flagged(&none.resource_attrs));
+    }
+
+    #[test]
+    fn the_flag_is_ours_to_set_not_the_senders() {
+        let resource = resource_with(&[
+            ("ict.entity.id", "cif-0042"),
+            (ENTITY_ID_MALFORMED_ATTR, "true"),
+        ]);
+        let ctx = ResourceCtx::from_resource(Some(&resource));
+        assert!(!flagged(&ctx.resource_attrs), "{:?}", ctx.resource_attrs);
+        let resource = resource_with(&[
+            ("ict.entity.id", "Not An Id"),
+            (ENTITY_ID_MALFORMED_ATTR, "false"),
+        ]);
+        let ctx = ResourceCtx::from_resource(Some(&resource));
+        assert!(flagged(&ctx.resource_attrs));
+        assert_eq!(
+            ctx.resource_attrs
+                .iter()
+                .filter(|(k, _)| k == ENTITY_ID_MALFORMED_ATTR)
+                .count(),
+            1
+        );
+    }
 
     fn kv(key: &str, value: Value) -> KeyValue {
         KeyValue {
