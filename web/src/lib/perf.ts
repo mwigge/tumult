@@ -52,12 +52,45 @@ export function fmtUnanswered(windows: PerfSide['windows']): string {
     return `${windows.unanswered} (${(windows.unanswered_share * 100).toFixed(1)} %)`;
 }
 
+/** A 0..1 share as a percentage (`35.0 %`), or a dash when unknown. */
+export function fmtShare(share: number | null): string {
+    return share === null ? DASH : `${(share * 100).toFixed(1)} %`;
+}
+
+/** `+34.6 percentage points (margin 1.0)`. */
+export function fmtShareDelta(delta: number, margin: number): string {
+    return `${fmtSigned(delta * 100)} percentage points (margin ${(margin * 100).toFixed(1)})`;
+}
+
+/** Whether a run's load ran its whole plan. */
+export function planLabel(run: PerfSide['run_details'][number]): string {
+    if (run.aborted) return 'aborted';
+    return run.truncated ? 'truncated' : 'whole';
+}
+
 export function envLabel(env: string | null): string {
     return env ?? UNTAGGED;
 }
 
 export function selectionLabel(selection: PerfVerdict['selection']): string {
     return selection === 'explicit' ? 'explicit versions' : 'deployment order';
+}
+
+export interface LabelledRun {
+    role: LabelledSide['role'];
+    run: PerfSide['run_details'][number];
+}
+
+/** Every run of both sides, baseline first. */
+export function perfRuns(answer: PerfVerdict): LabelledRun[] {
+    return perfSides(answer).flatMap(({ role, side }) =>
+        side.run_details.map((run) => ({ role, run })),
+    );
+}
+
+/** The versions that were deployed again after a later one. */
+export function redeployedVersions(answer: PerfVerdict): string[] {
+    return answer.versions_seen.filter((v) => v.redeployed).map((v) => v.version);
 }
 
 /** `1 observed, 0 declared, 0 inferred`. */
@@ -102,6 +135,41 @@ export interface PerfChartTokens {
     tooltip: Record<string, unknown>;
 }
 
+interface TooltipPoint {
+    seriesName?: string;
+    color?: unknown;
+    value?: unknown;
+}
+
+function tooltipRow(point: TooltipPoint): HTMLElement {
+    const row = document.createElement('div');
+    const dot = document.createElement('span');
+    dot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%';
+    dot.style.marginRight = '6px';
+    dot.style.backgroundColor = typeof point.color === 'string' ? point.color : '';
+    const ms = Array.isArray(point.value) ? Number(point.value[1]) : NaN;
+    const label = document.createElement('span');
+    label.textContent = `${point.seriesName ?? ''}: ${Number.isFinite(ms) ? fmtMs(ms) : DASH} ms`;
+    row.append(dot, label);
+    return row;
+}
+
+/**
+ * The tooltip of the distribution chart as DOM nodes. A series is named
+ * after a version, and a version is whatever a service reported: it is
+ * set as text, so no part of it is ever parsed as HTML.
+ */
+export function perfTooltip(params: unknown): HTMLElement {
+    const points = (Array.isArray(params) ? params : [params]) as TooltipPoint[];
+    const box = document.createElement('div');
+    box.dataset.testid = 'perf-tooltip';
+    const first = points[0]?.value;
+    const head = document.createElement('div');
+    head.textContent = Array.isArray(first) ? `percentile ${first[0]}` : '';
+    box.append(head, ...points.map(tooltipRow));
+    return box;
+}
+
 /**
  * Baseline versus candidate percentile curves (x = percentile, y = ms) with
  * a marker at the compared quantile. The baseline is dashed so the two
@@ -122,7 +190,7 @@ export function perfDistributionOption(
     return {
         grid: { left: 52, right: 20, top: 34, bottom: 44 },
         legend: { top: 0 },
-        tooltip: { ...tokens.tooltip, trigger: 'axis' },
+        tooltip: { ...tokens.tooltip, trigger: 'axis', formatter: perfTooltip },
         xAxis: {
             type: 'value',
             min: 0,

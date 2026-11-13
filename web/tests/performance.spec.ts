@@ -62,7 +62,15 @@ const side = (version: string, p50: number, p95: number, p99: number, over: Json
         },
     ],
     partial: { truncated: 0, aborted: 0, halted: 0, deviated: 0, excluded: 0 },
-    windows: { planned: 24, completed: 24, unanswered: 0, unanswered_share: 0 },
+    windows: {
+        planned: 24,
+        completed: 24,
+        unanswered: 0,
+        lost: 0,
+        unanswered_share: 0,
+        censored: 0,
+    },
+    requests: { sent: 2400, failed: 0, failure_share: 0, runs_without_counts: 0 },
     distribution: distribution(p50 - 3, p99 + 2),
     ...over,
 });
@@ -105,6 +113,8 @@ const comparison = (over: Json = {}) => ({
     iterations: 2000,
     seed: 7,
     min_samples: 20,
+    min_runs: 3,
+    failure_share: { baseline: 0, candidate: 0, delta: 0, margin: 0.01 },
     ...over,
 });
 
@@ -115,16 +125,32 @@ const answer = (over: Json = {}) => ({
     environments_seen: ['demo', 'prod'],
     range: '30d',
     since_ns: 1_787_000_000_000_000_000,
-    selection: 'deployment_order',
+    selection: 'latest_deployment',
+    selection_rule: 'in demo, 1.1.0 was deployed last and 1.0.0 before it',
+    backfill: 'done',
     include_partial: false,
     verdict: 'regressed',
+    reason: 'latency',
+    reason_codes: ['latency'],
     reasons: ['p95 difference interval lies above the margin'],
     baseline: side('1.0.0', 8.1, 9.3, 10),
     candidate: side('1.1.0', 41, 47.5, 49),
     comparison: comparison(),
     versions_seen: [
-        { version: '1.1.0', first_seen_ns: 1, last_seen_ns: 2 },
-        { version: '1.0.0', first_seen_ns: 0, last_seen_ns: 2 },
+        {
+            version: '1.1.0',
+            first_seen_ns: 1,
+            last_seen_ns: 2,
+            last_deployed_ns: 1,
+            redeployed: false,
+        },
+        {
+            version: '1.0.0',
+            first_seen_ns: 0,
+            last_seen_ns: 2,
+            last_deployed_ns: 0,
+            redeployed: false,
+        },
     ],
     unattributed_runs: {
         count: 1,
@@ -241,6 +267,7 @@ test('GIVEN a regressed candidate WHEN the page opens THEN the verdict, the delt
         '1.0.0',
         '1',
         '24',
+        '0',
         '8.1',
         '9.3',
         '10.0',
@@ -328,7 +355,9 @@ test('GIVEN unanswered windows on the candidate WHEN the page opens THEN it says
                         planned: 24,
                         completed: 18,
                         unanswered: 6,
+                        lost: 2,
                         unanswered_share: 0.25,
+                        censored: 4,
                     },
                 }),
                 comparison: comparison({
@@ -359,6 +388,8 @@ test('GIVEN unanswered windows on the candidate WHEN the page opens THEN it says
         '24',
         '24',
         '0 (0.0 %)',
+        '0',
+        '0',
     ]);
     await expect(partial.locator('tbody tr').nth(1).locator('th, td')).toHaveText([
         'candidate',
@@ -371,7 +402,233 @@ test('GIVEN unanswered windows on the candidate WHEN the page opens THEN it says
         '24',
         '18',
         '6 (25.0 %)',
+        '2',
+        '4',
     ]);
+});
+
+test('GIVEN a candidate that failed a third of its requests WHEN the page opens THEN the requests, the censored windows, the runs and the rule behind the pair are shown', async ({
+    page,
+}) => {
+    const rule = 'in demo, 1.1.0 was deployed last (again, after 1.2.0) and 1.2.0 before it';
+    const run = (id: string, over: Json = {}) => ({
+        experiment_id: id,
+        attribution: 'declared',
+        status: 'completed',
+        truncated: false,
+        aborted: false,
+        included: true,
+        ...over,
+    });
+    await mockApi(page, {
+        read: () => ({
+            status: 200,
+            body: answer({
+                reason: 'failure_share',
+                reason_codes: ['failure_share', 'failure_data_missing'],
+                reasons: ['candidate 1.1.0: 420 of 1200 requests failed (35.0%)'],
+                selection_rule: rule,
+                backfill: 'running',
+                baseline: side('1.2.0', 41, 47.5, 49, {
+                    requests: {
+                        sent: 0,
+                        failed: 0,
+                        failure_share: null,
+                        runs_without_counts: 1,
+                    },
+                }),
+                candidate: side('1.1.0', 8, 9, 10, {
+                    runs: ['run-a'],
+                    dropped: 2,
+                    run_details: [
+                        run('run-a'),
+                        run('run-b', { status: 'deviated', truncated: true, included: false }),
+                        run('run-c', { status: 'halted', aborted: true, included: false }),
+                    ],
+                    windows: {
+                        planned: 48,
+                        completed: 40,
+                        unanswered: 0,
+                        lost: 3,
+                        unanswered_share: 0,
+                        censored: 5,
+                    },
+                    requests: {
+                        sent: 1200,
+                        failed: 420,
+                        failure_share: 0.35,
+                        runs_without_counts: 0,
+                    },
+                }),
+                comparison: comparison({
+                    failure_share: { baseline: 0.004, candidate: 0.35, delta: 0.346, margin: 0.01 },
+                }),
+                versions_seen: [
+                    {
+                        version: '1.1.0',
+                        first_seen_ns: 1,
+                        last_seen_ns: 9,
+                        last_deployed_ns: 7,
+                        redeployed: true,
+                    },
+                    {
+                        version: '1.2.0',
+                        first_seen_ns: 4,
+                        last_seen_ns: 6,
+                        last_deployed_ns: 4,
+                        redeployed: false,
+                    },
+                ],
+            }),
+        }),
+    });
+    await page.goto('/performance');
+
+    const verdict = page.getByTestId('verdict');
+    await expect(verdict.getByTestId('selection-rule')).toHaveText(rule);
+    await expect(verdict.getByTestId('backfill')).toContainText('still being read back');
+    await expect(verdict.getByTestId('redeployed')).toHaveText(
+        '1.1.0 was deployed again after a later version; its latest deployment counts.',
+    );
+
+    const latency = page.getByRole('table', { name: 'Latency by version' });
+    await expect(latency.locator('tbody tr').nth(1).locator('th, td')).toHaveText([
+        'candidate',
+        '1.1.0',
+        '1',
+        '24',
+        '2',
+        '8.0',
+        '9.0',
+        '10.0',
+    ]);
+
+    const windows = page.getByRole('table', { name: 'Partial runs and windows by version' });
+    await expect(windows.locator('tbody tr').nth(1).locator('th, td')).toHaveText([
+        'candidate',
+        '1.1.0',
+        '0',
+        '0',
+        '0',
+        '0',
+        '0',
+        '48',
+        '40',
+        '0 (0.0 %)',
+        '3',
+        '5',
+    ]);
+
+    const requests = page.getByRole('table', { name: 'Requests by version' });
+    await expect(requests.locator('tbody tr').nth(0).locator('th, td')).toHaveText([
+        'baseline',
+        '1.2.0',
+        '0',
+        '0',
+        '–',
+        '1',
+    ]);
+    await expect(requests.locator('tbody tr').nth(1).locator('th, td')).toHaveText([
+        'candidate',
+        '1.1.0',
+        '1200',
+        '420',
+        '35.0 %',
+        '0',
+    ]);
+    await expect(page.getByTestId('failure-share')).toHaveText(
+        'Failure share, candidate minus baseline: +34.6 percentage points (margin 1.0).',
+    );
+
+    const runs = page.getByRole('table', { name: 'Runs by version' });
+    await expect(runs.locator('tbody tr')).toHaveCount(4);
+    await expect(runs.locator('tbody tr').nth(0).locator('th, td')).toHaveText([
+        'baseline',
+        'run-1.2.0',
+        'observed',
+        'completed',
+        'whole',
+        'yes',
+    ]);
+    await expect(runs.locator('tbody tr').nth(2).locator('th, td')).toHaveText([
+        'candidate',
+        'run-b',
+        'declared',
+        'deviated',
+        'truncated',
+        'left out',
+    ]);
+    await expect(runs.locator('tbody tr').nth(3).locator('th, td')).toHaveText([
+        'candidate',
+        'run-c',
+        'declared',
+        'halted',
+        'aborted',
+        'left out',
+    ]);
+});
+
+test('GIVEN a version and a target that are markup WHEN the page renders and the chart tooltip opens THEN they are shown as text and nothing runs', async ({
+    page,
+}) => {
+    const hostile = '<img src=x onerror="window.__pwned=1">';
+    await mockApi(page, {
+        targets: () => ({
+            status: 200,
+            body: {
+                ...targets,
+                targets: [{ target: hostile, environments: [hostile], runs: 1, last_run_ns: 1 }],
+            },
+        }),
+        read: () => ({
+            status: 200,
+            body: answer({
+                target: hostile,
+                environment: hostile,
+                environments_seen: [hostile],
+                reasons: [`candidate ${hostile}: slower`],
+                selection_rule: `${hostile} was deployed last`,
+                candidate: side(hostile, 41, 47.5, 49),
+                versions_seen: [
+                    {
+                        version: hostile,
+                        first_seen_ns: 1,
+                        last_seen_ns: 2,
+                        last_deployed_ns: 1,
+                        redeployed: true,
+                    },
+                ],
+                unattributed_runs: {
+                    count: 1,
+                    reasons: { [hostile]: 1 },
+                    runs: [{ experiment_id: hostile, environment: hostile, reason: hostile }],
+                },
+                history: [stored({ candidate_version: hostile, envs: [hostile] })],
+            }),
+        }),
+    });
+    await page.goto('/performance');
+
+    const verdict = page.getByTestId('verdict');
+    await expect(verdict).toContainText(`candidate ${hostile}: slower`);
+    await expect(verdict.getByTestId('selection-rule')).toHaveText(`${hostile} was deployed last`);
+    await expect(verdict.getByTestId('redeployed')).toContainText(hostile);
+    await expect(page.getByRole('table', { name: 'Runs by version' })).toContainText(
+        `run-${hostile}`,
+    );
+
+    // The tooltip is the one place a chart builds HTML.
+    const canvas = page.locator('[data-chart="perf"] canvas');
+    await canvas.hover({ position: { x: 260, y: 150 } });
+    await canvas.hover({ position: { x: 300, y: 140 } });
+    const tip = page.getByTestId('perf-tooltip');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText(`candidate ${hostile}`);
+    await expect(tip).toContainText('baseline 1.0.0');
+
+    await expect(page.locator('img')).toHaveCount(0);
+    const ran = await page.evaluate(() => '__pwned' in window);
+    expect(ran).toBe(false);
 });
 
 test('GIVEN an operator WHEN storing the verdict THEN the POST carries the same query and the outcome is announced', async ({

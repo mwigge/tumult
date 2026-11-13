@@ -21,11 +21,16 @@
         fmtDeltaMs,
         fmtInterval,
         fmtMs,
+        fmtShare,
+        fmtShareDelta,
         fmtUnanswered,
         hasInferredAttribution,
         perfChartLabel,
         perfDistributionOption,
+        perfRuns,
         perfSides,
+        planLabel,
+        redeployedVersions,
         selectionLabel,
     } from '#lib/perf.js';
     import type {
@@ -367,6 +372,19 @@
             {/if}
             <ul class="notes">
                 <li>Selection: {selectionLabel(answer.selection)}</li>
+                <li data-testid="selection-rule">{answer.selection_rule}</li>
+                {#each redeployedVersions(answer) as version (version)}
+                    <li data-testid="redeployed">
+                        <span class="mono">{version}</span> was deployed again after a later version;
+                        its latest deployment counts.
+                    </li>
+                {/each}
+                {#if answer.backfill === 'running'}
+                    <li class="caution" data-testid="backfill">
+                        The version history of this lake is still being read back; the deployment
+                        order is not final.
+                    </li>
+                {/if}
                 <li>
                     Answer for environment {envLabel(answer.environment)}
                     {#if answer.environments_seen.length > 1}
@@ -440,6 +458,7 @@
                     <th scope="col">Version</th>
                     <th scope="col">Runs</th>
                     <th scope="col">Samples</th>
+                    <th scope="col">Dropped</th>
                     <th scope="col">p50 ms</th>
                     <th scope="col">p95 ms</th>
                     <th scope="col">p99 ms</th>
@@ -452,6 +471,7 @@
                         <td class="mono">{side.version}</td>
                         <td class="mono">{side.runs.length}</td>
                         <td class="mono">{side.samples}</td>
+                        <td class="mono">{side.dropped}</td>
                         <td class="mono">{fmtMs(side.p50)}</td>
                         <td class="mono">{fmtMs(side.p95)}</td>
                         <td class="mono">{fmtMs(side.p99)}</td>
@@ -476,6 +496,8 @@
                     <th scope="col">Windows planned</th>
                     <th scope="col">Completed</th>
                     <th scope="col">Unanswered</th>
+                    <th scope="col">Lost</th>
+                    <th scope="col">Censored</th>
                 </tr>
             </thead>
             <tbody>
@@ -491,14 +513,78 @@
                         <td class="mono">{side.windows.planned}</td>
                         <td class="mono">{side.windows.completed}</td>
                         <td class="mono">{fmtUnanswered(side.windows)}</td>
+                        <td class="mono">{side.windows.lost}</td>
+                        <td class="mono">{side.windows.censored}</td>
                     </tr>
                 {/each}
             </tbody>
         </table>
         <p class="muted">
             Counts are runs per side; excluded runs are left out of the samples. Unanswered is the
-            share of the planned windows.
+            share of the windows the load reached; lost windows were skipped behind an unanswered
+            one. A censored window reports a request given up on at its timeout: the true value is
+            that or more.
         </p>
+        <table class="data" aria-label="Requests by version">
+            <thead>
+                <tr>
+                    <th scope="col">Side</th>
+                    <th scope="col">Version</th>
+                    <th scope="col">Requests sent</th>
+                    <th scope="col">Failed</th>
+                    <th scope="col">Failure share</th>
+                    <th scope="col">Runs without counts</th>
+                </tr>
+            </thead>
+            <tbody>
+                {#each sides as { role, side } (role)}
+                    <tr>
+                        <th scope="row">{role}</th>
+                        <td class="mono">{side.version}</td>
+                        <td class="mono">{side.requests.sent}</td>
+                        <td class="mono">{side.requests.failed}</td>
+                        <td class="mono">{fmtShare(side.requests.failure_share)}</td>
+                        <td class="mono">{side.requests.runs_without_counts}</td>
+                    </tr>
+                {/each}
+            </tbody>
+        </table>
+        {#if cmp.failure_share}
+            <p data-testid="failure-share">
+                Failure share, candidate minus baseline: {fmtShareDelta(
+                    cmp.failure_share.delta,
+                    cmp.failure_share.margin,
+                )}.
+            </p>
+        {/if}
+        <p class="muted">
+            Failed requests were sent and not answered well: timed out, refused or answered with an
+            error. The requests of every run are counted, those of the partial runs too.
+        </p>
+        <table class="data" aria-label="Runs by version">
+            <thead>
+                <tr>
+                    <th scope="col">Side</th>
+                    <th scope="col">Run</th>
+                    <th scope="col">Version known</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Plan</th>
+                    <th scope="col">In the samples</th>
+                </tr>
+            </thead>
+            <tbody>
+                {#each perfRuns(answer) as { role, run } (`${role} ${run.experiment_id}`)}
+                    <tr>
+                        <th scope="row">{role}</th>
+                        <td class="mono">{run.experiment_id}</td>
+                        <td class="mono">{run.attribution}</td>
+                        <td class="mono">{run.status ?? '–'}</td>
+                        <td class="mono">{planLabel(run)}</td>
+                        <td class="mono">{run.included ? 'yes' : 'left out'}</td>
+                    </tr>
+                {/each}
+            </tbody>
+        </table>
         {#if answer.unattributed_runs.count > 0 || answer.runs_on_other_versions > 0}
             <div class="unattributed" data-testid="unattributed">
                 {#if answer.unattributed_runs.count > 0}

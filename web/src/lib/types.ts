@@ -295,8 +295,20 @@ export interface PerfSide {
         planned: number;
         completed: number;
         unanswered: number;
-        /** Fraction of the planned windows (0..1). */
+        /** Windows skipped behind an unanswered one. */
+        lost: number;
+        /** Fraction of the windows the load reached (0..1). */
         unanswered_share: number | null;
+        /** Windows whose sample is a request given up on at its timeout. */
+        censored: number;
+    };
+    /** The requests of all the side's runs, the partial ones too. */
+    requests: {
+        sent: number;
+        failed: number;
+        /** `null` when no requests were counted. */
+        failure_share: number | null;
+        runs_without_counts: number;
     };
     /** Percentiles of the samples (`p` 0..100), empty when there are none. */
     distribution: { p: number; value: number }[];
@@ -372,9 +384,16 @@ export interface PerfVerdict {
     environments_seen: (string | null)[];
     range: string;
     since_ns: number;
-    selection: 'deployment_order' | 'explicit';
+    selection: 'latest_deployment' | 'explicit';
+    /** Which rule chose the pair, in words. */
+    selection_rule: string;
+    /** `running` while an old lake's version history is read back. */
+    backfill: 'running' | 'done';
     include_partial: boolean;
     verdict: PerfVerdictKind;
+    /** The code that decided, first of `reason_codes`. */
+    reason: string | null;
+    reason_codes: string[];
     reasons: string[];
     baseline: PerfSide | null;
     candidate: PerfSide;
@@ -389,11 +408,22 @@ export interface PerfVerdict {
         iterations: number;
         seed: number;
         min_samples: number;
+        min_runs: number;
+        /** Shares of failed requests (0..1); `null` when a side counted none. */
+        failure_share: {
+            baseline: number;
+            candidate: number;
+            delta: number;
+            margin: number;
+        } | null;
     };
     versions_seen: {
         version: string;
         first_seen_ns: number;
         last_seen_ns: number;
+        last_deployed_ns: number;
+        /** Deployed again after a later version. */
+        redeployed: boolean;
     }[];
     unattributed_runs: {
         count: number;
