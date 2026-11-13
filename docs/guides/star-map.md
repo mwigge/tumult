@@ -136,22 +136,41 @@ The response has `nodes`, `edges` (`owns`, `implements`, `runs_on`,
 `calls`, `depends_on`, `tested_by`, `broke`, `covers`, `measures`, each
 with the `source` it was learned from), `clusters`, `counts` and
 `sources` (each `ok` or `unavailable`). With `focus`, `focus_found` says
-whether that node exists inside the caller's scopes. The same data in any
-order gives the same response.
+whether that node exists inside the caller's scopes, and `focus` in the
+response is the id of the node that was looked for: an entity id is
+matched whatever its case, so `focus=ent:CIF-0042` finds `ent:cif-0042`
+and the response says `"focus": "ent:cif-0042"`. Other ids are taken as
+given. The same data in any order gives the same response.
 
-Each graph table is read up to 50 000 rows. When one is longer, the
-response says `truncated: true` and the page notes that the map is
-incomplete; narrow the `range` or the `env` to see all of it.
+Four reads of the graph tables stop at 50 000 rows each: the evidence
+edges, the declared dependencies, the compliance articles and the gap
+nodes. When one of them is longer, the response says `truncated: true`
+and the page notes that the map is incomplete. No parameter of the
+request brings the missing rows back: these tables hold the whole graph,
+not a window of it, so `range`, `env`, `focus` and `kinds` narrow what is
+drawn after the read, not what is read. A truncated map is for the
+operator: the daemon logs a warning that names the source that reached
+its limit (`graph_edges.evidence`, `graph_edges.depends_on` or
+`graph_nodes.<kind>`).
 
 The response is cached for 30 seconds per parameter set and set of scopes
 and carries an `ETag`; `If-None-Match` with the current value answers
 `304`. The cache holds at most 64 maps and 64 MiB, drops expired maps
 when it is read, and lets concurrent requests for the same map wait for
-one read of the lake instead of each doing their own.
+one read of the lake instead of each doing their own. That holds also
+when the map could not be kept (a write landed while it was read, or it
+is larger than the cache): those who waited for it get that map, unless
+they asked after the write, in which case they read again.
 
 Send `Cache-Control: no-cache` to read the lake again. Any viewer can send
 it, so it is rate-limited rather than trusted: a map that was read less
-than 2 seconds ago is answered from the cache all the same.
+than 2 seconds ago is answered from the cache all the same. That limit is
+per map, and a caller can ask for many different maps, so there is a
+second one over all maps and callers: the daemon reads the lake for at
+most 4 maps at once, lets at most 64 requests wait for a read, and none
+longer than 10 seconds. A request beyond that is answered `503` with
+`Retry-After: 2`; the page shows it as any other failed load, and asking
+again after the wait is the right response.
 
 Every write that a map shows drops the cache, so the map shows it at
 once: suppressing a risk, adding, verifying, rejecting or importing a
@@ -192,9 +211,13 @@ teams, workloads with `runs_on` edges, every definition referenced, the
 untested workload as a gap, the failed run on its system, the roll-up to
 the organisation, a suppressed finding with its expiry, the cache, its `ETag` and the limit
 on forced reads. A free port is not a reserved one, so the proof asks the
-kernel (`ss -ltnp`) which process listens on both ports and goes on only
-when it is the daemon it started, at the start and before every write. It
-removes the daemon and its files on exit.
+kernel (`ss -ltnp`) for every listener on both ports, on any address, and
+goes on only when the daemon it started is the one process behind them,
+at the start and before every write. `proof.sh self-test` shows that
+check at work: it stages a listener that is not the daemon on the HTTP
+port (on `127.0.0.1`, on `0.0.0.0` and on `[::]`) and passes only if the
+proof refuses each time. The proof removes the daemon and its files on
+exit.
 
 `make demo-check` asserts the same minimum on the Krönika demo stack:
 `scripts/demo-check.sh` brings `docker/docker-compose.kronika.yml` up as
@@ -203,7 +226,13 @@ and a fresh volume, so a Krönika demo that is already up is not touched.
 It runs the seed, calls `scripts/starmap-check.py --write` (the
 organisation, 3 teams, 4 workloads with `runs_on` edges, 8 definitions
 referenced, a gap, a failed run, a suppressed risk, no `tgt:` id) and
-removes the stack again, also when it is interrupted.
+removes the stack again, also when it is interrupted. The project, its
+names and its ports are the same on every run, so one check at a time has
+the stack: a second run waits for the first on a lock file
+(`${TMPDIR:-/tmp}/tumult-demo-check-kronika.lock`, up to
+`STARMAP_LOCK_WAIT` seconds, 900 by default) and touches nothing if it
+cannot have its turn. Without `docker` on `PATH` the script says so once
+and stops before it runs anything.
 
 `scripts/starmap-check.py` only reads unless it is given `--write`. The
 suppressed-risk line needs a suppressed risk; with `--write` the check
@@ -211,4 +240,5 @@ suppresses one open risk for 7 days when none is, which cannot be undone
 through the API, so that flag is for a daemon that is thrown away.
 Without it the line is reported as skipped. `STARMAP_URL=<daemon>
 scripts/demo-check.sh --starmap-only` checks a daemon that is already
-running and never writes to it.
+running and never writes to it; it is the one use of the script that
+does not need Docker.
