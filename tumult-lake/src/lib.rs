@@ -114,9 +114,9 @@ pub use schema::CURRENT_SCHEMA_VERSION;
 #[cfg(feature = "duckdb")]
 pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};
 #[cfg(feature = "duckdb")]
-pub use store::Store;
-#[cfg(feature = "duckdb")]
 pub(crate) use store::{migrate, query_json_rows, with_tx};
+#[cfg(feature = "duckdb")]
+pub use store::{SqlParam, Store};
 #[cfg(feature = "duckdb")]
 pub use version_order::version_cmp;
 pub use webhooks::{WebhookDeadLetter, WebhookRow};
