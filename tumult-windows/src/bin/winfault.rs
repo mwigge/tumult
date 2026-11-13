@@ -89,6 +89,7 @@ fn run(fault: &str, flags: &HashMap<String, String>) -> Result<serde_json::Value
     }
 }
 
+#[allow(clippy::print_stdout, clippy::print_stderr)] // the JSON result on stdout and the usage text are this tool's output
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some((fault, rest)) = argv.split_first() else {

@@ -116,7 +116,10 @@ jobs:
       # No separate `cargo check`: clippy --all-targets already type-checks
       # every target including tests, so a check pass first only recompiles
       # the workspace crates a second time.
-      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+      # print_stdout/print_stderr/dbg_macro: diagnostics are structured log
+      # events (docs/guides/logging.md); output that is the product of a
+      # command carries a commented #[allow].
+      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
       # Fail on unused dependencies declared in Cargo.toml (respects
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
@@ -172,6 +175,11 @@ jobs:
       - run: .quality-venv/bin/ruff check scripts demo/proof
       - run: .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
       - run: bash scripts/lint-embedded-sql.sh
+      # Log events have a constant message, a stable name and vocabulary
+      # field names (docs/guides/logging.md). Crates not converted yet are
+      # listed in DEFERRED inside the script.
+      - run: python3 scripts/test-check-log-messages.py
+      - run: python3 scripts/check-log-messages.py
       - run: python3 scripts/test-distribution.py
       - run: bash -n scripts/smoke-daemon-image.sh
       - run: python3 scripts/test-smoke-daemon-image.py
