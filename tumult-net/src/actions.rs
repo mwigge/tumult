@@ -25,6 +25,8 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
+use tumult_otel::logging::err;
+
 use crate::config::{FaultProfile, ProxySpec};
 use crate::error::NetError;
 
@@ -75,8 +77,9 @@ fn locate_proxyd() -> Result<PathBuf, NetError> {
     ))
 }
 
-/// Derive the path of the startup log capturing the daemon's stderr, so a
-/// dead-on-arrival daemon's error can be surfaced by the readiness check.
+/// Derive the path of the file capturing the daemon's stderr: its structured
+/// log for as long as it runs, and the source of the error the readiness
+/// check surfaces when the daemon is dead on arrival.
 fn stderr_log_path(listen: SocketAddr) -> PathBuf {
     pidfile_path(listen).with_extension("stderr.log")
 }
@@ -144,8 +147,8 @@ async fn spawn_proxy(
     tokio::fs::write(&pidfile, pid.to_string()).await?;
 
     if wait_ready(listen).await {
-        // Came up cleanly; nothing more will be written to the startup log.
-        let _ = tokio::fs::remove_file(&stderr_log).await;
+        // The log stays for as long as the daemon runs: it is where the
+        // daemon's structured events go. `stop_proxy` removes it.
         return Ok(pid);
     }
 
@@ -154,18 +157,10 @@ async fn spawn_proxy(
     let details = tokio::fs::read_to_string(&stderr_log)
         .await
         .unwrap_or_default();
-    let _ = tokio::process::Command::new("kill")
-        .arg(pid.to_string())
-        .status()
-        .await;
+    terminate(pid).await;
     let _ = tokio::fs::remove_file(&pidfile).await;
     let _ = tokio::fs::remove_file(&stderr_log).await;
-    let detail = details.trim();
-    let reason = if detail.is_empty() {
-        "daemon produced no output".to_string()
-    } else {
-        format!("daemon stderr: {detail}")
-    };
+    let reason = startup_failure_reason(&details);
     Err(NetError::invalid(
         "proxyd",
         format!(
@@ -173,6 +168,53 @@ async fn spawn_proxy(
             READY_TIMEOUT.as_secs()
         ),
     ))
+}
+
+/// Best-effort `kill <pid>`. The caller carries on either way (the daemon
+/// may already be gone), so the outcome is logged rather than returned.
+async fn terminate(pid: u32) {
+    let result = tokio::process::Command::new("kill")
+        .arg(pid.to_string())
+        .status()
+        .await;
+    log_kill_result(pid, &result);
+}
+
+/// Logs a `kill` that did not deliver its signal: a warning when `kill`
+/// itself could not be run (the daemon may still be alive), a debug event
+/// when it ran and refused (normally: no such process).
+fn log_kill_result(pid: u32, result: &std::io::Result<std::process::ExitStatus>) {
+    match result {
+        Ok(status) if status.success() => {}
+        Ok(status) => tracing::debug!(
+            name: "net.proxy.kill.rejected",
+            { process.pid = pid, process.exit.code = status.code() },
+            "kill did not signal the chaos proxy"
+        ),
+        Err(error) => tracing::warn!(
+            name: "net.proxy.kill.failed",
+            { process.pid = pid, error.type = "io", error.message = %err(error) },
+            "kill could not be run, the chaos proxy may still be alive"
+        ),
+    }
+}
+
+/// Why a dead-on-arrival daemon failed, from its captured stderr.
+///
+/// The daemon logs JSON lines when stderr is a file; the last line's
+/// `error.message` is the cause. Anything else (a panic message, text
+/// format) is passed through as written.
+fn startup_failure_reason(stderr: &str) -> String {
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        return "daemon produced no output".to_string();
+    }
+    let structured = detail
+        .lines()
+        .next_back()
+        .and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .and_then(|event| event.get("error.message")?.as_str().map(str::to_owned));
+    format!("daemon stderr: {}", structured.as_deref().unwrap_or(detail))
 }
 
 /// Start a composite chaos proxy applying every fault in `profile`.
@@ -395,6 +437,7 @@ pub async fn stop_proxy(listen: SocketAddr) -> Result<String, NetError> {
     // report instead of killing whatever happens to hold the PID today.
     if !is_proxyd_process(pid).await {
         let _ = tokio::fs::remove_file(&pidfile).await;
+        let _ = tokio::fs::remove_file(stderr_log_path(listen)).await;
         crate::telemetry::event_proxy_stopped(None);
         return Ok(format!(
             "no chaos proxy running on {listen_s} (removed stale pidfile: pid {pid} is not a live `{PROXYD_BIN}`)"
@@ -403,11 +446,9 @@ pub async fn stop_proxy(listen: SocketAddr) -> Result<String, NetError> {
 
     // Verified proxyd process; best-effort terminate — the daemon may still
     // have exited between the identity check and the kill.
-    let _ = tokio::process::Command::new("kill")
-        .arg(pid.to_string())
-        .status()
-        .await;
+    terminate(pid).await;
     let _ = tokio::fs::remove_file(&pidfile).await;
+    let _ = tokio::fs::remove_file(stderr_log_path(listen)).await;
     crate::telemetry::event_proxy_stopped(Some(pid));
     Ok(format!("chaos proxy on {listen_s} stopped (pid {pid})"))
 }
@@ -725,5 +766,70 @@ mod tests {
         // place (only a verified-stale one is removed); tidy it up here.
         assert!(pidfile.exists(), "a garbage pidfile is not removed");
         let _ = tokio::fs::remove_file(&pidfile).await;
+    }
+
+    #[test]
+    fn a_kill_that_cannot_be_run_is_a_warning() {
+        let failure = Err(std::io::Error::other("kill: command not found"));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            log_kill_result(4242, &failure);
+        });
+        let event = &logs.named("net.proxy.kill.failed")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.pid"], 4242);
+        assert_eq!(event["error.type"], "io");
+        assert_eq!(event["error.message"], "kill: command not found");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_kill_that_exits_non_zero_is_a_debug_event() {
+        use std::os::unix::process::ExitStatusExt;
+
+        // Wait status 0x0100 is "exited with code 1": the daemon was already
+        // gone, which rollback tolerates.
+        let rejected = Ok(std::process::ExitStatus::from_raw(0x0100));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            log_kill_result(4242, &rejected);
+        });
+        let event = &logs.named("net.proxy.kill.rejected")[0];
+        assert_eq!(event["level"], "DEBUG");
+        assert_eq!(event["process.pid"], 4242);
+        assert_eq!(event["process.exit.code"], 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_successful_kill_logs_nothing() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let delivered = Ok(std::process::ExitStatus::from_raw(0));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            log_kill_result(4242, &delivered);
+        });
+        assert!(logs.events.is_empty(), "{}", logs.raw);
+    }
+
+    #[test]
+    fn a_startup_failure_reason_is_read_from_the_daemons_structured_log() {
+        let stderr = concat!(
+            r#"{"timestamp":"2026-01-01T00:00:00.000000Z","level":"ERROR","#,
+            r#""event.name":"net.proxyd.failed","message":"proxy failed","#,
+            r#""error.message":"Address already in use (os error 98)"}"#,
+            "\n"
+        );
+        assert_eq!(
+            startup_failure_reason(stderr),
+            "daemon stderr: Address already in use (os error 98)"
+        );
+    }
+
+    #[test]
+    fn a_startup_failure_reason_falls_back_to_the_raw_text() {
+        assert_eq!(
+            startup_failure_reason("thread 'main' panicked\n"),
+            "daemon stderr: thread 'main' panicked"
+        );
+        assert_eq!(startup_failure_reason("  \n"), "daemon produced no output");
     }
 }
