@@ -24,10 +24,15 @@
 //! regular-step series with `NaN` gaps every provider expects (the series
 //! contract), capped at [`resample::MAX_POINTS`].
 //!
+//! A band never collapses to a line: [`band::floor`] is the narrowest
+//! half-width a series may be drawn with, and a forecast that had to be
+//! widened to it says so in [`Forecast::degenerate_band`].
+//!
 //! Nothing here touches a database or the network. Everything is
 //! deterministic: the Holt-Winters fit is a grid search, so two calls on
 //! the same input produce the same band bit for bit.
 
+pub mod band;
 pub mod holt_winters;
 pub mod impact;
 pub mod recovery;
@@ -109,6 +114,11 @@ pub struct Forecast {
     pub context_points: usize,
     /// Fewer than [`MIN_HISTORY`] context points: the band is a guess.
     pub insufficient_history: bool,
+    /// The model's own band was narrower than the series' [`band::floor`]
+    /// at one step or more and was widened to it: the width shown is a
+    /// floor, not a measurement.
+    #[serde(default)]
+    pub degenerate_band: bool,
     pub provenance: Provenance,
 }
 
@@ -137,12 +147,89 @@ impl Forecast {
     pub fn band(&self, lower: f64, upper: f64) -> Option<(Vec<f64>, Vec<f64>)> {
         Some((self.quantile(lower)?, self.quantile(upper)?))
     }
+
+    /// Widen every step whose outermost levels are less than `2 * floor`
+    /// apart so that they are exactly that far apart, the other levels
+    /// spread in proportion to their distance from the median. Steps with
+    /// a gap at an outer level are left alone. Returns whether any step
+    /// was widened, and sets [`Forecast::degenerate_band`] when one was.
+    pub fn apply_band_floor(&mut self, floor: f64) -> bool {
+        let Some(spread) = LevelSpread::of(&self.levels) else {
+            return false;
+        };
+        let mut widened = false;
+        for row in &mut self.quantiles {
+            widened |= spread.widen(row, floor);
+        }
+        self.degenerate_band |= widened;
+        widened
+    }
+}
+
+/// Where the levels of a forecast sit relative to its centre.
+struct LevelSpread {
+    lowest: usize,
+    highest: usize,
+    median: Option<usize>,
+    /// `(level - centre level) / half the level range`, per level.
+    offsets: Vec<f64>,
+}
+
+impl LevelSpread {
+    /// `None` when the levels span no range (one level, or none).
+    fn of(levels: &[f64]) -> Option<Self> {
+        let lowest = index_of(levels, |a, b| a < b)?;
+        let highest = index_of(levels, |a, b| a > b)?;
+        let half_range = (levels[highest] - levels[lowest]) / 2.0;
+        if !(half_range.is_finite() && half_range > 0.0) {
+            return None;
+        }
+        let median = levels.iter().position(|l| (l - 0.5).abs() < 1e-9);
+        let centre = match median {
+            Some(_) => 0.5,
+            None => f64::midpoint(levels[lowest], levels[highest]),
+        };
+        Some(Self {
+            lowest,
+            highest,
+            median,
+            offsets: levels.iter().map(|l| (l - centre) / half_range).collect(),
+        })
+    }
+
+    /// Rewrite `row` around its centre when it is narrower than the floor.
+    fn widen(&self, row: &mut [f64], floor: f64) -> bool {
+        let (low, high) = (row[self.lowest], row[self.highest]);
+        let half_width = (high - low) / 2.0;
+        if !half_width.is_finite() || half_width >= floor {
+            return false;
+        }
+        let centre = match self.median {
+            Some(i) if row[i].is_finite() => row[i],
+            _ => f64::midpoint(low, high),
+        };
+        for (value, offset) in row.iter_mut().zip(&self.offsets) {
+            *value = centre + floor * offset;
+        }
+        true
+    }
+}
+
+/// Index of the level that wins `better` against every other one.
+fn index_of(levels: &[f64], better: impl Fn(f64, f64) -> bool) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for (i, level) in levels.iter().enumerate() {
+        if best.is_none_or(|b| better(*level, levels[b])) {
+            best = Some(i);
+        }
+    }
+    best
 }
 
 /// Why a provider could not forecast.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForecastError {
-    /// No non-gap point in the context at all.
+    /// No finite point in the context at all (gaps and infinities only).
     EmptyContext,
     /// `horizon == 0`.
     ZeroHorizon,
@@ -209,7 +296,7 @@ pub fn validate(request: &ForecastRequest<'_>) -> Result<(), ForecastError> {
             "the median (0.5) must be requested".into(),
         ));
     }
-    if request.context.iter().all(|v| v.is_nan()) {
+    if !request.context.iter().any(|v| v.is_finite()) {
         return Err(ForecastError::EmptyContext);
     }
     Ok(())
@@ -225,6 +312,7 @@ mod tests {
             quantiles: vec![vec![1.0, 2.0, 3.0], vec![1.5, 2.5, 3.5]],
             context_points: 10,
             insufficient_history: false,
+            degenerate_band: false,
             provenance: Provenance {
                 model: "test".into(),
                 version: "0".into(),
@@ -277,6 +365,47 @@ mod tests {
             Err(ForecastError::InvalidLevels(_))
         ));
         assert_eq!(validate(&ForecastRequest::new(&ctx, 1)), Ok(()));
+    }
+
+    #[test]
+    fn a_context_of_infinities_and_gaps_is_empty() {
+        let nothing_observed = [f64::INFINITY, f64::NAN, f64::NEG_INFINITY];
+        assert_eq!(
+            validate(&ForecastRequest::new(&nothing_observed, 1)),
+            Err(ForecastError::EmptyContext)
+        );
+    }
+
+    #[test]
+    fn a_band_narrower_than_the_floor_is_widened_and_flagged() {
+        let mut f = forecast();
+        assert!(!f.apply_band_floor(0.5), "both steps are one wide already");
+        assert!(!f.degenerate_band);
+        assert_eq!(f.quantiles[0], vec![1.0, 2.0, 3.0]);
+
+        f.quantiles[1] = vec![2.5, 2.5, 2.5];
+        assert!(f.apply_band_floor(0.5));
+        assert!(f.degenerate_band);
+        assert_eq!(f.quantiles[0], vec![1.0, 2.0, 3.0], "wide steps are kept");
+        assert_eq!(f.quantiles[1], vec![2.0, 2.5, 3.0]);
+    }
+
+    #[test]
+    fn the_floor_scales_with_the_level_spacing_and_skips_gaps() {
+        let mut f = forecast();
+        f.levels = vec![0.25, 0.5, 0.9];
+        f.quantiles = vec![vec![4.0, 4.0, 4.0], vec![f64::NAN, 4.0, f64::NAN]];
+        assert!(f.apply_band_floor(1.3));
+        // The outer levels end up 2 * 1.3 apart, each on its own side.
+        let row = &f.quantiles[0];
+        assert!((row[2] - row[0] - 2.6).abs() < 1e-12, "{row:?}");
+        assert!((row[1] - 4.0).abs() < 1e-12 && row[0] < 4.0 && row[2] > 4.0);
+        assert!(f.quantiles[1][0].is_nan(), "a gap stays a gap");
+
+        let mut median_only = forecast();
+        median_only.levels = vec![0.5];
+        median_only.quantiles = vec![vec![1.0]];
+        assert!(!median_only.apply_band_floor(1.0), "one level has no width");
     }
 
     #[test]

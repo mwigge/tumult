@@ -9,13 +9,17 @@
 //! lead time. Gaps (`NaN`) are linearly interpolated for the fit and do not
 //! count towards the history.
 //!
+//! A constant or exactly periodic context leaves no residuals, so that band
+//! would be a line. It is widened to the context's [`crate::band::floor`]
+//! and the forecast is marked [`Forecast::degenerate_band`].
+//!
 //! Short contexts — fewer than [`MIN_HISTORY`] observed points — get a flat
 //! forecast at the mean with a band from the few residuals there are, and
 //! [`Forecast::insufficient_history`] set. The band is still drawn, but
 //! nobody should read much into it.
 
-use crate::stats;
 use crate::MIN_HISTORY;
+use crate::{band, stats};
 use crate::{validate, Forecast, ForecastError, ForecastProvider, ForecastRequest, Provenance};
 
 /// Longest season the auto-detector considers, in steps.
@@ -98,14 +102,16 @@ impl ForecastProvider for HoltWinters {
         } else {
             best_fit(&values, self.period_for(&values))
         };
-        let quantiles = fit.quantiles(request.horizon, request.levels);
-        Ok(Forecast {
+        let mut forecast = Forecast {
             levels: request.levels.to_vec(),
-            quantiles,
+            quantiles: fit.quantiles(request.horizon, request.levels),
             context_points,
             insufficient_history: context_points < self.min_history,
+            degenerate_band: false,
             provenance: Self::provenance(),
-        })
+        };
+        forecast.apply_band_floor(band::floor(request.context));
+        Ok(forecast)
     }
 
     fn model(&self) -> &'static str {
@@ -379,8 +385,50 @@ mod tests {
         }
         let single = run(&[7.0], 2);
         assert!(single.insufficient_history);
+        assert!(single.degenerate_band, "one point has no spread");
         let (lo, hi) = single.band(0.1, 0.9).unwrap();
-        assert!(close(lo[0], 7.0, 1e-9) && close(hi[0], 7.0, 1e-9));
+        assert!(close(lo[0], 6.993, 1e-9) && close(hi[0], 7.007, 1e-9));
+    }
+
+    #[test]
+    fn a_constant_context_gets_a_floored_band_and_says_so() {
+        // An HTTP status probe: 200 every time.
+        let f = run(&[200.0; 40], 4);
+        assert!(f.degenerate_band);
+        let median = f.median();
+        let (lo, hi) = f.band(0.1, 0.9).unwrap();
+        for h in 0..4 {
+            assert!(close(median[h], 200.0, 1e-9));
+            assert!(close(hi[h] - lo[h], 0.4, 1e-9), "0.1 % of 200 each way");
+        }
+    }
+
+    #[test]
+    fn an_exactly_periodic_context_gets_a_floored_band() {
+        let context: Vec<f64> = (0..60).map(|i| 300.0 + 5.0 * lead(i % 3)).collect();
+        let f = run(&context, 6);
+        assert!(f.degenerate_band, "an exact season leaves no residuals");
+        let (lo, hi) = f.band(0.1, 0.9).unwrap();
+        for h in 0..6 {
+            let half = (hi[h] - lo[h]) / 2.0;
+            assert!(half >= 2.5 - 1e-9, "half the 5-unit resolution: {half}");
+            assert!(half < 10.0, "a floor, not a guess: {half}");
+        }
+    }
+
+    #[test]
+    fn a_noisy_context_keeps_its_own_band() {
+        // Deterministic pseudo-noise (an LCG): spread, but no season.
+        let mut state: u64 = 7;
+        let context: Vec<f64> = (0..50)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                100.0 + f64::from(u8::try_from((state >> 56) & 0x0f).unwrap_or(0)) * 0.5
+            })
+            .collect();
+        assert!(!run(&context, 8).degenerate_band);
     }
 
     #[test]

@@ -2,30 +2,62 @@
 //!
 //! A sidecar that is configured but down would otherwise cost every
 //! request its full timeout before the built-in provider steps in. The
-//! first failure opens the circuit for a cool-down
-//! (`TUMULTD_FORECAST_COOLDOWN_S`, 30 s by default): while it is open the
-//! sidecar is skipped and the fallback answers at once. After the
-//! cool-down the next request tries the sidecar again; a success closes
-//! the circuit, another failure reopens it. A cool-down of zero disables
-//! the breaker.
+//! breaker has three states:
+//!
+//! * **closed** — every request may call the sidecar.
+//! * **open** — a call failed; the sidecar is skipped until the cool-down
+//!   (`TUMULTD_FORECAST_COOLDOWN_S`, 30 s by default) has passed and the
+//!   fallback answers at once.
+//! * **half-open** — the cool-down has passed and exactly one request, the
+//!   probe, is let through. Its success closes the circuit, its failure
+//!   reopens it; every other request keeps getting the fallback meanwhile.
+//!   A probe that never reports back (its request was dropped) is replaced
+//!   after [`PROBE_TIMEOUT`].
+//!
+//! Every admitted call carries a [`Permit`] stamped with the breaker's
+//! generation, which advances on each failure and each probe. A result
+//! reported with a stale permit is ignored, so a slow success from before
+//! a failure cannot close a circuit that has opened since.
+//!
+//! A cool-down of zero disables the breaker.
 
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use super::telemetry;
+
 /// How long the sidecar is skipped after a failure, unless configured.
 pub const DEFAULT_COOLDOWN: Duration = Duration::from_secs(30);
 
-#[derive(Debug)]
-struct Open {
-    until: Instant,
-    error: String,
+/// How long a half-open circuit waits for its probe before admitting a
+/// new one: the client's request timeout plus a margin.
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum State {
+    Closed,
+    Open { until: Instant },
+    HalfOpen { since: Instant },
 }
 
-/// Shared open/closed state for one sidecar.
+#[derive(Debug)]
+struct Inner {
+    state: State,
+    generation: u64,
+}
+
+/// Leave to call the sidecar once; hand it back with the outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Permit {
+    generation: u64,
+}
+
+/// Shared state for one sidecar.
 #[derive(Debug)]
 pub struct Breaker {
     cooldown: Duration,
-    open: Mutex<Option<Open>>,
+    probe_timeout: Duration,
+    inner: Mutex<Inner>,
 }
 
 impl Default for Breaker {
@@ -40,8 +72,19 @@ impl Breaker {
     pub fn new(cooldown: Duration) -> Self {
         Self {
             cooldown,
-            open: Mutex::new(None),
+            probe_timeout: PROBE_TIMEOUT,
+            inner: Mutex::new(Inner {
+                state: State::Closed,
+                generation: 0,
+            }),
         }
+    }
+
+    /// Override how long a half-open circuit waits for its probe.
+    #[must_use]
+    pub fn with_probe_timeout(mut self, probe_timeout: Duration) -> Self {
+        self.probe_timeout = probe_timeout;
+        self
     }
 
     /// The configured cool-down.
@@ -50,39 +93,72 @@ impl Breaker {
         self.cooldown
     }
 
-    /// Why the sidecar must be skipped at `now`, or `None` when it may be
-    /// tried. An elapsed cool-down closes the circuit.
-    #[must_use]
-    pub fn open_reason(&self, now: Instant) -> Option<String> {
-        let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        let state = open.as_ref()?;
-        if now >= state.until {
-            *open = None;
-            return None;
-        }
-        let left = state.until.duration_since(now).as_secs_f64().ceil();
-        Some(format!(
-            "sidecar circuit open, retry in {left:.0} s: {}",
-            state.error
-        ))
+    fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The sidecar failed at `now`: skip it for the cool-down.
-    pub fn record_failure(&self, now: Instant, error: &str) {
+    /// Whether a request arriving at `now` would be turned away. Changes
+    /// nothing: an elapsed cool-down still needs [`Breaker::admit`] to
+    /// start the probe.
+    #[must_use]
+    pub fn is_open(&self, now: Instant) -> bool {
+        match self.lock().state {
+            State::Closed => false,
+            State::Open { until } => now < until,
+            State::HalfOpen { since } => now.duration_since(since) < self.probe_timeout,
+        }
+    }
+
+    /// Ask to call the sidecar at `now`. `None` while the circuit is open
+    /// or a probe is under way.
+    #[must_use]
+    pub fn admit(&self, now: Instant) -> Option<Permit> {
+        let mut inner = self.lock();
+        match inner.state {
+            State::Closed => {}
+            State::Open { until } if now < until => return None,
+            State::HalfOpen { since } if now.duration_since(since) < self.probe_timeout => {
+                return None
+            }
+            State::Open { .. } | State::HalfOpen { .. } => {
+                inner.state = State::HalfOpen { since: now };
+                inner.generation += 1;
+                telemetry::breaker_transition("half_open");
+            }
+        }
+        Some(Permit {
+            generation: inner.generation,
+        })
+    }
+
+    /// The call made under `permit` reached a working sidecar: close the
+    /// circuit, unless the circuit has moved on since the permit was
+    /// issued.
+    pub fn record_success(&self, permit: Permit) {
+        let mut inner = self.lock();
+        if permit.generation != inner.generation || inner.state == State::Closed {
+            return;
+        }
+        inner.state = State::Closed;
+        telemetry::breaker_transition("closed");
+    }
+
+    /// The call made under `permit` failed at `now`: skip the sidecar for
+    /// the cool-down, unless the circuit has moved on since the permit was
+    /// issued.
+    pub fn record_failure(&self, permit: Permit, now: Instant) {
         if self.cooldown.is_zero() {
             return;
         }
-        let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        *open = Some(Open {
+        let mut inner = self.lock();
+        if permit.generation != inner.generation {
+            return;
+        }
+        inner.state = State::Open {
             until: now + self.cooldown,
-            error: error.to_string(),
-        });
-    }
-
-    /// The sidecar answered: close the circuit.
-    pub fn record_success(&self) {
-        let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        *open = None;
+        };
+        inner.generation += 1;
+        telemetry::breaker_transition("open");
     }
 }
 
@@ -104,45 +180,113 @@ pub fn parse_cooldown(raw: Option<&str>) -> Result<Duration, String> {
 mod tests {
     use super::*;
 
+    const TEN: Duration = Duration::from_secs(10);
+
+    fn secs(n: u64) -> Duration {
+        Duration::from_secs(n)
+    }
+
     #[test]
     fn a_new_breaker_is_closed() {
         let breaker = Breaker::default();
         assert_eq!(breaker.cooldown(), DEFAULT_COOLDOWN);
-        assert!(breaker.open_reason(Instant::now()).is_none());
+        let now = Instant::now();
+        assert!(!breaker.is_open(now));
+        assert!(breaker.admit(now).is_some());
+        assert!(breaker.admit(now).is_some(), "closed admits everyone");
     }
 
     #[test]
     fn a_failure_opens_the_circuit_until_the_cooldown_elapses() {
-        let breaker = Breaker::new(Duration::from_secs(10));
+        let breaker = Breaker::new(TEN);
         let t0 = Instant::now();
-        breaker.record_failure(t0, "sidecar unreachable: refused");
-        let reason = breaker.open_reason(t0 + Duration::from_secs(4)).unwrap();
-        assert!(reason.contains("circuit open"), "{reason}");
-        assert!(reason.contains("retry in 6 s"), "{reason}");
-        assert!(reason.contains("sidecar unreachable: refused"), "{reason}");
-        assert!(breaker.open_reason(t0 + Duration::from_secs(10)).is_none());
-        // Elapsed means closed, also for an earlier clock reading.
-        assert!(breaker.open_reason(t0 + Duration::from_secs(4)).is_none());
+        let permit = breaker.admit(t0).unwrap();
+        breaker.record_failure(permit, t0);
+        assert!(breaker.is_open(t0 + secs(4)));
+        assert!(breaker.admit(t0 + secs(4)).is_none());
+        assert!(!breaker.is_open(t0 + secs(10)), "the probe may go");
+        // Looking does not start the probe: an earlier reading is still open.
+        assert!(breaker.is_open(t0 + secs(4)));
     }
 
     #[test]
-    fn a_success_closes_the_circuit_and_a_new_failure_reopens_it() {
-        let breaker = Breaker::new(Duration::from_secs(10));
+    fn half_open_admits_exactly_one_probe() {
+        let breaker = Breaker::new(TEN);
         let t0 = Instant::now();
-        breaker.record_failure(t0, "first");
-        breaker.record_success();
-        assert!(breaker.open_reason(t0).is_none());
-        breaker.record_failure(t0 + Duration::from_secs(20), "second");
-        let reason = breaker.open_reason(t0 + Duration::from_secs(21)).unwrap();
-        assert!(reason.contains("second"), "{reason}");
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        let after = t0 + secs(11);
+        let probe = breaker.admit(after);
+        assert!(probe.is_some(), "the cool-down has passed");
+        assert!(breaker.admit(after).is_none(), "one probe at a time");
+        assert!(breaker.admit(after + secs(1)).is_none());
+        assert!(breaker.is_open(after + secs(1)));
+
+        breaker.record_success(probe.unwrap());
+        assert!(!breaker.is_open(after + secs(1)));
+        assert!(breaker.admit(after + secs(1)).is_some());
+        assert!(breaker.admit(after + secs(1)).is_some());
+    }
+
+    #[test]
+    fn a_failed_probe_reopens_the_circuit_for_a_full_cooldown() {
+        let breaker = Breaker::new(TEN);
+        let t0 = Instant::now();
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        let probe = breaker.admit(t0 + secs(11)).unwrap();
+        breaker.record_failure(probe, t0 + secs(12));
+        assert!(breaker.admit(t0 + secs(21)).is_none());
+        assert!(breaker.admit(t0 + secs(22)).is_some());
+    }
+
+    #[test]
+    fn a_probe_that_never_reports_is_replaced_after_its_timeout() {
+        let breaker = Breaker::new(TEN).with_probe_timeout(secs(5));
+        let t0 = Instant::now();
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        let lost = breaker.admit(t0 + secs(10)).unwrap();
+        assert!(breaker.admit(t0 + secs(14)).is_none());
+        let replacement = breaker.admit(t0 + secs(15)).unwrap();
+        assert_ne!(lost, replacement);
+        // The lost probe turning up late decides nothing.
+        breaker.record_success(lost);
+        assert!(breaker.is_open(t0 + secs(16)));
+        breaker.record_success(replacement);
+        assert!(!breaker.is_open(t0 + secs(16)));
+    }
+
+    /// Two calls leave together; the first fails and opens the circuit.
+    /// The second succeeding late must not close it again.
+    #[test]
+    fn a_late_success_cannot_close_a_freshly_opened_circuit() {
+        let breaker = Breaker::new(TEN);
+        let t0 = Instant::now();
+        let slow = breaker.admit(t0).unwrap();
+        let failing = breaker.admit(t0).unwrap();
+        breaker.record_failure(failing, t0 + secs(1));
+        breaker.record_success(slow);
+        assert!(breaker.is_open(t0 + secs(2)), "still open");
+        assert!(breaker.admit(t0 + secs(2)).is_none());
+        // Nor does a late failure push the cool-down out.
+        breaker.record_failure(slow, t0 + secs(9));
+        assert!(breaker.admit(t0 + secs(11)).is_some());
+    }
+
+    #[test]
+    fn a_success_while_closed_changes_nothing() {
+        let breaker = Breaker::new(TEN);
+        let t0 = Instant::now();
+        let permit = breaker.admit(t0).unwrap();
+        breaker.record_success(permit);
+        assert_eq!(breaker.admit(t0).unwrap(), permit, "same generation");
     }
 
     #[test]
     fn a_zero_cooldown_disables_the_breaker() {
         let breaker = Breaker::new(Duration::ZERO);
         let t0 = Instant::now();
-        breaker.record_failure(t0, "down");
-        assert!(breaker.open_reason(t0).is_none());
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        assert!(!breaker.is_open(t0));
+        assert!(breaker.admit(t0).is_some());
     }
 
     #[test]

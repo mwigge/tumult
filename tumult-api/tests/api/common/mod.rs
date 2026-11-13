@@ -446,6 +446,7 @@ pub async fn spawn_server_with_forecast_sidecar(
     spawn_server_tuned(Arc::new(|_env| Arc::new(SlowNoopExecutor)), move |state| {
         state
             .with_forecast_url(Some(url))
+            .expect("a usable sidecar URL")
             .with_forecast_cooldown(cooldown)
     })
     .await

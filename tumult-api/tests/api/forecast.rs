@@ -1,9 +1,13 @@
 //! `GET /api/forecast` and `GET /api/runs/{id}/impact` over the seeded
 //! store: the built-in provider answers (no sidecar is configured), every
-//! response names its model, metric forecasts are cached, and the impact
-//! endpoint 404s for runs without probe samples. With a sidecar
-//! configured, its answer carries its own provenance, and a failing one
-//! opens the circuit so later requests fall back without calling it.
+//! response names its model, metric forecasts are cached per context
+//! window, and the impact endpoint 404s for runs without probe samples.
+//! With a sidecar configured, its answer carries its own provenance, and a
+//! failing one opens the circuit so later requests fall back without
+//! calling it; the reason they are given is a coarse code.
+//!
+//! Cache assertions go through [`get_in_one_window`], so none of them
+//! depends on where in a minute the test happens to run.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -49,17 +53,25 @@ async fn forecast_returns_a_band_with_provenance_and_caches_it() {
     // Two counters in a day are not much history; the response says so.
     assert_eq!(body["forecast"]["insufficient_history"], true);
 
-    let (status, again) = get(
-        &srv.base,
-        "/api/forecast?metric=experiment_count&range=24h&horizon=6",
-    )
-    .await;
-    assert_eq!(status, 200, "{again}");
+    assert_eq!(body["forecast"]["degenerate_band"], true, "{body}");
+    assert_eq!(
+        body["from_ms"].as_i64().unwrap(),
+        body["from_ns"].as_i64().unwrap() / 1_000_000
+    );
+    assert_eq!(
+        body["to_ms"].as_i64().unwrap(),
+        body["to_ns"].as_i64().unwrap() / 1_000_000
+    );
+
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
+    let (first, again) = get_in_one_window(&srv, path, path).await;
+    assert_eq!(first["cached"], false, "{first}");
     assert_eq!(again["cached"], true, "{again}");
     assert_eq!(
         again["forecast"]["quantiles"],
-        body["forecast"]["quantiles"]
+        first["forecast"]["quantiles"]
     );
+    assert_eq!(again["forecast"]["degenerate_band"], true);
     assert_eq!(again["provenance"]["model"], "holt-winters");
 
     // A different horizon is a different cache entry.
@@ -70,6 +82,102 @@ async fn forecast_returns_a_band_with_provenance_and_caches_it() {
     .await;
     assert_eq!(other["cached"], false);
     assert_eq!(other["forecast"]["quantiles"].as_array().unwrap().len(), 3);
+}
+
+/// Horizons handed out by [`get_in_one_window`], so no two attempts — in
+/// one test or across retries — can find each other's cache entry.
+static NEXT_HORIZON: AtomicUsize = AtomicUsize::new(0);
+
+/// Two requests that fall in the same aligned window (the same `to_ns`),
+/// retried when a window boundary passes between them, so a cache
+/// assertion never depends on the wall clock. `{h}` in either path becomes
+/// a horizon no earlier attempt has used: the first response of the pair
+/// is always freshly fitted.
+async fn get_in_one_window(srv: &TestServer, first: &str, second: &str) -> (Value, Value) {
+    for _ in 0..5 {
+        let horizon = 10 + NEXT_HORIZON.fetch_add(1, Ordering::SeqCst) % 900;
+        let fill = |path: &str| path.replace("{h}", &horizon.to_string());
+        let (status, a) = get(&srv.base, &fill(first)).await;
+        assert_eq!(status, 200, "{a}");
+        let (status, b) = get(&srv.base, &fill(second)).await;
+        assert_eq!(status, 200, "{b}");
+        if a["to_ns"] == b["to_ns"] {
+            return (a, b);
+        }
+    }
+    panic!("five window boundaries in a row");
+}
+
+/// A day and a fortnight share the one-minute tier, so they share the
+/// step, the horizon and the window end; only the context start differs.
+/// The fortnight must not be served the forecast fitted on the day.
+#[tokio::test]
+async fn a_forecast_is_not_served_for_another_context_range() {
+    let srv = spawn_server().await;
+    let day = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
+    let fortnight = "/api/forecast?metric=experiment_count&range=14d&horizon={h}";
+    let (a, b) = get_in_one_window(&srv, day, fortnight).await;
+    assert_eq!(a["step_ns"], b["step_ns"], "same tier");
+    assert_eq!(a["horizon"], b["horizon"]);
+    assert_eq!(a["cached"], false);
+    assert_eq!(b["cached"], false, "another context is another forecast");
+    assert!(b["from_ns"].as_i64().unwrap() < a["from_ns"].as_i64().unwrap());
+    let observed = b["series"]["observed"].as_array().unwrap();
+    let points = observed.iter().filter(|v| !v.is_null()).count();
+    assert_eq!(
+        b["forecast"]["context_points"].as_u64(),
+        Some(points as u64),
+        "the forecast was fitted on the fortnight's own points"
+    );
+    // Each range still hits its own entry.
+    let (_, second) = get_in_one_window(&srv, fortnight, fortnight).await;
+    assert_eq!(second["cached"], true, "{second}");
+}
+
+/// The cache is an optimisation. With the table gone, the lookup and the
+/// write both fail; the forecast is served regardless.
+#[tokio::test]
+async fn a_broken_cache_does_not_fail_the_request() {
+    let srv = spawn_server().await;
+    exec_write(&srv, |w| {
+        w.execute("DROP TABLE forecasts", [])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
+    let (first, again) = get_in_one_window(&srv, path, path).await;
+    for body in [first, again] {
+        assert_eq!(body["cached"], false, "{body}");
+        assert_eq!(body["provenance"]["model"], "holt-winters");
+        assert!(body["forecast"]["quantiles"].is_array());
+    }
+}
+
+/// An hour forecasts at one second, but its window moves once a minute:
+/// a chart polling every second reuses one cache row.
+#[tokio::test]
+async fn the_one_second_tier_is_cached_by_the_minute() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.execute(
+            &format!(
+                "UPDATE spans SET ts_ns = {} WHERE span_name = 'resilience.experiment'",
+                now - 120 * NS
+            ),
+            [],
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .await;
+    let path = "/api/forecast?metric=experiment_count&range=1h&horizon={h}";
+    let (first, again) = get_in_one_window(&srv, path, path).await;
+    assert_eq!(first["step_ns"], NS);
+    assert_eq!(first["to_ns"].as_i64().unwrap() % (60 * NS), 0, "{first}");
+    assert_eq!(first["cached"], false);
+    assert_eq!(again["cached"], true, "{again}");
 }
 
 #[tokio::test]
@@ -127,7 +235,13 @@ async fn forecast_honours_environment_scopes() {
     assert_eq!(status, 404, "{body}");
 }
 
-async fn seed_run_with_samples(srv: &TestServer, run_id: &str, experiment_id: &str) {
+/// A run whose `health` probe was sampled once a second: `pre` steps
+/// before the fault at a flat 100 ms, 20 during-phase steps where latency
+/// triples, then 40 post-phase steps back at exactly 100 ms after a
+/// three-step 60 ms tail. The settled level is constant on purpose: a
+/// probe that reports the same value every second is the common case, and
+/// it leaves a fit without residuals.
+async fn seed_run(srv: &TestServer, run_id: &str, experiment_id: &str, pre: i64) {
     let run = run_id.to_string();
     let exp = experiment_id.to_string();
     let base = now_ns() - 600 * NS;
@@ -142,24 +256,20 @@ async fn seed_run_with_samples(srv: &TestServer, run_id: &str, experiment_id: &s
         .map_err(|e| e.to_string())?;
         w.finish_run(&run, "passed", Some(&exp), None, None)
             .map_err(|e| e.to_string())?;
-        // 1 s samples: 20 during-phase steps where latency triples, then 40
-        // post-phase steps settling back around 100 ms. The settled level
-        // carries deterministic pseudo-noise (an LCG): an exactly periodic
-        // series would be fitted without residuals and leave no band.
         let mut rows = Vec::new();
-        let mut state: u64 = 7;
-        for i in 0..60_i64 {
-            state = state
-                .wrapping_mul(6_364_136_223_846_793_005)
-                .wrapping_add(1_442_695_040_888_963_407);
-            let noise = f64::from(u8::try_from((state >> 56) & 0x07).unwrap_or(0));
-            let (phase, value) = if i < 20 {
+        for i in 0..pre + 60 {
+            let since_fault = i - pre;
+            let (phase, value) = if since_fault < 0 {
+                ("before", 100.0)
+            } else if since_fault < 20 {
                 (
                     "during",
-                    300.0 + f64::from(i32::try_from(i % 3).unwrap_or(0)) * 5.0,
+                    300.0 + f64::from(i32::try_from(since_fault % 3).unwrap_or(0)) * 5.0,
                 )
+            } else if since_fault < 23 {
+                ("post", 160.0)
             } else {
-                ("post", 100.0 + noise + if i < 23 { 60.0 } else { 0.0 })
+                ("post", 100.0)
             };
             rows.push(format!(
                 "('{exp}', 'health', '{phase}', {}, {value}, true)",
@@ -178,6 +288,11 @@ async fn seed_run_with_samples(srv: &TestServer, run_id: &str, experiment_id: &s
         Ok(())
     })
     .await;
+}
+
+/// A run without pre-fault samples: the counterfactual is a backcast.
+async fn seed_run_with_samples(srv: &TestServer, run_id: &str, experiment_id: &str) {
+    seed_run(srv, run_id, experiment_id, 0).await;
 }
 
 #[tokio::test]
@@ -234,7 +349,17 @@ async fn impact_backcasts_from_the_post_phase_and_measures_recovery() {
     let impact = &p["impact"];
     assert_eq!(impact["samples_during"], 20);
     assert_eq!(impact["samples_post"], 40);
-    assert!(impact["during_peak"].as_f64().unwrap() > 1.0, "{impact}");
+    // The post phase is flat, so the band it is judged against is the
+    // floor, and the response says so instead of reporting no peak (a
+    // zero-width band) or one in the quadrillions (a float-noise band).
+    assert_eq!(p["degenerate_band"], true, "{p}");
+    assert_eq!(body["degenerate_band"], true);
+    let peak = impact["during_peak"].as_f64().unwrap();
+    assert!((1.0..1e6).contains(&peak), "{impact}");
+    assert_eq!(body["impact_peak"].as_f64(), Some(peak));
+    let band = &p["series"]["bands"][0];
+    let width = band["upper"][5].as_f64().unwrap() - band["lower"][5].as_f64().unwrap();
+    assert!(width > 0.05 && width <= 10.0, "floored, not zero: {width}");
     assert!(
         impact["during_outside_ratio"].as_f64().unwrap() > 0.9,
         "{impact}"
@@ -247,9 +372,53 @@ async fn impact_backcasts_from_the_post_phase_and_measures_recovery() {
         "the 60 ms tail lasts three steps: {recovery}"
     );
     assert!(recovery["recovered_at_ns"].is_number());
+    assert_eq!(
+        recovery["recovered_at_ms"].as_i64().unwrap(),
+        recovery["recovered_at_ns"].as_i64().unwrap() / 1_000_000
+    );
+    assert_eq!(
+        p["fault"]["start_ms"].as_i64().unwrap(),
+        p["fault"]["start_ns"].as_i64().unwrap() / 1_000_000
+    );
+    assert_eq!(
+        p["fault"]["end_ms"].as_i64().unwrap() - p["fault"]["start_ms"].as_i64().unwrap(),
+        20_000
+    );
+    assert_eq!(
+        body["as_of_ms"].as_i64().unwrap(),
+        body["as_of_ns"].as_i64().unwrap() / 1_000_000
+    );
     assert_eq!(body["recovery_time_s"], recovery["recovery_time_s"]);
     assert!(p["forecast"]["context_points"].as_u64().unwrap() >= 30);
     assert_eq!(p["provenance"]["model"], "holt-winters");
+}
+
+/// With samples from before the fault, the counterfactual is a forecast
+/// forward from them rather than a backcast.
+#[tokio::test]
+async fn impact_forecasts_from_the_baseline_when_there_is_one() {
+    let srv = spawn_server().await;
+    seed_run(&srv, "run-baseline", "exp-baseline", 40).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-baseline/impact").await;
+    assert_eq!(status, 200, "{body}");
+    let p = &body["probes"][0];
+    assert_eq!(p["reference"], "baseline", "{p}");
+    assert_eq!(p["series"]["ts"].as_array().unwrap().len(), 100);
+    assert_eq!(p["forecast"]["context_points"], 40);
+    let fault_start = p["fault"]["start_ms"].as_i64().unwrap();
+    assert_eq!(
+        fault_start,
+        p["series"]["ts"][40].as_i64().unwrap(),
+        "the fault starts after the forty baseline samples"
+    );
+    // Nothing is compared before the fault.
+    assert!(p["impact"]["per_sample"][39].is_null());
+    assert!(p["impact"]["per_sample"][40].is_number());
+    assert_eq!(p["impact"]["samples_during"], 20);
+    assert!(p["impact"]["during_peak"].as_f64().unwrap() > 1.0, "{p}");
+    assert_eq!(p["degenerate_band"], true, "a flat baseline: {p}");
+    let seconds = p["recovery"]["recovery_time_s"].as_f64().unwrap();
+    assert!((1.0..=6.0).contains(&seconds), "{p}");
 }
 
 #[tokio::test]
@@ -269,6 +438,8 @@ struct FakeSidecar {
     hits: Arc<AtomicUsize>,
     healthy: Arc<AtomicBool>,
     reject: Arc<AtomicBool>,
+    /// Answer 200 with other quantile levels than the ones asked for.
+    other_levels: Arc<AtomicBool>,
 }
 
 async fn fake_forecast(
@@ -292,8 +463,13 @@ async fn fake_forecast(
     let steps: Vec<Value> = (0..horizon)
         .map(|_| serde_json::json!([90.0, 100.0, 110.0]))
         .collect();
+    let levels = if sidecar.other_levels.load(Ordering::SeqCst) {
+        serde_json::json!([0.2, 0.5, 0.8])
+    } else {
+        serde_json::json!([0.1, 0.5, 0.9])
+    };
     let body = serde_json::json!({
-        "levels": [0.1, 0.5, 0.9],
+        "levels": levels,
         "context_points": request["context"].as_array().map_or(0, Vec::len),
         "quantiles": [steps],
         "model": {"model": "timestral", "model_id": "mistralai/Timestral-5M",
@@ -322,17 +498,16 @@ async fn a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown()
     let (status, first) = get(&srv.base, "/api/runs/run-breaker/impact").await;
     assert_eq!(status, 200, "{first}");
     assert_eq!(first["provenance"]["model"], "holt-winters");
-    let reason = first["provenance"]["fallback_reason"].as_str().unwrap();
-    assert!(reason.contains("500"), "{reason}");
+    // A coarse code: what the sidecar said stays in the daemon's log.
+    assert_eq!(first["provenance"]["fallback_reason"], "bad_response");
+    assert!(!first.to_string().contains("model not loaded"), "{first}");
     assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
 
     // The circuit is open: the fallback answers without calling the sidecar.
     let (status, second) = get(&srv.base, "/api/runs/run-breaker/impact").await;
     assert_eq!(status, 200, "{second}");
     assert_eq!(second["provenance"]["model"], "holt-winters");
-    let reason = second["provenance"]["fallback_reason"].as_str().unwrap();
-    assert!(reason.contains("circuit open"), "{reason}");
-    assert!(reason.contains("500"), "the first error is kept: {reason}");
+    assert_eq!(second["provenance"]["fallback_reason"], "circuit_open");
     assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
 
     // Once the cool-down has passed the sidecar is tried again. (The
@@ -357,7 +532,13 @@ async fn a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown()
         "mistralai/Timestral-5M@rev1 (timestral 1.0.0)"
     );
     assert_eq!(recovered["provenance"]["weights_hash"], "feed");
-    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        sidecar.hits.load(Ordering::SeqCst),
+        2,
+        "one probe closed the circuit"
+    );
+    // The sidecar's own band (90..110) is wider than the floor and is kept.
+    assert_eq!(recovered["probes"][0]["forecast"]["degenerate_band"], false);
 }
 
 #[tokio::test]
@@ -365,32 +546,38 @@ async fn forecast_caches_per_provider_and_serves_the_fallback_while_the_circuit_
     let (url, sidecar) = spawn_fake_sidecar().await;
     sidecar.healthy.store(true, Ordering::SeqCst);
     let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(600)).await;
-    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=4";
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
 
-    let (status, live) = get(&srv.base, path).await;
-    assert_eq!(status, 200, "{live}");
+    let (live, again) = get_in_one_window(&srv, path, path).await;
     assert_eq!(live["provenance"]["model"], "timestral");
     assert_eq!(live["cached"], false);
-    let (_, again) = get(&srv.base, path).await;
     assert_eq!(again["cached"], true, "the sidecar's row is a hit: {again}");
     assert_eq!(again["provenance"]["model"], "timestral");
-    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
+    let calls = sidecar.hits.load(Ordering::SeqCst);
+    assert!(calls >= 1);
 
     // A new horizon misses the cache; the sidecar now fails.
     sidecar.healthy.store(false, Ordering::SeqCst);
-    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=5";
-    let (status, down) = get(&srv.base, path).await;
+    let (status, down) = get(
+        &srv.base,
+        "/api/forecast?metric=experiment_count&range=24h&horizon=5",
+    )
+    .await;
     assert_eq!(status, 200, "{down}");
     assert_eq!(down["provenance"]["model"], "holt-winters");
+    assert_eq!(down["provenance"]["fallback_reason"], "bad_response");
     assert_eq!(down["cached"], false);
-    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), calls + 1);
 
-    let (_, open) = get(&srv.base, path).await;
+    // While the circuit is open the built-in provider's rows are the ones
+    // looked up, and the sidecar is left alone.
+    let (fitted, open) = get_in_one_window(&srv, path, path).await;
+    assert_eq!(fitted["cached"], false);
+    assert_eq!(fitted["provenance"]["fallback_reason"], "circuit_open");
     assert_eq!(open["provenance"]["model"], "holt-winters");
     assert_eq!(open["cached"], true, "the fallback row is served: {open}");
-    let reason = open["provenance"]["fallback_reason"].as_str().unwrap();
-    assert!(reason.contains("circuit open"), "{reason}");
-    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
+    assert_eq!(open["provenance"]["fallback_reason"], "circuit_open");
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), calls + 1);
 }
 
 #[tokio::test]
@@ -404,10 +591,44 @@ async fn a_rejected_request_falls_back_without_opening_the_circuit() {
         let (status, body) = get(&srv.base, "/api/runs/run-rejected/impact").await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(body["provenance"]["model"], "holt-winters");
-        let reason = body["provenance"]["fallback_reason"].as_str().unwrap();
-        assert!(reason.contains("422"), "{reason}");
+        assert_eq!(body["provenance"]["fallback_reason"], "rejected");
+        assert!(!body.to_string().contains("context too short"), "{body}");
         assert_eq!(sidecar.hits.load(Ordering::SeqCst), expected_hits);
     }
+}
+
+/// A sidecar that answers 200 with other levels than the ones asked for
+/// (a model snapping to its own grid) has not produced the band the
+/// endpoints serve. Both fall back; neither is a 500.
+#[tokio::test]
+async fn mismatched_sidecar_levels_fall_back_and_never_fail_the_request() {
+    let (url, sidecar) = spawn_fake_sidecar().await;
+    sidecar.healthy.store(true, Ordering::SeqCst);
+    sidecar.other_levels.store(true, Ordering::SeqCst);
+    // No cool-down: every request reaches the sidecar.
+    let srv = spawn_server_with_forecast_sidecar(&url, Duration::ZERO).await;
+    seed_run_with_samples(&srv, "run-levels", "exp-levels").await;
+
+    let (status, impact) = get(&srv.base, "/api/runs/run-levels/impact").await;
+    assert_eq!(status, 200, "{impact}");
+    assert_eq!(impact["provenance"]["model"], "holt-winters");
+    assert_eq!(impact["provenance"]["fallback_reason"], "bad_response");
+    assert!(impact["probes"][0]["error"].is_null(), "{impact}");
+    assert!(impact["impact_peak"].is_number(), "{impact}");
+
+    let (status, forecast) = get(
+        &srv.base,
+        "/api/forecast?metric=experiment_count&range=24h&horizon=4",
+    )
+    .await;
+    assert_eq!(status, 200, "{forecast}");
+    assert_eq!(forecast["provenance"]["model"], "holt-winters");
+    assert_eq!(forecast["provenance"]["fallback_reason"], "bad_response");
+    assert_eq!(
+        forecast["forecast"]["levels"],
+        serde_json::json!([0.1, 0.5, 0.9])
+    );
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -417,12 +638,43 @@ async fn an_unreachable_sidecar_costs_one_attempt_per_cooldown() {
         spawn_server_with_forecast_sidecar("http://127.0.0.1:1", Duration::from_secs(600)).await;
     seed_run_with_samples(&srv, "run-refused", "exp-refused").await;
     let (_, first) = get(&srv.base, "/api/runs/run-refused/impact").await;
-    let reason = first["provenance"]["fallback_reason"].as_str().unwrap();
-    assert!(reason.contains("sidecar unreachable"), "{reason}");
+    assert_eq!(first["provenance"]["fallback_reason"], "unreachable");
     let started = std::time::Instant::now();
     let (status, second) = get(&srv.base, "/api/runs/run-refused/impact").await;
     assert_eq!(status, 200, "{second}");
-    let reason = second["provenance"]["fallback_reason"].as_str().unwrap();
-    assert!(reason.contains("circuit open"), "{reason}");
+    assert_eq!(second["provenance"]["fallback_reason"], "circuit_open");
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+/// A sidecar URL the daemon could never call is refused when the state is
+/// built, not discovered on the first forecast.
+#[test]
+fn a_sidecar_url_that_is_not_http_is_refused_at_start_up() {
+    let state = || {
+        tumult_api::ApiState::new(
+            "unused.duckdb".into(),
+            "unused".into(),
+            "unused".into(),
+            Arc::new(tumult_intelligence::llm::OpenAiCompatClient::from_env()),
+            tumult_compliance::OrgTree::empty(),
+            None,
+            None,
+            None,
+            false,
+        )
+    };
+    for bad in ["file:///etc/passwd", "forecastd:8700", "ftp://forecastd"] {
+        let Err(message) = state().with_forecast_url(Some(bad.into())) else {
+            panic!("{bad} was accepted");
+        };
+        assert!(!message.is_empty());
+    }
+    let none = state().with_forecast_url(None).unwrap();
+    assert!(none.forecast_url().is_none());
+    let blank = state().with_forecast_url(Some("  ".into())).unwrap();
+    assert!(blank.forecast_url().is_none());
+    let good = state()
+        .with_forecast_url(Some("http://forecastd:8700/".into()))
+        .unwrap();
+    assert_eq!(good.forecast_url(), Some("http://forecastd:8700"));
 }

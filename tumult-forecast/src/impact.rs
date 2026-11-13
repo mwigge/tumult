@@ -20,6 +20,28 @@
 //! recovery as normal. [`plan`] picks the reference from the fault window; every
 //! [`Impact`] says which one it used.
 //!
+//! # Limits worth knowing
+//!
+//! * **The post band is a self-quantile.** In a backcast the post phase is
+//!   judged against the 10-90 band of its own samples, so by construction
+//!   about a fifth of perfectly settled post samples fall outside it. The
+//!   recovery rule absorbs that (it wants `stable_steps` consecutive
+//!   samples inside), but a post-phase "outside" count from a backcast is
+//!   biased upwards and must not be read as residual impact. A
+//!   [`Reference::Baseline`] counterfactual has no such bias.
+//! * **A band has a floor.** A probe that only ever reports `200`, `true`
+//!   or a quantised gauge leaves a band of zero width, and an impact
+//!   normalised by it would be undefined or, with float noise, absurdly
+//!   large. Every band is therefore at least [`crate::band::floor`] of the
+//!   whole series wide on each side, and an [`Impact`] whose band had to be
+//!   widened says so in [`Impact::degenerate_band`]: its impact numbers are
+//!   in units of that floor, not of an observed spread.
+//! * **The zeroed fault indicator carries no information on its own.** A
+//!   covariate that is zero over both the context and the horizon tells a
+//!   model nothing it can learn from; it only matters to a model that has
+//!   seen the indicator non-zero. It is sent so the request has the same
+//!   shape as one that does carry a fault history.
+//!
 //! The computation is split in two so a caller can obtain the forecast
 //! asynchronously (a remote model) between the steps: [`plan`] builds the
 //! [`Plan`] with its [`Plan::request`], and [`Plan::evaluate`] turns the
@@ -30,7 +52,8 @@ use serde::Serialize;
 
 use crate::recovery::{recovery_time, Recovery};
 use crate::{
-    Covariates, Forecast, ForecastError, ForecastProvider, ForecastRequest, DEFAULT_LEVELS,
+    band, stats, Covariates, Forecast, ForecastError, ForecastProvider, ForecastRequest,
+    DEFAULT_LEVELS,
 };
 
 /// Which samples the counterfactual was built from.
@@ -52,8 +75,7 @@ pub struct FaultWindow {
 
 /// One step compared with its counterfactual. `impact` is
 /// `(observed − median) / half band width`: `+1` sits on the upper edge of
-/// the 10–90 band, `0` on the median; `NaN` when the step is a gap or the
-/// band has no width.
+/// the 10–90 band, `0` on the median; `NaN` when the step is a gap.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ImpactSample {
     /// Index into the full series.
@@ -95,6 +117,10 @@ pub struct Impact {
     pub samples: Vec<ImpactSample>,
     pub summary: ImpactSummary,
     pub recovery: Recovery,
+    /// A band the samples were judged against (the forecast's, or the post
+    /// phase's own) was narrower than the series' [`band::floor`] and was
+    /// widened to it: the impact is in units of that floor.
+    pub degenerate_band: bool,
 }
 
 /// A counterfactual ready for its forecast.
@@ -149,26 +175,22 @@ impl Plan {
             forecast.quantiles.reverse();
             forecast.quantiles.truncate(self.fault.end);
         }
+        let floor = band::floor(values);
+        forecast.apply_band_floor(floor);
         let median = forecast.median();
         let (lower, upper) = forecast
             .band(0.1, 0.9)
             .ok_or_else(|| ForecastError::Provider("forecast lacks the 10-90 band".into()))?;
         let fault = self.fault;
+        let post = self.post_band(values, floor);
         let band_at = |i: usize| -> (f64, f64, f64) {
-            match self.reference {
-                Reference::Baseline => {
+            match &post {
+                None => {
                     let h = i - fault.start;
                     (lower[h], median[h], upper[h])
                 }
-                Reference::PostBackcast if i < fault.end => (lower[i], median[i], upper[i]),
-                Reference::PostBackcast => {
-                    let post = &values[self.horizon.min(values.len())..];
-                    (
-                        crate::stats::quantile(post, 0.1),
-                        crate::stats::quantile(post, 0.5),
-                        crate::stats::quantile(post, 0.9),
-                    )
-                }
+                Some(_) if i < fault.end => (lower[i], median[i], upper[i]),
+                Some(own) => (own.lower, own.median, own.upper),
             }
         };
         let samples: Vec<ImpactSample> = (fault.start..values.len())
@@ -193,11 +215,54 @@ impl Plan {
         Ok(Impact {
             reference: self.reference,
             fault,
+            degenerate_band: forecast.degenerate_band || post.is_some_and(|own| own.floored),
             forecast,
             samples,
             summary,
             recovery,
         })
+    }
+
+    /// The settled post phase's own 10-90 band, computed once: what a
+    /// backcast judges the post samples against. `None` for a baseline.
+    fn post_band(&self, values: &[f64], floor: f64) -> Option<OwnBand> {
+        if self.reference != Reference::PostBackcast {
+            return None;
+        }
+        let settled = &values[self.horizon.min(values.len())..];
+        Some(OwnBand::of(settled, floor))
+    }
+}
+
+/// A sample set's own 10-90 band, at least `floor` wide on each side.
+#[derive(Debug, Clone, Copy)]
+struct OwnBand {
+    lower: f64,
+    median: f64,
+    upper: f64,
+    floored: bool,
+}
+
+impl OwnBand {
+    fn of(samples: &[f64], floor: f64) -> Self {
+        let lower = stats::quantile(samples, 0.1);
+        let median = stats::quantile(samples, 0.5);
+        let upper = stats::quantile(samples, 0.9);
+        let half_width = (upper - lower) / 2.0;
+        if !half_width.is_finite() || half_width >= floor {
+            return Self {
+                lower,
+                median,
+                upper,
+                floored: false,
+            };
+        }
+        Self {
+            lower: median - floor,
+            median,
+            upper: median + floor,
+            floored: true,
+        }
     }
 }
 
@@ -368,6 +433,7 @@ mod tests {
                     .collect(),
                 context_points: request.context.len(),
                 insufficient_history: false,
+                degenerate_band: false,
                 provenance: Provenance {
                     model: "flat".into(),
                     version: "0".into(),
@@ -537,6 +603,57 @@ mod tests {
         let p = plan(&values, FaultWindow { start: 0, end: 1 }).unwrap();
         assert_eq!(p.context, vec![10.0, 20.0, 30.0]);
         assert_eq!(p.horizon, 4);
+    }
+
+    /// An HTTP status probe: 200 before and after, 500 while the fault is on.
+    #[test]
+    fn a_flat_probe_gets_a_finite_peak_and_a_degenerate_flag() {
+        let mut values = vec![200.0; 20];
+        values.extend([500.0, 500.0, 500.0]);
+        values.extend([200.0; 6]);
+        let fault = FaultWindow { start: 20, end: 23 };
+        let impact = counterfactual(&HoltWinters::new(), &values, fault, 2).unwrap();
+        assert!(impact.degenerate_band);
+        assert!(impact.forecast.degenerate_band);
+        // The band is half the 300-unit resolution each way: 500 is two
+        // half-widths above 200.
+        assert!(
+            (impact.summary.during_peak - 2.0).abs() < 1e-6,
+            "{:?}",
+            impact.summary
+        );
+        assert!((impact.summary.during_outside_ratio - 1.0).abs() < 1e-9);
+        assert_eq!(impact.recovery.steps_after_fault, Some(0));
+        assert!(impact.samples.iter().all(|s| s.impact.is_finite()));
+    }
+
+    /// No pre-fault samples and a post phase that is exactly constant: the
+    /// backcast band and the post band both collapse.
+    #[test]
+    fn an_exactly_flat_post_phase_gets_a_floored_band() {
+        let mut values = vec![1.0, 1.0, 1.0];
+        values.extend([0.0; 9]);
+        let fault = FaultWindow { start: 0, end: 3 };
+        let impact = counterfactual(&HoltWinters::new(), &values, fault, 2).unwrap();
+        assert_eq!(impact.reference, Reference::PostBackcast);
+        assert!(impact.degenerate_band);
+        assert!(
+            (impact.summary.during_peak - 2.0).abs() < 1e-6,
+            "a boolean flip is two half-widths: {:?}",
+            impact.summary
+        );
+        let post = &impact.samples[3];
+        assert!(post.upper - post.lower >= 1.0 - 1e-9, "{post:?}");
+        assert!(post.impact.abs() < 1e-9);
+        assert_eq!(impact.recovery.steps_after_fault, Some(0));
+    }
+
+    #[test]
+    fn a_band_with_width_is_not_degenerate() {
+        let values = [10.0, 10.0, 10.0, 10.0, 14.0, 16.0, 13.0, 11.0, 10.0, 10.0];
+        let impact = counterfactual(&Flat, &values, FaultWindow { start: 4, end: 7 }, 2).unwrap();
+        assert!(!impact.degenerate_band);
+        assert!(!impact.forecast.degenerate_band);
     }
 
     #[test]

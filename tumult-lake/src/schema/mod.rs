@@ -80,7 +80,8 @@
 //! additive and index-free apart from the target lookup index.
 //!
 //! v19 adds `forecasts` (`forecast.rs`): the cache of quantile forecasts
-//! with model provenance (model, version, weights hash, context window).
+//! with model provenance (model, version, weights hash, context window),
+//! indexed by series key for the cache lookup and pruned after 30 days.
 //!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),

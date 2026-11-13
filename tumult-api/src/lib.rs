@@ -107,8 +107,10 @@
 //!   metric's series resampled onto a regular step and forecast `horizon`
 //!   steps ahead with a 10–90 band; the Timestral sidecar
 //!   (`TUMULTD_FORECAST_URL`) when it answers, the built-in Holt-Winters
-//!   provider otherwise, with the model's provenance in the body and the
-//!   result cached in the lake's `forecasts` table.
+//!   provider otherwise (`fallback_reason` is a coarse code), with the
+//!   model's provenance in the body and the result cached in the lake's
+//!   `forecasts` table per series, model, step, horizon and context window.
+//!   `degenerate_band` marks a band that had no width and was floored.
 //! * `GET /api/runs/{id}/impact` — the run's counterfactual: each probe's
 //!   samples against what the metric would have done without the fault
 //!   (forecast forward from pre-fault samples, or backcast from the post
@@ -203,7 +205,7 @@ pub struct ApiState {
     manifests_dir: Option<Arc<PathBuf>>,
     /// The Timestral forecasting sidecar (`TUMULTD_FORECAST_URL`); `None`
     /// means the built-in Holt-Winters provider.
-    forecast_url: Option<Arc<String>>,
+    forecast_client: Option<Arc<forecast::client::TimestralClient>>,
     /// Skips a failing sidecar for a cool-down (`TUMULTD_FORECAST_COOLDOWN_S`).
     forecast_breaker: Arc<forecast::breaker::Breaker>,
 }
@@ -234,7 +236,7 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
             manifests_dir: None,
-            forecast_url: None,
+            forecast_client: None,
             forecast_breaker: Arc::default(),
         }
     }
@@ -253,20 +255,54 @@ impl ApiState {
         &self.forecast_breaker
     }
 
-    /// Point the forecasting endpoints at a `tumult-forecastd` sidecar.
-    #[must_use]
-    pub fn with_forecast_url(mut self, url: Option<String>) -> Self {
-        self.forecast_url = url
-            .map(|u| u.trim().to_string())
-            .filter(|u| !u.is_empty())
-            .map(Arc::new);
-        self
+    /// Point the forecasting endpoints at a `tumult-forecastd` sidecar;
+    /// `None` or a blank URL means the built-in provider. The HTTP client
+    /// is built here, once, and shared by every request.
+    ///
+    /// # Errors
+    /// A message naming the problem when the URL is not `http(s)://host…`
+    /// or the HTTP client cannot be built.
+    pub fn with_forecast_url(mut self, url: Option<String>) -> Result<Self, String> {
+        let Some(url) = url.filter(|u| !u.trim().is_empty()) else {
+            self.forecast_client = None;
+            return Ok(self);
+        };
+        let client = forecast::client::TimestralClient::new(&url)?;
+        self.forecast_client = Some(Arc::new(client));
+        Ok(self)
     }
 
     /// The forecasting sidecar's base URL, when configured.
     #[must_use]
     pub fn forecast_url(&self) -> Option<&str> {
-        self.forecast_url.as_deref().map(String::as_str)
+        self.forecast_client.as_deref().map(|c| c.base())
+    }
+
+    /// The forecasting sidecar's client, when configured.
+    pub(crate) fn forecast_client(&self) -> Option<&forecast::client::TimestralClient> {
+        self.forecast_client.as_deref()
+    }
+
+    /// Configure forecasting from the environment: the sidecar from
+    /// `TUMULTD_FORECAST_URL` and the circuit breaker's cool-down from
+    /// `TUMULTD_FORECAST_COOLDOWN_S` (an invalid cool-down logs a warning
+    /// and keeps the default).
+    ///
+    /// # Errors
+    /// A message naming `TUMULTD_FORECAST_URL` when it is set to something
+    /// other than an `http(s)` URL, or the HTTP client cannot be built: a
+    /// daemon told to use a sidecar it can never reach should not start.
+    pub fn forecast_from_env(self) -> Result<Self, String> {
+        let url = std::env::var("TUMULTD_FORECAST_URL").ok();
+        let cooldown_raw = std::env::var("TUMULTD_FORECAST_COOLDOWN_S").ok();
+        let cooldown = forecast::breaker::parse_cooldown(cooldown_raw.as_deref())
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "invalid TUMULTD_FORECAST_COOLDOWN_S; using the default");
+                forecast::breaker::DEFAULT_COOLDOWN
+            });
+        self.with_forecast_cooldown(cooldown)
+            .with_forecast_url(url)
+            .map_err(|e| format!("TUMULTD_FORECAST_URL: {e}"))
     }
 
     /// Point the passive risk scanner at a directory of Kubernetes manifests.
@@ -328,13 +364,6 @@ impl ApiState {
             }
         });
         let manifests_dir = std::env::var_os("KRONIKA_MANIFESTS_DIR").map(PathBuf::from);
-        let forecast_url = std::env::var("TUMULTD_FORECAST_URL").ok();
-        let cooldown_raw = std::env::var("TUMULTD_FORECAST_COOLDOWN_S").ok();
-        let forecast_cooldown = forecast::breaker::parse_cooldown(cooldown_raw.as_deref())
-            .unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "invalid TUMULTD_FORECAST_COOLDOWN_S; using the default");
-                forecast::breaker::DEFAULT_COOLDOWN
-            });
         Self::new(
             db_path,
             metrics_dir,
@@ -347,8 +376,6 @@ impl ApiState {
             secure_cookies,
         )
         .with_manifests_dir(manifests_dir)
-        .with_forecast_url(forecast_url)
-        .with_forecast_cooldown(forecast_cooldown)
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.

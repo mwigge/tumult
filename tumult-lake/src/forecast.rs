@@ -1,12 +1,18 @@
 //! Forecast cache (schema v19): `forecasts`, one row per quantile forecast
 //! with the provenance that makes it reproducible. Rows are append-only;
-//! the reader returns the newest row for a series key, model and shape,
-//! and the caller decides whether its context window is still current.
+//! the reader returns the newest row for one series key, model, shape and
+//! context window, so a forecast fitted on one window is never served for
+//! another. Rows older than a retention the caller chooses are pruned.
 
 use serde_json::Value;
 
 use crate::error::StoreError;
 use crate::{Reader, Writer};
+
+/// How long a forecast row is kept by default: long enough to reproduce a
+/// band shown on a recent report, short enough that a dashboard polling
+/// every minute cannot grow the table without bound.
+pub const FORECAST_RETENTION_NS: i64 = 30 * 86_400 * 1_000_000_000;
 
 /// One `forecasts` row. `quantiles[step][level]` lines up with
 /// `quantile_levels`; gaps are `NaN` in memory and `NULL` in the table.
@@ -20,6 +26,8 @@ pub struct ForecastRow {
     pub context_end_ns: i64,
     pub context_points: i64,
     pub insufficient_history: bool,
+    /// The band was widened to the series' floor (see `tumult-forecast`).
+    pub degenerate_band: bool,
     pub horizon: i64,
     pub step_ns: i64,
     pub quantile_levels: Vec<f64>,
@@ -36,14 +44,26 @@ pub enum ModelFilter<'a> {
     IsNot(&'a str),
 }
 
-impl ModelFilter<'_> {
-    fn predicate(self) -> String {
-        let (op, name) = match self {
+impl<'a> ModelFilter<'a> {
+    /// The comparison operator and the model name it is bound against.
+    fn operator(self) -> (&'static str, &'a str) {
+        match self {
             Self::Is(name) => ("=", name),
             Self::IsNot(name) => ("<>", name),
-        };
-        format!("model {op} '{}'", name.replace('\'', "''"))
+        }
     }
+}
+
+/// Everything that identifies one cached forecast: the series, who made
+/// it, its shape and the exact context window it was fitted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForecastLookup<'a> {
+    pub series_key: &'a str,
+    pub model: ModelFilter<'a>,
+    pub step_ns: i64,
+    pub horizon: i64,
+    pub context_start_ns: i64,
+    pub context_end_ns: i64,
 }
 
 /// A `DOUBLE[]` literal; non-finite values become `NULL`.
@@ -66,6 +86,11 @@ fn nested_literal(rows: &[Vec<f64>]) -> String {
     format!("[{}]", items.join(", "))
 }
 
+/// The columns a lookup reads, in [`ForecastRow`] order.
+const COLUMNS: &str = "series_key, model, model_version, weights_hash, context_start_ns, \
+     context_end_ns, context_points, insufficient_history, degenerate_band, horizon, step_ns, \
+     quantile_levels, quantiles, created_at_ns";
+
 impl Writer {
     /// Append a forecast row.
     ///
@@ -75,8 +100,8 @@ impl Writer {
         let sql = format!(
             "INSERT INTO forecasts (series_key, model, model_version, weights_hash, \
              context_start_ns, context_end_ns, context_points, insufficient_history, \
-             horizon, step_ns, quantile_levels, quantiles, created_at_ns) \
-             VALUES (?,?,?,?,?,?,?,?,?,?, CAST({} AS DOUBLE[]), CAST({} AS DOUBLE[][]), ?)",
+             degenerate_band, horizon, step_ns, quantile_levels, quantiles, created_at_ns) \
+             VALUES (?,?,?,?,?,?,?,?,?,?,?, CAST({} AS DOUBLE[]), CAST({} AS DOUBLE[][]), ?)",
             list_literal(&row.quantile_levels),
             nested_literal(&row.quantiles)
         );
@@ -91,6 +116,7 @@ impl Writer {
                 row.context_end_ns,
                 row.context_points,
                 row.insufficient_history,
+                row.degenerate_band,
                 row.horizon,
                 row.step_ns,
                 row.created_at_ns
@@ -98,29 +124,54 @@ impl Writer {
         )?;
         Ok(())
     }
+
+    /// Delete the forecast rows created before `cutoff_ns`; returns how
+    /// many went.
+    ///
+    /// # Errors
+    /// Returns an error if the delete fails.
+    pub fn prune_forecasts(&self, cutoff_ns: i64) -> Result<usize, StoreError> {
+        Ok(self.conn.execute(
+            "DELETE FROM forecasts WHERE created_at_ns < ?",
+            duckdb::params![cutoff_ns],
+        )?)
+    }
 }
 
 impl Reader {
-    /// The newest cached forecast for a series key, model filter, step
-    /// and horizon, when one exists.
+    /// The newest cached forecast matching `lookup` exactly, when one
+    /// exists.
     ///
     /// # Errors
-    /// Returns an error if the query fails.
+    /// Returns an error if the query fails or the row cannot be decoded.
     pub fn latest_forecast(
         &self,
-        series_key: &str,
-        model: ModelFilter<'_>,
-        step_ns: i64,
-        horizon: i64,
+        lookup: &ForecastLookup<'_>,
     ) -> Result<Option<ForecastRow>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM forecasts WHERE series_key = '{}' AND {} \
-             AND step_ns = {step_ns} AND horizon = {horizon} \
-             ORDER BY created_at_ns DESC, rowid DESC LIMIT 1",
-            series_key.replace('\'', "''"),
-            model.predicate()
-        ))?;
-        Ok(rows.first().map(row_to_forecast))
+        let (operator, model) = lookup.model.operator();
+        let sql = format!(
+            "SELECT row_to_json(t) AS j FROM (SELECT {COLUMNS} FROM forecasts \
+             WHERE series_key = ? AND model {operator} ? AND step_ns = ? AND horizon = ? \
+             AND context_start_ns = ? AND context_end_ns = ? \
+             ORDER BY created_at_ns DESC, rowid DESC LIMIT 1) AS t"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query_map(
+            duckdb::params![
+                lookup.series_key,
+                model,
+                lookup.step_ns,
+                lookup.horizon,
+                lookup.context_start_ns,
+                lookup.context_end_ns
+            ],
+            |r| r.get::<usize, String>(0),
+        )?;
+        let Some(json) = rows.next() else {
+            return Ok(None);
+        };
+        let row: Value = serde_json::from_str(&json?)?;
+        Ok(Some(row_to_forecast(&row)))
     }
 }
 
@@ -133,6 +184,10 @@ fn str_field(row: &Value, key: &str) -> String {
 
 fn i64_field(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or_default()
+}
+
+fn bool_field(row: &Value, key: &str) -> bool {
+    row.get(key).and_then(Value::as_bool).unwrap_or_default()
 }
 
 fn f64_list(value: Option<&Value>) -> Vec<f64> {
@@ -156,10 +211,8 @@ fn row_to_forecast(row: &Value) -> ForecastRow {
         context_start_ns: i64_field(row, "context_start_ns"),
         context_end_ns: i64_field(row, "context_end_ns"),
         context_points: i64_field(row, "context_points"),
-        insufficient_history: row
-            .get("insufficient_history")
-            .and_then(Value::as_bool)
-            .unwrap_or_default(),
+        insufficient_history: bool_field(row, "insufficient_history"),
+        degenerate_band: bool_field(row, "degenerate_band"),
         horizon: i64_field(row, "horizon"),
         step_ns: i64_field(row, "step_ns"),
         quantile_levels: f64_list(row.get("quantile_levels")),
@@ -177,9 +230,11 @@ mod tests {
     use super::*;
     use crate::Store;
 
+    const KEY: &str = r#"["p95","db",[]]"#;
+
     fn row(created_at_ns: i64, model: &str) -> ForecastRow {
         ForecastRow {
-            series_key: "metric:p95|target:db".into(),
+            series_key: KEY.into(),
             model: model.into(),
             model_version: "1.0".into(),
             weights_hash: "none".into(),
@@ -187,6 +242,7 @@ mod tests {
             context_end_ns: 2_000,
             context_points: 10,
             insufficient_history: false,
+            degenerate_band: false,
             horizon: 2,
             step_ns: 100,
             quantile_levels: vec![0.1, 0.5, 0.9],
@@ -195,25 +251,35 @@ mod tests {
         }
     }
 
+    fn lookup(model: ModelFilter<'_>) -> ForecastLookup<'_> {
+        ForecastLookup {
+            series_key: KEY,
+            model,
+            step_ns: 100,
+            horizon: 2,
+            context_start_ns: 1_000,
+            context_end_ns: 2_000,
+        }
+    }
+
+    const BUILT_IN: ModelFilter<'static> = ModelFilter::Is("holt-winters");
+
     #[test]
     fn forecasts_round_trip_and_the_newest_row_wins() {
         let d = tempfile::TempDir::new().unwrap();
         let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
         let writer = store.writer().unwrap();
         writer.insert_forecast(&row(10, "holt-winters")).unwrap();
-        writer.insert_forecast(&row(20, "holt-winters")).unwrap();
+        writer
+            .insert_forecast(&ForecastRow {
+                degenerate_band: true,
+                ..row(20, "holt-winters")
+            })
+            .unwrap();
         writer.insert_forecast(&row(30, "timestral")).unwrap();
 
         let reader = store.read_only().unwrap();
-        let hit = reader
-            .latest_forecast(
-                "metric:p95|target:db",
-                ModelFilter::Is("holt-winters"),
-                100,
-                2,
-            )
-            .unwrap()
-            .unwrap();
+        let hit = reader.latest_forecast(&lookup(BUILT_IN)).unwrap().unwrap();
         assert_eq!(hit.created_at_ns, 20);
         assert_eq!(hit.quantile_levels, vec![0.1, 0.5, 0.9]);
         assert_eq!(hit.quantiles[0], vec![1.0, 2.0, 3.0]);
@@ -221,29 +287,129 @@ mod tests {
         assert_eq!(hit.quantiles[1][2], 3.5);
         assert_eq!(hit.context_end_ns, 2_000);
         assert!(!hit.insufficient_history);
+        assert!(hit.degenerate_band, "the flag round-trips");
         assert_eq!(hit.model_version, "1.0");
 
-        assert!(reader
-            .latest_forecast(
-                "metric:p95|target:db",
-                ModelFilter::Is("holt-winters"),
-                100,
-                3
-            )
+        let other_horizon = ForecastLookup {
+            horizon: 3,
+            ..lookup(BUILT_IN)
+        };
+        assert!(reader.latest_forecast(&other_horizon).unwrap().is_none());
+        let other_series = ForecastLookup {
+            series_key: "other",
+            ..lookup(BUILT_IN)
+        };
+        assert!(reader.latest_forecast(&other_series).unwrap().is_none());
+        let sidecar = reader
+            .latest_forecast(&lookup(ModelFilter::Is("timestral")))
             .unwrap()
-            .is_none());
-        assert!(reader
-            .latest_forecast("other", ModelFilter::Is("holt-winters"), 100, 2)
+            .unwrap();
+        assert_eq!(sidecar.created_at_ns, 30);
+    }
+
+    /// The same series, model, step and horizon fitted on another context
+    /// window is another forecast: a longer look-back or a later window
+    /// end must both miss.
+    #[test]
+    fn a_lookup_matches_the_context_window_exactly() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        store
+            .writer()
             .unwrap()
-            .is_none());
+            .insert_forecast(&row(10, "holt-winters"))
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        assert!(reader.latest_forecast(&lookup(BUILT_IN)).unwrap().is_some());
+        let longer_context = ForecastLookup {
+            context_start_ns: 500,
+            ..lookup(BUILT_IN)
+        };
+        assert!(reader.latest_forecast(&longer_context).unwrap().is_none());
+        let later_window = ForecastLookup {
+            context_end_ns: 2_100,
+            ..lookup(BUILT_IN)
+        };
+        assert!(reader.latest_forecast(&later_window).unwrap().is_none());
+    }
+
+    /// Keys and model names are bound, never spliced into the statement.
+    #[test]
+    fn hostile_keys_and_models_are_only_values() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let hostile = "x' OR '1'='1";
+        let writer = store.writer().unwrap();
+        writer.insert_forecast(&row(10, "holt-winters")).unwrap();
+        writer
+            .insert_forecast(&ForecastRow {
+                series_key: hostile.into(),
+                model: hostile.into(),
+                ..row(20, "x")
+            })
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        let by_key = ForecastLookup {
+            series_key: hostile,
+            ..lookup(ModelFilter::Is(hostile))
+        };
+        let hit = reader.latest_forecast(&by_key).unwrap().unwrap();
+        assert_eq!(hit.created_at_ns, 20, "only the row with that exact key");
+        assert_eq!(hit.series_key, hostile);
+        let no_such_model = lookup(ModelFilter::Is(hostile));
+        assert!(reader.latest_forecast(&no_such_model).unwrap().is_none());
+        let everything_else = lookup(ModelFilter::IsNot(hostile));
         assert_eq!(
             reader
-                .latest_forecast("metric:p95|target:db", ModelFilter::Is("timestral"), 100, 2)
+                .latest_forecast(&everything_else)
+                .unwrap()
+                .unwrap()
+                .created_at_ns,
+            10
+        );
+    }
+
+    #[test]
+    fn pruning_drops_only_rows_older_than_the_cutoff() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        for created in [10, 20, 30] {
+            writer
+                .insert_forecast(&row(created, "holt-winters"))
+                .unwrap();
+        }
+        assert_eq!(writer.prune_forecasts(5).unwrap(), 0);
+        assert_eq!(writer.prune_forecasts(30).unwrap(), 2);
+        let reader = store.read_only().unwrap();
+        let left = reader
+            .query_json_rows("SELECT count(*) AS c, min(created_at_ns) AS oldest FROM forecasts")
+            .unwrap();
+        assert_eq!(left[0]["c"].as_u64(), Some(1));
+        assert_eq!(left[0]["oldest"].as_i64(), Some(30));
+        assert_eq!(
+            reader
+                .latest_forecast(&lookup(BUILT_IN))
                 .unwrap()
                 .unwrap()
                 .created_at_ns,
             30
         );
+    }
+
+    #[test]
+    fn the_lookup_is_indexed_by_series_key() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let indexes = store
+            .read_only()
+            .unwrap()
+            .query_json_rows(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'forecasts'",
+            )
+            .unwrap();
+        assert_eq!(indexes.len(), 1, "{indexes:?}");
+        assert_eq!(indexes[0]["index_name"], "idx_forecasts_series_key");
     }
 
     /// A v18 lake (every table up to `perf_verdicts`, no `forecasts`,
@@ -280,14 +446,7 @@ mod tests {
         );
         writer.insert_forecast(&row(10, "holt-winters")).unwrap();
         let reader = store.read_only().unwrap();
-        let hit = reader
-            .latest_forecast(
-                "metric:p95|target:db",
-                ModelFilter::Is("holt-winters"),
-                100,
-                2,
-            )
-            .unwrap();
+        let hit = reader.latest_forecast(&lookup(BUILT_IN)).unwrap();
         assert_eq!(hit.unwrap().created_at_ns, 10);
         let kept = reader
             .query_json_rows("SELECT count(*) AS c FROM users WHERE id = 'u-v18'")
@@ -299,6 +458,39 @@ mod tests {
         assert_eq!(perf[0]["c"].as_u64(), Some(0), "the v18 table is intact");
     }
 
+    /// A lake whose `forecasts` table predates the `degenerate_band`
+    /// column gains it on open; the rows already there read as not
+    /// degenerate.
+    #[test]
+    fn an_early_v19_table_gains_the_degenerate_band_column() {
+        let d = tempfile::TempDir::new().unwrap();
+        let path = d.path().join("kronika.duckdb");
+        drop(Store::open(&path).unwrap());
+        {
+            let conn = duckdb::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "DROP TABLE forecasts;
+                 CREATE TABLE forecasts (
+                     series_key VARCHAR NOT NULL, model VARCHAR NOT NULL,
+                     model_version VARCHAR NOT NULL, weights_hash VARCHAR NOT NULL,
+                     context_start_ns BIGINT NOT NULL, context_end_ns BIGINT NOT NULL,
+                     context_points BIGINT NOT NULL, insufficient_history BOOLEAN NOT NULL,
+                     horizon BIGINT NOT NULL, step_ns BIGINT NOT NULL,
+                     quantile_levels DOUBLE[] NOT NULL, quantiles DOUBLE[][] NOT NULL,
+                     created_at_ns BIGINT NOT NULL);
+                 INSERT INTO forecasts VALUES ('[\"p95\",\"db\",[]]', 'holt-winters', '1.0',
+                     'none', 1000, 2000, 10, false, 2, 100, [0.5], [[1.0], [2.0]], 5);",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let reader = store.read_only().unwrap();
+        let old = reader.latest_forecast(&lookup(BUILT_IN)).unwrap().unwrap();
+        assert_eq!(old.created_at_ns, 5);
+        assert!(!old.degenerate_band);
+        assert_eq!(old.quantiles, vec![vec![1.0], vec![2.0]]);
+    }
+
     /// A sidecar names its own model, so its rows are found as "anything
     /// the built-in provider did not write".
     #[test]
@@ -306,12 +498,12 @@ mod tests {
         let d = tempfile::TempDir::new().unwrap();
         let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
         let writer = store.writer().unwrap();
-        let other = ModelFilter::IsNot("holt-winters");
+        let other = lookup(ModelFilter::IsNot("holt-winters"));
         writer.insert_forecast(&row(10, "holt-winters")).unwrap();
         assert!(store
             .read_only()
             .unwrap()
-            .latest_forecast("metric:p95|target:db", other, 100, 2)
+            .latest_forecast(&other)
             .unwrap()
             .is_none());
         writer.insert_forecast(&row(20, "timestral")).unwrap();
@@ -319,7 +511,7 @@ mod tests {
         let hit = store
             .read_only()
             .unwrap()
-            .latest_forecast("metric:p95|target:db", other, 100, 2)
+            .latest_forecast(&other)
             .unwrap()
             .unwrap();
         assert_eq!(hit.model, "timestral");
