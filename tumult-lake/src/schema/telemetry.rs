@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS spans (
     plugin_name VARCHAR,
     hypothesis_met BOOLEAN,
     recovery_time_s DOUBLE,
-    span_attrs MAP(VARCHAR, VARCHAR),
-    resource_attrs MAP(VARCHAR, VARCHAR),
+    span_attrs MAP (VARCHAR, VARCHAR),
+    resource_attrs MAP (VARCHAR, VARCHAR),
     events JSON
 );
 CREATE INDEX IF NOT EXISTS idx_spans_ts_ns ON spans (ts_ns);
@@ -45,8 +45,8 @@ CREATE TABLE IF NOT EXISTS logs (
     trace_id VARCHAR,
     span_id VARCHAR,
     service_name VARCHAR NOT NULL,
-    log_attrs MAP(VARCHAR, VARCHAR),
-    resource_attrs MAP(VARCHAR, VARCHAR)
+    log_attrs MAP (VARCHAR, VARCHAR),
+    resource_attrs MAP (VARCHAR, VARCHAR)
 );
 CREATE INDEX IF NOT EXISTS idx_logs_ts_ns ON logs (ts_ns);
 
@@ -57,8 +57,8 @@ CREATE TABLE IF NOT EXISTS metric_sums (
     experiment_name VARCHAR,
     outcome_status VARCHAR,
     plugin_name VARCHAR,
-    attrs MAP(VARCHAR, VARCHAR),
-    resource_attrs MAP(VARCHAR, VARCHAR)
+    attrs MAP (VARCHAR, VARCHAR),
+    resource_attrs MAP (VARCHAR, VARCHAR)
 );
 CREATE INDEX IF NOT EXISTS idx_metric_sums_name_ts ON metric_sums (metric_name, ts_ns);
 
@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS metric_gauges (
     experiment_name VARCHAR,
     outcome_status VARCHAR,
     plugin_name VARCHAR,
-    attrs MAP(VARCHAR, VARCHAR),
-    resource_attrs MAP(VARCHAR, VARCHAR)
+    attrs MAP (VARCHAR, VARCHAR),
+    resource_attrs MAP (VARCHAR, VARCHAR)
 );
 CREATE INDEX IF NOT EXISTS idx_metric_gauges_name_ts ON metric_gauges (metric_name, ts_ns);
 
@@ -83,8 +83,8 @@ CREATE TABLE IF NOT EXISTS metric_histograms (
     max DOUBLE,
     bucket_counts BIGINT[],
     explicit_bounds DOUBLE[],
-    attrs MAP(VARCHAR, VARCHAR),
-    resource_attrs MAP(VARCHAR, VARCHAR),
+    attrs MAP (VARCHAR, VARCHAR),
+    resource_attrs MAP (VARCHAR, VARCHAR),
     experiment_name VARCHAR,
     outcome_status VARCHAR,
     plugin_name VARCHAR
@@ -96,7 +96,7 @@ ALTER TABLE metric_histograms ADD COLUMN IF NOT EXISTS experiment_name VARCHAR;
 ALTER TABLE metric_histograms ADD COLUMN IF NOT EXISTS outcome_status VARCHAR;
 ALTER TABLE metric_histograms ADD COLUMN IF NOT EXISTS plugin_name VARCHAR;
 CREATE INDEX IF NOT EXISTS idx_metric_histograms_name_ts
-    ON metric_histograms (metric_name, ts_ns);
+ON metric_histograms (metric_name, ts_ns);
 
 CREATE TABLE IF NOT EXISTS import_batches (
     id VARCHAR NOT NULL,
