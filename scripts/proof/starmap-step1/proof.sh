@@ -6,13 +6,19 @@
 #
 #   cargo build -p tumultd -p tumult-cli && (cd web && npm ci && npm run build)
 #   bash scripts/proof/starmap-step1/proof.sh [run-number]
+#   bash scripts/proof/starmap-step1/proof.sh self-test
 #
 # The daemon listens on two loopback ports that are free when the proof
 # starts. Free is not reserved: another process can take a port before the
 # daemon binds it, and would then answer in its place. So the proof asks the
-# kernel (`ss -ltnp`) which process listens on each port and goes on only
-# when that is the daemon it started, once at the start and again before
-# every write step; it cannot attest another daemon. Work files (lake,
+# kernel (`ss -ltnp`) for every listener on each port, on any address
+# (loopback, wildcard, IPv4 or IPv6), and goes on only when the daemon it
+# started is the one process behind all of them, once at the start and
+# again before every write step; it cannot attest another daemon.
+# `self-test` shows that this holds: it runs the proof three times with a
+# listener that is not the daemon staged on the HTTP port (on 127.0.0.1, on
+# 0.0.0.0 and on [::]) and passes only if the proof refuses each time
+# before its first step is done. Work files (lake,
 # journals, the experiments' scratch files) land under $PROOF_WORK/run-N
 # (default: a temp dir) and are removed on exit, as is the daemon;
 # PROOF_KEEP=1 keeps the files of a run for a post-mortem.
@@ -25,6 +31,7 @@ TEMP_ROOT=""
 [[ -n "${PROOF_WORK:-}" ]] || TEMP_ROOT=$(mktemp -d)
 WORK=${PROOF_WORK:-$TEMP_ROOT}/run-$RUN
 DPID=""
+FPID=""
 
 pass() { echo "  ok   $1"; }
 fail() { echo "  FAIL $1"; exit 1; }
@@ -44,6 +51,10 @@ cleanup() {
     kill "$DPID" 2>/dev/null || true # already gone is fine here
     wait "$DPID" 2>/dev/null || true
   fi
+  if [[ -n "$FPID" ]]; then
+    kill "$FPID" 2>/dev/null || true
+    wait "$FPID" 2>/dev/null || true
+  fi
   if [[ "${PROOF_KEEP:-0}" == 1 ]]; then
     echo "  kept $WORK"
     return 0
@@ -54,14 +65,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The pid of the process listening on a loopback TCP port, from the kernel.
-listener_pid() {
-  ss -ltnpH "sport = :$1" | sed -n 's/.*pid=\([0-9]*\),.*/\1/p' | head -1
+# The pids of every process listening on a TCP port, from the kernel, one
+# per line: all addresses the port is bound on count, wildcard and IPv6
+# included, and so does every process that shares a socket. A listener the
+# kernel does not name a process for (it belongs to another user) is
+# `unknown`.
+listener_pids() {
+  ss -ltnpH "sport = :$1" | while IFS= read -r socket; do
+    grep -o 'pid=[0-9]*' <<<"$socket" || echo unknown
+  done | sed 's/^pid=//' | sort -u
 }
 
-# Whether both ports are served by the daemon this proof started.
+# Whether the daemon this proof started is the only process listening on
+# both ports.
 ours() {
-  [[ "$(listener_pid "$HTTP_PORT")" == "$DPID" && "$(listener_pid "$GRPC_PORT")" == "$DPID" ]]
+  [[ "$(listener_pids "$HTTP_PORT")" == "$DPID" && "$(listener_pids "$GRPC_PORT")" == "$DPID" ]]
 }
 
 # The daemon this proof started must still be running, and it must be the
@@ -73,7 +91,64 @@ alive() {
   fi
   ours && return 0
   ss -ltnp "sport = :$HTTP_PORT or sport = :$GRPC_PORT" || true
-  fail "ports $HTTP_PORT and $GRPC_PORT are not both served by the daemon this proof started (pid $DPID)"
+  fail "ports $HTTP_PORT and $GRPC_PORT are not both served by the daemon this proof started (pid $DPID) and by nothing else"
+}
+
+# Self-test only: a listener that is not the daemon on the HTTP port, which
+# answers every request with 200 as a daemon answers /healthz. $1 says
+# where: `taken` on 127.0.0.1 and `wildcard` on 0.0.0.0 keep the daemon from
+# binding; `ipv6` on [::] leaves 127.0.0.1 to the daemon and listens beside
+# it.
+stage_foreign() {
+  python3 -c 'import socket, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+how, port = sys.argv[1], int(sys.argv[2])
+family, host = {
+    "taken": (socket.AF_INET, "127.0.0.1"),
+    "wildcard": (socket.AF_INET, "0.0.0.0"),
+    "ipv6": (socket.AF_INET6, "::"),
+}[how]
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+class Server(HTTPServer):
+    address_family = family
+    def server_bind(self):
+        if family == socket.AF_INET6:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        super().server_bind()
+Server((host, port), Handler).serve_forever()' "$1" "$HTTP_PORT" &
+  FPID=$!
+  local deadline=$((SECONDS + 10))
+  until [[ "$(listener_pids "$HTTP_PORT")" == "$FPID" ]]; do
+    kill -0 "$FPID" 2>/dev/null || fail "self-test: could not stage a $1 listener on port $HTTP_PORT"
+    ((SECONDS < deadline)) || fail "self-test: the staged $1 listener never listened"
+    sleep 0.2
+  done
+  echo "     self-test: pid $FPID, not the daemon, listens on port $HTTP_PORT ($1)"
+}
+
+# Run the proof once per kind of foreign listener and require that it
+# refuses each time, with the reason it gives, before step [1] is done.
+self_test() {
+  local how out code
+  for how in taken wildcard ipv6; do
+    code=0
+    out=$(PROOF_STAGE_FOREIGN=$how bash "${BASH_SOURCE[0]}" "selftest-$how" 2>&1) || code=$?
+    sed 's/^/    | /' <<<"$out"
+    [[ "$code" != 0 ]] || fail "self-test ($how): the proof passed with a foreign listener on its port"
+    ! grep -q '  ok   daemon healthy' <<<"$out" || fail "self-test ($how): the proof took the foreign listener for its daemon"
+    grep -Eq '  FAIL (ports [0-9]+ and [0-9]+ are not both served by the daemon this proof started|the daemon this proof started \(pid [0-9]+\) is gone)' <<<"$out" \
+      || fail "self-test ($how): the proof failed for another reason"
+    [[ "$how" != ipv6 ]] || grep -q 'are not both served by the daemon' <<<"$out" \
+      || fail "self-test (ipv6): a listener beside the daemon must fail the identity check itself"
+    pass "self-test ($how): the proof refused to go on (exit $code)"
+  done
+  echo "STAR MAP PROOF SELF-TEST PASSED: a foreign listener on the port is never taken for the daemon"
 }
 
 # Retry a check until it holds: wait_for <what> <command...>.
@@ -93,6 +168,10 @@ FLOOR_S=2.2
 fresh() { curl -fsS -H 'Cache-Control: no-cache' "$@"; }
 
 command -v ss >/dev/null || fail "ss (iproute2) is needed to identify the listening process"
+if [[ "$RUN" == self-test ]]; then
+  self_test
+  exit 0
+fi
 rm -rf "$WORK"
 mkdir -p "$WORK/experiments"
 read -r GRPC_PORT HTTP_PORT < <(python3 -c 'import socket
@@ -110,10 +189,13 @@ URL=http://127.0.0.1:$HTTP_PORT
 MAP="$URL/api/starmap?env=demo"
 
 echo "[1] start tumultd on a fresh lake with the demo org and manifests"
+[[ -z "${PROOF_STAGE_FOREIGN:-}" ]] || stage_foreign "$PROOF_STAGE_FOREIGN"
 RUST_LOG=warn "$BIN/tumultd" serve >"$WORK/tumultd.log" 2>&1 &
 DPID=$!
-healthy() { ours && curl -fs "$URL/healthz" >/dev/null 2>&1; }
-wait_for "the daemon to listen on both ports and answer /healthz" healthy
+# An answer on /healthz says that something listens, not what: `alive`
+# says whether it is the daemon.
+healthy() { curl -fs "$URL/healthz" >/dev/null 2>&1; }
+wait_for "an answer on /healthz" healthy
 alive
 [[ -s "$TUMULT_LAKE_PATH" ]] || fail "the daemon did not open the private lake $TUMULT_LAKE_PATH"
 pass "daemon healthy: pid $DPID is the listener on OTLP gRPC :$GRPC_PORT and HTTP :$HTTP_PORT, private lake"
@@ -283,6 +365,11 @@ py 'ids={x["id"] for x in d["nodes"]}; assert "sys:demo/message-queue" in ids an
 assert d["focus"]=="sys:demo/message-queue" and d["focus_found"] is True and d["depth"]==1 and d["counts"]["pruned"]>0, d["counts"]' <"$WORK/focus.json"
 fresh "$MAP&focus=sys:demo/no-such-system" >"$WORK/nofocus.json"
 py 'assert d["focus_found"] is False and d["nodes"]==[], (d["focus_found"], len(d["nodes"]))' <"$WORK/nofocus.json"
+# An entity is found by its id however the id is cased; the answer names
+# the node.
+fresh "$MAP&focus=ent:CIF-0004&depth=1" >"$WORK/entfocus.json"
+py 'assert d["focus_found"] is True and d["focus"]=="ent:cif-0004", (d["focus_found"], d["focus"])
+assert "ent:cif-0004" in {x["id"] for x in d["nodes"]}' <"$WORK/entfocus.json"
 py 'r=[x for x in d["nodes"] if x["kind"]=="run"]; assert len(r)==8, len(r); assert d["range"]=="30d"
 assert len([x for x in d["edges"] if x["rel"]=="broke"])>=2, "the two runs that did not pass broke nothing"' <"$WORK/runs.json"
 for bad in "range=1y" "depth=9&focus=org:" "budget=0" "kinds=planet" "include=all"; do
@@ -312,7 +399,7 @@ for m in (a,b):
     for n in m["nodes"]:
         if n["posture"]: n["posture"]["score"]=round(n["posture"]["score"])
 assert a==b, "two reads of the same lake differ"' "$WORK/map3.json" "$WORK/map4.json"
-pass "focus prunes to the neighbourhood, an unknown focus says so, include=runs adds the eight runs, bad parameters are 400, a forced read is rate-limited to one per 2 s, reads are stable"
+pass "focus prunes to the neighbourhood, an entity focus resolves in any case, an unknown focus says so, include=runs adds the eight runs, bad parameters are 400, a forced read is rate-limited to one per 2 s, reads are stable"
 
 echo "[9] the 30 s cache and its validator"
 curl -fsS -D "$WORK/h1" "$MAP" >"$WORK/c1.json"
