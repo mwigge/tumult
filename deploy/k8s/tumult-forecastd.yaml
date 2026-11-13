@@ -90,6 +90,12 @@ spec:
       volumes:
         - name: weights
           persistentVolumeClaim: { claimName: tumult-forecastd-weights }
+        # Holds one verified copy of the weights while the model loads, and
+        # HF_HOME. Size it to the model: 5M about 21 MB (measured) and 28M
+        # about 112 MB fit in 512Mi; use 1Gi for 123M (about 0.5 GB) and 2Gi
+        # for 209M (about 0.85 GB). The larger three are four bytes a
+        # parameter, not measured. A copy that does not fit gets the pod
+        # evicted during start, so raise this with FORECASTD_MODEL_SIZE.
         - name: tmp
           emptyDir: { sizeLimit: 512Mi }
 ---

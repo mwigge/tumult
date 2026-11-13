@@ -70,8 +70,10 @@ copied into a new private directory under the temporary directory (mode
 0500, files 0400), the digest is taken over the bytes as they are written,
 the model loads from that copy and the copy is removed. Swapping the files
 at the original path after the check changes nothing. `TMPDIR` (default
-`/tmp`) must be writable with room for one copy of the weights, 21 MB for
-the 5M model; `--read-only` therefore needs `--tmpfs /tmp`, as below.
+`/tmp`) must be writable with room for one copy of the weights (21 MB for 5M,
+about four bytes a parameter for the larger sizes: size the Kubernetes
+`emptyDir` to the model, see the guide);
+`--read-only` therefore needs `--tmpfs /tmp`, as below.
 
 ### Logs
 

@@ -186,6 +186,17 @@ first `horizon` steps of it. Horizons 30 and 90 are therefore one fit and
 one row; the `horizon` column of the table holds the fitted length, not
 the asked one.
 
+Two things follow for the sidecar. The first steps of a longer forecast
+are not always what a fit at the asked horizon would have been:
+Holt-Winters gives the same step whatever the horizon, but a model that
+decodes its horizon as a whole may place the first 30 steps of a 96-step
+forecast differently from a native 30-step one, so a truncated model
+forecast may differ from asking the sidecar for that horizon directly. And
+a horizon just past a bucket pays for the next: 25 steps is a 96-step
+inference and 385 steps a 1,024-step one, which costs more time and
+memory than the horizon suggests (see
+[CPU latency and memory](#cpu-latency-and-memory)).
+
 The table is bounded. Every write keeps only the newest 128 rows of the
 series it wrote (the oldest go first) and deletes up to 256 rows older
 than 30 days, oldest first, so a backlog shrinks with each write instead
@@ -479,7 +490,21 @@ swapped at the original path after the check are therefore not what gets
 loaded. The temporary directory (`TMPDIR`, `/tmp` by default) must be
 writable and hold one copy of the weights for the length of the start:
 about 21 MB for the 5M model. The Compose service mounts a tmpfs there and
-the Kubernetes manifest an `emptyDir`.
+the Kubernetes manifest an `emptyDir` with a `sizeLimit` of 512Mi, which is
+sized for the default model. Raise it with the model size:
+
+| `FORECASTD_MODEL_SIZE` | One copy of the weights | `emptyDir` `sizeLimit` |
+|---|---|---|
+| `5M` | 21 MB (measured) | 512Mi |
+| `28M` | about 112 MB | 512Mi |
+| `123M` | about 0.5 GB | 1Gi |
+| `209M` | about 0.85 GB | 2Gi |
+
+Only the 5M figure was measured; the others are four bytes a parameter
+(float32 weights). A pod whose copy outgrows the limit is evicted while it
+starts, which looks like a crash loop with no `startup.failed` line. The
+memory limit grows with the model as well and has to be found by running
+it; the figures under [CPU latency and memory](#cpu-latency-and-memory) are for 5M only.
 
 On a mismatch the copy is removed, the service logs `startup.failed` with
 `error.type: WeightsMismatch` and both digests, and exits with status 1
