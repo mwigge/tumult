@@ -11,8 +11,12 @@ Arrow IPC tables back into the OTLP request types, so the same
 `tumult-otlp` conversion and the same single-writer channel serve both
 carriers and the rows are identical whichever one delivered them. The Arrow
 receiver treats every declared size as hostile: rows, attributes, decoded
-bytes, message size, open streams and idle time are bounded by the
-`KRONIKA_OTAP_*` limits (`tumult-ingest::otap::limits`).
+bytes, message size, retained dictionary bytes, open streams, stream age
+and decode time are bounded by the `KRONIKA_OTAP_*` limits
+(`tumult-ingest::otap::limits`), connections by `KRONIKA_GRPC_MAX_CONNECTIONS*`
+(`tumult-ingest::listener`). Because release builds abort on panic, Arrow
+IPC is decoded by a checked reader of its own (`tumult-ingest::otap::ipc`)
+that accepts only the column types OTAP uses.
 Everything lives in this repository as first-class `tumult-*` crates.
 
 The daemon's configuration surface keeps `KRONIKA_*` environment variable

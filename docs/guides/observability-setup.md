@@ -179,11 +179,15 @@ are chosen for how the `otelarrow` exporter reacts to them.
 |---|---|---|
 | Stored | `OK` | stays open |
 | Lake write failed | `UNAVAILABLE` (retried by the exporter) | stays open |
-| Decoded but not convertible: multivariate metrics, orphan rows, duplicate ids, too many attributes | `INVALID_ARGUMENT` (not retried) | stays open |
-| Payload not decodable, or over a decode limit | `INVALID_ARGUMENT` (not retried) | closed with `INVALID_ARGUMENT`, or `RESOURCE_EXHAUSTED` for a limit |
+| Decoded but not convertible: multivariate metrics, orphan rows, duplicate ids, a required column missing, a trace or span id of the wrong length or all zero, a table of another signal, too many attributes | `INVALID_ARGUMENT` (not retried) | stays open; closed with `INVALID_ARGUMENT` after `KRONIKA_OTAP_MAX_REJECTED_BATCHES` of them |
+| Payload not decodable (malformed IPC, a column type outside the allowlist, a schema over the structural caps, payload type `UNKNOWN`) | `INVALID_ARGUMENT` (not retried) | closed with `INVALID_ARGUMENT` |
+| Over a limit of the batch or of the stream itself (rows, decoded bytes, bytes retained per stream, dictionary deltas) | `INVALID_ARGUMENT` (not retried) | closed with `RESOURCE_EXHAUSTED` |
+| Over the batch deadline | `INVALID_ARGUMENT` (not retried) | closed with `RESOURCE_EXHAUSTED` |
+| Over the retained bytes all streams share | `UNAVAILABLE` (retried: other streams hold the bytes) | closed with `RESOURCE_EXHAUSTED` |
 | Message over the size limit, or a broken gRPC frame | none | closed with the read error (`OUT_OF_RANGE` for size) |
-| No message for the idle timeout | none | closed with `UNAVAILABLE` |
-| Too many open streams | none | refused with `RESOURCE_EXHAUSTED` |
+| No message for the idle timeout, or the stream is older than its lifetime | none | closed with `UNAVAILABLE` |
+| The client takes no status for the ack timeout | none | closed |
+| Too many open streams, in total or on one connection | none | refused with `RESOURCE_EXHAUSTED` |
 | Missing or wrong token | none | refused with `UNAUTHENTICATED`, logged at WARN without the token |
 
 A payload that cannot be decoded may have carried the schema or
@@ -191,31 +195,100 @@ dictionaries that later payloads build on, so the stream ends after its
 batch is acked and the exporter opens a fresh one. Only a stream the client
 closes ends without an error status.
 
+The batch is always acked before such a close, and with a code the exporter
+does not retry, because of how the `otelarrow` exporter (contrib 0.157.0)
+behaves: it decides per batch from the `BatchStatus` alone
+(`INVALID_ARGUMENT` is permanent, `UNAVAILABLE` is retried,
+`RESOURCE_EXHAUSTED` is retried only with a `RetryInfo` detail, which a
+`BatchStatus` cannot carry), it only logs the gRPC status a stream closes
+with, and it sends every batch that had no status when the stream ended
+again on a new stream. A batch that deterministically breaks a limit would
+come back forever if the stream closed without answering it. Only the
+shared retained-bytes pool, which other streams may free, is answered with
+the retried `UNAVAILABLE`. One close has no status to give: a message tonic
+refuses (over `KRONIKA_OTAP_MAX_MESSAGE_BYTES`, or badly compressed) has no
+batch id, so an exporter configured to send larger messages than the
+receiver takes resends until its own `retry_on_failure` and `timeout`
+settings give up. Keep the exporter's `max_stream_lifetime` below
+`KRONIKA_OTAP_STREAM_LIFETIME_SECS` so the exporter, not the receiver, ends
+long-lived streams.
+
+Release builds of tumultd abort on panic (`panic = "abort"`), so nothing a
+client sends may reach one. Arrow IPC messages are therefore decoded by the
+receiver's own checked reader (`tumult-ingest::otap::ipc`), not by the
+`arrow-ipc` stream reader, whose record batch and dictionary readers assert
+on buffer ranges, variadic buffer counts and union type ids. The reader
+accepts only the column types OTAP uses (bool, the integer and float types,
+Utf8, Binary, FixedSizeBinary, Timestamp, Duration, Struct, List, and
+Dictionary of a primitive, string or binary type); Null, Union, run-end
+encoded, view, Map, ListView, fixed-size list, Large*, decimal, date, time
+and interval columns and nested dictionaries are refused, as are record
+batches with variadic buffer counts. Node and buffer counts must match the
+schema, every buffer must lie inside the message body and be long enough
+for its node's length and type, offsets must be monotonic and inside the
+values buffer, and dictionary keys must be inside the dictionary. In builds
+that unwind, a panic in the decode task still closes the stream with
+`INTERNAL`.
+
 **Resource limits.** Everything a peer declares (row counts, IPC message
 body lengths, decompressed buffer sizes) is checked before memory is
-allocated for it.
+allocated for it. A value over its maximum is replaced by the maximum, a
+zero or unparsable one by the default, each with a warning at startup.
 
-| Variable | Default | Bounds |
-|---|---|---|
-| `KRONIKA_OTAP_MAX_ROWS` | 250000 | rows per OTAP table and per dictionary |
-| `KRONIKA_OTAP_MAX_ATTRIBUTES` | 1000000 | attributes per batch, all attribute tables together |
-| `KRONIKA_OTAP_MAX_DECODED_BYTES` | 67108864 | decompressed Arrow buffers plus expanded dictionary columns per batch |
-| `KRONIKA_OTAP_MAX_MESSAGE_BYTES` | 4194304 | one `BatchArrowRecords` message, before and after gRPC decompression |
-| `KRONIKA_OTAP_MAX_STREAMS` | 64 | Arrow streams open at once |
-| `KRONIKA_OTAP_MAX_CONCURRENT_DECODES` | 4 | batches being decoded at once (on the blocking pool) |
-| `KRONIKA_OTAP_STREAM_IDLE_SECS` | 300 | silence before a stream is closed |
+| Variable | Default | Maximum | Bounds |
+|---|---|---|---|
+| `KRONIKA_OTAP_MAX_ROWS` | 250000 | 10000000 | rows per OTAP table and per dictionary |
+| `KRONIKA_OTAP_MAX_ATTRIBUTES` | 1000000 | 100000000 | attributes per batch, all attribute tables together |
+| `KRONIKA_OTAP_MAX_DECODED_BYTES` | 67108864 | 4294967296 | decompressed Arrow buffers plus expanded dictionary columns per batch |
+| `KRONIKA_OTAP_MAX_MESSAGE_BYTES` | 4194304 | 268435456 | one `BatchArrowRecords` message, before and after gRPC decompression |
+| `KRONIKA_OTAP_MAX_STREAMS` | 64 | 4096 | Arrow streams open at once |
+| `KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION` | 32 | `MAX_STREAMS` | Arrow streams open at once from one connection (one peer socket address) |
+| `KRONIKA_OTAP_MAX_CONCURRENT_DECODES` | 4 | 256 | batches decoded, converted or waiting for the writer at once; the permit is held until the batch is stored |
+| `KRONIKA_OTAP_STREAM_IDLE_SECS` | 300 | 86400 | silence before a stream is closed |
+| `KRONIKA_OTAP_STREAM_LIFETIME_SECS` | 600 | 604800 | age at which a stream is closed, however busy |
+| `KRONIKA_OTAP_ACK_TIMEOUT_SECS` | 30 | 3600 | how long a status may wait for a client that does not read |
+| `KRONIKA_OTAP_BATCH_DEADLINE_MS` | 10000 | 600000 | wall-clock time to decode and convert one batch, checked inside the row loops |
+| `KRONIKA_OTAP_MAX_STREAM_RETAINED_BYTES` | 33554432 | 1073741824 | schemas and dictionaries one stream keeps between batches |
+| `KRONIKA_OTAP_MAX_RETAINED_BYTES` | 268435456 | 17179869184 | the same, all streams together |
+| `KRONIKA_OTAP_MAX_DICTIONARY_DELTAS` | 65536 | 16777216 | delta dictionary batches per stream |
+| `KRONIKA_OTAP_MAX_REJECTED_BATCHES` | 8 | 1000000 | refused batches before the stream is closed |
+| `KRONIKA_GRPC_MAX_CONNECTIONS` | 1024 | 65536 | TCP connections open on the gRPC listener |
+| `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER` | 64 | `MAX_CONNECTIONS` | TCP connections open from one peer IP address |
 
-The gRPC listener itself allows 64 concurrent HTTP/2 streams and 64
-in-flight requests per connection, pings every 30 s and drops a connection
-whose ping goes unanswered for 20 s. Only zstd is accepted for Arrow IPC
-buffer compression (what the exporter uses); LZ4 payloads are refused.
+Not configurable: 256 fields and 64 dictionaries per schema, schema nesting
+4 deep, schema ids of 256 bytes, field names of 128 bytes, CBOR attribute
+values nested 16 deep, trace ids of exactly 16 and span ids of exactly 8
+bytes.
 
-A live proof of the whole path (fresh daemon, real Collector container,
-`curl` OTLP/HTTP traces, logs and metrics in, rows out through
-`/api/experiments`, `/api/traces`, `/api/topology`, `/api/logs` and
-`/api/metrics/query`, a second batch on the same stream, and a hostile
-client's missing token, wrong token, undecodable payload and oversized
-message) is `scripts/proof/otap/proof.sh`.
+The connection limits are the gRPC listener's: unary OTLP/gRPC exports and
+OTel-Arrow streams share them, and a connection over a limit is closed as
+soon as it is accepted. The listener also allows 64 concurrent HTTP/2
+streams and 64 in-flight requests per connection, pings every 30 s and
+drops a connection whose ping goes unanswered for 20 s. Only zstd is
+accepted for Arrow IPC buffer compression (what the exporter uses); LZ4
+payloads are refused. Within `KRONIKA_OTAP_MAX_DECODED_BYTES` a small
+compressed message may still expand a lot; the budget bounds the result,
+not the ratio.
+
+**Logs.** Text a peer chooses (schema ids, field names, error text built
+from them) is cut to 256 bytes and has control characters, line breaks
+included, escaped before it reaches a log line or a `BatchStatus`; column
+types are named by kind only. The warnings a peer can cause at will
+(rejected token on gRPC and HTTP, refused stream, refused connection,
+rejected or undecodable batch, failed stream read) are limited to 10 of a
+kind per 10 s; the next one logged carries `suppressed=<n>`.
+
+A live proof of the whole path (fresh daemon under an address-space cap,
+real Collector container, `curl` OTLP/HTTP traces, logs and metrics in,
+rows out through `/api/experiments`, `/api/traces`, `/api/topology`,
+`/api/logs` and `/api/metrics/query`, a second batch on the same stream,
+and a hostile client: missing token, wrong token, undecodable payload,
+oversized message, the IPC messages that panic the `arrow-ipc` reader, row
+counts without data, a log-forging schema id, a flood of refused batches
+and 2000 damaged copies of a valid batch, with the daemon checked alive
+after each) is `scripts/proof/otap/proof.sh`. Run it on a debug and on a
+release build (`PROOF_PROFILE=release`): only the release daemon aborts on
+a panic.
 
 ## Span Hierarchy
 
