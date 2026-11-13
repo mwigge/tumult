@@ -43,6 +43,8 @@ functions:
 
 A declaration is checked as a whole. A duplicate or malformed function id, a LEI with wrong check digits, an unknown profile, flag, feed, tier or org unit, or a house parameter out of its range refuses the file, and the lake keeps its previous register.
 
+What the org file says about a function is a declaration, and a declaration scores nothing. A `test_plan`, `scheduled: true` or a `last_assessed` date alone gives the rows that read them (the testing programme of Art. 24(1), the criticality assessment) coverage 0 and the status Designed, with a reason that says it is declared only. They count from the day the lake holds a run of the plan or a record that cites the row. `rto_s` and `rpo_s` are the targets a stored measurement is compared with, and the criticality tier is a weight; neither is evidence.
+
 Every score response and the page say where the register stands:
 
 | `register_state` | Meaning |
@@ -62,7 +64,7 @@ Three things follow from the register:
 
 The id is lower-case groups joined by `-`, at most 63 characters: `^[a-z][a-z0-9]*(-[a-z0-9]+)+$`, for example `cif-0042`. The register refuses any other form. Telemetry that carries another form (for example `CF-0042`) is kept exactly as received and flagged; it is never lower-cased, because two systems that disagree about case must be fixed at the source. `GET /api/otel/conformance` lists the flagged ids per service under `malformed_entity_ids`.
 
-A malformed id is bounded wherever it travels. Ingest stores at most 63 characters of it; a longer one is cut and ends in `~`, which is outside the canonical form, so a cut value never reads as a valid id. A malformed id never becomes a function, a node or a label of the score. The conformance list shows at most 64 characters of an id (`truncated: true` on the row when the stored one was longer) and at most 500 rows (`malformed_entity_ids_limit`; `malformed_entity_ids_truncated: true` when there were more). Each one received is counted in `tumultd_malformed_entity_ids_total` on `/metrics`, and the daemon log has at most one warning per minute with the number it left out.
+A malformed id is bounded wherever it travels. Ingest stores at most 63 characters of it; a longer one is cut and ends in `~`, which is outside the canonical form, so a cut value never reads as a valid id. A malformed id never becomes a function, a node or a label of the score. The conformance list shows at most 64 characters of an id (`truncated: true` on the row when the stored one was longer) and at most 500 rows (`malformed_entity_ids_limit`; `malformed_entity_ids_truncated: true` when there were more). Each one received is counted in `tumultd_malformed_entity_ids_total` on `/metrics`, and the daemon log has at most one warning per minute with the number it left out. An `ict.entity.id` set on a span is treated exactly like one set on the resource: cut, flagged and counted the same way.
 
 ## Coverage
 
@@ -93,11 +95,13 @@ Each cell also has a status, which is what a reviewer asks for:
 | Status | Rule |
 |---|---|
 | None | Observable, nothing declared, no evidence |
-| Designed | A target, plan or schedule is declared; no qualifying evidence in the window |
+| Designed | A target, plan, schedule or assessment date is declared; no qualifying evidence in the window. A declaration never gives more than this |
 | Existing | `v ≥ 0.75` today |
 | Operating | `v ≥ 0.75` today and on each of the last 180 days, as the daemon stored them |
 
 The daemon stores each day's status (`KRONIKA_SCORE_SNAPSHOT_INTERVAL`, default `24h`; `0` or `off` disables it), and only stored days count. The streak is the number of days in a row, back from yesterday, that have a stored row at or above the threshold. A day below the threshold and a day that was never stored both start the count again: a day the daemon did not run is a day nobody observed, and it is never filled in afterwards from the evidence. A test that is 180 days old on a lake that has stored no day is therefore Existing with 180 days to go. A cell at Existing shows its streak and the days left until Operating. With the snapshot disabled nothing reaches Operating.
+
+The job looks for a new UTC day every minute as well as on its interval, so a day is not stepped over because the daemon started late in the previous one. A day is stored only when it was scored with the house's own parameters. While the org file is refused and the daemon has never read a valid one, the score is computed with the defaults (see [House parameters](#house-parameters)) and no day is stored: `snapshot.skipping` is `true` in every score response, `snapshot.reason` says why, `snapshot.skipped` counts the days left out since the daemon started, the daemon log has a warning per skipped day and the page shows a notice. Those days stay missing, as any day that was not observed.
 
 The daily rows are kept for 800 days and older ones are deleted when a day is stored. The streak reads the last 183 days and the history at most 458, so both stay whole.
 
@@ -169,17 +173,17 @@ The document carries both views. `level` and `index` are the rolled-up values fo
 | `GET /api/maturity?lei=&profile=&by=node\|entity\|org&env=` | Level, index, pillars, gates, cap, history by quarter and the per-node roll-up |
 | `GET /api/otel/conformance` | Contract conformance per service and `malformed_entity_ids` |
 
-`lei` selects the legal entity when the register holds more than one.
+`lei` selects the legal entity when the register holds more than one. A principal scoped to some environments that asks for a `lei` with no function in those environments gets the answer an unknown `lei` gets (`400`, "is not registered", without the entity's name, profile or feeds), so the register can not be listed by guessing.
 
 A principal scoped to some environments gets a partial view and is told so: `scoped: true` and a `scope_note`, shown as a banner on the page. It lists only the functions with telemetry or evidence in those environments; the level is of that part alone; register data, stored history and the Operating status are not shown.
 
-Every score response carries what it was computed with: `params` (see [House parameters](#house-parameters)), `register_state` with `register_reason`, `feeds`, `profile_overridden` and `scoped`. Rows of the expectation table and of an article carry `scope_basis` and `window_days`. `scope_basis: house` marks a row that the house limits to critical or important functions where the provision does not (the Art. 24 rows); the page labels it "house scope". `window_days: null` means the row has no freshness window for this entity.
+Every score response carries what it was computed with: `params` (see [House parameters](#house-parameters)), `snapshot` (whether days are being stored), `proof_days` (see [Proof](#proof)), `register_state` with `register_reason`, `feeds`, `profile_overridden` and `scoped`. Rows of the expectation table and of an article carry `scope_basis` and `window_days`. `scope_basis: house` marks a row that the house limits to critical or important functions where the provision does not (the Art. 24 rows); the page labels it "house scope". `window_days: null` means the row has no freshness window for this entity.
 
-The score endpoints reuse a response for `KRONIKA_SCORE_CACHE_TTL` seconds (default `5`; `0` turns it off). A reload of the org file or the manifests and a stored snapshot drop the cached responses at once; ingested telemetry does not, so a score can be that many seconds behind the lake. The manifests are read at start and on each reload, not per request.
+The score endpoints reuse a response for `KRONIKA_SCORE_CACHE_TTL` seconds (default `5`; `0` turns it off), measured on a monotonic clock, so a step of the wall clock does not keep one alive. A reload of the org file or the manifests and a stored snapshot drop the cached responses at once; ingested telemetry does not, so a score can be that many seconds behind the lake. The manifests are read at start and on each reload, not per request.
 
 ## House parameters
 
-All of these are fields of `HouseParams` and can be overridden in the org file. Missing fields keep their defaults; an unknown field refuses the file, and so does a value outside its range (for example a share or factor outside 0–1, a negative weight, pillar weights that do not sum to 1, a gate threshold outside 0–100 or lower than the same gate one level down, a level outside 1–5).
+All of these are fields of `HouseParams` and can be overridden in the org file. Missing fields keep their defaults; an unknown field refuses the file, and so does a value outside its range (for example a share or factor outside 0–1, a negative weight, pillar weights that do not sum to 1, a gate threshold outside 0–100 or lower than the same gate one level down, a level outside 1–5). A threshold can not be switched off: `existing_threshold`, `operating_share`, the bands and the gate thresholds must be above 0, `gates.l3_max_unknown_share` must be below 1, and a day count (`operating_days`, the windows, `gates.l3_slo_history_days`) must be within 1 and 3650.
 
 A house may lower a gate, and nobody reading the score may miss that it did. Every response has a `params` block and the page shows it under the headline:
 
@@ -187,12 +191,18 @@ A house may lower a gate, and nobody reading the score may miss that it did. Eve
 "params": {
   "source": "org_file",
   "fallback": false,
+  "held": false,
   "reason": null,
   "overridden": [{"key": "operating_days", "value": 30, "default": 180}]
 }
 ```
 
-`overridden` lists every key that differs from its default, with both values. When the `score:` section is refused, the score is computed with the defaults, `fallback` is `true`, `reason` says what was refused and `register_state` is `invalid`.
+`overridden` lists every key that differs from its default, with both values.
+
+When the org file is refused, `register_state` is `invalid`, `reason` says what was refused, and the parameters depend on what the daemon has read before:
+
+- It read a valid file earlier in this run: those parameters stay in force. `source` is `last_valid_org_file`, `held` is `true`, `overridden` still lists what that file overrides, and the daily snapshot goes on. A typo in the file does not silently move the house back to the defaults.
+- It has not read a valid file since it started: the score is computed with the defaults, `source` is `defaults` and `fallback` is `true`, and no day is stored until a valid file is read (see [Evidence status](#evidence-status)). The held parameters are kept in memory only, so a restart with a refused file is this case.
 
 ```yaml
 score:
@@ -233,7 +243,7 @@ score:
 | `tlpt_row` | `dora.art26.1` | The attestation level 5 needs for a designated entity |
 | `band_good`, `band_fair` | 0.8, 0.5 | Coverage bands |
 
-Outside the org file: `KRONIKA_ORG_FILE` (where the register is read from), `KRONIKA_REGISTER_RELOAD_INTERVAL` (how often it and the manifests are read again), `KRONIKA_SCORE_SNAPSHOT_INTERVAL` (the daily snapshot), `KRONIKA_SCORE_CACHE_TTL` (how long a response is reused), `KRONIKA_MANIFESTS_DIR` (workload nodes). The id pattern and its length limit are constants in `tumult-core` (`ENTITY_ID_PATTERN`, `ENTITY_ID_MAX_LEN`). The history shows four quarters.
+Outside the org file: `KRONIKA_ORG_FILE` (where the register is read from), `KRONIKA_REGISTER_RELOAD_INTERVAL` (how often it and the manifests are read again), `KRONIKA_SCORE_SNAPSHOT_INTERVAL` (the daily snapshot), `KRONIKA_SCORE_CACHE_TTL` (how long a response is reused), `KRONIKA_MANIFESTS_DIR` (workload nodes), `KRONIKA_SCORE_PROOF_DAYS` (a test setting, see [Proof](#proof); leave it unset). The id pattern and its length limit are constants in `tumult-core` (`ENTITY_ID_PATTERN`, `ENTITY_ID_MAX_LEN`). The history shows four quarters.
 
 ## Limits
 
@@ -256,6 +266,8 @@ Without a backup from before the upgrade there is no supported way back to the o
 
 ## Proof
 
-`scripts/proof/dora-score/proof.sh` starts a daemon on a fresh lake, posts telemetry and backdated test runs over OTLP, and asserts the behaviour described above: the registry per profile, the register codes across a restart, Art. 19 unknown and the level unchanged when every feed is declared, a 180-day-old test that is Existing until 180 days are stored, a missed day that breaks the streak, Existing at 179 stored days and Operating at 180, the cap by an uninstrumented critical service and its lifting, history from stored days with `no data` before them, the flagged `CF-0042`, and an org file changed under the running daemon (a lowered `operating_days` named in `params`, then a refused section with the defaults in force). The two worked examples of the model (level 4 at index 4.42 under the full profile; level 2 at index 3.60 under the simplified one) are fixture inputs and are asserted by their tests.
+`scripts/proof/dora-score/proof.sh` starts a daemon on a fresh lake, posts telemetry and backdated test runs over OTLP, and asserts the behaviour described above: the registry per profile, the register codes across a restart, Art. 19 unknown and the level unchanged when every feed is declared, a 180-day-old test that is Existing until 180 days are stored, a missed day that breaks the streak, Existing at 179 stored days and Operating at 180, the cap by an uninstrumented critical service and its lifting, history from stored days with `no data` before them, the flagged `CF-0042`, and an org file changed under the running daemon (a lowered `operating_days` named in `params`, then a refused file that leaves those parameters in force as `held`), and a daemon started on a refused file (defaults in force, the daily snapshot skipped and counted). The two worked examples of the model (level 4 at index 4.42 under the full profile; level 2 at index 3.60 under the simplified one) are fixture inputs and are asserted by their tests.
 
 The proof listens on two ports that are free when it starts and checks before every write that the listener is the daemon it started. The stored days of the Operating steps are written by `dora_store_status_days` (`tumult-api/examples/`), a test-only tool that runs the daemon's daily job with the clock set to each past day against the proof's private lake, with the daemon stopped. It refuses a lake that is not also named in `DORA_PROOF_PRIVATE_LAKE`. No endpoint of the daemon stores a past day.
+
+The tool marks every row it writes with the source `proof`, and the score leaves such days out: they do not extend a streak and are not in the history. They count only when the daemon is started with `KRONIKA_SCORE_PROOF_DAYS=1` (or `true`; any other value is off). That is a test setting. With it on, the daemon logs a warning at start, every score response has `proof_days.enabled: true` with the number counted and a `note` saying that the Operating status and the history are not evidence of operation, the page shows the note above the numbers, and a history point stored by the tool has `source: proof` and reads "by the proof tool" in the table. With it off, `proof_days.ignored` is the number of such days in the lake that were left out, and the page mentions it. The proof shows both: the stored days count for nothing until the daemon is restarted with the setting.
