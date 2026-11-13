@@ -166,14 +166,56 @@ exporters:
   time order; attribute maps arrive sorted by key.
 - Per-batch `headers` (hpack metadata) are ignored; authenticate with the
   stream metadata, as above.
-- A batch that fails to decode is reported as `INVALID_ARGUMENT` for that
-  batch id; later batches on the stream still decode as long as the IPC
-  reader state survives, and the exporter restarts streams every
-  `max_stream_lifetime` anyway.
+- Rows that point at a parent that is not in the batch (an attribute, event
+  or data point whose `parent_id` matches no row) and duplicate ids fail
+  the whole batch with `INVALID_ARGUMENT`; nothing is dropped silently.
+  The Collector's own receiver ignores such rows; its exporter never
+  produces them.
+
+**What the exporter is told.** Every batch gets a `BatchStatus`; the codes
+are chosen for how the `otelarrow` exporter reacts to them.
+
+| Event | `BatchStatus` | Stream |
+|---|---|---|
+| Stored | `OK` | stays open |
+| Lake write failed | `UNAVAILABLE` (retried by the exporter) | stays open |
+| Decoded but not convertible: multivariate metrics, orphan rows, duplicate ids, too many attributes | `INVALID_ARGUMENT` (not retried) | stays open |
+| Payload not decodable, or over a decode limit | `INVALID_ARGUMENT` (not retried) | closed with `INVALID_ARGUMENT`, or `RESOURCE_EXHAUSTED` for a limit |
+| Message over the size limit, or a broken gRPC frame | none | closed with the read error (`OUT_OF_RANGE` for size) |
+| No message for the idle timeout | none | closed with `UNAVAILABLE` |
+| Too many open streams | none | refused with `RESOURCE_EXHAUSTED` |
+| Missing or wrong token | none | refused with `UNAUTHENTICATED`, logged at WARN without the token |
+
+A payload that cannot be decoded may have carried the schema or
+dictionaries that later payloads build on, so the stream ends after its
+batch is acked and the exporter opens a fresh one. Only a stream the client
+closes ends without an error status.
+
+**Resource limits.** Everything a peer declares (row counts, IPC message
+body lengths, decompressed buffer sizes) is checked before memory is
+allocated for it.
+
+| Variable | Default | Bounds |
+|---|---|---|
+| `KRONIKA_OTAP_MAX_ROWS` | 250000 | rows per OTAP table and per dictionary |
+| `KRONIKA_OTAP_MAX_ATTRIBUTES` | 1000000 | attributes per batch, all attribute tables together |
+| `KRONIKA_OTAP_MAX_DECODED_BYTES` | 67108864 | decompressed Arrow buffers plus expanded dictionary columns per batch |
+| `KRONIKA_OTAP_MAX_MESSAGE_BYTES` | 4194304 | one `BatchArrowRecords` message, before and after gRPC decompression |
+| `KRONIKA_OTAP_MAX_STREAMS` | 64 | Arrow streams open at once |
+| `KRONIKA_OTAP_MAX_CONCURRENT_DECODES` | 4 | batches being decoded at once (on the blocking pool) |
+| `KRONIKA_OTAP_STREAM_IDLE_SECS` | 300 | silence before a stream is closed |
+
+The gRPC listener itself allows 64 concurrent HTTP/2 streams and 64
+in-flight requests per connection, pings every 30 s and drops a connection
+whose ping goes unanswered for 20 s. Only zstd is accepted for Arrow IPC
+buffer compression (what the exporter uses); LZ4 payloads are refused.
 
 A live proof of the whole path (fresh daemon, real Collector container,
-`curl` OTLP/HTTP in, promoted columns out through `/api/experiments`,
-`/api/traces` and `/api/topology`) is `scripts/proof/otap/proof.sh`.
+`curl` OTLP/HTTP traces, logs and metrics in, rows out through
+`/api/experiments`, `/api/traces`, `/api/topology`, `/api/logs` and
+`/api/metrics/query`, a second batch on the same stream, and a hostile
+client's missing token, wrong token, undecodable payload and oversized
+message) is `scripts/proof/otap/proof.sh`.
 
 ## Span Hierarchy
 
