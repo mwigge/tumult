@@ -96,3 +96,129 @@ fn service_name_follows_the_otel_convention() {
     let events = json_lines(&output.stderr);
     assert_eq!(events.last().unwrap()["service.name"], "tumultd-eu");
 }
+
+/// A `tumultd serve` child that is killed if the test leaves it running.
+#[cfg(unix)]
+struct Daemon(Option<std::process::Child>);
+
+#[cfg(unix)]
+impl Daemon {
+    /// Starts the daemon on a private store and free loopback ports and
+    /// waits until it answers `/healthz`.
+    fn start(dir: &Path) -> Self {
+        let grpc_port = free_port();
+        let http_port = free_port();
+        let child = Command::new(env!("CARGO_BIN_EXE_tumultd"))
+            .arg("serve")
+            .env("HOME", dir)
+            .env("TUMULT_LAKE_PATH", dir.join("lake.duckdb"))
+            .env("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"))
+            .env("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"))
+            .env(
+                "KRONIKA_METRICS_DIR",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../metrics"),
+            )
+            .env_remove("RUST_LOG")
+            .env_remove("TUMULT_LOG_FORMAT")
+            .env_remove("OTEL_SERVICE_NAME")
+            .env_remove("KRONIKA_DB")
+            .env_remove("KRONIKA_INGEST_TOKEN")
+            .env_remove("KRONIKA_TLS_CERT")
+            .env_remove("KRONIKA_TLS_KEY")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn tumultd");
+        // Owned before waiting, so a daemon that never answers is killed.
+        let daemon = Self(Some(child));
+        wait_until_healthy(http_port);
+        daemon
+    }
+
+    /// Sends SIGTERM and returns everything the daemon wrote.
+    fn terminate(mut self) -> Output {
+        let child = self.0.take().expect("daemon is running");
+        let status = Command::new("kill")
+            .arg(child.id().to_string())
+            .status()
+            .expect("run kill");
+        assert!(status.success(), "kill failed");
+        child.wait_with_output().expect("wait for tumultd")
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        let Some(child) = self.0.as_mut() else {
+            return;
+        };
+        // Best effort: the test is already failing when this runs.
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+#[cfg(unix)]
+fn free_port() -> u16 {
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|listener| listener.local_addr())
+        .expect("bind a free loopback port")
+        .port()
+}
+
+#[cfg(unix)]
+fn wait_until_healthy(http_port: u16) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while !is_healthy(http_port) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "tumultd did not answer /healthz"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[cfg(unix)]
+fn is_healthy(http_port: u16) -> bool {
+    use std::io::{Read, Write};
+
+    let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", http_port)) else {
+        return false;
+    };
+    let request = b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    if stream.write_all(request).is_err() {
+        return false;
+    }
+    let mut response = String::new();
+    // A reset connection reads as "not healthy yet".
+    let _ = stream.read_to_string(&mut response);
+    response.starts_with("HTTP/1.1 200")
+}
+
+/// The daemon exports its own log events to its own OTLP listener. A clean
+/// stop must flush them while that listener still accepts, not after it is
+/// gone: a late flush loses the events and logs an export error on every
+/// shutdown.
+#[cfg(unix)]
+#[test]
+fn clean_shutdown_reports_no_failed_telemetry_export() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Daemon::start(dir.path()).terminate();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stdout.is_empty());
+    let events = json_lines(&output.stderr);
+    let unexpected: Vec<&Value> = events
+        .iter()
+        .filter(|event| {
+            event["level"] == "ERROR"
+                || event["target"]
+                    .as_str()
+                    .is_some_and(|target| target.starts_with("opentelemetry"))
+        })
+        .collect();
+    assert!(unexpected.is_empty(), "{unexpected:#?}");
+    assert_eq!(events.last().unwrap()["event.name"], "daemon.stopped");
+}

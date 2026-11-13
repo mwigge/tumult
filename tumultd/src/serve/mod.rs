@@ -7,6 +7,8 @@ mod tests;
 mod tls;
 mod ui;
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use tumult_ingest::{Config, IngestWriter};
 use tumult_lake::Store;
@@ -41,15 +43,66 @@ async fn shutdown_signal(name: &'static str) {
     }
 }
 
-/// Drop guard that flushes OpenTelemetry spans on every exit path from
-/// `serve` — including `?` early returns — so telemetry is not lost exactly
-/// on the failed runs where it matters most (mirrors the CLI's guard).
-struct TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry);
+/// Flushes and shuts down the daemon's telemetry exactly once: on the
+/// shutdown signal while the listener it exports to still accepts (see
+/// [`shutdown_after_telemetry_flush`]), or else on drop, which covers every
+/// other exit path from `serve` — including `?` early returns — so telemetry
+/// is not lost exactly on the failed runs where it matters most.
+struct TelemetryShutdown {
+    telemetry: tumult_otel::telemetry::TumultTelemetry,
+    finished: std::sync::atomic::AtomicBool,
+}
+
+impl TelemetryShutdown {
+    fn new(telemetry: tumult_otel::telemetry::TumultTelemetry) -> Self {
+        Self {
+            telemetry,
+            finished: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    fn finish(&self) {
+        if self
+            .finished
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        self.telemetry.shutdown();
+    }
+}
 
 impl Drop for TelemetryShutdown {
     fn drop(&mut self) {
-        self.0.shutdown();
+        self.finish();
     }
+}
+
+/// Shutdown trigger for the gRPC listener that receives the daemon's own
+/// telemetry. It resolves only after the pending spans, metrics and log
+/// events have been exported, so the listener is still there to take them.
+/// Events logged later in the shutdown reach stderr only.
+async fn shutdown_after_telemetry_flush(name: &'static str, telemetry: Arc<TelemetryShutdown>) {
+    shutdown_signal(name).await;
+    // The exporters block on network I/O; keep that off the async workers.
+    let flushed = tokio::task::spawn_blocking(move || telemetry.finish()).await;
+    let Err(error) = flushed else {
+        return;
+    };
+    tracing::warn!(
+        name: "daemon.telemetry.flush.failed",
+        { error.message = %tumult_otel::logging::err(&error), error.type = "task_join" },
+        "telemetry flush task failed; pending telemetry is lost"
+    );
+}
+
+/// Shutdown trigger for a gRPC listener: the one carrying the daemon's own
+/// telemetry (`telemetry` is `Some`) flushes it first.
+async fn grpc_shutdown(name: &'static str, telemetry: Option<Arc<TelemetryShutdown>>) {
+    let Some(telemetry) = telemetry else {
+        return shutdown_signal(name).await;
+    };
+    shutdown_after_telemetry_flush(name, telemetry).await;
 }
 
 pub(crate) async fn serve() -> Result<()> {
@@ -102,8 +155,14 @@ pub(crate) async fn serve() -> Result<()> {
         otlp_headers: loopback_headers,
         ..tumult_otel::config::TelemetryConfig::from_env()
     };
-    let _telemetry_guard =
-        TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
+    let telemetry = Arc::new(TelemetryShutdown::new(
+        tumult_otel::telemetry::TumultTelemetry::new(otel_config),
+    ));
+    // The public gRPC listener carries the daemon's own telemetry unless the
+    // internal loopback listener exists.
+    let public_grpc_telemetry = internal_grpc_listener
+        .is_none()
+        .then(|| Arc::clone(&telemetry));
 
     let store = Store::open(&config.db_path).context("open store")?;
     let writer = store.writer().context("open store writer")?;
@@ -157,7 +216,7 @@ pub(crate) async fn serve() -> Result<()> {
     .context("invalid TLS identity for the gRPC server (KRONIKA_TLS_CERT/KRONIKA_TLS_KEY)")?;
     let grpc_server = tokio::spawn(async move {
         let result = grpc_router
-            .serve_with_shutdown(grpc_addr, shutdown_signal("grpc"))
+            .serve_with_shutdown(grpc_addr, grpc_shutdown("grpc", public_grpc_telemetry))
             .await;
         crate::events::server_stopped("grpc", &result);
         result
@@ -169,11 +228,12 @@ pub(crate) async fn serve() -> Result<()> {
     let internal_grpc_server = internal_grpc_listener.map(|listener| {
         let router =
             tumult_ingest::grpc::router_with_token(ingest.clone(), config.ingest_token.clone());
+        let telemetry = Arc::clone(&telemetry);
         tokio::spawn(async move {
             let result = router
                 .serve_with_incoming_shutdown(
                     tokio_stream::wrappers::TcpListenerStream::new(listener),
-                    shutdown_signal("grpc-loopback"),
+                    shutdown_after_telemetry_flush("grpc-loopback", telemetry),
                 )
                 .await;
             crate::events::server_stopped("grpc-loopback", &result);
