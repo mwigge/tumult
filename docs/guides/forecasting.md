@@ -125,8 +125,8 @@ seen. Each probe's `recovery.status` says which kind of `null` that is:
 | `status` | Meaning |
 |---|---|
 | `recovered` | The probe settled; `recovery_time_s` is a number. |
-| `unrecovered` | The probe never settled although it was seen outside the band after the fault (`outside_after_fault` > 0) or was sampled at least three times after it (`observed_after_fault`). |
-| `undetermined` | The probe was sampled fewer than three times after the fault and never outside the band: a probe sampled only before and during the fault, or one whose post phase is all gaps. No recovery was seen and none was ruled out. |
+| `unrecovered` | The probe never settled, and it was either sampled at least three times after the fault (`observed_after_fault`) or outside the band at its last sample (`ended_inside` is `false`). |
+| `undetermined` | The probe was sampled fewer than three times after the fault and was not outside the band at the last of them: a probe sampled only before and during the fault, one whose post phase is all gaps, or one that was outside once and back inside when the samples stopped. No recovery was seen and none was ruled out. |
 
 The run-level figure is the slowest probe, and it is `null` (not
 recovered) as soon as one evaluated probe is `unrecovered`: a run is not

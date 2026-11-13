@@ -5,8 +5,10 @@
 //!
 //! Not having seen a recovery is not the same as having seen none: a
 //! series that was not watched for `stable_steps` observed steps after the
-//! fault, and was never seen outside the band in them, is
-//! [`Verdict::Undetermined`], not [`Verdict::Unrecovered`].
+//! fault is [`Verdict::Undetermined`], not [`Verdict::Unrecovered`],
+//! unless the last step it was seen at was outside the band. One that was
+//! outside and is back inside at its last sample was cut off on its way
+//! back; one last seen outside was last seen broken.
 
 use serde::Serialize;
 
@@ -31,6 +33,9 @@ pub struct Recovery {
     pub outside_after_fault: usize,
     /// Observed steps (gaps excluded) after the fault end.
     pub observed_after_fault: usize,
+    /// Whether the last observed step after the fault end was inside the
+    /// band; `None` when none was observed.
+    pub ended_inside: Option<bool>,
 }
 
 /// What the steps watched after the fault say about a series.
@@ -39,7 +44,8 @@ pub struct Recovery {
 pub enum Verdict {
     /// Settled back inside the band for `stable_steps` observed steps.
     Recovered,
-    /// Watched long enough, or seen outside the band, and never settled.
+    /// Never settled, and either watched long enough or last seen outside
+    /// the band.
     Unrecovered,
     /// Not watched long enough after the fault to say either.
     Undetermined,
@@ -53,7 +59,7 @@ impl Recovery {
         if self.recovered_at.is_some() {
             return Verdict::Recovered;
         }
-        if self.outside_after_fault > 0 || self.observed_after_fault >= self.stable_steps {
+        if self.observed_after_fault >= self.stable_steps || self.ended_inside == Some(false) {
             return Verdict::Unrecovered;
         }
         Verdict::Undetermined
@@ -93,6 +99,7 @@ pub fn recovery_time(
     let outside_during_fault = (0..fault_end).filter(|i| status(*i) == Some(false)).count();
     let outside_after_fault = (fault_end..n).filter(|i| status(*i) == Some(false)).count();
     let observed_after_fault = (fault_end..n).filter(|i| status(*i).is_some()).count();
+    let ended_inside = (fault_end..n).rev().find_map(status);
     let mut run_start: Option<usize> = None;
     let mut run_len = 0;
     let mut recovered_at = None;
@@ -120,6 +127,7 @@ pub fn recovery_time(
         outside_during_fault,
         outside_after_fault,
         observed_after_fault,
+        ended_inside,
     }
 }
 
@@ -180,6 +188,37 @@ mod tests {
         let gapped = recovery_time(&gaps, &LO, &HI, 2, 3);
         assert_eq!(gapped.observed_after_fault, 1);
         assert_eq!(gapped.verdict(), Verdict::Undetermined);
+    }
+
+    /// Watched for fewer steps than a stable run takes, outside at first
+    /// and inside at the last sample: on its way back, and cut off before
+    /// anyone could say whether it stays.
+    #[test]
+    fn a_short_watch_that_ends_inside_the_band_is_undetermined() {
+        let returning = recovery_time(&[5.0, 5.0, 5.0, 0.5], &LO, &HI, 2, 3);
+        assert_eq!(returning.outside_after_fault, 1);
+        assert_eq!(returning.observed_after_fault, 2);
+        assert_eq!(returning.ended_inside, Some(true));
+        assert_eq!(returning.verdict(), Verdict::Undetermined);
+        let gapped = [5.0, 5.0, 5.0, f64::NAN, 0.5, f64::NAN];
+        let through_gaps = recovery_time(&gapped, &LO, &HI, 2, 3);
+        assert_eq!(through_gaps.ended_inside, Some(true));
+        assert_eq!(through_gaps.verdict(), Verdict::Undetermined);
+    }
+
+    /// The same short watch ending outside the band was last seen broken.
+    #[test]
+    fn a_short_watch_that_ends_outside_the_band_is_unrecovered() {
+        let relapsed = recovery_time(&[5.0, 5.0, 0.5, 5.0], &LO, &HI, 2, 3);
+        assert_eq!(relapsed.observed_after_fault, 2);
+        assert_eq!(relapsed.ended_inside, Some(false));
+        assert_eq!(relapsed.verdict(), Verdict::Unrecovered);
+        let gapped = [5.0, 5.0, 0.5, 5.0, f64::NAN, f64::NAN];
+        let through_gaps = recovery_time(&gapped, &LO, &HI, 2, 3);
+        assert_eq!(through_gaps.ended_inside, Some(false));
+        assert_eq!(through_gaps.verdict(), Verdict::Unrecovered);
+        let unwatched = recovery_time(&[5.0; 4], &LO, &HI, 4, 3);
+        assert_eq!(unwatched.ended_inside, None);
     }
 
     #[test]
