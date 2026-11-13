@@ -16,15 +16,39 @@ auditable later.
 
 1. **Versions.** A target's versions are the `service.version` resource
    values on the telemetry whose `service.name` is the target — the
-   service's own spans arriving over OTLP. The two most recently seen
-   versions are the *candidate* (newest) and the *baseline*.
+   service's own spans arriving over OTLP. A version is *live* when, in
+   some environment in scope, its last span lies within 60 seconds of that
+   environment's latest span of the target. The *candidate* is the live
+   version first seen most recently and the *baseline* the next one; when
+   fewer than two are live, the versions that fell silent follow, the one
+   heard last first. Old and new builds reporting side by side (two
+   environments, a canary, a rolling deploy) therefore rank by when each
+   was deployed, not by which one happened to speak last, and a build that
+   was rolled back stops being the candidate once the build that replaced
+   it has reported for a minute. Within that minute a rollback cannot be
+   told from a canary.
 2. **Runs.** Every experiment run against the target (root spans with
-   `resilience.target.system`) is attributed to the version that was live
-   when it started: the version of the target's most recent span at or
-   before the run's start. A rollback is therefore handled like any other
-   deploy — after 1.1.0 is rolled back to 1.0.0, a new run belongs to 1.0.0
-   again, although 1.1.0 was first seen later. Runs older than every known
-   version are ignored.
+   `resilience.target.system`) is attributed to one version from the
+   target's spans **in the run's own environment** (a run without an
+   environment is matched against every environment in scope):
+
+   1. the version with the most spans inside the run's window, from its
+      first load or probe sample to the end of its last. A build that was
+      idle until the load reached it owns the run it answered;
+   2. on a tie, the version deployed last in that environment (first seen
+      latest), then the greater version string;
+   3. with no span inside the window, the version of the environment's
+      last span at or before the run's start;
+   4. otherwise the run is left out.
+
+   Telemetry from another environment never decides: with 1.0.0 busy in
+   prod and 1.1.0 soaked in demo, the demo run belongs to 1.1.0 however the
+   two streams interleave. A run against a canary taking a minority of
+   one environment's traffic goes to the majority version; give the canary
+   its own environment name (or its own target) to judge it by itself. The
+   evidence is aggregated in SQL (one row per version and environment, and
+   per run and version), so the cost of a read does not grow with the
+   number of spans returned.
 3. **Samples.** For each side, the `during`-phase `probe_samples` rows of its
    runs for one series — by default `load.latency_p95_ms`, the per-window p95
    a streaming load adapter writes (see the
@@ -72,13 +96,16 @@ POST /api/perf/{target}/verdicts?probe=&quantile=&confidence=&min_samples=&margi
 The answer carries both sides (`version`, `runs`, `samples`, `p50`/`p95`/
 `p99`), the `comparison` (`delta`, `delta_pct`, `ci_low`, `ci_high`,
 `margin`, `iterations`, `seed`), `verdict`, `reasons`, the `versions_seen`
-with their first/last timestamps, `stored`, and `history` — the last ten
+in candidate-first order with their first/last timestamps and `live`,
+`stored`, `duplicate`, and `history` — the last ten
 stored verdicts for the target. An unknown target (no `service.version`
 seen in the environments asked for) is a 404 that names those environments;
 a target with one version is a 200 `inconclusive`.
 
 `GET` is a pure read (viewer role): dashboards can ask as often as they
-like without growing the lake, and no query parameter makes it write.
+like without growing the lake. A `GET` carrying a `store` parameter, with
+any value, is refused with 400 and the name of the `POST` route rather
+than answered as if it had stored.
 `POST …/verdicts` (operator role, in the route table like every other
 mutation) computes the same answer and appends it to the lake's
 `perf_verdicts` table (schema v18): target, probe, both versions, both
@@ -88,6 +115,14 @@ null when the caller was unscoped and passed no `env`). It answers 201 with
 `stored: true`, 409 when there is only one version and so nothing to store,
 and 503 when the daemon has no writable lake. Rows are never updated, so a
 recomputation after more runs adds a newer row and the older one stays.
+
+Storing is idempotent. When the latest stored row for the same target,
+probe, pair of versions, quantile and environments already holds the same
+evidence (sample counts, percentiles, interval, margin and verdict), the
+`POST` appends nothing and answers 200 with `stored: true` and
+`duplicate: true`. A pipeline step retried after a client timeout
+therefore leaves one row, and `tumult perf --store` treats both answers as
+stored.
 
 ### Environments
 
@@ -167,10 +202,14 @@ tool, not across tools.
 The oha adapter waits for the requests in flight at the end of each window
 and measures them, so a build whose median is unchanged but whose every
 fifth request is slow shows up in the per-window p95 and the verdict is
-`regressed`. Requests that never return are counted as timeout errors; a
-window in which nothing was answered has no latency sample at all, and a
-run made only of such windows misses its thresholds and ends `deviated`
-(see the [Load Testing Guide](load-testing-guide.md)).
+`regressed`. The time a window spends waiting is taken from the next
+window, so the plan stays on its clock; a tail so slow that windows have to
+be skipped truncates the plan and the run ends `deviated`. Requests that
+never return are counted as timeout errors; a window in which nothing was
+answered has no latency sample at all, is counted in the journal
+(`execution.unanswered_windows`), and fails the run only through a declared
+threshold such as `error_rate` (see the
+[Load Testing Guide](load-testing-guide.md)).
 
 ## What is deferred
 

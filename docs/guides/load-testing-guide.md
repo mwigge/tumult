@@ -106,7 +106,7 @@ tumult run experiment-with-load.toon
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TUMULT_OHA_BINARY` | oha | oha binary path |
-| `TUMULT_OHA_REQUEST_TIMEOUT_S` | 30 | Seconds oha waits for one answer before counting the request as a `timeout` error |
+| `TUMULT_OHA_REQUEST_TIMEOUT_S` | the window's length, at least 2 and at most 30 | Seconds oha waits for one answer before counting the request as a `timeout` error |
 
 oha needs no script: `load.script` is the URL. The adapter runs
 `oha --no-tui --output-format json -c <vus> -z <window> -w -t <timeout> <url>`
@@ -118,10 +118,39 @@ and reads the JSON summary (`summary.requestsPerSec`,
 **Slow requests are measured, not dropped.** `-w` makes oha wait for the
 requests still in flight when a window's time is up, so a slow answer lands
 in that window's percentiles, and `-t` turns one that never comes into a
-`timeout` error. A window therefore lasts up to its length plus the request
-timeout: a soak against a service with a slow tail takes longer than
-`duration_s`, and a window is killed (and reported as failed) only after its
-length plus the timeout plus a ten-second grace. A soak's
+`timeout` error. A window can therefore outlast its slot by up to the
+request timeout. By default that timeout is the window's own planned
+length, never below 2 seconds nor above 30, so a one-second sampling window
+against a hung target ends within about three seconds and a normal stop
+never waits half a minute with the fault still injected; set
+`TUMULT_OHA_REQUEST_TIMEOUT_S` when one answer may legitimately take
+longer. A window is killed (and reported as failed) only after its length
+plus the timeout plus a ten-second grace. Each sample's `duration_s` is the
+time the window really ran, not the planned length.
+
+**The plan clock.** Windows are scheduled against the plan, not against
+each other: window *n* owns the slot from its planned offset to its planned
+end, measured from the start of the load.
+
+| When its slot comes, the window … | It … |
+|---|---|
+| is early | waits for its slot |
+| is on time (within 50 ms) | runs its full length |
+| is late because the one before ran over, with at least half its slot left | runs for what is left of the slot |
+| is late with less than half its slot left | is skipped |
+
+A stretched window therefore costs the next one time, never the rest of the
+plan its place: a ramp reaches its peak when the plan says so, and a
+24-second soak with a slow tail still ends after about 24 seconds.
+
+**Planned against completed.** The load result carries an `execution`
+block in the journal: `planned_windows`, `completed_windows`,
+`unanswered_windows`, `aborted`, and `reasons`. A plan that fell short —
+windows skipped because their predecessors overran, a window that failed,
+windows never started because the method ended first — never meets its
+thresholds (`thresholds_met: false`, the reason says how many of how many
+windows were lost), so the run ends `deviated` instead of reporting a ramp
+that never reached its peak as passed. A soak's
 `sample_interval_s` below one second is rejected at validation, and the
 planner never slices a stage into windows shorter than one second (a short
 remainder joins the window before it), because a window that short measures
@@ -143,10 +172,20 @@ experiment format), because oha has no threshold language of its own.
 | The run … | The load … |
 |---|---|
 | reaches the end of its method | finishes the window in flight (a flat load is one window, so it runs its whole `duration_s`) and starts no further one |
-| is halted by a guard, or interrupted (Ctrl-C, e-stop) | is killed at once, process group and all, before the rollbacks run; the windows already completed are kept, the one that was cut is dropped |
+| is halted by a guard, or interrupted (Ctrl-C, e-stop) | is aborted before the rollbacks run: the window in flight is interrupted, gets up to one second to report what it had measured, and its process group is then killed. The result keeps the completed windows and the partial one, and is marked `execution.aborted: true` |
 
-Keep the method at least as long as `load.duration_s` when you want every
-planned window. Cancellation is checked between activities and during
+Keep the method at least as long as `load.duration_s`: a method that ends
+first leaves windows unstarted, which truncates the plan. An aborted load
+is evidence, not a measurement of the plan: it never meets its thresholds,
+a flat load cut short keeps the requests of its single partial window, and
+a window whose requests were all still unanswered when it was cut reports
+nothing. The `resilience.load` span carries `resilience.load.aborted`,
+`resilience.load.truncated`, `resilience.load.planned_windows` and
+`resilience.load.completed_windows` with every collected result, and a load
+that left none still marks its span with `resilience.load.error` and
+`resilience.load.aborted`;
+both an aborted and a truncated load are logged as warnings.
+Cancellation is checked between activities and during
 `pause_before_s` / `pause_after_s`; an activity's own process that is already
 running is not interrupted, so hold a long experiment open with a pause
 rather than a `sleep` command.
@@ -157,12 +196,26 @@ depends on:
 | The load … | Run status |
 |---|---|
 | could not be collected (the tool failed, no window completed) or sent no request at all | `failed` |
-| ran but missed its `thresholds` — including a target that accepted connections and never answered | `deviated` |
+| ran but missed a declared `thresholds` bound, or did not run its whole plan | `deviated` |
 | met its thresholds | unchanged |
 
-`thresholds_met` is true only when at least one request was sent, every
-window completed with an answer, and every bound holds. The same rules
-apply to k6: an interrupted k6 is killed at once and leaves no result.
+`thresholds_met` is true only when at least one request was sent, the whole
+plan ran, and every declared bound holds. A window nobody answered (a
+blackout while the fault is injected) is recorded and is not a deviation by
+itself, with oha as with k6: declare `thresholds.error_rate` when it should
+be one. An interrupted k6 is killed at once and leaves a result marked
+aborted with no measurements.
+
+**Status precedence.** When several things went wrong, the first that
+applies names the run: `interrupted` (cancelled), `aborted` (the hypothesis
+did not hold before the method), `failed` (an action failed, or the load
+left no evidence), `deviated` (hypothesis after, a blocking objective, or
+the load's thresholds or plan), `completed`. The status never hides the
+cleanup a lower one calls for: rollbacks run whenever the facts amount to a
+deviation, whatever the status reads — a run that is `failed` because its
+load left no evidence still rolls back as a deviated run would, also when its
+method held only probes — and after a failed or interrupted run in which a
+fault was started.
 
 ```bash
 tumult run examples/checkout-spike-oha.toon

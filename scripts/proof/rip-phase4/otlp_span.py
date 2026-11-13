@@ -2,7 +2,8 @@
 """Write one OTLP ExportTraceServiceRequest (protobuf) to stdout: a single
 server span from a service, the way the service's own SDK would export it.
 The daemon's OTLP/HTTP endpoint takes protobuf, so the message is encoded
-here by hand (standard library only) and posted with curl.
+here by hand (standard library only) and posted with curl. target.py
+imports encode() to report its own spans.
 
     otlp_span.py <service.name> <service.version> <environment> [<attribute>] | \
         curl --data-binary @- -H 'content-type: application/x-protobuf' $URL/v1/traces
@@ -47,9 +48,9 @@ def key_value(key, value):
     return field_bytes(1, key.encode()) + field_bytes(2, any_value)
 
 
-def main():
-    service, version, environment = sys.argv[1:4]
-    attribute = sys.argv[4] if len(sys.argv) > 4 else "resilience.target.environment"
+def encode(service, version, environment, attribute="resilience.target.environment"):
+    """One ExportTraceServiceRequest holding a single server span that
+    ended now."""
     attributes = [
         ("service.name", service),
         ("service.version", version),
@@ -72,7 +73,8 @@ def main():
     )
     scope_spans = field_bytes(2, span)  # ScopeSpans.spans
     resource_spans = field_bytes(1, resource) + field_bytes(2, scope_spans)
-    sys.stdout.buffer.write(field_bytes(1, resource_spans))
+    return field_bytes(1, resource_spans)
 
 
-main()
+if __name__ == "__main__":
+    sys.stdout.buffer.write(encode(*sys.argv[1:5]))

@@ -1,0 +1,29 @@
+title: RIP phase-4 proof — a plan the target is too slow to let finish
+description: Twelve one-second oha windows against a build whose every fifth request takes most of a second. Each window waits for its requests in flight, runs over its slot, and the windows that would start more than half a slot late are skipped. The plan is truncated, so the load's thresholds are unmet and the run deviates, although every request was answered and the method held for the whole plan.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout-truncated
+  technology: http
+  environment: demo
+
+load:
+  tool: oha
+  script: http://127.0.0.1:44380/
+  vus: 4
+  duration_s: 12
+  profile:
+    type: soak
+    sample_interval_s: 1
+
+method[1]:
+  - name: hold-for-the-plan
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 14"
+      timeout_s: 30.0
+
+rollbacks[0]:
