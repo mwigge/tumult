@@ -8,11 +8,14 @@
 #   bash scripts/proof/starmap-step1/proof.sh [run-number]
 #
 # The daemon listens on two loopback ports that are free when the proof
-# starts, and every write step first checks that the daemon this proof
-# started is still the one running, so the proof cannot attest another
-# daemon. Work files (lake, journals, the experiments' scratch files) land
-# under $PROOF_WORK/run-N (default: a temp dir) and are removed on exit, as
-# is the daemon; PROOF_KEEP=1 keeps the files of a run for a post-mortem.
+# starts. Free is not reserved: another process can take a port before the
+# daemon binds it, and would then answer in its place. So the proof asks the
+# kernel (`ss -ltnp`) which process listens on each port and goes on only
+# when that is the daemon it started, once at the start and again before
+# every write step; it cannot attest another daemon. Work files (lake,
+# journals, the experiments' scratch files) land under $PROOF_WORK/run-N
+# (default: a temp dir) and are removed on exit, as is the daemon;
+# PROOF_KEEP=1 keeps the files of a run for a post-mortem.
 set -euo pipefail
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$S/../../.." && pwd)"
@@ -25,8 +28,17 @@ DPID=""
 
 pass() { echo "  ok   $1"; }
 fail() { echo "  FAIL $1"; exit 1; }
-py() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
+# py <python> [argument...]: run <python> with the JSON on stdin as `d` and
+# the arguments as `a`. Paths and numbers of this run are passed as
+# arguments, never pasted into the source.
+py() {
+  local code=$1
+  shift
+  python3 -c "import json,sys; a=sys.argv[1:]; d=json.load(sys.stdin); $code" "$@"
+}
 
+# Nothing in here may end the script: under `set -e` a failing command in
+# the EXIT trap would replace the exit code of the proof.
 cleanup() {
   if [[ -n "$DPID" ]]; then
     kill "$DPID" 2>/dev/null || true # already gone is fine here
@@ -34,19 +46,34 @@ cleanup() {
   fi
   if [[ "${PROOF_KEEP:-0}" == 1 ]]; then
     echo "  kept $WORK"
-    return
+    return 0
   fi
-  rm -rf "$WORK"
-  [[ -z "$TEMP_ROOT" ]] || rmdir "$TEMP_ROOT"
+  rm -rf "$WORK" || echo "  could not remove $WORK"
+  [[ -n "$TEMP_ROOT" ]] || return 0
+  rmdir "$TEMP_ROOT" 2>/dev/null || echo "  left $TEMP_ROOT: it is not empty"
 }
 trap cleanup EXIT
 
-# The daemon this proof started must still be running: a daemon that lost
-# its port to another process exits, and what answers then is not ours.
+# The pid of the process listening on a loopback TCP port, from the kernel.
+listener_pid() {
+  ss -ltnpH "sport = :$1" | sed -n 's/.*pid=\([0-9]*\),.*/\1/p' | head -1
+}
+
+# Whether both ports are served by the daemon this proof started.
+ours() {
+  [[ "$(listener_pid "$HTTP_PORT")" == "$DPID" && "$(listener_pid "$GRPC_PORT")" == "$DPID" ]]
+}
+
+# The daemon this proof started must still be running, and it must be the
+# process that listens on both ports: what answers otherwise is not ours.
 alive() {
-  kill -0 "$DPID" 2>/dev/null && return 0
-  tail -20 "$WORK/tumultd.log" || true
-  fail "the daemon this proof started (pid $DPID) is gone"
+  if ! kill -0 "$DPID" 2>/dev/null; then
+    tail -20 "$WORK/tumultd.log" || true
+    fail "the daemon this proof started (pid $DPID) is gone"
+  fi
+  ours && return 0
+  ss -ltnp "sport = :$HTTP_PORT or sport = :$GRPC_PORT" || true
+  fail "ports $HTTP_PORT and $GRPC_PORT are not both served by the daemon this proof started (pid $DPID)"
 }
 
 # Retry a check until it holds: wait_for <what> <command...>.
@@ -54,15 +81,18 @@ wait_for() {
   local what=$1 deadline=$((SECONDS + 30))
   shift
   until "$@"; do
-    alive
+    kill -0 "$DPID" 2>/dev/null || alive
     ((SECONDS < deadline)) || fail "timed out waiting for $what"
     sleep 0.5
   done
 }
 
-# A read past the 30 s cache of the map.
+# A read past the 30 s cache of the map. The daemon honours it at most
+# every 2 s per map, so the answer is at most that old.
+FLOOR_S=2.2
 fresh() { curl -fsS -H 'Cache-Control: no-cache' "$@"; }
 
+command -v ss >/dev/null || fail "ss (iproute2) is needed to identify the listening process"
 rm -rf "$WORK"
 mkdir -p "$WORK/experiments"
 read -r GRPC_PORT HTTP_PORT < <(python3 -c 'import socket
@@ -82,11 +112,11 @@ MAP="$URL/api/starmap?env=demo"
 echo "[1] start tumultd on a fresh lake with the demo org and manifests"
 RUST_LOG=warn "$BIN/tumultd" serve >"$WORK/tumultd.log" 2>&1 &
 DPID=$!
-healthy() { curl -fs "$URL/healthz" >/dev/null 2>&1; }
-wait_for "the daemon to answer /healthz" healthy
+healthy() { ours && curl -fs "$URL/healthz" >/dev/null 2>&1; }
+wait_for "the daemon to listen on both ports and answer /healthz" healthy
 alive
 [[ -s "$TUMULT_LAKE_PATH" ]] || fail "the daemon did not open the private lake $TUMULT_LAKE_PATH"
-pass "daemon healthy: pid $DPID, OTLP gRPC :$GRPC_PORT, HTTP :$HTTP_PORT, private lake"
+pass "daemon healthy: pid $DPID is the listener on OTLP gRPC :$GRPC_PORT and HTTP :$HTTP_PORT, private lake"
 
 echo "[2] the map before any run: organisation, entities and workloads, no evidence"
 fresh "$MAP" >"$WORK/map0.json"
@@ -126,7 +156,10 @@ COUNT=0
 for f in "$REPO"/demo/kronika/experiments/*.toon; do
   n=$(basename "$f" .toon)
   [[ -n "${WANT[$n]:-}" ]] || fail "$n has no expected outcome in this proof"
-  sed "s#/tmp/kd-demo#$WORK/kd-demo#g" "$f" >"$WORK/experiments/$n.toon"
+  python3 -c 'import sys
+source, target, old, new = sys.argv[1:]
+open(target, "w").write(open(source).read().replace(old, new))' \
+    "$f" "$WORK/experiments/$n.toon" /tmp/kd-demo "$WORK/kd-demo"
   alive
   code=0
   "$BIN/tumult" run "$WORK/experiments/$n.toon" --journal-path "$WORK/journal-$n.toon" --force >"$WORK/$n.out" 2>&1 || code=$?
@@ -209,13 +242,22 @@ print("     gaps", sorted(x["id"] for x in d["nodes"] if x["gap"]))
 print("     message-queue evidence", q["evidence"])
 print("     organisation roll-up", root)' <"$WORK/map1.json"
 fresh "$MAP&budget=3" >"$WORK/small.json"
-python3 -c "
-import json
-full=json.load(open('$WORK/map1.json'))['counts']; small=json.load(open('$WORK/small.json'))['counts']
-assert small['clustered']>0 and small['nodes']<full['nodes'], small
-for k in ('gaps','risks_open','risks_suppressed','risks_unplaced'): assert small[k]==full[k], (k, small, full)
-print('     budget 3 clusters', small['clustered'], 'nodes; gaps stay at', small['gaps'])"
+python3 -c 'import json, sys
+full, small = (json.load(open(path))["counts"] for path in sys.argv[1:])
+assert small["clustered"]>0 and small["nodes"]<full["nodes"], small
+for k in ("gaps","risks_open","risks_suppressed","risks_unplaced"): assert small[k]==full[k], (k, small, full)
+print("     budget 3 clusters", small["clustered"], "nodes; gaps stay at", small["gaps"])' \
+  "$WORK/map1.json" "$WORK/small.json"
 pass "session-cache is a gap node; message-queue carries the failed run; counts roll up to the organisation and do not move with the budget"
+
+echo "[6b] the demo-check assertions without --write only read"
+alive
+python3 "$REPO/scripts/starmap-check.py" "$URL" --wait 30 >"$WORK/check-read.out" 2>&1 || { cat "$WORK/check-read.out"; fail "the read-only assertions failed"; }
+[[ "$(grep -c '^ok   star map: ' "$WORK/check-read.out")" == 7 ]] || { cat "$WORK/check-read.out"; fail "expected seven passing lines"; }
+grep -q '^skip star map: suppressed risk not checked' "$WORK/check-read.out" || { cat "$WORK/check-read.out"; fail "the skipped suppression check is not reported"; }
+sleep "$FLOOR_S"
+fresh "$MAP" | py 'assert d["counts"]["risks_suppressed"]==0, d["counts"]'
+pass "seven assertions hold, the suppression check is reported as skipped, and nothing was suppressed"
 
 echo "[7] suppress one finding on api-worker with an expiry; the map keeps it visible"
 curl -fsS "$URL/api/risks?env=demo" >"$WORK/risks.json"
@@ -227,12 +269,12 @@ alive
 curl -fsS -X POST -H 'content-type: application/json' -d '{"reason":"proof: second replica lands next sprint","expires_in_days":7,"actor":"proof"}' "$URL/api/risks/$RID/suppress" >"$WORK/sup.json"
 # No `Cache-Control: no-cache` here: the write itself must drop the cached map.
 curl -fsS "$MAP" >"$WORK/map2.json"
-py "c=d['counts']; assert c['risks_suppressed']==1 and c['risks_open']==$OPEN-1, c
-s=[x for x in d['nodes'] if x['kind'] not in ('entity','org') and x['risks']['suppressed']>0]; assert len(s)==1, [x['id'] for x in s]
-r=s[0]['risks']; assert r['suppressed_by']=='proof' and r['suppression_reason']=='proof: second replica lands next sprint', r
-days=(r['suppression_expires_ns']-d['as_of_ns'])/86400e9; assert 6.9<days<=7.0, days
-root=[x for x in d['nodes'] if x['id']=='org:'][0]['rollup']; assert root['risks_suppressed']==1 and root['risks_open']==$OPEN-1, root
-print('     suppressed on', s[0]['id'], 'expires in', round(days,2), 'days; open', c['risks_open'], 'suppressed', c['risks_suppressed'])" <"$WORK/map2.json"
+py 'was_open=int(a[0]); c=d["counts"]; assert c["risks_suppressed"]==1 and c["risks_open"]==was_open-1, c
+s=[x for x in d["nodes"] if x["kind"] not in ("entity","org") and x["risks"]["suppressed"]>0]; assert len(s)==1, [x["id"] for x in s]
+r=s[0]["risks"]; assert r["suppressed_by"]=="proof" and r["suppression_reason"]=="proof: second replica lands next sprint", r
+days=(r["suppression_expires_ns"]-d["as_of_ns"])/86400e9; assert 6.9<days<=7.0, days
+root=[x for x in d["nodes"] if x["id"]=="org:"][0]["rollup"]; assert root["risks_suppressed"]==1 and root["risks_open"]==was_open-1, root
+print("     suppressed on", s[0]["id"], "expires in", round(days,2), "days; open", c["risks_open"], "suppressed", c["risks_suppressed"])' "$OPEN" <"$WORK/map2.json"
 pass "the suppressed finding is counted apart, with actor, reason and expiry on its node, on a plain read right after the write"
 
 echo "[8] focus, range and parameter checks"
@@ -247,20 +289,30 @@ for bad in "range=1y" "depth=9&focus=org:" "budget=0" "kinds=planet" "include=al
   code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/starmap?$bad")
   [[ "$code" == 400 ]] || fail "$bad should be 400, got $code"
 done
-fresh "$MAP" >"$WORK/map3.json"
+# A forced read is honoured once the kept map is 2 s old; inside those 2 s
+# it is answered from the kept map, so no client can make the daemon read
+# the lake in a loop. A machine that stalls between the two reads gets
+# another try.
+forced_twice() {
+  sleep "$FLOOR_S"
+  fresh "$MAP" >"$WORK/map3.json" || return 1
+  fresh "$MAP" >"$WORK/map3b.json" || return 1
+  cmp -s "$WORK/map3.json" "$WORK/map3b.json"
+}
+wait_for "two forced reads inside 2 s to be one read of the lake" forced_twice
+sleep "$FLOOR_S"
 fresh "$MAP" >"$WORK/map4.json"
-python3 -c "
-import json
-a=json.load(open('$WORK/map3.json')); b=json.load(open('$WORK/map4.json'))
-assert b['as_of_ns']>a['as_of_ns'], 'a no-cache read must read the lake again'
+python3 -c 'import json, sys
+a, b = (json.load(open(path)) for path in sys.argv[1:])
+assert b["as_of_ns"]>a["as_of_ns"], "a no-cache read after the floor must read the lake again"
 # The read time and the posture score (evidence freshness decays by the
 # second) are the only things allowed to move between two reads.
 for m in (a,b):
-    m.pop('as_of_ns')
-    for n in m['nodes']:
-        if n['posture']: n['posture']['score']=round(n['posture']['score'])
-assert a==b, 'two reads of the same lake differ'"
-pass "focus prunes to the neighbourhood, an unknown focus says so, include=runs adds the eight runs, bad parameters are 400, reads are stable"
+    m.pop("as_of_ns")
+    for n in m["nodes"]:
+        if n["posture"]: n["posture"]["score"]=round(n["posture"]["score"])
+assert a==b, "two reads of the same lake differ"' "$WORK/map3.json" "$WORK/map4.json"
+pass "focus prunes to the neighbourhood, an unknown focus says so, include=runs adds the eight runs, bad parameters are 400, a forced read is rate-limited to one per 2 s, reads are stable"
 
 echo "[9] the 30 s cache and its validator"
 curl -fsS -D "$WORK/h1" "$MAP" >"$WORK/c1.json"
@@ -294,8 +346,16 @@ pass "/api/topology has no tgt: ids, keeps name-only targets and rejects an unkn
 
 echo "[11] the demo-check assertions against this daemon"
 alive
+# With STARMAP_URL demo-check only reads; the risk step [7] suppressed is
+# what its eighth line finds.
 STARMAP_URL=$URL bash "$REPO/scripts/demo-check.sh" --starmap-only >"$WORK/check1.out" 2>&1 || { cat "$WORK/check1.out"; fail "the demo-check Star Map assertions failed"; }
 [[ "$(grep -c 'PASS.*star map: ' "$WORK/check1.out")" == 8 ]] || { cat "$WORK/check1.out"; fail "expected eight passing Star Map lines"; }
+# This daemon is thrown away, so the check may write: with a risk suppressed
+# already it has nothing to add.
+python3 "$REPO/scripts/starmap-check.py" "$URL" --wait 30 --write >"$WORK/check-write.out" 2>&1 || { cat "$WORK/check-write.out"; fail "the assertions with --write failed"; }
+[[ "$(grep -c '^ok   star map: ' "$WORK/check-write.out")" == 8 ]] || { cat "$WORK/check-write.out"; fail "expected eight passing lines with --write"; }
+sleep "$FLOOR_S"
+fresh "$MAP" | py 'assert d["counts"]["risks_suppressed"]==1, d["counts"]'
 alive
-pass "scripts/demo-check.sh --starmap-only: eight assertions hold"
+pass "scripts/demo-check.sh --starmap-only reads and eight assertions hold; --write adds no second suppression"
 echo "ALL STAR MAP STEP 1 PROOF CHECKS PASSED (run $RUN)"
