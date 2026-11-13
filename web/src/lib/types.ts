@@ -1142,16 +1142,23 @@ export interface MaturityNode {
 /** `GET /api/maturity` */
 export interface MaturityReport extends ScoreHeader {
     scale: { internal: boolean; source: string; levels: string[] };
+    /** Level and index shown: the roll-up root's. */
     level: number;
     index: number;
+    /** Level and index of the pillars alone, before the roll-up. */
+    flat_level: number;
+    flat_index: number;
     target: number;
     headline: string;
     gate_level: number;
     capped: boolean;
     cap: {
+        rule: 'none' | 'gate' | 'weakest_critical_child';
         level: number | null;
         blocked_level?: number;
         component: string | null;
+        node_ids?: string[];
+        origin?: string[];
         reason: string | null;
     };
     components: Record<MaturityComponent, number | null>;

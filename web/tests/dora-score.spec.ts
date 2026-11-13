@@ -213,11 +213,14 @@ const maturity = {
     },
     level: 2,
     index: 3.6,
+    flat_level: 2,
+    flat_index: 3.71,
     target: 3,
     headline: 'level 2 of target 3 (simplified)',
     gate_level: 2,
     capped: true,
     cap: {
+        rule: 'gate',
         level: 2,
         blocked_level: 3,
         component: 'evidence',
@@ -439,9 +442,11 @@ test('maturity shows weighted components, gates and a greyed index when capped',
             ],
             values: [81, 64.5, null, 70, 55],
         });
-    // The index tile is greyed: a gate decides the level, not the index.
+    // The index tile is greyed: a cap decides the level, not the index.
     const index = page.getByTestId('score-number').filter({ hasText: 'Maturity index' });
     await expect(index.locator('.value')).toHaveClass(/muted/);
+    // The pillar-only index stays visible next to the rolled-up one.
+    await expect(index).toContainText('pillars alone 3.71');
     const gauge = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };
         const opt = w.__tumultCharts?.['dora-gauge'] as

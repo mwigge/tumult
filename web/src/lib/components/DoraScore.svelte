@@ -150,9 +150,11 @@
                 value={maturity.index.toFixed(2)}
                 unknown={maturity.unknown_share}
                 muted={maturity.capped}
-                hint={maturity.capped
-                    ? 'greyed: a gate decides the level, not the index'
-                    : 'weighted components on the 1–5 scale'}
+                hint="{maturity.capped
+                    ? 'greyed: a cap decides the level, not the index'
+                    : 'rolled up over every node, 1–5 scale'} · pillars alone {maturity.flat_index.toFixed(
+                    2,
+                )}"
             />
             <ScoreNumber
                 label="DORA coverage"

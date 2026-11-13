@@ -105,7 +105,10 @@ fn workload(w: &tumult_risk::Workload) -> Workload {
 }
 
 /// Workloads of the manifests directory; none when it is not configured.
-fn workloads(dir: Option<&FsPath>) -> Result<Vec<Workload>, String> {
+///
+/// # Errors
+/// Returns a message when the directory cannot be read.
+pub fn manifest_workloads(dir: Option<&FsPath>) -> Result<Vec<Workload>, String> {
     let Some(dir) = dir else {
         return Ok(Vec::new());
     };
@@ -119,8 +122,8 @@ fn workloads(dir: Option<&FsPath>) -> Result<Vec<Workload>, String> {
 
 fn scope(state: &ApiState, principal: &Principal, q: &ScoreQuery) -> Result<Scope, ApiError> {
     let envs = envs_for(principal, q.env.clone())?;
-    let workloads =
-        workloads(state.manifests_dir().map(std::path::PathBuf::as_path)).map_err(internal)?;
+    let workloads = manifest_workloads(state.manifests_dir().map(std::path::PathBuf::as_path))
+        .map_err(internal)?;
     Ok(Scope {
         envs,
         lei: q.lei.clone(),
@@ -198,7 +201,7 @@ pub(crate) async fn maturity(
     let scope = scope(&state, &principal, &q)?;
     document(&state, scope, move |reader, scope, loaded, matrix| {
         let assessment = report::assess(matrix);
-        let history = report::history(reader, &scope.request(), &scope.params, &assessment.entity)
+        let history = report::history(reader, &scope.request(), &scope.params, &assessment)
             .map_err(|e| e.to_string())?;
         Ok(Ok(report::maturity(loaded, &assessment, by, history)))
     })
@@ -237,8 +240,8 @@ mod tests {
 
     #[test]
     fn no_manifests_directory_means_no_workloads() {
-        assert_eq!(workloads(None), Ok(Vec::new()));
-        let missing = workloads(Some(FsPath::new("/nonexistent/manifests")));
+        assert_eq!(manifest_workloads(None), Ok(Vec::new()));
+        let missing = manifest_workloads(Some(FsPath::new("/nonexistent/manifests")));
         assert!(missing.is_err());
     }
 }

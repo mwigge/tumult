@@ -25,7 +25,7 @@ use super::loader::{self, LoadError, Loaded, Request, SNAPSHOT_SOURCE};
 use super::maturity::{self, Maturity, Pillar, Scope, CONFORMANCE_LABELS};
 use super::model::{day_of, days_from_civil, end_of_day, format_day, Function, Source, Workload};
 use super::params::{HouseParams, PillarWeights};
-use super::rollup::{self, Kind, NodeScore, ROOT_ID};
+use super::rollup::{self, Cap, CapRule, Kind, NodeScore, ROOT_ID};
 use super::status::{self, RowStatus, Standing, Status, StatusReport};
 
 /// Where the 1–5 scale comes from, printed with every level.
@@ -810,6 +810,39 @@ impl Assessment {
     pub fn root(&self) -> Option<&NodeScore> {
         self.nodes.iter().find(|n| n.id == ROOT_ID)
     }
+
+    /// The level shown for the organisation: the roll-up root's, which
+    /// already takes the gates and the weakest critical child.
+    #[must_use]
+    pub fn level(&self) -> u8 {
+        self.root().map_or(self.entity.level, |root| root.level)
+    }
+
+    /// The index shown for the organisation: the roll-up root's.
+    #[must_use]
+    pub fn index(&self) -> f64 {
+        self.root().map_or(self.entity.index, |root| root.index)
+    }
+
+    /// The level sits below what an index alone would give: the rolled-up
+    /// one, or the one of the pillars before the roll-up.
+    #[must_use]
+    pub fn capped(&self) -> bool {
+        let by_index = maturity::floor_level(self.index());
+        let by_pillars = maturity::floor_level(self.entity.index);
+        self.level() < by_index.max(by_pillars)
+    }
+
+    /// `level n of target m (profile)`.
+    #[must_use]
+    pub fn headline(&self) -> String {
+        format!(
+            "level {} of target {} ({})",
+            self.level(),
+            self.entity.target,
+            self.entity.label
+        )
+    }
 }
 
 /// Assess the legal entity behind `matrix` and roll its nodes up.
@@ -896,16 +929,47 @@ fn gate_component(reason: &str) -> Option<&'static str> {
     reason.contains("evidence").then_some("evidence")
 }
 
-/// The cap of the legal entity's level: the blocked gate.
-fn entity_cap(m: &Maturity) -> Value {
+/// The gate that holds, or next blocks, the legal entity's level.
+fn gate_cap(m: &Maturity) -> Value {
     let Some((level, reason)) = m.blocked.as_ref() else {
-        return json!({ "level": null, "component": null, "reason": null });
+        return json!({ "rule": "none", "level": null, "component": null, "reason": null });
     };
     json!({
+        "rule": if m.capped { "gate" } else { "none" },
         "level": level.saturating_sub(1),
         "blocked_level": level,
         "component": gate_component(reason),
         "reason": m.reason(),
+    })
+}
+
+/// Why a critical child holds its parent down, in words.
+fn child_cap_reason(cap: &Cap) -> String {
+    let what = match cap.origin_state {
+        Some("unknown") => "critical, no telemetry and no test",
+        Some("known") => "critical, at a lower level",
+        _ => "critical",
+    };
+    format!("capped by {} ({what})", cap.origin.join(", "))
+}
+
+/// What holds the shown level: the weakest critical child when the
+/// roll-up names one, else the blocked gate.
+fn shown_cap(assessment: &Assessment) -> Value {
+    let by_child = assessment
+        .root()
+        .map(|root| &root.cap)
+        .filter(|cap| cap.rule == CapRule::WeakestCriticalChild);
+    let Some(cap) = by_child else {
+        return gate_cap(&assessment.entity);
+    };
+    json!({
+        "rule": cap.rule.as_str(),
+        "level": cap.level,
+        "component": null,
+        "node_ids": cap.node_ids,
+        "origin": cap.origin,
+        "reason": child_cap_reason(cap),
     })
 }
 
@@ -954,14 +1018,14 @@ pub fn cap_sentence(node: &NodeScore) -> Option<String> {
 }
 
 /// One point of the maturity history: the quarter that ends on the
-/// as-of day, with the flat level and index of that day.
+/// as-of day, with the level and index shown on that day.
 #[must_use]
-pub fn history_point(as_of_ns: i64, entity: &Maturity) -> Value {
+pub fn history_point(as_of_ns: i64, level: u8, shown_index: f64) -> Value {
     json!({
         "quarter": quarter_label(day_of(as_of_ns)),
         "as_of_ns": as_of_ns,
-        "level": entity.level,
-        "index": index(entity.index),
+        "level": level,
+        "index": index(shown_index),
     })
 }
 
@@ -1005,7 +1069,7 @@ pub fn history(
     reader: &Reader,
     request: &Request<'_>,
     params: &HouseParams,
-    today: &Maturity,
+    today: &Assessment,
 ) -> Result<Vec<Value>, LoadError> {
     let mut points = Vec::new();
     for as_of_ns in quarter_ends(request.as_of_ns, HISTORY_QUARTERS) {
@@ -1017,11 +1081,14 @@ pub fn history(
         if loaded.inputs.evidence.is_empty() && loaded.inputs.services.is_empty() {
             continue;
         }
-        let matrix = Matrix::build(&loaded.inputs, params);
-        let entity = maturity::assess(&matrix, Scope::Entity);
-        points.push(history_point(as_of_ns, &entity));
+        let past = assess(&Matrix::build(&loaded.inputs, params));
+        points.push(history_point(as_of_ns, past.level(), past.index()));
     }
-    points.push(history_point(request.as_of_ns, today));
+    points.push(history_point(
+        request.as_of_ns,
+        today.level(),
+        today.index(),
+    ));
     Ok(points)
 }
 
@@ -1042,13 +1109,15 @@ pub fn maturity(
         "scale".into(),
         json!({ "internal": true, "source": SCALE_SOURCE, "levels": SCALE_LEVELS }),
     );
-    map.insert("level".into(), json!(m.level));
-    map.insert("index".into(), json!(index(m.index)));
+    map.insert("level".into(), json!(assessment.level()));
+    map.insert("index".into(), json!(index(assessment.index())));
+    map.insert("flat_level".into(), json!(m.level));
+    map.insert("flat_index".into(), json!(index(m.index)));
     map.insert("target".into(), json!(m.target));
-    map.insert("headline".into(), json!(m.headline()));
+    map.insert("headline".into(), json!(assessment.headline()));
     map.insert("gate_level".into(), json!(m.gate_level));
-    map.insert("capped".into(), json!(m.capped));
-    map.insert("cap".into(), entity_cap(m));
+    map.insert("capped".into(), json!(assessment.capped()));
+    map.insert("cap".into(), shown_cap(assessment));
     map.insert("components".into(), values);
     map.insert("component_states".into(), states);
     map.insert("weights".into(), weights_json(&m.weights));
@@ -1136,7 +1205,7 @@ mod tests {
     use tumult_lake::IctLegalEntity;
 
     use super::super::model::{IncidentFeed, Inputs, Service, Tier};
-    use super::super::worked::{bank_a, firm_b};
+    use super::super::worked::{bank_a, firm_b, ns};
     use super::*;
 
     fn loaded(inputs: Inputs) -> Loaded {
@@ -1152,6 +1221,10 @@ mod tests {
             register: Vec::new(),
             inputs,
         }
+    }
+
+    fn worked_ns() -> i64 {
+        ns("2026-11-13")
     }
 
     fn dora_of(inputs: Inputs, by: DoraBy) -> Value {
@@ -1407,10 +1480,14 @@ mod tests {
     #[test]
     fn worked_example_a_reads_level_4_index_4_42() {
         let doc = maturity_of(bank_a(), None);
-        assert_eq!(doc["level"], 4);
-        assert_eq!(rounded(doc["index"].as_f64().unwrap(), 2), 4.42);
+        assert_eq!(doc["flat_level"], 4);
+        assert_eq!(rounded(doc["flat_index"].as_f64().unwrap(), 2), 4.42);
         assert_eq!(doc["target"], 3);
-        assert_eq!(doc["headline"], "level 4 of target 3 (full)");
+        // The level and index shown are the roll-up root's.
+        assert_eq!(doc["level"], doc["rollup"]["level"]);
+        assert_eq!(doc["index"], doc["rollup"]["index"]);
+        let shown = doc["level"].as_u64().unwrap();
+        assert_eq!(doc["headline"], format!("level {shown} of target 3 (full)"));
         assert_eq!(doc["scale"]["internal"], true);
         assert_eq!(list(&doc["scale"]["levels"]).len(), 5);
         assert_eq!(doc["weights"]["slo"], 0.25);
@@ -1421,10 +1498,13 @@ mod tests {
     #[test]
     fn worked_example_b_reads_level_2_of_target_3_with_its_cap() {
         let doc = maturity_of(firm_b(), None);
+        assert_eq!(doc["flat_level"], 2);
+        assert_eq!(rounded(doc["flat_index"].as_f64().unwrap(), 2), 3.60);
         assert_eq!(doc["level"], 2);
-        assert_eq!(rounded(doc["index"].as_f64().unwrap(), 2), 3.60);
+        assert_eq!(doc["index"], doc["rollup"]["index"]);
         assert_eq!(doc["headline"], "level 2 of target 3 (simplified)");
         assert_eq!(doc["capped"], true);
+        assert_eq!(doc["cap"]["rule"], "gate");
         assert_eq!(doc["cap"]["level"], 2);
         assert_eq!(doc["cap"]["component"], "evidence");
         let reason = doc["cap"]["reason"].as_str().unwrap();
@@ -1484,6 +1564,26 @@ mod tests {
             doc["rollup_headline"],
             "level 1, capped by svc:payments-ledger-archive"
         );
+        // The page shows the roll-up, and the flat pillar result next to it.
+        assert_eq!(doc["level"], 1);
+        assert_eq!(doc["flat_level"], 2);
+        assert_eq!(doc["headline"], "level 1 of target 3 (simplified)");
+        assert_eq!(doc["capped"], true);
+        assert_eq!(doc["cap"]["rule"], "weakest_critical_child");
+        assert_eq!(doc["cap"]["level"], 1);
+        assert_eq!(doc["cap"]["origin"], json!(["svc:payments-ledger-archive"]));
+        assert_eq!(
+            doc["cap"]["reason"],
+            "capped by svc:payments-ledger-archive (critical, no telemetry and no test)"
+        );
+    }
+
+    #[test]
+    fn a_history_point_carries_the_shown_level_and_index() {
+        let point = history_point(worked_ns(), 2, 3.4567);
+        assert_eq!(point["level"], 2);
+        assert_eq!(point["index"], 3.457);
+        assert_eq!(point["quarter"], "2026-Q4");
     }
 
     #[test]
