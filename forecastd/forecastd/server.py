@@ -15,12 +15,13 @@ from typing import Any
 from . import service
 from .logs import event
 from .model import ForecastModel
-from .service import BadRequest, handle_forecast, handle_healthz
+from .service import BadRequest, Gate, handle_forecast, handle_healthz, parse_body
 
 log = logging.getLogger("forecastd")
 # How long a connection may sit without sending or taking bytes. The
 # forecast itself is not socket time and is not bounded by this.
 REQUEST_TIMEOUT_S = 30
+_DISCARD_CHUNK = 64 << 10
 
 
 def _content_length(header: str | None) -> int | None:
@@ -38,7 +39,9 @@ def _host(address: Any) -> str:
     return str(address)
 
 
-def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
+def make_handler(model: ForecastModel, gate: Gate | None = None) -> type[BaseHTTPRequestHandler]:
+    gate = gate or Gate()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "tumult-forecastd"
         timeout = REQUEST_TIMEOUT_S
@@ -69,13 +72,50 @@ def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
                 values=[str(arg) for arg in args],
             )
 
-        def _send(self, status: HTTPStatus, body: dict[str, Any]) -> None:
+        def _send(
+            self, status: HTTPStatus, body: dict[str, Any], retry_after: int | None = None
+        ) -> None:
             data = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(data)))
+            if retry_after is not None:
+                self.send_header("retry-after", str(retry_after))
             self.end_headers()
             self.wfile.write(data)
+
+        def _discard_body(self) -> None:
+            """Read and drop a body nobody will look at, a piece at a time,
+            so the answer is not lost to a connection reset. A body with no
+            usable length, or one over the cap, is left and the connection
+            closes."""
+            left = _content_length(self.headers.get("content-length"))
+            if left is None or left > service.MAX_BODY:
+                self.close_connection = True
+                return
+            try:
+                while left > 0:
+                    piece = self.rfile.read(min(left, _DISCARD_CHUNK))
+                    if not piece:
+                        break
+                    left -= len(piece)
+            except TimeoutError:
+                self.close_connection = True
+
+        def _busy(self) -> None:
+            event(
+                log,
+                logging.WARNING,
+                "forecast.busy",
+                "turned a request away: every slot is taken",
+                limit=gate.limit,
+            )
+            self._discard_body()
+            self._send(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": service.BUSY},
+                retry_after=service.RETRY_AFTER_S,
+            )
 
         def do_GET(self) -> None:  # noqa: N802 - http.server naming
             if self.path.split("?", 1)[0] == "/healthz":
@@ -87,6 +127,17 @@ def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
             if self.path.split("?", 1)[0] != "/forecast":
                 self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return
+            if not gate.enter():
+                self._busy()
+                return
+            try:
+                self._forecast()
+            finally:
+                gate.leave()
+
+        def _forecast(self) -> None:
+            """Read, parse and answer one forecast request. The caller
+            holds a slot of the gate for as long as this runs."""
             length = _content_length(self.headers.get("content-length"))
             if not length:
                 self._send(HTTPStatus.BAD_REQUEST, {"error": "content-length must be positive"})
@@ -113,12 +164,7 @@ def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
                 self.close_connection = True
                 return
             try:
-                payload = json.loads(raw)
-            except ValueError:
-                self._send(HTTPStatus.BAD_REQUEST, {"error": "body is not JSON"})
-                return
-            try:
-                self._send(HTTPStatus.OK, handle_forecast(payload, model))
+                self._send(HTTPStatus.OK, handle_forecast(parse_body(raw), model))
             except BadRequest as error:
                 self._send(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             except Exception:  # noqa: BLE001 - the model is third-party code
@@ -134,6 +180,10 @@ class Server(ThreadingHTTPServer):
 
     daemon_threads = True
 
+    def __init__(self, address: tuple[str, int], model: ForecastModel, gate: Gate | None) -> None:
+        self.gate = gate or Gate()
+        super().__init__(address, make_handler(model, self.gate))
+
     def handle_error(self, request: Any, client_address: Any) -> None:
         del request
         event(
@@ -146,6 +196,7 @@ class Server(ThreadingHTTPServer):
         )
 
 
-def serve(model: ForecastModel, host: str, port: int) -> Server:
-    """Bind and return the server; the caller runs ``serve_forever``."""
-    return Server((host, port), make_handler(model))
+def serve(model: ForecastModel, host: str, port: int, gate: Gate | None = None) -> Server:
+    """Bind and return the server; the caller runs ``serve_forever``.
+    ``gate`` bounds the forecast requests in hand (four when not given)."""
+    return Server((host, port), model, gate)

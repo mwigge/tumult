@@ -31,8 +31,11 @@ from forecastd.service import (
     MAX_LEVELS,
     MAX_VARIATES,
     BadRequest,
+    Gate,
+    gate_from_env,
     handle_forecast,
     handle_healthz,
+    parse_body,
 )
 
 
@@ -219,6 +222,48 @@ class HandleForecastTests(unittest.TestCase):
         self.assertEqual(body["max_context"], 32_768)
 
 
+class GateTests(unittest.TestCase):
+    def test_a_gate_admits_its_limit_and_no_more(self) -> None:
+        gate = Gate(2)
+        self.assertEqual(gate.limit, 2)
+        self.assertTrue(gate.enter())
+        self.assertTrue(gate.enter())
+        self.assertFalse(gate.enter(), "full: the caller is not made to wait")
+        gate.leave()
+        self.assertTrue(gate.enter())
+        gate.leave()
+        gate.leave()
+        with self.assertRaises(ValueError):
+            gate.leave()  # leaving more often than entering is a bug
+
+    def test_the_limit_comes_from_the_environment(self) -> None:
+        self.assertEqual(gate_from_env({}).limit, 4)
+        self.assertEqual(gate_from_env({"FORECASTD_MAX_CONCURRENT": " "}).limit, 4)
+        self.assertEqual(gate_from_env({"FORECASTD_MAX_CONCURRENT": "9"}).limit, 9)
+        for bad in ("0", "-1", "many", "1.5"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError) as raised:
+                gate_from_env({"FORECASTD_MAX_CONCURRENT": bad})
+            self.assertIn("FORECASTD_MAX_CONCURRENT", str(raised.exception))
+        with self.assertRaises(ValueError):
+            Gate(0)
+
+
+class ParseBodyTests(unittest.TestCase):
+    def test_a_json_body_is_parsed(self) -> None:
+        self.assertEqual(parse_body(b'{"horizon": 1}'), {"horizon": 1})
+
+    def test_what_is_not_json_is_a_bad_request(self) -> None:
+        for raw in (b"", b"not json", b"\xff\xfe", b'{"a": '):
+            with self.subTest(raw=raw), self.assertRaises(BadRequest):
+                parse_body(raw)
+
+    def test_nesting_past_the_interpreter_limit_is_a_bad_request(self) -> None:
+        for raw in (b"[" * 200_000, b'{"a":' * 100_000, b"[" * 200_000 + b"]" * 200_000):
+            with self.subTest(start=raw[:8]), self.assertRaises(BadRequest) as raised:
+                parse_body(raw)
+            self.assertIn("nested", str(raised.exception))
+
+
 class EnvironmentTests(unittest.TestCase):
     def test_stub_is_selected_from_the_environment(self) -> None:
         model = load_model_from_env({"FORECASTD_MODEL": "stub"})
@@ -387,6 +432,7 @@ class MainTests(unittest.TestCase):
             {"FORECASTD_MODEL": "prophet"},
             {"FORECASTD_MODEL": "timestral", "FORECASTD_WEIGHTS_SHA256": "nope"},
             {"FORECASTD_MODEL": "stub", "FORECASTD_BIND": "8700"},
+            {"FORECASTD_MODEL": "stub", "FORECASTD_MAX_CONCURRENT": "0"},
         ):
             # The process-wide log setup is left alone here: ``test_logs``
             # runs the real thing in a process of its own.

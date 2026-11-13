@@ -12,6 +12,39 @@ from forecastd import service
 from forecastd.__main__ import parse_bind
 from forecastd.model import StubModel
 from forecastd.server import REQUEST_TIMEOUT_S, make_handler, serve
+from forecastd.service import Gate
+
+GOOD = b'{"context": [1.0, 2.0, 3.0], "horizon": 1}'
+
+
+class HeldModel(StubModel):
+    """A model that holds every forecast until the test lets it go."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = threading.Semaphore(0)
+        self.go = threading.Event()
+
+    def forecast(self, context, horizon, past_covariates, known_covariates):
+        self.entered.release()
+        if not self.go.wait(timeout=20):
+            raise RuntimeError("the test never released the model")
+        return super().forecast(context, horizon, past_covariates, known_covariates)
+
+
+def lowered(headers) -> dict[str, str]:
+    return {name.lower(): value for name, value in headers.items()}
+
+
+def post(base: str, body: bytes, path: str = "/forecast") -> tuple[int, dict, dict]:
+    """POST and return the status, the JSON body and the headers."""
+    request = urllib.request.Request(base + path, data=body, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return response.status, json.loads(response.read()), lowered(response.headers)
+    except urllib.error.HTTPError as error:
+        with error:
+            return error.code, json.loads(error.read()), lowered(error.headers)
 
 
 class ServerTests(unittest.TestCase):
@@ -117,6 +150,103 @@ class ServerTests(unittest.TestCase):
         # A client that connects and says nothing must not hold a thread.
         self.assertEqual(make_handler(StubModel()).timeout, REQUEST_TIMEOUT_S)
         self.assertTrue(0 < REQUEST_TIMEOUT_S <= 60)
+
+
+class GateTests(unittest.TestCase):
+    """At most ``limit`` forecast requests in hand; the next one is told
+    the service is busy instead of queueing without bound."""
+
+    def start(self, model: StubModel, limit: int) -> str:
+        server = serve(model, "127.0.0.1", 0, Gate(limit))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}"
+
+    def test_a_full_house_answers_503_and_takes_requests_again(self) -> None:
+        model = HeldModel()
+        self.addCleanup(model.go.set)
+        base = self.start(model, 2)
+        answers: list[int] = []
+        held = [
+            threading.Thread(target=lambda: answers.append(post(base, GOOD)[0])) for _ in range(2)
+        ]
+        for thread in held:
+            thread.start()
+        for _ in held:
+            self.assertTrue(model.entered.acquire(timeout=10), "both requests reach the model")
+
+        with self.assertLogs("forecastd", level="WARNING") as seen:
+            status, body, headers = post(base, GOOD)
+        self.assertEqual(status, 503, body)
+        self.assertIn("busy", body["error"])
+        self.assertEqual(headers.get("retry-after"), str(service.RETRY_AFTER_S))
+        self.assertEqual([record.event for record in seen.records], ["forecast.busy"])
+        self.assertEqual(seen.records[0].fields, {"limit": 2})
+        # The model saw two requests, not three, and health is not gated.
+        self.assertFalse(model.entered.acquire(blocking=False))
+        with urllib.request.urlopen(base + "/healthz", timeout=5) as response:
+            self.assertEqual(response.status, 200)
+
+        model.go.set()
+        for thread in held:
+            thread.join(timeout=20)
+        self.assertEqual(answers, [200, 200])
+        for _ in range(3):
+            self.assertEqual(post(base, GOOD)[0], 200)
+
+    def test_a_busy_answer_arrives_whole_whatever_the_body(self) -> None:
+        model = HeldModel()
+        self.addCleanup(model.go.set)
+        base = self.start(model, 1)
+        holder = threading.Thread(target=post, args=(base, GOOD))
+        holder.start()
+        self.assertTrue(model.entered.acquire(timeout=10))
+        # A megabyte the server has no slot for: read and dropped, so the
+        # answer is not lost to a reset connection.
+        large = json.dumps({"context": [1.5] * 200_000, "horizon": 1}).encode()
+        for _ in range(3):
+            status, body, _ = post(base, large)
+            self.assertEqual(status, 503, body)
+        model.go.set()
+        holder.join(timeout=20)
+
+    def test_every_kind_of_answer_gives_its_slot_back(self) -> None:
+        class Moody(StubModel):
+            def forecast(self, context, horizon, past_covariates, known_covariates):
+                if horizon == 2:
+                    raise ValueError("not this horizon")
+                if horizon == 3:
+                    raise RuntimeError("broken")
+                return super().forecast(context, horizon, past_covariates, known_covariates)
+
+        base = self.start(Moody(), 1)
+        with self.assertLogs("forecastd", level="WARNING"):
+            for body, expected in (
+                (b"not json", 400),
+                (b'{"context": [], "horizon": 1}', 400),
+                (b'{"context": [1.0, 2.0, 3.0], "horizon": 2}', 400),
+                (b'{"context": [1.0, 2.0, 3.0], "horizon": 3}', 500),
+                (GOOD, 200),
+            ):
+                with self.subTest(body=body):
+                    self.assertEqual(post(base, body)[0], expected)
+        self.assertEqual(post(base, b"{}", "/nope")[0], 404)
+        self.assertEqual(post(base, GOOD)[0], 200)
+
+    def test_a_body_nested_too_deeply_is_400(self) -> None:
+        base = self.start(StubModel(), 1)
+        for body in (b"[" * 200_000, b'{"context":' + b"[" * 200_000, b'{"a":' * 100_000):
+            status, answer, _ = post(base, body)
+            self.assertEqual(status, 400, answer)
+            self.assertIn("error", answer)
+        self.assertEqual(post(base, GOOD)[0], 200)
+
+    def test_the_default_gate_is_the_documented_limit(self) -> None:
+        self.assertEqual(service.DEFAULT_MAX_CONCURRENT, 4)
+        server = serve(StubModel(), "127.0.0.1", 0)
+        self.addCleanup(server.server_close)
+        self.assertEqual(server.gate.limit, 4)
 
 
 class BindTests(unittest.TestCase):

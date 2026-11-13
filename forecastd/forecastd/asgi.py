@@ -9,16 +9,20 @@ back to the stdlib server.
 # annotations at registration, and ``Request`` is imported inside
 # ``create_app``. As a string it would not resolve, and FastAPI would read
 # ``request`` as a required query parameter.
-import json
+import asyncio
 import logging
+import os
 from typing import Any
 
 from . import service
 from .logs import event
 from .model import ForecastModel, load_model_from_env
-from .service import BadRequest, handle_forecast, handle_healthz
+from .service import BadRequest, Gate, gate_from_env, handle_forecast, handle_healthz, parse_body
 
 log = logging.getLogger("forecastd")
+# How long a request body may take to arrive. A request holds a slot of the
+# gate while its body is read, so a body that never ends must not hold one.
+BODY_TIMEOUT_S = 30
 
 
 class AccessLog:
@@ -54,10 +58,11 @@ class AccessLog:
 class _Refused(Exception):
     """A request turned down before the model saw it."""
 
-    def __init__(self, status: int, detail: str) -> None:
+    def __init__(self, status: int, detail: str, headers: dict[str, str] | None = None) -> None:
         super().__init__(detail)
         self.status = status
         self.detail = detail
+        self.headers = headers
 
 
 def _announced_length(header: str | None) -> int | None:
@@ -72,10 +77,7 @@ def _announced_length(header: str | None) -> int | None:
     return length
 
 
-async def _read_body(request: Any) -> bytes:
-    """The request body, never more than ``MAX_BODY`` of it: the header is
-    checked first, and the stream is cut off when it runs past the cap."""
-    _announced_length(request.headers.get("content-length"))
+async def _stream_body(request: Any) -> bytes:
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
@@ -84,19 +86,37 @@ async def _read_body(request: Any) -> bytes:
     return bytes(body)
 
 
+async def _read_body(request: Any) -> bytes:
+    """The request body, never more than ``MAX_BODY`` of it and never
+    waited for longer than ``BODY_TIMEOUT_S``: the header is checked first,
+    and the stream is cut off when it runs past the cap."""
+    _announced_length(request.headers.get("content-length"))
+    try:
+        return await asyncio.wait_for(_stream_body(request), BODY_TIMEOUT_S)
+    except asyncio.TimeoutError as error:
+        raise _Refused(408, "the body did not arrive in time") from error
+
+
 def _answer(body: bytes, model: ForecastModel) -> dict[str, Any]:
     """Parse and forecast. Runs on a worker thread: both are CPU work."""
     try:
-        payload = json.loads(body)
-    except ValueError as error:
-        raise _Refused(400, "the body is not valid JSON") from error
-    try:
-        return handle_forecast(payload, model)
+        return handle_forecast(parse_body(body), model)
     except BadRequest as error:
         raise _Refused(400, str(error)) from error
 
 
-def create_app(model: ForecastModel | None = None) -> Any:
+def _busy(gate: Gate) -> _Refused:
+    event(
+        log,
+        logging.WARNING,
+        "forecast.busy",
+        "turned a request away: every slot is taken",
+        limit=gate.limit,
+    )
+    return _Refused(503, service.BUSY, {"retry-after": str(service.RETRY_AFTER_S)})
+
+
+def create_app(model: ForecastModel | None = None, gate: Gate | None = None) -> Any:
     try:
         from fastapi import FastAPI, HTTPException, Request
         from fastapi.concurrency import run_in_threadpool
@@ -104,6 +124,7 @@ def create_app(model: ForecastModel | None = None) -> Any:
         raise RuntimeError("fastapi is not installed; pip install 'tumult-forecastd[serve]'") from error
 
     loaded = model or load_model_from_env()
+    slots = gate or gate_from_env(os.environ)
     app = FastAPI(title="tumult-forecastd", docs_url=None, redoc_url=None)
     app.add_middleware(AccessLog)
 
@@ -116,13 +137,26 @@ def create_app(model: ForecastModel | None = None) -> Any:
         # The model holds the CPU for the whole forecast; on the event loop
         # it would stall every other request, /healthz included.
         try:
-            body = await _read_body(request)
-            return await run_in_threadpool(_answer, body, loaded)
+            return await _gated(request)
         except _Refused as refused:
-            raise HTTPException(status_code=refused.status, detail=refused.detail) from refused
+            raise HTTPException(
+                status_code=refused.status, detail=refused.detail, headers=refused.headers
+            ) from refused
         except Exception as error:  # noqa: BLE001 - the model is third-party code
             event(log, logging.ERROR, "forecast.failed", "forecast failed", exc_info=True)
             raise HTTPException(status_code=500, detail="forecast failed") from error
+
+    async def _gated(request: Request) -> dict[str, Any]:
+        if not slots.enter():
+            raise _busy(slots)
+        # ``run_in_threadpool`` does not return before its thread is done,
+        # even when the request is cancelled, so the slot is given back
+        # only when the model has let go of it.
+        try:
+            body = await _read_body(request)
+            return await run_in_threadpool(_answer, body, loaded)
+        finally:
+            slots.leave()
 
     return app
 

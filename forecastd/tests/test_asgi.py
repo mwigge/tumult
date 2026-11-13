@@ -17,17 +17,26 @@ from forecastd.model import StubModel
 HAVE_FASTAPI = importlib.util.find_spec("fastapi") is not None
 
 
-def call(
+def call(app, method: str, path: str, body: bytes = b"", **how) -> tuple[int, dict]:
+    """One request against an ASGI app on an event loop of its own; see
+    ``acall``."""
+    status, payload, _ = asyncio.run(acall(app, method, path, body, **how))
+    return status, payload
+
+
+async def acall(
     app,
     method: str,
     path: str,
     body: bytes = b"",
     content_length: bytes | None = b"",
     chunks: list[bytes] | None = None,
-) -> tuple[int, dict]:
-    """One request against an ASGI app; returns the status and JSON body.
-    ``content_length`` overrides the header (``None`` leaves it out) and
-    ``chunks`` sends the body in several messages."""
+    stall: bool = False,
+) -> tuple[int, dict, dict]:
+    """One request against an ASGI app; returns the status, the JSON body
+    and the response headers. ``content_length`` overrides the header
+    (``None`` leaves it out), ``chunks`` sends the body in several messages
+    and ``stall`` never sends the last of them."""
     headers = [(b"content-type", b"application/json")]
     if content_length == b"":
         content_length = str(len(body)).encode()
@@ -55,6 +64,8 @@ def call(
     ]
 
     async def receive() -> dict:
+        if stall and len(pending) == 1:
+            await asyncio.Event().wait()
         if pending:
             return pending.pop(0)
         return {"type": "http.disconnect"}
@@ -62,10 +73,11 @@ def call(
     async def send(message: dict) -> None:
         sent.append(message)
 
-    asyncio.run(app(scope, receive, send))
-    status = next(m["status"] for m in sent if m["type"] == "http.response.start")
+    await app(scope, receive, send)
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    headers = {name.decode().lower(): value.decode() for name, value in start["headers"]}
     payload = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
-    return status, json.loads(payload)
+    return start["status"], json.loads(payload), headers
 
 
 @unittest.skipUnless(HAVE_FASTAPI, "fastapi is not installed")
@@ -151,6 +163,83 @@ class AsgiTests(unittest.TestCase):
         status, body = call(create_app(RefusingModel()), "POST", "/forecast", request)
         self.assertEqual(status, 400, body)
         self.assertEqual(body["detail"], "the model refused the request")
+
+    def test_a_full_house_answers_503_and_takes_requests_again(self) -> None:
+        from forecastd.asgi import create_app
+        from forecastd.service import Gate
+        from tests.test_server import GOOD, HeldModel
+
+        model = HeldModel()
+        self.addCleanup(model.go.set)
+        app = create_app(model, Gate(2))
+
+        async def scenario() -> tuple[list, tuple, tuple]:
+            loop = asyncio.get_running_loop()
+            held = [asyncio.ensure_future(acall(app, "POST", "/forecast", GOOD)) for _ in range(2)]
+            for _ in held:
+                reached = await loop.run_in_executor(None, model.entered.acquire, True, 10)
+                self.assertTrue(reached, "both requests reach the model")
+            turned_away = await acall(app, "POST", "/forecast", GOOD)
+            health = await acall(app, "GET", "/healthz")
+            model.go.set()
+            return await asyncio.gather(*held), turned_away, health
+
+        with self.assertLogs("forecastd", level="WARNING") as seen:
+            done, turned_away, health = asyncio.run(scenario())
+        self.assertEqual([status for status, _, _ in done], [200, 200])
+        status, body, headers = turned_away
+        self.assertEqual(status, 503, body)
+        self.assertIn("busy", body["detail"])
+        self.assertEqual(headers.get("retry-after"), str(service.RETRY_AFTER_S))
+        self.assertEqual(health[0], 200)
+        self.assertEqual([record.event for record in seen.records], ["forecast.busy"])
+        self.assertFalse(model.entered.acquire(blocking=False), "the third never reached the model")
+        for _ in range(3):
+            self.assertEqual(call(app, "POST", "/forecast", GOOD)[0], 200)
+
+    def test_every_kind_of_answer_gives_its_slot_back(self) -> None:
+        from forecastd.asgi import create_app
+        from forecastd.service import Gate
+
+        class Moody(StubModel):
+            def forecast(self, context, horizon, past_covariates, known_covariates):
+                if horizon == 2:
+                    raise ValueError("not this horizon")
+                if horizon == 3:
+                    raise RuntimeError("broken")
+                return super().forecast(context, horizon, past_covariates, known_covariates)
+
+        app = create_app(Moody(), Gate(1))
+        announced = str(service.MAX_BODY + 1).encode()
+        with self.assertLogs("forecastd", level="WARNING"):
+            for how, expected in (
+                ({"body": b"not json"}, 400),
+                ({"body": b"{}", "content_length": b"lots"}, 400),
+                ({"body": b"{}", "content_length": announced}, 413),
+                ({"body": b'{"context": [1.0, 2.0, 3.0], "horizon": 2}'}, 400),
+                ({"body": b'{"context": [1.0, 2.0, 3.0], "horizon": 3}'}, 500),
+                ({"body": b'{"context": [1.0, 2.0, 3.0], "horizon": 1}'}, 200),
+            ):
+                with self.subTest(how=how):
+                    self.assertEqual(call(app, "POST", "/forecast", **how)[0], expected)
+
+    def test_a_body_nested_too_deeply_is_400(self) -> None:
+        for body in (b"[" * 200_000, b'{"context":' + b"[" * 200_000, b'{"a":' * 100_000):
+            status, answer = call(self.app, "POST", "/forecast", body)
+            self.assertEqual(status, 400, answer)
+
+    def test_a_body_that_stalls_is_408_and_gives_its_slot_back(self) -> None:
+        from forecastd import asgi
+        from forecastd.service import Gate
+
+        app = asgi.create_app(StubModel(), Gate(1))
+        request = b'{"context": [1.0, 2.0, 3.0], "horizon": 1}'
+        with mock.patch.object(asgi, "BODY_TIMEOUT_S", 0.05):
+            status, body = call(
+                app, "POST", "/forecast", chunks=[request[:10], request[10:]], stall=True
+            )
+        self.assertEqual(status, 408, body)
+        self.assertEqual(call(app, "POST", "/forecast", request)[0], 200)
 
     def test_a_request_is_one_access_event(self) -> None:
         with self.assertLogs("forecastd", level="INFO") as seen:

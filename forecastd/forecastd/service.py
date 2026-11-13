@@ -8,15 +8,18 @@ one code path.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import threading
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
 
 from . import __version__
 from .logs import error_fields, event
-from .model import ForecastModel
+from .model import ForecastModel, _optional_int
 
 log = logging.getLogger("forecastd")
 
@@ -30,10 +33,55 @@ MAX_COVARIATES = 8
 MAX_LEVELS = 32
 # The largest request body either server reads.
 MAX_BODY = 8 << 20
+# Forecast requests in hand at once when ``FORECASTD_MAX_CONCURRENT`` is
+# unset, and what a caller that was turned away is told to wait.
+DEFAULT_MAX_CONCURRENT = 4
+RETRY_AFTER_S = 1
+BUSY = "busy: every forecast slot is taken"
 
 
 class BadRequest(ValueError):
     """The payload is malformed; the message is safe to return."""
+
+
+class Gate:
+    """How many forecast requests the service has in hand at once.
+
+    A request takes a slot before its body is read and gives it back when
+    it has been answered, so ``limit`` bounds the bodies held in memory and
+    the forecasts running or waiting for the model. A request that finds
+    no slot is not queued: it is answered 503 at once, which the daemon
+    counts against its circuit and answers from its fallback."""
+
+    def __init__(self, limit: int = DEFAULT_MAX_CONCURRENT) -> None:
+        if limit < 1:
+            raise ValueError(f"a gate needs at least one slot, got {limit}")
+        self.limit = limit
+        self._slots = threading.BoundedSemaphore(limit)
+
+    def enter(self) -> bool:
+        """Take a slot, or return ``False`` at once when none is free."""
+        return self._slots.acquire(blocking=False)
+
+    def leave(self) -> None:
+        self._slots.release()
+
+
+def gate_from_env(env: Mapping[str, str]) -> Gate:
+    """A gate of ``FORECASTD_MAX_CONCURRENT`` slots (4 when unset)."""
+    name = "FORECASTD_MAX_CONCURRENT"
+    return Gate(_optional_int(env.get(name), name) or DEFAULT_MAX_CONCURRENT)
+
+
+def parse_body(raw: bytes) -> Any:
+    """A request body as JSON. A body nested deeper than the interpreter
+    will follow is the caller's doing, like any other malformed body."""
+    try:
+        return json.loads(raw)
+    except RecursionError as error:
+        raise BadRequest("the body is nested too deeply") from error
+    except ValueError as error:
+        raise BadRequest("the body is not valid JSON") from error
 
 
 def _number(item: Any, name: str) -> float:

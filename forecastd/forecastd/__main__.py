@@ -10,7 +10,8 @@ import sys
 
 from . import logs
 from .logs import event
-from .model import load_model_from_env
+from .model import ForecastModel, load_model_from_env
+from .service import Gate, gate_from_env
 
 log = logging.getLogger("forecastd")
 
@@ -33,7 +34,7 @@ def configure_logs() -> None:
         raise
 
 
-def serve_stdlib(model: object, host: str, port: int) -> None:
+def serve_stdlib(model: ForecastModel, host: str, port: int, gate: Gate) -> None:
     from .server import serve
 
     event(
@@ -44,7 +45,7 @@ def serve_stdlib(model: object, host: str, port: int) -> None:
         host=host,
         port=port,
     )
-    server = serve(model, host, port)
+    server = serve(model, host, port, gate)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -57,25 +58,38 @@ def main() -> int:
     try:
         configure_logs()
         host, port = parse_bind(os.environ.get("FORECASTD_BIND", "0.0.0.0:8700"))
+        gate = gate_from_env(os.environ)
         model = load_model_from_env()
     except Exception:  # noqa: BLE001 - reported, and the process does not start
         # A bad setting, weights that are not the pinned ones, a model that
         # will not load: none of them may leave a half-working service up.
         event(log, logging.ERROR, "startup.failed", "forecastd cannot start", exc_info=True)
         return 1
-    event(log, logging.INFO, "model.loaded", "model loaded", **model.info.as_dict())
+    event(
+        log,
+        logging.INFO,
+        "model.loaded",
+        "model loaded",
+        max_concurrent=gate.limit,
+        **model.info.as_dict(),
+    )
     try:
         import uvicorn
 
         from .asgi import create_app
     except ImportError:
-        serve_stdlib(model, host, port)
+        serve_stdlib(model, host, port, gate)
         return 0
     # ``log_config=None`` leaves uvicorn's loggers to ``logs.configure``;
     # requests are logged by the application, in the same shape.
     level = logging.getLevelName(logs.log_level(os.environ)).lower()
     uvicorn.run(
-        create_app(model), host=host, port=port, log_level=level, log_config=None, access_log=False
+        create_app(model, gate),
+        host=host,
+        port=port,
+        log_level=level,
+        log_config=None,
+        access_log=False,
     )
     return 0
 
