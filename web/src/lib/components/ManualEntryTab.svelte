@@ -223,7 +223,7 @@
                     >Framework refs (comma-sep) <input
                         type="text"
                         bind:value={form.framework_refs}
-                        placeholder="DORA Art. 24(7), ISO 27001 A.5.30"
+                        placeholder="DORA Art. 24(6), ISO 27001 A.5.30"
                     /></label
                 >
             </div>
