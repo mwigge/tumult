@@ -14,7 +14,10 @@
 //! during and post phases): the post-phase samples, reversed, are the
 //! context, the forecast runs back across the fault window and is flipped
 //! into time order, and the post phase is judged against its own empirical
-//! band. [`plan`] picks the reference from the fault window; every
+//! band. Post samples still recovering right after the fault are left out
+//! of both the context and that band, or the backcast would extend the
+//! recovery slope across the fault window and the band would count the
+//! recovery as normal. [`plan`] picks the reference from the fault window; every
 //! [`Impact`] says which one it used.
 //!
 //! The computation is split in two so a caller can obtain the forecast
@@ -99,9 +102,11 @@ pub struct Impact {
 pub struct Plan {
     pub reference: Reference,
     pub fault: FaultWindow,
-    /// The provider's context: the pre-fault samples, or the post-phase
-    /// samples reversed.
+    /// The provider's context: the pre-fault samples, or the settled
+    /// post-phase samples reversed.
     pub context: Vec<f64>,
+    /// Steps to forecast. A backcast also spans the post-phase samples
+    /// left out of the context as still recovering.
     pub horizon: usize,
     /// The zeroed fault indicator.
     pub covariates: Covariates,
@@ -139,7 +144,10 @@ impl Plan {
             )));
         }
         if self.reference == Reference::PostBackcast {
+            // Backcast steps run away from the context: first the skipped
+            // recovery tail, then the fault window. Keep the window.
             forecast.quantiles.reverse();
+            forecast.quantiles.truncate(self.fault.end);
         }
         let median = forecast.median();
         let (lower, upper) = forecast
@@ -154,7 +162,7 @@ impl Plan {
                 }
                 Reference::PostBackcast if i < fault.end => (lower[i], median[i], upper[i]),
                 Reference::PostBackcast => {
-                    let post = &values[fault.end..];
+                    let post = &values[self.horizon.min(values.len())..];
                     (
                         crate::stats::quantile(post, 0.1),
                         crate::stats::quantile(post, 0.5),
@@ -231,14 +239,41 @@ pub fn plan(values: &[f64], fault: FaultWindow) -> Result<Plan, ForecastError> {
             "no samples before or after the fault to forecast from".into(),
         ));
     }
-    let context: Vec<f64> = values[fault.end..].iter().rev().copied().collect();
+    let skipped = unsettled_head(&values[fault.end..]);
+    let context: Vec<f64> = values[fault.end + skipped..]
+        .iter()
+        .rev()
+        .copied()
+        .collect();
     Ok(Plan {
         reference: Reference::PostBackcast,
         fault,
         covariates: indicator(context.len(), values.len()),
         context,
-        horizon: fault.end,
+        horizon: fault.end + skipped,
     })
+}
+
+/// Fewer post samples than this are too few to tell a recovery tail from
+/// the settled level.
+const MIN_POST_FOR_SKIP: usize = 4;
+
+/// How many leading post-phase samples are still recovering: the run
+/// before the first sample inside the 10-90 band of the later half of the
+/// phase (the samples furthest from the fault). Never more than the
+/// earlier half, and gaps do not end the run.
+fn unsettled_head(post: &[f64]) -> usize {
+    if post.len() < MIN_POST_FOR_SKIP {
+        return 0;
+    }
+    let half = post.len() / 2;
+    let settled = &post[half..];
+    let lower = crate::stats::quantile(settled, 0.1);
+    let upper = crate::stats::quantile(settled, 0.9);
+    post[..half]
+        .iter()
+        .position(|v| *v >= lower && *v <= upper)
+        .unwrap_or(half)
 }
 
 fn indicator(context_len: usize, total_len: usize) -> Covariates {
@@ -428,9 +463,11 @@ mod tests {
 
     #[test]
     fn backcast_uses_the_post_phase_as_the_reference() {
-        // No pre-fault samples: fault over 0..3, then five post samples
-        // settling around 10 (their own 10–90 band is about 9.4–11.3).
-        let values = [14.0, 16.0, 13.0, 11.5, 10.0, 9.0, 10.0, 11.0];
+        // No pre-fault samples: fault over 0..3, then eight post samples
+        // settling around 10 (the settled ones' 10–90 band is 9.6–10.4).
+        let values = [
+            14.0, 16.0, 13.0, 11.5, 10.0, 9.0, 10.0, 10.0, 11.0, 10.0, 10.0,
+        ];
         let impact = counterfactual(&Flat, &values, FaultWindow { start: 0, end: 3 }, 2).unwrap();
         assert_eq!(impact.reference, Reference::PostBackcast);
         assert_eq!(
@@ -438,13 +475,13 @@ mod tests {
             3,
             "backcast covers the fault window"
         );
-        assert_eq!(impact.samples.len(), 8);
+        assert_eq!(impact.samples.len(), 11);
         assert!(
             (impact.samples[0].impact - 2.0).abs() < 1e-9,
             "flat provider: 14 vs 10±2"
         );
         assert_eq!(impact.summary.samples_during, 3);
-        assert_eq!(impact.summary.samples_post, 5);
+        assert_eq!(impact.summary.samples_post, 8);
         let post = &impact.samples[3];
         assert!(post.lower < 10.0 && post.upper > 10.0);
         assert!(post.observed > post.upper, "11.5 is above the post band");
@@ -455,6 +492,51 @@ mod tests {
         assert_eq!(impact.recovery.recovered_at, Some(6));
         assert_eq!(impact.recovery.steps_after_fault, Some(3));
         assert_eq!(impact.recovery.outside_during_fault, 3);
+    }
+
+    #[test]
+    fn backcast_context_skips_the_unsettled_recovery_tail() {
+        // Fault over 0..3; the first two post samples are still recovering
+        // (outside the post phase's own 10-90 band), the rest are settled.
+        let values = [
+            50.0, 52.0, 51.0, 30.0, 28.0, 10.0, 11.0, 10.0, 9.0, 10.0, 11.0, 10.0, 10.0,
+        ];
+        let fault = FaultWindow { start: 0, end: 3 };
+        let p = plan(&values, fault).unwrap();
+        assert_eq!(p.reference, Reference::PostBackcast);
+        assert_eq!(
+            p.context,
+            vec![10.0, 10.0, 11.0, 10.0, 9.0, 10.0, 11.0, 10.0],
+            "the recovering samples are not context"
+        );
+        assert_eq!(p.horizon, 5, "the backcast spans the skipped tail too");
+        assert_eq!(p.covariates.past[0].len(), 8);
+        assert_eq!(p.covariates.known_future[0].len(), 13);
+
+        let impact = counterfactual(&Flat, &values, fault, 2).unwrap();
+        assert_eq!(impact.forecast.horizon(), 3, "only the fault window");
+        assert_eq!(impact.samples.len(), 13);
+        assert_eq!(impact.summary.samples_during, 3);
+        assert_eq!(impact.summary.samples_post, 10);
+        assert_eq!(impact.recovery.recovered_at, Some(5));
+        assert_eq!(impact.recovery.steps_after_fault, Some(2));
+    }
+
+    #[test]
+    fn backcast_keeps_a_post_phase_too_short_to_judge() {
+        let values = [9.0, 8.0, 7.0, 3.0, 4.0];
+        let p = plan(&values, FaultWindow { start: 0, end: 2 }).unwrap();
+        assert_eq!(p.context, vec![4.0, 3.0, 7.0]);
+        assert_eq!(p.horizon, 2);
+    }
+
+    #[test]
+    fn backcast_skips_at_most_the_earlier_half() {
+        // A post phase that never settles: only its earlier half can go.
+        let values = [9.0, 60.0, 50.0, 40.0, 30.0, 20.0, 10.0];
+        let p = plan(&values, FaultWindow { start: 0, end: 1 }).unwrap();
+        assert_eq!(p.context, vec![10.0, 20.0, 30.0]);
+        assert_eq!(p.horizon, 4);
     }
 
     #[test]
