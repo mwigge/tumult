@@ -7925,6 +7925,7 @@ dependencies = [
  "tumult-autopilot",
  "tumult-compliance",
  "tumult-core",
+ "tumult-forecast",
  "tumult-ingest",
  "tumult-intelligence",
  "tumult-lake",
@@ -8112,6 +8113,13 @@ dependencies = [
  "tumult-plugin",
  "tumult-ssh",
  "tumult-windows",
+]
+
+[[package]]
+name = "tumult-forecast"
+version = "2.22.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
