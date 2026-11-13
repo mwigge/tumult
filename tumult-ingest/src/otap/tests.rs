@@ -1232,6 +1232,33 @@ async fn rejected_batch_warnings_are_rate_limited() {
     );
 }
 
+/// A client that floods the log with one warning does not get to hide
+/// the next one of another kind.
+#[tokio::test]
+async fn a_flood_of_rejected_batches_does_not_hide_an_undecodable_one() {
+    let limits = super::OtapLimits {
+        max_rejected_batches: 1000,
+        ..super::OtapLimits::default()
+    };
+    let mut stream = batches(200);
+    stream.push(Ok(BatchArrowRecords {
+        batch_id: 201,
+        arrow_payloads: vec![ArrowPayload {
+            schema_id: "s".into(),
+            r#type: super::proto::ArrowPayloadType::Spans as i32,
+            record: b"not arrow ipc".to_vec(),
+        }],
+        headers: Vec::new(),
+    }));
+    let (logs, _guard) = crate::test_logs::capture();
+    let mut out = respond(tokio_stream::iter(stream), context(limits, rejected), None);
+    while out.next().await.is_some() {}
+    let text = logs.text();
+    let rejected = text.matches("OTAP batch rejected").count();
+    assert_eq!(rejected, 10, "the burst went to the flood: {text}");
+    assert_eq!(text.matches("OTAP batch undecodable").count(), 1, "{text}");
+}
+
 /// `line` without its quoted values: what a reader of `key=value` pairs
 /// takes for the keys and the bare values.
 fn outside_quotes(line: &str) -> String {

@@ -8,7 +8,8 @@
 //! the quote, so the text cannot end its value and add `key=value` pairs
 //! of its own to the line. Warnings a peer can trigger
 //! at will go through a [`LogLimiter`], which lets a burst through and
-//! counts the rest.
+//! counts the rest, kind by kind: a flood of one warning does not hide the
+//! first of another.
 
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -110,13 +111,27 @@ pub(crate) fn kind(data_type: &DataType) -> &'static str {
     }
 }
 
-struct Window {
-    started: Option<Instant>,
-    logged: u32,
+/// One kind of event under a [`LogLimiter`].
+struct Kind {
+    name: &'static str,
+    /// Whether one was let through in the current window.
+    logged: bool,
+    /// How many were left out since the last one let through.
     suppressed: u64,
 }
 
-/// Lets `burst` events through per `window` and counts the others.
+struct Window {
+    started: Option<Instant>,
+    logged: u32,
+    /// The kinds seen so far. They are named in the code, never by a
+    /// peer, so there are only a few.
+    kinds: Vec<Kind>,
+}
+
+/// Lets `burst` events through per `window` and counts the others. The
+/// first event of each kind in a window is let through even when the
+/// burst is used up, so a window logs at most `burst` lines and one more
+/// per kind.
 pub(crate) struct LogLimiter {
     burst: u32,
     window: Duration,
@@ -131,7 +146,7 @@ impl LogLimiter {
             state: Mutex::new(Window {
                 started: None,
                 logged: 0,
-                suppressed: 0,
+                kinds: Vec::new(),
             }),
         }
     }
@@ -141,13 +156,14 @@ impl LogLimiter {
         Self::new(WARN_BURST, WARN_WINDOW)
     }
 
-    /// `Some(n)` when the event may be logged, `n` being how many were
-    /// suppressed since the last one that was; `None` when it may not.
-    pub(crate) fn allow(&self) -> Option<u64> {
-        self.allow_at(Instant::now())
+    /// `Some(n)` when the event of `kind` may be logged, `n` being how
+    /// many of that kind were suppressed since the last one that was;
+    /// `None` when it may not.
+    pub(crate) fn allow(&self, kind: &'static str) -> Option<u64> {
+        self.allow_at(kind, Instant::now())
     }
 
-    fn allow_at(&self, now: Instant) -> Option<u64> {
+    fn allow_at(&self, kind: &'static str, now: Instant) -> Option<u64> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let expired = match state.started {
             Some(started) => now.saturating_duration_since(started) >= self.window,
@@ -156,13 +172,31 @@ impl LogLimiter {
         if expired {
             state.started = Some(now);
             state.logged = 0;
+            state.kinds.iter_mut().for_each(|kind| kind.logged = false);
         }
-        if state.logged >= self.burst {
-            state.suppressed = state.suppressed.saturating_add(1);
+        let in_burst = state.logged < self.burst;
+        let position = match state.kinds.iter().position(|known| known.name == kind) {
+            Some(position) => position,
+            None => {
+                state.kinds.push(Kind {
+                    name: kind,
+                    logged: false,
+                    suppressed: 0,
+                });
+                state.kinds.len() - 1
+            }
+        };
+        let entry = &mut state.kinds[position];
+        if !in_burst && entry.logged {
+            entry.suppressed = entry.suppressed.saturating_add(1);
             return None;
         }
-        state.logged += 1;
-        Some(std::mem::take(&mut state.suppressed))
+        entry.logged = true;
+        let suppressed = std::mem::take(&mut entry.suppressed);
+        if in_burst {
+            state.logged += 1;
+        }
+        Some(suppressed)
     }
 }
 
@@ -190,7 +224,7 @@ pub(crate) fn warn_rejected(carrier: &'static str, presented: bool) {
 /// Log one rejected bearer token (rate-limited), saying only whether a
 /// credential was presented, never what it was.
 pub(crate) fn warn_rejected_token(limiter: &LogLimiter, carrier: &'static str, presented: bool) {
-    let Some(suppressed) = limiter.allow() else {
+    let Some(suppressed) = limiter.allow(carrier) else {
         return;
     };
     tracing::warn!(
@@ -262,14 +296,67 @@ mod tests {
     fn limiter_lets_a_burst_through_and_reports_what_it_suppressed() {
         let limiter = LogLimiter::new(3, Duration::from_secs(10));
         let start = Instant::now();
-        let allowed: Vec<Option<u64>> = (0..5).map(|_| limiter.allow_at(start)).collect();
+        let allowed: Vec<Option<u64>> = (0..5).map(|_| limiter.allow_at("a", start)).collect();
         assert_eq!(allowed, [Some(0), Some(0), Some(0), None, None]);
         // Still inside the window.
-        assert_eq!(limiter.allow_at(start + Duration::from_secs(9)), None);
+        assert_eq!(limiter.allow_at("a", start + Duration::from_secs(9)), None);
         // The next window opens with the count of what was dropped.
         let later = start + Duration::from_secs(10);
-        assert_eq!(limiter.allow_at(later), Some(3));
-        assert_eq!(limiter.allow_at(later), Some(0));
+        assert_eq!(limiter.allow_at("a", later), Some(3));
+        assert_eq!(limiter.allow_at("a", later), Some(0));
+    }
+
+    #[test]
+    fn a_flood_of_one_kind_does_not_hide_the_first_of_another() {
+        let limiter = LogLimiter::new(3, Duration::from_secs(10));
+        let start = Instant::now();
+        let flood: Vec<Option<u64>> = (0..50).map(|_| limiter.allow_at("flood", start)).collect();
+        assert_eq!(flood.iter().flatten().count(), 3, "the burst");
+        // The burst is used up; the first event of another kind is let
+        // through all the same, and only the first.
+        assert_eq!(limiter.allow_at("rare", start), Some(0));
+        assert_eq!(limiter.allow_at("rare", start), None);
+        assert_eq!(limiter.allow_at("rare", start), None);
+        assert_eq!(limiter.allow_at("flood", start), None);
+        // Each kind reports what was left out of its own.
+        let later = start + Duration::from_secs(10);
+        assert_eq!(limiter.allow_at("rare", later), Some(2));
+        assert_eq!(limiter.allow_at("flood", later), Some(48));
+        assert_eq!(limiter.allow_at("flood", later), Some(0));
+    }
+
+    #[test]
+    fn a_window_logs_at_most_the_burst_and_one_line_per_kind() {
+        let limiter = LogLimiter::new(4, Duration::from_secs(10));
+        let start = Instant::now();
+        let kinds = ["a", "b", "c", "d", "e", "f"];
+        let logged = (0..600)
+            .filter(|n| limiter.allow_at(kinds[n % kinds.len()], start).is_some())
+            .count();
+        assert_eq!(
+            logged, 6,
+            "the burst, then the first of the two kinds after it"
+        );
+        let logged = (0..600)
+            .filter(|_| {
+                limiter
+                    .allow_at("a", start + Duration::from_secs(10))
+                    .is_some()
+            })
+            .count();
+        assert_eq!(logged, 4);
+        let others = kinds[1..]
+            .iter()
+            .filter(|kind| {
+                limiter
+                    .allow_at(kind, start + Duration::from_secs(11))
+                    .is_some()
+            })
+            .count();
+        assert_eq!(
+            others, 5,
+            "one line each after the burst went to another kind"
+        );
     }
 
     #[test]

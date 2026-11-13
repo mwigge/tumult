@@ -421,7 +421,7 @@ impl<IO> LimitedStream<IO> {
             tracing::debug!(peer = %self.peer, "gRPC connection closed at its maximum age");
             return;
         }
-        if let Some(suppressed) = self.gate.cut.allow() {
+        if let Some(suppressed) = self.gate.cut.allow("handshake") {
             tracing::warn!(
                 peer = %self.peer,
                 timeout_secs = limits.handshake_timeout.as_secs(),
@@ -525,7 +525,7 @@ impl Gate {
     /// here.
     pub fn admit<IO>(&self, io: IO, peer: IpAddr) -> Option<LimitedStream<IO>> {
         let Some(slot) = Slot::claim(&self.open, peer, self.limits) else {
-            if let Some(suppressed) = self.refused.allow() {
+            if let Some(suppressed) = self.refused.allow("refused") {
                 tracing::warn!(
                     %peer,
                     max_connections = self.limits.max_connections,

@@ -205,7 +205,7 @@ impl OtapGrpc {
     }
 
     fn refuse(&self, signal: &'static str, why: &'static str) -> Status {
-        if let Some(suppressed) = self.guards.refused.allow() {
+        if let Some(suppressed) = self.guards.refused.allow(why) {
             tracing::warn!(
                 signal,
                 max_streams = self.limits.max_streams,
@@ -335,7 +335,7 @@ where
             Ok(Some(Ok(records))) => records,
             Ok(None) => return,
             Ok(Some(Err(status))) => {
-                if let Some(suppressed) = context.guards.rejected.allow() {
+                if let Some(suppressed) = context.guards.rejected.allow("read") {
                     let error = log_guard::clean_display(&status);
                     tracing::warn!(signal, error, suppressed, "OTAP stream read failed");
                 }
@@ -468,7 +468,7 @@ async fn handle_batch(
         }
         // Out of time: the same batch would run out again.
         Decoded::Rejected(e @ OtapError::Deadline { .. }) => {
-            if let Some(suppressed) = context.guards.rejected.allow() {
+            if let Some(suppressed) = context.guards.rejected.allow("deadline") {
                 let error = log_guard::clean_display(&e);
                 tracing::warn!(
                     signal,
@@ -482,7 +482,7 @@ async fn handle_batch(
             return (None, Outcome::AckThenClose(refused, closing(&e)));
         }
         Decoded::Rejected(e) => {
-            if let Some(suppressed) = context.guards.rejected.allow() {
+            if let Some(suppressed) = context.guards.rejected.allow("rejected") {
                 // A string field is logged in quotes: what the peer put
                 // in the error cannot pass for a field of the line.
                 let error = log_guard::clean_display(&e);
@@ -492,7 +492,7 @@ async fn handle_batch(
             return (Some(consumer), outcome);
         }
         Decoded::Undecodable(e) => {
-            if let Some(suppressed) = context.guards.rejected.allow() {
+            if let Some(suppressed) = context.guards.rejected.allow("undecodable") {
                 // Arrow's own error text may repeat what the peer sent.
                 let cause = std::error::Error::source(&e).map(|c| log_guard::clean_display(&c));
                 let error = log_guard::clean_display(&e);
