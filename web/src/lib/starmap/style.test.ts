@@ -3,7 +3,6 @@ import { chartTokens, PALETTE } from '../echarts.js';
 import type { StarEdge, StarNode } from '../types.js';
 import {
     KINDS,
-    esc,
     flagText,
     labelShown,
     labelText,
@@ -72,14 +71,6 @@ function ctx(over: Partial<StyleContext> = {}): StyleContext {
 }
 
 const t = chartTokens('tumult-dark');
-
-describe('esc', () => {
-    it('escapes everything HTML gives meaning to', () => {
-        expect(esc(`<img src=x onerror="a('b')">&`)).toBe(
-            '&lt;img src=x onerror=&quot;a(&#39;b&#39;)&quot;&gt;&amp;',
-        );
-    });
-});
 
 describe('toItem', () => {
     it('names the node by id, puts it in its kind category and at its position', () => {
@@ -268,13 +259,13 @@ describe('toLink', () => {
 
 describe('tooltipHtml', () => {
     it('escapes names that come from telemetry', () => {
-        const html = tooltipHtml(node({ label: '<script>alert(1)</script>' }), ctx());
+        const { html } = tooltipHtml(node({ label: '<script>alert(1)</script>' }), ctx());
         expect(html).not.toContain('<script>');
         expect(html).toContain('&lt;script&gt;');
     });
 
     it('says who suppressed a risk, until when and why', () => {
-        const html = tooltipHtml(
+        const { html } = tooltipHtml(
             node({
                 risks: risks({
                     suppressed: 1,
@@ -291,7 +282,7 @@ describe('tooltipHtml', () => {
     });
 
     it('says so when a suppression never expires', () => {
-        const html = tooltipHtml(
+        const { html } = tooltipHtml(
             node({
                 risks: risks({ suppressed: 1, suppressed_by: 'ops', suppression_reason: 'known' }),
             }),
@@ -301,7 +292,7 @@ describe('tooltipHtml', () => {
     });
 
     it('names the missing disciplines and the recommended kind on a gap', () => {
-        const html = tooltipHtml(
+        const { html } = tooltipHtml(
             node({
                 gap: 'missing',
                 evidence: {
@@ -317,7 +308,7 @@ describe('tooltipHtml', () => {
     });
 
     it('reports the conformance level in the conformance lens', () => {
-        const html = tooltipHtml(
+        const { html } = tooltipHtml(
             node({ kind: 'service', conformance: 'target' }),
             ctx({ lens: 'conformance' }),
         );
@@ -325,7 +316,7 @@ describe('tooltipHtml', () => {
     });
 
     it('counts open and suppressed risks separately', () => {
-        const html = tooltipHtml(
+        const { html } = tooltipHtml(
             node({ risks: risks({ open: 2, suppressed: 1, worst: 'medium' }) }),
             ctx({ lens: 'risk' }),
         );
@@ -382,7 +373,7 @@ describe('flags and roll-ups', () => {
     });
 
     it('puts flags and the roll-up in the tooltip, escaped', () => {
-        const html = tooltipHtml(
+        const { html } = tooltipHtml(
             node({ kind: 'entity', flags: ['malformed_id', '<b>'], rollup }),
             ctx(),
         );

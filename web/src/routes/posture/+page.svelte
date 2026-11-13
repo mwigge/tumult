@@ -7,7 +7,7 @@
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
     import { coverageLabels } from '#lib/coverage.js';
-    import { esc } from '#lib/starmap/style.js';
+    import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type {
         ConformanceReport,
         MeResponse,
@@ -116,11 +116,11 @@
             grid: { left: 150, right: 16, top: 10, bottom: 40 },
             tooltip: {
                 ...t.tooltip,
-                formatter: (p: { data?: number[] }) => {
+                formatter: tipFormatter((p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
                     const status = ['missing', 'stale', 'covered'][v] ?? '';
-                    return `<b>${esc(targets[y])}</b> · ${esc(kinds[x])}<br/>${status}`;
-                },
+                    return tip([strong(targets[y]), ` · ${kinds[x]}`], status);
+                }),
             },
             xAxis: { type: 'category', data: kinds, axisLabel: { color: t.text } },
             yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
@@ -181,16 +181,18 @@
             grid: { left: 110, right: 16, top: 10, bottom: 40 },
             tooltip: {
                 ...t.tooltip,
-                formatter: (p: { data?: (number | string)[] }) => {
+                formatter: tipFormatter((p: { data?: (number | string)[] }) => {
                     const i = Number(p.data?.[3] ?? -1);
                     const n = cells[i];
-                    if (!n) return '';
-                    return (
-                        `<b>${n.target}</b> · ${n.nfr_id} (${n.experiment})<br/>${n.state}` +
-                        (n.observed != null ? ` · observed ${n.observed} vs ${n.threshold}` : '') +
-                        (n.margin != null ? ` · margin ${n.margin}` : '')
+                    if (!n) return null;
+                    const observed =
+                        n.observed != null ? ` · observed ${n.observed} vs ${n.threshold}` : '';
+                    const margin = n.margin != null ? ` · margin ${n.margin}` : '';
+                    return tip(
+                        [strong(n.target), ` · ${n.nfr_id} (${n.experiment})`],
+                        `${n.state}${observed}${margin}`,
                     );
-                },
+                }),
             },
             xAxis: { type: 'category', data: ids, axisLabel: { color: t.text } },
             yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },

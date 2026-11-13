@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
+
 // The API is mocked; the map renders to canvas, so it is asserted through
 // the option mirrored at window.__tumultCharts.starmap.
 
@@ -351,6 +353,53 @@ test('the star map draws every node with its evidence state', async ({ page }) =
 
     const request = seen.find((u) => u.pathname === '/api/starmap');
     expect(request?.searchParams.get('range')).toBe('7d');
+});
+
+interface Placed {
+    x: number;
+    y: number;
+}
+
+/** How far the page bends an edge, as a share of its length. */
+const CURVENESS = 0.15;
+
+test('names with markup are text in the node and edge tooltips', async ({ page }) => {
+    const from = node(`sys:demo/${EVIL}`, 'system', EVIL, null, {
+        env: EVIL,
+        tier: EVIL,
+        flags: [EVIL],
+        posture: { score: 41.5, band: EVIL },
+        risks: { ...noRisks, open: 1, worst: EVIL, suppressed: 1, suppressed_by: EVIL },
+    });
+    const to = node('sys:demo/other', 'system', 'other', null);
+    const over = { nodes: [from, to], edges: [edge(from.id, 'calls', to.id, EVIL)] };
+    await installChartHooks(page);
+    await mock(page, [], true, over);
+    await page.goto('/starmap');
+    await drawn(page);
+
+    const onNode = await showTip(page, 'starmap', { seriesIndex: 0, dataIndex: 0 });
+    for (const line of [`(system · ${EVIL})`, `tier: ${EVIL}`, `posture: 41.5 (${EVIL})`]) {
+        await expectShownAsText(page, onNode, line);
+    }
+    await expectShownAsText(page, onNode, `(worst ${EVIL})`);
+    await expectShownAsText(page, onNode, `suppressed by ${EVIL} with no expiry`);
+
+    // An edge has no index to show a tooltip by: the pointer goes to the
+    // middle of the curve ECharts draws between the two nodes.
+    const [a, b] = await page.evaluate(() => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const option = w.__tumultCharts?.starmap as { series: { data: Placed[] }[] };
+        return option.series[0].data.map((d) => [d.x, d.y]);
+    });
+    const bend = [
+        (a[0] + b[0]) / 2 - (a[1] - b[1]) * CURVENESS,
+        (a[1] + b[1]) / 2 - (b[0] - a[0]) * CURVENESS,
+    ];
+    const middle = (i: number) => a[i] / 4 + bend[i] / 2 + b[i] / 4;
+    const onEdge = await showTip(page, 'starmap', { seriesIndex: 0, cell: [middle(0), middle(1)] });
+    await expectShownAsText(page, onEdge, `${from.id} calls sys:demo/other`);
+    await expectShownAsText(page, onEdge, `source: ${EVIL}`);
 });
 
 test('the star map follows the theme', async ({ page }) => {

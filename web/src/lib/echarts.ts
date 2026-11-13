@@ -47,23 +47,6 @@ echarts.use([
 export default echarts;
 export type { EChartsCoreOption } from 'echarts/core';
 
-const HTML_ESCAPES: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-};
-
-/**
- * Text for an HTML tooltip. ECharts sets the string a `formatter` returns
- * as markup, so every value that goes into one passes through here: names
- * and labels come from telemetry and from files, not from this code.
- */
-export function escapeHtml(value: unknown): string {
-    return String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
-}
-
 // Chart tokens per theme, matching the variables in lib/theme.css.
 export type ChartTheme = 'tumult-dark' | 'tumult-light';
 

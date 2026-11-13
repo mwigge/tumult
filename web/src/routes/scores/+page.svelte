@@ -7,6 +7,7 @@
     import { api } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { CHART } from '#lib/echarts.js';
+    import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { OrgNodeScore, ScoreTree, SparkPoint } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
     import Sparkline from '#lib/components/Sparkline.svelte';
@@ -82,6 +83,15 @@
     const crumbs = $derived(node === '' ? [] : node.split('/'));
 
     let treemapOption: EChartsCoreOption | null = $state(null);
+    /** What a tile of the treemap carries for its tooltip. */
+    interface TreeTip {
+        path?: string;
+        score?: number;
+        band?: string;
+        scored?: number;
+        expected?: number;
+    }
+
     $effect(() => {
         if (!tree || node !== '') {
             treemapOption = null;
@@ -91,21 +101,14 @@
         treemapOption = {
             tooltip: {
                 ...CHART.tooltip,
-                formatter: (p: {
-                    data?: {
-                        path?: string;
-                        score?: number;
-                        band?: string;
-                        scored?: number;
-                        expected?: number;
-                    };
-                }) => {
+                formatter: tipFormatter((p: { data?: TreeTip }) => {
                     const d = p.data ?? {};
-                    return (
-                        `<b>${d.path ?? ''}</b><br/>score ${Number(d.score ?? 0).toFixed(1)} (${d.band ?? ''})` +
-                        `<br/>coverage ${d.scored ?? 0}/${d.expected ?? 0}`
+                    return tip(
+                        strong(d.path),
+                        `score ${Number(d.score ?? 0).toFixed(1)} (${d.band ?? ''})`,
+                        `coverage ${d.scored ?? 0}/${d.expected ?? 0}`,
                     );
-                },
+                }),
             },
             series: [
                 {
@@ -227,6 +230,7 @@
                 <div class="state">No org structure on record — configure org.yaml.</div>
             {:else if treemapOption}
                 <EChart
+                    id="score-treemap"
                     option={treemapOption}
                     height={420}
                     onclick={onTreemapClick}

@@ -3,7 +3,9 @@
 // options can be asserted through `window.__tumultCharts`.
 
 import type { ChartTheme, EChartsCoreOption } from './echarts';
-import { chartTokens, escapeHtml } from './echarts';
+import { chartTokens } from './echarts';
+import { strong, tip, tipFormatter } from './tooltip';
+import type { Tip } from './tooltip';
 import type {
     DoraCell,
     DoraReport,
@@ -11,6 +13,7 @@ import type {
     MaturityComponent,
     MaturityNode,
     MaturityReport,
+    ProofDays,
 } from './types';
 
 export type HeatmapMode = 'coverage' | 'status';
@@ -113,10 +116,9 @@ export function cellLines(cell: DoraCell): string[] {
     return lines;
 }
 
-/** Markup of the heatmap tooltip. Every value in it is escaped. */
-function cellTooltip(cell: DoraCell & { row: string }): string {
-    const head = `<b>Art. ${escapeHtml(cell.article)}</b> · ${escapeHtml(cell.row)}`;
-    return [head, ...cellLines(cell).map(escapeHtml)].join('<br/>');
+/** The heatmap tooltip of a cell. */
+function cellTooltip(cell: DoraCell & { row: string }): Tip {
+    return tip([strong(`Art. ${cell.article}`), ` · ${cell.row}`], ...cellLines(cell));
 }
 
 /** The cell of an article and a row, when that article applies to it. */
@@ -155,8 +157,9 @@ export function heatmapOption(
         tooltip: {
             ...t.tooltip,
             className: 'dora-tooltip',
-            formatter: (p: { data?: DoraCell & { row: string } }) =>
-                p.data ? cellTooltip(p.data) : '',
+            formatter: tipFormatter((p: { data?: DoraCell & { row: string } }) =>
+                p.data ? cellTooltip(p.data) : null,
+            ),
         },
         grid: { left: 8, right: 12, top: 34, bottom: 8, containLabel: true },
         xAxis: {
@@ -344,9 +347,25 @@ export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCore
 
 /** How a quarter of the history reads in the table next to the chart. */
 export function historyStateText(point: MaturityHistoryPoint): string {
-    if (point.state === 'stored') return `stored ${point.as_of ?? ''}`.trim();
     if (point.state === 'today') return 'today';
-    return 'no data';
+    if (point.state !== 'stored') return 'no data';
+    const stored = `stored ${point.as_of ?? ''}`.trim();
+    return point.source === 'proof' ? `${stored} by the proof tool` : stored;
+}
+
+/** How many days the daily job left out, in words; nothing before the first. */
+export function snapshotSkippedText(skipped: number): string {
+    if (skipped <= 0) return '';
+    return `${skipped} day${skipped === 1 ? '' : 's'} skipped since the daemon started`;
+}
+
+/** What the proof days in the lake amount to, in words. */
+export function proofDaysText(proof: ProofDays): string {
+    if (proof.enabled) return `${proof.counted} proof day${proof.counted === 1 ? '' : 's'} counted`;
+    if (proof.ignored <= 0) return '';
+    return proof.ignored === 1
+        ? '1 day stored by the proof tool is not counted'
+        : `${proof.ignored} days stored by the proof tool are not counted`;
 }
 
 /** How a node's level reads: with the nodes that cap it, when one does. */

@@ -2,7 +2,9 @@
     // What a score document was computed with and from: a profile other
     // than the registered one, a partial view, the house parameters in
     // force, the state of the function register and the feeds. A lowered
-    // gate or a refused org file is never silent.
+    // gate, a refused org file, a day that is not stored and days stored
+    // by the proof tool are never silent.
+    import { proofDaysText, snapshotSkippedText } from '#lib/dora.js';
     import type { ScoreHeader } from '#lib/types.js';
 
     let { doc }: { doc: ScoreHeader } = $props();
@@ -21,7 +23,23 @@
     };
 
     const shown = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value));
+
+    const skipped = $derived(snapshotSkippedText(doc.snapshot.skipped));
+    const proof = $derived(proofDaysText(doc.proof_days));
 </script>
+
+{#if doc.proof_days.enabled}
+    <div class="notice warn" role="status" data-testid="proof-days">
+        {doc.proof_days.note ?? 'Proof days are in use.'}
+        <span class="dim">{proof}</span>
+    </div>
+{/if}
+{#if doc.snapshot.skipping}
+    <div class="notice warn" role="status" data-testid="snapshot-skipping">
+        {doc.snapshot.reason ?? 'The daily snapshot is not stored.'}
+        {#if skipped}<span class="dim">{skipped}</span>{/if}
+    </div>
+{/if}
 
 {#if doc.profile_overridden}
     <div class="notice warn" role="status" data-testid="profile-override">
@@ -41,18 +59,29 @@
             <span class="badge fail">defaults in force</span>
             the <span class="mono">score:</span> section of the org file was refused: {doc.params
                 .reason ?? 'no reason given'}
-        {:else if doc.params.overridden.length === 0}
-            house defaults, nothing overridden
         {:else}
-            <span class="badge warn">{doc.params.overridden.length} overridden</span>
-            {#each doc.params.overridden as o (o.key)}
-                <span class="override">
-                    <span class="mono">{o.key}</span> = <span class="mono">{shown(o.value)}</span>
-                    <span class="dim">(default {shown(o.default)})</span>
-                </span>
-            {/each}
+            {#if doc.params.held}
+                <span class="badge warn">last valid file in force</span>
+                the org file on disk was refused: {doc.params.reason ?? 'no reason given'}
+            {/if}
+            {#if doc.params.overridden.length === 0}
+                house defaults, nothing overridden
+            {:else}
+                <span class="badge warn">{doc.params.overridden.length} overridden</span>
+                {#each doc.params.overridden as o (o.key)}
+                    <span class="override">
+                        <span class="mono">{o.key}</span> =
+                        <span class="mono">{shown(o.value)}</span>
+                        <span class="dim">(default {shown(o.default)})</span>
+                    </span>
+                {/each}
+            {/if}
         {/if}
     </dd>
+    {#if !doc.proof_days.enabled && proof}
+        <dt>Proof days</dt>
+        <dd data-testid="proof-days-ignored">{proof}</dd>
+    {/if}
     <dt>Function register</dt>
     <dd data-testid="register-state">
         <span class="badge {REGISTER_CLASS[doc.register_state] ?? 'neutral'}"

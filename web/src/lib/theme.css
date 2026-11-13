@@ -139,6 +139,9 @@ code,
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    /* Rows and the height left are not whole pixels while a scroll position
+       is: the spare pixel keeps the last entry whole at the end. */
+    padding-bottom: 1px;
 }
 .side > :not(.nav) {
     flex: 0 0 auto;
@@ -157,13 +160,6 @@ code,
     color: var(--text-faint);
     font-size: 11px;
     margin-top: 2px;
-}
-/* The list scrolls when it is taller than the window, so what follows it
-   in the sidebar (theme, session) stays inside the window. */
-.nav {
-    flex: 0 1 auto;
-    min-height: 0;
-    overflow-y: auto;
 }
 .nav a {
     display: flex;

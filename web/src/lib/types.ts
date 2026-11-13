@@ -1138,6 +1138,8 @@ export interface ScoreHeader {
     scope_note: string | null;
     feeds: ScoreFeed[];
     params: ScoreParams;
+    snapshot: ScoreSnapshot;
+    proof_days: ProofDays;
     register_state: RegisterState;
     register_reason: string | null;
 }
@@ -1152,11 +1154,30 @@ export interface ScoreFeed {
 
 /** The house parameters a document was scored with. */
 export interface ScoreParams {
-    source: 'defaults' | 'org_file';
-    /** The `score:` section was refused and the defaults are in force. */
+    source: 'defaults' | 'org_file' | 'last_valid_org_file';
+    /** The org file was refused and never was valid: the defaults are in force. */
     fallback: boolean;
+    /** The org file was refused and the last valid one is still in force. */
+    held: boolean;
     reason: string | null;
     overridden: { key: string; value: unknown; default: unknown }[];
+}
+
+/** Whether the daily job stores days, and how many it has left out. */
+export interface ScoreSnapshot {
+    /** No day is stored while defaults stand in for a refused org file. */
+    skipping: boolean;
+    /** Days left out since the daemon started. */
+    skipped: number;
+    reason: string | null;
+}
+
+/** Days the proof tool stored for past dates: a test setting of the daemon. */
+export interface ProofDays {
+    enabled: boolean;
+    counted: number;
+    ignored: number;
+    note: string | null;
 }
 
 /** Where the function register of the org file stands in the lake. */
@@ -1348,6 +1369,8 @@ export interface MaturityNode {
 export interface MaturityHistoryPoint {
     quarter: string;
     state: 'stored' | 'today' | 'no_data';
+    /** Who stored the day: `snapshot` (the daily job) or `proof` (the proof tool). */
+    source: string | null;
     as_of: string | null;
     as_of_ns: number | null;
     level: number | null;

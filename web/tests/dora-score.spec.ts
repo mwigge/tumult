@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
+
 // The API is mocked. Charts render to canvas, so the heatmap, the gauge
 // and the component bars are asserted through the option mirrored at
 // window.__tumultCharts.
@@ -38,7 +40,9 @@ const header = {
             reason: 'declared in the org file, no incident record ingested',
         },
     ],
-    params: { source: 'defaults', fallback: false, reason: null, overridden: [] },
+    params: { source: 'defaults', fallback: false, held: false, reason: null, overridden: [] },
+    snapshot: { skipping: false, skipped: 0, reason: null },
+    proof_days: { enabled: false, counted: 0, ignored: 0, note: null },
     register_state: 'ok',
     register_reason: null,
 };
@@ -424,12 +428,20 @@ const tree = {
 interface Overrides {
     dora?: Record<string, unknown>;
     maturity?: Record<string, unknown>;
+    /** Paths the API fails on, with the status it answers. */
+    failing?: Record<string, number>;
 }
 
 async function mockApi(page: Page, requested: string[] = [], over: Overrides = {}) {
+    await installChartHooks(page);
     await page.route('**/api/**', async (route) => {
         const url = new URL(route.request().url());
         requested.push(url.pathname + url.search);
+        const failed = over.failing?.[url.pathname];
+        if (failed) {
+            await route.fulfill({ status: failed, json: { error: 'the lake is not readable' } });
+            return;
+        }
         let body: unknown = {};
         if (url.pathname === '/api/me') body = me;
         else if (url.pathname === '/api/dora')
@@ -471,11 +483,25 @@ async function heatmapMarks(page: Page): Promise<Mark[]> {
 const markOf = (marks: Mark[], art: string, entity: string) =>
     marks.find((m) => m.article === art && m.entity_id === entity);
 
-test('the level is printed against its target with the cap reason', async ({ page }) => {
+test('the default view states level, cap, unknown share, parameters and register', async ({
+    page,
+}) => {
     await mockApi(page);
     await page.goto('/scores?view=dora');
     const head = page.getByTestId('dora-header');
-    await expect(head).toContainText('level 2 of target 3 (simplified)');
+    await expect(head.locator('.headline')).toHaveText(
+        'level 2 of target 3 (simplified), 25 % unknown',
+    );
+    const panel = page.getByTestId('dora-maturity');
+    await expect(panel.getByRole('heading', { level: 2 })).toContainText('25 % unknown');
+    // The pillars alone rest on a different share, and both are named.
+    await expect(panel).toContainText('pillars alone: unknown 40 %');
+    // Nothing is announced when there is nothing to announce.
+    await expect(page.getByTestId('score-params')).toContainText('house defaults');
+    await expect(page.getByTestId('register-state')).toContainText('ok');
+    for (const id of ['profile-override', 'scope-note', 'snapshot-skipping', 'proof-days']) {
+        await expect(page.getByTestId(id)).toHaveCount(0);
+    }
     await expect(head).toContainText('restore-test evidence is 150 days old');
     await expect(head.getByTestId('profile')).toHaveText('simplified');
     await expect(head).toContainText('Internal house scale');
@@ -544,6 +570,9 @@ test('the expectation table is sorted by gap, weight and criticality', async ({ 
     await expect(rows.nth(1)).toContainText('dora.art16.1.c');
     await expect(rows.nth(2)).toContainText('42');
     await expect(rows.nth(2)).toContainText('2026-09-21');
+    // A row the house scoped, and not the regulation, says so.
+    await expect(rows.nth(0).getByTestId('house-scope')).toHaveText('house scope');
+    await expect(rows.nth(1).getByTestId('house-scope')).toHaveCount(0);
 });
 
 test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }) => {
@@ -569,53 +598,134 @@ test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }
     await expect(drawer).toHaveCount(0);
 });
 
-test('a row scoped by the house and not by the regulation says so', async ({ page }) => {
-    await mockApi(page);
-    await page.goto('/scores?view=dora');
-    const rows = page.getByTestId('dora-expectations').locator('tbody tr');
-    await expect(rows.nth(0)).toContainText('Art. 24(1)');
-    await expect(rows.nth(0).getByTestId('house-scope')).toHaveText('house scope');
-    await expect(rows.nth(1).getByTestId('house-scope')).toHaveCount(0);
-});
-
-/** The tooltip ECharts draws for the heatmap. */
-const tooltip = (page: Page) => page.locator('.dora-tooltip');
-
 test('a label with markup is shown as text in the heatmap tooltip', async ({ page }) => {
-    const evil = '<img src=x onerror="window.__xss = 1">';
     const base = dora(null);
     await mockApi(page, [], {
-        dora: { rows: base.rows.map((r) => ({ ...r, label: evil })) },
+        dora: { rows: base.rows.map((r) => ({ ...r, label: EVIL })) },
     });
     await page.goto('/scores?view=dora');
-    await expect.poll(async () => (await heatmapMarks(page)).length).toBe(6);
-    const box = await page.locator('[data-chart="dora-heatmap"] canvas').boundingBox();
-    if (!box) throw new Error('the heatmap has no canvas');
-    // The plot fills the right part of the canvas: sweep it until a cell answers.
-    for (const fx of [0.9, 0.7, 0.8]) {
-        await page.mouse.move(box.x + box.width * fx, box.y + box.height * 0.5);
-        await page.mouse.move(box.x + box.width * fx + 2, box.y + box.height * 0.5 + 2);
-        if ((await tooltip(page).count()) > 0) break;
-    }
-    await expect(tooltip(page)).toBeVisible();
-    await expect(tooltip(page)).toContainText(evil);
-    await expect(tooltip(page).locator('img')).toHaveCount(0);
-    await expect(page.locator('[data-chart="dora-heatmap"] img')).toHaveCount(0);
-    expect(await page.evaluate(() => (window as Window & { __xss?: number }).__xss)).toBe(
-        undefined,
-    );
+    const tip = await showTip(page, 'dora-heatmap', { seriesIndex: 0, cell: [0, 0] });
+    await expect(tip).toHaveClass(/dora-tooltip/);
+    await expectShownAsText(page, tip, `Art. 16 · ${EVIL}`);
+    await expectShownAsText(page, tip, 'coverage 82 %');
 });
 
-test('the unknown share is part of the headline and of the maturity heading', async ({ page }) => {
-    await mockApi(page);
+test('a failed read says so instead of showing numbers', async ({ page }) => {
+    await mockApi(page, [], { failing: { '/api/maturity': 500 } });
     await page.goto('/scores?view=dora');
-    await expect(page.getByTestId('dora-header').locator('.headline')).toHaveText(
-        'level 2 of target 3 (simplified), 25 % unknown',
+    await expect(page.getByText('Failed to load the DORA score')).toBeVisible();
+    await expect(page.getByText('the lake is not readable')).toBeVisible();
+    await expect(page.getByTestId('dora-view')).toHaveCount(0);
+    await expect(page.getByTestId('score-number')).toHaveCount(0);
+});
+
+test('nothing on record is said in words, with no chart and no zero', async ({ page }) => {
+    await mockApi(page, [], {
+        dora: {
+            lei: null,
+            entity_name: null,
+            legal_entities: [],
+            rows: [],
+            functions: [],
+            cells: [],
+            expectations: [],
+        },
+        maturity: { history: [], nodes: [], rollup: null, rollup_headline: null },
+    });
+    await page.goto('/scores?view=dora');
+    const head = page.getByTestId('dora-header');
+    await expect(head).toContainText('unregistered entity');
+    await expect(head.getByLabel('Legal entity')).toBeDisabled();
+    await expect(head.getByLabel('Legal entity')).toContainText('no legal entity registered');
+    await expect(page.getByTestId('dora-heatmap')).toContainText('No functions on record');
+    await expect(page.locator('[data-chart="dora-heatmap"]')).toHaveCount(0);
+    await expect(page.getByTestId('dora-expectations')).toContainText(
+        'No requirement applies to this profile',
     );
-    const panel = page.getByTestId('dora-maturity');
-    await expect(panel.getByRole('heading', { level: 2 })).toContainText('25 % unknown');
-    // The pillars alone rest on a different share, and both are named.
-    await expect(panel).toContainText('pillars alone: unknown 40 %');
+    await expect(page.locator('[data-chart="dora-history"]')).toHaveCount(0);
+    await expect(page.getByTestId('dora-rollup')).toContainText('no nodes on record');
+    await expect(page.getByTestId('dora-rollup')).toContainText('No nodes to roll up');
+});
+
+test('parameters held from the last valid org file are named with the reason', async ({ page }) => {
+    await mockApi(page, [], {
+        dora: {
+            params: {
+                source: 'last_valid_org_file',
+                fallback: false,
+                held: true,
+                reason: 'score.operating_days must be within 1..=3650, got 99999',
+                overridden: [{ key: 'operating_days', value: 30, default: 180 }],
+            },
+            register_state: 'invalid',
+            register_reason: 'score.operating_days must be within 1..=3650, got 99999',
+        },
+    });
+    await page.goto('/scores?view=dora');
+    const params = page.getByTestId('score-params');
+    await expect(params.locator('.badge.warn').first()).toHaveText('last valid file in force');
+    await expect(params).toContainText('the org file on disk was refused');
+    await expect(params).toContainText('score.operating_days must be within 1..=3650, got 99999');
+    // What the held file overrides is still listed.
+    await expect(params).toContainText('operating_days');
+    await expect(params).toContainText('default 180');
+    await expect(params).not.toContainText('defaults in force');
+    await expect(page.getByTestId('snapshot-skipping')).toHaveCount(0);
+});
+
+test('a daily snapshot that is not stored is announced with its count', async ({ page }) => {
+    const refused = 'score.band_good must be at most 1, got 7';
+    const blocked = {
+        params: {
+            source: 'defaults',
+            fallback: true,
+            held: false,
+            reason: refused,
+            overridden: [],
+        },
+        snapshot: {
+            skipping: true,
+            skipped: 3,
+            reason: `the daily snapshot is not stored while the default parameters stand in for a refused org file: ${refused}`,
+        },
+    };
+    await mockApi(page, [], { dora: blocked, maturity: blocked });
+    await page.goto('/scores?view=dora');
+    const banner = page.getByTestId('snapshot-skipping');
+    await expect(banner).toHaveAttribute('role', 'status');
+    await expect(banner).toContainText('the daily snapshot is not stored while');
+    await expect(banner).toContainText(refused);
+    await expect(banner).toContainText('3 days skipped since the daemon started');
+    await expect(page.getByTestId('score-params')).toContainText('defaults in force');
+});
+
+test('proof days in use are announced and marked in the history', async ({ page }) => {
+    const note = 'proof days are in use: this is a test setting, not evidence of operation.';
+    const proof = { proof_days: { enabled: true, counted: 2, ignored: 0, note } };
+    const history = maturity.history.map((h) =>
+        h.state === 'stored' ? { ...h, source: 'proof' } : h,
+    );
+    await mockApi(page, [], { dora: proof, maturity: { ...proof, history } });
+    await page.goto('/scores?view=dora');
+    const banner = page.getByTestId('proof-days');
+    await expect(banner).toHaveAttribute('role', 'status');
+    await expect(banner).toContainText(note);
+    await expect(banner).toContainText('2 proof days counted');
+    const rows = page.getByTestId('dora-history').locator('tbody tr');
+    await expect(rows.nth(1)).toContainText('stored 2026-06-30 by the proof tool');
+    await expect(rows.nth(3)).toHaveText(/today/);
+    await expect(rows.nth(3)).not.toContainText('proof');
+});
+
+test('proof days in the lake that do not count are mentioned, not announced', async ({ page }) => {
+    await mockApi(page, [], {
+        dora: { proof_days: { enabled: false, counted: 0, ignored: 4, note: null } },
+    });
+    await page.goto('/scores?view=dora');
+    await expect(page.getByTestId('proof-days')).toHaveCount(0);
+    await expect(page.getByTestId('proof-days-ignored')).toContainText(
+        '4 days stored by the proof tool are not counted',
+    );
 });
 
 test('overridden parameters, a fallback and the register state are on the page', async ({
@@ -626,6 +736,7 @@ test('overridden parameters, a fallback and the register state are on the page',
             params: {
                 source: 'org_file',
                 fallback: false,
+                held: false,
                 reason: null,
                 overridden: [{ key: 'operating_days', value: 30, default: 180 }],
             },
@@ -652,6 +763,7 @@ test('a refused score section is named with the reason', async ({ page }) => {
             params: {
                 source: 'defaults',
                 fallback: true,
+                held: false,
                 reason: 'score.band_good must be within 0 and 1, got 7',
                 overridden: [],
             },
@@ -664,15 +776,6 @@ test('a refused score section is named with the reason', async ({ page }) => {
     await expect(params).toContainText('defaults in force');
     await expect(params).toContainText('score.band_good must be within 0 and 1, got 7');
     await expect(page.getByTestId('register-state')).toContainText('invalid');
-});
-
-test('default parameters and a register in step are stated plainly', async ({ page }) => {
-    await mockApi(page);
-    await page.goto('/scores?view=dora');
-    await expect(page.getByTestId('score-params')).toContainText('house defaults');
-    await expect(page.getByTestId('register-state')).toContainText('ok');
-    await expect(page.getByTestId('profile-override')).toHaveCount(0);
-    await expect(page.getByTestId('scope-note')).toHaveCount(0);
 });
 
 test('a profile override and a partial view are announced above the numbers', async ({ page }) => {
