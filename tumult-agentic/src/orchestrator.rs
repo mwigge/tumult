@@ -310,14 +310,7 @@ mod tests {
 
     #[test]
     fn run_live_nests_experiment_under_tumult_experiment_root() {
-        use opentelemetry::global;
-        use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
-
-        let exporter = InMemorySpanExporter::default();
-        let provider = SdkTracerProvider::builder()
-            .with_simple_exporter(exporter.clone())
-            .build();
-        global::set_tracer_provider(provider.clone());
+        use tumult_otel::agentic_span::{EXPERIMENT_ROOT_SPAN, EXPERIMENT_SPAN};
 
         let runner = StubRunner {
             response: r#"{"ok":true}"#.to_string(),
@@ -332,22 +325,28 @@ mod tests {
             otlp_endpoint: None,
             base_url: "http://127.0.0.1:8080",
         };
-        let _ = run_live(&runner, &run).expect("run_live");
-        provider.force_flush().ok();
 
-        let spans = exporter.get_finished_spans().expect("spans");
-        let roots: Vec<_> = spans
-            .iter()
-            .filter(|span| span.name == tumult_otel::agentic_span::EXPERIMENT_ROOT_SPAN)
-            .map(|span| span.span_context.span_id())
-            .collect();
-        let nested = spans
-            .iter()
-            .filter(|span| span.name == tumult_otel::agentic_span::EXPERIMENT_SPAN)
-            .any(|span| roots.contains(&span.parent_span_id));
-        assert!(
-            nested,
-            "the experiment span must nest under a tumult.experiment root span"
+        let (result, spans) = tumult_test_utils::capture_spans(|| run_live(&runner, &run));
+
+        result.expect("run_live");
+        let named = |name: &str| -> Vec<_> { spans.iter().filter(|s| s.name == name).collect() };
+        let (roots, experiments) = (named(EXPERIMENT_ROOT_SPAN), named(EXPERIMENT_SPAN));
+        assert_eq!((roots.len(), experiments.len()), (1, 1));
+        assert_eq!(
+            experiments[0].parent_span_id,
+            roots[0].span_context.span_id(),
+            "the experiment span must nest under the tumult.experiment root span"
         );
+        // The agent is handed the root span as its parent.
+        let traceparent = format!(
+            "00-{}-{}-01",
+            roots[0].span_context.trace_id(),
+            roots[0].span_context.span_id()
+        );
+        assert!(runner
+            .captured_env
+            .borrow()
+            .iter()
+            .any(|(key, value)| key == "TRACEPARENT" && *value == traceparent));
     }
 }

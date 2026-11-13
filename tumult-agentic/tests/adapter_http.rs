@@ -8,7 +8,7 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::routing::post;
 use axum::{Json, Router};
-use tumult_agentic::adapters::{HttpAgentAdapter, TraceContext};
+use tumult_agentic::adapters::{AgentResponse, HttpAgentAdapter, TraceContext};
 use tumult_agentic::model::{AgenticError, AgenticScenario};
 
 fn scenario(name: &str) -> AgenticScenario {
@@ -31,13 +31,13 @@ async fn serve(app: Router) -> std::net::SocketAddr {
 }
 
 #[tokio::test]
-async fn invoke_maps_the_wire_response_and_floors_latency_at_elapsed() {
+async fn invoke_maps_every_wire_response_field() {
     let app = Router::new().route(
         "/agent",
         post(|| async {
             Json(serde_json::json!({
                 "body": "grounded summary",
-                "latency_ms": 0,
+                "latency_ms": 3_600_000,
                 "tool_calls": 2,
                 "retry_count": 1,
                 "input_tokens": 11,
@@ -54,15 +54,48 @@ async fn invoke_maps_the_wire_response_and_floors_latency_at_elapsed() {
         .await
         .expect("invoke succeeds");
 
-    assert_eq!(response.body, "grounded summary");
-    assert_eq!(response.tool_calls, 2);
-    assert_eq!(response.retry_count, 1);
-    assert_eq!(response.input_tokens, 11);
-    assert_eq!(response.output_tokens, 7);
-    assert!(response.fallback_used);
-    // The server claimed 0ms; the adapter floors latency at real elapsed time,
-    // so a lying server cannot report impossibly fast calls.
-    assert!(response.latency_ms <= 2_000);
+    assert_eq!(
+        response,
+        AgentResponse {
+            body: "grounded summary".to_string(),
+            // The call is bounded by the 2s adapter timeout, so the hour the
+            // server reported is always the larger of the two latencies.
+            latency_ms: 3_600_000,
+            tool_calls: 2,
+            retry_count: 1,
+            input_tokens: 11,
+            output_tokens: 7,
+            fallback_used: true,
+        }
+    );
+}
+
+#[tokio::test]
+async fn invoke_floors_latency_at_the_time_the_call_took() {
+    const SERVER_DELAY: Duration = Duration::from_millis(25);
+    let app = Router::new().route(
+        "/agent",
+        post(|| async {
+            // Not synchronisation: the delay is the quantity under test, and a
+            // sleep never returns early, so the lower bound below is exact.
+            tokio::time::sleep(SERVER_DELAY).await;
+            Json(serde_json::json!({"body": "ok", "latency_ms": 0}))
+        }),
+    );
+    let addr = serve(app).await;
+    let adapter = HttpAgentAdapter::new(format!("http://{addr}/agent"));
+
+    let response = adapter
+        .invoke(&scenario("http-lying-latency"))
+        .await
+        .expect("invoke succeeds");
+
+    // The server claimed 0ms; it cannot report a call faster than it was.
+    assert!(
+        response.latency_ms >= 25,
+        "latency {}ms is below the server's own delay",
+        response.latency_ms
+    );
 }
 
 #[tokio::test]
@@ -175,10 +208,12 @@ async fn invoke_accepts_an_allowlisted_endpoint_prefix() {
     let adapter = HttpAgentAdapter::new(endpoint.clone())
         .with_allowlist(vec!["https://other.example".to_string(), endpoint.clone()]);
 
-    adapter
+    let response = adapter
         .invoke(&scenario("http-allowlisted"))
         .await
         .expect("allowlisted endpoint succeeds");
+
+    assert_eq!(response.body, "ok");
 }
 
 #[tokio::test]

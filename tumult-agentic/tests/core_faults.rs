@@ -137,7 +137,7 @@ fn all_fault_types_have_stable_labels() {
 }
 
 #[test]
-fn fault_outcome_omits_raw_context_by_default() {
+fn retrieval_poisoning_appends_documents_and_keeps_raw_context_out_of_the_answer() {
     let outcome = apply_fault(
         &FaultSpec::RetrievalPoisoning {
             document_count: 2,
@@ -152,11 +152,21 @@ fn fault_outcome_omits_raw_context_by_default() {
         FaultOutcome {
             fault_type: "retrieval_poisoning".to_string(),
             label: "retrieval_poisoning.injected".to_string(),
-            response: outcome.response.clone(),
+            response: FaultTargetResponse {
+                // Only the synthetic documents reach the answer body; the text
+                // of the genuinely retrieved record does not.
+                body: concat!(
+                    r#"{"answer":"answer contaminated by poisoned retrieval: "#,
+                    r#"poisoned-document-0 poisoned-document-1"}"#
+                )
+                .to_string(),
+                retrieved_documents: vec![
+                    "primary order record".to_string(),
+                    "poisoned-document-0".to_string(),
+                    "poisoned-document-1".to_string(),
+                ],
+                ..target_response()
+            },
         }
-    );
-    assert!(
-        !outcome.label.contains("primary order record"),
-        "expected fault labels to stay metadata-only and omit retrieved document content"
     );
 }
