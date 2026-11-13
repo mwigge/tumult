@@ -148,7 +148,9 @@ impl Breaker {
     /// The sidecar answered the call made under `permit` at `now` by
     /// turning that one request down. It is alive, which is not the same
     /// as able to forecast: a closed circuit stays closed, and a half-open
-    /// one hands the probe to the next request instead of closing.
+    /// one hands the probe to the next request instead of closing. The
+    /// hand-off is an open circuit whose cool-down is already over, and is
+    /// counted as one.
     pub fn record_rejection(&self, permit: Permit, now: Instant) {
         let mut inner = self.lock();
         if permit.generation != inner.generation {
@@ -159,6 +161,7 @@ impl Breaker {
         }
         inner.state = State::Open { until: now };
         inner.generation += 1;
+        telemetry::breaker_transition("open");
     }
 
     /// The call made under `permit` failed at `now`: skip the sidecar for
@@ -335,6 +338,28 @@ mod tests {
         breaker.record_success(next.unwrap());
         assert!(breaker.admit(after).is_some());
         assert!(breaker.admit(after).is_some(), "closed by a real answer");
+    }
+
+    /// Each change of state is counted once, the hand-off of a rejected
+    /// probe included: without it the counter shows two probes in a row
+    /// and nothing between them.
+    #[test]
+    fn every_transition_is_counted_the_rejection_hand_off_too() {
+        let breaker = Breaker::new(TEN);
+        let t0 = Instant::now();
+        let _ = telemetry::take_transitions();
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        let after = t0 + secs(11);
+        let probe = breaker.admit(after).unwrap();
+        assert_eq!(telemetry::take_transitions(), ["open", "half_open"]);
+        breaker.record_rejection(probe, after);
+        assert_eq!(telemetry::take_transitions(), ["open"]);
+        breaker.record_success(breaker.admit(after).unwrap());
+        assert_eq!(telemetry::take_transitions(), ["half_open", "closed"]);
+        // A rejection that changes nothing is not a transition.
+        breaker.record_rejection(breaker.admit(after).unwrap(), after);
+        breaker.record_rejection(probe, after);
+        assert_eq!(telemetry::take_transitions(), [""; 0]);
     }
 
     #[test]

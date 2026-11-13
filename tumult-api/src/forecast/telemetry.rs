@@ -12,7 +12,9 @@
 //!   configured sidecar; `reason` is the coarse code, `circuit_open`
 //!   included.
 //! - `tumult.forecast.breaker.transitions` — the circuit changed state;
-//!   `state` is the state entered (`open`, `half_open`, `closed`).
+//!   `state` is the state entered (`open`, `half_open`, `closed`). A probe
+//!   the sidecar turned down or had no slot for counts as `open`: the next
+//!   request is the probe.
 //! - `tumult.forecast.cache.lookups` — a metric forecast was looked up in
 //!   the lake; `result` is `hit` or `miss`.
 //!
@@ -80,7 +82,22 @@ pub(crate) fn fallback(reason: &'static str) {
 
 /// The circuit entered `state`.
 pub(crate) fn breaker_transition(state: &'static str) {
+    #[cfg(test)]
+    TRANSITIONS.with_borrow_mut(|seen| seen.push(state));
     count(&global::meter(SCOPE), BREAKER_TRANSITIONS, "state", state);
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The transitions this thread has reported, for the breaker's tests.
+    static TRANSITIONS: std::cell::RefCell<Vec<&'static str>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The transitions this thread reported since the last call.
+#[cfg(test)]
+pub(crate) fn take_transitions() -> Vec<&'static str> {
+    TRANSITIONS.take()
 }
 
 /// A cache lookup found a row (`hit`) or did not.
