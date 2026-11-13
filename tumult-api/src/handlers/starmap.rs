@@ -14,12 +14,14 @@
 //! Reading and assembling both happen on the blocking pool. The
 //! serialised response is kept for 30 s under a key made of the
 //! parameters and the principal's scopes, and carries an `ETag`; a
-//! request with `Cache-Control: no-cache` reads the lake again.
+//! request with `Cache-Control: no-cache` reads the lake again unless
+//! the kept response is younger than 2 s (see
+//! [`crate::handlers::starmap_cache`] for the bounds).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::Duration;
 
 use axum::extract::{Query, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH};
@@ -40,7 +42,7 @@ use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, ApiError};
-use crate::handlers::starmap_cache::CachedMap;
+use crate::handlers::starmap_cache::{CachedMap, REFRESH_FLOOR, TTL};
 use crate::handlers::{conformance, risks};
 use crate::sql_util::{
     and_pred, env_scope_where, invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS,
@@ -680,6 +682,16 @@ fn wants_fresh(headers: &HeaderMap) -> bool {
         .any(|directive| directive.trim().eq_ignore_ascii_case("no-cache"))
 }
 
+/// The oldest stored response this request accepts. `no-cache` is
+/// honoured down to [`REFRESH_FLOOR`] and no further, so no viewer can
+/// make every request read the lake.
+fn max_age(headers: &HeaderMap) -> Duration {
+    if wants_fresh(headers) {
+        return REFRESH_FLOOR;
+    }
+    TTL
+}
+
 /// Whether `If-None-Match` names `etag`. The comparison is weak, as the
 /// header asks: `W/"x"` matches `"x"`, and `*` matches anything.
 fn not_modified(headers: &HeaderMap, etag: &str) -> bool {
@@ -730,15 +742,11 @@ pub(crate) async fn starmap(
 ) -> Result<Response, ApiError> {
     let (query, window) = validate(params, &principal)?;
     let key = cache_key(&query, &principal.env_scopes);
-    let cache = &state.starmap_cache;
-    let cached = (!wants_fresh(&headers))
-        .then(|| cache.get(&key, Instant::now()))
-        .flatten();
-    if let Some(map) = cached {
-        return Ok(respond(&map, &headers));
-    }
-    let map = Arc::new(build(&state, query, window).await?);
-    cache.put(key, Arc::clone(&map), Instant::now());
+    let max_age = max_age(&headers);
+    let map = state
+        .starmap_cache
+        .get_or_build(&key, max_age, || build(&state, query, window))
+        .await?;
     Ok(respond(&map, &headers))
 }
 

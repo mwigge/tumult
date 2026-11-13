@@ -550,12 +550,22 @@ async fn starmap_answers_from_a_short_cache_with_an_etag() {
     let (_, _, small) = get_with(&srv.base, "/api/starmap?budget=8", &[]).await;
     assert_ne!(small, first);
 
-    // `Cache-Control: no-cache` on the request reads the lake again.
-    let (status, _, fresh) =
-        get_with(&srv.base, "/api/starmap", &[("Cache-Control", "no-cache")]).await;
+    // `Cache-Control: no-cache` cannot force a lake read on every
+    // request: a response younger than two seconds is good enough.
+    let refresh = [("Cache-Control", "no-cache")];
+    let (status, _, at_once) = get_with(&srv.base, "/api/starmap", &refresh).await;
+    assert_eq!(status, 200);
+    assert_eq!(at_once, first);
+
+    // Past that floor it reads the lake again, and the result is what
+    // plain requests are then served.
+    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+    let (status, _, fresh) = get_with(&srv.base, "/api/starmap", &refresh).await;
     assert_eq!(status, 200);
     let as_of = |raw: &str| serde_json::from_str::<Value>(raw).unwrap()["as_of_ns"].clone();
     assert_ne!(as_of(&fresh), as_of(&first));
+    let (_, _, plain) = get_with(&srv.base, "/api/starmap", &[]).await;
+    assert_eq!(plain, fresh);
 }
 
 #[tokio::test]
