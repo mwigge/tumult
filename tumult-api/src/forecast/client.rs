@@ -35,14 +35,27 @@ pub const MAX_RESPONSE_BYTES: usize = 8 << 20;
 pub enum FailureKind {
     /// No connection could be made.
     Unreachable,
-    /// The sidecar did not answer in time.
+    /// The sidecar did not answer in time, or said so itself (408).
     Timeout,
-    /// A 5xx, a redirect, an oversized body or an answer that is not the
-    /// forecast that was asked for.
+    /// A status that is not about this one request (5xx, and 401, 403,
+    /// 404, 429 or any other 4xx: a wrong URL, a proxy, a throttle), a
+    /// redirect, an oversized body or an answer that is not the forecast
+    /// that was asked for.
     BadResponse,
-    /// The sidecar is alive and turned this one request down (4xx), or the
-    /// request exceeds what it accepts.
+    /// The sidecar is alive and turned this one request down (400, 413 or
+    /// 422), or the request exceeds what it accepts.
     Rejected,
+}
+
+/// What a non-2xx status says. Only the statuses the sidecar gives a
+/// request it will not take are a rejection; anything else would be
+/// answered to every request alike, so it counts against the sidecar.
+fn status_kind(status: reqwest::StatusCode) -> FailureKind {
+    match status.as_u16() {
+        400 | 413 | 422 => FailureKind::Rejected,
+        408 => FailureKind::Timeout,
+        _ => FailureKind::BadResponse,
+    }
 }
 
 impl FailureKind {
@@ -273,6 +286,23 @@ async fn read_capped(mut resp: reqwest::Response, cap: usize) -> Result<String, 
         .map_err(|_| SidecarError::new(FailureKind::BadResponse, "response body is not UTF-8"))
 }
 
+/// Whether a request of this size is one the sidecar accepts at all.
+///
+/// # Errors
+/// A [`FailureKind::Rejected`] error naming the limits when it is not.
+pub fn check_limits(context_points: usize, horizon: usize) -> Result<(), SidecarError> {
+    if horizon <= MAX_HORIZON && context_points <= MAX_CONTEXT {
+        return Ok(());
+    }
+    Err(SidecarError::new(
+        FailureKind::Rejected,
+        format!(
+            "{context_points} context points and a horizon of {horizon} exceed the sidecar's \
+             {MAX_CONTEXT} and {MAX_HORIZON}"
+        ),
+    ))
+}
+
 /// The sidecar client. Built once at start-up and shared.
 #[derive(Debug, Clone)]
 pub struct TimestralClient {
@@ -326,16 +356,7 @@ impl TimestralClient {
         levels: &[f64],
         covariates: Option<&Covariates>,
     ) -> Result<Forecast, SidecarError> {
-        if horizon > MAX_HORIZON || context.len() > MAX_CONTEXT {
-            return Err(SidecarError::new(
-                FailureKind::Rejected,
-                format!(
-                    "{} context points and a horizon of {horizon} exceed the sidecar's \
-                     {MAX_CONTEXT} and {MAX_HORIZON}",
-                    context.len()
-                ),
-            ));
-        }
+        check_limits(context.len(), horizon)?;
         let request = Request {
             context: nullable(context),
             horizon,
@@ -353,14 +374,9 @@ impl TimestralClient {
         let status = resp.status();
         let body = read_capped(resp, MAX_RESPONSE_BYTES).await?;
         if !status.is_success() {
-            let kind = if status.is_client_error() {
-                FailureKind::Rejected
-            } else {
-                FailureKind::BadResponse
-            };
             let excerpt: String = body.chars().take(200).collect();
             return Err(SidecarError::new(
-                kind,
+                status_kind(status),
                 format!("sidecar answered {status}: {excerpt}"),
             ));
         }
@@ -529,29 +545,42 @@ mod tests {
         assert_eq!(f.quantiles, vec![vec![1.0]]);
     }
 
-    #[tokio::test]
-    async fn statuses_map_to_coarse_kinds() {
-        let app = axum::Router::new()
-            .route(
-                "/a/forecast",
-                post(|| async { (StatusCode::BAD_REQUEST, "context too short") }),
-            )
-            .route(
-                "/b/forecast",
-                post(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "boom") }),
-            );
+    async fn answer_with(status: u16) -> SidecarError {
+        let status = StatusCode::from_u16(status).unwrap();
+        let app = axum::Router::new().route(
+            "/forecast",
+            post(move || async move { (status, "context too short") }),
+        );
         let base = serve(app).await;
-        let rejected = ask(&TimestralClient::new(&format!("{base}/a")).unwrap())
+        ask(&TimestralClient::new(&base).unwrap())
             .await
-            .unwrap_err();
-        assert_eq!(rejected.kind, FailureKind::Rejected);
-        assert!(!rejected.kind.trips_breaker());
-        assert!(rejected.detail.contains("context too short"), "{rejected}");
-        let broken = ask(&TimestralClient::new(&format!("{base}/b")).unwrap())
-            .await
-            .unwrap_err();
-        assert_eq!(broken.kind, FailureKind::BadResponse);
-        assert!(broken.kind.trips_breaker());
+            .unwrap_err()
+    }
+
+    /// Only a status that is about this one request is a rejection.
+    #[tokio::test]
+    async fn a_request_the_sidecar_turns_down_is_rejected() {
+        for status in [400, 413, 422] {
+            let err = answer_with(status).await;
+            assert_eq!(err.kind, FailureKind::Rejected, "{status}");
+            assert!(!err.kind.trips_breaker(), "{status}");
+            assert!(err.detail.contains("context too short"), "{err}");
+        }
+    }
+
+    /// A wrong URL (404), a sidecar behind something that wants
+    /// credentials (401, 403), one that is throttling (429) or full (503)
+    /// would answer every request the same way: all of them trip.
+    #[tokio::test]
+    async fn every_other_status_is_the_sidecars_fault() {
+        for status in [401, 403, 404, 405, 429, 500, 502, 503] {
+            let err = answer_with(status).await;
+            assert_eq!(err.kind, FailureKind::BadResponse, "{status}");
+            assert!(err.kind.trips_breaker(), "{status}");
+        }
+        let slow = answer_with(408).await;
+        assert_eq!(slow.kind, FailureKind::Timeout);
+        assert!(slow.kind.trips_breaker());
     }
 
     /// A redirect could point the daemon at any address it can reach.
@@ -622,6 +651,13 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(wide.kind, FailureKind::Rejected, "{wide}");
+        assert!(check_limits(MAX_CONTEXT, MAX_HORIZON).is_ok());
+        let err = check_limits(MAX_CONTEXT + 1, 1).unwrap_err();
+        assert_eq!(err.kind, FailureKind::Rejected);
+        assert_eq!(
+            check_limits(1, MAX_HORIZON + 1).unwrap_err().kind,
+            FailureKind::Rejected
+        );
     }
 
     /// The limits mirror the sidecar's; this reads them from its source.

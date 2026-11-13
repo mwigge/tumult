@@ -438,6 +438,8 @@ struct FakeSidecar {
     hits: Arc<AtomicUsize>,
     healthy: Arc<AtomicBool>,
     reject: Arc<AtomicBool>,
+    /// Answer every request with this status when it is not zero.
+    status: Arc<std::sync::atomic::AtomicU16>,
     /// Answer 200 with other quantile levels than the ones asked for.
     other_levels: Arc<AtomicBool>,
 }
@@ -447,6 +449,13 @@ async fn fake_forecast(
     axum::Json(request): axum::Json<Value>,
 ) -> (axum::http::StatusCode, axum::Json<Value>) {
     sidecar.hits.fetch_add(1, Ordering::SeqCst);
+    let forced = sidecar.status.load(Ordering::SeqCst);
+    if forced != 0 {
+        return (
+            axum::http::StatusCode::from_u16(forced).unwrap(),
+            axum::Json(serde_json::json!({"error": "forced"})),
+        );
+    }
     if sidecar.reject.load(Ordering::SeqCst) {
         return (
             axum::http::StatusCode::UNPROCESSABLE_ENTITY,
@@ -594,6 +603,34 @@ async fn a_rejected_request_falls_back_without_opening_the_circuit() {
         assert_eq!(body["provenance"]["fallback_reason"], "rejected");
         assert!(!body.to_string().contains("context too short"), "{body}");
         assert_eq!(sidecar.hits.load(Ordering::SeqCst), expected_hits);
+    }
+}
+
+/// A status that every request would get (a wrong URL, a proxy asking for
+/// credentials, a throttle, a full sidecar) opens the circuit: one request
+/// pays for finding out, the rest fall back at once.
+#[tokio::test]
+async fn a_status_that_is_not_about_the_request_opens_the_circuit() {
+    for (status, reason) in [
+        (404, "bad_response"),
+        (401, "bad_response"),
+        (403, "bad_response"),
+        (429, "bad_response"),
+        (503, "bad_response"),
+        (408, "timeout"),
+    ] {
+        let (url, sidecar) = spawn_fake_sidecar().await;
+        sidecar.status.store(status, Ordering::SeqCst);
+        let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(600)).await;
+        seed_run_with_samples(&srv, "run-status", "exp-status").await;
+        let (_, first) = get(&srv.base, "/api/runs/run-status/impact").await;
+        assert_eq!(first["provenance"]["fallback_reason"], reason, "{status}");
+        let (_, second) = get(&srv.base, "/api/runs/run-status/impact").await;
+        assert_eq!(
+            second["provenance"]["fallback_reason"], "circuit_open",
+            "{status}"
+        );
+        assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1, "{status}");
     }
 }
 

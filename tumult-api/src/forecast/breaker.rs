@@ -11,6 +11,8 @@
 //! * **half-open** — the cool-down has passed and exactly one request, the
 //!   probe, is let through. Its success closes the circuit, its failure
 //!   reopens it; every other request keeps getting the fallback meanwhile.
+//!   A probe whose request the sidecar turned down (`rejected`) proves
+//!   nothing either way: the next request becomes the probe.
 //!   A probe that never reports back (its request was dropped) is replaced
 //!   after [`PROBE_TIMEOUT`].
 //!
@@ -141,6 +143,22 @@ impl Breaker {
         }
         inner.state = State::Closed;
         telemetry::breaker_transition("closed");
+    }
+
+    /// The sidecar answered the call made under `permit` at `now` by
+    /// turning that one request down. It is alive, which is not the same
+    /// as able to forecast: a closed circuit stays closed, and a half-open
+    /// one hands the probe to the next request instead of closing.
+    pub fn record_rejection(&self, permit: Permit, now: Instant) {
+        let mut inner = self.lock();
+        if permit.generation != inner.generation {
+            return;
+        }
+        if !matches!(inner.state, State::HalfOpen { .. }) {
+            return;
+        }
+        inner.state = State::Open { until: now };
+        inner.generation += 1;
     }
 
     /// The call made under `permit` failed at `now`: skip the sidecar for
@@ -298,5 +316,37 @@ mod tests {
         assert!(parse_cooldown(Some("soon")).is_err());
         assert!(parse_cooldown(Some("-1")).is_err());
         assert!(parse_cooldown(Some("1.5")).is_err());
+    }
+
+    /// The sidecar turned the probe's request down: that says it is alive
+    /// but not that it can forecast, so the circuit neither closes nor
+    /// cools down again. The next request is the new probe.
+    #[test]
+    fn a_rejected_probe_hands_the_probe_to_the_next_request() {
+        let breaker = Breaker::new(TEN);
+        let t0 = Instant::now();
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        let after = t0 + secs(11);
+        let probe = breaker.admit(after).unwrap();
+        breaker.record_rejection(probe, after);
+        let next = breaker.admit(after);
+        assert!(next.is_some(), "no second cool-down");
+        assert!(breaker.admit(after).is_none(), "still one probe at a time");
+        breaker.record_success(next.unwrap());
+        assert!(breaker.admit(after).is_some());
+        assert!(breaker.admit(after).is_some(), "closed by a real answer");
+    }
+
+    #[test]
+    fn a_rejection_while_closed_or_out_of_date_changes_nothing() {
+        let breaker = Breaker::new(TEN);
+        let t0 = Instant::now();
+        let permit = breaker.admit(t0).unwrap();
+        breaker.record_rejection(permit, t0);
+        assert_eq!(breaker.admit(t0).unwrap(), permit, "same generation");
+        // A rejection from before the circuit opened decides nothing.
+        breaker.record_failure(breaker.admit(t0).unwrap(), t0);
+        breaker.record_rejection(permit, t0 + secs(1));
+        assert!(breaker.admit(t0 + secs(2)).is_none(), "still cooling down");
     }
 }

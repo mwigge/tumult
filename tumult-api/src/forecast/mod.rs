@@ -13,7 +13,11 @@
 //!
 //! A failing sidecar opens a circuit breaker ([`breaker`]) so the requests
 //! that follow skip it and get the fallback at once until a cool-down has
-//! passed. Whoever made it, a band narrower than the series can resolve
+//! passed. `rejected` is the one code that does not: it is a request the
+//! sidecar turned down with 400, 413 or 422, or one too large to send.
+//! Every other status (401, 403, 404, 408, 429 and 5xx included) would
+//! meet every request alike and opens the circuit.
+//! Whoever made it, a band narrower than the series can resolve
 //! is widened to [`tumult_forecast::band::floor`] and flagged
 //! `degenerate_band`. Spans and counters are described in [`telemetry`].
 
@@ -51,14 +55,32 @@ pub(crate) struct Produced {
     pub fallback_reason: Option<&'static str>,
 }
 
+/// Log why the sidecar did not answer. The detail is the sidecar's own
+/// words or a transport error; it goes nowhere but here.
+fn log_sidecar_failure(error: &client::SidecarError) {
+    tracing::warn!(
+        error.type = error.kind.code(),
+        error.message = %error.detail,
+        "forecast sidecar failed; using the built-in provider"
+    );
+}
+
 /// Ask the sidecar unless its circuit is open; the error is the coarse
 /// reason the built-in provider has to step in.
+///
+/// A request the sidecar would never be sent is turned down before the
+/// breaker is asked: it says nothing about the sidecar and must not take
+/// the half-open probe.
 async fn ask_sidecar(
     state: &ApiState,
     client: &client::TimestralClient,
     parent: &telemetry::Timed,
     request: &ForecastRequest<'_>,
 ) -> Result<Forecast, &'static str> {
+    if let Err(e) = client::check_limits(request.context.len(), request.horizon) {
+        log_sidecar_failure(&e);
+        return Err(e.kind.code());
+    }
     let breaker = state.forecast_breaker();
     let Some(permit) = breaker.admit(Instant::now()) else {
         return Err(CIRCUIT_OPEN);
@@ -82,17 +104,11 @@ async fn ask_sidecar(
         Err(e) => {
             let code = e.kind.code();
             span.finish(code);
-            tracing::warn!(
-                reason = code,
-                detail = %e.detail,
-                "forecast sidecar failed; using the built-in provider"
-            );
+            log_sidecar_failure(&e);
             if e.kind.trips_breaker() {
                 breaker.record_failure(permit, Instant::now());
             } else {
-                // It answered, so it is alive: a probe's rejection closes
-                // the circuit just as its forecast would have.
-                breaker.record_success(permit);
+                breaker.record_rejection(permit, Instant::now());
             }
             Err(code)
         }
@@ -250,5 +266,126 @@ mod tests {
         assert!(number(f64::NAN).is_null());
         assert!(number(f64::INFINITY).is_null());
         assert_eq!(nullable(&[1.0, f64::NAN]), vec![json!(1.0), Value::Null]);
+    }
+
+    fn state_with_sidecar(url: &str, cooldown: std::time::Duration) -> ApiState {
+        ApiState::new(
+            "unused.duckdb".into(),
+            "unused".into(),
+            "unused".into(),
+            std::sync::Arc::new(tumult_intelligence::llm::OpenAiCompatClient::from_env()),
+            tumult_compliance::OrgTree::empty(),
+            None,
+            None,
+            None,
+            false,
+        )
+        .with_forecast_cooldown(cooldown)
+        .with_forecast_url(Some(url.into()))
+        .unwrap()
+    }
+
+    async fn ask(
+        state: &ApiState,
+        context: &[f64],
+        horizon: usize,
+    ) -> Result<Forecast, &'static str> {
+        let span = telemetry::Timed::start(telemetry::PRODUCE);
+        let request = ForecastRequest {
+            context,
+            horizon,
+            levels: &DEFAULT_LEVELS,
+            covariates: None,
+        };
+        let client = state.forecast_client().unwrap();
+        ask_sidecar(state, client, &span, &request).await
+    }
+
+    /// A request the sidecar would never be sent says nothing about the
+    /// sidecar: it is turned down before the breaker is asked, so it
+    /// neither takes the half-open probe nor reads as `circuit_open`.
+    #[tokio::test]
+    async fn an_oversized_request_is_turned_down_before_the_breaker_is_asked() {
+        let cooldown = std::time::Duration::from_secs(600);
+        let state = state_with_sidecar("http://127.0.0.1:1", cooldown);
+        let breaker = state.forecast_breaker();
+        let now = Instant::now();
+        breaker.record_failure(breaker.admit(now).unwrap(), now);
+        let horizon = client::MAX_HORIZON + 1;
+        assert_eq!(
+            ask(&state, &[1.0, 2.0], horizon).await.err(),
+            Some("rejected")
+        );
+        assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some(CIRCUIT_OPEN));
+    }
+
+    /// A half-open probe that is answered 422 has not shown the sidecar
+    /// can forecast. The circuit stays half open for the next request.
+    #[tokio::test]
+    async fn a_rejected_probe_does_not_close_the_circuit() {
+        use axum::http::StatusCode;
+        let app = axum::Router::new().route(
+            "/forecast",
+            axum::routing::post(|| async { (StatusCode::UNPROCESSABLE_ENTITY, "no") }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let cooldown = std::time::Duration::from_millis(40);
+        let state = state_with_sidecar(&format!("http://{addr}"), cooldown);
+        let breaker = state.forecast_breaker();
+        let now = Instant::now();
+        breaker.record_failure(breaker.admit(now).unwrap(), now);
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("rejected"));
+        let later = Instant::now();
+        assert!(breaker.admit(later).is_some(), "the next request probes");
+        assert!(breaker.admit(later).is_none(), "and it is the only one");
+    }
+
+    /// Every `tracing` event in `source`, from the macro to its `);`.
+    fn tracing_events(source: &str) -> Vec<&str> {
+        let marker = concat!("tracing", "::");
+        source
+            .match_indices(marker)
+            .filter_map(|(at, _)| {
+                let rest = &source[at..];
+                let open = rest.find("!(")?;
+                let name = &rest[marker.len()..open];
+                if !["warn", "error", "info", "debug", "trace"].contains(&name) {
+                    return None;
+                }
+                rest.find(");").map(|end| &rest[..end])
+            })
+            .collect()
+    }
+
+    /// Logs are structured: what varies is a field, named the way the
+    /// rest of the daemon names it, and the message is a constant.
+    #[test]
+    fn forecast_log_events_carry_fields_and_a_constant_message() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/forecast");
+        let mut sources = vec![concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs").to_string()];
+        for entry in std::fs::read_dir(dir).unwrap() {
+            sources.push(entry.unwrap().path().to_string_lossy().into_owned());
+        }
+        let mut seen = 0;
+        for path in sources {
+            let source = std::fs::read_to_string(&path).unwrap();
+            for event in tracing_events(&source) {
+                let forecast_event = path.contains("/forecast/") || event.contains("FORECAST");
+                if !forecast_event {
+                    continue;
+                }
+                seen += 1;
+                assert!(event.contains("error.message = "), "{path}: {event}");
+                assert!(event.contains("error.type = "), "{path}: {event}");
+                assert!(!event.contains(" error = "), "{path}: {event}");
+                let message = event.rsplit('"').nth(1).unwrap_or_default();
+                assert!(!message.contains('{'), "{path}: interpolated: {event}");
+            }
+        }
+        assert!(seen >= 4, "only {seen} forecast events were found");
     }
 }

@@ -175,8 +175,8 @@ error), which stays out of the API response.
 |---|---|
 | `unreachable` | No connection to the sidecar |
 | `timeout` | No answer in time |
-| `bad_response` | A 5xx, or a body the daemon cannot use: not JSON, the wrong shape, other quantile levels than requested, values that are not finite |
-| `rejected` | The sidecar answered 4xx: it will not take this request |
+| `bad_response` | A status that is not about this one request (5xx, and 401, 403, 404, 429 or any other 4xx not listed under `rejected`), or a body the daemon cannot use: not JSON, the wrong shape, other quantile levels than requested, values that are not finite |
+| `rejected` | The sidecar answered 400, 413 or 422: it will not take this request. Also a request larger than the sidecar accepts, which is never sent |
 | `circuit_open` | The sidecar is being skipped after a failure (below) |
 
 The sidecar gets 3 seconds to accept a connection and 15 seconds per
@@ -196,9 +196,18 @@ fallback. Success closes the circuit, another failure starts a new
 cool-down. An answer that arrives late, from a call made before the circuit
 last opened, cannot close it.
 
-A 4xx answer (`rejected`) does not open the circuit. It means the sidecar
-turned down that one request (a context it will not take), so only that
-request falls back.
+`rejected` is the one code that does not open the circuit. It means the
+sidecar turned down that one request with 400, 413 or 422 (a context it
+will not take), so only that request falls back. A request too large to
+send is turned down before the breaker is asked at all. If the rejected
+request was the half-open probe, the circuit neither closes nor starts a
+new cool-down: the next request is the probe.
+
+Every other status opens the circuit, 4xx included. 404, 401 and 403 mean
+the URL is wrong or something in front of the sidecar wants credentials;
+429 and 503 mean it is throttling or full; 408 is reported as `timeout`.
+Each of them would meet every request alike, so one request finds out and
+the rest fall back at once instead of each paying for the round trip.
 
 | Variable | Default | Meaning |
 |---|---|---|
