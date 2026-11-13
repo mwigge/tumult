@@ -6,6 +6,7 @@
 //! from the start as an empty slot and is filled in when the logger
 //! provider exists.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
@@ -36,14 +37,37 @@ pub enum AttachError {
 /// The place in the subscriber where the OTLP log bridge goes once a logger
 /// provider exists. Cloning shares the same slot.
 #[derive(Clone, Default)]
-pub(crate) struct LogBridgeSlot(Arc<OnceLock<Bridge>>);
+pub(crate) struct LogBridgeSlot(Arc<SlotState>);
+
+#[derive(Default)]
+struct SlotState {
+    bridge: OnceLock<Bridge>,
+    /// Set by [`LogBridgeSlot::detach`]; the bridge is never used again.
+    detached: AtomicBool,
+}
 
 impl LogBridgeSlot {
     /// Starts exporting events to `provider`.
     pub(crate) fn attach(&self, provider: &SdkLoggerProvider) -> Result<(), AttachError> {
         self.0
+            .bridge
             .set(OpenTelemetryTracingBridge::new(provider))
             .map_err(|_| AttachError::AlreadyAttached)
+    }
+
+    /// Stops exporting, for good. Call it before shutting the provider down:
+    /// the SDK logs a warning for every record emitted to a provider that is
+    /// shut down, and that warning would follow every later event.
+    pub(crate) fn detach(&self) {
+        self.0.detached.store(true, Ordering::Release);
+    }
+
+    /// The bridge, while one is attached and not detached.
+    fn bridge(&self) -> Option<&Bridge> {
+        if self.0.detached.load(Ordering::Acquire) {
+            return None;
+        }
+        self.0.bridge.get()
     }
 
     /// The subscriber layer for this slot, wrapped in the filter that keeps
@@ -62,12 +86,13 @@ fn export_filter<S>() -> impl Filter<S> {
     filter_fn(|metadata| is_exporter_internal(metadata.target())).not()
 }
 
-/// Forwards to the bridge once the slot is filled; a no-op before that.
+/// Forwards to the bridge while the slot holds one; a no-op before a
+/// provider is attached and after it is detached.
 struct LateBridge(LogBridgeSlot);
 
 impl LateBridge {
     fn bridge(&self) -> Option<&Bridge> {
-        (self.0).0.get()
+        self.0.bridge()
     }
 }
 
@@ -167,6 +192,32 @@ mod tests {
                 "login failed".to_string()
             )]
         );
+    }
+
+    #[test]
+    fn events_after_detach_are_not_exported() {
+        let slot = LogBridgeSlot::default();
+        let (provider, exporter) = provider();
+        slot.attach(&provider).unwrap();
+        let subscriber = tracing_subscriber::registry().with(slot.layer());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(target: "tumultd", "before detach");
+            slot.detach();
+            tracing::info!(target: "tumultd", "after detach");
+        });
+        assert_eq!(
+            exported(&exporter),
+            [("tumultd".to_string(), "before detach".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_detached_slot_takes_no_new_provider() {
+        let slot = LogBridgeSlot::default();
+        let (provider, _) = provider();
+        slot.attach(&provider).unwrap();
+        slot.detach();
+        assert_eq!(slot.attach(&provider), Err(AttachError::AlreadyAttached));
     }
 
     #[test]

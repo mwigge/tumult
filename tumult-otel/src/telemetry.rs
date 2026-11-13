@@ -459,10 +459,11 @@ impl TumultTelemetry {
         // recordings must hit a noop provider, not a closed exporter.
         global::set_meter_provider(opentelemetry::metrics::noop::NoopMeterProvider::new());
 
-        // The log bridge holds this provider directly (no global), so events
-        // emitted after shutdown are dropped by the SDK's shut-down batch
-        // processor rather than exported. They still reach stderr.
+        // The log bridge holds this provider directly (no global). Detach it
+        // first: the SDK warns about every record emitted to a provider that
+        // is shut down. Later events still reach stderr.
         if let Some(ref provider) = self.logger_provider {
+            logging::detach_log_bridge();
             if let Err(error) = provider.shutdown() {
                 log_shutdown_failed(SIGNAL_LOGS, &error);
             }

@@ -235,6 +235,15 @@ pub(crate) fn attach_log_bridge(provider: &SdkLoggerProvider) -> Result<(), Atta
         .attach(provider)
 }
 
+/// Stops mirroring log events over OTLP, before the logger provider is shut
+/// down. A no-op when [`init`] has not installed the subscriber.
+pub(crate) fn detach_log_bridge() {
+    let Some(slot) = GLOBAL_BRIDGE.get() else {
+        return;
+    };
+    slot.detach();
+}
+
 /// The deployment environment for this process, if configured.
 #[must_use]
 pub fn deployment_environment() -> Option<String> {
