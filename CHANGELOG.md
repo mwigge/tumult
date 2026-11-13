@@ -30,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- `tumult-ssh`: tracing a remote command longer than the preview limit no longer panics when the cut falls inside a multi-byte character.
+- `tumult-clickhouse`: the `server.address` span attribute carries the URL with credentials masked instead of the raw URL, and the DDL preview event is cut on a character boundary.
 - DORA citations corrected against the Official Journal text. Manual-record examples, the Kronika seed and the manual-entry placeholder cited a seventh paragraph of Art. 24, which has six: the yearly test is now `DORA Art. 24(6)` and the tabletop exercise `DORA Art. 11(6)`. `tumult_core::compliance::dora_ref_exists` checks a `DORA Art. N(p)` reference against a paragraph table, and a test runs every DORA row of the citation registry through it.
 - Citation registry `2026.11`: Art. 25 no longer states a yearly frequency (that is the new Art. 24(6) row), Art. 26 applies to entities identified by the competent authority rather than "systemically important" ones, Art. 11 no longer covers backup, and backup and restoration have their own Art. 12 row. The DORA rows are dated 2026-11-13. The two new rows add the graph nodes `compliance:DORA/Art.24(6)` and `compliance:DORA/Art.12`.
 - The DORA evidence pack traceability matrix lists "Art. 11(3), 11(4), 11(6)", "Art. 12(2)" and "Art. 24–25"; Art. 26 (threat-led penetration testing) is no longer listed as evidenced. `docs/regulatory-mapping.md`, `docs/testprotocol.md` and the retention table in blog post 9 are corrected to match: DORA sets no retention period for test evidence, and Art. 28 is third-party risk.
@@ -37,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Tests: tests that asserted nothing, restated derives or duplicated another test were rewritten to assert observable behaviour (spans, metrics, requests, values) or removed, in the plugin, SSH, baseline, ClickHouse, Cypher, Kubernetes, net, agentic, intelligence, autopilot, authoring, cloud and exec crates. `tumult-test-utils` gained span and metric capture and a locking environment guard. The policy is in `docs/guides/testing.md`; `scripts/check-test-hygiene.py` enforces the mechanical part in CI, with the offenders in crates not yet cleaned listed in `scripts/test-hygiene-allow.txt`.
 - **BREAKING** `GET /api/topology` node ids changed: a target is `sys:<environment>/<system>` (the id the Star Map uses) instead of `tgt:<name>`, and a target known only by `resilience.target.name` is `sys:-/<name>`. Clients that stored or matched `tgt:` ids must switch. The endpoint is now always bounded in time: without `range` it covers `7d`, and an unknown `range` is `400`.
 - Every ranged endpoint accepts the same ranges (`24h`, `7d`, `14d`, `30d`) from one table, so `/api/experiments` and the others answer `30d` like the Star Map does. An unknown range is `400` everywhere.
 - `GET /api/risks` and `GET /api/posture` keep a target tested in two environments as two coverage rows (keyed on target and environment); the posture page labels such rows `target (environment)`.
