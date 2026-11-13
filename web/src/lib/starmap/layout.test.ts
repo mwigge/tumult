@@ -181,6 +181,21 @@ describe('layoutStar', () => {
         expect(layoutStar(nodes, []).size).toBe(2);
     });
 
+    it('places two hundred thousand siblings without running out of stack or time', () => {
+        const nodes = [node('org:', 'org')];
+        for (let i = 0; i < 200_000; i += 1) nodes.push(node(`org:u${i}`, 'org', 'org:'));
+        const started = performance.now();
+        const positions = layoutStar(nodes, []);
+        expect(positions.size).toBe(nodes.length);
+        expect(performance.now() - started).toBeLessThan(15_000);
+    }, 30_000);
+
+    it('places a hundred and fifty thousand satellites', () => {
+        const nodes = [node('org:', 'org'), node('sys:demo/a', 'system', 'org:')];
+        for (let i = 0; i < 150_000; i += 1) nodes.push(node(`def:name/d${i}`, 'def'));
+        expect(layoutStar(nodes, []).size).toBe(nodes.length);
+    }, 30_000);
+
     it('returns an empty map for no nodes', () => {
         expect(layoutStar([], []).size).toBe(0);
     });

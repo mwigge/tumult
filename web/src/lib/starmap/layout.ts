@@ -92,7 +92,9 @@ function buildTree(nodes: LayoutNode[]): Tree {
             continue;
         }
         tree.parent.set(id, parent);
-        tree.children.set(parent, [...(tree.children.get(parent) ?? []), id]);
+        const siblings = tree.children.get(parent);
+        if (siblings) siblings.push(id);
+        else tree.children.set(parent, [id]);
     }
     const companies = loose.filter((id) => tree.kind.get(id) === 'org');
     tree.centre = companies.length === 1 ? companies[0] : null;
@@ -110,7 +112,16 @@ function buildTree(nodes: LayoutNode[]): Tree {
 /** Children of the layout root: the centre's own plus the loose nodes. */
 function topLevel(tree: Tree): string[] {
     const own = tree.centre ? (tree.children.get(tree.centre) ?? []) : [];
-    return [...own, ...tree.children.get(TOP)!].sort();
+    return own.concat(tree.children.get(TOP)!).sort();
+}
+
+/** The largest of `floor` and `values`, without spreading them onto the stack. */
+function largest(floor: number, values: Iterable<number>): number {
+    let most = floor;
+    for (const value of values) {
+        if (value > most) most = value;
+    }
+    return most;
 }
 
 function childrenOf(tree: Tree, id: string): string[] {
@@ -169,7 +180,10 @@ function orgDepth(tree: Tree, id: string): number {
 /** Ring number per spine node; a child always sits outside its parent. */
 function assignRings(tree: Tree, order: string[]): Map<string, number> {
     const orgs = order.filter((id) => tree.kind.get(id) === 'org');
-    const deepest = Math.max(1, ...orgs.map((id) => orgDepth(tree, id)));
+    const deepest = largest(
+        1,
+        orgs.map((id) => orgDepth(tree, id)),
+    );
     const rings = new Map<string, number>();
     for (const id of order) {
         const kind = tree.kind.get(id)!;
@@ -182,9 +196,9 @@ function assignRings(tree: Tree, order: string[]): Map<string, number> {
 
 /** Spine nodes parent-first, so a ring can build on the parent's ring. */
 function parentFirst(tree: Tree): string[] {
-    const order = [...topLevel(tree)];
+    const order = topLevel(tree);
     for (let i = 0; i < order.length; i += 1) {
-        order.push(...(tree.children.get(order[i]) ?? []));
+        for (const child of tree.children.get(order[i]) ?? []) order.push(child);
     }
     return order;
 }
@@ -312,7 +326,7 @@ export function layoutStar(nodes: LayoutNode[], edges: LayoutEdge[] = []): Map<s
         placed.set(id, polar(rings.get(id)! * step, angles.get(id)!));
     }
     const near = neighbours(edges);
-    const outermost = Math.max(SATELLITE_RING - 1, ...rings.values());
+    const outermost = largest(SATELLITE_RING - 1, rings.values());
     const inner = tree.satellites.filter((id) => tree.kind.get(id) !== OUTER_KIND);
     const outer = tree.satellites.filter((id) => tree.kind.get(id) === OUTER_KIND);
     const used = placeRing(inner, (outermost + 1) * step, near, placed);
