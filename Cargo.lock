@@ -8337,6 +8337,7 @@ dependencies = [
  "tokio",
  "toon-format",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]
