@@ -8,26 +8,55 @@
 //! windows into the run's [`LoadResult`]. A soak profile with
 //! `sample_interval_s` therefore streams one sample per interval; a flat
 //! config is a single window and a single summary, as with k6.
+//!
+//! `stop` lets the in-flight window finish (the first window always runs)
+//! and skips the windows not yet started; it waits at most the plan's
+//! remaining time plus the window grace before killing the process. A run
+//! that is cut before any window completed is an error, never a passing
+//! result, and a run with no completed window never meets its thresholds.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use super::{load_profile, LoadExecutor, LoadHandle};
 use crate::types::{LoadConfig, LoadResult, LoadSample, LoadTool};
+
+/// Grace added to a window's planned length before its process is killed,
+/// and to the plan's remaining time before `stop` gives up waiting.
+pub const DEFAULT_WINDOW_GRACE: Duration = Duration::from_secs(10);
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// oha load executor.
 ///
 /// The binary is resolved from `TUMULT_OHA_BINARY`, falling back to `oha`
 /// on `PATH`. `LoadConfig::script` carries the URL to hit.
-pub struct OhaLoadExecutor;
+#[derive(Debug, Clone)]
+pub struct OhaLoadExecutor {
+    window_grace: Duration,
+}
 
-/// Grace added to a window's planned length before its process is killed.
-const WINDOW_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
-/// How long `stop()` lets the in-flight window finish before killing it.
-const OHA_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+impl Default for OhaLoadExecutor {
+    fn default() -> Self {
+        Self {
+            window_grace: DEFAULT_WINDOW_GRACE,
+        }
+    }
+}
+
+impl OhaLoadExecutor {
+    /// An executor whose windows are killed `grace` after their planned
+    /// length (tests use a short one; production keeps the default).
+    #[must_use]
+    pub fn with_window_grace(grace: Duration) -> Self {
+        Self {
+            window_grace: grace,
+        }
+    }
+}
 
 /// What one window produced.
+#[derive(Debug)]
 struct WindowOutcome {
     ts_ns: i64,
     duration_s: f64,
@@ -35,26 +64,64 @@ struct WindowOutcome {
     summary: Result<OhaSummary, String>,
 }
 
+type CurrentChild = Arc<Mutex<Option<std::process::Child>>>;
+
 struct OhaHandle {
     stop: Arc<AtomicBool>,
-    current: Arc<Mutex<Option<std::process::Child>>>,
-    worker: std::thread::JoinHandle<Vec<WindowOutcome>>,
+    current: CurrentChild,
+    /// `None` once `stop` has taken it.
+    worker: Option<std::thread::JoinHandle<Vec<WindowOutcome>>>,
+    started_at: Instant,
     started_at_ns: i64,
+    plan_total_s: f64,
+    grace: Duration,
     tool: LoadTool,
     vus: u32,
     thresholds: std::collections::HashMap<String, f64>,
 }
 
+impl Drop for OhaHandle {
+    /// A handle dropped without `stop` (a runner error path) must not leave
+    /// an oha process or the worker behind.
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(child) = lock(&self.current).as_mut() {
+            kill_tree(child);
+        }
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
 /// The fields of an oha `--json` summary the adapter keeps. Latencies are
-/// converted from oha's seconds to milliseconds.
+/// converted from oha's seconds to milliseconds. `errors` counts transport
+/// failures (`errorDistribution`) and every non-2xx/3xx answer, so the
+/// error rate matches what a caller would see, unlike oha's own
+/// `successRate` which only knows about transport.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OhaSummary {
     pub requests: u64,
-    pub success_rate: f64,
+    pub errors: u64,
     pub throughput_rps: f64,
     pub latency_p50_ms: f64,
     pub latency_p95_ms: f64,
     pub latency_p99_ms: f64,
+}
+
+impl OhaSummary {
+    /// `errors / requests`, zero when nothing was sent.
+    #[must_use]
+    pub fn error_rate(&self) -> f64 {
+        if self.requests == 0 {
+            return 0.0;
+        }
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        {
+            (self.errors as f64 / self.requests as f64).clamp(0.0, 1.0)
+        }
+    }
 }
 
 /// Parse oha's JSON output (`oha -j`). Every field the adapter needs must
@@ -77,20 +144,27 @@ pub fn parse_oha_summary(text: &str) -> Result<OhaSummary, String> {
         cur.as_f64()
             .ok_or_else(|| format!("oha summary {} is not a number", path.join(".")))
     };
-    let count = |key: &str| -> Result<u64, String> {
-        let Some(map) = v.get(key) else {
-            return Err(format!("oha summary lacks {key}"));
-        };
-        let map = map
-            .as_object()
-            .ok_or_else(|| format!("oha summary {key} is not an object"))?;
-        Ok(map.values().filter_map(serde_json::Value::as_u64).sum())
-    };
-    let statuses = count("statusCodeDistribution")?;
-    let errors = count("errorDistribution").unwrap_or(0);
+    let statuses = v
+        .get("statusCodeDistribution")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "oha summary lacks statusCodeDistribution".to_string())?;
+    let mut requests = 0;
+    let mut errors = 0;
+    for (code, count) in statuses {
+        let count = count.as_u64().unwrap_or(0);
+        requests += count;
+        if !code.parse::<u16>().is_ok_and(|c| (200..400).contains(&c)) {
+            errors += count;
+        }
+    }
+    let transport: u64 = v
+        .get("errorDistribution")
+        .and_then(serde_json::Value::as_object)
+        .map(|m| m.values().filter_map(serde_json::Value::as_u64).sum())
+        .unwrap_or(0);
     Ok(OhaSummary {
-        requests: statuses + errors,
-        success_rate: number(&["summary", "successRate"])?,
+        requests: requests + transport,
+        errors: errors + transport,
         throughput_rps: number(&["summary", "requestsPerSec"])?,
         latency_p50_ms: number(&["latencyPercentiles", "p50"])? * 1000.0,
         latency_p95_ms: number(&["latencyPercentiles", "p95"])? * 1000.0,
@@ -98,24 +172,34 @@ pub fn parse_oha_summary(text: &str) -> Result<OhaSummary, String> {
     })
 }
 
-/// oha's `-z` duration: whole seconds as `Ns`, anything else in `ms`.
+/// oha's `-z` duration: whole seconds as `Ns`, anything else in `ms`,
+/// never below one millisecond.
 fn oha_duration(seconds: f64) -> String {
-    if seconds.fract() == 0.0 {
+    if seconds >= 1.0 && seconds.fract() == 0.0 {
         return format!("{seconds:.0}s");
     }
-    format!("{:.0}ms", (seconds * 1000.0).round())
+    let ms = (seconds * 1000.0).round().max(1.0);
+    format!("{ms:.0}ms")
 }
 
 /// Spawn one window's process and wait for it, bounded by the window's
-/// length plus grace. The child is parked in `current` while it runs so
-/// `stop()` can kill it.
+/// length plus `grace`. The child is parked in `current` while it runs so
+/// `stop()` (or `Drop`) can kill it.
 fn run_window(
     binary: &str,
     url: &std::ffi::OsStr,
     window: &load_profile::Window,
     current: &Mutex<Option<std::process::Child>>,
+    grace: Duration,
 ) -> Result<OhaSummary, String> {
-    let child = std::process::Command::new(binary)
+    let mut cmd = std::process::Command::new(binary);
+    #[cfg(unix)]
+    {
+        // Its own process group, so a kill reaches every process oha (or a
+        // wrapper script) spawned, not only the leader.
+        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    }
+    let child = cmd
         .arg("--no-tui")
         .arg("-j")
         .arg("-c")
@@ -127,7 +211,8 @@ fn run_window(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("failed to start oha: {e}"))?;
-    let output = wait_parked(child, current, window_deadline(window.duration_s))?;
+    let deadline = Instant::now() + Duration::from_secs_f64(window.duration_s.max(0.0)) + grace;
+    let output = wait_parked(child, current, deadline)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
@@ -139,18 +224,12 @@ fn run_window(
     parse_oha_summary(&String::from_utf8_lossy(&output.stdout))
 }
 
-fn window_deadline(duration_s: f64) -> std::time::Instant {
-    std::time::Instant::now()
-        + std::time::Duration::from_secs_f64(duration_s.max(0.0))
-        + WINDOW_GRACE
-}
-
 /// Park `child` in `current`, drain its pipes on reader threads, and poll
 /// until it exits or `deadline` passes (then kill and reap it).
 fn wait_parked(
     mut child: std::process::Child,
     current: &Mutex<Option<std::process::Child>>,
-    deadline: std::time::Instant,
+    deadline: Instant,
 ) -> Result<std::process::Output, String> {
     fn drain<R: std::io::Read + Send + 'static>(reader: R) -> std::thread::JoinHandle<Vec<u8>> {
         std::thread::spawn(move || {
@@ -170,13 +249,17 @@ fn wait_parked(
             None => Err("oha window was removed while running".to_string()),
             Some(child) => match child.try_wait() {
                 Ok(Some(status)) => Ok(Some(status)),
-                Ok(None) if std::time::Instant::now() >= deadline => {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                Ok(None) if Instant::now() >= deadline => {
+                    kill_tree(child);
                     Err("oha did not exit within its window plus grace; killed".to_string())
                 }
                 Ok(None) => Ok(None),
-                Err(e) => Err(format!("oha wait failed: {e}")),
+                Err(e) => {
+                    // The wait itself failed: make sure nothing is left
+                    // running or unreaped before reporting.
+                    kill_tree(child);
+                    Err(format!("oha wait failed: {e}"))
+                }
             },
         };
         match polled {
@@ -190,17 +273,38 @@ fn wait_parked(
             }
             Err(e) => {
                 *slot = None;
+                // Killed or unwaitable: the pipes may still be held by a
+                // straggler, so the drain threads are left to finish on
+                // their own rather than blocking the adapter.
                 break Err(e);
             }
         }
     };
+    let status = status?;
     let stdout = stdout_thread.map_or_else(Vec::new, |t| t.join().unwrap_or_default());
     let stderr = stderr_thread.map_or_else(Vec::new, |t| t.join().unwrap_or_default());
-    status.map(|status| std::process::Output {
+    Ok(std::process::Output {
         status,
         stdout,
         stderr,
     })
+}
+
+/// Kill the window's whole process group (Unix) or the leader (elsewhere)
+/// and reap the leader. The pipes may stay open until every descendant is
+/// gone, so callers must not block on draining them afterwards.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        if let Ok(pid) = i32::try_from(child.id()) {
+            // SAFETY: plain syscall on a process group this adapter created.
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -214,7 +318,8 @@ impl LoadExecutor for OhaLoadExecutor {
         let windows = load_profile::windows(&plan);
         let url = config.script.as_os_str().to_owned();
         let stop = Arc::new(AtomicBool::new(false));
-        let current = Arc::new(Mutex::new(None));
+        let current: CurrentChild = Arc::new(Mutex::new(None));
+        let grace = self.window_grace;
 
         // Fail fast on a missing binary instead of discovering it in the
         // worker thread, so `start` errors like the k6 adapter does.
@@ -227,18 +332,23 @@ impl LoadExecutor for OhaLoadExecutor {
             return Err(format!("failed to start oha ({binary}): {e}"));
         }
 
+        let started_at = Instant::now();
         let started_at_ns = super::epoch_nanos_now();
+        let window_count = windows.len();
         let worker = {
             let stop = Arc::clone(&stop);
             let current = Arc::clone(&current);
             std::thread::spawn(move || {
                 let mut outcomes = Vec::with_capacity(windows.len());
-                for window in windows {
-                    if stop.load(Ordering::SeqCst) {
+                for (i, window) in windows.into_iter().enumerate() {
+                    // The first window always runs so a started load
+                    // leaves evidence; `stop` skips the ones after the
+                    // in-flight window.
+                    if i > 0 && stop.load(Ordering::SeqCst) {
                         break;
                     }
                     let ts_ns = super::epoch_nanos_now();
-                    let summary = run_window(&binary, &url, &window, &current);
+                    let summary = run_window(&binary, &url, &window, &current, grace);
                     outcomes.push(WindowOutcome {
                         ts_ns,
                         duration_s: window.duration_s,
@@ -250,16 +360,20 @@ impl LoadExecutor for OhaLoadExecutor {
             })
         };
         tracing::info!(
-            windows = plan.stages.len(),
+            windows = window_count,
             peak_vus = plan.peak_vus(),
+            total_s = plan.total_duration_s(),
             "oha load plan started"
         );
         Ok(LoadHandle {
             inner: Box::new(OhaHandle {
                 stop,
                 current,
-                worker,
+                worker: Some(worker),
+                started_at,
                 started_at_ns,
+                plan_total_s: plan.total_duration_s(),
+                grace,
                 tool: config.tool.clone(),
                 vus: plan.peak_vus(),
                 thresholds: config.thresholds.clone(),
@@ -268,46 +382,62 @@ impl LoadExecutor for OhaLoadExecutor {
     }
 
     fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String> {
-        let oha: OhaHandle = *handle
+        let mut oha: Box<OhaHandle> = handle
             .inner
             .downcast::<OhaHandle>()
             .map_err(|_| "invalid load handle")?;
-        let OhaHandle {
-            stop,
-            current,
-            worker,
-            started_at_ns,
-            tool,
-            vus,
-            thresholds,
-        } = oha;
-        stop.store(true, Ordering::SeqCst);
-        let deadline = std::time::Instant::now() + OHA_STOP_TIMEOUT;
-        while !worker.is_finished() && std::time::Instant::now() < deadline {
+        oha.stop.store(true, Ordering::SeqCst);
+        let worker = oha
+            .worker
+            .take()
+            .ok_or_else(|| "oha handle was already stopped".to_string())?;
+        // Let the plan run out (minus the windows we just told it to
+        // skip). The in-flight window kills its own process one grace
+        // after its length, so the worker is only interrupted here when
+        // it is hung a further grace beyond that.
+        let remaining = Duration::from_secs_f64(oha.plan_total_s.max(0.0))
+            .saturating_sub(oha.started_at.elapsed());
+        let deadline = Instant::now() + remaining + oha.grace + oha.grace;
+        while !worker.is_finished() && Instant::now() < deadline {
             std::thread::sleep(POLL_INTERVAL);
         }
         let interrupted = !worker.is_finished();
         if interrupted {
-            if let Some(child) = lock(&current).as_mut() {
-                let _ = child.kill();
+            if let Some(child) = lock(&oha.current).as_mut() {
+                kill_tree(child);
             }
         }
-        let mut outcomes = worker
+        let outcomes = worker
             .join()
             .map_err(|_| "oha worker thread panicked".to_string())?;
-        if interrupted {
-            // The window we cut short carries no usable summary.
-            outcomes.pop();
-        }
+        let outcomes = finish(outcomes, interrupted)?;
         let ended_at_ns = super::epoch_nanos_now();
         let run = RunShape {
-            started_at_ns,
+            started_at_ns: oha.started_at_ns,
             ended_at_ns,
-            tool,
-            vus,
+            tool: oha.tool.clone(),
+            vus: oha.vus,
         };
-        Ok(aggregate(&run, outcomes, &thresholds))
+        Ok(aggregate(&run, outcomes, &oha.thresholds))
     }
+}
+
+/// What `stop` keeps of the worker's outcomes. A window cut short by the
+/// kill is dropped only if it failed (a window that still produced a
+/// summary is evidence); a run interrupted before any window completed
+/// is an error, like a k6 that never exited cleanly.
+fn finish(
+    mut outcomes: Vec<WindowOutcome>,
+    interrupted: bool,
+) -> Result<Vec<WindowOutcome>, String> {
+    if interrupted && outcomes.last().is_some_and(|o| o.summary.is_err()) {
+        outcomes.pop();
+    }
+    let completed = outcomes.iter().any(|o| o.summary.is_ok());
+    if interrupted && !completed {
+        return Err("oha run was cut before any window completed".into());
+    }
+    Ok(outcomes)
 }
 
 /// The run-level facts the aggregate carries over unchanged.
@@ -321,7 +451,8 @@ struct RunShape {
 /// Fold the windows into one [`LoadResult`]. Throughput is time-weighted,
 /// latency percentiles are request-weighted means of the window
 /// percentiles (an approximation, since oha does not expose raw
-/// latencies), and every window with a summary becomes a sample.
+/// latencies), and every window with a summary becomes a sample. A run
+/// with no completed window never meets its thresholds.
 fn aggregate(
     run: &RunShape,
     outcomes: Vec<WindowOutcome>,
@@ -339,7 +470,7 @@ fn aggregate(
                 latency_p50_ms: summary.latency_p50_ms,
                 latency_p95_ms: summary.latency_p95_ms,
                 latency_p99_ms: summary.latency_p99_ms,
-                error_rate: (1.0 - summary.success_rate).clamp(0.0, 1.0),
+                error_rate: summary.error_rate(),
                 requests: summary.requests,
             }),
             Err(e) => {
@@ -372,6 +503,9 @@ fn aggregate(
     } else {
         0.0
     };
+    if samples.is_empty() {
+        tracing::warn!("oha: no window completed; thresholds reported unmet");
+    }
     let result = LoadResult {
         tool: run.tool.clone(),
         started_at_ns: run.started_at_ns,
@@ -384,7 +518,7 @@ fn aggregate(
         latency_p99_ms: weighted(|s| s.latency_p99_ms),
         error_rate: weighted(|s| s.error_rate),
         total_requests,
-        thresholds_met: all_windows_ok,
+        thresholds_met: all_windows_ok && !samples.is_empty(),
         samples,
     };
     let thresholds_met = result.thresholds_met && thresholds_hold(&result, thresholds);
@@ -430,13 +564,16 @@ fn thresholds_hold(
 mod tests {
     use super::*;
 
-    const OHA_JSON: &str = r#"{"summary":{"successRate":0.98,"total":5.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":120.5,"totalData":100,"sizePerRequest":10,"sizePerSec":100},"responseTimeHistogram":{},"latencyPercentiles":{"p10":0.01,"p25":0.02,"p50":0.04,"p75":0.06,"p90":0.09,"p95":0.15,"p99":0.19,"p99.9":0.2,"p99.99":0.2},"rps":{"mean":120.5,"stddev":1.0,"max":130.0,"min":110.0,"percentiles":{}},"details":{},"statusCodeDistribution":{"200":588,"500":2},"errorDistribution":{"connection refused":10}}"#;
+    const OHA_JSON: &str = r#"{"summary":{"successRate":0.98,"total":5.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":120.5,"totalData":100,"sizePerRequest":10,"sizePerSec":100},"responseTimeHistogram":{},"latencyPercentiles":{"p10":0.01,"p25":0.02,"p50":0.04,"p75":0.06,"p90":0.09,"p95":0.15,"p99":0.19,"p99.9":0.2,"p99.99":0.2},"rps":{"mean":120.5,"stddev":1.0,"max":130.0,"min":110.0,"percentiles":{}},"details":{},"statusCodeDistribution":{"200":580,"302":8,"500":2,"429":10},"errorDistribution":{"connection refused":10}}"#;
 
     #[test]
-    fn parse_oha_summary_reads_counts_and_converts_latency_to_ms() {
+    fn parse_oha_summary_counts_transport_and_http_errors() {
         let s = parse_oha_summary(OHA_JSON).expect("parse");
-        assert_eq!(s.requests, 600);
-        assert!((s.success_rate - 0.98).abs() < f64::EPSILON);
+        // 580 + 8 + 2 + 10 status rows plus 10 transport failures.
+        assert_eq!(s.requests, 610);
+        // 500 and 429 answers plus the transport failures; 302 is fine.
+        assert_eq!(s.errors, 22);
+        assert!((s.error_rate() - 22.0 / 610.0).abs() < 1e-12);
         assert!((s.throughput_rps - 120.5).abs() < f64::EPSILON);
         assert!((s.latency_p50_ms - 40.0).abs() < 1e-9);
         assert!((s.latency_p95_ms - 150.0).abs() < 1e-9);
@@ -451,10 +588,25 @@ mod tests {
     }
 
     #[test]
-    fn oha_duration_uses_whole_seconds_or_milliseconds() {
+    fn error_rate_of_an_empty_window_is_zero() {
+        let s = OhaSummary {
+            requests: 0,
+            errors: 0,
+            throughput_rps: 0.0,
+            latency_p50_ms: 0.0,
+            latency_p95_ms: 0.0,
+            latency_p99_ms: 0.0,
+        };
+        assert!((s.error_rate()).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn oha_duration_uses_whole_seconds_or_milliseconds_never_below_one() {
         assert_eq!(oha_duration(10.0), "10s");
         assert_eq!(oha_duration(1.5), "1500ms");
         assert_eq!(oha_duration(0.25), "250ms");
+        assert_eq!(oha_duration(0.0), "1ms");
+        assert_eq!(oha_duration(0.0001), "1ms");
     }
 
     fn run(ended_at_ns: i64) -> RunShape {
@@ -477,12 +629,21 @@ mod tests {
             vus: 20,
             summary: Ok(OhaSummary {
                 requests,
-                success_rate: 1.0,
+                errors: 0,
                 throughput_rps: rps,
                 latency_p50_ms: 10.0,
                 latency_p95_ms: p95_s * 1000.0,
                 latency_p99_ms: 30.0,
             }),
+        }
+    }
+
+    fn failed(ts_ns: i64) -> WindowOutcome {
+        WindowOutcome {
+            ts_ns,
+            duration_s: 10.0,
+            vus: 20,
+            summary: Err("boom".into()),
         }
     }
 
@@ -502,15 +663,9 @@ mod tests {
 
     #[test]
     fn aggregate_marks_failed_windows_and_unmet_thresholds() {
-        let failed = WindowOutcome {
-            ts_ns: 3,
-            duration_s: 10.0,
-            vus: 20,
-            summary: Err("boom".into()),
-        };
         let result = aggregate(
             &run(20),
-            vec![window(1, 100, 0.1, 10.0), failed],
+            vec![window(1, 100, 0.1, 10.0), failed(3)],
             &thresholds(&[]),
         );
         assert_eq!(result.samples.len(), 1);
@@ -530,11 +685,38 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_of_no_windows_is_all_zero() {
+    fn aggregate_of_no_windows_never_meets_thresholds() {
         let result = aggregate(&run(10), vec![], &thresholds(&[]));
         assert_eq!(result.total_requests, 0);
         assert!(result.samples.is_empty());
+        assert!(!result.thresholds_met, "no evidence must not pass");
         assert!((result.latency_p95_ms).abs() < f64::EPSILON);
         assert!((result.throughput_rps).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn finish_errors_when_interrupted_before_any_window_completed() {
+        let err = finish(vec![], true).unwrap_err();
+        assert!(err.contains("cut before any window completed"), "{err}");
+        let err = finish(vec![failed(1)], true).unwrap_err();
+        assert!(err.contains("cut before"), "{err}");
+    }
+
+    #[test]
+    fn finish_drops_only_a_failed_in_flight_window() {
+        let kept = finish(vec![window(1, 10, 0.1, 1.0), failed(2)], true).unwrap();
+        assert_eq!(kept.len(), 1);
+        let kept = finish(vec![window(1, 10, 0.1, 1.0), window(2, 10, 0.1, 1.0)], true).unwrap();
+        assert_eq!(
+            kept.len(),
+            2,
+            "a completed window is evidence even on interrupt"
+        );
+        let kept = finish(vec![failed(1)], false).unwrap();
+        assert_eq!(
+            kept.len(),
+            1,
+            "an uninterrupted failure is reported, not dropped"
+        );
     }
 }
