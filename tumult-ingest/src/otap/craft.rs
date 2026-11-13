@@ -180,6 +180,70 @@ pub fn metadata_ranges(bytes: &[u8]) -> Vec<(usize, usize)> {
     out
 }
 
+/// One record or dictionary batch message of a payload, taken apart.
+struct Parsed {
+    /// Where the message lies in the payload, body included.
+    start: usize,
+    end: usize,
+    /// `Some((id, is_delta))` for a dictionary batch.
+    dictionary: Option<(i64, bool)>,
+    header: BatchHeader,
+    body: Vec<u8>,
+}
+
+fn parsed_header(batch: RecordBatch<'_>) -> BatchHeader {
+    BatchHeader {
+        rows: batch.length(),
+        nodes: batch
+            .nodes()
+            .into_iter()
+            .flatten()
+            .map(|n| (n.length(), n.null_count()))
+            .collect(),
+        buffers: batch
+            .buffers()
+            .into_iter()
+            .flatten()
+            .map(|b| (b.offset(), b.length()))
+            .collect(),
+        variadic: None,
+        zstd: batch.compression().is_some(),
+        body_length: None,
+    }
+}
+
+/// The record and dictionary batch messages of `bytes` that parse.
+fn batches(bytes: &[u8]) -> Vec<Parsed> {
+    let mut out = Vec::new();
+    for (meta_start, meta_end) in metadata_ranges(bytes) {
+        let Ok(message) = arrow::ipc::root_as_message(&bytes[meta_start..meta_end]) else {
+            break;
+        };
+        let body_end = usize::try_from(message.bodyLength())
+            .ok()
+            .and_then(|len| meta_end.checked_add(len));
+        let Some(body) = body_end.and_then(|end| bytes.get(meta_end..end)) else {
+            break;
+        };
+        let dictionary = message.header_as_dictionary_batch();
+        let batch = match dictionary {
+            Some(dictionary) => dictionary.data(),
+            None => message.header_as_record_batch(),
+        };
+        let Some(batch) = batch else {
+            continue;
+        };
+        out.push(Parsed {
+            start: meta_start - 8,
+            end: meta_end + body.len(),
+            dictionary: dictionary.map(|d| (d.id(), d.isDelta())),
+            header: parsed_header(batch),
+            body: body.to_vec(),
+        });
+    }
+    out
+}
+
 /// A small deterministic generator (xorshift64*): the same seed always
 /// yields the same mutations, so a failing case can be replayed by number.
 #[derive(Clone, Debug)]
@@ -259,11 +323,151 @@ impl Mutator {
         }
     }
 
+    /// A number near `value` or on the edge of a check.
+    fn nearby(&mut self, value: i64) -> i64 {
+        match self.below(6) {
+            0 => value.wrapping_add(1),
+            1 => value.wrapping_sub(1),
+            2 => value.wrapping_add(8),
+            3 => value.wrapping_mul(2),
+            _ => INTERESTING[self.below(INTERESTING.len())],
+        }
+    }
+
+    /// Change what one batch header declares.
+    fn restructure(&mut self, header: &mut BatchHeader) {
+        let (node, buffer) = (
+            self.below(header.nodes.len()),
+            self.below(header.buffers.len()),
+        );
+        match self.below(12) {
+            0 => header.rows = self.nearby(header.rows),
+            1 | 2 if !header.nodes.is_empty() => {
+                header.nodes[node].0 = self.nearby(header.nodes[node].0);
+            }
+            3 | 4 if !header.nodes.is_empty() => {
+                header.nodes[node].1 = self.nearby(header.nodes[node].1);
+            }
+            5 | 6 if !header.buffers.is_empty() => {
+                header.buffers[buffer].0 = self.nearby(header.buffers[buffer].0);
+            }
+            7 | 8 if !header.buffers.is_empty() => {
+                header.buffers[buffer].1 = self.nearby(header.buffers[buffer].1);
+            }
+            9 if !header.buffers.is_empty() => {
+                let other = self.below(header.buffers.len());
+                header.buffers.swap(buffer, other);
+            }
+            10 if !header.nodes.is_empty() => {
+                let other = self.below(header.nodes.len());
+                header.nodes.swap(node, other);
+            }
+            _ => header.zstd = !header.zstd,
+        }
+    }
+
+    /// Damage that the flatbuffer verifier cannot see: take one record or
+    /// dictionary batch message of `bytes` apart, change what its header
+    /// declares (row count, a node, a buffer, the compression, the
+    /// dictionary id) or a byte of its body, and write it back as a
+    /// well-formed message. Returns `false` when `bytes` holds no such
+    /// message.
+    pub fn mutate_structure(&mut self, bytes: &mut Vec<u8>) -> bool {
+        let mut found = batches(bytes);
+        if found.is_empty() {
+            return false;
+        }
+        let mut chosen = found.swap_remove(self.below(found.len()));
+        for _ in 0..=self.below(2) {
+            match self.below(8) {
+                0 => {
+                    if let Some((id, is_delta)) = &mut chosen.dictionary {
+                        *id = self.nearby(*id);
+                        *is_delta = self.below(2) == 0;
+                    }
+                }
+                1 if !chosen.body.is_empty() => {
+                    let end = chosen.body.len();
+                    self.mutate_within(&mut chosen.body, 0, end);
+                }
+                _ => self.restructure(&mut chosen.header),
+            }
+        }
+        let message = match chosen.dictionary {
+            Some((id, is_delta)) => dictionary_message(id, is_delta, &chosen.header, &chosen.body),
+            None => batch_message(&chosen.header, &chosen.body),
+        };
+        bytes.splice(chosen.start..chosen.end, message);
+        true
+    }
+
     fn overwrite(&mut self, bytes: &mut [u8], at: usize, width: usize) {
         let value = INTERESTING[self.below(INTERESTING.len())].to_le_bytes();
         let Some(target) = bytes.get_mut(at..at + width) else {
             return;
         };
         target.copy_from_slice(&value[..width]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use arrow::array::{ArrayRef, DictionaryArray, RecordBatch as Table, StringArray, UInt8Array};
+    use arrow::datatypes::Field;
+
+    use super::*;
+
+    /// A stream with a schema, a dictionary batch and a record batch.
+    fn stream() -> Vec<u8> {
+        let keys = UInt8Array::from_iter_values([0, 1, 1]);
+        let values = Arc::new(StringArray::from_iter_values(["a", "b"]));
+        let column: ArrayRef = Arc::new(DictionaryArray::new(keys, values));
+        let field = Field::new("name", column.data_type().clone(), true);
+        let table = Table::try_new(Arc::new(Schema::new(vec![field])), vec![column]).unwrap();
+        let mut writer = StreamWriter::try_new(Vec::new(), table.schema_ref()).unwrap();
+        writer.write(&table).unwrap();
+        std::mem::take(writer.get_mut())
+    }
+
+    #[test]
+    fn a_batch_taken_apart_and_put_back_declares_the_same() {
+        let bytes = stream();
+        let found = batches(&bytes);
+        let kinds: Vec<bool> = found.iter().map(|p| p.dictionary.is_some()).collect();
+        assert_eq!(kinds, [true, false], "the schema message is left alone");
+        assert_eq!(found[0].dictionary, Some((0, false)));
+        assert_eq!((found[0].header.rows, found[1].header.rows), (2, 3));
+        assert_eq!(found[1].header.nodes, [(3, 0)]);
+        assert_eq!(found[1].end, bytes.len());
+        for parsed in &found {
+            let again = match parsed.dictionary {
+                Some((id, delta)) => dictionary_message(id, delta, &parsed.header, &parsed.body),
+                None => batch_message(&parsed.header, &parsed.body),
+            };
+            let reparsed = batches(&again);
+            assert_eq!(reparsed.len(), 1);
+            assert_eq!(reparsed[0].dictionary, parsed.dictionary);
+            assert_eq!(reparsed[0].header.rows, parsed.header.rows);
+            assert_eq!(reparsed[0].header.nodes, parsed.header.nodes);
+            assert_eq!(reparsed[0].header.buffers, parsed.header.buffers);
+            assert_eq!(reparsed[0].body, parsed.body);
+        }
+    }
+
+    #[test]
+    fn structural_damage_always_leaves_messages_that_verify() {
+        let pristine = stream();
+        let mut changed = 0;
+        for seed in 1..=500 {
+            let mut bytes = pristine.clone();
+            assert!(Mutator::new(seed).mutate_structure(&mut bytes));
+            changed += usize::from(bytes != pristine);
+            let ranges = metadata_ranges(&bytes);
+            assert_eq!(ranges.len(), 3, "seed {seed}: every message still verifies");
+        }
+        assert!(changed > 400, "{changed} of 500 seeds changed the stream");
+        assert!(!Mutator::new(1).mutate_structure(&mut b"not ipc".to_vec()));
     }
 }
