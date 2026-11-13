@@ -106,7 +106,8 @@ not being renamed.
    with optional attribute grouping; histogram p95 interpolated in Rust) and
    `/api/starmap` (organisation, entities, systems, services, workloads
    and definitions as one graph, assembled per request and cached for
-   30 s per parameter set and scopes), `/api/topology` (compatibility
+   30 s per parameter set and scopes in a bounded cache that every write
+   the map shows clears), `/api/topology` (compatibility
    view of its service/system call graph, ids `svc:` and
    `sys:<environment>/<system>`, `7d` unless `range` says otherwise),
    `/api/perf/{target}`

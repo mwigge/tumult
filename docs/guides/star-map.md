@@ -139,10 +139,26 @@ with the `source` it was learned from), `clusters`, `counts` and
 whether that node exists inside the caller's scopes. The same data in any
 order gives the same response.
 
+Each graph table is read up to 50 000 rows. When one is longer, the
+response says `truncated: true` and the page notes that the map is
+incomplete; narrow the `range` or the `env` to see all of it.
+
 The response is cached for 30 seconds per parameter set and set of scopes
 and carries an `ETag`; `If-None-Match` with the current value answers
-`304`. Send `Cache-Control: no-cache` to read the lake again. Suppressing
-a risk drops the cache, so the map shows it at once.
+`304`. The cache holds at most 64 maps and 64 MiB, drops expired maps
+when it is read, and lets concurrent requests for the same map wait for
+one read of the lake instead of each doing their own.
+
+Send `Cache-Control: no-cache` to read the lake again. Any viewer can send
+it, so it is rate-limited rather than trusted: a map that was read less
+than 2 seconds ago is answered from the cache all the same.
+
+Every write that a map shows drops the cache, so the map shows it at
+once: suppressing a risk, adding, verifying, rejecting or importing a
+manual record, importing a journal and storing a performance verdict. A
+map that was being built while such a write landed is answered but not
+kept. Telemetry that arrives over OTLP does not drop the cache; it shows
+after at most 30 seconds.
 
 `GET /api/topology` remains as a compatibility view of the service and
 system call graph. Its ids are the Star Map's (`svc:`,
@@ -174,14 +190,25 @@ runs the demo experiments through the CLI (each must end with its expected
 exit code and status) and asserts on the map: the organisation and its
 teams, workloads with `runs_on` edges, every definition referenced, the
 untested workload as a gap, the failed run on its system, the roll-up to
-the organisation, a suppressed finding with its expiry, the cache and its
-`ETag`. It checks before every write that the daemon it started is still
-the one running, and removes the daemon and its files on exit.
+the organisation, a suppressed finding with its expiry, the cache, its `ETag` and the limit
+on forced reads. A free port is not a reserved one, so the proof asks the
+kernel (`ss -ltnp`) which process listens on both ports and goes on only
+when it is the daemon it started, at the start and before every write. It
+removes the daemon and its files on exit.
 
 `make demo-check` asserts the same minimum on the Krönika demo stack:
 `scripts/demo-check.sh` brings `docker/docker-compose.kronika.yml` up as
-its own compose project on a fresh volume, runs the seed and calls
-`scripts/starmap-check.py` (the organisation, 3 teams, 4 workloads with
-`runs_on` edges, 8 definitions referenced, a gap, a failed run, a
-suppressed risk, no `tgt:` id). `STARMAP_URL=<daemon> scripts/demo-check.sh
---starmap-only` checks a daemon that is already running.
+its own compose project, with its own container names, image tag, ports
+and a fresh volume, so a Krönika demo that is already up is not touched.
+It runs the seed, calls `scripts/starmap-check.py --write` (the
+organisation, 3 teams, 4 workloads with `runs_on` edges, 8 definitions
+referenced, a gap, a failed run, a suppressed risk, no `tgt:` id) and
+removes the stack again, also when it is interrupted.
+
+`scripts/starmap-check.py` only reads unless it is given `--write`. The
+suppressed-risk line needs a suppressed risk; with `--write` the check
+suppresses one open risk for 7 days when none is, which cannot be undone
+through the API, so that flag is for a daemon that is thrown away.
+Without it the line is reported as skipped. `STARMAP_URL=<daemon>
+scripts/demo-check.sh --starmap-only` checks a daemon that is already
+running and never writes to it.
