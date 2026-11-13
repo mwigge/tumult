@@ -25,7 +25,7 @@ exporters:
       # One long-lived stream per signal, so the second batch the proof
       # sends is a continuation of the first one's schemas and dictionaries.
       num_streams: 1
-      max_stream_lifetime: 10m
+      max_stream_lifetime: 5m
     retry_on_failure:
       enabled: false
 
@@ -33,6 +33,9 @@ service:
   telemetry:
     logs:
       level: info
+    # No metrics listener: the container shares the host's network.
+    metrics:
+      level: none
   pipelines:
     traces:
       receivers: [otlp]
