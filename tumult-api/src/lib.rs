@@ -279,9 +279,7 @@ impl ApiState {
         let reports_dir = db_path
             .parent()
             .map_or_else(|| PathBuf::from("reports"), |d| d.join("reports"));
-        let org_path = std::env::var_os("KRONIKA_ORG_FILE")
-            .map(PathBuf::from)
-            .or_else(|| db_path.parent().map(|d| d.join("org.yaml")));
+        let org_path = org_file_path(&db_path);
         let score_params = org_path
             .as_deref()
             .map_or_else(Default::default, score_params_from);
@@ -357,6 +355,15 @@ impl ApiState {
 
 /// The `score:` section of the org file. A missing file or section means
 /// the defaults; an invalid file logs a warning and falls back to them.
+/// Where the org file (org tree, function register, score parameters)
+/// is read from: `KRONIKA_ORG_FILE`, else `<db dir>/org.yaml`.
+#[must_use]
+pub fn org_file_path(db_path: &std::path::Path) -> Option<PathBuf> {
+    std::env::var_os("KRONIKA_ORG_FILE")
+        .map(PathBuf::from)
+        .or_else(|| db_path.parent().map(|d| d.join("org.yaml")))
+}
+
 fn score_params_from(path: &std::path::Path) -> tumult_compliance::dora::params::HouseParams {
     match tumult_compliance::dora::register::load(path) {
         Ok(register) => register.params,

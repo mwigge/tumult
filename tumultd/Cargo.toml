@@ -16,6 +16,7 @@ tumult-ingest.workspace = true
 tumult-metrics.workspace = true
 tumult-report.workspace = true
 tumult-api.workspace = true
+tumult-compliance.workspace = true
 tumult-exec = { path = "../tumult-exec" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-auth = { path = "../tumult-auth" }
@@ -40,4 +41,3 @@ uuid.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 async-trait.workspace = true
-tumult-compliance.workspace = true

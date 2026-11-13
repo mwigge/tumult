@@ -216,6 +216,19 @@ pub(crate) async fn serve() -> Result<()> {
             background_shutdown.clone(),
         )
     });
+    // Score jobs: sync the function register from the org file, then
+    // store the daily requirement status. Same shutdown-drain contract.
+    let score_task = crate::score_jobs::spawn_score_jobs(
+        crate::score_jobs::ScoreJobs {
+            db_path: config.db_path.clone(),
+            org_file: tumult_api::org_file_path(&config.db_path),
+            manifests_dir: api_state.manifests_dir().cloned(),
+            params: std::sync::Arc::new(api_state.score_params().clone()),
+            interval: crate::score_jobs::snapshot_interval_from_env(),
+        },
+        ingest.clone(),
+        background_shutdown.clone(),
+    );
     // Schedule scheduler: fires due interval schedules through the normal
     // run path every tick. Holds an IngestWriter clone, so it is cancelled
     // and awaited before the writer drain below, like the lake task.
@@ -332,6 +345,7 @@ pub(crate) async fn serve() -> Result<()> {
     if let Some(task) = lake_task {
         task.await.context("lake scheduler task panicked")?;
     }
+    score_task.await.context("score jobs task panicked")?;
     schedule_task
         .await
         .context("schedule scheduler task panicked")?;

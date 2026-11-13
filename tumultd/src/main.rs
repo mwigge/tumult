@@ -56,6 +56,7 @@ mod admin;
 mod lake_jobs;
 mod ops;
 mod reports;
+mod score_jobs;
 mod serve;
 
 use std::path::PathBuf;
