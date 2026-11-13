@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use tumult_otel::logging::{bounded, err};
 
 use super::validate_path_no_symlink;
 
@@ -294,7 +295,11 @@ pub async fn cmd_store_migrate() -> Result<()> {
         {
             experiment_id.as_str()
         } else {
-            eprintln!("warning: skipping invalid experiment_id: {experiment_id}");
+            tracing::warn!(
+                name: "cli.migrate.experiment_id.invalid",
+                { resilience.experiment.id = %bounded(experiment_id) },
+                "experiment skipped, its id is not safe to query with"
+            );
             skipped += 1;
             continue;
         };
@@ -332,7 +337,11 @@ pub async fn cmd_store_migrate() -> Result<()> {
         .unwrap_or_else(|e| {
             // Best-effort — ClickHouse may not support file() in all configurations.
             // Log the error but do not abort the migration.
-            eprintln!("warning: ClickHouse INSERT from Parquet failed (non-fatal): {e}");
+            tracing::warn!(
+                name: "cli.migrate.parquet_insert_failed",
+                { file.path = %exp_path.display(), error.message = %err(&e) },
+                "ClickHouse INSERT from Parquet failed, migration continues"
+            );
             vec![]
         });
 

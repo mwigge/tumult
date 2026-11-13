@@ -124,6 +124,7 @@ fn gameday_file_hint(path: &Path, content: &str) -> Option<String> {
 /// function. Script providers get the same check, resolved through the
 /// discovery search paths; discovery problems are surfaced so a skipped path
 /// or malformed manifest does not silently shrink the available plugin set.
+#[allow(clippy::print_stderr)] // validation findings are this command's output, addressed to the person running it
 fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
     let native_registry = tumult_exec::native_registry();
     let discovery = tumult_plugin::discovery::discover_all_report();
@@ -223,6 +224,7 @@ fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
 /// Returns an error if the requested plugin filter does not match any
 /// discovered plugin.
 #[must_use = "callers must handle plugin discovery errors"]
+#[allow(clippy::print_stderr)] // discovery warnings annotate the listing this command prints
 pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     let mut registry = PluginRegistry::new();
 

@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 
 use tumult_exec::ProviderExecutor;
 
+use super::events::EnvKey;
 use super::{ComplianceFramework, LoadToolArg};
 
 // ── GameDay commands ────────────────────────────────────────
@@ -129,18 +130,8 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         // names keys only, never values — the maps carry resolved secrets.
         let (config_env, skipped_config) = build_config_env(&config);
         let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
-        for key in &skipped_config {
-            eprintln!(
-                "warning: configuration key '{key}' does not form a valid env var name after \
-                 uppercasing; usable in templates but not injected as TUMULT_CONFIG_*"
-            );
-        }
-        for key in &skipped_secrets {
-            eprintln!(
-                "warning: secret key '{key}' does not form a valid env var name after \
-                 uppercasing; usable in templates but not injected as TUMULT_SECRET_*"
-            );
-        }
+        super::events::env_keys_skipped(EnvKey::Config, &skipped_config);
+        super::events::env_keys_skipped(EnvKey::Secret, &skipped_secrets);
         let mut injected_env = config_env;
         injected_env.extend(secret_env);
 
@@ -173,7 +164,11 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     let cancel_token_for_signal = cancel_token.clone();
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
-            tracing::warn!("SIGINT received — cancelling gameday");
+            tracing::warn!(
+                name: "cli.gameday.cancelled",
+                { signal = "SIGINT" },
+                "cancelling gameday"
+            );
             cancel_token_for_signal.cancel();
         }
     });

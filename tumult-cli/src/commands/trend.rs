@@ -81,7 +81,7 @@ pub fn cmd_trend(
                         store.ingest_journal(&journal)?;
                         count += 1;
                     }
-                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
+                    Err(e) => super::events::journal_skipped(&path, &e),
                 }
             }
         }

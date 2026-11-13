@@ -61,14 +61,7 @@ pub fn cmd_report(
             println!("Report generated: {}", out_path.display());
         }
         ReportFormat::Html | ReportFormat::Pdf => {
-            // FIX 4: stable, non-cryptographic content hash of the raw journal bytes.
-            // Uses std DefaultHasher (no crypto crate in the workspace) — acceptable for
-            // provenance/tamper-evidence signalling, not a security guarantee.
-            use std::hash::{Hash, Hasher};
-            let raw = std::fs::read(journal_path).unwrap_or_default();
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            raw.hash(&mut h);
-            let source_hash = format!("{:016x}", h.finish());
+            let source_hash = source_hash(journal_path)?;
 
             // FIX 2: trace UI base resolves flag > env var, off by default.
             // This is the trace UI, NOT the OTLP ingest endpoint.
@@ -100,4 +93,26 @@ pub fn cmd_report(
     }
 
     Ok(())
+}
+
+/// Stable, non-cryptographic content hash of the raw journal bytes, shown in
+/// the report as provenance. Uses std `DefaultHasher` (no crypto crate in the
+/// workspace): tamper-evidence signalling, not a security guarantee.
+///
+/// # Errors
+///
+/// Returns an error when the journal cannot be read: a hash of nothing
+/// would be presented as the provenance of a file that was never hashed.
+pub(crate) fn source_hash(journal_path: &Path) -> Result<String> {
+    use std::hash::{Hash, Hasher};
+
+    let raw = std::fs::read(journal_path).with_context(|| {
+        format!(
+            "failed to read journal for its provenance hash: {}",
+            journal_path.display()
+        )
+    })?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    raw.hash(&mut hasher);
+    Ok(format!("{:016x}", hasher.finish()))
 }

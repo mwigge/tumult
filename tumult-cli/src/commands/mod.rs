@@ -4,10 +4,14 @@
 //! appropriate tumult-core operations.
 
 mod agentic;
+// TODO(structured-logging phase 2): `analyze.rs` is outside the first
+// conversion; its one stderr warning becomes a log event with that work.
+#[allow(clippy::print_stderr)] // see the TODO above
 mod analyze;
 mod autopilot;
 mod chaosgraph;
 mod compliance;
+mod events;
 mod gameday;
 mod gate;
 mod init;
