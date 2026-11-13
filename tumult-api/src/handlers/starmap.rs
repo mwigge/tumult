@@ -229,14 +229,46 @@ fn rows(reader: &Reader, sql: &str) -> Result<Vec<Value>, String> {
 /// Rows with whether more were left unread.
 type Capped<T> = (Vec<T>, bool);
 
+/// The row limit of each capped source.
+#[derive(Clone, Copy)]
+struct Caps {
+    covers: usize,
+    articles: usize,
+    depends: usize,
+    gaps: usize,
+}
+
+impl Caps {
+    const fn all(limit: usize) -> Self {
+        Self {
+            covers: limit,
+            articles: limit,
+            depends: limit,
+            gaps: limit,
+        }
+    }
+}
+
 /// At most `limit` rows of `sql`, in a stable order so that a capped
-/// read returns the same rows every time.
-fn capped_rows(reader: &Reader, sql: &str, limit: usize) -> Result<Capped<Value>, String> {
+/// read returns the same rows every time. `source` names what is read,
+/// as `table.kind`, in the log and in the error; the statement itself
+/// is in neither.
+fn capped_rows(
+    reader: &Reader,
+    source: &str,
+    sql: &str,
+    limit: usize,
+) -> Result<Capped<Value>, String> {
     let probe = limit.saturating_add(1);
-    let mut found = rows(reader, &format!("{sql} ORDER BY ALL LIMIT {probe}"))?;
+    let mut found = rows(reader, &format!("{sql} ORDER BY ALL LIMIT {probe}"))
+        .map_err(|error| format!("star map source {source}: {error}"))?;
     let cut = found.len() > limit;
     if cut {
-        tracing::warn!(limit, sql, "star map source read stopped at its row limit");
+        tracing::warn!(
+            source,
+            limit,
+            "star map source read stopped at its row limit"
+        );
     }
     found.truncate(limit);
     Ok((found, cut))
@@ -547,6 +579,7 @@ fn manual_article(reference: &str) -> Option<String> {
 fn covers(reader: &Reader, window: &Window, limit: usize) -> Result<Capped<CoverRow>, String> {
     let (edges, cut) = capped_rows(
         reader,
+        "graph_edges.evidence",
         "SELECT DISTINCT src, rel, dst FROM graph_edges \
          WHERE rel IN ('evidences', 'maps_to_compliance')",
         limit,
@@ -591,6 +624,7 @@ fn graph_nodes(
 ) -> Result<Capped<(String, String)>, String> {
     let (found, cut) = capped_rows(
         reader,
+        &format!("graph_nodes.{kind}"),
         &format!("SELECT id, label FROM graph_nodes WHERE kind = '{kind}'"),
         limit,
     )?;
@@ -627,6 +661,7 @@ fn gaps(reader: &Reader, limit: usize) -> Result<Capped<GapRow>, String> {
 fn depends(reader: &Reader, limit: usize) -> Result<Capped<DependsRow>, String> {
     let (found, cut) = capped_rows(
         reader,
+        "graph_edges.depends_on",
         "SELECT DISTINCT src, dst FROM graph_edges WHERE rel = 'depends_on'",
         limit,
     )?;
@@ -647,14 +682,15 @@ fn load(
     window: &Window,
     manifests_dir: Option<&FsPath>,
     org: &OrgTree,
+    caps: Caps,
 ) -> Result<StarInputs, String> {
     let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir)?;
     let report = tumult_risk::scan(&risk_inputs);
     let levels = conformance::levels(reader, window.from_ns, &window.envs)?;
-    let (covers, cut_covers) = covers(reader, window, GRAPH_ROW_LIMIT)?;
-    let (articles, cut_articles) = articles(reader, GRAPH_ROW_LIMIT)?;
-    let (depends, cut_depends) = depends(reader, GRAPH_ROW_LIMIT)?;
-    let (gaps, cut_gaps) = gaps(reader, GRAPH_ROW_LIMIT)?;
+    let (covers, cut_covers) = covers(reader, window, caps.covers)?;
+    let (articles, cut_articles) = articles(reader, caps.articles)?;
+    let (depends, cut_depends) = depends(reader, caps.depends)?;
+    let (gaps, cut_gaps) = gaps(reader, caps.gaps)?;
     let mut inputs = StarInputs {
         as_of_ns: window.to_ns,
         org_units: org_units(org),
@@ -786,7 +822,8 @@ async fn build(state: &ApiState, query: StarQuery, window: Window) -> Result<Cac
     let manifests_dir: Option<PathBuf> = state.manifests_dir().cloned();
     let parent = tracing::Span::current();
     with_reader(&state.db_path, move |reader| {
-        let inputs = load(reader, &window, manifests_dir.as_deref(), &org)?;
+        let caps = Caps::all(GRAPH_ROW_LIMIT);
+        let inputs = load(reader, &window, manifests_dir.as_deref(), &org, caps)?;
         let map = assemble_traced(&parent, &inputs, &query, window.envs.len());
         serde_json::to_vec(&map)
             .map(CachedMap::new)
@@ -957,6 +994,105 @@ mod tests {
 
         let (edges, cut) = depends(&reader, 3).expect("read");
         assert!(edges.is_empty() && !cut);
+    }
+
+    /// A lake whose graph holds two rows of every capped source, on
+    /// top of the compliance registry a new lake carries.
+    fn graph_lake() -> (tempfile::TempDir, tumult_lake::Store) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).expect("store");
+        let writer = store.writer().expect("writer");
+        let seed = "INSERT INTO graph_edges (src, rel, dst, run_id, ts) VALUES \
+             ('exp:a', 'evidences', 'compliance:DORA/Art.25', 'r1', 1), \
+             ('exp:b', 'evidences', 'compliance:DORA/Art.25', 'r2', 1), \
+             ('svc:a', 'depends_on', 'svc:b', 'topology', 1), \
+             ('svc:b', 'depends_on', 'svc:c', 'topology', 1); \
+             INSERT INTO graph_nodes (id, kind, label) VALUES \
+             ('gap:one', 'coverage_gap', 'one'), ('gap:two', 'coverage_gap', 'two');";
+        for statement in seed.split(';').filter(|s| !s.trim().is_empty()) {
+            writer.execute(statement, ()).expect("seed");
+        }
+        drop(writer);
+        (dir, store)
+    }
+
+    fn any_time() -> Window {
+        Window {
+            from_ns: 0,
+            to_ns: now_ns(),
+            envs: vec![],
+        }
+    }
+
+    #[test]
+    fn any_one_capped_source_marks_the_map_truncated() {
+        let (_dir, store) = graph_lake();
+        let reader = store.read_only().expect("reader");
+        let org = OrgTree::empty();
+        let read = |caps: Caps| {
+            let inputs = load(&reader, &any_time(), None, &org, caps).expect("load");
+            (
+                inputs.truncated,
+                assemble(&inputs, &StarQuery::default()).truncated,
+            )
+        };
+        let whole = Caps::all(GRAPH_ROW_LIMIT);
+        assert_eq!(read(whole), (false, false), "nothing was cut");
+
+        let cut = [
+            ("covers", Caps { covers: 1, ..whole }),
+            (
+                "articles",
+                Caps {
+                    articles: 1,
+                    ..whole
+                },
+            ),
+            (
+                "depends",
+                Caps {
+                    depends: 1,
+                    ..whole
+                },
+            ),
+            ("gaps", Caps { gaps: 1, ..whole }),
+        ];
+        for (source, caps) in cut {
+            assert_eq!(read(caps), (true, true), "only {source} was cut");
+        }
+    }
+
+    #[test]
+    fn a_capped_read_is_logged_by_its_source_and_never_by_its_sql() {
+        let (_dir, store) = graph_lake();
+        let reader = store.read_only().expect("reader");
+        let recorder = Arc::new(Recorder::default());
+        let (_, cut) = tracing::subscriber::with_default(Arc::clone(&recorder), || {
+            depends(&reader, 1).expect("read")
+        });
+        assert!(cut);
+
+        let events = recorder.events.lock().expect("recorder");
+        let [(level, fields)] = events.as_slice() else {
+            panic!("one event, not {}", events.len());
+        };
+        assert_eq!(level, "WARN");
+        assert_eq!(fields["source"], "\"graph_edges.depends_on\"");
+        assert_eq!(fields["limit"], "1");
+        let said = format!("{fields:?}");
+        assert!(!said.contains("SELECT"), "{said}");
+    }
+
+    #[test]
+    fn a_failed_source_read_names_the_source() {
+        let (_dir, store) = graph_lake();
+        let reader = store.read_only().expect("reader");
+        let failed = capped_rows(&reader, "graph_edges.nothing", "SELECT nothing FROM", 1);
+        let message = failed.expect_err("the statement is not SQL");
+        assert!(
+            message.starts_with("star map source graph_edges.nothing: "),
+            "{message}"
+        );
     }
 
     #[test]
@@ -1196,6 +1332,8 @@ mod tests {
     #[derive(Default)]
     struct Recorder {
         spans: std::sync::Mutex<Vec<(String, BTreeMap<String, String>)>>,
+        /// The level and fields of every event.
+        events: std::sync::Mutex<Vec<(String, BTreeMap<String, String>)>>,
     }
 
     struct Fields<'a>(&'a mut BTreeMap<String, String>);
@@ -1227,7 +1365,12 @@ mod tests {
         }
 
         fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
-        fn event(&self, _: &tracing::Event<'_>) {}
+        fn event(&self, event: &tracing::Event<'_>) {
+            let mut fields = BTreeMap::new();
+            event.record(&mut Fields(&mut fields));
+            let level = event.metadata().level().to_string();
+            self.events.lock().expect("recorder").push((level, fields));
+        }
         fn enter(&self, _: &tracing::span::Id) {}
         fn exit(&self, _: &tracing::span::Id) {}
     }
