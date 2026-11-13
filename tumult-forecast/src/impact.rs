@@ -886,6 +886,33 @@ mod tests {
         assert_eq!(outside.count(), 8, "{:?}", impact.samples);
     }
 
+    /// A counter that read zero but for one stray 1000, stuck at 400 after
+    /// the fault: half the gap to the stray is not a band to recover into.
+    #[test]
+    fn a_lone_stray_in_the_baseline_does_not_hide_a_stuck_post_phase() {
+        for calm in [7, 39] {
+            let mut values = vec![0.0; calm];
+            values.insert(calm / 2, 1_000.0);
+            values.extend([5_000.0; 3]);
+            values.extend([400.0; 6]);
+            let fault = FaultWindow {
+                start: calm + 1,
+                end: calm + 4,
+            };
+            let impact = counterfactual(&Line, &values, fault, 3).unwrap();
+            assert_eq!(impact.reference, Reference::Baseline);
+            assert_eq!(impact.recovery.recovered_at, None, "{:?}", impact.recovery);
+            assert_eq!(impact.recovery.outside_after_fault, 6);
+        }
+        let mut values = vec![50.0; 7];
+        values.insert(3, 90.0);
+        values.extend([900.0; 3]);
+        values.extend([70.0; 6]);
+        let fault = FaultWindow { start: 8, end: 11 };
+        let impact = counterfactual(&Line, &values, fault, 3).unwrap();
+        assert_eq!(impact.recovery.recovered_at, None, "{:?}", impact.recovery);
+    }
+
     /// Deterministic pseudo-noise in `[-1, 1)` with no season to absorb.
     fn jitter(n: usize) -> Vec<f64> {
         let mut state: u64 = 7;

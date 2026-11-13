@@ -28,8 +28,11 @@
 //! * a core that does not vary floors at [`LEVEL_FRACTION`] of the level;
 //! * either way never below half the observed step — the smallest gap
 //!   between two distinct values anywhere in the core — so a boolean, a
-//!   quantised gauge or a `200` seen once as `201` keeps a band its next
-//!   step fits in;
+//!   quantised gauge or a `200` seen once as `201` keeps a band with
+//!   width. Half a step, not a whole one, and by design: the neighbouring
+//!   grid value is then two half-widths from the centre and outside the
+//!   band, where a whole step would put a boolean's `0` inside the band
+//!   around `1`;
 //! * [`EPSILON`] only when all of that is zero (an all-zero reference).
 //!
 //! A reference that never moved shows no step of its own. [`floor_within`]
@@ -38,6 +41,15 @@
 //! 300 between a `200` and a `500`). Half of the smallest gap in the
 //! series can never reach another value of the series, so the fault's own
 //! scale does not hide the fault.
+//!
+//! A reference with a step of its own can still be misled by it: seven
+//! zeros and one `1000` have a step of 1000, and half of that would call a
+//! counter stuck at 400 recovered. [`floor_within`] therefore never uses a
+//! step larger than the smallest gap between a value of the core and its
+//! neighbour in the whole series, so a band of the floor's width around a
+//! core value holds no other value the series took. Gaps between two
+//! values outside the core are left out: the grain of the fault's own
+//! readings is not the reference's.
 //!
 //! [`crate::Forecast::apply_band_floor`] widens a band that is narrower
 //! and marks the forecast [`crate::Forecast::degenerate_band`], so every
@@ -66,14 +78,20 @@ pub fn floor(reference: &[f64]) -> f64 {
     Core::of(reference).map_or(EPSILON, |core| core.floor(core.step()))
 }
 
-/// [`floor`], for a reference that is part of `series`: a reference with
-/// no step of its own takes a plausible one from the series.
+/// [`floor`], for a reference that is part of `series`. A reference with
+/// no step of its own takes a plausible one from the series, and one with
+/// a step keeps it only while no other value of the series comes nearer
+/// to the core than that: a stray seen once among constants is not the
+/// metric's step if the post phase sits between the two.
 #[must_use]
 pub fn floor_within(reference: &[f64], series: &[f64]) -> f64 {
     let Some(core) = Core::of(reference) else {
         return EPSILON;
     };
-    let step = core.step().or_else(|| core.borrowed_step(series));
+    let step = match core.step() {
+        Some(own) => Some(core.nearest_step(series).map_or(own, |near| near.min(own))),
+        None => core.borrowed_step(series),
+    };
     core.floor(step)
 }
 
@@ -81,6 +99,8 @@ pub fn floor_within(reference: &[f64], series: &[f64]) -> f64 {
 struct Core {
     values: Vec<f64>,
     level: f64,
+    lower: f64,
+    upper: f64,
 }
 
 impl Core {
@@ -92,11 +112,19 @@ impl Core {
         let magnitudes: Vec<f64> = xs.iter().map(|v| v.abs()).collect();
         let level = stats::quantile(&magnitudes, 0.5);
         let (lower, upper) = Self::bounds(&xs, level);
-        let values = xs
-            .into_iter()
-            .filter(|v| *v >= lower && *v <= upper)
-            .collect();
-        Some(Self { values, level })
+        let mut core = Self {
+            values: Vec::new(),
+            level,
+            lower,
+            upper,
+        };
+        core.values = xs.into_iter().filter(|v| core.holds(*v)).collect();
+        Some(core)
+    }
+
+    /// Whether `value` lies where the reference's core does.
+    fn holds(&self, value: f64) -> bool {
+        value >= self.lower && value <= self.upper
     }
 
     /// Where the core ends: an interquartile fence, or one level around
@@ -116,6 +144,12 @@ impl Core {
         (f64::NEG_INFINITY, f64::INFINITY)
     }
 
+    /// Whether `value` is one the core took, float noise aside.
+    fn has(&self, value: f64) -> bool {
+        let noise = self.noise();
+        self.values.iter().any(|v| (v - value).abs() <= noise)
+    }
+
     fn noise(&self) -> f64 {
         NOISE_FRACTION * self.level
     }
@@ -123,6 +157,20 @@ impl Core {
     /// The smallest gap between two values of the core that is not noise.
     fn step(&self) -> Option<f64> {
         stats::resolution_above(&self.values, self.noise())
+    }
+
+    /// The smallest gap in `series` that has a value of the core at one
+    /// end: how near any other value of the series comes to the core.
+    /// Gaps between two values the core does not hold (the fault's own
+    /// grain) say nothing about the reference.
+    fn nearest_step(&self, series: &[f64]) -> Option<f64> {
+        let mut xs = stats::finite(series);
+        xs.sort_by(f64::total_cmp);
+        xs.windows(2)
+            .filter(|w| self.has(w[0]) || self.has(w[1]))
+            .map(|w| w[1] - w[0])
+            .filter(|gap| *gap > self.noise())
+            .min_by(f64::total_cmp)
     }
 
     /// The smallest step of `series`, when the level makes it plausible.
@@ -236,6 +284,102 @@ mod tests {
             close(floor_within(&moving[..4], &moving), floor(&moving[..4])),
             "a reference with a step keeps its own"
         );
+    }
+
+    /// A flat reference with one stray in it, and a post phase stuck
+    /// between the two: the stray is not the metric's step.
+    #[test]
+    fn a_lone_stray_in_a_flat_reference_does_not_set_the_step() {
+        for calm in [7, 39] {
+            let mut reference = vec![0.0; calm];
+            reference.push(1_000.0);
+            let mut series = reference.clone();
+            series.extend([5_000.0; 3]);
+            series.extend([400.0; 6]);
+            let floor = floor_within(&reference, &series);
+            assert!((400.0_f64 - 0.0).abs() > floor, "{calm} zeros: {floor}");
+        }
+        let mut reference = vec![50.0; 7];
+        reference.push(90.0);
+        let mut series = reference.clone();
+        series.extend([900.0; 3]);
+        series.extend([70.0; 6]);
+        let floor = floor_within(&reference, &series);
+        assert!((70.0_f64 - 50.0).abs() > floor, "50s and a 90: {floor}");
+    }
+
+    /// The fault's own fine grain is not the reference's: 53 seen as 54
+    /// three times keeps a step of one whatever the fault's values are.
+    #[test]
+    fn gaps_between_fault_values_do_not_shrink_the_floor() {
+        let mut reference = vec![53.0; 40];
+        reference.extend([54.0; 3]);
+        let mut series = reference.clone();
+        series.extend([87.3331, 87.3334, 87.3339]);
+        series.extend([53.0; 6]);
+        assert!(close(floor_within(&reference, &series), 0.5));
+    }
+
+    /// The values of `reference` its core does not hold; for a reference
+    /// with no level (and so no fence), every value that is not zero.
+    fn strays(reference: &[f64]) -> Vec<f64> {
+        let core = Core::of(reference).unwrap();
+        reference
+            .iter()
+            .copied()
+            .filter(|v| !core.holds(*v) || (core.level <= 0.0 && *v != 0.0))
+            .collect()
+    }
+
+    /// Whatever the reference, a post phase stuck at a stray the reference
+    /// itself showed is not inside a band of the floor's width around any
+    /// value of the core.
+    #[test]
+    fn a_post_phase_at_a_stray_of_the_reference_is_never_inside_on_the_floor_alone() {
+        let references: [(&str, Vec<f64>); 8] = [
+            ("zeros and a spike", [vec![0.0; 7], vec![1_000.0]].concat()),
+            (
+                "zeros, two spikes",
+                [vec![0.0; 9], vec![400.0, 1_000.0]].concat(),
+            ),
+            ("flat, a neighbour, a stray", {
+                [vec![50.0; 8], vec![95.0, 110.0]].concat()
+            }),
+            ("flat, two near strays", {
+                [vec![10.0; 10], vec![18.0, 21.0]].concat()
+            }),
+            (
+                "a status code",
+                [vec![200.0; 12], vec![500.0, 503.0]].concat(),
+            ),
+            ("two levels and strays", {
+                [vec![1.0; 4], vec![2.0; 4], vec![9.0, 9.3]].concat()
+            }),
+            ("jitter and timeouts", {
+                let calm = (0..30).map(|i| 50.0 + noise(i) * 2.0);
+                calm.chain([30_000.0, 30_000.5, 190.0]).collect()
+            }),
+            (
+                "negative level",
+                [vec![-50.0; 8], vec![-5.0, 20.0]].concat(),
+            ),
+        ];
+        for (name, reference) in &references {
+            let strays = strays(reference);
+            assert!(!strays.is_empty(), "{name} has a stray to test");
+            let core = Core::of(reference).unwrap();
+            for stray in strays {
+                let mut series = reference.clone();
+                series.extend([stray; 4]);
+                let floor = floor_within(reference, &series);
+                for centre in core.values.iter().filter(|c| (**c - stray).abs() > 0.0) {
+                    assert!(
+                        (stray - centre).abs() > floor,
+                        "{name}: {stray} is within {floor} of {centre}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

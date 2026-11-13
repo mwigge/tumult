@@ -77,6 +77,10 @@ less than the larger of
   anywhere in the core, so a `200` that was once a `201`, or forty samples
   of 53 with three of 54, give a floor of 0.5.
 
+Half a step and not a whole one, by design: the neighbouring grid value is
+then two half-widths from the centre and outside the band, where a whole
+step would put a health check's `0` inside the band around its `1`.
+
 A reference that never moved shows no step of its own. The impact
 computation then takes the smallest step of the whole run's series, when
 that step is no larger than the level (or the level is zero): a health
@@ -85,6 +89,16 @@ a band one wide and an impact of 2 for the flip. The 300 between a `200`
 and a `500` is no step of 200, so that probe keeps the 0.1 % floor. Half of
 the smallest gap in the series cannot reach any other value of the series,
 so the fault's own scale never hides the fault.
+
+A reference with a step of its own can be misled by it: seven zeros and one
+`1000` have a step of 1000, and half of that would call a counter stuck at
+400 after the fault recovered. The impact computation therefore never uses
+a step larger than the smallest gap between a value of the core and its
+neighbour among all the values the run's series took. With the post phase
+at 400 that gap is 400 and the floor 200, so 400 is outside; seven samples of 50
+with one 90 and a post phase at 70 are floored at 10, not 20. Gaps between
+two values outside the core, such as the fault's own readings, are left
+out.
 
 The floor is `1e-9` only when all of that is zero (a reference that is zero
 throughout with no other value in the series). It follows how the reference
