@@ -66,7 +66,7 @@ pub(crate) fn event_schema_initialized(database: &str, version: i64) {
 pub(crate) fn event_ddl_executed(statement: &str) {
     let cx = opentelemetry::Context::current();
     let preview = if statement.len() > 128 {
-        format!("{}...", &statement[..128])
+        format!("{}...", &statement[..statement.floor_char_boundary(128)])
     } else {
         statement.to_string()
     };
@@ -206,6 +206,16 @@ mod tests {
                 format!("{}...", "y".repeat(128)),
             ]
         );
+    }
+
+    #[test]
+    fn ddl_event_cuts_a_long_statement_on_a_character_boundary() {
+        // Byte 128 falls inside the two-byte character that starts at 127.
+        let statement = format!("{}{}", "x".repeat(127), "é".repeat(10));
+
+        let recorded = ddl_statements_recorded(&[&statement]);
+
+        assert_eq!(recorded, [format!("{}...", "x".repeat(127))]);
     }
 
     #[test]
