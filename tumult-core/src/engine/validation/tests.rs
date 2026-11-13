@@ -619,6 +619,7 @@ fn a_target_version_beyond_the_bounds_is_refused() {
             technology: None,
             environment: Some("demo".into()),
             criticality: None,
+            namespace: None,
             version: Some(version.into()),
         }),
         ..Default::default()

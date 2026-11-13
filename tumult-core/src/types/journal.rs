@@ -77,6 +77,21 @@ pub enum VersionSource {
     /// Resolved once at run end from the target's own telemetry inside
     /// the run's window, in the run's environment.
     Observed,
+    /// The telemetry inside the run's window named more than one version
+    /// and none served [`OBSERVED_VERSION_MIN_SHARE`] of the requests: the
+    /// run measured a mix, and belongs to no single version.
+    Mixed,
+}
+
+/// The share of a run's requests one version must have served for the
+/// run to be recorded as observed on that version.
+pub const OBSERVED_VERSION_MIN_SHARE: f64 = 0.95;
+
+/// How many of the requests inside a run's window one version served.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionShare {
+    pub version: String,
+    pub requests: u64,
 }
 
 impl std::fmt::Display for VersionSource {
@@ -84,6 +99,7 @@ impl std::fmt::Display for VersionSource {
         f.write_str(match self {
             Self::Declared => "declared",
             Self::Observed => "observed",
+            Self::Mixed => "mixed",
         })
     }
 }
@@ -92,11 +108,65 @@ impl std::fmt::Display for VersionSource {
 /// the run ended so that later telemetry cannot move it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetVersion {
+    /// The version; for a [`VersionSource::Mixed`] run the one that
+    /// served most, which the run is not attributed to.
     pub version: String,
     pub version_source: VersionSource,
+    /// What the telemetry said when it named more than one version, most
+    /// served first. Empty for a declared version and for a window one
+    /// version served alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shares: Vec<VersionShare>,
 }
 
 impl TargetVersion {
+    /// What a run records from the versions its target's telemetry named
+    /// inside its window: `None` when it named none.
+    #[must_use]
+    pub fn observed(seen: Vec<VersionShare>) -> Option<Self> {
+        let mut seen: Vec<VersionShare> = seen
+            .into_iter()
+            .map(|share| VersionShare {
+                version: share.version.trim().to_string(),
+                requests: share.requests,
+            })
+            .filter(|share| !share.version.is_empty() && share.requests > 0)
+            .collect();
+        seen.sort_by(|a, b| {
+            b.requests
+                .cmp(&a.requests)
+                .then_with(|| a.version.cmp(&b.version))
+        });
+        let most = seen.first()?;
+        let all: u64 = seen.iter().map(|share| share.requests).sum();
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        let version_source = if most.requests as f64 >= OBSERVED_VERSION_MIN_SHARE * all as f64 {
+            VersionSource::Observed
+        } else {
+            VersionSource::Mixed
+        };
+        Some(Self {
+            version: most.version.clone(),
+            version_source,
+            shares: if seen.len() > 1 { seen } else { Vec::new() },
+        })
+    }
+
+    /// The share of the window's requests the recorded version served;
+    /// `None` when no shares were recorded.
+    #[must_use]
+    pub fn share(&self) -> Option<f64> {
+        let own = self
+            .shares
+            .iter()
+            .find(|share| share.version == self.version)?;
+        let all: u64 = self.shares.iter().map(|share| share.requests).sum();
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        Some(own.requests as f64 / all as f64)
+    }
+
     /// The version the definition declares, if it declares one.
     #[must_use]
     pub fn declared(experiment: &Experiment) -> Option<Self> {
@@ -104,6 +174,7 @@ impl TargetVersion {
         Some(Self {
             version: version.to_string(),
             version_source: VersionSource::Declared,
+            shares: Vec::new(),
         })
     }
 }
@@ -226,6 +297,56 @@ mod tests {
     use crate::types::test_support::toon_round_trip;
     use crate::types::*;
 
+    fn share(version: &str, requests: u64) -> VersionShare {
+        VersionShare {
+            version: version.into(),
+            requests,
+        }
+    }
+
+    #[test]
+    fn a_window_is_observed_on_a_version_only_when_it_served_nearly_all_of_it() {
+        assert_eq!(TargetVersion::observed(vec![]), None);
+        // Alone: observed, nothing more to say.
+        let alone = TargetVersion::observed(vec![share("1.5.1", 40)]).unwrap();
+        assert_eq!(
+            (
+                alone.version.as_str(),
+                alone.version_source,
+                alone.shares.len()
+            ),
+            ("1.5.1", VersionSource::Observed, 0)
+        );
+        assert_eq!(alone.share(), None);
+        // 97 %: observed, and the stray is on record. The order given
+        // does not matter, blanks and silent versions are left out.
+        let nearly = TargetVersion::observed(vec![
+            share("1.5.0", 3),
+            share(" ", 50),
+            share("1.4.0", 0),
+            share(" 1.5.1 ", 97),
+        ])
+        .unwrap();
+        assert_eq!(nearly.version, "1.5.1");
+        assert_eq!(nearly.version_source, VersionSource::Observed);
+        assert_eq!(nearly.shares, vec![share("1.5.1", 97), share("1.5.0", 3)]);
+        assert!((nearly.share().unwrap() - 0.97).abs() < 1e-12);
+        // Exactly the bound is enough; a request under it is not.
+        let at = TargetVersion::observed(vec![share("b", 95), share("a", 5)]).unwrap();
+        assert_eq!(at.version_source, VersionSource::Observed);
+        let mixed = TargetVersion::observed(vec![share("b", 94), share("a", 6)]).unwrap();
+        assert_eq!(mixed.version_source, VersionSource::Mixed);
+        assert_eq!(mixed.version, "b");
+        assert_eq!(mixed.shares, vec![share("b", 94), share("a", 6)]);
+        // A tie is broken by the text, so the record is the same each time.
+        let tie = TargetVersion::observed(vec![share("b", 5), share("a", 5)]).unwrap();
+        assert_eq!(
+            (tie.version.as_str(), tie.version_source),
+            ("a", VersionSource::Mixed)
+        );
+        assert_eq!(VersionSource::Mixed.to_string(), "mixed");
+    }
+
     #[test]
     fn activity_result_round_trips() {
         let result = ActivityResult {
@@ -292,6 +413,7 @@ mod tests {
                 technology: None,
                 environment: None,
                 criticality: None,
+                namespace: None,
                 version: Some(" 1.5.0 ".into()),
             }),
             ..Experiment::default()
@@ -303,6 +425,7 @@ mod tests {
             Some(TargetVersion {
                 version: "1.5.0".into(),
                 version_source: VersionSource::Declared,
+                shares: Vec::new(),
             }),
             "a declared version is on every journal built for the experiment"
         );
@@ -313,9 +436,16 @@ mod tests {
         journal.target_version = Some(TargetVersion {
             version: "1.5.1".into(),
             version_source: VersionSource::Observed,
+            shares: Vec::new(),
         });
         let encoded = toon_format::encode_default(&journal).expect("encode");
         assert!(encoded.contains("version_source: observed"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+
+        journal.target_version =
+            TargetVersion::observed(vec![share("1.5.1", 60), share("1.5.0", 40)]);
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(encoded.contains("version_source: mixed"), "{encoded}");
         assert_eq!(toon_round_trip(&journal), journal);
 
         // A journal written before the field existed still reads.

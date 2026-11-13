@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use crate::execution::RollbackStrategy;
-use crate::types::{Activity, LoadConfig, LoadResult, LoadTool};
+use crate::types::{Activity, LoadConfig, LoadResult, LoadTool, VersionShare};
 
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -184,21 +184,91 @@ pub struct RunWindow {
     pub system: String,
     /// The definition's `target.environment`.
     pub environment: Option<String>,
+    /// The definition's `target.namespace` (`service.namespace`).
+    pub namespace: Option<String>,
+    /// The run's start and end, each moved outwards by
+    /// [`VERSION_WINDOW_SKEW`].
     pub started_at_ns: i64,
     pub ended_at_ns: i64,
+}
+
+/// How far the window a resolver is asked about reaches beyond the run on
+/// either side: the tolerance for the runner's clock and the target's
+/// disagreeing about when a request happened.
+pub const VERSION_WINDOW_SKEW: Duration = Duration::from_secs(2);
+
+/// How a run waits for its target's telemetry to arrive before it reads
+/// the version from it: the question is put again every `pause` until two
+/// answers in a row count the same requests, or `deadline` has passed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VersionSettle {
+    pub pause: Duration,
+    pub deadline: Duration,
+}
+
+impl VersionSettle {
+    /// Ask once and take the answer.
+    pub const ONCE: Self = Self {
+        pause: Duration::ZERO,
+        deadline: Duration::ZERO,
+    };
+}
+
+impl Default for VersionSettle {
+    /// A second between questions, five seconds in all: an exporter
+    /// batches its spans, so the last of a run's can arrive after it.
+    fn default() -> Self {
+        Self {
+            pause: Duration::from_secs(1),
+            deadline: Duration::from_secs(5),
+        }
+    }
 }
 
 /// Finds the version of the target that served a run, from the target's
 /// own telemetry. Asked once, when the run ends, and only when the
 /// definition declares a target without a version.
 pub trait TargetVersionResolver: Send + Sync {
-    /// The `service.version` the target reported inside `window`, in the
-    /// window's environment; `Ok(None)` when its telemetry says nothing.
+    /// Every `service.version` the target reported inside `window`, in
+    /// the window's environment and namespace, with the requests each
+    /// served; empty when its telemetry says nothing.
     ///
     /// # Errors
     ///
     /// Returns an error if the telemetry could not be read.
-    fn resolve(&self, window: &RunWindow) -> Result<Option<String>, String>;
+    fn resolve(&self, window: &RunWindow) -> Result<Vec<VersionShare>, String>;
+
+    /// How long the run waits for the telemetry to settle.
+    fn settle(&self) -> VersionSettle {
+        VersionSettle::default()
+    }
+}
+
+/// Ask `resolver` about `window` until two answers in a row count the
+/// same requests or the resolver's deadline has passed, and return the
+/// last answer.
+///
+/// # Errors
+///
+/// Returns the resolver's error.
+pub fn settled_versions(
+    resolver: &dyn TargetVersionResolver,
+    window: &RunWindow,
+) -> Result<Vec<VersionShare>, String> {
+    let requests = |seen: &[VersionShare]| -> u64 { seen.iter().map(|share| share.requests).sum() };
+    let settle = resolver.settle();
+    let asked_at = std::time::Instant::now();
+    let mut last = resolver.resolve(window)?;
+    while !settle.pause.is_zero() && asked_at.elapsed() + settle.pause <= settle.deadline {
+        std::thread::sleep(settle.pause);
+        let next = resolver.resolve(window)?;
+        let settled = requests(&next) == requests(&last);
+        last = next;
+        if settled {
+            break;
+        }
+    }
+    Ok(last)
 }
 
 /// Configuration for an experiment run.

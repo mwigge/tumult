@@ -290,6 +290,11 @@ pub struct ExperimentTarget {
     /// Business criticality tier (e.g. `critical`, `important`, `standard`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub criticality: Option<String>,
+    /// The target's `service.namespace`, when two services of one name
+    /// report to the same store. It narrows which telemetry the observed
+    /// version is read from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
     /// The version of the target this run measures (its `service.version`,
     /// e.g. `1.5.0`). Declared here it is recorded on the run as it is;
     /// left out, the runner asks the target's own telemetry at run end.

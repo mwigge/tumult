@@ -10,7 +10,7 @@ use crate::engine::{conclude, Conclusion, RunFacts};
 use crate::execution::all_succeeded;
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
-    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase, TargetVersion, VersionSource,
+    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase, TargetVersion,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -637,10 +637,12 @@ fn seal(
     journal
 }
 
-/// Ask the target's telemetry, once, which version served the run. `None`
-/// when the definition names no target, no resolver is configured, or the
-/// telemetry does not say; a resolver that fails costs the version, never
-/// the run.
+/// Ask the target's telemetry which version served the run, about the
+/// run's window padded for clock skew and until the answer has settled
+/// ([`super::settled_versions`]). `None` when the definition names no
+/// target, no resolver is configured, or the telemetry does not say; a
+/// resolver that fails costs the version, never the run. A window no one
+/// version served nearly alone is recorded as mixed.
 fn observed_target_version(
     experiment: &Experiment,
     config: &RunConfig,
@@ -648,14 +650,16 @@ fn observed_target_version(
 ) -> Option<TargetVersion> {
     let target = experiment.target.as_ref()?;
     let resolver = config.version_resolver.as_ref()?;
+    let skew_ns = i64::try_from(super::VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
     let window = super::RunWindow {
         system: target.system.clone(),
         environment: target.environment.clone(),
-        started_at_ns: journal.started_at_ns,
-        ended_at_ns: journal.ended_at_ns,
+        namespace: target.namespace.clone(),
+        started_at_ns: journal.started_at_ns.saturating_sub(skew_ns),
+        ended_at_ns: journal.ended_at_ns.saturating_add(skew_ns),
     };
-    let version = match resolver.resolve(&window) {
-        Ok(version) => version,
+    match super::settled_versions(resolver.as_ref(), &window) {
+        Ok(seen) => TargetVersion::observed(seen),
         Err(error) => {
             tracing::warn!(
                 experiment_id = %journal.experiment_id,
@@ -665,14 +669,7 @@ fn observed_target_version(
             );
             None
         }
-    };
-    let version = version
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())?;
-    Some(TargetVersion {
-        version,
-        version_source: VersionSource::Observed,
-    })
+    }
 }
 
 /// Put an observed version on the current (root) span. A declared one is

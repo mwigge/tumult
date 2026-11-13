@@ -189,6 +189,7 @@ fn runner_emits_test_kind_and_target_on_root_span() {
         technology: Some("postgresql".into()),
         environment: Some("staging".into()),
         criticality: None,
+        namespace: None,
     });
     let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
     let controls = Arc::new(ControlRegistry::new());
@@ -222,12 +223,19 @@ fn runner_emits_test_kind_and_target_on_root_span() {
 /// The version a run measured is on its root span with where it came from.
 #[test]
 fn runner_emits_the_target_version_and_its_source_on_the_root_span() {
-    use tumult_core::runner::{RunWindow, TargetVersionResolver};
+    use tumult_core::runner::{RunWindow, TargetVersionResolver, VersionSettle};
 
     struct Seen;
     impl TargetVersionResolver for Seen {
-        fn resolve(&self, _window: &RunWindow) -> Result<Option<String>, String> {
-            Ok(Some("1.5.1".into()))
+        fn resolve(&self, _window: &RunWindow) -> Result<Vec<VersionShare>, String> {
+            Ok(vec![VersionShare {
+                version: "1.5.1".into(),
+                requests: 10,
+            }])
+        }
+
+        fn settle(&self) -> VersionSettle {
+            VersionSettle::ONCE
         }
     }
 
@@ -237,6 +245,7 @@ fn runner_emits_the_target_version_and_its_source_on_the_root_span() {
         technology: None,
         environment: Some("demo".into()),
         criticality: None,
+        namespace: None,
         version: version.map(str::to_string),
     };
     let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
