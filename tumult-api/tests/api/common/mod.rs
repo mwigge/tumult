@@ -540,6 +540,14 @@ pub async fn get(base: &str, path: &str) -> (u16, Value) {
     (status, body)
 }
 
+/// When the Star Map the server answers with was assembled. Two equal
+/// answers came from one cached response.
+pub async fn starmap_as_of(base: &str) -> Value {
+    let (status, body) = get(base, "/api/starmap").await;
+    assert_eq!(status, 200, "{body}");
+    body["as_of_ns"].clone()
+}
+
 /// GET with request headers; returns the status, the response headers and
 /// the raw body (a `304` has none).
 pub async fn get_with(

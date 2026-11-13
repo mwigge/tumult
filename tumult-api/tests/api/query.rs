@@ -812,3 +812,51 @@ async fn import_journal_roundtrip_and_dedup() {
     assert_eq!(rows[0]["experiment_id"], json!("exp-imported"));
     assert_eq!(rows[0]["status"], json!("completed"));
 }
+
+#[tokio::test]
+async fn a_journal_import_drops_the_cached_star_maps() {
+    let srv = spawn_server().await;
+    let journal = json!({
+        "experiment_title": "imported via api",
+        "experiment_id": "exp-star-import",
+        "status": "completed",
+        "started_at_ns": now_ns() - 600 * NS,
+        "ended_at_ns": now_ns() - 300 * NS,
+        "duration_ms": 300_000,
+        "steady_state_before": null,
+        "steady_state_after": null,
+        "method_results": [],
+        "rollback_results": [],
+        "estimate": null,
+        "baseline_result": null,
+        "during_result": null,
+        "post_result": null,
+        "load_result": null,
+        "analysis": null,
+        "regulatory": null,
+    });
+    let import = || async {
+        let resp = reqwest::Client::new()
+            .post(format!("{}/api/import/journal", srv.base))
+            .json(&json!({"journal": journal, "experiment": null}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 200);
+        resp.json::<Value>().await.unwrap()["ingested"].clone()
+    };
+    let cached = starmap_as_of(&srv.base).await;
+    assert_eq!(
+        starmap_as_of(&srv.base).await,
+        cached,
+        "served from the cache"
+    );
+
+    assert_eq!(import().await, true);
+    let after = starmap_as_of(&srv.base).await;
+    assert_ne!(after, cached, "the imported run shows at once");
+
+    // A duplicate stores nothing, so the cached map still stands.
+    assert_eq!(import().await, false);
+    assert_eq!(starmap_as_of(&srv.base).await, after);
+}
