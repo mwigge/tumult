@@ -27,7 +27,9 @@
 # stack is up to mix in telemetry from outside the demo. (Host ports are
 # 14317/14318 so the demo runs side-by-side with an existing collector that
 # already owns the OTLP-standard 4317/4318; container-internal traffic uses
-# the standard ports.)
+# the standard ports. KRONIKA_HOST_GRPC_PORT / KRONIKA_HOST_HTTP_PORT move
+# them, which `make demo-check` does because the Tumult demo's collector
+# publishes 14317/14318 too.)
 
 name: tumult-kronika
 
@@ -41,8 +43,8 @@ services:
     ports:
       # Seeded demo identities are local-only; use a separately hardened
       # deployment for remote access.
-      - "127.0.0.1:14317:4317"
-      - "127.0.0.1:14318:4318"
+      - "127.0.0.1:${KRONIKA_HOST_GRPC_PORT:-14317}:4317"
+      - "127.0.0.1:${KRONIKA_HOST_HTTP_PORT:-14318}:4318"
     environment:
       # Render a metric digest into /data/reports/ hourly; the UI's Reports
       # page lists them via /api/reports.

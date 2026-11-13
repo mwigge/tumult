@@ -5,13 +5,23 @@
 #
 # Two modes:
 #   full      (default) — assert every experiment ends Completed AND that spans
-#                         reached the collector. Exits non-zero on any failure.
+#                         reached the collector, then assert the Star Map of
+#                         the Krönika demo. Exits non-zero on any failure.
 #                         This is the dev smoke test (`make demo-check`).
 #   populate            — run the sweep once, best-effort, to warm the SigNoz
 #                         dashboards. Never fails the caller (`make demo`).
 #
 # Usage:
-#   scripts/demo-check.sh [--mode full|populate] [--no-wait]
+#   scripts/demo-check.sh [--mode full|populate] [--no-wait] [--starmap-only]
+#
+# The Star Map assertions (scripts/starmap-check.py) need a Krönika daemon
+# that holds the Krönika demo. By default this script brings
+# docker/docker-compose.kronika.yml up as its own compose project, on a fresh
+# volume with throwaway credentials and on host ports 24317/24318, runs its
+# seed, checks the map and removes the project again. To check a daemon that
+# is already running, set STARMAP_URL (and STARMAP_TOKEN when it asks for
+# one); nothing is started or removed then, and one open risk is suppressed
+# when none is yet. --starmap-only runs just this part.
 #
 # Assumes the demo stack is already `up` (the Makefile brings it up first).
 # Runs each experiment inside the tumult-mcp container via `tumult run`, the
@@ -39,12 +49,21 @@ HEALTH_CONTAINERS=(demo-postgres demo-app demo-sshd demo-signoz demo-mcp)
 
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-240}"
 
+# Star Map: the compose project this script owns, and where its daemon listens.
+KRONIKA_COMPOSE="${COMPOSE_KRONIKA:-docker compose -f ${REPO_ROOT}/docker/docker-compose.kronika.yml} -p tumult-demo-check-kronika"
+STARMAP_URL="${STARMAP_URL:-}"
+STARMAP_WAIT="${STARMAP_WAIT:-90}"
+STARMAP_ONLY=0
+# The Krönika seed runs eight experiments; two do not pass by design.
+SEED_TALLY="6 passed, 2 deviated/failed"
+
 # ── Args ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)     MODE="${2:?--mode needs a value}"; shift 2 ;;
     --mode=*)   MODE="${1#*=}"; shift ;;
     --no-wait)  DO_WAIT=0; shift ;;
+    --starmap-only) STARMAP_ONLY=1; shift ;;
     -h|--help)  grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -145,10 +164,103 @@ assert_telemetry() {
   return 1
 }
 
+# ── Star Map assertion ────────────────────────────────────────────
+throwaway_secret() { head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+
+kronika_down() {
+  if ! $KRONIKA_COMPOSE down -v --remove-orphans >/dev/null 2>&1; then
+    warn "star map — could not remove the Krönika check stack"
+  fi
+}
+
+# Bring the Krönika demo up on a fresh volume and run its seed. Sets
+# STARMAP_URL and STARMAP_TOKEN for the daemon it started.
+kronika_up() {
+  export KRONIKA_HOST_GRPC_PORT="${KRONIKA_HOST_GRPC_PORT:-24317}"
+  export KRONIKA_HOST_HTTP_PORT="${KRONIKA_HOST_HTTP_PORT:-24318}"
+  export KRONIKA_BOOTSTRAP_ADMIN_PASSWORD KRONIKA_BOOTSTRAP_TOKEN KRONIKA_INGEST_TOKEN
+  KRONIKA_BOOTSTRAP_ADMIN_PASSWORD="$(throwaway_secret)"
+  KRONIKA_BOOTSTRAP_TOKEN="$(throwaway_secret)"
+  KRONIKA_INGEST_TOKEN="$(throwaway_secret)"
+  local log; log="$(mktemp)"
+  kronika_down
+  if ! $KRONIKA_COMPOSE up -d --build --wait tumultd >"$log" 2>&1; then
+    fail "star map — the Krönika daemon did not come up"
+    tail -12 "$log" | sed 's/^/        /'
+    rm -f "$log"
+    return 1
+  fi
+  if ! $KRONIKA_COMPOSE run --rm seed >"$log" 2>&1; then
+    fail "star map — the Krönika seed exited non-zero"
+    tail -12 "$log" | sed 's/^/        /'
+    rm -f "$log"
+    return 1
+  fi
+  if ! grep -q "suite done — ${SEED_TALLY}" "$log"; then
+    fail "star map — the seed did not end with ${SEED_TALLY}"
+    grep '=== seed:' "$log" | sed 's/^/        /' || true
+    rm -f "$log"
+    return 1
+  fi
+  rm -f "$log"
+  pass "star map — Krönika demo seeded (${SEED_TALLY})"
+  STARMAP_URL="http://127.0.0.1:${KRONIKA_HOST_HTTP_PORT}"
+  STARMAP_TOKEN="$KRONIKA_BOOTSTRAP_TOKEN"
+}
+
+# Print each line of the check as a PASS or FAIL of this script.
+report_starmap() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      "ok  "*) pass "${line#ok  }" ;;
+      *)       fail "${line#FAIL }" ;;
+    esac
+  done
+}
+
+assert_starmap() {
+  local own=0 rc=0 out
+  if [[ -z "$STARMAP_URL" ]]; then
+    own=1
+    if ! kronika_up; then
+      kronika_down
+      return 1
+    fi
+  fi
+  out="$(STARMAP_TOKEN="${STARMAP_TOKEN:-}" python3 "${REPO_ROOT}/scripts/starmap-check.py" \
+    "$STARMAP_URL" --wait "$STARMAP_WAIT" 2>&1)" || rc=1
+  report_starmap <<<"$out"
+  if [[ $own -eq 1 ]]; then
+    kronika_down
+  fi
+  return $rc
+}
+
+finish() {
+  echo ""
+  echo "------------------------------------------------------------------"
+  if [[ $FAILURES -eq 0 ]]; then
+    pass "ALL CHECKS PASSED"
+    echo "------------------------------------------------------------------"
+    exit 0
+  fi
+  fail "${FAILURES} check(s) failed"
+  echo "------------------------------------------------------------------"
+  exit 1
+}
+
 # ── Main ──────────────────────────────────────────────────────────
 echo "=================================================================="
 echo " Tumult demo check — mode: ${MODE}"
 echo "=================================================================="
+
+if [[ $STARMAP_ONLY -eq 1 ]]; then
+  echo ""
+  echo "Asserting the Star Map of the Krönika demo..."
+  assert_starmap || record_fail
+  finish
+fi
 
 if [[ $DO_WAIT -eq 1 ]]; then
   if ! wait_for_health; then
@@ -169,22 +281,17 @@ if [[ "$MODE" == "full" ]]; then
   echo ""
   echo "Asserting telemetry landed..."
   assert_telemetry || record_fail
+  echo ""
+  echo "Asserting the Star Map of the Krönika demo..."
+  assert_starmap || record_fail
 fi
 
-echo ""
-echo "------------------------------------------------------------------"
 if [[ "$MODE" == "populate" ]]; then
+  echo ""
+  echo "------------------------------------------------------------------"
   info "populate mode — dashboards warmed; not asserting (exit 0)"
   echo "------------------------------------------------------------------"
   exit 0
 fi
 
-if [[ $FAILURES -eq 0 ]]; then
-  pass "ALL CHECKS PASSED"
-  echo "------------------------------------------------------------------"
-  exit 0
-else
-  fail "${FAILURES} check(s) failed"
-  echo "------------------------------------------------------------------"
-  exit 1
-fi
+finish
