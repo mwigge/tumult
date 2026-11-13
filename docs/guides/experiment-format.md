@@ -258,7 +258,7 @@ load:
     sample_interval_s: 30
 ```
 
-The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores each field as a `probe_samples` series named `load.<field>` in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
+The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak and at least one second, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores each field as a `probe_samples` series named `load.<field>` in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
 
 ### Robustness runs
 

@@ -1,5 +1,5 @@
 title: RIP phase-4 proof — checkout soak on oha
-description: Twelve seconds of oha against the proof's checkout service, sampled every half second, so the run leaves 24 load windows in the lake for the performance verdict to compare.
+description: Twenty-four seconds of oha against the proof's checkout service, sampled every second, so the run leaves 24 load windows in the lake for the performance verdict to compare. The method holds for the whole soak (PROOF_HOLD_S seconds, 25 by default): when a method ends first, the load finishes the window in flight and starts no further one.
 
 tags[2]: proof, performance
 kind: performance
@@ -19,10 +19,10 @@ load:
   tool: oha
   script: http://127.0.0.1:44380/
   vus: 4
-  duration_s: 12
+  duration_s: 24
   profile:
     type: soak
-    sample_interval_s: 0.5
+    sample_interval_s: 1
 
 steady_state_hypothesis:
   title: Checkout answers
@@ -41,7 +41,7 @@ method[1]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "sleep 14 && curl -fsS -o /dev/null http://127.0.0.1:44380/"
-      timeout_s: 30.0
+      arguments[2]: "-c", "sleep \"${PROOF_HOLD_S:-25}\" && curl -fsS -o /dev/null http://127.0.0.1:44380/"
+      timeout_s: 90.0
 
 rollbacks[0]:

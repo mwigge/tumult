@@ -1,0 +1,26 @@
+title: RIP phase-4 proof — a load that cannot send a single request
+description: oha is pointed at a host name that does not resolve, so no window sends anything. A declared load without evidence must fail the run.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout-unreachable
+  technology: http
+  environment: demo
+
+load:
+  tool: oha
+  script: http://checkout.invalid:1/
+  vus: 2
+  duration_s: 2
+
+method[1]:
+  - name: hold-briefly
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 1"
+      timeout_s: 5.0
+
+rollbacks[0]:

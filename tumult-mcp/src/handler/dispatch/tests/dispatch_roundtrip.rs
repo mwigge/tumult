@@ -167,11 +167,10 @@ async fn call_tool_read_journal_structured_round_trip() {
 async fn structured_content_conforms_to_advertised_schema_for_all_structured_tools() {
     // `tumult_scaffold_experiment` resolves its action against the live
     // fault catalog; point discovery at the workspace's real `plugins/`.
-    let plugins = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../plugins")
-        .canonicalize()
-        .unwrap();
-    std::env::set_var("TUMULT_PLUGIN_PATH", plugins);
+    let _plugins = crate::tools::test_support::plugin_path_guard_async(
+        &crate::tools::test_support::workspace_plugins_dir(),
+    )
+    .await;
     let tmp = tempfile::tempdir().unwrap();
     crate::tools::test_support::write_valid_experiment(tmp.path());
     let handler = open_handler(tmp.path());

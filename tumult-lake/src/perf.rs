@@ -205,6 +205,74 @@ mod tests {
         }
     }
 
+    /// `perf_verdicts` as the first release created it: the lookup index
+    /// and no `envs` column.
+    const FIRST_SHAPE: &str = "
+CREATE TABLE perf_verdicts (
+    target VARCHAR NOT NULL, probe VARCHAR NOT NULL,
+    baseline_version VARCHAR NOT NULL, candidate_version VARCHAR NOT NULL,
+    quantile VARCHAR NOT NULL,
+    baseline_n BIGINT NOT NULL, candidate_n BIGINT NOT NULL,
+    baseline_p50 DOUBLE, baseline_p95 DOUBLE, baseline_p99 DOUBLE,
+    candidate_p50 DOUBLE, candidate_p95 DOUBLE, candidate_p99 DOUBLE,
+    delta DOUBLE, delta_pct DOUBLE, ci_low DOUBLE, ci_high DOUBLE,
+    confidence DOUBLE NOT NULL, margin DOUBLE NOT NULL,
+    verdict VARCHAR NOT NULL, reasons JSON NOT NULL,
+    computed_at_ns BIGINT NOT NULL
+);
+CREATE INDEX idx_perf_verdicts_target ON perf_verdicts (target);
+INSERT INTO perf_verdicts VALUES (
+    'checkout', 'load.latency_p95_ms', '1.3.0', '1.4.0', 'p95', 40, 40,
+    40.0, 100.0, 150.0, 41.0, 101.0, 151.0, 1.0, 1.0, -2.0, 4.0,
+    0.95, 5.0, 'unchanged', '[\"inside the margin\"]', 100
+);
+";
+
+    #[test]
+    fn a_lake_with_the_first_perf_verdicts_shape_upgrades_and_keeps_its_rows() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = dir.path().join("lake.duckdb");
+        // A raw connection: `Store::open` would migrate at once.
+        duckdb::Connection::open(&db)
+            .expect("open")
+            .execute_batch(FIRST_SHAPE)
+            .expect("first shape");
+
+        let store = Store::open(&db).expect("the old lake opens");
+        let writer = store.writer().expect("writer");
+        let scoped = PerfVerdictRow {
+            envs: Some(vec!["demo".into()]),
+            ..row("regressed", 200)
+        };
+        writer
+            .insert_perf_verdict(&scoped)
+            .expect("the upgraded table takes a row with envs");
+
+        let reader = store.read_only().expect("reader");
+        let all = reader.perf_verdicts("checkout", &[], 10).expect("read");
+        assert_eq!(all.len(), 2, "{all:?}");
+        assert_eq!(all[0]["verdict"], "regressed");
+        assert_eq!(all[0]["envs"], serde_json::json!(["demo"]));
+        // The row written before the upgrade survived, unscoped.
+        assert_eq!(all[1]["verdict"], "unchanged");
+        assert_eq!(all[1]["candidate_version"], "1.4.0");
+        assert!(all[1]["envs"].is_null(), "{all:?}");
+        let demo = reader
+            .perf_verdicts("checkout", &["demo".into()], 10)
+            .expect("scoped read");
+        assert_eq!(demo.len(), 1, "{demo:?}");
+
+        // Opening it again changes nothing.
+        drop((reader, writer, store));
+        let store = Store::open(&db).expect("reopen");
+        let again = store
+            .read_only()
+            .expect("reader")
+            .perf_verdicts("checkout", &[], 10)
+            .expect("read");
+        assert_eq!(again.len(), 2, "{again:?}");
+    }
+
     #[test]
     fn verdicts_round_trip_newest_first() {
         let d = tempfile::TempDir::new().unwrap();
