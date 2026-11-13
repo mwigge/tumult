@@ -5,8 +5,10 @@ FastAPI is an optional dependency; importing this module without it raises
 back to the stdlib server.
 """
 
-from __future__ import annotations
-
+# No ``from __future__ import annotations`` here: FastAPI resolves handler
+# annotations at registration, and ``Request`` is imported inside
+# ``create_app``. As a string it would not resolve, and FastAPI would read
+# ``request`` as a required query parameter.
 import logging
 from typing import Any
 
@@ -31,7 +33,10 @@ def create_app(model: ForecastModel | None = None) -> Any:
 
     @app.post("/forecast")
     async def forecast(request: Request) -> dict[str, Any]:
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="the body is not valid JSON") from error
         try:
             return handle_forecast(payload, loaded)
         except BadRequest as error:
