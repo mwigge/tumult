@@ -143,21 +143,23 @@ async fn seed_run_with_samples(srv: &TestServer, run_id: &str, experiment_id: &s
         w.finish_run(&run, "passed", Some(&exp), None, None)
             .map_err(|e| e.to_string())?;
         // 1 s samples: 20 during-phase steps where latency triples, then 40
-        // post-phase steps settling back around 100 ms.
+        // post-phase steps settling back around 100 ms. The settled level
+        // carries deterministic pseudo-noise (an LCG): an exactly periodic
+        // series would be fitted without residuals and leave no band.
         let mut rows = Vec::new();
+        let mut state: u64 = 7;
         for i in 0..60_i64 {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let noise = f64::from(u8::try_from((state >> 56) & 0x07).unwrap_or(0));
             let (phase, value) = if i < 20 {
                 (
                     "during",
                     300.0 + f64::from(i32::try_from(i % 3).unwrap_or(0)) * 5.0,
                 )
             } else {
-                (
-                    "post",
-                    100.0
-                        + f64::from(i32::try_from(i % 4).unwrap_or(0)) * 2.0
-                        + if i < 23 { 60.0 } else { 0.0 },
-                )
+                ("post", 100.0 + noise + if i < 23 { 60.0 } else { 0.0 })
             };
             rows.push(format!(
                 "('{exp}', 'health', '{phase}', {}, {value}, true)",
@@ -314,7 +316,7 @@ async fn spawn_fake_sidecar() -> (String, FakeSidecar) {
 #[tokio::test]
 async fn a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown() {
     let (url, sidecar) = spawn_fake_sidecar().await;
-    let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_millis(400)).await;
+    let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(3)).await;
     seed_run_with_samples(&srv, "run-breaker", "exp-breaker").await;
 
     let (status, first) = get(&srv.base, "/api/runs/run-breaker/impact").await;
@@ -333,7 +335,9 @@ async fn a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown()
     assert!(reason.contains("500"), "the first error is kept: {reason}");
     assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
 
-    // Once the cool-down has passed the sidecar is tried again.
+    // Once the cool-down has passed the sidecar is tried again. (The
+    // cool-down is seconds, not milliseconds, so a loaded host cannot let it
+    // lapse between the two requests above.)
     sidecar.healthy.store(true, Ordering::SeqCst);
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     let recovered = loop {
