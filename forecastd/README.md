@@ -84,6 +84,11 @@ constant sentence, nothing interpolated) and `fields` (everything that
 varies; an exception is `error.type`, `error.message`, `error.stack`).
 Strings are cut at 1 KiB and control characters are escaped by the JSON
 encoder, so a value from a client or from the model cannot forge a line.
+URLs in an error lose their query string and credentials (a failed
+download quotes its signed link). A value whose `__str__` raises is
+described instead, a record that cannot be formatted becomes a
+`log.unformattable` line, and a closed stderr drops the line, not the
+request.
 `FORECASTD_LOG_FORMAT=text` is for reading at a terminal.
 
 ## Weights and the licence

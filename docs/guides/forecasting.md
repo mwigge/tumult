@@ -388,7 +388,14 @@ all pass through the same formatter. The access log is the event
 
 Strings are cut at 1 KiB (a stack at 8 KiB) and end in `...[truncated]` when
 they were; a newline or any other control character in a value is escaped
-by the encoder, so a value cannot start a second line. The daemon's own
+by the encoder, so a value cannot start a second line. A URL in
+`error.message` or `error.stack` keeps its host and path and loses its
+query string and any `user:password@`, so the signed link or the token of a
+failed weights download is not logged. A value that cannot be turned into
+text is described instead (`<Name: str failed with …>`), and a record that
+still cannot be formatted is written as a `log.unformattable` event naming
+the event it was. A line that cannot be written, because stderr is closed,
+is dropped without failing the request that logged it. The daemon's own
 forecast events follow the same naming (`error.type`, `error.message` as
 fields, a constant message).
 

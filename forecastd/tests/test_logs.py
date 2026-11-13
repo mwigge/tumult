@@ -207,6 +207,30 @@ class JsonFormatterTests(unittest.TestCase):
         self.assertIn(f" WARNING forecastd.test {logs.UNFORMATTABLE} ", line)
         self.assertIn('event="forecast.busy"', line)
 
+    def test_a_url_in_an_error_loses_its_query_string_and_credentials(self) -> None:
+        # What a failed download says: the hub's signed URL, word for word.
+        url = "https://cdn.example/repo/model.safetensors"
+        logger, stream = capture(JsonFormatter())
+        # Built here: the stack quotes the source of the lines that raise.
+        signed = f"{url}?X-Amz-Signature=SECRET&Expires=1"
+        with_token = f"'{url}?token=hf_SECRET' or https://me:hf_SECRET@hub.example/x"
+        try:
+            try:
+                raise OSError(f"403 Client Error: Forbidden for url: {signed} (Request ID: 7)")
+            except OSError as inner:
+                raise RuntimeError(f"cannot fetch {with_token}") from inner
+        except RuntimeError:
+            event(logger, logging.ERROR, "startup.failed", "cannot start", exc_info=True)
+        (line,) = lines(stream)
+        self.assertNotIn("SECRET", line)
+        self.assertNotIn("Expires", line)
+        fields = json.loads(line)["fields"]
+        self.assertEqual(
+            fields["error.message"],
+            f"cannot fetch '{url}?[redacted]' or https://[redacted]@hub.example/x",
+        )
+        self.assertIn(f"for url: {url}?[redacted] (Request ID: 7)", fields["error.stack"])
+
     def test_a_field_named_like_a_record_attribute_is_kept(self) -> None:
         logger, stream = capture(JsonFormatter())
         event(logger, logging.INFO, "e", "m", name="n", args="a", message="x", path="/forecast")

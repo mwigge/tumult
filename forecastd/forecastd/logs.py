@@ -21,6 +21,7 @@ import json
 import logging
 import math
 import os
+import re
 import sys
 import threading
 import traceback
@@ -49,6 +50,18 @@ PLAIN_EVENT = "log"
 UNFORMATTABLE = "log.unformattable"
 
 ExcInfo = tuple[type[BaseException], BaseException, TracebackType | None]
+REDACTED = "[redacted]"
+# The two places a URL carries a secret: ``user:password@`` and the query
+# string (a token, or the signature of a pre-signed download).
+_URL_USER = re.compile(r"(https?://)[^\s/@'\"<>]+@")
+_URL_QUERY = re.compile(r"(https?://[^\s?#'\"<>]*)\?[^\s'\"<>)]*")
+
+
+def redact_urls(text: str) -> str:
+    """``text`` with the credentials and the query string of every URL in
+    it replaced: an error from a download quotes the URL it failed on."""
+    text = _URL_USER.sub(rf"\1{REDACTED}@", text)
+    return _URL_QUERY.sub(rf"\1?{REDACTED}", text)
 
 
 def clip(value: str, limit: int = MAX_STRING) -> str:
@@ -101,13 +114,14 @@ def bounded(value: Any, depth: int = 0) -> Any:
 
 def error_fields(error: BaseException, stack: str | None = None) -> dict[str, Any]:
     """The fields that describe an exception, named as the daemon names
-    them (``error.type``, ``error.message``)."""
+    them (``error.type``, ``error.message``). URLs in them keep their
+    host and path and lose what could be a secret."""
     fields: dict[str, Any] = {
         "error.type": type(error).__name__,
-        "error.message": clip(_text(error)),
+        "error.message": clip(redact_urls(_text(error))),
     }
     if stack is not None:
-        fields["error.stack"] = clip(stack, MAX_STACK)
+        fields["error.stack"] = clip(redact_urls(stack), MAX_STACK)
     return fields
 
 
