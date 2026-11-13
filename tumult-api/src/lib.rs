@@ -93,6 +93,15 @@
 //!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/dora?lei=&profile=&by=entity|org&env=` — DORA coverage per
+//!   article and function of one legal entity, each number with its
+//!   unknown share, the expectation table (expected against actual
+//!   evidence status) and the reporting-readiness facts;
+//!   `GET /api/dora/{article}?entity=` lists every evidence row behind
+//!   the cells of one article.
+//! * `GET /api/maturity?lei=&profile=&by=node|entity|org&env=` — the
+//!   internal maturity level (1–5, a house scale) with its pillars, gates
+//!   and history, and the per-node roll-up naming the nodes that cap it.
 //! * `GET /api/otel/conformance?range=&env=` — per service, which naming
 //!   contract attributes every span in the window carried (target columns,
 //!   ICT spine), the resulting level (`none|target|spine`) and what is
@@ -187,6 +196,9 @@ pub struct ApiState {
     secure_cookies: bool,
     /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
     manifests_dir: Option<Arc<PathBuf>>,
+    /// House parameters of the DORA coverage and maturity scores (the
+    /// `score:` section of the org file; defaults without one).
+    score_params: Arc<tumult_compliance::dora::params::HouseParams>,
 }
 
 impl ApiState {
@@ -215,7 +227,24 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
             manifests_dir: None,
+            score_params: Arc::default(),
         }
+    }
+
+    /// Score with these house parameters instead of the defaults.
+    #[must_use]
+    pub fn with_score_params(
+        mut self,
+        params: tumult_compliance::dora::params::HouseParams,
+    ) -> Self {
+        self.score_params = Arc::new(params);
+        self
+    }
+
+    /// The house parameters of the DORA coverage and maturity scores.
+    #[must_use]
+    pub fn score_params(&self) -> &tumult_compliance::dora::params::HouseParams {
+        &self.score_params
     }
 
     /// Point the passive risk scanner at a directory of Kubernetes manifests.
@@ -253,6 +282,9 @@ impl ApiState {
         let org_path = std::env::var_os("KRONIKA_ORG_FILE")
             .map(PathBuf::from)
             .or_else(|| db_path.parent().map(|d| d.join("org.yaml")));
+        let score_params = org_path
+            .as_deref()
+            .map_or_else(Default::default, score_params_from);
         let org = org_path
             .filter(|p| p.exists())
             .map_or_else(tumult_compliance::OrgTree::empty, |p| {
@@ -289,6 +321,7 @@ impl ApiState {
             secure_cookies,
         )
         .with_manifests_dir(manifests_dir)
+        .with_score_params(score_params)
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.
@@ -319,6 +352,18 @@ impl ApiState {
     #[must_use]
     pub fn secure_cookies(&self) -> bool {
         self.secure_cookies
+    }
+}
+
+/// The `score:` section of the org file. A missing file or section means
+/// the defaults; an invalid file logs a warning and falls back to them.
+fn score_params_from(path: &std::path::Path) -> tumult_compliance::dora::params::HouseParams {
+    match tumult_compliance::dora::register::load(path) {
+        Ok(register) => register.params,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "invalid function register; scoring with default house parameters");
+            tumult_compliance::dora::params::HouseParams::default()
+        }
     }
 }
 
@@ -354,6 +399,9 @@ pub fn router(state: ApiState) -> Router {
             "/api/otel/conformance",
             get(handlers::conformance::conformance),
         )
+        .route("/api/dora", get(handlers::dora::dora))
+        .route("/api/dora/{article}", get(handlers::dora::article))
+        .route("/api/maturity", get(handlers::dora::maturity))
         .route("/api/perf/{target}", get(handlers::perf::perf))
         .route(
             "/api/manual/experiments",
