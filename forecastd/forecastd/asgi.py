@@ -23,6 +23,9 @@ log = logging.getLogger("forecastd")
 # How long a request body may take to arrive. A request holds a slot of the
 # gate while its body is read, so a body that never ends must not hold one.
 BODY_TIMEOUT_S = 30
+# The status for a request whose client left before its body was in. No
+# client reads it; it is what the access log shows (nginx's convention).
+CLIENT_GONE = 499
 
 
 class AccessLog:
@@ -89,12 +92,24 @@ async def _stream_body(request: Any) -> bytes:
 async def _read_body(request: Any) -> bytes:
     """The request body, never more than ``MAX_BODY`` of it and never
     waited for longer than ``BODY_TIMEOUT_S``: the header is checked first,
-    and the stream is cut off when it runs past the cap."""
+    and the stream is cut off when it runs past the cap. A client that
+    hangs up half-way is its own business, not a failed forecast."""
+    # Starlette comes with FastAPI, which this module must import without.
+    from starlette.requests import ClientDisconnect
+
     _announced_length(request.headers.get("content-length"))
     try:
         return await asyncio.wait_for(_stream_body(request), BODY_TIMEOUT_S)
     except asyncio.TimeoutError as error:
         raise _Refused(408, "the body did not arrive in time") from error
+    except ClientDisconnect as error:
+        event(
+            log,
+            logging.INFO,
+            "http.client_gone",
+            "the client closed the connection before its body arrived",
+        )
+        raise _Refused(CLIENT_GONE, "the client closed the connection") from error
 
 
 def _answer(body: bytes, model: ForecastModel) -> dict[str, Any]:

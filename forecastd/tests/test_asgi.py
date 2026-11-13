@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
 import threading
 import unittest
 from unittest import mock
@@ -32,11 +33,13 @@ async def acall(
     content_length: bytes | None = b"",
     chunks: list[bytes] | None = None,
     stall: bool = False,
+    gone: bool = False,
 ) -> tuple[int, dict, dict]:
     """One request against an ASGI app; returns the status, the JSON body
     and the response headers. ``content_length`` overrides the header
-    (``None`` leaves it out), ``chunks`` sends the body in several messages
-    and ``stall`` never sends the last of them."""
+    (``None`` leaves it out), ``chunks`` sends the body in several messages,
+    ``stall`` never sends the last of them and ``gone`` disconnects after
+    the last with the body still unfinished."""
     headers = [(b"content-type", b"application/json")]
     if content_length == b"":
         content_length = str(len(body)).encode()
@@ -59,7 +62,7 @@ async def acall(
     sent: list[dict] = []
     parts = chunks if chunks is not None else [body]
     pending = [
-        {"type": "http.request", "body": part, "more_body": i + 1 < len(parts)}
+        {"type": "http.request", "body": part, "more_body": gone or i + 1 < len(parts)}
         for i, part in enumerate(parts)
     ]
 
@@ -239,6 +242,21 @@ class AsgiTests(unittest.TestCase):
                 app, "POST", "/forecast", chunks=[request[:10], request[10:]], stall=True
             )
         self.assertEqual(status, 408, body)
+        self.assertEqual(call(app, "POST", "/forecast", request)[0], 200)
+
+    def test_a_client_that_goes_away_is_not_a_failed_forecast(self) -> None:
+        from forecastd import asgi
+        from forecastd.service import Gate
+
+        app = asgi.create_app(StubModel(), Gate(1))
+        request = b'{"context": [1.0, 2.0, 3.0], "horizon": 1}'
+        with self.assertLogs("forecastd", level="INFO") as seen:
+            status, body = call(app, "POST", "/forecast", chunks=[request[:10]], gone=True)
+        # Nobody is left to read the answer; the status is for the access log.
+        self.assertEqual(status, 499, body)
+        events = {record.event: record.levelno for record in seen.records}
+        self.assertEqual(sorted(events), ["http.access", "http.client_gone"])
+        self.assertEqual(events["http.client_gone"], logging.INFO)
         self.assertEqual(call(app, "POST", "/forecast", request)[0], 200)
 
     def test_a_request_is_one_access_event(self) -> None:
