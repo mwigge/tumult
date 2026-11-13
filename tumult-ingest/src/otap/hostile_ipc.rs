@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arrow::array::{
-    Array, ArrayRef, DictionaryArray, DurationNanosecondArray, FixedSizeBinaryArray, RecordBatch,
-    StringArray, TimestampNanosecondArray, UInt16Array,
+    Array, ArrayRef, AsArray, DictionaryArray, DurationNanosecondArray, FixedSizeBinaryArray,
+    RecordBatch, StringArray, TimestampNanosecondArray, UInt16Array,
 };
 use arrow::datatypes::{DataType, Field, Fields, IntervalUnit, Schema, TimeUnit, UnionFields};
 use arrow::ipc::writer::StreamWriter;
@@ -342,59 +342,170 @@ fn structure_that_disagrees_with_the_schema_is_refused() {
     let batch = consume(crafted(&schema, &with_nulls, &body)).unwrap();
     assert_eq!(batch.get(Ty::Spans).unwrap().column(0).null_count(), 1);
 
+    // What this decoder's own check says, or `None` where the check under
+    // test is Arrow's (`ArrayDataBuilder::build`).
+    const COUNTS: Option<&str> = Some("where the schema has");
+    const SHORT: Option<&str> = Some("buffer shorter than its array");
+    const NULLS: Option<&str> = Some("null count outside the array");
+    const OFFSETS: Option<&str> = Some("offsets are negative or decreasing");
+    const ROWS: Option<&str> = Some("column length differs from the row count");
     type Damage = fn(&mut BatchHeader, &mut Vec<u8>);
-    let cases: Vec<(&str, Damage)> = vec![
-        ("a node missing", |h, _| {
+    let cases: Vec<(&str, Option<&str>, Damage)> = vec![
+        ("a node missing", COUNTS, |h, _| {
             h.nodes.pop();
         }),
-        ("a node too many", |h, _| h.nodes.push((2, 0))),
-        ("no nodes", |h, _| h.nodes.clear()),
-        ("a buffer missing", |h, _| {
+        ("a node too many", COUNTS, |h, _| h.nodes.push((2, 0))),
+        ("no nodes", COUNTS, |h, _| h.nodes.clear()),
+        ("a buffer missing", COUNTS, |h, _| {
             h.buffers.pop();
         }),
-        ("a buffer too many", |h, _| h.buffers.push((0, 0))),
-        ("no buffers", |h, _| h.buffers.clear()),
-        ("values shorter than the rows", |h, _| h.buffers[1] = (0, 2)),
-        ("no values", |h, _| h.buffers[1] = (0, 0)),
-        ("nulls without a bitmap", |h, _| h.nodes[0] = (2, 1)),
-        ("more nulls than rows", |h, _| {
+        ("a buffer too many", COUNTS, |h, _| h.buffers.push((0, 0))),
+        ("no buffers", COUNTS, |h, _| h.buffers.clear()),
+        ("values shorter than the rows", SHORT, |h, _| {
+            h.buffers[1] = (0, 2);
+        }),
+        ("no values", SHORT, |h, _| h.buffers[1] = (0, 0)),
+        ("nulls without a bitmap", SHORT, |h, _| h.nodes[0] = (2, 1)),
+        ("more nulls than rows", NULLS, |h, _| {
             h.nodes[0] = (2, 3);
             h.buffers[0] = (32, 1);
         }),
-        ("negative null count", |h, _| h.nodes[0] = (2, -1)),
-        ("null count that is not the bitmap's", |h, _| {
-            h.nodes[0] = (2, 2);
-            h.buffers[0] = (32, 1);
+        ("negative null count", NULLS, |h, _| h.nodes[0] = (2, -1)),
+        (
+            "null count that is not the bitmap's",
+            Some("null count differs from the validity bitmap"),
+            |h, _| {
+                h.nodes[0] = (2, 2);
+                h.buffers[0] = (32, 1);
+            },
+        ),
+        ("column longer than its values", SHORT, |h, _| {
+            h.nodes[0] = (3, 0);
         }),
-        ("column longer than the batch", |h, _| h.nodes[0] = (3, 0)),
-        ("column shorter than the batch", |h, _| h.nodes[1] = (1, 0)),
-        ("negative column length", |h, _| h.nodes[1] = (-2, 0)),
-        ("offsets shorter than the rows", |h, _| {
+        ("column longer than the batch", ROWS, |h, _| {
+            h.nodes[0] = (3, 0);
+            h.buffers[1] = (0, 6);
+        }),
+        ("column shorter than the batch", ROWS, |h, _| {
+            h.nodes[1] = (1, 0);
+        }),
+        (
+            "negative column length",
+            Some("negative array length"),
+            |h, _| h.nodes[1] = (-2, 0),
+        ),
+        ("offsets shorter than the rows", SHORT, |h, _| {
             h.buffers[3] = (8, 8);
         }),
-        ("no offsets", |h, _| h.buffers[3] = (8, 0)),
-        ("offsets going backwards", |_, b| set_offsets(b, [0, 4, 2])),
-        ("negative first offset", |_, b| set_offsets(b, [-1, 2, 4])),
-        ("last offset beyond the values", |_, b| {
+        ("no offsets", SHORT, |h, _| h.buffers[3] = (8, 0)),
+        ("offsets going backwards", OFFSETS, |_, b| {
+            set_offsets(b, [0, 4, 2]);
+        }),
+        (
+            "offsets going backwards and forwards again",
+            OFFSETS,
+            |_, b| {
+                set_offsets(b, [2, 0, 4]);
+            },
+        ),
+        ("negative first offset", OFFSETS, |_, b| {
+            set_offsets(b, [-1, 2, 4]);
+        }),
+        ("last offset beyond the values", SHORT, |_, b| {
             set_offsets(b, [0, 2, 9]);
         }),
-        ("huge offset", |_, b| set_offsets(b, [0, 2, i32::MAX])),
-        ("text that is not utf-8", |_, b| b[24] = 0xff),
-        ("rows beyond the columns", |h, _| h.rows = 3),
-        ("negative rows", |h, _| h.rows = -1),
+        ("huge offset", SHORT, |_, b| {
+            set_offsets(b, [0, 2, i32::MAX]);
+        }),
+        ("text that is not utf-8", None, |_, b| b[24] = 0xff),
+        ("rows beyond the columns", ROWS, |h, _| h.rows = 3),
+        ("negative rows", Some("negative row count"), |h, _| {
+            h.rows = -1;
+        }),
     ];
-    for (what, damage) in cases {
+    let mut wrong = Vec::new();
+    for (what, expected, damage) in cases {
         let (mut header, mut body) = (honest.clone(), body.clone());
         damage(&mut header, &mut body);
         let result = consume(crafted(&schema, &header, &body));
-        assert!(
-            matches!(
-                result,
-                Err(OtapError::Malformed { .. } | OtapError::Ipc { .. })
-            ),
-            "{what}: {:?}",
-            result.map(|b| b.payloads())
-        );
+        let as_expected = match (&result, expected) {
+            (Err(OtapError::Malformed { reason, .. }), Some(needle)) => reason.contains(needle),
+            (Err(OtapError::Ipc { .. }), None) => true,
+            _ => false,
+        };
+        if !as_expected {
+            let got = result.map(|b| b.payloads()).map_err(|e| e.to_string());
+            wrong.push(format!("{what}: expected {expected:?}, got {got:?}"));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// One row of `list<u16>` whose offsets are `offsets`, over two items.
+fn one_list(offsets: [i32; 2]) -> Vec<u8> {
+    let list = DataType::List(item(DataType::UInt16));
+    let schema = Schema::new(vec![Field::new("items", list, true)]);
+    let mut body = Vec::new();
+    for offset in offsets {
+        body.extend_from_slice(&offset.to_le_bytes()); // list offsets at 0
+    }
+    body.extend_from_slice(&[7, 0, 9, 0, 0, 0, 0, 0]); // two items at 8
+    let header = BatchHeader {
+        rows: 1,
+        nodes: vec![(1, 0), (2, 0)],
+        buffers: vec![(0, 0), (0, 8), (0, 0), (8, 4)],
+        ..BatchHeader::default()
+    };
+    crafted(&schema, &header, &body)
+}
+
+#[test]
+fn list_offsets_must_stay_inside_the_items() {
+    let batch = consume(one_list([0, 2])).unwrap();
+    let lists = batch.get(Ty::Spans).unwrap().column(0).as_list::<i32>();
+    assert_eq!(lists.value(0).len(), 2, "both items");
+    let batch = consume(one_list([1, 2])).unwrap();
+    let lists = batch.get(Ty::Spans).unwrap().column(0).as_list::<i32>();
+    assert_eq!(lists.value(0).len(), 1, "the second item only");
+
+    malformed(consume(one_list([0, 3])), "list offsets beyond the items")
+        .unwrap_or_else(|e| panic!("one item too many: {e}"));
+    malformed(
+        consume(one_list([2, i32::MAX])),
+        "list offsets beyond the items",
+    )
+    .unwrap_or_else(|e| panic!("far too many: {e}"));
+    malformed(
+        consume(one_list([2, 1])),
+        "offsets are negative or decreasing",
+    )
+    .unwrap_or_else(|e| panic!("backwards: {e}"));
+}
+
+/// Two rows of `struct<a: u16>` whose member declares `member` rows.
+fn one_struct(member: i64) -> Vec<u8> {
+    let fields = Fields::from(vec![Field::new("a", DataType::UInt16, true)]);
+    let schema = Schema::new(vec![Field::new("s", DataType::Struct(fields), true)]);
+    let header = BatchHeader {
+        rows: 2,
+        nodes: vec![(2, 0), (member, 0)],
+        buffers: vec![(0, 0), (0, 0), (0, 8)],
+        ..BatchHeader::default()
+    };
+    crafted(&schema, &header, &[1, 0, 2, 0, 3, 0, 4, 0])
+}
+
+#[test]
+fn a_struct_member_has_exactly_the_rows_of_its_struct() {
+    let batch = consume(one_struct(2)).unwrap();
+    let members = batch.get(Ty::Spans).unwrap().column(0).as_struct();
+    assert_eq!(members.column(0).len(), 2);
+
+    // A longer member is what Arrow's own validation lets through.
+    for member in [0, 1, 3, 4] {
+        let result = consume(one_struct(member));
+        malformed(result, "struct member length differs from the struct's")
+            .unwrap_or_else(|e| panic!("member of {member} rows: {e}"));
     }
 }
 
@@ -468,6 +579,41 @@ fn the_dictionary_key_loop_runs_under_the_deadline() {
     let batch = consume(ipc(&dictionary_table(3, rows, "k"))).unwrap();
     assert_eq!(batch.get(Ty::Spans).unwrap().num_rows(), rows);
     assert_eq!(batch.budget().ticks(), 3 * rows, "one look per key");
+}
+
+/// Two rows of `name`, the second one null, with the given keys.
+fn keyed_with_a_null(keys: [u8; 2], nulls: i64) -> Vec<u8> {
+    let header = BatchHeader {
+        rows: 2,
+        nodes: vec![(2, nulls)],
+        buffers: vec![(8, 1), (0, 2)],
+        ..BatchHeader::default()
+    };
+    let mut body = vec![keys[0], keys[1], 0, 0, 0, 0, 0, 0];
+    body.extend_from_slice(&[0b01, 0, 0, 0, 0, 0, 0, 0]);
+    let (dictionary, values) = two_names();
+    let mut out = schema_message(&names_schema());
+    out.extend(dictionary_message(0, false, &dictionary, &values));
+    out.extend(batch_message(&header, &body));
+    out
+}
+
+/// The key of a null slot is never looked up, and a writer may leave
+/// anything there. What reaches the arrays is a key inside the
+/// dictionary all the same, so nothing later that indexes by key without
+/// looking at the validity can leave the values.
+#[test]
+fn the_key_of_a_null_slot_is_zeroed() {
+    let batch = consume(keyed_with_a_null([1, 200], 1)).unwrap();
+    let names = batch.get(Ty::Spans).unwrap().column(0);
+    let names = names.as_dictionary::<arrow::datatypes::UInt8Type>();
+    assert_eq!(names.null_count(), 1);
+    assert_eq!(names.keys().values().as_ref(), [1u8, 0], "200 is gone");
+    assert_eq!(names.values().len(), 2);
+
+    // The same key in a slot that is not null is refused.
+    malformed(consume(keyed_with_a_null([1, 200], 0)), "dictionary key")
+        .unwrap_or_else(|e| panic!("a valid slot with key 200: {e}"));
 }
 
 // ---------------------------------------------------------------------------
