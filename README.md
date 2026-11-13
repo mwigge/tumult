@@ -83,6 +83,10 @@ analysis, observability, GameDays, and MCP usage.
   targets measured against recovery, raw probe time series in the lake, and
   a CI gate (`tumult gate`, `GET /api/gate/{target}`) that turns a target's
   evidence into a pass/warn/fail verdict.
+- An OpenTelemetry contract any auto-instrumented service meets through its
+  environment alone (`resilience.target.*` and the ICT spine as resource
+  attributes), a Collector pipeline that enforces it, and
+  `GET /api/otel/conformance` to see which deployments carry it.
 - A passive risk scan and posture page (`GET /api/risks`, `GET /api/posture`,
   `/posture`): ranked findings and discipline coverage gaps from the evidence
   already in the lake, Kubernetes manifests and the span call graph, with a
