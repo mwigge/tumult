@@ -1,5 +1,6 @@
 //! `OTel` instrumentation for `ClickHouse` backend operations.
 
+use opentelemetry::metrics::Meter;
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
 use tumult_otel::SpanGuard;
@@ -77,8 +78,12 @@ pub(crate) fn event_ddl_executed(statement: &str) {
 
 /// Gauge: record `ClickHouse` store size metrics.
 pub(crate) fn record_store_gauges(experiment_count: usize, activity_count: usize) {
-    let meter = global::meter(TRACER);
+    record_store_gauges_on(&global::meter(TRACER), experiment_count, activity_count);
+}
 
+/// [`record_store_gauges`] against an explicit meter, so the recorded values
+/// can be read back without a process-wide meter provider.
+fn record_store_gauges_on(meter: &Meter, experiment_count: usize, activity_count: usize) {
     let g = meter.u64_gauge("clickhouse.store.experiments").build();
     g.record(experiment_count as u64, &[]);
 
@@ -88,18 +93,40 @@ pub(crate) fn record_store_gauges(experiment_count: usize, activity_count: usize
 
 #[cfg(test)]
 mod tests {
+    use tumult_test_utils::{capture_spans, MetricCapture};
+
     use super::*;
 
     #[test]
-    fn connect_span_does_not_panic() {
-        let _g = begin_connect("http://localhost:8123", "tumult");
-        event_schema_initialized("tumult", 1);
-    }
+    fn connect_span_describes_the_server_and_records_schema_initialisation() {
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_connect("http://localhost:8123", "tumult");
+            event_schema_initialized("tumult", 1);
+        });
 
-    #[test]
-    fn connect_span_with_credentials_sanitizes_url() {
-        // Must not panic; sanitized URL replaces credentials.
-        let _g = begin_connect("http://admin:secret@clickhouse.internal:8123", "tumult");
+        assert_eq!(spans.len(), 1);
+        let span = &spans[0];
+        assert_eq!(span.name, "clickhouse.connect");
+        assert_eq!(span.span_kind, SpanKind::Client);
+        assert_eq!(
+            span.attributes,
+            [
+                KeyValue::new("db.system", "clickhouse"),
+                KeyValue::new("db.name", "tumult"),
+                KeyValue::new("server.address", "http://localhost:8123"),
+                KeyValue::new("db.connection_string", "http://localhost:8123"),
+            ]
+        );
+        let events = &span.events.events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "clickhouse.schema.initialized");
+        assert_eq!(
+            events[0].attributes,
+            [
+                KeyValue::new("db.name", "tumult"),
+                KeyValue::new("db.schema.version", 1_i64),
+            ]
+        );
     }
 
     #[test]
@@ -126,14 +153,53 @@ mod tests {
         assert_eq!(result, "clickhouse://****:****@ch.prod:9000/tumult");
     }
 
-    #[test]
-    fn ddl_event_does_not_panic() {
-        let _g = begin_connect("http://localhost:8123", "tumult");
-        event_ddl_executed("CREATE TABLE IF NOT EXISTS experiments ...");
+    fn ddl_statements_recorded(statements: &[&str]) -> Vec<String> {
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_connect("http://localhost:8123", "tumult");
+            for statement in statements {
+                event_ddl_executed(statement);
+            }
+        });
+        spans[0]
+            .events
+            .events
+            .iter()
+            .map(|event| {
+                assert_eq!(event.name, "clickhouse.ddl.executed");
+                assert_eq!(event.attributes.len(), 1);
+                assert_eq!(event.attributes[0].key.as_str(), "db.statement");
+                event.attributes[0].value.as_str().into_owned()
+            })
+            .collect()
     }
 
     #[test]
-    fn gauges_do_not_panic() {
-        record_store_gauges(10, 50);
+    fn ddl_event_records_the_statement_cut_to_128_bytes() {
+        let exact = "x".repeat(128);
+        let long = "y".repeat(129);
+
+        let recorded = ddl_statements_recorded(&["CREATE DATABASE `tumult`", &exact, &long]);
+
+        assert_eq!(
+            recorded,
+            [
+                "CREATE DATABASE `tumult`".to_string(),
+                exact,
+                format!("{}...", "y".repeat(128)),
+            ]
+        );
+    }
+
+    #[test]
+    fn store_gauges_report_the_latest_counts() {
+        let capture = MetricCapture::new();
+        let meter = capture.meter(TRACER);
+        record_store_gauges_on(&meter, 10, 50);
+        record_store_gauges_on(&meter, 12, 61);
+
+        let value =
+            |name: &str| -> Vec<f64> { capture.points(name).iter().map(|p| p.value).collect() };
+        assert_eq!(value("clickhouse.store.experiments"), [12.0]);
+        assert_eq!(value("clickhouse.store.activities"), [61.0]);
     }
 }

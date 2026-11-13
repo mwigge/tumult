@@ -22,3 +22,5 @@ serde_json = { workspace = true }
 opentelemetry = { workspace = true }
 tracing = { workspace = true }
 
+[dev-dependencies]
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

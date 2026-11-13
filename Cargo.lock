@@ -8035,6 +8035,7 @@ dependencies = [
  "tumult-core",
  "tumult-lake",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]

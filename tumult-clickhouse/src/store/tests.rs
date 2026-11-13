@@ -1,76 +1,26 @@
 use super::rows::{ActivityRow, ExperimentRow};
 use super::*;
 
-#[test]
-fn retry_config_has_correct_defaults() {
-    let config = RetryConfig::default();
-    assert_eq!(config.max_attempts, 3);
-    assert_eq!(config.backoff_durations.len(), 3);
-    assert_eq!(
-        config.backoff_durations[0],
-        std::time::Duration::from_secs(2)
-    );
-    assert_eq!(
-        config.backoff_durations[1],
-        std::time::Duration::from_secs(4)
-    );
-    assert_eq!(
-        config.backoff_durations[2],
-        std::time::Duration::from_secs(8)
-    );
+/// Column names declared by a `CREATE TABLE` statement, in order.
+fn ddl_columns(ddl: &str) -> Vec<&str> {
+    let open = ddl.find('(').expect("column list opens");
+    let close = ddl.find(") ENGINE").expect("column list closes");
+    ddl[open + 1..close]
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect()
 }
 
+/// Inserts and selects name the columns from the row struct's fields, so a
+/// field the table does not declare (or the reverse) fails at run time
+/// against a real server. This pins the two lists to each other.
 #[test]
-fn config_creates_valid_client() {
-    let config = ClickHouseConfig::default();
-    let _client = Client::default()
-        .with_url(&config.url)
-        .with_user(&config.user)
-        .with_password(&config.password)
-        .with_database(&config.database);
-}
+fn row_fields_match_the_columns_of_their_tables() {
+    use clickhouse::Row;
 
-#[test]
-fn schema_version_constant_is_valid() {
-    const _: () = assert!(SCHEMA_VERSION >= 1);
-}
-
-#[test]
-fn experiment_row_serializable() {
-    let row = ExperimentRow {
-        experiment_id: "e-001".into(),
-        title: "test".into(),
-        status: "Completed".into(),
-        started_at_ns: 1_774_980_000_000_000_000,
-        ended_at_ns: 1_774_980_060_000_000_000,
-        duration_ms: 60_000,
-        method_step_count: 1,
-        rollback_count: 0,
-        hypothesis_before_met: Some(1),
-        hypothesis_after_met: None,
-        estimate_accuracy: Some(0.95),
-        resilience_score: None,
-    };
-    // Verify serde serialization works
-    let json = serde_json::to_string(&row).unwrap();
-    assert!(json.contains("e-001"));
-}
-
-#[test]
-fn activity_row_serializable() {
-    let row = ActivityRow {
-        experiment_id: "e-001".into(),
-        name: "test-action".into(),
-        activity_type: "Action".into(),
-        status: "Succeeded".into(),
-        started_at_ns: 1_774_980_000_000_000_000,
-        duration_ms: 500,
-        output: Some("ok".into()),
-        error: None,
-        phase: "method".into(),
-    };
-    let json = serde_json::to_string(&row).unwrap();
-    assert!(json.contains("test-action"));
+    assert_eq!(ExperimentRow::COLUMN_NAMES, ddl_columns(EXPERIMENTS_DDL));
+    assert_eq!(ActivityRow::COLUMN_NAMES, ddl_columns(ACTIVITY_RESULTS_DDL));
+    assert_eq!(ActivityRow::COLUMN_NAMES.len(), 9);
 }
 
 /// The retention-period arithmetic overflow used to be an `expect` panic in
@@ -135,10 +85,16 @@ fn analytics_backend_sync_methods_do_not_panic_inside_tokio_task() {
                 query_timeout: std::time::Duration::from_millis(100),
             };
 
-            // Each of these must not panic; errors are expected and OK.
-            let _ = store.experiment_count();
-            let _ = store.stats();
-            let _ = store.schema_version();
+            // Each of these must return the connection error, not panic.
+            assert!(matches!(
+                store.experiment_count(),
+                Err(AnalyticsError::ClickHouse(_))
+            ));
+            assert!(matches!(store.stats(), Err(AnalyticsError::ClickHouse(_))));
+            assert!(matches!(
+                store.schema_version(),
+                Err(AnalyticsError::ClickHouse(_))
+            ));
         })
         .await
         .expect("task should not panic");
