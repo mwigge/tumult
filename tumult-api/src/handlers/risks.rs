@@ -186,13 +186,15 @@ fn verdicts_by_evidence(
 }
 
 /// Fold the latest experiment evidence into one [`TargetEvidence`] per
-/// target: the experiments themselves plus a per-discipline rollup.
+/// target and environment: the experiments themselves plus a
+/// per-discipline rollup. A name tested in two environments is two
+/// targets; evidence from one never covers the other.
 fn targets_from(
     experiments: &[ExperimentScore],
     kinds: &BTreeMap<String, KindRow>,
     verdicts: &BTreeMap<String, Vec<Verdict>>,
 ) -> Vec<TargetEvidence> {
-    let mut by_target: BTreeMap<String, TargetEvidence> = BTreeMap::new();
+    let mut by_target: BTreeMap<(String, Option<String>), TargetEvidence> = BTreeMap::new();
     for e in experiments {
         let Some(target) = e.target.clone() else {
             continue;
@@ -203,14 +205,12 @@ fn targets_from(
         let row = e.evidence_id.as_ref().and_then(|id| kinds.get(id));
         let kind = row.map_or("chaos", |r| r.kind.as_str()).to_string();
         let entry = by_target
-            .entry(target.clone())
+            .entry((target.clone(), e.environment.clone()))
             .or_insert_with(|| TargetEvidence {
                 target,
+                environment: e.environment.clone(),
                 ..Default::default()
             });
-        if entry.environment.is_none() {
-            entry.environment.clone_from(&e.environment);
-        }
         entry.experiments.push(ExperimentLatest {
             name: e.name.clone(),
             kind: kind.clone(),
@@ -304,7 +304,7 @@ fn suppressions(reader: &Reader) -> Result<Vec<Suppression>, String> {
 }
 
 /// Assemble the scanner inputs from the lake and the manifests directory.
-fn gather(
+pub(crate) fn gather(
     reader: &Reader,
     as_of_ns: i64,
     envs: &[String],
@@ -500,6 +500,8 @@ pub(crate) async fn suppress(
         .map_err(|e| internal(e.to_string()))?
         .take()
         .ok_or_else(|| internal("suppression was not recorded".into()))?;
+    // Every Star Map counts suppressions: none may outlive this write.
+    state.starmap_cache.clear();
     Ok((
         StatusCode::CREATED,
         Json(json!({
@@ -566,6 +568,36 @@ mod tests {
         assert!(!drill.passed);
         assert_eq!(drill.rto_target_s, Some(60.0));
         assert_eq!(drill.rto_measured_s, Some(90.0));
+    }
+
+    #[test]
+    fn one_target_name_in_two_environments_stays_two_rows() {
+        let mut prod = score("pg-failover", "e2", RunState::Passed, 200, 4);
+        prod.environment = Some("prod".into());
+        let mut kinds = BTreeMap::new();
+        kinds.insert(
+            "e2".to_string(),
+            KindRow {
+                kind: "dr".into(),
+                rto_target_s: None,
+                rto_measured_s: None,
+            },
+        );
+        let demo = score("cache", "e1", RunState::Passed, 100, 1);
+        let targets = targets_from(&[prod, demo], &kinds, &BTreeMap::new());
+        let rows: Vec<(Option<&str>, Vec<&str>)> = targets
+            .iter()
+            .map(|t| {
+                let kinds = t.kinds.iter().map(|k| k.kind.as_str()).collect();
+                (t.environment.as_deref(), kinds)
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            vec![(Some("demo"), vec!["chaos"]), (Some("prod"), vec!["dr"])]
+        );
+        assert!(targets.iter().all(|t| t.target == "db"));
+        assert!(targets.iter().all(|t| t.experiments.len() == 1));
     }
 
     #[test]

@@ -6,6 +6,8 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
+    import { coverageLabels } from '#lib/coverage.js';
+    import { esc } from '#lib/starmap/style.js';
     import type {
         ConformanceReport,
         MeResponse,
@@ -106,18 +108,18 @@
     const heatmapOption: EChartsCoreOption | null = $derived.by(() => {
         if (!report) return null;
         const kinds = report.coverage.kinds;
-        const targets = report.coverage.targets.map((c) => c.target);
+        const targets = coverageLabels(report.coverage.targets);
         const data = report.coverage.targets.flatMap((c, y) =>
             c.cells.map((cell) => [kinds.indexOf(cell.kind), y, STATUS_VALUE[cell.status] ?? 0]),
         );
         return {
-            grid: { left: 110, right: 16, top: 10, bottom: 40 },
+            grid: { left: 150, right: 16, top: 10, bottom: 40 },
             tooltip: {
                 ...t.tooltip,
                 formatter: (p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
                     const status = ['missing', 'stale', 'covered'][v] ?? '';
-                    return `<b>${targets[y]}</b> · ${kinds[x]}<br/>${status}`;
+                    return `<b>${esc(targets[y])}</b> · ${esc(kinds[x])}<br/>${status}`;
                 },
             },
             xAxis: { type: 'category', data: kinds, axisLabel: { color: t.text } },
@@ -344,11 +346,17 @@
                     <EChart
                         option={heatmapOption}
                         id="coverage"
+                        label="Evidence coverage per target and discipline"
                         height={Math.max(160, 28 * report.coverage.targets.length + 60)}
                     />
                 {/if}
                 {#if radarOption}
-                    <EChart option={radarOption} id="coverage-radar" height={240} />
+                    <EChart
+                        option={radarOption}
+                        id="coverage-radar"
+                        height={240}
+                        label="Evidence coverage per discipline"
+                    />
                 {/if}
             {/if}
         </section>
@@ -362,6 +370,7 @@
                     <EChart
                         option={nfrOption}
                         id="nfr"
+                        label="Objective verdicts per target"
                         height={Math.max(
                             160,
                             28 * new Set(posture.nfrs.map((n) => n.target)).size + 60,
@@ -372,7 +381,13 @@
             {#if trend}
                 <section class="panel" data-testid="trend">
                     <h2>Compliance score, {TREND_RANGE}</h2>
-                    <FanChart series={trend} unit="score" id="trend" height={220} />
+                    <FanChart
+                        series={trend}
+                        unit="score"
+                        id="trend"
+                        height={220}
+                        label="Compliance score over {TREND_RANGE}"
+                    />
                 </section>
             {/if}
         </div>

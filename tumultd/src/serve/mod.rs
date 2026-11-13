@@ -19,6 +19,121 @@ use crate::reports::{
 use tls::{load_tls, warn_if_plaintext_on_network};
 use ui::ui_handler;
 
+/// One listener task and how it ended.
+type Listener<E> = tokio::task::JoinHandle<std::result::Result<(), E>>;
+
+async fn stopped<E>(listener: &mut Listener<E>, name: &'static str) -> Result<()>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    listener
+        .await
+        .with_context(|| format!("{name} task panicked"))?
+        .context(name)
+}
+
+/// Waits until both listeners have stopped. A listener that fails ends
+/// the wait at once and stops the other one: a daemon that could not
+/// bind its HTTP address must not stay up answering gRPC only.
+async fn until_both_stop<G, H>(mut grpc: Listener<G>, mut http: Listener<H>) -> Result<()>
+where
+    G: std::error::Error + Send + Sync + 'static,
+    H: std::error::Error + Send + Sync + 'static,
+{
+    let outcome = tokio::try_join!(
+        stopped(&mut grpc, "gRPC server"),
+        stopped(&mut http, "HTTP server"),
+    );
+    let Err(error) = outcome else {
+        return Ok(());
+    };
+    tracing::error!(error = %format!("{error:#}"), "a listener failed; stopping the daemon");
+    grpc.abort();
+    http.abort();
+    Err(error)
+}
+
+/// What runs beside the listeners and holds the ingest writer open.
+struct Workers {
+    /// Tells the background tasks to stop.
+    shutdown: tokio_util::sync::CancellationToken,
+    /// The background tasks by name; each holds an `IngestWriter` clone.
+    tasks: Vec<(&'static str, tokio::task::JoinHandle<()>)>,
+    run_queue: tumult_ingest::RunQueue,
+    writer: tokio::task::JoinHandle<()>,
+}
+
+impl Workers {
+    /// Stop everything and wait until the writer has persisted what was
+    /// queued. Order matters: signal the background tasks that hold an
+    /// `IngestWriter` clone, wait for them to finish so those clones are
+    /// dropped, and only then wait for the writer channel to close: the
+    /// drain completes only once every sender is gone.
+    async fn drain(self) -> Result<()> {
+        self.shutdown.cancel();
+        for (name, task) in self.tasks {
+            task.await
+                .with_context(|| format!("{name} task panicked"))?;
+        }
+        self.run_queue.shutdown();
+        drop(self.run_queue);
+        self.writer.await.context("ingest writer task")
+    }
+}
+
+/// How long a daemon that stops because a listener failed waits for the
+/// drain. A failed listener is aborted, not shut down gracefully, so a
+/// connection it accepted may live on holding the writer open; a clean
+/// stop has no such connection and waits without a limit.
+const FAILED_DRAIN_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The end of the daemon's life, once the public listeners have stopped
+/// as `served` says: the loopback listener, then the drain. A listener
+/// that failed is still the outcome, but only after the drain: what was
+/// queued for the writer is persisted on every way out.
+async fn finish<E>(
+    served: Result<()>,
+    loopback: Option<Listener<E>>,
+    workers: Workers,
+    failed_drain_limit: std::time::Duration,
+) -> Result<()>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let served = match (served, loopback) {
+        (Ok(()), Some(mut task)) => stopped(&mut task, "internal gRPC loopback server").await,
+        (failed, Some(task)) => {
+            task.abort();
+            failed
+        }
+        (served, None) => served,
+    };
+    let Err(failure) = served else {
+        tracing::info!("servers stopped; draining ingest writer");
+        return workers.drain().await;
+    };
+    tracing::info!("a listener failed; draining ingest writer before exit");
+    match tokio::time::timeout(failed_drain_limit, workers.drain()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            tracing::error!(error = %format!("{error:#}"), "drain after a listener failure failed");
+        }
+        Err(_) => tracing::error!(
+            limit_ms = failed_drain_limit.as_millis() as u64,
+            "ingest writer still held open after a listener failure; exiting without waiting longer"
+        ),
+    }
+    Err(failure)
+}
+
+/// Bind one of the daemon's public addresses, naming it when it cannot
+/// be had.
+async fn bind(addr: std::net::SocketAddr, name: &'static str) -> Result<tokio::net::TcpListener> {
+    tokio::net::TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("{name}: bind {addr}"))
+}
+
 /// Wait for SIGTERM or SIGINT.
 async fn shutdown_signal(name: &'static str) {
     #[cfg(unix)]
@@ -114,6 +229,12 @@ pub(crate) async fn serve() -> Result<()> {
     // admin/token on the zero-users path. Runs before any server binds.
     enforce_bind_guard(&writer, &store, &config)?;
 
+    // Both public addresses are bound here, before the writer, the run
+    // queue or any background task exists: a daemon that cannot have its
+    // addresses exits having started, and touched, nothing.
+    let grpc_listener = bind(config.otlp_grpc_addr, "gRPC server").await?;
+    let http_listener = bind(config.otlp_http_addr, "HTTP server").await?;
+
     let (ingest, writer_task) = IngestWriter::spawn_reconnect(writer, config.db_path.clone(), 1024);
 
     // The run queue's executor: the CLI's providers with the run's
@@ -144,7 +265,6 @@ pub(crate) async fn serve() -> Result<()> {
     // OTLP/gRPC server (tumult exporter target) — TLS when configured.
     // The router is built before the task spawns so an invalid TLS identity
     // fails startup here instead of inside the task.
-    let grpc_addr = config.otlp_grpc_addr;
     let grpc_router = tumult_ingest::grpc::router_with_token_tls(
         ingest.clone(),
         config.ingest_token.clone(),
@@ -153,7 +273,11 @@ pub(crate) async fn serve() -> Result<()> {
     .context("invalid TLS identity for the gRPC server (KRONIKA_TLS_CERT/KRONIKA_TLS_KEY)")?;
     let grpc_server = tokio::spawn(async move {
         let result = grpc_router
-            .serve_with_shutdown(grpc_addr, shutdown_signal("grpc"))
+            .serve_with_incoming_shutdown(
+                // TCP_NODELAY as tonic sets it on a listener it binds itself.
+                tonic::transport::server::TcpIncoming::from(grpc_listener).with_nodelay(Some(true)),
+                shutdown_signal("grpc"),
+            )
             .await;
         tracing::info!("gRPC server future completed: {result:?}");
         result
@@ -297,7 +421,7 @@ pub(crate) async fn serve() -> Result<()> {
                     shutdown_signal("https").await;
                     shutdown.graceful_shutdown(Some(std::time::Duration::from_secs(10)));
                 });
-                let result = axum_server::bind_rustls(http_addr, tls_config)
+                let result = axum_server::from_tcp_rustls(http_listener.into_std()?, tls_config)
                     .handle(handle)
                     .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
                     .await;
@@ -305,11 +429,10 @@ pub(crate) async fn serve() -> Result<()> {
                 result
             }
             None => {
-                let listener = tokio::net::TcpListener::bind(http_addr).await?;
                 // ConnectInfo gives /api/auth/login the peer IP for its
                 // per-ip|username throttle key.
                 let result = axum::serve(
-                    listener,
+                    http_listener,
                     app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
                 )
                 .with_graceful_shutdown(shutdown_signal("http"))
@@ -321,45 +444,24 @@ pub(crate) async fn serve() -> Result<()> {
         result
     });
 
-    let (grpc_result, http_result) = tokio::join!(grpc_server, http_server);
-    grpc_result
-        .context("gRPC server task panicked")?
-        .context("gRPC server")?;
-    http_result
-        .context("HTTP server task panicked")?
-        .context("HTTP server")?;
-    if let Some(task) = internal_grpc_server {
-        task.await
-            .context("internal gRPC loopback task panicked")?
-            .context("internal gRPC loopback server")?;
-    }
-
-    tracing::info!("servers stopped; draining ingest writer");
-    // Both servers are down; their channel clones (moved into the tasks)
-    // are dropped. Order matters from here: signal the background tasks
-    // that hold an `IngestWriter` clone, wait for them to finish so those
-    // clones are dropped, and only then wait for the writer channel to
-    // close — the drain completes only once every sender is gone.
-    background_shutdown.cancel();
-    if let Some(task) = lake_task {
-        task.await.context("lake scheduler task panicked")?;
-    }
-    score_task.await.context("score jobs task panicked")?;
-    schedule_task
-        .await
-        .context("schedule scheduler task panicked")?;
-    webhook_task
-        .await
-        .context("webhook dispatcher task panicked")?;
-    gameday_task
-        .await
-        .context("gameday supervisor task panicked")?;
-    retention_task
-        .await
-        .context("run retention task panicked")?;
-    run_queue.shutdown();
-    drop(run_queue);
-    writer_task.await.context("ingest writer task")?;
+    let mut tasks = vec![
+        ("schedule scheduler", schedule_task),
+        ("webhook dispatcher", webhook_task),
+        ("gameday supervisor", gameday_task),
+        ("run retention", retention_task),
+        ("score jobs", score_task),
+    ];
+    tasks.extend(lake_task.map(|task| ("lake scheduler", task)));
+    let workers = Workers {
+        shutdown: background_shutdown,
+        tasks,
+        run_queue,
+        writer: writer_task,
+    };
+    // Both servers are down once this returns; their channel clones
+    // (moved into the tasks) are dropped.
+    let served = until_both_stop(grpc_server, http_server).await;
+    finish(served, internal_grpc_server, workers, FAILED_DRAIN_LIMIT).await?;
     tracing::info!("tumultd stopped cleanly");
     Ok(())
 }

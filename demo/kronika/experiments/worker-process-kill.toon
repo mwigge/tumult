@@ -1,5 +1,5 @@
-title: worker-process kill — disruption detected and removed
-description: Start a background worker, confirm it runs, kill it, and verify the absence is detected (tumult process-kill pattern, procps-free)
+title: worker-process kill — disruption detected and recovered
+description: Kill a running background worker, verify the absence is detected, restart it and confirm it runs again (tumult process-kill pattern, procps-free). The worker-lifecycle control starts the worker before the experiment and stops it afterwards, so the steady-state probe only reads.
 
 tags[2]: process, resilience
 kind: chaos
@@ -8,28 +8,36 @@ target:
   technology: process
   environment: demo
 
+controls[1]:
+  - name: worker-lifecycle
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "d=/tmp/kd-demo/proc; stop() { [ -f $d/worker.pid ] && kill $(cat $d/worker.pid) 2>/dev/null; rm -f $d/worker.pid; }; case \"$TUMULT_CONTROL_EVENT\" in before_experiment) mkdir -p $d; stop; sleep 300 >/dev/null 2>&1 </dev/null & echo $! > $d/worker.pid.new; mv $d/worker.pid.new $d/worker.pid; echo started;; after_experiment) stop; echo stopped;; esac"
+      timeout_s: 10.0
+
 steady_state_hypothesis:
-  title: A background worker can be started and is running
+  title: The background worker is running
   probes[1]:
-    - name: start-and-check-worker
+    - name: check-worker
       activity_type: probe
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "[ -f /tmp/kd-demo/proc/worker.pid ] && kill $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null; mkdir -p /tmp/kd-demo/proc; sleep 300 >/dev/null 2>&1 < /dev/null & echo $! > /tmp/kd-demo/proc/worker.pid; sleep 0.3; kill -0 $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null && echo running || echo missing"
-        timeout_s: 10.0
+        arguments[2]: "-c", "kill -0 $(cat /tmp/kd-demo/proc/worker.pid 2>/dev/null) 2>/dev/null && echo running || echo missing"
+        timeout_s: 5.0
       tolerance:
         type: regex
         pattern: "^running$"
 
-method[2]:
+method[3]:
   - name: kill-worker
     activity_type: action
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "kill $(cat /tmp/kd-demo/proc/worker.pid) && echo killed"
-      timeout_s: 5.0
+      arguments[2]: "-c", "p=$(cat /tmp/kd-demo/proc/worker.pid); kill $p || exit 1; i=0; while kill -0 $p 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done; echo killed"
+      timeout_s: 10.0
   - name: verify-worker-gone
     activity_type: probe
     provider:
@@ -40,6 +48,13 @@ method[2]:
     tolerance:
       type: regex
       pattern: "^gone$"
+  - name: restart-worker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "d=/tmp/kd-demo/proc; sleep 300 >/dev/null 2>&1 </dev/null & echo $! > $d/worker.pid.new; mv $d/worker.pid.new $d/worker.pid; echo restarted"
+      timeout_s: 5.0
 
 rollbacks[1]:
   - name: cleanup-worker
@@ -47,5 +62,5 @@ rollbacks[1]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "kill $(cat /tmp/kd-demo/proc/worker.pid) 2>/dev/null; rm -f /tmp/kd-demo/proc/worker.pid; echo cleaned"
+      arguments[2]: "-c", "kill $(cat /tmp/kd-demo/proc/worker.pid 2>/dev/null) 2>/dev/null; rm -f /tmp/kd-demo/proc/worker.pid; echo cleaned"
       timeout_s: 5.0

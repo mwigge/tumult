@@ -11,5 +11,7 @@ pub mod perf;
 pub mod recommend;
 pub mod reports;
 pub mod risks;
+pub mod starmap;
+pub(crate) mod starmap_cache;
 pub mod topology;
 pub mod traces;

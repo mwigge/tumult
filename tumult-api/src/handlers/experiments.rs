@@ -10,7 +10,8 @@ use serde_json::{json, Value};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, env_scope_where, env_trace_exists, sql_contains, sql_string, windows, with_reader,
+    and_pred, env_scope_where, env_trace_exists, invalid_range, sql_contains, sql_string, windows,
+    with_reader,
 };
 use crate::ApiState;
 
@@ -24,7 +25,22 @@ pub(crate) struct ExperimentParams {
     target: Option<String>,
     fault: Option<String>,
     q: Option<String>,
+    /// The whole experiment name, compared exactly.
+    name: Option<String>,
     origin: Option<String>,
+}
+
+/// Longest `q` or `name` accepted, in characters.
+const MAX_TEXT_FILTER: usize = 200;
+
+/// `400` when the text filter `field` is longer than [`MAX_TEXT_FILTER`].
+fn short_enough(field: &str, value: &str) -> Result<(), ApiError> {
+    if value.chars().count() <= MAX_TEXT_FILTER {
+        return Ok(());
+    }
+    Err(crate::error::bad_request(format!(
+        "{field} too long (max {MAX_TEXT_FILTER} chars)"
+    )))
 }
 
 /// The root-span ↔ completed-log join used by the list and detail queries.
@@ -56,7 +72,7 @@ pub(crate) async fn experiments(
     }
     if let Some(range) = &params.range {
         let Some((cur, _)) = windows(range) else {
-            return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+            return Err(bad(invalid_range(range)));
         };
         wheres.push(format!("s.ts_ns >= {} AND s.ts_ns < {}", cur.0, cur.1));
     }
@@ -92,14 +108,19 @@ pub(crate) async fn experiments(
         ));
     }
     if let Some(q) = &params.q {
-        if q.chars().count() > 200 {
-            return Err(bad("q too long (max 200 chars)".into()));
-        }
+        short_enough("q", q)?;
         let like = sql_contains(q);
         wheres.push(format!(
             "(s.experiment_name ILIKE {like} ESCAPE '\\' \
              OR s.experiment_id ILIKE {like} ESCAPE '\\')"
         ));
+    }
+    if let Some(name) = &params.name {
+        if name.is_empty() {
+            return Err(bad("name must not be empty".into()));
+        }
+        short_enough("name", name)?;
+        wheres.push(format!("s.experiment_name = {}", sql_string(name)));
     }
     let origin = params.origin.as_deref();
     if let Some(o) = origin {
@@ -136,7 +157,7 @@ pub(crate) async fn experiments(
         }
         if let Some(range) = &params.range {
             let Some((cur, _)) = windows(range) else {
-                return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+                return Err(bad(invalid_range(range)));
             };
             mwheres.push(format!(
                 "m.executed_at_ns >= {} AND m.executed_at_ns < {}",
@@ -152,6 +173,9 @@ pub(crate) async fn experiments(
                 "(m.experiment_name ILIKE {like} ESCAPE '\\' \
                  OR m.id ILIKE {like} ESCAPE '\\')"
             ));
+        }
+        if let Some(name) = &params.name {
+            mwheres.push(format!("m.experiment_name = {}", sql_string(name)));
         }
         let manual_sql = format!(
             "SELECT m.id, m.experiment_name AS name, m.executed_at_ns AS started_ns, \

@@ -22,4 +22,5 @@ mod risks;
 mod runs;
 mod schedules;
 mod scopes;
+mod starmap;
 mod webhooks;

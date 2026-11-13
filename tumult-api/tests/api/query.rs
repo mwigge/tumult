@@ -93,6 +93,17 @@ async fn experiments_lists_filters_and_searches() {
     let rows = body["experiments"].as_array().unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["name"], "cache-stampede");
+
+    // `name` is the whole name, not a part of it.
+    let (status, body) = get(&srv.base, "/api/experiments?name=cache-stampede").await;
+    assert_eq!(status, 200, "{body}");
+    let rows = body["experiments"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["name"], "cache-stampede");
+    let (_, body) = get(&srv.base, "/api/experiments?name=cache").await;
+    assert_eq!(body["experiments"].as_array().unwrap().len(), 0);
+    let (_, body) = get(&srv.base, "/api/experiments?name=CACHE-STAMPEDE").await;
+    assert_eq!(body["experiments"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]
@@ -535,14 +546,36 @@ async fn topology_builds_service_and_target_graph() {
     assert_eq!(svc["type"], "service");
     assert_eq!(svc["runs"], 4);
     assert_eq!(svc["errors"], 0);
-    let tgt = nodes.iter().find(|n| n["id"] == "tgt:postgres-1").unwrap();
+    // Targets are the systems the naming contract names, under the id the
+    // Star Map uses.
+    let tgt = nodes
+        .iter()
+        .find(|n| n["id"] == "sys:demo/database")
+        .unwrap();
     assert_eq!(tgt["type"], "target");
+    assert_eq!(tgt["name"], "database");
     assert_eq!(tgt["runs"], 2);
+    // A span that names its target only through `resilience.target.name`
+    // (the runner's action spans) keeps its target, as a system without
+    // an environment.
+    let named = nodes
+        .iter()
+        .find(|n| n["id"] == "sys:-/postgres-1")
+        .unwrap_or_else(|| panic!("{nodes:?}"));
+    assert_eq!(named["type"], "target");
+    assert_eq!(named["name"], "postgres-1");
+    assert_eq!(named["runs"], 2);
+    assert!(
+        nodes
+            .iter()
+            .all(|n| !n["id"].as_str().unwrap().starts_with("tgt:")),
+        "{nodes:?}"
+    );
 
     let edges = body["edges"].as_array().unwrap();
-    // Service → target calls from the action spans' target attribute.
+    // Service → target edges from the spans that name the system.
     assert!(edges.iter().any(|e| e["from_id"] == "svc:tumult"
-        && e["to_id"] == "tgt:postgres-1"
+        && e["to_id"] == "sys:demo/database"
         && e["weight"] == 2));
     // Intra-service parent→child hops with differing span names survive as
     // a self-loop (root experiment span → action span).
@@ -550,12 +583,105 @@ async fn topology_builds_service_and_target_graph() {
         .iter()
         .any(|e| e["from_id"] == "svc:tumult" && e["to_id"] == "svc:tumult"));
 
-    let (status, _) = get(&srv.base, "/api/topology?range=1y").await;
+    assert!(edges.iter().any(|e| e["from_id"] == "svc:tumult"
+        && e["to_id"] == "sys:-/postgres-1"
+        && e["weight"] == 2));
+
+    let (status, body) = get(&srv.base, "/api/topology?range=1y").await;
     assert_eq!(status, 400);
-    // An empty window yields an empty graph, not an error.
+    assert_eq!(
+        body["error"], "invalid range \"1y\"; expected 24h|7d|14d|30d",
+        "one range table for every endpoint"
+    );
     let (status, body) = get(&srv.base, "/api/topology?range=24h").await;
     assert_eq!(status, 200);
-    assert_eq!(body["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(body["nodes"].as_array().unwrap().len(), 3);
+}
+
+/// Without a `range` the topology reads the last seven days, never the
+/// whole lake.
+#[tokio::test]
+async fn topology_is_bounded_without_a_range() {
+    let srv = spawn_server().await;
+    let old = |service: &str, age_days: i64| {
+        let mut span = tumult_lake::SpanRow {
+            ts_ns: now_ns() - age_days * 86_400 * NS,
+            trace_id: format!("trace-{service}"),
+            span_id: format!("span-{service}"),
+            parent_span_id: None,
+            span_name: "GET /".into(),
+            span_kind: "Server".into(),
+            duration_ns: NS / 100,
+            status_code: "Ok".into(),
+            status_message: String::new(),
+            service_name: service.into(),
+            service_version: None,
+            experiment_id: None,
+            experiment_name: None,
+            outcome_status: None,
+            fault_type: None,
+            fault_subtype: None,
+            fault_severity: None,
+            blast_radius: None,
+            target_system: None,
+            target_technology: None,
+            target_environment: None,
+            plugin_name: None,
+            hypothesis_met: None,
+            recovery_time_s: None,
+            span_attrs: vec![],
+            resource_attrs: vec![],
+            events: "[]".into(),
+        };
+        span.target_system = Some(format!("{service}-system"));
+        span
+    };
+    let rows = vec![old("archive", 10), old("vault", 20), old("fossil", 40)];
+    exec_write(&srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+    let has = |body: &Value, id: &str| {
+        body["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["id"] == id)
+    };
+
+    let (status, body) = get(&srv.base, "/api/topology").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(has(&body, "svc:tumult"));
+    assert!(!has(&body, "svc:archive"), "the default is seven days");
+    let (_, body) = get(&srv.base, "/api/topology?range=14d").await;
+    assert!(has(&body, "svc:archive"));
+    assert!(!has(&body, "svc:vault"));
+    let (status, body) = get(&srv.base, "/api/topology?range=30d").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(has(&body, "svc:vault"));
+    assert!(!has(&body, "svc:fossil"));
+}
+
+/// Every endpoint that takes a `range` reads the same table.
+#[tokio::test]
+async fn every_ranged_endpoint_accepts_thirty_days() {
+    let srv = spawn_server().await;
+    for path in [
+        "/api/experiments",
+        "/api/overview",
+        "/api/traces",
+        "/api/logs",
+        "/api/scores",
+        "/api/starmap",
+        "/api/topology",
+    ] {
+        let (status, body) = get(&srv.base, &format!("{path}?range=30d")).await;
+        assert_eq!(status, 200, "{path}: {body}");
+        let (status, body) = get(&srv.base, &format!("{path}?range=31d")).await;
+        assert_eq!(status, 400, "{path}: {body}");
+        let error = body["error"].as_str().unwrap_or_default();
+        assert!(error.contains("24h|7d|14d|30d"), "{path}: {body}");
+    }
 }
 
 #[tokio::test]
@@ -696,4 +822,52 @@ async fn import_journal_roundtrip_and_dedup() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["experiment_id"], json!("exp-imported"));
     assert_eq!(rows[0]["status"], json!("completed"));
+}
+
+#[tokio::test]
+async fn a_journal_import_drops_the_cached_star_maps() {
+    let srv = spawn_server().await;
+    let journal = json!({
+        "experiment_title": "imported via api",
+        "experiment_id": "exp-star-import",
+        "status": "completed",
+        "started_at_ns": now_ns() - 600 * NS,
+        "ended_at_ns": now_ns() - 300 * NS,
+        "duration_ms": 300_000,
+        "steady_state_before": null,
+        "steady_state_after": null,
+        "method_results": [],
+        "rollback_results": [],
+        "estimate": null,
+        "baseline_result": null,
+        "during_result": null,
+        "post_result": null,
+        "load_result": null,
+        "analysis": null,
+        "regulatory": null,
+    });
+    let import = || async {
+        let resp = reqwest::Client::new()
+            .post(format!("{}/api/import/journal", srv.base))
+            .json(&json!({"journal": journal, "experiment": null}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 200);
+        resp.json::<Value>().await.unwrap()["ingested"].clone()
+    };
+    let cached = starmap_as_of(&srv.base).await;
+    assert_eq!(
+        starmap_as_of(&srv.base).await,
+        cached,
+        "served from the cache"
+    );
+
+    assert_eq!(import().await, true);
+    let after = starmap_as_of(&srv.base).await;
+    assert_ne!(after, cached, "the imported run shows at once");
+
+    // A duplicate stores nothing, so the cached map still stands.
+    assert_eq!(import().await, false);
+    assert_eq!(starmap_as_of(&srv.base).await, after);
 }

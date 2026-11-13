@@ -11,7 +11,7 @@
 //! Routes (all under `/api`; reads run against a fresh read-only
 //! connection, mutations ride the daemon's single-writer channel):
 //!
-//! * `GET /api/overview?range=24h|7d|14d` — KPI cards (value, delta vs the
+//! * `GET /api/overview?range=24h|7d|14d|30d` — KPI cards (value, delta vs the
 //!   previous equal window, sparkline), experiments per day, target-system
 //!   leaderboard, fault breakdown.
 //! * `GET /api/timeseries?metric=<name>&interval=5m|1h|1d&range=…` — any
@@ -40,9 +40,14 @@
 //! * `GET /api/metrics/query?name=&group_by=&range=&interval=` — bucketed
 //!   series for one raw metric (sums → SUM, gauges → AVG, histograms →
 //!   avg plus an interpolated p95), optionally split by an attribute key.
-//! * `GET /api/topology?range=` — service/target call graph: nodes from
-//!   `service_name` and tumult's `resilience.target.name` span attribute,
+//! * `GET /api/topology?range=` — service/target call graph, kept as a
+//!   compatibility view of the Star Map: nodes from `service_name` and the
+//!   target system of the naming contract (ids as on the Star Map),
 //!   edges from parent→child span joins and service→target calls.
+//! * `GET /api/starmap?range=&env=&focus=&depth=&kinds=&budget=&include=` —
+//!   the Star Map: organisation, ICT entities, systems, components,
+//!   services, workloads and the evidence against them as one graph,
+//!   assembled per request by `tumult_graph::starmap`.
 //! * `POST /api/ask` — natural-language → SQL → rows, guarded by
 //!   `tumult_intelligence::sql_guard`; degrades to `{configured:false}` when no LLM
 //!   is reachable.
@@ -202,6 +207,8 @@ pub struct ApiState {
     /// House parameters, register state, workloads and response cache of
     /// the DORA coverage and maturity scores.
     score: Arc<score::ScoreRuntime>,
+    /// Star Map responses of the last 30 s, by parameters and scopes.
+    starmap_cache: Arc<handlers::starmap_cache::StarMapCache>,
 }
 
 impl ApiState {
@@ -233,6 +240,7 @@ impl ApiState {
             // No org file, default parameters, no response cache: the
             // daemon passes its own runtime.
             score: Arc::new(score::ScoreRuntime::default().with_ttl(std::time::Duration::ZERO)),
+            starmap_cache: Arc::default(),
         }
     }
 
@@ -247,6 +255,20 @@ impl ApiState {
     #[must_use]
     pub fn score_runtime(&self) -> &Arc<score::ScoreRuntime> {
         &self.score
+    }
+
+
+    /// Read the Star Map cache's time from `clock` instead of the
+    /// system's. For tests, which move the clock rather than sleep.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_starmap_clock(
+        mut self,
+        clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
+    ) -> Self {
+        let cache = handlers::starmap_cache::StarMapCache::with_clock(clock);
+        self.starmap_cache = Arc::new(cache);
+        self
     }
 
     /// Point the passive risk scanner at a directory of Kubernetes manifests.
@@ -385,6 +407,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics/catalog", get(metrics_catalog))
         .route("/api/metrics/query", get(metrics_query))
         .route("/api/topology", get(topology))
+        .route("/api/starmap", get(handlers::starmap::starmap))
         .route("/api/ask", post(ask::ask))
         .route("/api/scores/tree", get(scores_tree))
         .route("/api/gate/{target}", get(handlers::gate::gate))
