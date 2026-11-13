@@ -19,6 +19,7 @@
 //! [`crate::handlers::starmap_cache`] for the bounds).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,7 +43,7 @@ use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, ApiError};
-use crate::handlers::starmap_cache::{CachedMap, REFRESH_FLOOR, TTL};
+use crate::handlers::starmap_cache::{CachedMap, StarMapCache, REFRESH_FLOOR, TTL};
 use crate::handlers::{conformance, risks};
 use crate::sql_util::{
     and_pred, env_scope_where, invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS,
@@ -76,6 +77,27 @@ struct Window {
     to_ns: i64,
     /// Empty means every environment.
     envs: Vec<String>,
+}
+
+/// What a valid request asks for. It carries no time: the window is
+/// taken when the lake is read, which can be well after the request
+/// arrived when it waited for another build of the same map.
+struct Plan {
+    query: StarQuery,
+    range_s: i64,
+    /// Empty means every environment.
+    envs: Vec<String>,
+}
+
+impl Plan {
+    /// The window of this request when the lake is read at `to_ns`.
+    fn window(&self, to_ns: i64) -> Window {
+        Window {
+            from_ns: to_ns - self.range_s * 1_000_000_000,
+            to_ns,
+            envs: self.envs.clone(),
+        }
+    }
 }
 
 fn parse_kinds(list: &str) -> Result<Vec<StarKind>, ApiError> {
@@ -131,7 +153,7 @@ fn envs_for(principal: &Principal, env: Option<&str>) -> Result<Vec<String>, Api
     Ok(vec![env.to_string()])
 }
 
-fn validate(params: StarMapParams, principal: &Principal) -> Result<(StarQuery, Window), ApiError> {
+fn validate(params: StarMapParams, principal: &Principal) -> Result<Plan, ApiError> {
     let range = params.range.unwrap_or_else(|| DEFAULT_RANGE.to_string());
     let Some(range_s) = parse_range(&range) else {
         return Err(bad_request(invalid_range(&range)));
@@ -140,7 +162,6 @@ fn validate(params: StarMapParams, principal: &Principal) -> Result<(StarQuery, 
     let focus = params.focus.filter(|f| !f.is_empty());
     let depth = check_depth(params.depth)?.filter(|_| focus.is_some());
     let kinds = params.kinds.as_deref().map(parse_kinds).transpose()?;
-    let to_ns = now_ns();
     let query = StarQuery {
         range,
         env: params.env,
@@ -151,12 +172,11 @@ fn validate(params: StarMapParams, principal: &Principal) -> Result<(StarQuery, 
         budget: check_budget(params.budget)?,
         include_runs: check_include(params.include.as_deref())?,
     };
-    let window = Window {
-        from_ns: to_ns - range_s * 1_000_000_000,
-        to_ns,
+    Ok(Plan {
+        query,
+        range_s,
         envs,
-    };
-    Ok((query, window))
+    })
 }
 
 fn org_units(org: &OrgTree) -> Vec<OrgUnitRow> {
@@ -771,25 +791,95 @@ async fn build(state: &ApiState, query: StarQuery, window: Window) -> Result<Cac
     .await
 }
 
+/// The map `plan` asks for: the stored one, or the one `read` returns
+/// for the window as it is when the read starts.
+async fn cached<F, Fut>(
+    cache: &StarMapCache,
+    key: &str,
+    max_age: Duration,
+    plan: Plan,
+    read: F,
+) -> Result<Arc<CachedMap>, ApiError>
+where
+    F: FnOnce(StarQuery, Window) -> Fut,
+    Fut: Future<Output = Result<CachedMap, ApiError>>,
+{
+    // The cache calls this when the request's turn to read has come.
+    let build = || {
+        let window = plan.window(now_ns());
+        read(plan.query, window)
+    };
+    cache.get_or_build(key, max_age, build).await
+}
+
 pub(crate) async fn starmap(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<StarMapParams>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let (query, window) = validate(params, &principal)?;
-    let key = cache_key(&query, &principal.env_scopes);
+    let plan = validate(params, &principal)?;
+    let key = cache_key(&plan.query, &principal.env_scopes);
     let max_age = max_age(&headers);
-    let map = state
-        .starmap_cache
-        .get_or_build(&key, max_age, || build(&state, query, window))
-        .await?;
+    let read = |query, window| build(&state, query, window);
+    let map = cached(&state.starmap_cache, &key, max_age, plan, read).await?;
     Ok(respond(&map, &headers))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plan() -> Plan {
+        Plan {
+            query: StarQuery::default(),
+            range_s: 3_600,
+            envs: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn a_waiter_reads_a_window_that_ends_after_the_write_it_waited_through() {
+        let cache = StarMapCache::default();
+        let release = tokio::sync::Notify::new();
+        // The leader reads the lake, slowly, and then fails.
+        let leader = cached(&cache, "k", TTL, plan(), |_, _| async {
+            release.notified().await;
+            Err(crate::error::unavailable("lake gone"))
+        });
+        // The waiter arrives while the leader reads.
+        let waiter = cached(&cache, "k", TTL, plan(), |_, window: Window| async move {
+            Ok(CachedMap::new(window.to_ns.to_string().into_bytes()))
+        });
+        tokio::pin!(leader, waiter);
+        assert!(futures_poll(&mut leader).await.is_none());
+        assert!(futures_poll(&mut waiter).await.is_none(), "it queues");
+
+        // A write lands, then the leader gives up and the waiter reads.
+        std::thread::sleep(Duration::from_millis(2));
+        cache.clear();
+        let cleared_ns = now_ns();
+        release.notify_one();
+        assert!(leader.await.is_err());
+        let Ok(map) = waiter.await else {
+            panic!("the waiter's read failed");
+        };
+        let read_to_ns: i64 = String::from_utf8_lossy(&map.body).parse().expect("to_ns");
+        assert!(
+            read_to_ns >= cleared_ns,
+            "the window ends {} ns before the write",
+            cleared_ns - read_to_ns
+        );
+    }
+
+    /// Poll `future` once: its output when it is ready already.
+    async fn futures_poll<F: Future + Unpin>(future: &mut F) -> Option<F::Output> {
+        tokio::select! {
+            biased;
+            output = future => Some(output),
+            () = std::future::ready(()) => None,
+        }
+    }
 
     #[test]
     fn outcome_rule_matches_the_scorecard() {
