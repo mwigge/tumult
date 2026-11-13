@@ -4,6 +4,7 @@ the Star Map part of scripts/demo-check.sh against a fake `docker`."""
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -17,6 +18,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("starmap-check.py")
 DEMO_CHECK = Path(__file__).with_name("demo-check.sh")
+COMPOSE_FILE = Path(__file__).parent.parent / "docker" / "docker-compose.kronika.yml"
 PROJECT = "tumult-demo-check-kronika"
 # Records each call (arguments and the Kronika variables) and plays the
 # compose subcommands demo-check.sh uses.
@@ -191,6 +193,65 @@ class StarMapCheckTests(unittest.TestCase):
         result = check(daemon)
         self.assertEqual(result.returncode, 1)
         self.assertEqual(len(result.stdout.splitlines()), 1, result.stdout)
+
+
+def compose_services(text):
+    """The `image` and `container_name` values of each service, by name."""
+    services, name, inside = {}, None, False
+    for line in text.splitlines():
+        if re.match(r"\S", line):
+            inside = line.startswith("services:")
+            continue
+        header = re.match(r"  ([\w-]+):\s*$", line)
+        if inside and header:
+            name = header.group(1)
+            services[name] = {"image": [], "container_name": []}
+            continue
+        value = re.match(r"\s+(image|container_name):\s*(.*?)\s*$", line)
+        if not value:
+            continue
+        if not inside or name is None:
+            raise AssertionError(f"outside any service: {line.strip()}")
+        services[name][value.group(1)].append(value.group(2))
+    return services
+
+
+class KronikaComposeTests(unittest.TestCase):
+    """demo-check.sh keeps its stack apart from a user's Krönika demo by
+    setting KRONIKA_NAME_PREFIX and KRONIKA_IMAGE. That holds only while
+    every name that is global to the Docker host is built from them."""
+
+    def test_every_container_name_and_image_follows_the_variables(self):
+        services = compose_services(COMPOSE_FILE.read_text())
+        self.assertEqual(sorted(services), ["report", "seed", "tumultd"])
+        for name, found in services.items():
+            self.assertEqual(
+                found["container_name"],
+                ["${KRONIKA_NAME_PREFIX:-tumult-kronika}-" + name],
+                name,
+            )
+            self.assertEqual(
+                found["image"], ["${KRONIKA_IMAGE:-tumult-kronika:latest}"], name
+            )
+
+    def test_a_fixed_name_would_be_found(self):
+        text = COMPOSE_FILE.read_text()
+        fixed_name = text.replace(
+            "${KRONIKA_NAME_PREFIX:-tumult-kronika}-seed", "tumult-kronika-seed"
+        )
+        self.assertEqual(
+            compose_services(fixed_name)["seed"]["container_name"],
+            ["tumult-kronika-seed"],
+        )
+        fixed_image = text.replace(
+            "image: ${KRONIKA_IMAGE:-tumult-kronika:latest}",
+            "image: tumult-kronika:latest",
+            1,
+        )
+        self.assertEqual(
+            compose_services(fixed_image)["tumultd"]["image"],
+            ["tumult-kronika:latest"],
+        )
 
 
 class Checkout:
