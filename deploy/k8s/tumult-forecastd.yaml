@@ -41,7 +41,7 @@ spec:
       containers:
         - name: forecastd
           # Build from forecastd/Dockerfile and push to your registry.
-          image: ghcr.io/mwigge/tumult-forecastd:2.22.0
+          image: ghcr.io/mwigge/tumult-forecastd:0.1.0
           ports:
             - { name: http, containerPort: 8700 }
           env:

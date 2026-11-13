@@ -24,8 +24,10 @@
 # linear stand-in that needs no weights and names itself `stub` in every
 # response.
 
-# python:3.12-slim-bookworm (Python 3.12.16), pinned by digest. The test
-# suites run on this interpreter in CI and against the built image.
+# python:3.12-slim-bookworm (Python 3.12.16), pinned by digest. CI runs the
+# stub suites on the runner's Python 3.12 with the packages of
+# requirements.lock, not on this image; the suites that need the model run
+# against the built image by hand (see README.md, "Tests").
 ARG PYTHON_IMAGE=python@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 
 FROM ${PYTHON_IMAGE} AS build
@@ -49,9 +51,19 @@ ENV PATH=/opt/venv/bin:$PATH
 COPY requirements.lock /tmp/requirements.lock
 RUN pip install --require-hashes --no-deps -r /tmp/requirements.lock
 
-# A git commit is its own content hash; --no-deps keeps the resolver away
-# from anything that is not in the lock, and the build uses the locked
-# setuptools rather than fetching a build backend.
+# Timestral is not on PyPI, so it cannot be in requirements.lock and pip
+# cannot check a hash for it. It is installed from a full git commit id
+# instead, which names its content the way a hash would. Two flags keep
+# that one unhashed install from pulling anything else in:
+#   --no-deps             its dependencies are NOT resolved here. Whatever it
+#                         needs must already be in the lock (hash-checked
+#                         above); `pip check` below fails the build when a
+#                         dependency is missing or at the wrong version.
+#   --no-build-isolation  the wheel is built with the setuptools from the
+#                         lock rather than a build backend fetched, unpinned
+#                         and unhashed, into a throwaway environment.
+# When TIMESTRAL_COMMIT moves, read its dependency list and regenerate the
+# lock first.
 RUN pip install --no-deps --no-build-isolation \
       "timestral @ git+https://github.com/mistralai/timestral.git@${TIMESTRAL_COMMIT}" \
     && pip check \

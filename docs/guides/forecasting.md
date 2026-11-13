@@ -54,13 +54,23 @@ rather than an invented one.
 A probe that only ever reports `200`, `true` or a quantised gauge, and any
 exactly periodic series, leaves no residuals: the empirical band has no
 width, and an impact divided by it would be undefined or, with float noise
-in the width, an absurd `1e15`. Every band therefore has a floor. Its half
-width is never less than the largest of
+in the width, an absurd `1e15`. Every band therefore has a floor. It is
+taken from the **reference samples only**: the pre-fault samples of a
+`baseline`, the settled post-phase samples of a `post_backcast`. Fault
+samples never count, so thirty-second timeouts cannot widen the band around
+a fifty-millisecond baseline. The half width is never less than the larger
+of
 
-* 0.1 % of the series scale (the mean absolute value),
+* 1 % of the reference's spread (half its 10–90 % range), or, when the
+  reference does not vary at all, 0.1 % of its level (the median absolute
+  value), and
 * half the observed resolution (the smallest gap between two distinct
-  values), and
-* `1e-9`.
+  values inside the 10–90 % range).
+
+It is `1e-9` only when all of that is zero (a reference that is zero
+throughout). The floor follows how the reference moves, not where it sits:
+a gauge at 8e9 that moves by 1e6 is floored at a share of 1e6, and a series
+of the order 1e-7 at a share of its own spread.
 
 A band that had to be widened to the floor is flagged: `degenerate_band:
 true` on the forecast, on the probe's impact entry and on the run-level
@@ -90,7 +100,7 @@ Each probe's entry carries a `reference`:
 | `reference` | Meaning |
 |---|---|
 | `baseline` | The run has samples before the fault. They are the context; the forecast runs forward across the fault and post phases. |
-| `post_backcast` | The run has no pre-fault samples (the runner samples the during and post phases). The post-phase samples, reversed, are the context; the forecast runs backwards across the fault window. Post samples still recovering right after the fault (the run before the first sample inside the 10–90 % range of the later half of the post phase, at most the earlier half) are left out of the context, so the backcast does not extend the recovery slope across the fault window. A later sample far outside the settled range (more than three widths of the 10–90 % range of the later half) is a gap in the context for the same reason: one stray spike next to the fault must not bend the backcast. It is still drawn and still counted against the band. The post phase is compared with the 10–90 % range of the remaining, settled samples. |
+| `post_backcast` | The run has no pre-fault samples (the runner samples the during and post phases). The post-phase samples, reversed, are the context; the forecast runs backwards across the fault window. Post samples still recovering right after the fault (the run before the first sample inside the 10–90 % range of the later half of the post phase, at most the earlier half) are left out of the context, so the backcast does not extend the recovery slope across the fault window. A later sample far outside the range of the kept samples (more than three widths beyond their interquartile range; a width is that range, at least one step of a quantised metric and at least the band floor) is a gap in the context for the same reason: one stray spike next to the fault must not bend the backcast. Values that are not rare are not strays: when more than a tenth of the samples (or more than one, in a short phase) would be gapped, none is. A gapped sample is still drawn and still counted against the band. The post phase is compared with the 10–90 % range of the remaining, settled samples. |
 
 The backcast assumes the system ended the run in its normal state. If it
 did not — the post phase is still degraded — the counterfactual is too
@@ -283,13 +293,50 @@ authentication of its own: keep it on a private network next to the daemon.
 | `FORECASTD_WEIGHTS_SHA256` | `577236a8…04d63e` for the default model | Digest the weights must have. Checked before they are opened; the service does not start on a mismatch. Required for any other size or repository |
 | `FORECASTD_WEIGHTS_PATH` | unset | Local snapshot directory |
 | `FORECASTD_THREADS` | `4` (fewer on a smaller host) | PyTorch CPU threads |
+| `FORECASTD_MAX_CONCURRENT` | `4` | Forecast requests in hand at once, from the first body byte to the answer. One more is answered `503` with `retry-after: 1` |
+| `FORECASTD_LOG_FORMAT` | `json` | `json` or `text` (one line per event, for a terminal). Anything else stops the start |
+| `FORECASTD_LOG_LEVEL` | `INFO` | Python log level |
 
 The service takes at most 8 series and 8 covariates per request, 32,768
 context steps, a horizon of 4,096 and a body of 8 MiB (`413` beyond it).
 Values must be JSON numbers or `null` for a gap: a string, a boolean, `NaN`
-or an infinity is a `400`, as is anything else the model refuses. Inference
-runs off the event loop, so `/healthz` answers while a forecast is being
-computed.
+or an infinity is a `400`, as is a body nested too deeply to parse and
+anything else the model refuses (the client is told that the model refused,
+the model's own words go to the log). Inference runs off the event loop, so
+`/healthz` answers while a forecast is being computed.
+
+Requests in hand are bounded. A request takes one of
+`FORECASTD_MAX_CONCURRENT` slots before its body is read and gives it back
+with its answer; when every slot is taken the next request gets `503` at
+once instead of queueing behind the model. A body that takes more than 30
+seconds to arrive is a `408`, so a stalled upload cannot hold a slot. The
+daemon treats `503` as `bad_response` and `408` as `timeout`: both open the
+circuit, and the requests of the cool-down are answered by Holt-Winters.
+
+### Logs
+
+The sidecar writes one JSON object per line on stderr and nothing else
+there: its own events, uvicorn's, Python warnings and uncaught exceptions
+all pass through the same formatter. The access log is the event
+`http.access`.
+
+```json
+{"timestamp": "2026-11-13T21:02:15.503Z", "level": "INFO", "logger": "forecastd", "event": "http.access", "message": "request served", "fields": {"client": "127.0.0.1", "method": "POST", "path": "/forecast", "status": 200}}
+```
+
+| Key | Content |
+|---|---|
+| `timestamp` | RFC 3339, UTC, milliseconds |
+| `level`, `logger` | Python's level name and logger name |
+| `event` | A stable name: `model.loaded`, `startup.failed`, `http.access`, `forecast.failed`, `forecast.busy`, `model.refused`, … |
+| `message` | A constant sentence. No value is ever interpolated into it |
+| `fields` | Everything that varies. An exception is `error.type`, `error.message` and `error.stack` |
+
+Strings are cut at 1 KiB (a stack at 8 KiB) and end in `...[truncated]` when
+they were; a newline or any other control character in a value is escaped
+by the encoder, so a value cannot start a second line. The daemon's own
+forecast events follow the same naming (`error.type`, `error.message` as
+fields, a constant message).
 
 ### The image
 
@@ -351,11 +398,35 @@ The service loads one known set of weights or none. For the default model
 it asks the hub for revision `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` and
 expects the two files to hash to
 `577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e`
-(SHA-256 over `config.json` and `model.safetensors`, name then content, in
-that order; other files in the directory do not count). The digest is
-checked before the model code opens the files. On a mismatch the service
-logs `WeightsMismatch` with both digests and exits with status 1 without
-opening its socket.
+(SHA-256 over `config.json` and `model.safetensors` in that order; other
+files in the directory do not count). Each file enters the digest framed:
+the length of its name, the name, the length of its content, the content,
+lengths as 8 bytes big-endian. The lengths fix where one file ends and the
+next begins, so no two sets of files share a digest by moving bytes between
+them. `sha256sum` of the files does not give this number; compute it with
+the service's own function:
+
+```sh
+cd forecastd && python -c 'import sys; from forecastd.model import CHECKPOINT_FILES, hash_weights; print(hash_weights(sys.argv[1], CHECKPOINT_FILES))' /path/to/Timestral-5M
+```
+
+The model never opens the path that was checked. The service copies the two
+files into a new private directory under the temporary directory (mode
+0500, files 0400), takes the digest over the bytes as it writes them, hands
+the model that copy and removes it once the model is in memory. Files
+swapped at the original path after the check are therefore not what gets
+loaded. The temporary directory (`TMPDIR`, `/tmp` by default) must be
+writable and hold one copy of the weights for the length of the start:
+about 21 MB for the 5M model. The Compose service mounts a tmpfs there and
+the Kubernetes manifest an `emptyDir`.
+
+On a mismatch the copy is removed, the service logs `startup.failed` with
+`error.type: WeightsMismatch` and both digests, and exits with status 1
+without opening its socket.
+
+The digest changed with the framing: a deployment that set
+`FORECASTD_WEIGHTS_SHA256` to the earlier value for the same files
+(`4178c86d…`) must set the new one.
 
 Another size or repository has no built-in pin: set both
 `FORECASTD_MODEL_REVISION` and `FORECASTD_WEIGHTS_SHA256` (the revision is
@@ -405,8 +476,13 @@ cd forecastd
 HF_HOME=/srv/forecastd/hf /srv/forecastd/venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-The same suites run in CI on the stub (job `forecastd`), with the serving
-stack at the locked versions.
+CI (job `forecastd`) runs the suites on Python 3.12 with every package of
+`requirements.lock` installed by hash. Timestral and the weights are not
+there, so `test_timestral.py` skips; the stub suites, the ASGI app, the log
+format and `tests/test_loading.py` run. That last one checks the order
+resolve, copy, hash, compare, load with a fake loader, so "never load
+unverified weights" is tested on every push and not only where the model is
+installed.
 
 `scripts/proof/rip-phase3-forecast/proof.sh` is the end-to-end check: it
 starts the daemon on a fresh private lake, launches a run, starts the
@@ -414,8 +490,9 @@ sidecar with the real model, asserts that it serves exactly the pinned
 revision and digest and that a second instance told to expect another
 digest exits with status 1, asserts that forecast and impact provenance
 name the model and its weights, kills the sidecar, asserts the
-circuit-breaker fallback and brings it back. Run it after changing the
-model, its version or the weights.
+circuit-breaker fallback and brings it back. It also asserts that every
+line the sidecar wrote on stderr, the refused start included, is a JSON log
+entry. Run it after changing the model, its version or the weights.
 
 It takes its paths from the environment: `FORECASTD_VENV` (default
 `$XDG_DATA_HOME/tumult/forecastd-venv`), `HF_HOME`, `PROOF_WORK` and

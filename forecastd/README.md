@@ -18,8 +18,12 @@ names the model that produced it.
 
 `context` is the series contract: regular steps, `null` for gaps, at most
 32,768 steps, 8 series, a horizon of 4,096. Values are JSON numbers or
-`null`; a string, a boolean, `NaN` or an infinity is a `400`, and so is an
-input the model itself refuses. A body over 8 MiB is a `413`. Covariate
+`null`; a string, a boolean, `NaN` or an infinity is a `400`, and so is a
+body nested too deeply to parse and an input the model itself refuses (the
+answer says that the model refused; what it said is in the log). A body
+over 8 MiB is a `413`, one that takes more than 30 seconds to arrive a
+`408`, and a request that finds every slot taken (`FORECASTD_MAX_CONCURRENT`)
+a `503` with `retry-after: 1`. Covariate
 rows (8 at most of each kind) are as long as the context (`past_covariates`)
 or the context plus the horizon (`known_covariates`). Requested quantile
 levels snap to the nearest of Timestral's 21 (0.01, 0.05, 0.10 … 0.90, 0.95,
@@ -34,18 +38,52 @@ levels snap to the nearest of Timestral's 21 (0.01, 0.05, 0.10 … 0.90, 0.95,
 | `FORECASTD_MODEL_SIZE` | `5M` | `5M`, `28M`, `123M`, `209M`. Start with 5M (CPU, tens of ms per forecast); evaluate a larger one on your own series before switching |
 | `FORECASTD_MODEL_ID` | `mistralai/Timestral-<size>` | Hub repository id when not loading from a path |
 | `FORECASTD_MODEL_REVISION` | `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` for the default model | Hub commit to load. Required for any other size or repository, unless `FORECASTD_WEIGHTS_PATH` is set |
-| `FORECASTD_WEIGHTS_SHA256` | `577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e` for the default model | Digest the weights must have (SHA-256 over `config.json` and `model.safetensors`). Required for any other size or repository |
+| `FORECASTD_WEIGHTS_SHA256` | `577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e` for the default model | Digest the weights must have (SHA-256 over `config.json` and `model.safetensors`, framed as described below). Required for any other size or repository |
 | `FORECASTD_WEIGHTS_PATH` | unset | Local snapshot directory. Set it for offline and air-gapped hosts |
 | `FORECASTD_THREADS` | `4` (fewer on a smaller host) | PyTorch CPU threads. The 5M model gains nothing past four, and on a busy host more threads make each forecast slower |
+| `FORECASTD_MAX_CONCURRENT` | `4` | Forecast requests in hand at once, body upload included. One more gets `503` at once rather than a place in a queue |
+| `FORECASTD_LOG_FORMAT` | `json` | `json` (one object per line) or `text` (one readable line per event). Anything else stops the start |
 | `FORECASTD_LOG_LEVEL` | `INFO` | Python log level |
 
-The weights are verified against the pinned digest before the model code
-opens them, and the model is loaded once, before the socket opens. On a
-mismatch, a missing pin or any other load failure the service logs the
-error and exits with status 1. `/healthz` and every forecast carry
-`revision` (the hub commit of the loaded snapshot, `local` for a plain
-directory, `none` for the stub) and `weights_hash` (the SHA-256 of the
-loaded files). Forecasts are computed one at a time, off the event loop.
+The model is loaded once, before the socket opens. On a digest mismatch, a
+missing pin or any other load failure the service logs `startup.failed` and
+exits with status 1. `/healthz` and every forecast carry `revision` (the
+hub commit of the loaded snapshot, `local` for a plain directory, `none`
+for the stub) and `weights_hash` (the SHA-256 of the loaded files).
+Forecasts are computed one at a time, off the event loop.
+
+### The weights digest
+
+`weights_hash` is one SHA-256 over `config.json` and `model.safetensors`,
+in that order. Each file is framed: the length of its name, the name, the
+length of its content, the content (lengths as 8 bytes, big-endian), so the
+digest also fixes where one file ends and the next begins. To compute it
+for a directory:
+
+```sh
+python -c 'import sys; from forecastd.model import CHECKPOINT_FILES, hash_weights; print(hash_weights(sys.argv[1], CHECKPOINT_FILES))' ./weights/Timestral-5M
+```
+
+The model does not open the directory that was checked. The two files are
+copied into a new private directory under the temporary directory (mode
+0500, files 0400), the digest is taken over the bytes as they are written,
+the model loads from that copy and the copy is removed. Swapping the files
+at the original path after the check changes nothing. `TMPDIR` (default
+`/tmp`) must be writable with room for one copy of the weights, 21 MB for
+the 5M model; `--read-only` therefore needs `--tmpfs /tmp`, as below.
+
+### Logs
+
+One JSON object per line on stderr, and nothing else there: the service's
+events, uvicorn's, Python warnings and uncaught exceptions use one
+formatter. Keys: `timestamp` (RFC 3339, UTC), `level`, `logger`, `event` (a
+stable name such as `model.loaded`, `http.access`, `forecast.busy`,
+`forecast.failed`, `model.refused`, `startup.failed`), `message` (a
+constant sentence, nothing interpolated) and `fields` (everything that
+varies; an exception is `error.type`, `error.message`, `error.stack`).
+Strings are cut at 1 KiB and control characters are escaped by the JSON
+encoder, so a value from a client or from the model cannot forge a line.
+`FORECASTD_LOG_FORMAT=text` is for reading at a terminal.
 
 ## Weights and the licence
 
@@ -122,8 +160,13 @@ cd forecastd && python -m unittest discover -s tests -t . -v
 
 Run them from the virtualenv above to exercise the real model (the pinned
 revision and digest, refusal on a mismatch, shape, quantile ordering,
-determinism, limits, CPU latency). CI runs the stub suites, the ASGI app
-included. Measured latency and memory are in `docs/guides/forecasting.md`.
+determinism, limits, CPU latency). CI runs on Python 3.12 with the packages
+of `requirements.lock`, installed by hash: the stub suites, the ASGI app,
+the log format and `tests/test_loading.py`, which checks with a fake loader
+that weights are copied, hashed and compared before anything loads them.
+The real-model suite skips there (no Timestral, no weights); run it from
+the virtualenv or against the image before a release. Measured latency and
+memory are in `docs/guides/forecasting.md`.
 
 ## Deployment
 
