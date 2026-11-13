@@ -346,11 +346,17 @@
                     <EChart
                         option={heatmapOption}
                         id="coverage"
+                        label="Evidence coverage per target and discipline"
                         height={Math.max(160, 28 * report.coverage.targets.length + 60)}
                     />
                 {/if}
                 {#if radarOption}
-                    <EChart option={radarOption} id="coverage-radar" height={240} />
+                    <EChart
+                        option={radarOption}
+                        id="coverage-radar"
+                        height={240}
+                        label="Evidence coverage per discipline"
+                    />
                 {/if}
             {/if}
         </section>
@@ -364,6 +370,7 @@
                     <EChart
                         option={nfrOption}
                         id="nfr"
+                        label="Objective verdicts per target"
                         height={Math.max(
                             160,
                             28 * new Set(posture.nfrs.map((n) => n.target)).size + 60,
@@ -374,7 +381,13 @@
             {#if trend}
                 <section class="panel" data-testid="trend">
                     <h2>Compliance score, {TREND_RANGE}</h2>
-                    <FanChart series={trend} unit="score" id="trend" height={220} />
+                    <FanChart
+                        series={trend}
+                        unit="score"
+                        id="trend"
+                        height={220}
+                        label="Compliance score over {TREND_RANGE}"
+                    />
                 </section>
             {/if}
         </div>

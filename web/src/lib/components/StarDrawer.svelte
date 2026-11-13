@@ -13,7 +13,6 @@
         Risk,
         StarNode,
     } from '#lib/types.js';
-    import { runsOfDefinition } from '#lib/starmap/list.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
 
     let {
@@ -50,8 +49,14 @@
         heading?.focus();
     });
 
+    /** Escape in a field belongs to the field: it clears a search box. */
+    const typing = (target: EventTarget | null) =>
+        target instanceof Element &&
+        target.closest('input, textarea, select, [contenteditable]') !== null;
+
     function onKey(event: KeyboardEvent) {
         if (event.key !== 'Escape' || event.defaultPrevented) return;
+        if (typing(event.target)) return;
         event.preventDefault();
         onclose();
     }
@@ -79,10 +84,9 @@
         manual = empty();
         risks = empty();
         if (kind === 'def') {
+            // `name` is matched whole, so `worker-kill` never lists `api-worker-kill`.
             load(
-                api
-                    .experiments({ q: target, range })
-                    .then((r) => runsOfDefinition(r.experiments, target)),
+                api.experiments({ name: target, range }).then((r) => r.experiments),
                 live,
                 (s) => (runs = s),
             );

@@ -171,7 +171,12 @@
 
 <div class="panel">
     {#if durations && durations.points.length > 0}
-        <EChart option={scatterOption} height={220} onclick={onPoint} />
+        <EChart
+            option={scatterOption}
+            height={220}
+            onclick={onPoint}
+            label="Root-span durations over time"
+        />
     {:else if rows}
         <div class="state">No root-span durations in this window.</div>
     {:else}

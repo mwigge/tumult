@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ExperimentRow, StarNode } from '../types.js';
-import { listNodes, runsOfDefinition } from './list.js';
+import type { StarNode } from '../types.js';
+import { listNodes } from './list.js';
 
 const node = (id: string, kind: string, label: string) => ({ id, kind, label }) as StarNode;
 
@@ -34,20 +34,5 @@ describe('listNodes', () => {
         const before = nodes.map((n) => n.id);
         listNodes(nodes, '');
         expect(nodes.map((n) => n.id)).toEqual(before);
-    });
-});
-
-describe('runsOfDefinition', () => {
-    const run = (id: string, name: string | null) => ({ id, name }) as ExperimentRow;
-
-    it('keeps the runs named exactly like the definition', () => {
-        const rows = [
-            run('1', 'worker-kill'),
-            run('2', 'api-worker-kill'),
-            run('3', 'worker-kill-twice'),
-            run('4', null),
-            run('5', 'worker-kill'),
-        ];
-        expect(runsOfDefinition(rows, 'worker-kill').map((r) => r.id)).toEqual(['1', '5']);
     });
 });

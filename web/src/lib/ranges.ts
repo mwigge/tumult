@@ -1,5 +1,5 @@
 // The time ranges every ranged endpoint accepts, in one place. The API
-// keeps the same table in tumult-api/src/handlers/sql_util.rs.
+// keeps the same table in tumult-api/src/sql_util.rs.
 
 const DAY_S = 86_400;
 

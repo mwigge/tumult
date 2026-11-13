@@ -136,19 +136,25 @@
         return tooltipHtml(raw as StarNode, context);
     }
 
+    /** What the canvas is, for a reader who cannot see it. */
+    const described = $derived.by(() => {
+        if (!map) return '';
+        const c = map.counts;
+        return (
+            `Star map of ${plural(c.nodes, 'node')} and ${plural(c.edges, 'edge')}: ` +
+            `${c.risks_open} open risks, ${plural(c.gaps, 'gap')}. ` +
+            'The node list below the map has every node.'
+        );
+    });
+
     const option: EChartsCoreOption = $derived.by(() => {
         if (!map || map.nodes.length === 0) return {};
         const t = context.tokens;
-        const described =
-            `Star map of ${plural(map.counts.nodes, 'node')} and ` +
-            `${plural(map.counts.edges, 'edge')}: ${map.counts.risks_open} open risks, ` +
-            `${plural(map.counts.gaps, 'gap')}. The node list below the map has every node.`;
         const data: StarItem[] = [];
         for (const n of map.nodes) data.push(toItem(n, positions.get(n.id) ?? [0, 0], context));
         const links: StarLink[] = [];
         for (const e of map.edges) links.push(toLink(e, context));
         return {
-            aria: { enabled: true, label: { enabled: true, description: described } },
             tooltip: { ...t.tooltip, confine: true, formatter: tip },
             series: [
                 {
@@ -309,6 +315,7 @@
         {:else}
             <EChart
                 id="starmap"
+                label={described}
                 {option}
                 height={640}
                 merge

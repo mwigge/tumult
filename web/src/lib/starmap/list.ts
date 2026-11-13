@@ -1,7 +1,7 @@
 // The Star Map as lists: the same nodes the canvas draws, in an order a
-// keyboard or a screen reader can walk, and the run rows of the drawer.
+// keyboard or a screen reader can walk.
 
-import type { ExperimentRow, StarNode } from '../types.js';
+import type { StarNode } from '../types.js';
 import { KINDS } from './style.js';
 
 const RANK = new Map<string, number>(KINDS.map((kind, i) => [kind, i]));
@@ -21,13 +21,4 @@ export function listNodes(nodes: StarNode[], filter: string): StarNode[] {
     const wanted = filter.trim().toLowerCase();
     const has = (text: string) => text.toLowerCase().includes(wanted);
     return nodes.filter((n) => has(n.label) || has(n.id) || has(n.kind)).sort(before);
-}
-
-/**
- * Runs of one definition. The run list is searched by substring, so the
- * rows of `worker-kill` would include `api-worker-kill`; only an exact
- * name belongs to the definition.
- */
-export function runsOfDefinition(rows: ExperimentRow[], name: string): ExperimentRow[] {
-    return rows.filter((r) => r.name === name);
 }

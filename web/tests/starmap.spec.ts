@@ -215,6 +215,20 @@ async function installChartHook(page: Page) {
     });
 }
 
+const runs = [
+    run('run-1', 'queue-dependency-loss', 'deviated'),
+    run('run-2', 'message-queue-kill', 'completed'),
+    run('run-3', 'queue-dependency-loss-twice', 'completed'),
+];
+
+/** The run list as the daemon filters it: `name` is exact, `q` a substring. */
+function experiments(query: URLSearchParams) {
+    const name = query.get('name');
+    const q = query.get('q') ?? '';
+    const rows = runs.filter((r) => (name === null ? r.name.includes(q) : r.name === name));
+    return { count: rows.length, experiments: rows };
+}
+
 async function mock(page: Page, seen: URL[], hook = true, over: Record<string, unknown> = {}) {
     if (hook) await installChartHook(page);
     await page.route('**/api/**', async (route) => {
@@ -224,15 +238,7 @@ async function mock(page: Page, seen: URL[], hook = true, over: Record<string, u
         let body: unknown = {};
         if (path === '/api/me') body = me;
         else if (path === '/api/starmap') body = { ...starmap(url.searchParams), ...over };
-        else if (path === '/api/experiments')
-            body = {
-                count: 3,
-                experiments: [
-                    run('run-1', 'queue-dependency-loss', 'deviated'),
-                    run('run-2', 'message-queue-kill', 'completed'),
-                    run('run-3', 'queue-dependency-loss-twice', 'completed'),
-                ],
-            };
+        else if (path === '/api/experiments') body = experiments(url.searchParams);
         else if (path === '/api/manual/experiments') body = { records: [] };
         else if (path === '/api/risks')
             body = {
@@ -448,10 +454,9 @@ test('the map can be read and driven from the keyboard', async ({ page }) => {
     await drawn(page);
 
     // The canvas is described for assistive technology ...
-    await expect(page.locator('[data-chart="starmap"]')).toHaveAttribute(
-        'aria-label',
-        /Star map of 14 nodes and 10 edges/,
-    );
+    const canvas = page.locator('[data-chart="starmap"]');
+    await expect(canvas).toHaveAttribute('aria-label', /Star map of 14 nodes and 10 edges/);
+    await expect(canvas).toHaveAttribute('role', 'img');
 
     // ... and every node is a button in a list next to it.
     const list = page.getByRole('region', { name: 'nodes' });
@@ -488,6 +493,26 @@ test('a map built from a capped read says it is incomplete', async ({ page }) =>
     );
 });
 
+test('Escape in the filter box leaves the drawer open', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
+    const drawer = page.getByTestId('starmap-drawer');
+    await expect(drawer).toHaveCount(1);
+
+    const list = page.getByRole('region', { name: 'nodes' });
+    const filter = list.getByRole('searchbox', { name: 'Filter nodes' });
+    await filter.focus();
+    await page.keyboard.type('queue');
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(1);
+    await expect(page).toHaveURL(/sel=sys%3Ademo%2Fmessage-queue/);
+
+    // Anywhere else Escape still closes it.
+    await list.getByRole('button').first().focus();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+});
+
 test('the drawer shows only the runs of the selected definition', async ({ page }) => {
     const seen: URL[] = [];
     await mock(page, seen);
@@ -498,9 +523,11 @@ test('the drawer shows only the runs of the selected definition', async ({ page 
     await expect(drawer).not.toContainText('message-queue-kill');
     // The run list covers the same thirty days as the map.
     await expect(drawer).toContainText('Runs, last 30d');
-    const runs = seen.find((u) => u.pathname === '/api/experiments');
-    expect(runs?.searchParams.get('range')).toBe('30d');
-    expect(runs?.searchParams.get('q')).toBe('queue-dependency-loss');
+    // The daemon is asked for the definition by its whole name.
+    const asked = seen.find((u) => u.pathname === '/api/experiments');
+    expect(asked?.searchParams.get('range')).toBe('30d');
+    expect(asked?.searchParams.get('name')).toBe('queue-dependency-loss');
+    expect(asked?.searchParams.get('q')).toBeNull();
 });
 
 test('the drawer explains flags and what an entity hides', async ({ page }) => {

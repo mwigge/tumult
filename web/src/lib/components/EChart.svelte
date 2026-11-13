@@ -39,7 +39,7 @@
         merge?: boolean;
         viewKey?: string;
         id?: string;
-        /** Accessible name of the chart, when the option carries no aria block. */
+        /** Accessible name of the chart. Without one it is not announced as an image. */
         label?: string;
     } = $props();
 
@@ -158,7 +158,7 @@
 <div
     bind:this={el}
     data-chart={id}
-    role="img"
-    aria-label={label}
+    role={label ? 'img' : undefined}
+    aria-label={label || undefined}
     style="height: {height}px; width: 100%;"
 ></div>

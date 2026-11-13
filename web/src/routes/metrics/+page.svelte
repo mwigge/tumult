@@ -206,7 +206,12 @@
     {:else if series.length === 0}
         <div class="state">No points for this metric in the selected window.</div>
     {:else}
-        <EChart option={chartOption} height={360} onclick={onChartClick} />
+        <EChart
+            option={chartOption}
+            height={360}
+            onclick={onChartClick}
+            label="Metric values over time"
+        />
     {/if}
 </div>
 

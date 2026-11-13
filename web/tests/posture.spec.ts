@@ -241,6 +241,14 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     await expect(page.getByTestId('posture')).toContainText('62.5');
     await expect(page.getByTestId('posture')).toContainText('fair');
 
+    // Every chart is an image with a name a screen reader can say.
+    const named = page.locator('[data-chart]');
+    expect(await named.count()).toBeGreaterThanOrEqual(3);
+    for (const chart of await named.all()) {
+        await expect(chart).toHaveAttribute('role', 'img');
+        await expect(chart).toHaveAttribute('aria-label', /\S/);
+    }
+
     // The heatmap carries one cell per target × discipline.
     const cells = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };

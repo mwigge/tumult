@@ -179,6 +179,7 @@
             {:else}
                 <EChart
                     option={perDayOption}
+                    label="Experiments per day by outcome"
                     height={range === '24h' ? 220 : 200}
                     onclick={onOverlayClick}
                 />
@@ -189,7 +190,7 @@
             {#if data.faults.length === 0}
                 <div class="state">No fault-injection spans recorded in this window.</div>
             {:else}
-                <EChart option={faultsOption} height={220} />
+                <EChart option={faultsOption} height={220} label="Runs per fault type" />
             {/if}
         </div>
     </div>
