@@ -6,16 +6,23 @@ in demo/kronika/manifests and one run of each experiment in
 demo/kronika/experiments. `scripts/demo-check.sh` brings that up and calls
 this; `scripts/proof/starmap-step1/proof.sh` calls it against its own daemon.
 
-    scripts/starmap-check.py http://127.0.0.1:14318 [--wait 60]
+    scripts/starmap-check.py http://127.0.0.1:14318 [--wait 60] [--write]
 
 The API token, when the daemon asks for one, is read from STARMAP_TOKEN.
 The map must show at least: the organisation, 3 teams, 4 workloads with a
 `runs_on` edge, 8 experiment definitions with a `tested_by` edge, 1 gap
 node, 1 node with a failed run and 1 suppressed risk, and no retired `tgt:`
 id. Telemetry lands a moment after a run ends, so the map is read again
-until it holds or `--wait` seconds have passed. When nothing is suppressed
-yet, one open risk is suppressed for a week (a write) and the map is read
-once more. Exit 0 when every line holds, 1 otherwise.
+until it holds or `--wait` seconds have passed.
+
+Without `--write` the check only reads. When nothing is suppressed yet the
+suppressed-risk line cannot be shown that way: it is printed as `skip` and
+does not fail the check. With `--write`, one open risk is then suppressed
+for a week and the map is read once more. Nothing undoes that, so pass
+`--write` only for a daemon that is thrown away afterwards.
+
+Each line starts with `ok  `, `FAIL` or `skip`. Exit 0 when no line fails,
+1 otherwise.
 """
 
 import argparse
@@ -48,7 +55,9 @@ def call(base, path, token, body=None):
 
 
 def edge_ends(star, rel):
-    return {end for e in star["edges"] if e["rel"] == rel for end in (e["from"], e["to"])}
+    return {
+        end for e in star["edges"] if e["rel"] == rel for end in (e["from"], e["to"])
+    }
 
 
 def structure(star):
@@ -65,7 +74,9 @@ def structure(star):
     definitions = [n for n in by_kind.get("def", []) if n["id"] in tested]
     gaps = [n for n in nodes if n["gap"]]
     failed = [n for n in nodes if n["kind"] != "def" and n["evidence"]["failed"] > 0]
-    ids = [n["id"] for n in nodes] + [e[end] for e in star["edges"] for end in ("from", "to")]
+    ids = [n["id"] for n in nodes] + [
+        e[end] for e in star["edges"] for end in ("from", "to")
+    ]
     retired = sorted({i for i in ids if i.startswith("tgt:")})
     return [
         (any(n["id"] == "org:" for n in orgs), "the organisation is the root"),
@@ -101,14 +112,28 @@ def suppress_one(base, token):
     open_ids = sorted(r["id"] for r in risks if not r.get("suppression"))
     if not open_ids:
         return None
-    body = {"reason": "demo-check: accepted for the demo", "expires_in_days": 7, "actor": "demo-check"}
+    body = {
+        "reason": "demo-check: accepted for the demo",
+        "expires_in_days": 7,
+        "actor": "demo-check",
+    }
     call(base, f"/api/risks/{open_ids[0]}/suppress", token, body)
     return open_ids[0]
 
 
-def suppression(base, token, star):
-    """The suppressed-risk line; suppresses one risk when none is yet."""
+SKIPPED = None
+NOT_WRITTEN = (
+    SKIPPED,
+    "suppressed risk not checked: none is suppressed yet, and suppressing one "
+    "needs --write (only for a daemon that is thrown away)",
+)
+
+
+def suppression(base, token, star, write):
+    """The suppressed-risk line. With `write`, suppresses one risk when none is yet."""
     if star["counts"]["risks_suppressed"] == 0:
+        if not write:
+            return NOT_WRITTEN
         if suppress_one(base, token) is None:
             return False, "no open risk to suppress and none suppressed"
         star = call(base, "/api/starmap?env=demo", token)
@@ -118,23 +143,53 @@ def suppression(base, token, star):
     return holds, f"{count} suppressed risks on {len(dimmed)} nodes (at least 1)"
 
 
+# What a daemon that is absent, or one that answers something other than
+# the documented JSON, raises somewhere in the checks.
+UNEXPECTED = (
+    urllib.error.URLError,
+    OSError,
+    ValueError,
+    LookupError,
+    TypeError,
+    AttributeError,
+)
+MARK = {True: "ok  ", False: "FAIL", SKIPPED: "skip"}
+
+
+def checked(base, token, wait_s, write):
+    """Every line of the check: (holds, text), `holds` None when skipped."""
+    star, lines = settled_map(base, token, wait_s)
+    if all(holds for holds, _ in lines):
+        lines.append(suppression(base, token, star, write))
+    return lines
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Star Map step 1 assertions for the demo.")
-    parser.add_argument("url", help="base URL of the daemon, e.g. http://127.0.0.1:14318")
-    parser.add_argument("--wait", type=float, default=60.0, help="seconds to wait for telemetry")
+    parser = argparse.ArgumentParser(
+        description="Star Map step 1 assertions for the demo."
+    )
+    parser.add_argument(
+        "url", help="base URL of the daemon, e.g. http://127.0.0.1:14318"
+    )
+    parser.add_argument(
+        "--wait", type=float, default=60.0, help="seconds to wait for telemetry"
+    )
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="suppress one open risk when none is suppressed yet (not undone)",
+    )
     args = parser.parse_args()
     base = args.url.rstrip("/")
     token = os.environ.get("STARMAP_TOKEN", "")
     try:
-        star, lines = settled_map(base, token, args.wait)
-        if all(holds for holds, _ in lines):
-            lines.append(suppression(base, token, star))
-    except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
+        lines = checked(base, token, args.wait, args.write)
+    except UNEXPECTED as error:
         print(f"FAIL star map: {base} did not answer as expected: {error!r}")
         return 1
     for holds, text in lines:
-        print(f"{'ok  ' if holds else 'FAIL'} star map: {text}")
-    return 0 if all(holds for holds, _ in lines) else 1
+        print(f"{MARK[holds]} star map: {text}")
+    return 1 if any(holds is False for holds, _ in lines) else 0
 
 
 if __name__ == "__main__":

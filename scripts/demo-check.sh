@@ -16,12 +16,16 @@
 #
 # The Star Map assertions (scripts/starmap-check.py) need a Krönika daemon
 # that holds the Krönika demo. By default this script brings
-# docker/docker-compose.kronika.yml up as its own compose project, on a fresh
-# volume with throwaway credentials and on host ports 24317/24318, runs its
-# seed, checks the map and removes the project again. To check a daemon that
-# is already running, set STARMAP_URL (and STARMAP_TOKEN when it asks for
-# one); nothing is started or removed then, and one open risk is suppressed
-# when none is yet. --starmap-only runs just this part.
+# docker/docker-compose.kronika.yml up as its own compose project, with its
+# own container names and image tag (tumult-demo-check-kronika), on a fresh
+# volume with throwaway credentials and on host ports 24317/24318, so a
+# Krönika demo that is already up is left alone. It runs the seed, checks the
+# map (suppressing one risk to show a suppressed one) and removes the project
+# again, also when it is interrupted; the image stays as a build cache. To
+# check a daemon that is already running, set STARMAP_URL (and STARMAP_TOKEN
+# when it asks for one): nothing is started, removed or written then, so the
+# suppressed-risk line is skipped unless a risk is suppressed already.
+# --starmap-only runs just this part.
 #
 # Assumes the demo stack is already `up` (the Makefile brings it up first).
 # Runs each experiment inside the tumult-mcp container via `tumult run`, the
@@ -50,7 +54,15 @@ HEALTH_CONTAINERS=(demo-postgres demo-app demo-sshd demo-signoz demo-mcp)
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-240}"
 
 # Star Map: the compose project this script owns, and where its daemon listens.
-KRONIKA_COMPOSE="${COMPOSE_KRONIKA:-docker compose -f ${REPO_ROOT}/docker/docker-compose.kronika.yml} -p tumult-demo-check-kronika"
+# The command is an array so that a checkout path with a space stays one word;
+# COMPOSE_KRONIKA, when set, is split on whitespace like COMPOSE_DEMO.
+KRONIKA_PROJECT="tumult-demo-check-kronika"
+KRONIKA_COMPOSE=(docker compose -f "${REPO_ROOT}/docker/docker-compose.kronika.yml")
+if [[ -n "${COMPOSE_KRONIKA:-}" ]]; then
+  read -r -a KRONIKA_COMPOSE <<<"$COMPOSE_KRONIKA"
+fi
+KRONIKA_COMPOSE+=(-p "$KRONIKA_PROJECT")
+KRONIKA_STARTED=0
 STARMAP_URL="${STARMAP_URL:-}"
 STARMAP_WAIT="${STARMAP_WAIT:-90}"
 STARMAP_ONLY=0
@@ -168,29 +180,50 @@ assert_telemetry() {
 throwaway_secret() { head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
 kronika_down() {
-  if ! $KRONIKA_COMPOSE down -v --remove-orphans >/dev/null 2>&1; then
+  if ! "${KRONIKA_COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1; then
     warn "star map — could not remove the Krönika check stack"
   fi
 }
 
-# Bring the Krönika demo up on a fresh volume and run its seed. Sets
-# STARMAP_URL and STARMAP_TOKEN for the daemon it started.
-kronika_up() {
+# Remove the check stack once, however the script ends.
+kronika_cleanup() {
+  [[ $KRONIKA_STARTED -eq 1 ]] || return 0
+  KRONIKA_STARTED=0
+  kronika_down
+}
+
+# What the compose file reads. Container names and the image tag are global
+# to the Docker host, so they are always the check's own: a Krönika demo the
+# user has up keeps its containers and its image.
+kronika_env() {
+  export KRONIKA_NAME_PREFIX="$KRONIKA_PROJECT"
+  export KRONIKA_IMAGE="${KRONIKA_PROJECT}:latest"
   export KRONIKA_HOST_GRPC_PORT="${KRONIKA_HOST_GRPC_PORT:-24317}"
   export KRONIKA_HOST_HTTP_PORT="${KRONIKA_HOST_HTTP_PORT:-24318}"
   export KRONIKA_BOOTSTRAP_ADMIN_PASSWORD KRONIKA_BOOTSTRAP_TOKEN KRONIKA_INGEST_TOKEN
   KRONIKA_BOOTSTRAP_ADMIN_PASSWORD="$(throwaway_secret)"
   KRONIKA_BOOTSTRAP_TOKEN="$(throwaway_secret)"
   KRONIKA_INGEST_TOKEN="$(throwaway_secret)"
+}
+
+# Bring the Krönika demo up on a fresh volume and run its seed. Sets
+# STARMAP_URL and STARMAP_TOKEN for the daemon it started. From here on the
+# stack is removed on every way out, an interrupt included.
+kronika_up() {
+  kronika_env
   local log; log="$(mktemp)"
   kronika_down
-  if ! $KRONIKA_COMPOSE up -d --build --wait tumultd >"$log" 2>&1; then
+  KRONIKA_STARTED=1
+  trap kronika_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  if ! "${KRONIKA_COMPOSE[@]}" up -d --build --wait tumultd >"$log" 2>&1; then
     fail "star map — the Krönika daemon did not come up"
     tail -12 "$log" | sed 's/^/        /'
     rm -f "$log"
     return 1
   fi
-  if ! $KRONIKA_COMPOSE run --rm seed >"$log" 2>&1; then
+  if ! "${KRONIKA_COMPOSE[@]}" run --rm seed >"$log" 2>&1; then
     fail "star map — the Krönika seed exited non-zero"
     tail -12 "$log" | sed 's/^/        /'
     rm -f "$log"
@@ -208,32 +241,35 @@ kronika_up() {
   STARMAP_TOKEN="$KRONIKA_BOOTSTRAP_TOKEN"
 }
 
-# Print each line of the check as a PASS or FAIL of this script.
+# Print each line of the check as a PASS, a FAIL or a skipped line of this
+# script.
 report_starmap() {
   local line
   while IFS= read -r line; do
     case "$line" in
       "ok  "*) pass "${line#ok  }" ;;
+      "skip "*) warn "${line#skip }" ;;
       *)       fail "${line#FAIL }" ;;
     esac
   done
 }
 
+# The check writes (it suppresses a risk) only to the stack this script
+# started and removes; a daemon named by STARMAP_URL is read, never written.
 assert_starmap() {
-  local own=0 rc=0 out
+  local rc=0 out
+  local -a write=()
   if [[ -z "$STARMAP_URL" ]]; then
-    own=1
+    write=(--write)
     if ! kronika_up; then
-      kronika_down
+      kronika_cleanup
       return 1
     fi
   fi
   out="$(STARMAP_TOKEN="${STARMAP_TOKEN:-}" python3 "${REPO_ROOT}/scripts/starmap-check.py" \
-    "$STARMAP_URL" --wait "$STARMAP_WAIT" 2>&1)" || rc=1
+    "$STARMAP_URL" --wait "$STARMAP_WAIT" "${write[@]}" 2>&1)" || rc=1
   report_starmap <<<"$out"
-  if [[ $own -eq 1 ]]; then
-    kronika_down
-  fi
+  kronika_cleanup
   return $rc
 }
 
