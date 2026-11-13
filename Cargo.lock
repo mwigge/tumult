@@ -8346,6 +8346,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tumult-risk"
+version = "2.22.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "tumult-ssh"
 version = "2.22.0"
 dependencies = [
