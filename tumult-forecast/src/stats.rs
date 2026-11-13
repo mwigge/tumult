@@ -41,6 +41,33 @@ pub fn quantile(values: &[f64], level: f64) -> f64 {
     xs[lo] + (xs[hi] - xs[lo]) * frac
 }
 
+/// The smallest gap between two distinct finite values: what one step of
+/// a quantised series is worth. `None` when fewer than two distinct values
+/// are present.
+#[must_use]
+pub fn resolution(values: &[f64]) -> Option<f64> {
+    positive_gaps(values).into_iter().reduce(f64::min)
+}
+
+/// How many distinct finite values there are.
+#[must_use]
+pub fn distinct(values: &[f64]) -> usize {
+    if !values.iter().any(|v| v.is_finite()) {
+        return 0;
+    }
+    positive_gaps(values).len() + 1
+}
+
+/// The gaps between neighbouring distinct finite values, in value order.
+fn positive_gaps(values: &[f64]) -> Vec<f64> {
+    let mut xs = finite(values);
+    xs.sort_by(f64::total_cmp);
+    xs.windows(2)
+        .map(|w| w[1] - w[0])
+        .filter(|gap| *gap > 0.0)
+        .collect()
+}
+
 /// Every requested level's quantile, in request order.
 #[must_use]
 pub fn quantiles(values: &[f64], levels: &[f64]) -> Vec<f64> {
@@ -80,6 +107,16 @@ mod tests {
         assert!(close(quantile(&[7.0], 0.9), 7.0));
         assert!(quantile(&xs, 1.5).is_nan());
         assert!(quantile(&[f64::NAN], 0.5).is_nan());
+    }
+
+    #[test]
+    fn resolution_is_the_smallest_gap_between_distinct_values() {
+        assert_eq!(resolution(&[3.0, 1.0, 1.0, 1.5, f64::NAN]), Some(0.5));
+        assert_eq!(resolution(&[2.0, 2.0]), None);
+        assert_eq!(resolution(&[]), None);
+        assert_eq!(distinct(&[3.0, 1.0, 1.0, 1.5, f64::NAN]), 3);
+        assert_eq!(distinct(&[2.0, 2.0]), 1);
+        assert_eq!(distinct(&[f64::NAN]), 0);
     }
 
     #[test]
