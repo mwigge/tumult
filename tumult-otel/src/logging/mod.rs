@@ -90,6 +90,21 @@ impl LogOptions {
         }
     }
 
+    /// Options for a command-line tool (`tumult`, `tumult-mcp`): named after
+    /// `config.service_name`, and quiet by default. Without an OTLP endpoint
+    /// a tool's `info` events have no collector to go to and would only
+    /// clutter the terminal, so the default level is `warn` until an
+    /// endpoint is configured. `RUST_LOG` overrides either default.
+    #[must_use]
+    pub fn for_tool(config: &crate::config::TelemetryConfig) -> Self {
+        let level = if config.otlp_endpoint.is_some() {
+            Level::INFO
+        } else {
+            Level::WARN
+        };
+        Self::new(config.service_name.clone()).with_default_level(level)
+    }
+
     /// Sets the level used when `RUST_LOG` is unset.
     #[must_use]
     pub fn with_default_level(mut self, level: Level) -> Self {
@@ -575,5 +590,20 @@ mod tests {
         assert_eq!(lines[0]["level"], "ERROR");
         assert_eq!(lines[0]["event.name"], "process.fatal");
         assert_eq!(lines[0]["error.message"], "open store: locked");
+    }
+
+    #[test]
+    fn tool_options_are_quiet_until_an_otlp_endpoint_is_configured() {
+        let mut config = crate::config::TelemetryConfig {
+            service_name: "tumult-mcp".to_string(),
+            ..Default::default()
+        };
+        let quiet = LogOptions::for_tool(&config);
+        assert_eq!(quiet.service_name, "tumult-mcp");
+        assert_eq!(quiet.default_level, Level::WARN);
+        assert_eq!(quiet.format, None);
+
+        config.otlp_endpoint = Some("http://collector:4317".to_string());
+        assert_eq!(LogOptions::for_tool(&config).default_level, Level::INFO);
     }
 }
