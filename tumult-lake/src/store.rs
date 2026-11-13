@@ -173,6 +173,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     for ddl in schema::CREATE_TABLES {
         conn.execute_batch(ddl)?;
     }
+    crate::sightings::backfill(conn)?;
     // v4 → v5: rebuild the run tables index-free (crash-robustness — see
     // schema.rs). Conditional on the stored version actually being 4: older
     // databases have no run tables to rebuild, and fresh ones got the v5

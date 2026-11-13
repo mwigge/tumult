@@ -187,6 +187,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         .map_err(|e| anyhow::anyhow!(e))?;
 
     let run_config = RunConfig {
+        version_resolver: None,
         baseline_mode,
         rollback_strategy,
         cancellation_token: Some(cancel_token),
@@ -392,6 +393,7 @@ mod tests {
     // observe this test's overrides.
     fn test_journal(id: &str) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: format!("Test {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Completed,

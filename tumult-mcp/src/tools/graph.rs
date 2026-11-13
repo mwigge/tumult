@@ -316,6 +316,7 @@ mod tests {
             ..Default::default()
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "Latency drill".into(),
             experiment_id: "run-1".into(),
             status: ExperimentStatus::Completed,
@@ -407,6 +408,7 @@ mod tests {
             ..Default::default()
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "Demo — PostgreSQL connection kill".into(),
             experiment_id: "demo-postgres-1".into(),
             status: ExperimentStatus::Completed,
@@ -555,6 +557,7 @@ mod tests {
             ..Default::default()
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "DORA drill".into(),
             experiment_id: "run-dora-1".into(),
             status: ExperimentStatus::Completed,

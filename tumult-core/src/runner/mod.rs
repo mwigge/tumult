@@ -176,6 +176,31 @@ pub enum BaselineMode {
     Only,
 }
 
+/// What a run measured and when: the question a
+/// [`TargetVersionResolver`] answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunWindow {
+    /// The definition's `target.system`.
+    pub system: String,
+    /// The definition's `target.environment`.
+    pub environment: Option<String>,
+    pub started_at_ns: i64,
+    pub ended_at_ns: i64,
+}
+
+/// Finds the version of the target that served a run, from the target's
+/// own telemetry. Asked once, when the run ends, and only when the
+/// definition declares a target without a version.
+pub trait TargetVersionResolver: Send + Sync {
+    /// The `service.version` the target reported inside `window`, in the
+    /// window's environment; `Ok(None)` when its telemetry says nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the telemetry could not be read.
+    fn resolve(&self, window: &RunWindow) -> Result<Option<String>, String>;
+}
+
 /// Configuration for an experiment run.
 ///
 /// Dry-run is handled before calling the runner.
@@ -203,6 +228,9 @@ pub struct RunConfig {
     /// declared in the experiment; when `None`, the experiment's value (if
     /// any) is used.
     pub max_concurrent_faults: Option<u32>,
+    /// Optional source of the target's observed version. Without one a
+    /// run whose definition declares no `target.version` records none.
+    pub version_resolver: Option<std::sync::Arc<dyn TargetVersionResolver>>,
 }
 
 impl Default for RunConfig {
@@ -214,6 +242,7 @@ impl Default for RunConfig {
             parent_context: None,
             load_executor: None,
             max_concurrent_faults: None,
+            version_resolver: None,
         }
     }
 }

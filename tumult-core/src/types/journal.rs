@@ -68,6 +68,46 @@ pub struct HaltRecord {
     pub rollback_ms: u64,
 }
 
+/// Where the version recorded on a run came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VersionSource {
+    /// The definition's `target.version`, or `--target-version`.
+    Declared,
+    /// Resolved once at run end from the target's own telemetry inside
+    /// the run's window, in the run's environment.
+    Observed,
+}
+
+impl std::fmt::Display for VersionSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Declared => "declared",
+            Self::Observed => "observed",
+        })
+    }
+}
+
+/// The version of the target a run measured, frozen in the journal when
+/// the run ended so that later telemetry cannot move it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetVersion {
+    pub version: String,
+    pub version_source: VersionSource,
+}
+
+impl TargetVersion {
+    /// The version the definition declares, if it declares one.
+    #[must_use]
+    pub fn declared(experiment: &Experiment) -> Option<Self> {
+        let version = experiment.target.as_ref()?.declared_version()?;
+        Some(Self {
+            version: version.to_string(),
+            version_source: VersionSource::Declared,
+        })
+    }
+}
+
 /// Blast-radius metadata surfaced in the journal: the author's note, the
 /// enforced concurrent-fault cap, and the peak concurrency actually observed
 /// during method execution.
@@ -133,12 +173,16 @@ pub struct Journal {
     /// order. Aggregates live in `during_result` / `post_result`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub probe_samples: Vec<ProbeSample>,
+    /// The version of the target this run measured and how it is known;
+    /// `None` when it was neither declared nor observed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_version: Option<TargetVersion>,
 }
 
 impl Journal {
     /// Build a `Journal` skeleton for `experiment`: fills in the fields
     /// derived from the experiment definition (`experiment_title`,
-    /// `estimate`, `regulatory`) plus the given identity/status/timing, and
+    /// `estimate`, `regulatory`, a declared target version) plus the given identity/status/timing, and
     /// zeroes/empties every execution-result field. Callers use struct
     /// update syntax (`..Journal::for_experiment(...)`) to set whichever
     /// result fields apply to their completion path.
@@ -172,6 +216,7 @@ impl Journal {
             kind: experiment.kind,
             objectives: None,
             probe_samples: vec![],
+            target_version: TargetVersion::declared(experiment),
         }
     }
 }
@@ -201,6 +246,7 @@ mod tests {
     #[test]
     fn journal_with_all_phases_round_trips() {
         let journal = Journal {
+            target_version: None,
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
@@ -238,8 +284,51 @@ mod tests {
     }
 
     #[test]
+    fn the_recorded_target_version_round_trips_with_its_source() {
+        let experiment = Experiment {
+            title: "t".into(),
+            target: Some(ExperimentTarget {
+                system: "checkout".into(),
+                technology: None,
+                environment: None,
+                criticality: None,
+                version: Some(" 1.5.0 ".into()),
+            }),
+            ..Experiment::default()
+        };
+        let mut journal =
+            Journal::for_experiment(&experiment, "id".into(), ExperimentStatus::Completed, 1);
+        assert_eq!(
+            journal.target_version,
+            Some(TargetVersion {
+                version: "1.5.0".into(),
+                version_source: VersionSource::Declared,
+            }),
+            "a declared version is on every journal built for the experiment"
+        );
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(encoded.contains("version_source: declared"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+
+        journal.target_version = Some(TargetVersion {
+            version: "1.5.1".into(),
+            version_source: VersionSource::Observed,
+        });
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(encoded.contains("version_source: observed"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+
+        // A journal written before the field existed still reads.
+        journal.target_version = None;
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(!encoded.contains("target_version"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+    }
+
+    #[test]
     fn journal_minimal_round_trips() {
         let journal = Journal {
+            target_version: None,
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,

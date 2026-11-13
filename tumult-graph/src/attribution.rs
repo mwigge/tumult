@@ -153,6 +153,7 @@ mod tests {
         halt: Option<HaltRecord>,
     ) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "t".into(),
             experiment_id: "id1".into(),
             status,

@@ -28,6 +28,7 @@ fn journal(
     actions: &[&str],
 ) -> Journal {
     Journal {
+        target_version: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status,

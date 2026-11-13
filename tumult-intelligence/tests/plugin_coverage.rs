@@ -54,6 +54,7 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
     {
         let store = AnalyticsStore::open(&store_path).expect("create store");
         let journal = Journal {
+            target_version: None,
             experiment_title: "exercise covered action".into(),
             experiment_id: "exp-1".into(),
             status: ExperimentStatus::Completed,

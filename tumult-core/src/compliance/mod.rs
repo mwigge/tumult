@@ -111,6 +111,7 @@ mod tests {
 
     fn bare_journal(status: crate::types::ExperimentStatus) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "compliance test".into(),
             experiment_id: "exp-1".into(),
             status,

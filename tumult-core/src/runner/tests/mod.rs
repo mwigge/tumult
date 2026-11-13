@@ -16,6 +16,7 @@ mod halt_tests;
 mod load_tests;
 mod rollback_tests;
 mod sampling_tests;
+mod version_tests;
 
 // -- Mock executor
 

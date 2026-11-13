@@ -317,3 +317,45 @@ fn guard_breach_aborts_the_load_instead_of_waiting_for_its_plan() {
     assert_eq!(*events.lock().unwrap(), vec!["load.abort"]);
     assert!(journal.load_result.is_some(), "what was measured is kept");
 }
+
+/// A halted run is closed like any other: its version is observed once,
+/// over the window that ended with the halt.
+#[test]
+fn a_halted_run_observes_its_version_when_it_ends() {
+    use super::version_tests::{checkout, config_with, ScriptedResolver};
+
+    let mut exp = minimal_experiment();
+    exp.guards = vec![health_guard()];
+    exp.method = vec![test_action("action-1"), test_action("action-2")];
+    exp.target = Some(checkout(None));
+    let resolver = ScriptedResolver::answering(Some("1.5.1"));
+    let (guard_exit_sender, guard_exit_receiver) = mpsc::channel();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(HaltingExecutor {
+        method_calls: Arc::new(Mutex::new(Vec::new())),
+        rollback_ran: Arc::new(AtomicBool::new(false)),
+        guard_exit_sender: Mutex::new(Some(guard_exit_sender)),
+        guard_exit_receiver: Mutex::new(guard_exit_receiver),
+    });
+    let controls = Arc::new(ControlRegistry::new());
+
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &controls,
+        &config_with(&resolver),
+        &fast_sampling(),
+    )
+    .unwrap();
+
+    assert_eq!(journal.status, ExperimentStatus::Halted);
+    let questions = resolver.questions();
+    assert_eq!(questions.len(), 1, "{questions:?}");
+    assert_eq!(questions[0].ended_at_ns, journal.ended_at_ns);
+    assert_eq!(
+        journal.target_version,
+        Some(TargetVersion {
+            version: "1.5.1".into(),
+            version_source: VersionSource::Observed,
+        })
+    );
+}

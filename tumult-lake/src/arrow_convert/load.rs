@@ -42,7 +42,30 @@ pub fn load_results_schema() -> Schema {
         Field::new("error_rate", DataType::Float64, false),
         Field::new("total_requests", DataType::UInt64, false),
         Field::new("thresholds_met", DataType::Boolean, false),
+        // How the load was executed; NULL on rows written before these
+        // columns existed.
+        Field::new("aborted", DataType::Boolean, true),
+        Field::new("truncated", DataType::Boolean, true),
+        Field::new("planned_windows", DataType::Int32, true),
+        Field::new("completed_windows", DataType::Int32, true),
+        Field::new("unanswered_windows", DataType::Int32, true),
+        Field::new("lost_to_unanswered", DataType::Int32, true),
+        // What the samples add up to; NULL when the tool streamed none.
+        Field::new("sampled_duration_s", DataType::Float64, true),
     ])
+}
+
+/// A window count as the lake's `INTEGER`.
+fn windows(n: u32) -> i32 {
+    i32::try_from(n).unwrap_or(i32::MAX)
+}
+
+/// The time the streamed samples cover, or `None` when there are none.
+fn sampled_duration_s(load: &LoadResult) -> Option<f64> {
+    if load.samples.is_empty() {
+        return None;
+    }
+    Some(load.samples.iter().map(|s| s.duration_s).sum())
 }
 
 /// Converts a `LoadResult` into an Arrow `RecordBatch` for the `load_results` table.
@@ -57,6 +80,7 @@ pub fn journal_to_load_batch(
     let schema = Arc::new(load_results_schema());
     #[allow(clippy::cast_possible_wrap)]
     let vus = load.vus as i32;
+    let execution = &load.execution;
     Ok(RecordBatch::try_new(
         schema,
         vec![
@@ -73,6 +97,21 @@ pub fn journal_to_load_batch(
             Arc::new(Float64Array::from(vec![load.error_rate])),
             Arc::new(UInt64Array::from(vec![load.total_requests])),
             Arc::new(BooleanArray::from(vec![load.thresholds_met])),
+            Arc::new(BooleanArray::from(vec![Some(execution.aborted)])),
+            Arc::new(BooleanArray::from(vec![Some(execution.truncated())])),
+            Arc::new(Int32Array::from(vec![execution
+                .planned_windows
+                .map(windows)])),
+            Arc::new(Int32Array::from(vec![execution
+                .completed_windows
+                .map(windows)])),
+            Arc::new(Int32Array::from(vec![Some(windows(
+                execution.unanswered_windows,
+            ))])),
+            Arc::new(Int32Array::from(vec![Some(windows(
+                execution.lost_to_unanswered,
+            ))])),
+            Arc::new(Float64Array::from(vec![sampled_duration_s(load)])),
         ],
     )?)
 }

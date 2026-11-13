@@ -3,7 +3,8 @@
 //! epoch-nanosecond clock, and interrupted-journal construction.
 
 use crate::types::{
-    Activity, ActivityType, Experiment, ExperimentStatus, Journal, Provider, SpanId, TraceId,
+    Activity, ActivityType, Experiment, ExperimentStatus, Journal, Provider, SpanId, TargetVersion,
+    TraceId,
 };
 
 use opentelemetry::trace::TraceContextExt;
@@ -38,7 +39,21 @@ pub(crate) fn experiment_target_attributes(experiment: &Experiment) -> Vec<KeyVa
     if let Some(c) = &target.criticality {
         attrs.push(KeyValue::new("resilience.target.criticality", c.clone()));
     }
+    if let Some(version) = TargetVersion::declared(experiment) {
+        attrs.extend(target_version_attributes(&version));
+    }
     attrs
+}
+
+/// The version a run measured and where it came from, for the root span.
+pub(crate) fn target_version_attributes(version: &TargetVersion) -> [KeyValue; 2] {
+    [
+        KeyValue::new("resilience.target.version", version.version.clone()),
+        KeyValue::new(
+            "resilience.target.version_source",
+            version.version_source.to_string(),
+        ),
+    ]
 }
 
 /// Extract target attributes from an activity's provider.

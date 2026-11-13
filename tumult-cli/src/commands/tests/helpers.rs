@@ -335,6 +335,7 @@ pub(crate) fn write_control_experiment(dir: &Path) -> (std::path::PathBuf, std::
 pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
+        target_version: None,
         experiment_title: "Failure & <recovery>".into(),
         experiment_id: "exp-fail-1".into(),
         status: ExperimentStatus::Deviated,

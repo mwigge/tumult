@@ -31,6 +31,7 @@ fn activity(
 /// A journal exercising every HTML section and status branch.
 fn rich_journal() -> Journal {
     Journal {
+        target_version: None,
         experiment_title: "rich report".into(),
         experiment_id: "rich-1".into(),
         status: ExperimentStatus::Deviated,

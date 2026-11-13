@@ -10,7 +10,7 @@ use crate::engine::{conclude, Conclusion, RunFacts};
 use crate::execution::all_succeeded;
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
-    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase,
+    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase, TargetVersion, VersionSource,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -184,7 +184,6 @@ pub fn run_experiment_with_sampling(
         );
 
         controls.emit(&LifecycleEvent::AfterExperiment);
-        record_experiment_outcome(&started, false);
 
         // Rollback failure counts in chaos experiments are always << u32::MAX.
         #[allow(clippy::cast_possible_truncation)]
@@ -193,19 +192,24 @@ pub fn run_experiment_with_sampling(
             .filter(|r| r.status == ActivityStatus::Failed)
             .count() as u32;
 
-        return Ok(Journal {
-            ended_at_ns,
-            duration_ms,
-            steady_state_before: hypothesis_before,
-            rollback_results,
-            rollback_failures: rb_failures,
-            ..Journal::for_experiment(
-                experiment,
-                experiment_id,
-                ExperimentStatus::Aborted,
-                started_at_ns,
-            )
-        });
+        return Ok(seal(
+            Journal {
+                ended_at_ns,
+                duration_ms,
+                steady_state_before: hypothesis_before,
+                rollback_results,
+                rollback_failures: rb_failures,
+                ..Journal::for_experiment(
+                    experiment,
+                    experiment_id,
+                    ExperimentStatus::Aborted,
+                    started_at_ns,
+                )
+            },
+            experiment,
+            config,
+            &started,
+        ));
     }
 
     // -- Check cancellation before method
@@ -216,18 +220,22 @@ pub fn run_experiment_with_sampling(
             #[allow(clippy::cast_possible_truncation)]
             let duration_ms = started.elapsed().as_millis() as u64;
             controls.emit(&LifecycleEvent::AfterExperiment);
-            record_experiment_outcome(&started, false);
-            return Ok(Journal {
-                ended_at_ns,
-                duration_ms,
-                steady_state_before: hypothesis_before,
-                ..Journal::for_experiment(
-                    experiment,
-                    experiment_id,
-                    ExperimentStatus::Interrupted,
-                    started_at_ns,
-                )
-            });
+            return Ok(seal(
+                Journal {
+                    ended_at_ns,
+                    duration_ms,
+                    steady_state_before: hypothesis_before,
+                    ..Journal::for_experiment(
+                        experiment,
+                        experiment_id,
+                        ExperimentStatus::Interrupted,
+                        started_at_ns,
+                    )
+                },
+                experiment,
+                config,
+                &started,
+            ));
         }
     }
 
@@ -342,7 +350,7 @@ pub fn run_experiment_with_sampling(
             "experiment.halted"
         );
 
-        return Ok(Journal {
+        let journal = Journal {
             ended_at_ns,
             duration_ms,
             steady_state_before: hypothesis_before,
@@ -356,7 +364,8 @@ pub fn run_experiment_with_sampling(
             blast_radius,
             probe_samples,
             ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-        });
+        };
+        return Ok(seal(journal, experiment, config, &started));
     }
 
     // -- Mid-method cancellation: the caller's token fired while the method
@@ -400,7 +409,7 @@ pub fn run_experiment_with_sampling(
             "experiment.interrupted"
         );
 
-        return Ok(Journal {
+        let journal = Journal {
             ended_at_ns,
             duration_ms,
             steady_state_before: hypothesis_before,
@@ -413,7 +422,8 @@ pub fn run_experiment_with_sampling(
             blast_radius,
             probe_samples,
             ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-        });
+        };
+        return Ok(seal(journal, experiment, config, &started));
     }
 
     // -- Phase 3: POST -- recovery measurement, taken immediately after the
@@ -539,18 +549,7 @@ pub fn run_experiment_with_sampling(
         "experiment.completed"
     );
 
-    // Per-experiment metrics: outcome counter, lifecycle duration, and a
-    // deviation count tagged with the experiment title when the steady
-    // state was breached.
-    record_experiment_outcome(&started, status == ExperimentStatus::Completed);
-    if status == ExperimentStatus::Deviated {
-        tumult_otel::instrument::record_deviation(
-            tumult_otel::TumultMetrics::global(),
-            &experiment.title,
-        );
-    }
-
-    Ok(Journal {
+    let journal = Journal {
         ended_at_ns,
         duration_ms,
         steady_state_before: hypothesis_before,
@@ -566,7 +565,8 @@ pub fn run_experiment_with_sampling(
         objectives,
         probe_samples,
         ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-    })
+    };
+    Ok(seal(journal, experiment, config, &started))
 }
 
 /// Evaluate the steady-state hypothesis (when present) inside a dedicated
@@ -610,6 +610,81 @@ fn build_blast_radius(
         max_concurrent_faults,
         peak_concurrent_faults,
     })
+}
+
+/// Close a run that had a root span, whichever way it ended: freeze the
+/// version of the target it measured, and record the per-experiment
+/// metrics — outcome counter, lifecycle duration, and a deviation count
+/// tagged with the experiment title when the steady state was breached.
+/// Must run while the root span is still current.
+fn seal(
+    mut journal: Journal,
+    experiment: &Experiment,
+    config: &RunConfig,
+    started: &Instant,
+) -> Journal {
+    if journal.target_version.is_none() {
+        journal.target_version = observed_target_version(experiment, config, &journal);
+        record_observed_version(journal.target_version.as_ref());
+    }
+    record_experiment_outcome(started, journal.status == ExperimentStatus::Completed);
+    if journal.status == ExperimentStatus::Deviated {
+        tumult_otel::instrument::record_deviation(
+            tumult_otel::TumultMetrics::global(),
+            &experiment.title,
+        );
+    }
+    journal
+}
+
+/// Ask the target's telemetry, once, which version served the run. `None`
+/// when the definition names no target, no resolver is configured, or the
+/// telemetry does not say; a resolver that fails costs the version, never
+/// the run.
+fn observed_target_version(
+    experiment: &Experiment,
+    config: &RunConfig,
+    journal: &Journal,
+) -> Option<TargetVersion> {
+    let target = experiment.target.as_ref()?;
+    let resolver = config.version_resolver.as_ref()?;
+    let window = super::RunWindow {
+        system: target.system.clone(),
+        environment: target.environment.clone(),
+        started_at_ns: journal.started_at_ns,
+        ended_at_ns: journal.ended_at_ns,
+    };
+    let version = match resolver.resolve(&window) {
+        Ok(version) => version,
+        Err(error) => {
+            tracing::warn!(
+                experiment_id = %journal.experiment_id,
+                target = %target.system,
+                error = %error,
+                "experiment.target_version_unresolved"
+            );
+            None
+        }
+    };
+    let version = version
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())?;
+    Some(TargetVersion {
+        version,
+        version_source: VersionSource::Observed,
+    })
+}
+
+/// Put an observed version on the current (root) span. A declared one is
+/// there from the start.
+fn record_observed_version(version: Option<&TargetVersion>) {
+    let Some(version) = version else {
+        return;
+    };
+    let cx = opentelemetry::Context::current();
+    for attribute in super::telemetry::target_version_attributes(version) {
+        cx.span().set_attribute(attribute);
+    }
 }
 
 /// Record the outcome of a finished experiment: the `tumult.experiments.total`

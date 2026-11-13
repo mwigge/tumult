@@ -79,6 +79,7 @@ impl Writer {
                     events,
                 ])?;
             }
+            crate::sightings::note_sightings(&self.conn, rows)?;
             Ok(())
         })
     }

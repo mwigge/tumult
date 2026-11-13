@@ -155,6 +155,7 @@ impl AnalyticsStore {
     ///     kind: TestKind::default(),
     ///     objectives: None,
     ///     probe_samples: vec![],
+    ///     target_version: None,
     /// };
     ///
     /// store.ingest_journal(&journal).unwrap();
@@ -549,6 +550,115 @@ mod tests {
         assert_eq!(count[0][0], "10");
         let summary = s.query("SELECT tool FROM load_results").unwrap();
         assert_eq!(summary[0][0], "oha");
+    }
+
+    fn lines(rows: &[crate::QueryRow]) -> Vec<String> {
+        rows.iter().map(|row| row.join("|")).collect()
+    }
+
+    #[test]
+    fn the_version_a_run_recorded_is_kept_with_its_source() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let recorded = |id: &str, version: &str, version_source: VersionSource| Journal {
+            target_version: Some(TargetVersion {
+                version: version.into(),
+                version_source,
+            }),
+            ..sample_journal(id, ExperimentStatus::Completed)
+        };
+        s.ingest_journals(&[
+            recorded("v-declared", "1.5.0", VersionSource::Declared),
+            recorded("v-observed", "1.5.1", VersionSource::Observed),
+            sample_journal("v-unknown", ExperimentStatus::Completed),
+        ])
+        .unwrap();
+
+        let rows = s
+            .query(
+                "SELECT experiment_id, target_version, version_source FROM experiments \
+                 WHERE target_version IS NOT NULL ORDER BY experiment_id",
+            )
+            .unwrap();
+        assert_eq!(
+            lines(&rows),
+            ["v-declared|1.5.0|declared", "v-observed|1.5.1|observed"]
+        );
+        let unknown = s
+            .query(
+                "SELECT experiment_id FROM experiments \
+                 WHERE target_version IS NULL AND version_source IS NULL",
+            )
+            .unwrap();
+        assert_eq!(lines(&unknown), ["v-unknown"]);
+    }
+
+    #[test]
+    fn how_a_load_was_executed_is_kept_with_its_result() {
+        use tumult_core::types::{LoadExecution, LoadResult, LoadSample, LoadTool};
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let window = |ts_ns: i64, duration_s: f64| LoadSample {
+            ts_ns,
+            duration_s,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 70.0,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            requests: 400,
+        };
+        let load = |samples: Vec<LoadSample>, execution: LoadExecution| LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1_000_000_000,
+            ended_at_ns: 61_000_000_000,
+            duration_s: 60.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 75.0,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            total_requests: 800,
+            thresholds_met: false,
+            samples,
+            execution,
+        };
+        let mut cut_short = sample_journal("cut-short", ExperimentStatus::Halted);
+        cut_short.load_result = Some(load(
+            vec![window(1_000_000_000, 10.0), window(11_000_000_000, 2.5)],
+            LoadExecution {
+                planned_windows: Some(24),
+                completed_windows: Some(20),
+                unanswered_windows: 3,
+                lost_to_unanswered: 2,
+                aborted: true,
+                reasons: vec!["2 of 24 windows skipped".into()],
+            },
+        ));
+        // A tool that counts no windows and streamed none.
+        let mut plain = sample_journal("plain", ExperimentStatus::Completed);
+        plain.load_result = Some(load(vec![], LoadExecution::default()));
+        s.ingest_journals(&[cut_short, plain]).unwrap();
+
+        let rows = s
+            .query(
+                "SELECT CAST(aborted AS INTEGER), CAST(truncated AS INTEGER), planned_windows, \
+                 completed_windows, unanswered_windows, lost_to_unanswered, \
+                 CAST(sampled_duration_s * 10 AS INTEGER) \
+                 FROM load_results WHERE experiment_id = 'cut-short'",
+            )
+            .unwrap();
+        assert_eq!(lines(&rows), ["1|1|24|20|3|2|125"]);
+        let plain = s
+            .query(
+                "SELECT count(*) FROM load_results WHERE experiment_id = 'plain' \
+                 AND NOT aborted AND NOT truncated AND planned_windows IS NULL \
+                 AND completed_windows IS NULL AND unanswered_windows = 0 \
+                 AND lost_to_unanswered = 0 AND sampled_duration_s IS NULL",
+            )
+            .unwrap();
+        assert_eq!(plain[0][0], "1");
     }
 
     #[test]
