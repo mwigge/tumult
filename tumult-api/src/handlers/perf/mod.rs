@@ -1,57 +1,68 @@
-//! `GET /api/perf/{target}` and `POST /api/perf/{target}/verdicts` — the
-//! performance regression verdict.
+//! The performance regression verdict: `GET /api/perf/{target}`,
+//! `POST /api/perf/{target}/verdicts`, `GET /api/perf` and
+//! `GET /api/perf/{target}/version`.
 //!
-//! Compares the latency samples the target produced under two of its
-//! `service.version`s. A target's versions are the `service.version`
-//! values on the telemetry whose `service.name` is the target (the
-//! service's own spans). The samples are a run's `during`-phase
-//! `probe_samples` rows for one series (default `load.latency_p95_ms`, the
-//! per-window p95 a streaming load adapter writes). The verdict is
-//! `tumult_perf::compare`'s.
+//! The verdict compares the latency samples a target produced under two
+//! of its versions inside one environment. The samples are a run's
+//! `during`-phase `probe_samples` rows for one series (default
+//! `load.latency_p95_ms`, the per-window p95 a streaming load adapter
+//! writes). The verdict is `tumult_perf::compare`'s.
 //!
 //! # Which version a run measured
 //!
-//! Each experiment run against the target (root spans with
-//! `resilience.target.system`) is attributed from the target's spans in
-//! the run's own environment only, so a busy production deployment never
-//! claims a run made in another environment:
+//! A run is an experiment against the target (root spans with
+//! `resilience.target.system`) that started inside the lookback `range`.
 //!
-//! 1. the version carried by most of the target's spans inside the run's
-//!    own window (start to end of the root span) — the version that
-//!    actually served the load, also when it was idle until the load
-//!    began. When several versions tie (a canary taking half the
-//!    traffic), the one deployed latest — first seen latest in that
-//!    environment — wins, then the greater version string;
-//! 2. with no span of the target inside the window, the version of its
-//!    last span at or before the run's start: the version live at that
-//!    moment, which after a rollback is the older one again;
-//! 3. otherwise the run is left out.
+//! 1. The version the run recorded is what it measured: the one the
+//!    experiment or the command line declared, or the one the runner
+//!    observed when the run ended. It is read from the journal, or from
+//!    the run's root span when the journal has none. Such a run is
+//!    counted as `declared` or `observed`.
+//! 2. A run that recorded none is read from the target's own spans
+//!    (`service.name` is the target) and counted as `inferred`: the
+//!    version carried by most of them inside the run's window, ties to
+//!    the version first seen latest and then to the greater version
+//!    number; with no span inside the window, the version of the last
+//!    span before the run's start, when that span is no more than an
+//!    hour old.
+//! 3. Otherwise the run has no version. It is counted under
+//!    `unattributed_runs` with the reason and takes part in nothing.
 //!
-//! A run that names no environment is matched against the target's spans
-//! from every environment in scope.
+//! Only spans of exactly the run's environment are read for it; a run
+//! that names no environment is read from the spans that name none.
 //!
-//! # Candidate and baseline
+//! # One environment, two versions
 //!
-//! A version is *live* while it still reports: its last span in some
-//! environment is no more than [`LIVE_WINDOW_NS`] (one minute) behind the
-//! latest span of the target there. The candidate is the live version
-//! deployed latest (first seen latest); the baseline is the next live
-//! one, or else the version that went silent most recently. Versions
-//! running side by side — in two environments, or as a canary in one —
-//! therefore keep a fixed order however their spans interleave, and a
-//! version that was rolled back stops being the candidate once it has
-//! been silent for a minute of the other's telemetry.
+//! An answer is for one environment: the one `env=` names, else the only
+//! one in which the target has versions, else the only one that can
+//! answer (it has two versions, or every version the request names).
+//! When several could, the answer is a 400 that asks for `env=` or for
+//! explicit versions; evidence from two environments is never mixed.
+//!
+//! The environment's versions are ordered by deployment: first sight,
+//! latest first, then the greater version number. The candidate is the
+//! first and the baseline the one after it, unless `candidate=` and
+//! `baseline=` name them (`selection` says which). The order does not
+//! depend on which version reported last, so the same request against
+//! the same runs gives the same verdict.
+//!
+//! # What is compared
+//!
+//! Each side holds the samples of the runs that measured its version. A
+//! run whose load was aborted or truncated is counted in `partial` and
+//! left out of the samples unless `include=partial`. Windows in which
+//! nothing answered leave no latency behind; a side that lost more than a
+//! tenth of its windows that way is not comparable and the verdict is
+//! inconclusive, with the reason first.
 //!
 //! # Reading and storing
 //!
-//! `GET` is a pure read and never writes; a `store` parameter on it is a
-//! 400 that names the `POST` route. `POST …/verdicts` computes the same
-//! answer and appends it to `perf_verdicts`; the route table puts it at
-//! the operator role. Stored rows carry the environment list they were
-//! computed under. Storing is idempotent: when the latest stored row for
-//! the same target, probe, versions, quantile and environments holds the
-//! same evidence, nothing is appended and the answer is 200 with
-//! `duplicate: true` instead of 201.
+//! `GET` is a pure read and never writes; `store=` is a 400 on both
+//! routes. `POST …/verdicts` computes the same answer and appends it to
+//! `perf_verdicts` with its environment; the route table puts it at the
+//! operator role. Storing is idempotent: when the latest stored row for
+//! the same comparison holds the same evidence nothing is appended and
+//! the answer is 200 with `duplicate: true` instead of 201.
 //!
 //! # Environments
 //!
@@ -59,15 +70,18 @@
 //! `resilience.target.environment` on the span, then on the resource,
 //! then the resource's `deployment.environment.name`, then its
 //! `deployment.environment`. The value is matched exactly: `prod` and
-//! `production` are different environments. With `env=` or for a scoped
-//! principal only spans, runs and stored verdicts of those environments
-//! exist; a service whose spans carry none of the attributes is outside
-//! every environment, and the answer for it is a 404 that says so.
+//! `production` are different environments. Telemetry that carries none
+//! of them forms an environment of its own (`environment: null`), which
+//! an unscoped principal can be answered for and no scoped one can.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+mod answer;
+mod evidence;
+mod select;
+
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -75,21 +89,20 @@ use tumult_ingest::Batch;
 use tumult_lake::{PerfVerdictRow, Reader, Writer};
 use tumult_perf::{compare, CompareOptions, Comparison, Quantile, Verdict};
 
+use self::answer::Answer;
+use self::select::{Env, NoEnvironment, Side};
 use crate::auth::Principal;
 use crate::error::{bad_request, conflict, forbidden, not_found, unavailable, ApiError};
-use crate::sql_util::{and_pred, env_scope_where, internal, now_ns, sql_string, with_reader};
+use crate::sql_util::{internal, now_ns, with_reader};
 use crate::ApiState;
-use axum::http::StatusCode;
 
 /// The series compared when `probe` is not given.
-pub(crate) const DEFAULT_PROBE: &str = "load.latency_p95_ms";
-/// Stored verdicts returned as history.
-const HISTORY_LIMIT: usize = 10;
-/// How far behind an environment's latest span of the target a version's
-/// last span may lie for the version to count as still live there.
-pub(crate) const LIVE_WINDOW_NS: i64 = 60 * 1_000_000_000;
+const DEFAULT_PROBE: &str = "load.latency_p95_ms";
+/// The lookback when `range` is not given.
+const DEFAULT_RANGE: &str = "30d";
+const NS_PER_S: i64 = 1_000_000_000;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub(crate) struct PerfQuery {
     probe: Option<String>,
     quantile: Option<String>,
@@ -97,12 +110,16 @@ pub(crate) struct PerfQuery {
     min_samples: Option<usize>,
     margin_pct: Option<f64>,
     env: Option<String>,
-    /// Not a parameter: `GET ?store=` is refused rather than ignored.
+    baseline: Option<String>,
+    candidate: Option<String>,
+    range: Option<String>,
+    include: Option<String>,
+    /// Not a parameter: `store=` is refused rather than ignored.
     store: Option<String>,
 }
 
 /// Validated comparison settings from the query string.
-pub(crate) fn options_from_query(q: &PerfQuery) -> Result<CompareOptions, ApiError> {
+fn options_from_query(q: &PerfQuery) -> Result<CompareOptions, ApiError> {
     let defaults = CompareOptions::default();
     let quantile = match q.quantile.as_deref() {
         None => defaults.quantile,
@@ -134,391 +151,313 @@ pub(crate) fn options_from_query(q: &PerfQuery) -> Result<CompareOptions, ApiErr
     })
 }
 
-/// A `service.version` in one environment and when the target's
-/// telemetry there first and last carried it. `environment` is `None`
-/// for spans that name none.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Sighting {
-    pub environment: Option<String>,
-    pub version: String,
-    pub first_seen_ns: i64,
-    pub last_seen_ns: i64,
+/// The start of the lookback `range` ending at `as_of_ns`.
+fn since(range: &str, as_of_ns: i64) -> Result<i64, ApiError> {
+    select::parse_range(range)
+        .and_then(|seconds| seconds.checked_mul(NS_PER_S))
+        .map(|ns| as_of_ns.saturating_sub(ns))
+        .ok_or_else(|| {
+            bad_request("range must be a positive count of s, m, h, d or w, such as 12h or 30d")
+        })
 }
 
-/// A `service.version` across the environments in scope: when it was
-/// first and last seen, and whether it still reports (see [`rank`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct VersionSeen {
-    pub version: String,
-    pub first_seen_ns: i64,
-    pub last_seen_ns: i64,
-    pub live: bool,
-}
-
-/// A run against the target, with what the target's own spans say about
-/// the version that served it.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct RunSeen {
-    pub experiment_id: String,
-    pub started_at_ns: i64,
-    pub ended_at_ns: i64,
-    /// The environment the run named, if any.
-    pub environment: Option<String>,
-    /// `(version, spans)`: the target's spans inside the run's window, in
-    /// the run's environment.
-    pub inside: Vec<(String, u64)>,
-    /// The version of the target's last span at or before the run's
-    /// start, in the run's environment.
-    pub before: Option<String>,
-}
-
-/// What the lake knows about the target, before attribution. Every part
-/// is aggregated in SQL: its size follows the number of versions,
-/// environments and runs, never the number of spans.
-#[derive(Debug, Default)]
-pub(crate) struct Evidence {
-    pub sightings: Vec<Sighting>,
-    pub runs: Vec<RunSeen>,
-    /// `(experiment_id, value)` for the requested probe series.
-    pub samples: Vec<(String, f64)>,
-    pub history: Vec<Value>,
-}
-
-/// One side of the comparison after attribution.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Side {
-    pub version: String,
-    pub runs: Vec<String>,
-    pub samples: Vec<f64>,
-}
-
-/// The target's versions, candidate first: the live ones by first sight,
-/// latest first, then the silent ones by last sight, latest first. A
-/// version is live when, in some environment, its last span is within
-/// [`LIVE_WINDOW_NS`] of that environment's latest span of the target.
-/// The order depends on first sights and on silences longer than the
-/// window only, so it does not change with which of two concurrent
-/// versions happened to speak last.
-pub(crate) fn rank(sightings: &[Sighting]) -> Vec<VersionSeen> {
-    let mut latest: HashMap<Option<&str>, i64> = HashMap::new();
-    for s in sightings {
-        let last = latest.entry(s.environment.as_deref()).or_insert(i64::MIN);
-        *last = (*last).max(s.last_seen_ns);
-    }
-    let mut versions: BTreeMap<&str, VersionSeen> = BTreeMap::new();
-    for s in sightings {
-        let live = s.last_seen_ns >= latest[&s.environment.as_deref()] - LIVE_WINDOW_NS;
-        let seen = versions
-            .entry(s.version.as_str())
-            .or_insert_with(|| VersionSeen {
-                version: s.version.clone(),
-                first_seen_ns: s.first_seen_ns,
-                last_seen_ns: s.last_seen_ns,
-                live: false,
-            });
-        seen.first_seen_ns = seen.first_seen_ns.min(s.first_seen_ns);
-        seen.last_seen_ns = seen.last_seen_ns.max(s.last_seen_ns);
-        seen.live |= live;
-    }
-    let mut ranked: Vec<VersionSeen> = versions.into_values().collect();
-    ranked.sort_by(|a, b| {
-        let recency = |v: &VersionSeen| {
-            if v.live {
-                v.first_seen_ns
-            } else {
-                v.last_seen_ns
-            }
-        };
-        b.live
-            .cmp(&a.live)
-            .then(recency(b).cmp(&recency(a)))
-            .then(b.version.cmp(&a.version))
-    });
-    ranked
-}
-
-/// When `version` was deployed where the run ran: its first sight in the
-/// run's environment, or anywhere for a run that names none.
-fn deployed_at(sightings: &[Sighting], run: &RunSeen, version: &str) -> i64 {
-    sightings
-        .iter()
-        .filter(|s| s.version == version)
-        .filter(|s| run.environment.is_none() || s.environment == run.environment)
-        .map(|s| s.first_seen_ns)
-        .min()
-        .unwrap_or(i64::MIN)
-}
-
-/// The version a run measured (the module docs give the rule): most of
-/// the target's spans inside the run's window, ties to the version
-/// deployed latest and then to the greater version string; with no span
-/// inside the window, the version live when the run started. `None` when
-/// the target's telemetry in the run's environment says neither.
-fn owner_of<'a>(sightings: &[Sighting], run: &'a RunSeen) -> Option<&'a str> {
-    let key = |(version, spans): &(String, u64)| {
-        (
-            *spans,
-            deployed_at(sightings, run, version),
-            version.clone(),
-        )
+/// The environment a request names, when the principal may see it.
+fn requested_env(principal: &Principal, env: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(env) = env else {
+        return Ok(None);
     };
-    let served = run.inside.iter().max_by_key(|entry| key(entry));
-    match served {
-        Some((version, _)) => Some(version.as_str()),
-        None => run.before.as_deref(),
+    if env.trim().is_empty() {
+        return Err(bad_request(
+            "env must name an environment; leave it out to have the only comparable one chosen",
+        ));
+    }
+    if !principal.env_allowed(env) {
+        return Err(forbidden(format!(
+            "environment {env} is outside the principal's scopes"
+        )));
+    }
+    Ok(Some(env.to_string()))
+}
+
+/// A version a request names.
+fn named_version(name: &str, value: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.trim().is_empty() {
+        return Err(bad_request(format!(
+            "{name} must name a version; leave it out to follow the deployment order"
+        )));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn include_partial(include: Option<&str>) -> Result<bool, ApiError> {
+    match include {
+        None => Ok(false),
+        Some("partial") => Ok(true),
+        Some(_) => Err(bad_request(
+            "include must be partial (keep aborted and truncated runs) or be left out",
+        )),
     }
 }
 
-/// Attribute every run to the version it measured (see [`owner_of`]) and
-/// return `(candidate, baseline)`: the first two of `versions`, which
-/// [`rank`] ordered. `None` when the target has no versions at all.
-pub(crate) fn split(versions: &[VersionSeen], evidence: &Evidence) -> Option<(Side, Option<Side>)> {
-    let candidate = versions.first()?;
-    let baseline = versions.get(1);
+/// A validated verdict request.
+struct Request {
+    target: String,
+    probe: String,
+    opts: CompareOptions,
+    /// The environment the request names.
+    env: Option<String>,
+    /// The principal's scopes: empty for every environment.
+    scopes: Vec<String>,
+    baseline: Option<String>,
+    candidate: Option<String>,
+    range: String,
+    since_ns: i64,
+    as_of_ns: i64,
+    include_partial: bool,
+}
 
-    let mut runs_of: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-    for run in &evidence.runs {
-        if let Some(version) = owner_of(&evidence.sightings, run) {
-            runs_of
-                .entry(version)
-                .or_default()
-                .push(run.experiment_id.clone());
+impl Request {
+    fn new(principal: &Principal, target: String, q: &PerfQuery) -> Result<Self, ApiError> {
+        if q.store.is_some() {
+            return Err(bad_request(format!(
+                "store is not a parameter: GET /api/perf/{target} never stores and \
+                 POST /api/perf/{target}/verdicts always does"
+            )));
+        }
+        let opts = options_from_query(q)?;
+        let as_of_ns = now_ns();
+        let range = q.range.clone().unwrap_or_else(|| DEFAULT_RANGE.to_string());
+        let since_ns = since(&range, as_of_ns)?;
+        let baseline = named_version("baseline", q.baseline.as_deref())?;
+        let candidate = named_version("candidate", q.candidate.as_deref())?;
+        if baseline.is_some() && baseline == candidate {
+            return Err(bad_request(
+                "baseline and candidate name the same version; there is nothing to compare",
+            ));
+        }
+        let probe = q
+            .probe
+            .clone()
+            .filter(|p| !p.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_PROBE.to_string());
+        Ok(Self {
+            env: requested_env(principal, q.env.as_deref())?,
+            scopes: principal.env_scopes.clone(),
+            include_partial: include_partial(q.include.as_deref())?,
+            target,
+            probe,
+            opts,
+            baseline,
+            candidate,
+            range,
+            since_ns,
+            as_of_ns,
+        })
+    }
+
+    /// The named environments the request looks in: none for all of them.
+    fn named_envs(&self) -> Vec<String> {
+        match &self.env {
+            Some(env) => vec![env.clone()],
+            None => self.scopes.clone(),
         }
     }
-    let side = |v: &VersionSeen| {
-        let runs = runs_of.get(v.version.as_str()).cloned().unwrap_or_default();
-        let ids: HashSet<&str> = runs.iter().map(String::as_str).collect();
-        let samples = evidence
-            .samples
-            .iter()
-            .filter(|(id, _)| ids.contains(id.as_str()))
-            .map(|(_, value)| *value)
-            .collect();
-        Side {
-            version: v.version.clone(),
-            runs,
-            samples,
-        }
-    };
-    Some((side(candidate), baseline.map(side)))
+
+    fn in_scope(&self, env: &Env) -> bool {
+        self.env.is_none() || env == &self.env
+    }
 }
 
-/// The CTEs every attribution query starts from: `runs`, one row per run
-/// against the target with its window and environment, and `svc`, the
-/// target's own versioned spans.
-fn attribution_ctes(t: &str, scope: &str) -> String {
+/// Why a request has no answer.
+enum Refusal {
+    NotFound(String),
+    BadRequest(String),
+}
+
+impl From<Refusal> for ApiError {
+    fn from(refusal: Refusal) -> Self {
+        match refusal {
+            Refusal::NotFound(message) => not_found(message),
+            Refusal::BadRequest(message) => bad_request(message),
+        }
+    }
+}
+
+/// Why the target has no versions. Under an environment filter the answer
+/// names it and how a span gets an environment, without saying whether
+/// the target exists elsewhere.
+fn no_versions_message(target: &str, envs: &[String]) -> String {
+    if envs.is_empty() {
+        return format!(
+            "no service.version seen for target {target}: no span with service.name {target} \
+             carries one"
+        );
+    }
+    let plural = if envs.len() == 1 { "" } else { "s" };
     format!(
-        "WITH runs AS (\
-         SELECT experiment_id AS id, min(ts_ns) AS started, \
-         max(ts_ns + duration_ns) AS ended, min(target_environment) AS env \
-         FROM spans WHERE span_name = 'resilience.experiment' AND target_system = {t} \
-         AND experiment_id IS NOT NULL{scope} GROUP BY experiment_id), \
-         svc AS (\
-         SELECT ts_ns, service_version AS v, target_environment AS env \
-         FROM spans WHERE service_name = {t} AND service_version IS NOT NULL{scope})"
+        "no service.version seen for target {target} in environment{plural} {}: only spans \
+         tagged with exactly that environment count (resilience.target.environment, or the \
+         resource's deployment.environment.name or deployment.environment)",
+        envs.join(", ")
     )
 }
 
-/// The target's versions per environment.
-fn load_sightings(reader: &Reader, t: &str, scope: &str) -> Result<Vec<Sighting>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "SELECT target_environment AS env, service_version AS v, \
-             min(ts_ns) AS first_seen, max(ts_ns) AS last_seen \
-             FROM spans WHERE service_name = {t} AND service_version IS NOT NULL{scope} \
-             GROUP BY target_environment, service_version \
-             ORDER BY first_seen, service_version"
-        ))
-        .map_err(|e| e.to_string())?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            Some(Sighting {
-                environment: r.get("env").and_then(Value::as_str).map(str::to_string),
-                version: r.get("v")?.as_str()?.to_string(),
-                first_seen_ns: r.get("first_seen")?.as_i64()?,
-                last_seen_ns: r.get("last_seen")?.as_i64()?,
-            })
-        })
-        .collect())
+fn env_name(env: &Env) -> &str {
+    env.as_deref().unwrap_or("(none)")
 }
 
-/// Per run, how many of the target's spans each version has inside the
-/// run's window in the run's environment: at most runs × versions rows.
-fn load_inside(reader: &Reader, ctes: &str) -> Result<HashMap<String, Vec<(String, u64)>>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "{ctes} SELECT r.id AS id, s.v AS v, count(*) AS n \
-             FROM runs AS r INNER JOIN svc AS s \
-             ON (r.env IS NULL OR s.env = r.env) \
-             AND s.ts_ns >= r.started AND s.ts_ns <= r.ended \
-             GROUP BY r.id, s.v ORDER BY r.id, s.v"
-        ))
-        .map_err(|e| e.to_string())?;
-    let mut inside: HashMap<String, Vec<(String, u64)>> = HashMap::new();
-    for r in &rows {
-        let (Some(id), Some(v), Some(n)) = (
-            r.get("id").and_then(Value::as_str),
-            r.get("v").and_then(Value::as_str),
-            r.get("n").and_then(Value::as_u64),
-        ) else {
-            continue;
-        };
-        inside
-            .entry(id.to_string())
-            .or_default()
-            .push((v.to_string(), n));
+/// Several environments could answer: ask which.
+fn ambiguous_message(target: &str, envs: &[Env]) -> String {
+    let names: Vec<&str> = envs.iter().map(env_name).collect();
+    format!(
+        "target {target} has versions in more than one environment ({}) and the request does \
+         not single one out; name it with env=<environment>, or name versions only one of \
+         them has seen with baseline= and candidate=",
+        names.join(", ")
+    )
+}
+
+fn unknown_version_message(req: &Request, env: &Env, unknown: &str, seen: &[&str]) -> String {
+    format!(
+        "version {unknown} of {} was not seen in environment {} within {}; seen there: {}",
+        req.target,
+        env_name(env),
+        req.range,
+        seen.join(", ")
+    )
+}
+
+/// With no baseline there is nothing to compare against.
+fn lone_reason(target: &str, candidate: &str, versions: usize) -> String {
+    if versions == 1 {
+        return format!(
+            "only one service.version ({candidate}) seen for {target}; nothing to compare against"
+        );
     }
-    Ok(inside)
+    format!("no version of {target} was deployed before {candidate}; nothing to compare against")
 }
 
-/// Per run, the version of the target's last span at or before the run's
-/// start, in the run's environment (any environment in scope for a run
-/// that names none): one row per run, found by an as-of join. Spans at
-/// the same nanosecond resolve to the greater version string.
-fn load_before(reader: &Reader, ctes: &str) -> Result<HashMap<String, String>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "{ctes}, \
-             in_env AS (SELECT env, ts_ns, max(v) AS v FROM svc GROUP BY env, ts_ns), \
-             anywhere AS (SELECT ts_ns, max(v) AS v FROM svc GROUP BY ts_ns) \
-             SELECT r.id AS id, s.v AS v FROM runs AS r \
-             ASOF INNER JOIN in_env AS s ON r.env = s.env AND r.started >= s.ts_ns \
-             UNION ALL \
-             SELECT r.id AS id, s.v AS v FROM (SELECT id, started FROM runs WHERE env IS NULL) AS r \
-             ASOF INNER JOIN anywhere AS s ON r.started >= s.ts_ns"
-        ))
-        .map_err(|e| e.to_string())?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            Some((
-                r.get("id")?.as_str()?.to_string(),
-                r.get("v")?.as_str()?.to_string(),
-            ))
-        })
-        .collect())
-}
-
-/// Every run against the target with its window, its environment and
-/// what the target's spans say about the version that served it.
-fn load_runs(reader: &Reader, t: &str, scope: &str) -> Result<Vec<RunSeen>, String> {
-    let ctes = attribution_ctes(t, scope);
-    let mut inside = load_inside(reader, &ctes)?;
-    let mut before = load_before(reader, &ctes)?;
-    let rows = reader
-        .query_json_rows(&format!(
-            "{ctes} SELECT id, started, ended, env FROM runs ORDER BY started, id"
-        ))
-        .map_err(|e| e.to_string())?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            let id = r.get("id")?.as_str()?.to_string();
-            Some(RunSeen {
-                started_at_ns: r.get("started")?.as_i64()?,
-                ended_at_ns: r.get("ended")?.as_i64()?,
-                environment: r.get("env").and_then(Value::as_str).map(str::to_string),
-                inside: inside.remove(&id).unwrap_or_default(),
-                before: before.remove(&id),
-                experiment_id: id,
-            })
-        })
-        .collect())
-}
-
-/// The requested probe series of `runs`, as `(experiment_id, value)`.
-fn load_samples(
-    reader: &Reader,
-    probe: &str,
-    runs: &[RunSeen],
-) -> Result<Vec<(String, f64)>, String> {
-    if runs.is_empty() {
-        return Ok(Vec::new());
-    }
-    let ids = runs
-        .iter()
-        .map(|r| sql_string(&r.experiment_id))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let rows = reader
-        .query_json_rows(&format!(
-            "SELECT experiment_id AS id, value FROM probe_samples \
-             WHERE probe_name = {} AND phase = 'during' AND experiment_id IN ({ids}) \
-             ORDER BY ts_ns",
-            sql_string(probe)
-        ))
-        .map_err(|e| e.to_string())?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            Some((
-                r.get("id")?.as_str()?.to_string(),
-                r.get("value")?.as_f64()?,
-            ))
-        })
-        .collect())
-}
-
-/// Read the target's versions, runs, samples and stored verdicts.
-fn load_evidence(
-    reader: &Reader,
+/// `compare`'s verdict, made inconclusive when a side lost too many of
+/// its windows to silence or when there is no baseline.
+fn judge(
     target: &str,
-    probe: &str,
-    envs: &[String],
-) -> Result<Evidence, String> {
-    let t = sql_string(target);
-    let scope = and_pred(env_scope_where("target_environment", envs));
-    let sightings = load_sightings(reader, &t, &scope)?;
-    let runs = load_runs(reader, &t, &scope)?;
-    let samples = load_samples(reader, probe, &runs)?;
-    let history = reader
-        .perf_verdicts(target, envs, HISTORY_LIMIT)
-        .map_err(|e| e.to_string())?;
-    Ok(Evidence {
-        sightings,
-        runs,
-        samples,
-        history,
-    })
+    candidate: &Side,
+    baseline: Option<&Side>,
+    versions: usize,
+    opts: &CompareOptions,
+) -> Comparison {
+    let baseline_samples = baseline.map_or(&[][..], |b| b.samples.as_slice());
+    let mut c = compare(baseline_samples, &candidate.samples, opts);
+    let mut reasons: Vec<String> = [
+        baseline.and_then(|b| select::unanswered_reason("baseline", b)),
+        select::unanswered_reason("candidate", candidate),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if baseline.is_none() {
+        reasons.insert(0, lone_reason(target, &candidate.version, versions));
+    }
+    if reasons.is_empty() {
+        return c;
+    }
+    c.verdict = Verdict::Inconclusive;
+    reasons.append(&mut c.reasons);
+    c.reasons = reasons;
+    c
 }
 
-/// The stored row for a comparison.
-fn verdict_row(
-    target: &str,
-    probe: &str,
-    baseline: &str,
-    candidate: &str,
-    c: &Comparison,
-    computed_at_ns: i64,
-    envs: &[String],
-) -> PerfVerdictRow {
-    let n = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
-    PerfVerdictRow {
-        target: target.into(),
-        probe: probe.into(),
-        baseline_version: baseline.into(),
-        candidate_version: candidate.into(),
-        quantile: c.quantile.to_string(),
-        baseline_n: n(c.baseline.n),
-        candidate_n: n(c.candidate.n),
-        baseline_p50: c.baseline.p50,
-        baseline_p95: c.baseline.p95,
-        baseline_p99: c.baseline.p99,
-        candidate_p50: c.candidate.p50,
-        candidate_p95: c.candidate.p95,
-        candidate_p99: c.candidate.p99,
-        delta: c.delta,
-        delta_pct: c.delta_pct,
-        ci_low: c.interval.map(|i| i.low),
-        ci_high: c.interval.map(|i| i.high),
-        confidence: c.confidence,
-        margin: c.margin,
-        verdict: c.verdict.to_string(),
-        reasons: c.reasons.clone(),
-        computed_at_ns,
-        envs: (!envs.is_empty()).then(|| envs.to_vec()),
-    }
+/// Read the evidence and decide the answer, or why there is none.
+fn decide(reader: &Reader, req: &Request) -> Result<Result<Answer, Refusal>, String> {
+    let found = evidence::load(reader, &req.target, &req.probe, &req.scopes, req.since_ns)?;
+    let runs = select::attribute(&found.sightings, found.runs);
+    let by_env = select::versions_by_env(&found.sightings, req.since_ns, &runs);
+    let wanted: Vec<&str> = [req.baseline.as_deref(), req.candidate.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect();
+    let environment = match select::choose_environment(req.env.as_deref(), &by_env, &wanted) {
+        Ok(environment) => environment,
+        Err(NoEnvironment::NoVersions) => {
+            let message = no_versions_message(&req.target, &req.named_envs());
+            return Ok(Err(Refusal::NotFound(message)));
+        }
+        Err(NoEnvironment::Ambiguous(envs)) => {
+            let message = ambiguous_message(&req.target, &envs);
+            return Ok(Err(Refusal::BadRequest(message)));
+        }
+    };
+    let versions = by_env.get(&environment).cloned().unwrap_or_default();
+    let picked = select::pick(&versions, req.baseline.as_deref(), req.candidate.as_deref());
+    let (candidate, baseline) = match picked {
+        Ok(picked) => picked,
+        Err(unknown) => {
+            let seen: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+            let message = unknown_version_message(req, &environment, &unknown, &seen);
+            return Ok(Err(Refusal::BadRequest(message)));
+        }
+    };
+    let side = |version: &str| {
+        select::side(
+            version,
+            &environment,
+            &runs,
+            &found.samples,
+            req.include_partial,
+        )
+    };
+    let candidate = side(&candidate.version);
+    let baseline = baseline.map(|b| side(&b.version));
+    let compared = [
+        Some(candidate.version.as_str()),
+        baseline.as_ref().map(|b| b.version.as_str()),
+    ];
+    let runs_on_other_versions = runs
+        .iter()
+        .filter(|a| a.run.environment == environment)
+        .filter_map(|a| a.owner.as_ref().ok())
+        .filter(|(version, _)| !compared.contains(&Some(version.as_str())))
+        .count();
+    let comparison = judge(
+        &req.target,
+        &candidate,
+        baseline.as_ref(),
+        versions.len(),
+        &req.opts,
+    );
+    Ok(Ok(Answer {
+        target: req.target.clone(),
+        probe: req.probe.clone(),
+        environments_seen: select::sorted_envs(by_env.keys()),
+        range: req.range.clone(),
+        since_ns: req.since_ns,
+        as_of_ns: req.as_of_ns,
+        explicit: !wanted.is_empty(),
+        include_partial: req.include_partial,
+        min_samples: req.opts.min_samples,
+        unattributed: answer::unattributed(&runs, |env| req.in_scope(env)),
+        runs_on_other_versions,
+        history: evidence::history(reader, &req.target, &environment)?,
+        environment,
+        versions,
+        candidate,
+        baseline,
+        comparison,
+    }))
+}
+
+async fn answer_for(
+    state: &ApiState,
+    principal: &Principal,
+    target: String,
+    q: &PerfQuery,
+) -> Result<Answer, ApiError> {
+    let req = Request::new(principal, target, q)?;
+    let decided = with_reader(&state.db_path, move |reader| decide(reader, &req)).await?;
+    decided.map_err(ApiError::from)
 }
 
 /// What the writer did with a verdict.
@@ -557,165 +496,7 @@ async fn store_verdict(state: &ApiState, row: PerfVerdictRow) -> Result<Stored, 
     }
 }
 
-fn side_json(side: &Side, summary: &tumult_perf::SampleSummary) -> Value {
-    json!({
-        "version": side.version,
-        "runs": side.runs,
-        "samples": summary.n,
-        "dropped": summary.dropped,
-        "p50": summary.p50,
-        "p95": summary.p95,
-        "p99": summary.p99,
-    })
-}
-
-/// The environments a request is answered for: the one it names, when the
-/// principal may see it, or else the principal's own scopes (none for an
-/// unscoped principal, which sees every environment).
-fn envs_for(principal: &Principal, env: Option<&str>) -> Result<Vec<String>, ApiError> {
-    let Some(env) = env else {
-        return Ok(principal.env_scopes.clone());
-    };
-    if env.trim().is_empty() {
-        return Err(bad_request(
-            "env must name an environment; leave it out for all of them",
-        ));
-    }
-    if !principal.env_allowed(env) {
-        return Err(forbidden(format!(
-            "environment {env} is outside the principal's scopes"
-        )));
-    }
-    Ok(vec![env.to_string()])
-}
-
-/// Why the target has no versions. Under an environment filter the answer
-/// names it and how a span gets an environment, without saying whether
-/// the target exists elsewhere.
-pub(crate) fn no_versions_message(target: &str, envs: &[String]) -> String {
-    if envs.is_empty() {
-        return format!(
-            "no service.version seen for target {target}: no span with service.name {target}              carries one"
-        );
-    }
-    let plural = if envs.len() == 1 { "" } else { "s" };
-    format!(
-        "no service.version seen for target {target} in environment{plural} {}: only spans          tagged with exactly that environment count (resilience.target.environment, or the          resource's deployment.environment.name or deployment.environment)",
-        envs.join(", ")
-    )
-}
-
-/// Everything both routes compute before answering.
-struct Answer {
-    target: String,
-    probe: String,
-    envs: Vec<String>,
-    min_samples: usize,
-    as_of_ns: i64,
-    versions: Vec<VersionSeen>,
-    evidence: Evidence,
-    candidate: Side,
-    baseline: Option<Side>,
-    comparison: Comparison,
-}
-
-/// With one version only there is nothing to compare against: the
-/// candidate is summarised and the verdict is inconclusive.
-fn lone_candidate(target: &str, candidate: &Side, opts: &CompareOptions) -> Comparison {
-    let mut c = compare(&[], &candidate.samples, opts);
-    c.verdict = Verdict::Inconclusive;
-    c.reasons.insert(
-        0,
-        format!(
-            "only one service.version ({}) seen for {target}; nothing to compare against",
-            candidate.version
-        ),
-    );
-    c
-}
-
-async fn answer(
-    state: &ApiState,
-    principal: &Principal,
-    target: String,
-    q: &PerfQuery,
-) -> Result<Answer, ApiError> {
-    let opts = options_from_query(q)?;
-    let probe = q
-        .probe
-        .clone()
-        .filter(|p| !p.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_PROBE.to_string());
-    let envs = envs_for(principal, q.env.as_deref())?;
-    let as_of_ns = now_ns();
-    let evidence = {
-        let (target, probe, envs) = (target.clone(), probe.clone(), envs.clone());
-        with_reader(&state.db_path, move |reader| {
-            load_evidence(reader, &target, &probe, &envs)
-        })
-        .await?
-    };
-    let versions = rank(&evidence.sightings);
-    let Some((candidate, baseline)) = split(&versions, &evidence) else {
-        return Err(not_found(no_versions_message(&target, &envs)));
-    };
-    let comparison = match &baseline {
-        Some(baseline) => compare(&baseline.samples, &candidate.samples, &opts),
-        None => lone_candidate(&target, &candidate, &opts),
-    };
-    Ok(Answer {
-        target,
-        probe,
-        envs,
-        min_samples: opts.min_samples,
-        as_of_ns,
-        versions,
-        evidence,
-        candidate,
-        baseline,
-        comparison,
-    })
-}
-
-fn answer_json(a: &Answer, stored: bool, duplicate: bool) -> Value {
-    let c = &a.comparison;
-    let baseline = a
-        .baseline
-        .as_ref()
-        .map_or(Value::Null, |b| side_json(b, &c.baseline));
-    json!({
-        "target": a.target,
-        "probe": a.probe,
-        "verdict": c.verdict,
-        "reasons": c.reasons,
-        "baseline": baseline,
-        "candidate": side_json(&a.candidate, &c.candidate),
-        "comparison": {
-            "quantile": c.quantile,
-            "delta": c.delta,
-            "delta_pct": c.delta_pct,
-            "ci_low": c.interval.map(|i| i.low),
-            "ci_high": c.interval.map(|i| i.high),
-            "confidence": c.confidence,
-            "margin": c.margin,
-            "iterations": c.iterations,
-            "seed": c.seed,
-            "min_samples": a.min_samples,
-        },
-        "versions_seen": a.versions.iter().map(|v| json!({
-            "version": v.version,
-            "first_seen_ns": v.first_seen_ns,
-            "last_seen_ns": v.last_seen_ns,
-            "live": v.live,
-        })).collect::<Vec<_>>(),
-        "stored": stored,
-        "duplicate": duplicate,
-        "history": a.evidence.history,
-        "as_of_ns": a.as_of_ns,
-    })
-}
-
-/// `GET /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=`
+/// `GET /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=&baseline=&candidate=&range=&include=`
 /// — a pure read; `stored` is always `false`. A `store` parameter is a
 /// 400: this route never writes, and ignoring the flag would let a caller
 /// believe it had stored something.
@@ -725,14 +506,8 @@ pub(crate) async fn perf(
     Path(target): Path<String>,
     Query(q): Query<PerfQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    if q.store.is_some() {
-        return Err(bad_request(format!(
-            "GET /api/perf/{target} never stores; store the verdict with \
-             POST /api/perf/{target}/verdicts"
-        )));
-    }
-    let a = answer(&state, &principal, target, &q).await?;
-    Ok(Json(answer_json(&a, false, false)))
+    let a = answer_for(&state, &principal, target, &q).await?;
+    Ok(Json(a.json(false, false)))
 }
 
 /// `POST /api/perf/{target}/verdicts` with the same query string: compute
@@ -740,299 +515,135 @@ pub(crate) async fn perf(
 /// (`stored: true`, `history` as it was before this row); 200 with
 /// `duplicate: true` when the latest stored row for the same comparison
 /// already holds this evidence, so a retry appends nothing; 409 when
-/// there is no second version to compare against; 503 when this daemon
-/// cannot write. The operator role is required by the route table.
+/// there is no baseline to compare against; 503 when this daemon cannot
+/// write. The operator role is required by the route table.
 pub(crate) async fn store(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(target): Path<String>,
     Query(q): Query<PerfQuery>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let a = answer(&state, &principal, target, &q).await?;
+    let a = answer_for(&state, &principal, target, &q).await?;
     let Some(baseline) = &a.baseline else {
         return Err(conflict(format!(
-            "only one service.version ({}) seen for {}; there is no verdict to store",
+            "no baseline for version {} of {}; there is no verdict to store",
             a.candidate.version, a.target
         )));
     };
-    let row = verdict_row(
-        &a.target,
-        &a.probe,
-        &baseline.version,
-        &a.candidate.version,
-        &a.comparison,
-        a.as_of_ns,
-        &a.envs,
-    );
-    match store_verdict(&state, row).await? {
-        Stored::Appended => Ok((StatusCode::CREATED, Json(answer_json(&a, true, false)))),
-        Stored::Duplicate => Ok((StatusCode::OK, Json(answer_json(&a, true, true)))),
+    match store_verdict(&state, a.row(baseline)).await? {
+        Stored::Appended => Ok((StatusCode::CREATED, Json(a.json(true, false)))),
+        Stored::Duplicate => Ok((StatusCode::OK, Json(a.json(true, true)))),
         Stored::NoWriter => Err(unavailable(
             "this daemon has no writer; the verdict was not stored",
         )),
     }
 }
 
+#[derive(Deserialize)]
+pub(crate) struct TargetsQuery {
+    range: Option<String>,
+}
+
+/// `GET /api/perf?range=` — the targets experiments ran against inside
+/// the lookback, with the environments of those runs, within the
+/// principal's scopes.
+pub(crate) async fn targets(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Query(q): Query<TargetsQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let as_of_ns = now_ns();
+    let range = q.range.unwrap_or_else(|| DEFAULT_RANGE.to_string());
+    let since_ns = since(&range, as_of_ns)?;
+    let scopes = principal.env_scopes.clone();
+    let seen = with_reader(&state.db_path, move |reader| {
+        evidence::targets(reader, &scopes, since_ns)
+    })
+    .await?;
+    let targets: Vec<Value> = seen
+        .iter()
+        .map(|t| {
+            json!({
+                "target": t.target,
+                "environments": t.environments,
+                "runs": t.runs,
+                "last_run_ns": t.last_run_ns,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "targets": targets,
+        "range": range,
+        "as_of_ns": as_of_ns,
+    })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct VersionQuery {
+    env: Option<String>,
+    from_ns: Option<i64>,
+    to_ns: Option<i64>,
+}
+
+/// `GET /api/perf/{target}/version?env=&from_ns=&to_ns=` — the version
+/// that served a window: the one most of the target's spans carried
+/// between the two instants in exactly that environment (without `env`,
+/// the spans that name none), or `null` when the target reported nothing
+/// versioned there then. A runner asks this once when its run ends.
+pub(crate) async fn version(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(target): Path<String>,
+    Query(q): Query<VersionQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let (Some(from_ns), Some(to_ns)) = (q.from_ns, q.to_ns) else {
+        return Err(bad_request("from_ns and to_ns are required"));
+    };
+    if from_ns > to_ns {
+        return Err(bad_request("from_ns must not be later than to_ns"));
+    }
+    let env = requested_env(&principal, q.env.as_deref())?;
+    if env.is_none() && !principal.env_scopes.is_empty() {
+        return Err(forbidden(
+            "telemetry without an environment is outside the principal's scopes; name one with env=",
+        ));
+    }
+    let observed = {
+        let (target, env) = (target.clone(), env.clone());
+        with_reader(&state.db_path, move |reader| {
+            reader
+                .observed_version(&target, env.as_deref(), from_ns, to_ns)
+                .map_err(|e| e.to_string())
+        })
+        .await?
+    };
+    Ok(Json(json!({
+        "target": target,
+        "environment": env,
+        "from_ns": from_ns,
+        "to_ns": to_ns,
+        "version": observed,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
+    use self::select::{Execution, RunDetail, Windows};
     use super::*;
-
-    const S: i64 = 1_000_000_000;
-
-    fn sighting(env: Option<&str>, version: &str, first: i64, last: i64) -> Sighting {
-        Sighting {
-            environment: env.map(str::to_string),
-            version: version.into(),
-            first_seen_ns: first,
-            last_seen_ns: last,
-        }
-    }
-
-    fn demo(version: &str, first: i64, last: i64) -> Sighting {
-        sighting(Some("demo"), version, first, last)
-    }
-
-    /// A demo run that found no span of the target inside its window.
-    fn run(id: &str, before: Option<&str>) -> RunSeen {
-        RunSeen {
-            experiment_id: id.into(),
-            environment: Some("demo".into()),
-            before: before.map(str::to_string),
-            ..RunSeen::default()
-        }
-    }
-
-    /// A demo run with the target's spans per version inside its window.
-    fn serving(id: &str, inside: &[(&str, u64)], before: Option<&str>) -> RunSeen {
-        RunSeen {
-            inside: inside.iter().map(|(v, n)| ((*v).to_string(), *n)).collect(),
-            ..run(id, before)
-        }
-    }
-
-    fn evidence(sightings: Vec<Sighting>, runs: Vec<RunSeen>) -> Evidence {
-        Evidence {
-            sightings,
-            runs,
-            ..Evidence::default()
-        }
-    }
-
-    fn sides(evidence: &Evidence) -> (Side, Option<Side>) {
-        split(&rank(&evidence.sightings), evidence).expect("versions")
-    }
-
-    fn order(sightings: &[Sighting]) -> Vec<String> {
-        rank(sightings).into_iter().map(|v| v.version).collect()
-    }
-
-    #[test]
-    fn a_quiet_run_goes_to_the_version_live_when_it_started() {
-        let mut evidence = evidence(
-            vec![
-                demo("1.4.0", 100 * S, 400 * S),
-                demo("1.5.0", 500 * S, 900 * S),
-            ],
-            vec![
-                run("old", Some("1.4.0")),
-                run("mid", Some("1.4.0")),
-                run("new", Some("1.5.0")),
-                run("ancient", None),
-            ],
-        );
-        evidence.samples = vec![
-            ("old".into(), 10.0),
-            ("mid".into(), 11.0),
-            ("new".into(), 20.0),
-            ("ancient".into(), 99.0),
-        ];
-        let (candidate, baseline) = sides(&evidence);
-        assert_eq!(candidate.version, "1.5.0");
-        assert_eq!(candidate.runs, vec!["new"]);
-        assert_eq!(candidate.samples, vec![20.0]);
-        let baseline = baseline.expect("baseline");
-        assert_eq!(baseline.version, "1.4.0");
-        assert_eq!(baseline.runs, vec!["old", "mid"]);
-        // A run older than all of the target's telemetry belongs to nobody.
-        assert_eq!(baseline.samples, vec![10.0, 11.0]);
-    }
-
-    #[test]
-    fn single_version_has_no_baseline_and_none_is_none() {
-        let evidence = evidence(vec![demo("1.0.0", S, 2 * S)], vec![run("r", Some("1.0.0"))]);
-        let (candidate, baseline) = sides(&evidence);
-        assert_eq!(candidate.runs, vec!["r"]);
-        assert!(baseline.is_none());
-        assert!(split(&[], &Evidence::default()).is_none());
-    }
-
-    #[test]
-    fn the_spans_inside_the_window_decide_before_the_version_live_at_the_start() {
-        // The candidate was idle until the load began: its first span is
-        // after the run's start, where 1.0.0 had spoken last.
-        let idle = serving("idle-candidate", &[("1.1.0", 40)], Some("1.0.0"));
-        let sightings = [demo("1.0.0", S, 50 * S), demo("1.1.0", 100 * S, 130 * S)];
-        assert_eq!(owner_of(&sightings, &idle), Some("1.1.0"));
-        // Nothing before the start at all, and still attributed.
-        let fresh = serving("fresh", &[("1.1.0", 3)], None);
-        assert_eq!(owner_of(&sightings, &fresh), Some("1.1.0"));
-        assert_eq!(owner_of(&sightings, &run("silent", None)), None);
-    }
-
-    #[test]
-    fn overlapping_versions_resolve_by_share_then_by_latest_deploy() {
-        let sightings = [demo("1.0.0", S, 900 * S), demo("1.1.0", 500 * S, 900 * S)];
-        // A 10 % canary: the old version served the load.
-        let canary = serving("canary", &[("1.0.0", 90), ("1.1.0", 10)], Some("1.1.0"));
-        assert_eq!(owner_of(&sightings, &canary), Some("1.0.0"));
-        // An even split goes to the version deployed latest, whatever the
-        // order of the rows and whoever spoke last before the run.
-        let even = serving("even", &[("1.1.0", 50), ("1.0.0", 50)], Some("1.0.0"));
-        assert_eq!(owner_of(&sightings, &even), Some("1.1.0"));
-        let flipped = serving("even", &[("1.0.0", 50), ("1.1.0", 50)], Some("1.0.0"));
-        assert_eq!(owner_of(&sightings, &flipped), Some("1.1.0"));
-    }
-
-    #[test]
-    fn the_latest_deploy_is_judged_in_the_runs_own_environment() {
-        // 2.0.0 reached prod first and demo last; 2.1.0 the other way.
-        let sightings = [
-            sighting(Some("prod"), "2.0.0", S, 900 * S),
-            sighting(Some("prod"), "2.1.0", 800 * S, 900 * S),
-            demo("2.1.0", 10 * S, 900 * S),
-            demo("2.0.0", 700 * S, 900 * S),
-        ];
-        let tie = [("2.0.0", 5), ("2.1.0", 5)];
-        assert_eq!(
-            owner_of(&sightings, &serving("d", &tie, None)),
-            Some("2.0.0")
-        );
-        let prod = RunSeen {
-            environment: Some("prod".into()),
-            ..serving("p", &tie, None)
-        };
-        assert_eq!(owner_of(&sightings, &prod), Some("2.1.0"));
-        // A run that names no environment looks at all of them: both
-        // versions were first seen there at different times, 2.1.0 later.
-        let anywhere = RunSeen {
-            environment: None,
-            ..serving("a", &tie, None)
-        };
-        assert_eq!(owner_of(&sightings, &anywhere), Some("2.1.0"));
-        // With every key equal the greater version string wins.
-        let same = [demo("a", S, 2 * S), demo("b", S, 2 * S)];
-        let even = serving("e", &[("b", 1), ("a", 1)], None);
-        assert_eq!(owner_of(&same, &even), Some("b"));
-    }
-
-    #[test]
-    fn concurrent_versions_rank_by_first_sight_whoever_spoke_last() {
-        // Busy 1.0.0 in prod, 1.1.0 in demo: prod spoke last.
-        let across = [
-            sighting(Some("prod"), "1.0.0", S, 1000 * S),
-            demo("1.1.0", 500 * S, 990 * S),
-        ];
-        assert_eq!(order(&across), vec!["1.1.0", "1.0.0"]);
-        // A canary inside one environment, either one speaking last.
-        let old_last = [demo("1.0.0", S, 1000 * S), demo("1.1.0", 500 * S, 999 * S)];
-        let new_last = [demo("1.0.0", S, 999 * S), demo("1.1.0", 500 * S, 1000 * S)];
-        assert_eq!(order(&old_last), vec!["1.1.0", "1.0.0"]);
-        assert_eq!(order(&new_last), order(&old_last));
-        assert!(rank(&old_last).iter().all(|v| v.live));
-    }
-
-    #[test]
-    fn a_version_silent_for_longer_than_the_window_is_no_longer_the_candidate() {
-        // 1.6.0 replaced 1.5.0 at 100 s and was rolled back at 300 s;
-        // 1.5.0 has been reporting since.
-        let rolled_back = [
-            demo("1.5.0", 50 * S, 900 * S),
-            demo("1.6.0", 100 * S, 300 * S),
-        ];
-        let ranked = rank(&rolled_back);
-        assert_eq!(ranked[0].version, "1.5.0");
-        assert!(ranked[0].live);
-        assert_eq!(ranked[1].version, "1.6.0");
-        assert!(!ranked[1].live);
-        assert_eq!(ranked[0].first_seen_ns, 50 * S);
-        assert_eq!(ranked[1].last_seen_ns, 300 * S);
-        // Inside the window the rollback is not told from a canary yet.
-        let just_now = [
-            demo("1.5.0", 50 * S, 330 * S),
-            demo("1.6.0", 100 * S, 300 * S),
-        ];
-        assert_eq!(order(&just_now), vec!["1.6.0", "1.5.0"]);
-        // Silent versions follow the live ones, most recently seen first.
-        let history = [
-            demo("1.0.0", S, 100 * S),
-            demo("1.1.0", 200 * S, 300 * S),
-            demo("1.2.0", 400 * S, 900 * S),
-        ];
-        assert_eq!(order(&history), vec!["1.2.0", "1.1.0", "1.0.0"]);
-    }
-
-    #[test]
-    fn a_version_live_in_any_environment_is_live() {
-        // 1.0.0 is long gone from demo and still serving prod.
-        let sightings = [
-            demo("1.0.0", S, 100 * S),
-            demo("1.1.0", 200 * S, 900 * S),
-            sighting(Some("prod"), "1.0.0", S, 950 * S),
-            sighting(None, "0.9.0", S, 2 * S),
-        ];
-        let ranked = rank(&sightings);
-        let live: Vec<(&str, bool)> = ranked
-            .iter()
-            .map(|v| (v.version.as_str(), v.live))
-            .collect();
-        // Untagged spans are an environment of their own: 0.9.0 is the
-        // latest there, so it is live, and the oldest deploy of the three.
-        assert_eq!(
-            live,
-            vec![("1.1.0", true), ("1.0.0", true), ("0.9.0", true)]
-        );
-        assert_eq!(ranked[1].last_seen_ns, 950 * S);
-    }
-
-    #[test]
-    fn runs_after_a_rollback_belong_to_the_version_rolled_back_to() {
-        let evidence = evidence(
-            vec![
-                demo("1.5.0", 50 * S, 900 * S),
-                demo("1.6.0", 100 * S, 300 * S),
-            ],
-            vec![
-                run("before-any-telemetry", None),
-                run("first-1.5", Some("1.5.0")),
-                serving("during-1.6", &[("1.6.0", 30)], Some("1.5.0")),
-                run("in-the-gap", Some("1.6.0")),
-                serving("after-rollback", &[("1.5.0", 30)], Some("1.6.0")),
-                run("after-the-last-span", Some("1.5.0")),
-            ],
-        );
-        let (candidate, baseline) = sides(&evidence);
-        assert_eq!(candidate.version, "1.5.0");
-        assert_eq!(
-            candidate.runs,
-            vec!["first-1.5", "after-rollback", "after-the-last-span"]
-        );
-        let baseline = baseline.expect("baseline");
-        assert_eq!(baseline.version, "1.6.0");
-        // 1.6.0 owns what it served, and the quiet stretch before the
-        // rollback was observed.
-        assert_eq!(baseline.runs, vec!["during-1.6", "in-the-gap"]);
-    }
 
     #[test]
     fn the_missing_target_message_names_the_environment_filter() {
         let plain = no_versions_message("checkout", &[]);
         assert!(
-            plain.contains("no span with service.name checkout"),
+            plain.contains("no span with service.name checkout carries one"),
             "{plain}"
         );
         assert!(!plain.contains("environment"), "{plain}");
         let one = no_versions_message("checkout", &["prod".into()]);
-        assert!(one.contains("in environment prod:"), "{one}");
+        assert!(
+            one.contains("in environment prod: only spans tagged"),
+            "{one}"
+        );
         for key in [
             "resilience.target.environment",
             "deployment.environment.name",
@@ -1045,19 +656,25 @@ mod tests {
     }
 
     #[test]
+    fn the_ambiguity_message_names_the_environments_and_the_ways_out() {
+        let message = ambiguous_message("checkout", &[Some("demo".into()), None]);
+        for part in ["demo", "(none)", "env=", "baseline=", "candidate="] {
+            assert!(message.contains(part), "{part}: {message}");
+        }
+    }
+
+    #[test]
     fn query_options_are_validated() {
         let q = |quantile: Option<&str>,
                  confidence: Option<f64>,
                  margin: Option<f64>,
                  min: Option<usize>| {
             PerfQuery {
-                probe: None,
                 quantile: quantile.map(str::to_string),
                 confidence,
                 min_samples: min,
                 margin_pct: margin,
-                env: None,
-                store: None,
+                ..PerfQuery::default()
             }
         };
         let opts = options_from_query(&q(None, None, None, None)).expect("defaults");
@@ -1070,5 +687,120 @@ mod tests {
         assert!(options_from_query(&q(None, Some(1.0), None, None)).is_err());
         assert!(options_from_query(&q(None, None, Some(-1.0), None)).is_err());
         assert!(options_from_query(&q(None, None, None, Some(1))).is_err());
+    }
+
+    #[test]
+    fn the_lookback_starts_a_range_before_now() {
+        let day = 86_400 * NS_PER_S;
+        assert_eq!(since("30d", 100 * day).ok(), Some(70 * day));
+        assert_eq!(since("1w", 100 * day).ok(), Some(93 * day));
+        assert!(since("0d", 100 * day).is_err());
+        assert!(since("soon", 100 * day).is_err());
+        // Too long to count in nanoseconds: refused, not wrapped.
+        assert!(since("9999999999999w", 100 * day).is_err());
+    }
+
+    fn side_with(version: &str, samples: Vec<f64>, windows: Windows) -> Side {
+        Side {
+            version: version.into(),
+            samples,
+            windows,
+            ..Side::default()
+        }
+    }
+
+    fn steady(around: f64) -> Vec<f64> {
+        (0..40).map(|i| around + f64::from(i % 5)).collect()
+    }
+
+    #[test]
+    fn a_side_that_went_silent_makes_the_verdict_inconclusive_with_the_reason_first() {
+        let opts = CompareOptions::default();
+        let whole = Windows {
+            planned: 40,
+            completed: 40,
+            ..Windows::default()
+        };
+        let baseline = side_with("1.0.0", steady(100.0), whole);
+        let same = side_with("1.1.0", steady(100.0), whole);
+        let verdict = judge("checkout", &same, Some(&baseline), 2, &opts);
+        assert_eq!(verdict.verdict, Verdict::Unchanged, "{:?}", verdict.reasons);
+
+        let silent = Windows {
+            unanswered: 12,
+            ..whole
+        };
+        let quiet = side_with("1.1.0", steady(100.0), silent);
+        let verdict = judge("checkout", &quiet, Some(&baseline), 2, &opts);
+        assert_eq!(verdict.verdict, Verdict::Inconclusive);
+        assert!(verdict.reasons[0].contains("candidate 1.1.0: 12 of 40"));
+        assert!(verdict.reasons.len() > 1, "compare's own reasons are kept");
+        let verdict = judge("checkout", &baseline, Some(&quiet), 2, &opts);
+        assert!(verdict.reasons[0].contains("baseline 1.1.0"));
+    }
+
+    #[test]
+    fn a_candidate_without_a_baseline_is_inconclusive_and_says_which_kind() {
+        let opts = CompareOptions::default();
+        let candidate = side_with("1.0.0", steady(100.0), Windows::default());
+        let alone = judge("checkout", &candidate, None, 1, &opts);
+        assert_eq!(alone.verdict, Verdict::Inconclusive);
+        assert!(alone.reasons[0].contains("only one service.version (1.0.0)"));
+        let oldest = judge("checkout", &candidate, None, 3, &opts);
+        assert_eq!(oldest.verdict, Verdict::Inconclusive);
+        assert!(oldest.reasons[0].contains("deployed before 1.0.0"));
+    }
+
+    #[test]
+    fn a_stored_row_carries_the_one_environment_it_was_computed_for() {
+        let detail = RunDetail {
+            experiment_id: "r".into(),
+            attribution: select::Attribution::Declared,
+            status: "completed".into(),
+            truncated: false,
+            aborted: false,
+            included: true,
+        };
+        let candidate = Side {
+            details: vec![detail],
+            ..side_with("1.1.0", steady(150.0), Windows::default())
+        };
+        let baseline = side_with("1.0.0", steady(100.0), Windows::default());
+        let opts = CompareOptions::default();
+        let mut a = Answer {
+            target: "checkout".into(),
+            probe: DEFAULT_PROBE.into(),
+            environment: Some("demo".into()),
+            environments_seen: vec![Some("demo".into())],
+            range: DEFAULT_RANGE.into(),
+            since_ns: 0,
+            as_of_ns: 7,
+            explicit: false,
+            include_partial: false,
+            min_samples: opts.min_samples,
+            versions: Vec::new(),
+            comparison: judge("checkout", &candidate, Some(&baseline), 2, &opts),
+            candidate,
+            baseline: Some(baseline.clone()),
+            unattributed: Vec::new(),
+            runs_on_other_versions: 0,
+            history: Vec::new(),
+        };
+        let row = a.row(&baseline);
+        assert_eq!(row.envs, Some(vec!["demo".to_string()]));
+        assert_eq!(row.verdict, "regressed");
+        assert_eq!((row.baseline_n, row.candidate_n), (40, 40));
+        let body = a.json(false, false);
+        assert_eq!(body["selection"], "deployment_order");
+        assert_eq!(body["candidate"]["attribution"]["declared"], 1);
+        assert_eq!(
+            body["candidate"]["windows"]["unanswered_share"],
+            Value::Null
+        );
+        a.environment = None;
+        a.explicit = true;
+        assert_eq!(a.row(&baseline).envs, None);
+        assert_eq!(a.json(false, false)["selection"], "explicit");
+        let _ = Execution::default();
     }
 }

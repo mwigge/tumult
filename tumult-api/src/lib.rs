@@ -97,12 +97,17 @@
 //!   contract attributes every span in the window carried (target columns,
 //!   ICT spine), the resulting level (`none|target|spine`) and what is
 //!   missing: the first stop when a target is absent from the posture page.
-//! * `GET /api/perf/{target}?probe=&quantile=&env=` — performance regression
-//!   verdict (`improved|unchanged|regressed|inconclusive`) between the
-//!   target's latest two `service.version`s, with a bootstrap interval and
-//!   the stored history; a pure read.
+//! * `GET /api/perf/{target}?probe=&quantile=&env=&baseline=&candidate=&range=&include=`
+//!   — performance regression verdict
+//!   (`improved|unchanged|regressed|inconclusive`) between two versions of
+//!   the target inside one environment (by default the two deployed last),
+//!   with a bootstrap interval, the evidence quality of each side and the
+//!   stored history; a pure read.
 //!   `POST /api/perf/{target}/verdicts` computes the same verdict and
 //!   appends it to `perf_verdicts` (Operator).
+//!   `GET /api/perf?range=` lists the targets with runs in the lookback;
+//!   `GET /api/perf/{target}/version?env=&from_ns=&to_ns=` is the version
+//!   that served a window.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -356,7 +361,9 @@ pub fn router(state: ApiState) -> Router {
             "/api/otel/conformance",
             get(handlers::conformance::conformance),
         )
+        .route("/api/perf", get(handlers::perf::targets))
         .route("/api/perf/{target}", get(handlers::perf::perf))
+        .route("/api/perf/{target}/version", get(handlers::perf::version))
         .route("/api/perf/{target}/verdicts", post(handlers::perf::store))
         .route(
             "/api/manual/experiments",
