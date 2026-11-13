@@ -51,7 +51,9 @@ pub const HTTP2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 pub const HTTP2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// TCP keepalive on accepted sockets, for peers that died before HTTP/2 was
-/// established.
+/// established. tonic applies its own `tcp_keepalive` setting only to a
+/// listener it creates, so [`crate::listener`] sets this on every socket it
+/// accepts.
 pub const TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 
 /// Build the tonic gRPC router for the three OTLP collector services,
@@ -75,24 +77,45 @@ pub fn router_with_token_tls(
     ingest_token: Option<String>,
     identity: Option<Identity>,
 ) -> Result<Router, tonic::transport::Error> {
+    // Arrow stream limits (rows, attributes, decoded bytes, message size,
+    // open streams, idle time) and the connection time limits come from
+    // the environment, see `OtapLimits` and `ConnectionLimits`.
+    build(
+        ingest,
+        ingest_token,
+        identity,
+        crate::otap::OtapLimits::from_env(),
+        crate::listener::ConnectionLimits::from_env(),
+    )
+}
+
+/// [`router_with_token_tls`] with the limits given.
+fn build(
+    ingest: IngestWriter,
+    ingest_token: Option<String>,
+    identity: Option<Identity>,
+    otap_limits: crate::otap::OtapLimits,
+    connections: crate::listener::ConnectionLimits,
+) -> Result<Router, tonic::transport::Error> {
     let token = ingest_token.map(std::sync::Arc::new);
+    // A connection is dropped when its age and grace are over; the
+    // listener (`listener::LimitedStream`) enforces the same limit on the
+    // socket itself. Both settings must be given to tonic 0.14: with the
+    // age alone its connection task polls a finished timer a second time
+    // and panics, which aborts a release build.
     let builder = tonic::transport::Server::builder()
         .max_concurrent_streams(MAX_CONCURRENT_STREAMS_PER_CONNECTION)
         .concurrency_limit_per_connection(MAX_CONCURRENT_REQUESTS_PER_CONNECTION)
         .http2_keepalive_interval(Some(HTTP2_KEEPALIVE_INTERVAL))
         .http2_keepalive_timeout(Some(HTTP2_KEEPALIVE_TIMEOUT))
-        .tcp_keepalive(Some(TCP_KEEPALIVE));
+        .max_connection_age(connections.max_connection_age)
+        .max_connection_age_grace(connections.max_connection_age_grace);
     let mut builder = match identity {
         Some(identity) => builder.tls_config(ServerTlsConfig::new().identity(identity))?,
         None => builder,
     };
-    // Arrow stream limits (rows, attributes, decoded bytes, message size,
-    // open streams, idle time) come from the environment, see `OtapLimits`.
-    let otap = crate::otap::service::OtapGrpc::with_limits(
-        ingest.clone(),
-        token.clone(),
-        crate::otap::OtapLimits::from_env(),
-    );
+    let otap =
+        crate::otap::service::OtapGrpc::with_limits(ingest.clone(), token.clone(), otap_limits);
     Ok(builder
         .add_service(TraceServiceServer::new(OtlpGrpc {
             ingest: ingest.clone(),
@@ -445,5 +468,269 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code(), tonic::Code::Internal);
+    }
+}
+
+/// The router behind the listener's gate, over in-memory connections and a
+/// paused clock: what a peer that stalls, stops answering or stays for ever
+/// sees on the wire, and when its place under the limits comes back.
+#[cfg(test)]
+mod wire_tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
+    use tokio::sync::mpsc;
+    use tokio::time::Instant;
+    use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
+
+    use super::*;
+    use crate::listener::{ConnectionLimits, Gate, LimitedStream};
+    use crate::otap::OtapLimits;
+
+    /// A self-signed certificate for `localhost`, valid until 2126, and its
+    /// key. Test material only.
+    const CERT_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIBkzCCATigAwIBAgIUV5d+A5IchQED5lsdSaln9OgDvYUwCgYIKoZIzj0EAwIw
+FDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTI2MTExMzIyMjg1MFoYDzIxMjYxMDIw
+MjIyODUwWjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjO
+PQMBBwNCAATk8+CZpWzN4qurvjgDFwx1+mfl39zNcApbONrjg7vllmcms1THXVak
+CO+C7keoTOT/4/iU7KRvdpggsjmr85/To2YwZDAdBgNVHQ4EFgQUunMxwUUBqvKV
+MN184GRoL5b1vQ4wHwYDVR0jBBgwFoAUunMxwUUBqvKVMN184GRoL5b1vQ4wFAYD
+VR0RBA0wC4IJbG9jYWxob3N0MAwGA1UdEwEB/wQCMAAwCgYIKoZIzj0EAwIDSQAw
+RgIhAOS/bUiv0yGD4Pxb1PKS4EuuKigYlU63Et/c/cCDzN1BAiEAsjyu4cD/rOTe
+Dg2Z0iprmD/PAnqqBe1X6rLeEubDzl0=
+-----END CERTIFICATE-----
+";
+    const KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrCcSpK4PJ/OyBCsN
++vDbaSdJ9nNtDAJ6Q2bjZfSeZHKhRANCAATk8+CZpWzN4qurvjgDFwx1+mfl39zN
+cApbONrjg7vllmcms1THXVakCO+C7keoTOT/4/iU7KRvdpggsjmr85/T
+-----END PRIVATE KEY-----
+";
+
+    const PEER: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
+    const PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    /// An empty SETTINGS frame, and the acknowledgement of the server's.
+    const SETTINGS: &[u8] = &[0, 0, 0, 4, 0, 0, 0, 0, 0];
+    const SETTINGS_ACK: &[u8] = &[0, 0, 0, 4, 1, 0, 0, 0, 0];
+    const FRAME_SETTINGS: u8 = 4;
+    const FRAME_PING: u8 = 6;
+    const FLAG_ACK: u8 = 1;
+
+    struct Wired {
+        gate: Gate,
+        connections: mpsc::Sender<std::io::Result<LimitedStream<DuplexStream>>>,
+        _dir: tempfile::TempDir,
+        _store: tumult_lake::Store,
+    }
+
+    /// Serve the daemon's router on connections handed over by [`dial`].
+    fn wired(limits: ConnectionLimits, tls: bool) -> Wired {
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+        let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+        let identity = tls.then(|| {
+            // Both rustls providers are compiled in; pick one, as the
+            // daemon does at startup.
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+            Identity::from_pem(CERT_PEM, KEY_PEM)
+        });
+        let router = build(ingest, None, identity, OtapLimits::default(), limits).unwrap();
+        let (connections, accepted) = mpsc::channel(16);
+        tokio::spawn(router.serve_with_incoming(ReceiverStream::new(accepted)));
+        Wired {
+            gate: Gate::new(limits),
+            connections,
+            _dir: dir,
+            _store: store,
+        }
+    }
+
+    impl Wired {
+        /// A new connection through the gate; the client's end.
+        async fn dial(&self) -> DuplexStream {
+            let (client, server) = tokio::io::duplex(1 << 16);
+            let admitted = self.gate.admit(server, PEER).expect("under the limits");
+            self.connections.send(Ok(admitted)).await.unwrap();
+            client
+        }
+
+        /// Wait, in paused time, for the server to let go of every
+        /// connection.
+        async fn all_slots_back(&self) {
+            let waited = tokio::time::timeout(Duration::from_secs(5), async {
+                while self.gate.open() > 0 {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            });
+            waited.await.expect("the server still holds a connection");
+        }
+    }
+
+    /// Read frames until the server closes the connection, acknowledging
+    /// its SETTINGS and, when `answer_pings`, its keepalive pings. Yields
+    /// the types of the frames that arrived.
+    async fn frames_until_closed(mut client: DuplexStream, answer_pings: bool) -> Vec<u8> {
+        let mut seen = Vec::new();
+        loop {
+            let mut header = [0u8; 9];
+            if client.read_exact(&mut header).await.is_err() {
+                return seen;
+            }
+            let len =
+                usize::from(header[0]) << 16 | usize::from(header[1]) << 8 | usize::from(header[2]);
+            let mut payload = vec![0u8; len];
+            if client.read_exact(&mut payload).await.is_err() {
+                return seen;
+            }
+            let (kind, ack) = (header[3], header[4] & FLAG_ACK != 0);
+            seen.push(kind);
+            let reply = match kind {
+                FRAME_SETTINGS if !ack => SETTINGS_ACK.to_vec(),
+                FRAME_PING if !ack && answer_pings => {
+                    let mut pong = vec![0, 0, 8, FRAME_PING, FLAG_ACK, 0, 0, 0, 0];
+                    pong.extend_from_slice(&payload);
+                    pong
+                }
+                _ => continue,
+            };
+            if client.write_all(&reply).await.is_err() {
+                return seen;
+            }
+        }
+    }
+
+    fn secs(n: u64) -> Duration {
+        Duration::from_secs(n)
+    }
+
+    fn assert_took(started: Instant, expected: Duration) {
+        let took = started.elapsed();
+        assert!(
+            took >= expected && took < expected + secs(2),
+            "took {took:?}, expected {expected:?}"
+        );
+    }
+
+    /// A day of paused time: a connection the server never closes fails
+    /// the test instead of hanging it.
+    async fn closed(frames: impl std::future::Future<Output = Vec<u8>>) -> Vec<u8> {
+        tokio::time::timeout(secs(24 * 60 * 60), frames)
+            .await
+            .expect("the server never closed the connection")
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_server_drops_a_silent_connection_at_the_handshake_deadline() {
+        let wired = wired(ConnectionLimits::default(), false);
+        let started = Instant::now();
+        let client = wired.dial().await;
+        assert_eq!(wired.gate.open(), 1);
+        // The server speaks first (its SETTINGS); the client says nothing.
+        let mut silent = client;
+        let mut seen = Vec::new();
+        let read = tokio::time::timeout(secs(24 * 60 * 60), silent.read_to_end(&mut seen));
+        read.await.expect("never closed").unwrap();
+        assert_took(started, secs(10));
+        wired.all_slots_back().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_server_drops_a_stalled_tls_handshake_at_the_deadline() {
+        let wired = wired(ConnectionLimits::default(), true);
+        let started = Instant::now();
+        let mut client = wired.dial().await;
+        // The header of a 512-byte handshake record and a few of its bytes.
+        client
+            .write_all(&[0x16, 3, 1, 2, 0, 1, 0, 1, 252])
+            .await
+            .unwrap();
+        let mut seen = Vec::new();
+        let read = tokio::time::timeout(secs(24 * 60 * 60), client.read_to_end(&mut seen));
+        // The read fails or ends, depending on how the server lets go.
+        let _ = read.await.expect("never closed");
+        assert_took(started, secs(10));
+        wired.all_slots_back().await;
+    }
+
+    /// The HTTP/2 keepalive: a ping after 30 s without traffic, and the
+    /// connection is dropped when it is not answered within 20 s.
+    #[tokio::test(start_paused = true)]
+    async fn a_peer_that_stops_answering_pings_loses_its_connection() {
+        let wired = wired(ConnectionLimits::default(), false);
+        let started = Instant::now();
+        let mut client = wired.dial().await;
+        client.write_all(PREFACE).await.unwrap();
+        client.write_all(SETTINGS).await.unwrap();
+        let seen = closed(frames_until_closed(client, false)).await;
+        assert!(seen.contains(&FRAME_PING), "no keepalive ping in {seen:?}");
+        assert_took(started, HTTP2_KEEPALIVE_INTERVAL + HTTP2_KEEPALIVE_TIMEOUT);
+        wired.all_slots_back().await;
+    }
+
+    /// A client that answers every ping keeps its connection until age
+    /// and grace are over, and no longer: answering pings costs a peer
+    /// nothing, so it must not buy a place for ever.
+    #[tokio::test(start_paused = true)]
+    async fn a_live_connection_ends_when_its_age_and_grace_are_over() {
+        let limits = ConnectionLimits {
+            max_connection_age: secs(400),
+            max_connection_age_grace: secs(60),
+            ..ConnectionLimits::default()
+        };
+        let wired = wired(limits, false);
+        let started = Instant::now();
+        let mut client = wired.dial().await;
+        client.write_all(PREFACE).await.unwrap();
+        client.write_all(SETTINGS).await.unwrap();
+        let frames = tokio::spawn(frames_until_closed(client, true));
+        tokio::time::sleep(secs(459)).await;
+        assert!(
+            !frames.is_finished(),
+            "closed before age and grace were over"
+        );
+        assert_eq!(wired.gate.open(), 1);
+
+        let seen = closed(async { frames.await.unwrap() }).await;
+        assert!(seen.contains(&FRAME_PING), "no keepalive ping in {seen:?}");
+        assert_took(started, secs(460));
+        wired.all_slots_back().await;
+    }
+
+    /// A real TLS client: its handshake and preface are recognised from
+    /// the record stream, so it is still served long after the deadline.
+    #[tokio::test(start_paused = true)]
+    async fn a_tls_client_is_served_past_the_handshake_deadline() {
+        use opentelemetry_proto::tonic::collector::trace::v1::trace_service_client::TraceServiceClient;
+        use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
+
+        let wired = wired(ConnectionLimits::default(), true);
+        let mut io = Some(wired.dial().await);
+        let connector = tower::service_fn(move |_: tonic::transport::Uri| {
+            let io = io.take().map(hyper_util::rt::TokioIo::new);
+            async move { io.ok_or_else(|| std::io::Error::other("one connection only")) }
+        });
+        let tls = ClientTlsConfig::new()
+            .ca_certificate(Certificate::from_pem(CERT_PEM))
+            .domain_name("localhost");
+        let channel = Endpoint::from_static("https://localhost")
+            .tls_config(tls)
+            .unwrap()
+            .connect_with_connector(connector)
+            .await
+            .expect("TLS handshake over the gated connection");
+        let mut client = TraceServiceClient::new(channel);
+        client
+            .export(ExportTraceServiceRequest::default())
+            .await
+            .expect("first export");
+
+        tokio::time::sleep(secs(300)).await;
+        assert_eq!(wired.gate.open(), 1, "the TLS connection was cut");
+        // Still the same connection: the connector has no second one.
+        client
+            .export(ExportTraceServiceRequest::default())
+            .await
+            .expect("export after the deadline");
     }
 }

@@ -23,6 +23,8 @@ prost.workspace = true
 arrow = { workspace = true, features = ["ipc_compression"] }
 ciborium.workspace = true
 zstd.workspace = true
+# Keepalive on accepted sockets: tonic sets it only on its own listener.
+socket2 = { version = "0.6", features = ["all"] }
 flatbuffers = { workspace = true, optional = true }
 axum.workspace = true
 tokio.workspace = true
@@ -44,6 +46,12 @@ otap-client = ["dep:flatbuffers"]
 # Regenerates src/otap/proto.rs in tests/otap_proto_drift.rs.
 tonic-prost-build.workspace = true
 tempfile.workspace = true
+# A paused clock for the connection time limits.
+tokio = { workspace = true, features = ["test-util"] }
+# A TLS client and server over an in-memory connection.
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws-lc-rs"] }
+tower = { version = "0.5", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 tracing-subscriber.workspace = true
 flatbuffers.workspace = true
 
