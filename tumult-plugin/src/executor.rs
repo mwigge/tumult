@@ -252,17 +252,18 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     let stdout_task = child
         .stdout
         .take()
-        .map(|out| tokio::spawn(read_to_end(out)));
+        .map(|out| tokio::spawn(read_capped(out, "stdout")));
     let stderr_task = child
         .stderr
         .take()
-        .map(|err| tokio::spawn(read_to_end(err)));
+        .map(|err| tokio::spawn(read_capped(err, "stderr")));
 
     let status = if let Some(duration) = timeout {
         match tokio::time::timeout(duration, child.wait()).await {
             Ok(status) => status.map_err(ExecutorError::ExecutionFailed)?,
             Err(_elapsed) => {
                 kill_timed_out_child(&mut child).await;
+                log_timed_out(&path_str, duration);
                 crate::telemetry::event_script_timed_out(&path_str, duration.as_secs_f64());
                 crate::telemetry::record_execution(false);
                 return Err(ExecutorError::Timeout(duration.as_secs_f64()));
@@ -273,8 +274,8 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     };
 
     // The reader tasks finish at EOF once the process group is dead.
-    let stdout = collect_output(stdout_task).await;
-    let stderr = collect_output(stderr_task).await;
+    let stdout = collect_output(stdout_task, "stdout").await;
+    let stderr = collect_output(stderr_task, "stderr").await;
 
     let exit_status = match status.code() {
         Some(n) => ScriptExitStatus::Code(n),
@@ -283,9 +284,10 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     let exit_code_for_telemetry = exit_status.code().unwrap_or(-1);
     let result = ScriptResult {
         exit_status,
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        stdout: stdout.into_text(),
+        stderr: stderr.into_text(),
     };
+    log_if_failed(&path_str, &result);
     crate::telemetry::event_script_completed(
         exit_code_for_telemetry,
         result.stdout.len(),
@@ -313,23 +315,162 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     Err(ExecutorError::UnsupportedPlatform)
 }
 
-/// Read a stream to EOF into memory. Output capture is unbounded, matching
-/// the previous `Command::output()` behavior.
+/// Most bytes kept from one output stream of a script. A script is
+/// third-party code: without a cap, one that writes without end would grow
+/// the caller's memory until the process is killed.
 #[cfg(not(windows))]
-async fn read_to_end<R: tokio::io::AsyncRead + Unpin>(mut reader: R) -> Vec<u8> {
-    use tokio::io::AsyncReadExt as _;
-    let mut buf = Vec::new();
-    let _ = reader.read_to_end(&mut buf).await;
-    buf
+const OUTPUT_CAP: usize = 8 * 1024 * 1024;
+
+/// Appended to captured output that was cut at [`OUTPUT_CAP`].
+#[cfg(not(windows))]
+const TRUNCATION_NOTE: &str = "\n[output truncated at 8 MiB]";
+
+/// Size of one read from a script's output pipe.
+#[cfg(not(windows))]
+const READ_CHUNK_BYTES: usize = 8192;
+
+/// One output stream of a script, as captured.
+#[cfg(not(windows))]
+#[derive(Debug, Default)]
+struct Captured {
+    /// At most [`OUTPUT_CAP`] bytes, from the start of the stream.
+    bytes: Vec<u8>,
+    /// Whether the stream held more than was kept.
+    truncated: bool,
 }
 
-/// Collect a reader task's output, treating a join failure as empty output.
 #[cfg(not(windows))]
-async fn collect_output(task: Option<tokio::task::JoinHandle<Vec<u8>>>) -> Vec<u8> {
-    match task {
-        Some(handle) => handle.await.unwrap_or_default(),
-        None => Vec::new(),
+impl Captured {
+    /// Keeps as much of `chunk` as still fits under [`OUTPUT_CAP`].
+    fn keep(&mut self, chunk: &[u8]) {
+        let room = OUTPUT_CAP - self.bytes.len();
+        let kept = chunk.len().min(room);
+        self.bytes.extend_from_slice(&chunk[..kept]);
+        if kept < chunk.len() {
+            self.truncated = true;
+        }
     }
+
+    /// The captured bytes as text, with a note when output was cut.
+    fn into_text(self) -> String {
+        let mut text = String::from_utf8_lossy(&self.bytes).into_owned();
+        if self.truncated {
+            text.push_str(TRUNCATION_NOTE);
+        }
+        text
+    }
+}
+
+/// Reads `reader` to EOF, keeping the first [`OUTPUT_CAP`] bytes.
+///
+/// The stream is drained past the cap so the script never blocks on a full
+/// pipe. A read error ends the capture with what arrived so far and is
+/// logged; `stream` names the pipe (`stdout` or `stderr`) in log events.
+#[cfg(not(windows))]
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(
+    mut reader: R,
+    stream: &'static str,
+) -> Captured {
+    use tokio::io::AsyncReadExt as _;
+    let mut captured = Captured::default();
+    let mut chunk = vec![0_u8; READ_CHUNK_BYTES];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(read) => captured.keep(&chunk[..read]),
+            Err(error) => {
+                log_read_failed(stream, captured.bytes.len(), &error);
+                break;
+            }
+        }
+    }
+    if captured.truncated {
+        log_truncated(stream);
+    }
+    captured
+}
+
+/// Collects a reader task's output. A reader that panicked or was cancelled
+/// yields empty output and is logged.
+#[cfg(not(windows))]
+async fn collect_output(
+    task: Option<tokio::task::JoinHandle<Captured>>,
+    stream: &'static str,
+) -> Captured {
+    let Some(handle) = task else {
+        return Captured::default();
+    };
+    match handle.await {
+        Ok(captured) => captured,
+        Err(error) => {
+            log_reader_failed(stream, &error);
+            Captured::default()
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn log_read_failed(stream: &'static str, bytes_read: usize, error: &std::io::Error) {
+    tracing::warn!(
+        name: "plugin.script.output.read_failed",
+        {
+            process.stream = stream,
+            bytes_read,
+            error.type = "io",
+            error.message = %error,
+        },
+        "script output read failed, captured output is incomplete"
+    );
+}
+
+#[cfg(not(windows))]
+fn log_truncated(stream: &'static str) {
+    tracing::warn!(
+        name: "plugin.script.output.truncated",
+        { process.stream = stream, max_bytes = OUTPUT_CAP },
+        "script output exceeded the capture limit and was truncated"
+    );
+}
+
+#[cfg(not(windows))]
+fn log_reader_failed(stream: &'static str, error: &tokio::task::JoinError) {
+    tracing::warn!(
+        name: "plugin.script.output.reader_failed",
+        {
+            process.stream = stream,
+            error.type = "join",
+            error.message = %error,
+        },
+        "script output reader did not finish, captured output is empty"
+    );
+}
+
+#[cfg(not(windows))]
+fn log_timed_out(script_path: &str, timeout: Duration) {
+    tracing::warn!(
+        name: "plugin.script.timed_out",
+        { file.path = script_path, timeout_s = timeout.as_secs_f64() },
+        "script timed out and was killed"
+    );
+}
+
+/// Logs a script that did not exit with code 0. Its output is the caller's
+/// to handle and is never logged: only the sizes are.
+#[cfg(not(windows))]
+fn log_if_failed(script_path: &str, result: &ScriptResult) {
+    if result.succeeded() {
+        return;
+    }
+    tracing::warn!(
+        name: "plugin.script.failed",
+        {
+            file.path = script_path,
+            process.exit.code = result.exit_status.code(),
+            stdout_bytes = result.stdout.len(),
+            stderr_bytes = result.stderr.len(),
+        },
+        "script exited unsuccessfully"
+    );
 }
 
 /// Kill the timed-out child's whole process group on Unix, so children the
@@ -696,5 +837,157 @@ mod tests {
         assert_eq!(result.exit_status, ScriptExitStatus::Signal);
         assert_eq!(result.exit_status.code(), None);
         assert!(!result.succeeded());
+    }
+
+    // ── output capture and log events ──────────────────────────
+
+    /// Yields some bytes, then fails.
+    struct FailingReader {
+        served: bool,
+    }
+
+    impl tokio::io::AsyncRead for FailingReader {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            if self.served {
+                return std::task::Poll::Ready(Err(std::io::Error::other("pipe torn down")));
+            }
+            self.served = true;
+            buf.put_slice(b"partial");
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    fn capture(level: tracing::Level) -> tumult_otel::logging::testing::LogCapture {
+        tumult_otel::logging::testing::LogCapture::start(level)
+    }
+
+    #[tokio::test]
+    async fn a_failed_pipe_read_keeps_what_arrived_and_is_logged() {
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = read_capped(FailingReader { served: false }, "stderr").await;
+        let logs = logs.snapshot();
+
+        assert_eq!(captured.bytes, b"partial");
+        let event = &logs.named("plugin.script.output.read_failed")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.stream"], "stderr");
+        assert_eq!(event["bytes_read"], 7);
+        assert_eq!(event["error.type"], "io");
+        assert_eq!(event["error.message"], "pipe torn down");
+    }
+
+    #[tokio::test]
+    async fn output_beyond_the_cap_is_dropped_noted_and_logged() {
+        use tokio::io::AsyncReadExt as _;
+
+        let source = tokio::io::repeat(b'x').take(OUTPUT_CAP as u64 + 4096);
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = read_capped(source, "stdout").await;
+        let logs = logs.snapshot();
+
+        assert_eq!(captured.bytes.len(), OUTPUT_CAP);
+        assert!(captured.truncated);
+        let event = &logs.named("plugin.script.output.truncated")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.stream"], "stdout");
+        assert!(captured
+            .into_text()
+            .ends_with("\n[output truncated at 8 MiB]"));
+    }
+
+    #[tokio::test]
+    async fn output_within_the_cap_is_returned_unchanged_and_silent() {
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = read_capped(&b"hello\n"[..], "stdout").await;
+        let logs = logs.snapshot();
+
+        assert!(!captured.truncated);
+        assert_eq!(captured.into_text(), "hello\n");
+        assert!(logs.events.is_empty(), "{}", logs.raw);
+    }
+
+    #[tokio::test]
+    async fn a_reader_task_that_dies_is_logged_and_yields_empty_output() {
+        let dead = tokio::spawn(std::future::pending::<Captured>());
+        dead.abort();
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = collect_output(Some(dead), "stdout").await;
+        let logs = logs.snapshot();
+
+        assert!(captured.bytes.is_empty());
+        let event = &logs.named("plugin.script.output.reader_failed")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.stream"], "stdout");
+        assert!(event["error.message"].is_string(), "{event}");
+    }
+
+    #[tokio::test]
+    async fn a_script_that_exits_non_zero_is_a_named_warning() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(
+            dir.path(),
+            "fail.sh",
+            "#!/bin/sh\necho out\necho problem >&2\nexit 3\n",
+        );
+        let logs = capture(tracing::Level::INFO);
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let logs = logs.snapshot();
+
+        assert_eq!(result.exit_status, ScriptExitStatus::Code(3));
+        let event = &logs.named("plugin.script.failed")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["file.path"], script.to_str().unwrap());
+        assert_eq!(event["process.exit.code"], 3);
+        assert_eq!(event["stdout_bytes"], 4);
+        assert_eq!(event["stderr_bytes"], 8);
+        assert!(
+            !logs.raw.contains("problem"),
+            "output is not logged: {}",
+            logs.raw
+        );
+    }
+
+    #[tokio::test]
+    async fn a_script_that_succeeds_logs_no_failure() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "ok.sh", "#!/bin/sh\nexit 0\n");
+        let logs = capture(tracing::Level::INFO);
+        execute_script(&script, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let logs = logs.snapshot();
+
+        assert!(
+            logs.named("plugin.script.failed").is_empty(),
+            "{}",
+            logs.raw
+        );
+    }
+
+    #[tokio::test]
+    async fn a_script_timeout_is_a_named_warning() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "slow.sh", "#!/bin/sh\nsleep 10\n");
+        let logs = capture(tracing::Level::INFO);
+        let result = execute_script(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            Some(Duration::from_millis(100)),
+        )
+        .await;
+        let logs = logs.snapshot();
+
+        assert!(matches!(result, Err(ExecutorError::Timeout(_))));
+        let event = &logs.named("plugin.script.timed_out")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["file.path"], script.to_str().unwrap());
+        assert_eq!(event["timeout_s"], 0.1);
     }
 }

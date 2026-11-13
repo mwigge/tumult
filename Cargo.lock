@@ -8341,6 +8341,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "toon-format",
+ "tracing",
  "tumult-otel",
 ]
 
