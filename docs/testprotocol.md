@@ -1047,7 +1047,7 @@ tumult report journal.toon --format html --output /tmp/report.html
 tumult compliance journal.toon --framework dora
 ```
 
-**Expected:** DORA compliance output with MTTR, change failure rate, deployment frequency mapping.
+**Expected:** Evidence report for the Digital Operational Resilience Act (EU 2022/2554): pass rate, recovery compliance (MTTR against the target), the evidence verdict and the mapped articles. The DevOps Research and Assessment delivery metrics (change failure rate, deployment frequency) are a different "DORA" and are not part of this output.
 
 ### TP-ANALYTICS-06: Compliance report — NIS2
 
@@ -1722,13 +1722,13 @@ cargo audit 2>&1
 
 ## 21. TP-COMPLIANCE: Regulatory Compliance Tests
 
-### TP-COMPLIANCE-01: DORA Article 26 — ICT testing
+### TP-COMPLIANCE-01: DORA Articles 24–25 — ICT testing
 
 ```bash
 tumult compliance journal.toon --framework dora
 ```
 
-**Expected:** Maps experiment results to DORA Article 26 requirements for ICT risk testing.
+**Expected:** Maps experiment results to the DORA Article 24 and Article 25 requirements for digital operational resilience testing. Article 26 (threat-led penetration testing) is not evidenced by experiment runs.
 
 ### TP-COMPLIANCE-02: NIS2 — Incident response
 
@@ -1907,7 +1907,7 @@ Use this section to record actual test execution results.
 | TP-UNIT-05 | Clippy pedantic | PASS | Zero warnings, zero errors with `-D warnings -W clippy::pedantic` |
 | TP-UNIT-06 | Format check | PASS | `cargo fmt --check` clean |
 | TP-UNIT-07 | Dependency audit | PASS | 5 allowed warnings, no HIGH/CRITICAL vulnerabilities |
-| TP-COMPLIANCE-01 | DORA Art. 26 | PASS | DORA compliance report generated from journal data |
+| TP-COMPLIANCE-01 | DORA Art. 24–25 | PASS | DORA compliance report generated from journal data |
 | TP-COMPLIANCE-02 | NIS2 | PASS | NIS2 compliance report generated |
 | TP-COMPLIANCE-03 | PCI-DSS | PASS | PCI-DSS compliance report generated |
 | TP-COMPLIANCE-04 | ISO-27001 | PASS | ISO-27001 compliance report generated |

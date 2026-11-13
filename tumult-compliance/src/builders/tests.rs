@@ -22,6 +22,23 @@ fn framework_lists_cover_all_four() {
     }
 }
 
+#[test]
+fn dora_clauses_cite_the_plan_paragraphs_and_leave_out_tlpt() {
+    let dora = FRAMEWORK_CLAUSES
+        .iter()
+        .find(|(name, _)| *name == "dora")
+        .map(|(_, clauses)| *clauses)
+        .expect("dora clause list");
+    assert_eq!(
+        dora,
+        [
+            "Art. 11(3), 11(4), 11(6) — response and recovery plans",
+            "Art. 12(2) — backup, restoration and recovery",
+            "Art. 24–25 — resilience testing programme",
+        ]
+    );
+}
+
 const BASE_NS: i64 = 1_785_000_000_000_000_000;
 const HOUR_NS: i64 = 3_600_000_000_000;
 
