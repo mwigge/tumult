@@ -20,3 +20,10 @@ Prerequisites:
 
 The verdict rules are documented in `docs/guides/cli-reference.md` under
 `tumult gate`.
+
+`tumult perf <target>` is the companion step for performance: after a build
+has been deployed and a load experiment run against it, it compares the
+build's latency samples with the previous `service.version`'s and fails the
+job on a `regressed` verdict (`--fail-on inconclusive` also fails when there
+is not enough evidence). Same daemon URL and token; see
+`docs/guides/performance-regression.md`.

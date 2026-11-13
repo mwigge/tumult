@@ -1,0 +1,77 @@
+title: Checkout API rejects malformed input without falling over
+description: A robustness run with no fault injector. The method throws oversized, truncated, wrongly typed and deeply nested JSON at the order endpoint and expects 4xx answers, while the health probe stays green and the error rate of the background load stays flat.
+
+tags[3]: robustness, malformed-input, checkout
+kind: robustness
+target:
+  system: checkout
+  technology: http
+  environment: staging
+nfr[1]:
+  - id: survives-garbage
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.999
+    criticality: blocking
+
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/api/checkout
+  vus: 5
+  duration_s: 60
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -fsS -o /dev/null http://127.0.0.1:8080/health"
+        timeout_s: 5.0
+
+method[4]:
+  - name: oversized-body
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "head -c 20000000 /dev/zero | curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' --data-binary @- http://127.0.0.1:8080/api/orders"
+      timeout_s: 30.0
+    tolerance:
+      type: regex
+      pattern: "^4[0-9][0-9]$"
+  - name: truncated-json
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{\"items\": [{\"sku\": \"A1\", \"qty\": ' http://127.0.0.1:8080/api/orders"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "^4[0-9][0-9]$"
+  - name: wrong-types
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{\"items\": \"not-a-list\", \"total\": \"NaN\", \"customer\": -1}' http://127.0.0.1:8080/api/orders"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "^4[0-9][0-9]$"
+  - name: deeply-nested
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "body=$(printf '[%.0s' $(seq 1 5000)); curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d \"$body\" http://127.0.0.1:8080/api/orders"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "^4[0-9][0-9]$"
+
+rollbacks[0]:
