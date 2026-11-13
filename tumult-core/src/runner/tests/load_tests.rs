@@ -52,6 +52,7 @@ impl LoadExecutor for MockLoadExecutor {
             error_rate: 0.01,
             total_requests: 100,
             thresholds_met: true,
+            samples: vec![],
         })
     }
 }
@@ -64,6 +65,7 @@ fn experiment_with_load() -> Experiment {
         vus: Some(5),
         duration_s: Some(10.0),
         thresholds: HashMap::new(),
+        profile: None,
     });
     exp
 }

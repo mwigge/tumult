@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use super::{LoadExecutor, LoadHandle};
+use super::{load_profile, LoadExecutor, LoadHandle};
 use crate::types::{LoadConfig, LoadResult, LoadTool};
 
 /// K6 load test executor.
@@ -91,10 +91,7 @@ fn wait_with_timeout(
 
 impl LoadExecutor for K6LoadExecutor {
     fn start(&self, config: &LoadConfig) -> Result<LoadHandle, String> {
-        let vus = config.vus.unwrap_or(10);
-        let duration = config
-            .duration_s
-            .map_or_else(|| "30s".to_string(), |s| format!("{s}s"));
+        let vus = config.vus.unwrap_or(load_profile::DEFAULT_VUS);
 
         let k6_binary = std::env::var("TUMULT_K6_BINARY").unwrap_or_else(|_| "k6".to_string());
 
@@ -105,12 +102,11 @@ impl LoadExecutor for K6LoadExecutor {
             .map_err(|e| format!("failed to create k6 summary file: {e}"))?;
 
         let mut cmd = std::process::Command::new(&k6_binary);
-        cmd.arg("run")
-            .arg("--vus")
-            .arg(vus.to_string())
-            .arg("--duration")
-            .arg(&duration)
-            .arg("--summary-export")
+        cmd.arg("run");
+        for arg in k6_shape_args(config) {
+            cmd.arg(arg);
+        }
+        cmd.arg("--summary-export")
             .arg(summary_file.path())
             .arg(config.script.as_os_str())
             .stdout(std::process::Stdio::piped())
@@ -219,8 +215,37 @@ impl LoadExecutor for K6LoadExecutor {
             error_rate,
             total_requests: iterations,
             thresholds_met: output.status.success(),
+            // k6 reports one end-of-run summary; its per-request stream
+            // (`--out json`) is far too heavy to keep, so no windows here.
+            samples: vec![],
         })
     }
+}
+
+/// The k6 arguments that shape the traffic: a flat config is `--vus N
+/// --duration Ds` as before; a profile becomes `--vus <start>` plus one
+/// `--stage` per rendered plan stage (k6 reads `--vus` as the starting
+/// level when stages are present).
+#[must_use]
+pub fn k6_shape_args(config: &LoadConfig) -> Vec<String> {
+    let plan = load_profile::plan(config);
+    if config.profile.is_none() {
+        let duration = config
+            .duration_s
+            .map_or_else(|| "30s".to_string(), |s| format!("{s}s"));
+        return vec![
+            "--vus".into(),
+            plan.start_vus.to_string(),
+            "--duration".into(),
+            duration,
+        ];
+    }
+    let mut args = vec!["--vus".to_string(), plan.start_vus.to_string()];
+    for stage in load_profile::k6_stages(&plan) {
+        args.push("--stage".into());
+        args.push(stage);
+    }
+    args
 }
 
 /// Reads and parses a k6 `--summary-export` JSON file.
@@ -347,6 +372,40 @@ pub fn parse_k6_rate(output: &str, counter_name: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::LoadProfile;
+
+    fn config(profile: Option<LoadProfile>) -> LoadConfig {
+        LoadConfig {
+            tool: LoadTool::K6,
+            script: "load.js".into(),
+            vus: Some(10),
+            duration_s: Some(60.0),
+            thresholds: std::collections::HashMap::new(),
+            profile,
+        }
+    }
+
+    #[test]
+    fn flat_config_keeps_the_vus_duration_flags() {
+        assert_eq!(
+            k6_shape_args(&config(None)),
+            vec!["--vus", "10", "--duration", "60s"]
+        );
+    }
+
+    #[test]
+    fn profile_becomes_stages_with_the_start_level() {
+        let spike = LoadProfile::Spike {
+            peak_vus: 100,
+            after_s: 20.0,
+            hold_s: 10.0,
+        };
+        let args = k6_shape_args(&config(Some(spike)));
+        assert_eq!(&args[..2], &["--vus", "10"]);
+        assert!(!args.contains(&"--duration".to_string()));
+        assert_eq!(args.iter().filter(|a| *a == "--stage").count(), 5);
+        assert!(args.contains(&"1s:100".to_string()));
+    }
 
     fn spawn_piped(program: &str, args: &[&str]) -> std::process::Child {
         std::process::Command::new(program)

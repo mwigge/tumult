@@ -19,8 +19,7 @@ CREATE TABLE IF NOT EXISTS probe_samples (
     phase VARCHAR NOT NULL, ts_ns BIGINT NOT NULL,
     value DOUBLE NOT NULL, ok BOOLEAN NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_probe_samples_experiment_id
-    ON probe_samples (experiment_id);
+CREATE INDEX IF NOT EXISTS idx_probe_samples_experiment_id ON probe_samples (experiment_id);
 CREATE TABLE IF NOT EXISTS nfr_verdicts (
     experiment_id VARCHAR NOT NULL, nfr_id VARCHAR NOT NULL,
     kind VARCHAR NOT NULL, metric VARCHAR NOT NULL,
@@ -28,6 +27,5 @@ CREATE TABLE IF NOT EXISTS nfr_verdicts (
     observed DOUBLE, state VARCHAR NOT NULL, margin DOUBLE,
     criticality VARCHAR NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_nfr_verdicts_experiment_id
-    ON nfr_verdicts (experiment_id);
+CREATE INDEX IF NOT EXISTS idx_nfr_verdicts_experiment_id ON nfr_verdicts (experiment_id);
 ";

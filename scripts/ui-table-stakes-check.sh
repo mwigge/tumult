@@ -352,6 +352,13 @@ fi
 check "POST /api/risks/{id}/suppress rejects an unknown id" test "$(status POST /api/risks/r_nope/suppress '{"reason":"x"}')" = 404
 check "POST /api/risks/{id}/suppress rejects an empty reason" test "$(status POST "/api/risks/${FIRST_RISK:-r_nope}/suppress" '{"reason":" "}')" = 400
 
+# ── OpenTelemetry naming-contract conformance ────────────────────
+echo ""
+echo "-- otel conformance"
+CONF_JSON=$(get "/api/otel/conformance?range=24h")
+check "GET /api/otel/conformance lists the contract and a level per service" pyjson 'assert d["contract"]["target"][0] == "resilience.target.system"; assert all(s["level"] in ("none", "target", "spine") for s in d["services"]); assert d["summary"]["services"] == len(d["services"])' <<< "$CONF_JSON"
+check "conformance rejects a bad range" test "$(status GET '/api/otel/conformance?range=bogus')" = 400
+
 # ── summary ──────────────────────────────────────────────────────
 echo ""
 echo "------------------------------------------------------------------"

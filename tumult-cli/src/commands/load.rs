@@ -1,8 +1,6 @@
-//! K6 load executor — re-exported from `tumult_core::runner::k6`, which owns
-//! the shared implementation (used by `tumult run --load`, `tumult gameday
-//! run`, and the MCP server's `tumult_gameday_run`).
-
-pub(crate) use tumult_core::runner::k6::K6LoadExecutor;
+//! Load executors live in `tumult_core::runner` (`k6`, `oha`, selected by
+//! `load_executor_for`); this module only re-exports the k6 parsing helpers
+//! the CLI tests cover.
 
 #[cfg(test)]
 pub(crate) use tumult_core::runner::k6::{

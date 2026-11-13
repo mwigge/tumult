@@ -1,0 +1,72 @@
+title: Checkout API sheds load instead of collapsing at saturation
+description: A robustness run that drives the service past its capacity. A ramp from 10 to 400 concurrent users over 90 s, then 30 s at the top, while a cpu-stress action takes half the cores; the service may slow down and refuse work (429/503 count as answered), but the health probe must keep answering and the process must survive.
+
+tags[3]: robustness, saturation, checkout
+kind: robustness
+target:
+  system: checkout
+  technology: http
+  environment: staging
+nfr[2]:
+  - id: health-survives
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.95
+    criticality: blocking
+  - id: recovers
+    kind: availability
+    metric: post.availability
+    operator: gte
+    threshold: 0.999
+    criticality: major
+
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/api/checkout
+  vus: 400
+  duration_s: 120
+  profile:
+    type: ramp
+    start_vus: 10
+    ramp_up_s: 90
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -fsS -m 3 -o /dev/null http://127.0.0.1:8080/health"
+        timeout_s: 5.0
+
+method[2]:
+  - name: cpu-stress
+    activity_type: action
+    background: true
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "stress-ng --cpu $(( $(nproc) / 2 )) --timeout 120s"
+      timeout_s: 130.0
+  - name: process-still-up
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 120 && pgrep -f checkout-api >/dev/null && echo alive"
+      timeout_s: 130.0
+    tolerance:
+      type: regex
+      pattern: "alive"
+
+rollbacks[1]:
+  - name: stop-stress
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "pkill -f stress-ng || true"
+      timeout_s: 10.0

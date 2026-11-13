@@ -40,10 +40,11 @@ pub fn gameday_create(request: &GameDayCreateRequest<'_>) -> Result<StructuredRe
     let load_tool = match request.load_tool {
         None | Some("none") => None,
         Some("k6") => Some(LoadTool::K6),
+        Some("oha") => Some(LoadTool::Oha),
         Some("jmeter") => Some(LoadTool::Jmeter),
         Some(other) => {
             return Err(ToolError::InvalidInput(format!(
-                "unknown load_tool '{other}'; valid values: k6, jmeter, none"
+                "unknown load_tool '{other}'; valid values: k6, oha, jmeter, none"
             )))
         }
     };
@@ -211,14 +212,15 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         experiments.push(experiment);
     }
 
-    // Same load executor as `tumult gameday run` (CLI parity): a declared
-    // load config runs through the shared k6 executor instead of being
-    // silently dropped.
-    let load_executor: Option<std::sync::Arc<dyn tumult_core::runner::LoadExecutor>> =
-        gameday.load.is_some().then(|| {
-            std::sync::Arc::new(tumult_core::runner::k6::K6LoadExecutor)
-                as std::sync::Arc<dyn tumult_core::runner::LoadExecutor>
-        });
+    // Same load adapter as `tumult gameday run` (CLI parity): a declared
+    // load config runs through the shared executor for its tool instead of
+    // being silently dropped.
+    let load_executor = gameday
+        .load
+        .as_ref()
+        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
+        .transpose()
+        .map_err(ToolError::InvalidInput)?;
     let config = RunConfig {
         load_executor,
         ..RunConfig::default()

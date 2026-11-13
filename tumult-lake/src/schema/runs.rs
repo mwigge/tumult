@@ -17,30 +17,30 @@
 /// tables and the v7 audit hash chain.
 pub(super) const DDL: &str = "
 CREATE TABLE IF NOT EXISTS run_registry (
-    id               VARCHAR NOT NULL,
-    name             VARCHAR NOT NULL,
-    definition_toon  VARCHAR NOT NULL,
-    content_hash     VARCHAR NOT NULL,
+    id VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    definition_toon VARCHAR NOT NULL,
+    content_hash VARCHAR NOT NULL,
     registered_at_ns BIGINT NOT NULL,
-    registered_by    VARCHAR
+    registered_by VARCHAR
 );
 CREATE TABLE IF NOT EXISTS runs (
-    id              VARCHAR NOT NULL,
-    registry_id     VARCHAR NOT NULL,
-    state           VARCHAR NOT NULL,
-    params_json     JSON,
-    experiment_id   VARCHAR,
+    id VARCHAR NOT NULL,
+    registry_id VARCHAR NOT NULL,
+    state VARCHAR NOT NULL,
+    params_json JSON,
+    experiment_id VARCHAR,
     rollback_status VARCHAR,
-    error           VARCHAR,
-    queued_at_ns    BIGINT NOT NULL,
-    started_at_ns   BIGINT,
-    ended_at_ns     BIGINT
+    error VARCHAR,
+    queued_at_ns BIGINT NOT NULL,
+    started_at_ns BIGINT,
+    ended_at_ns BIGINT
 );
 CREATE TABLE IF NOT EXISTS run_audit (
-    run_id  VARCHAR NOT NULL,
-    at_ns   BIGINT NOT NULL,
-    event   VARCHAR NOT NULL,
-    detail  VARCHAR
+    run_id VARCHAR NOT NULL,
+    at_ns BIGINT NOT NULL,
+    event VARCHAR NOT NULL,
+    detail VARCHAR
 );
 -- v6: `actor` is the authenticated session identity on run audit events
 -- (NULL for system events). Additive and idempotent, like the v1.1

@@ -192,6 +192,7 @@ fn baseline_only_runs_probes_without_controls_faults_load_or_rollbacks() {
         vus: None,
         duration_s: None,
         thresholds: HashMap::new(),
+        profile: None,
     });
     let mock = MockExecutor::always_succeed();
     let calls = mock.call_count.clone();
@@ -246,6 +247,7 @@ fn declared_load_without_executor_fails_before_faults() {
         vus: None,
         duration_s: None,
         thresholds: HashMap::new(),
+        profile: None,
     });
     let mock = MockExecutor::always_succeed();
     let calls = mock.call_count.clone();
