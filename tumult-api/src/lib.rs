@@ -93,6 +93,10 @@
 //!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/otel/conformance?range=&env=` — per service, which naming
+//!   contract attributes every span in the window carried (target columns,
+//!   ICT spine), the resulting level (`none|target|spine`) and what is
+//!   missing: the first stop when a target is absent from the posture page.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -342,6 +346,10 @@ pub fn router(state: ApiState) -> Router {
             post(handlers::recommend::recommend),
         )
         .route("/api/posture", get(handlers::risks::posture))
+        .route(
+            "/api/otel/conformance",
+            get(handlers::conformance::conformance),
+        )
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

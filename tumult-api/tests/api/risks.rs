@@ -311,3 +311,42 @@ async fn recommend_refuses_what_it_cannot_automate() {
     .await;
     assert_eq!(status, 403, "{body}");
 }
+
+/// The seed's root spans carry the target but the action spans do not, so
+/// the `tumult` service reports level `none` with the target keys missing;
+/// the contract and the summary come with it.
+#[tokio::test]
+async fn otel_conformance_reports_per_service_contract_coverage() {
+    let srv = spawn_server().await;
+    let (status, body) = get(&srv.base, "/api/otel/conformance?range=24h").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["contract"]["target"].as_array().unwrap().len(), 3);
+    assert_eq!(body["contract"]["spine"].as_array().unwrap().len(), 4);
+    let services = body["services"].as_array().unwrap();
+    let tumult = services
+        .iter()
+        .find(|s| s["service"] == "tumult")
+        .unwrap_or_else(|| panic!("{body}"));
+    assert!(tumult["spans"].as_u64().unwrap() >= 2);
+    assert_eq!(tumult["level"], "none");
+    let missing: Vec<&str> = tumult["missing"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m.as_str().unwrap())
+        .collect();
+    assert!(missing.contains(&"resilience.target.system"), "{tumult}");
+    assert!(missing.contains(&"ict.entity.id"), "{tumult}");
+    let keys = tumult["keys"].as_array().unwrap();
+    let system = keys
+        .iter()
+        .find(|k| k["key"] == "resilience.target.system")
+        .unwrap();
+    assert!(
+        system["present"].as_u64().unwrap() >= 1,
+        "root spans carry it: {tumult}"
+    );
+    assert_eq!(body["summary"]["services"], services.len());
+    let (status, body) = get(&srv.base, "/api/otel/conformance?range=bogus").await;
+    assert_eq!(status, 400, "{body}");
+}
