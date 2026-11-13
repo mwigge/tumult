@@ -53,6 +53,8 @@ pub mod export;
 #[cfg(feature = "duckdb")]
 mod file_integrity;
 #[cfg(feature = "duckdb")]
+mod forecast;
+#[cfg(feature = "duckdb")]
 pub mod lake;
 #[cfg(feature = "duckdb")]
 mod manual;
@@ -84,6 +86,8 @@ pub use backend::{AnalyticsBackend, StoreStats};
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
 pub use error::StoreError;
+#[cfg(feature = "duckdb")]
+pub use forecast::ForecastRow;
 #[cfg(feature = "duckdb")]
 pub use manual::{
     AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
