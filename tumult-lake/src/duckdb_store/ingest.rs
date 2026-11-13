@@ -398,6 +398,7 @@ mod tests {
             total_requests: 1000,
             thresholds_met: true,
             samples: vec![],
+            execution: tumult_core::types::LoadExecution::default(),
         });
         s.ingest_journal(&journal).unwrap();
 
@@ -531,6 +532,7 @@ mod tests {
             total_requests: 800,
             thresholds_met: true,
             samples: vec![window(1_000_000_000, 70.0), window(11_000_000_000, 80.0)],
+            execution: tumult_core::types::LoadExecution::default(),
         });
         s.ingest_journal(&journal).unwrap();
 

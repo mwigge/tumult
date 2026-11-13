@@ -667,6 +667,7 @@ mod tests {
                 total_requests: 3000,
                 thresholds_met: true,
                 samples: vec![],
+                execution: tumult_core::types::LoadExecution::default(),
             }),
             analysis: None,
             regulatory: None,

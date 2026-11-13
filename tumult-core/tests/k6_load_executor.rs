@@ -294,10 +294,15 @@ fn abort_kills_a_running_k6_at_once() {
         elapsed < std::time::Duration::from_secs(2),
         "abort blocked for {elapsed:?}"
     );
-    let Err(error) = outcome else {
-        panic!("a k6 killed mid-run has no summary");
-    };
-    assert!(error.contains("aborted"), "{error}");
+    let result = outcome.expect("an aborted k6 still leaves a marked result");
+    assert!(result.execution.aborted);
+    assert_eq!(result.total_requests, 0, "a killed k6 has no summary");
+    assert!(!result.thresholds_met);
+    assert!(
+        result.execution.reasons.join(" ").contains("aborted"),
+        "{:?}",
+        result.execution.reasons
+    );
 }
 
 #[test]

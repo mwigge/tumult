@@ -11,5 +11,5 @@ pub use config::{
 };
 pub use error::EngineError;
 pub use template::{apply_template_vars, apply_vars, parse_experiment};
-pub use tolerance::{determine_status, evaluate_tolerance};
+pub use tolerance::{conclude, determine_status, evaluate_tolerance, Conclusion, RunFacts};
 pub use validation::validate_experiment;

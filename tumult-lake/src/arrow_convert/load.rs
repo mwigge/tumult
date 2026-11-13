@@ -153,6 +153,7 @@ mod tests {
             total_requests: 8,
             thresholds_met: true,
             samples: vec![sample(1, 70.0, 0.0), sample(2, 90.0, 0.25)],
+            execution: tumult_core::types::LoadExecution::default(),
         }
     }
 

@@ -265,6 +265,7 @@ mod tests {
             total_requests: 1200,
             thresholds_met: true,
             samples: vec![],
+            execution: crate::types::LoadExecution::default(),
         }
     }
 

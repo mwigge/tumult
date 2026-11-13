@@ -218,33 +218,59 @@ impl LoadExecutor for K6LoadExecutor {
             // k6 reports one end-of-run summary; its per-request stream
             // (`--out json`) is far too heavy to keep, so no windows here.
             samples: vec![],
+            execution: crate::types::LoadExecution::default(),
         })
     }
 
+    /// A k6 that has already exited is collected as on a normal stop; one
+    /// still running is killed at once and leaves a result marked aborted
+    /// with no measurements, since k6 writes its summary only on a clean
+    /// exit.
     fn abort(&self, handle: LoadHandle) -> Result<LoadResult, String> {
-        let k6 = handle
+        let mut k6 = handle
             .inner
             .downcast::<K6Handle>()
             .map_err(|_| "invalid load handle")?;
-        let finished = Self::abort_running(k6)?;
-        self.stop(LoadHandle { inner: finished })
+        match k6.child.try_wait() {
+            Ok(Some(_)) => self.stop(LoadHandle { inner: k6 }),
+            Ok(None) => Ok(Self::cut_short(*k6)),
+            Err(e) => Err(format!("k6 wait failed: {e}")),
+        }
     }
 }
 
 impl K6LoadExecutor {
-    /// The abort path: a k6 that has already exited is collected as on a
-    /// normal stop; one still running is killed at once and leaves no
-    /// result, since k6 writes its summary only on a clean exit.
-    fn abort_running(mut handle: Box<K6Handle>) -> Result<Box<K6Handle>, String> {
-        match handle.child.try_wait() {
-            Ok(Some(_)) => Ok(handle),
-            Ok(None) => {
-                // Both fail only when the process is already gone.
-                let _ = handle.child.kill();
-                let _ = handle.child.wait();
-                Err("k6 was aborted before it finished; no summary".into())
-            }
-            Err(e) => Err(format!("k6 wait failed: {e}")),
+    /// Kill a running k6 and say so in the result.
+    fn cut_short(mut k6: K6Handle) -> LoadResult {
+        // Both fail only when the process is already gone.
+        let _ = k6.child.kill();
+        let _ = k6.child.wait();
+        tracing::warn!("k6 load aborted before it finished; no summary");
+        let ended_at_ns = super::epoch_nanos_now();
+        #[allow(clippy::cast_precision_loss)]
+        let duration_s = (ended_at_ns - k6.started_at_ns) as f64 / 1_000_000_000.0;
+        LoadResult {
+            tool: k6.tool,
+            started_at_ns: k6.started_at_ns,
+            ended_at_ns,
+            duration_s,
+            vus: k6.vus,
+            throughput_rps: 0.0,
+            latency_p50_ms: 0.0,
+            latency_p95_ms: 0.0,
+            latency_p99_ms: 0.0,
+            error_rate: 0.0,
+            total_requests: 0,
+            thresholds_met: false,
+            samples: vec![],
+            execution: crate::types::LoadExecution {
+                aborted: true,
+                reasons: vec![
+                    "load aborted before k6 finished; k6 writes its summary only on a clean exit"
+                        .into(),
+                ],
+                ..crate::types::LoadExecution::default()
+            },
         }
     }
 }

@@ -6,7 +6,7 @@ use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::controls::{ControlRegistry, LifecycleEvent};
-use crate::engine::determine_status;
+use crate::engine::{conclude, Conclusion, RunFacts};
 use crate::execution::all_succeeded;
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
@@ -476,39 +476,27 @@ pub fn run_experiment_with_sampling(
 
     let hypothesis_after_met = hypothesis_after.as_ref().map(|h| h.met);
 
-    // -- Determine status
-    let status = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
-        ExperimentStatus::Interrupted
-    } else {
-        let status = determine_status(
-            hypothesis_before_met,
-            hypothesis_after_met,
-            // A declared load that left no evidence is a failed run, not a
-            // completed one that happens to lack numbers.
-            actions_succeeded && load::load_has_evidence(experiment, load_result.as_ref()),
-        );
-        // A load that missed its thresholds is a deviation, like a breached
-        // blocking objective.
-        let breached = blocking_breach || load::load_missed_thresholds(load_result.as_ref());
-        if status == ExperimentStatus::Completed && breached {
-            ExperimentStatus::Deviated
-        } else {
-            status
-        }
-    };
+    // -- Determine status and whether the rollbacks run. The precedence
+    // lives in `conclude`: a failed status never hides the cleanup a
+    // deviation calls for, and a failure or interrupt after a
+    // fault-injecting (Action) activity started rolls that fault back.
+    let Conclusion {
+        status,
+        needs_rollback,
+    } = conclude(&RunFacts {
+        cancelled: super::activity::is_cancelled(config.cancellation_token.as_ref()),
+        hypothesis_before_met,
+        hypothesis_after_met,
+        actions_succeeded,
+        load_has_evidence: load::load_has_evidence(experiment, load_result.as_ref()),
+        blocking_breach,
+        load_missed_thresholds: load::load_missed_thresholds(load_result.as_ref()),
+        fault_started: method_results
+            .iter()
+            .any(|r| r.activity_type == ActivityType::Action),
+    });
 
     // -- Rollbacks
-    // Deviation calls for cleanup; so does a failure after a fault-injecting
-    // (Action) activity actually started — the injected fault must be rolled
-    // back even though the run "failed" rather than "deviated".
-    let fault_started = method_results
-        .iter()
-        .any(|r| r.activity_type == ActivityType::Action);
-    let needs_rollback = status == ExperimentStatus::Deviated
-        || (matches!(
-            status,
-            ExperimentStatus::Failed | ExperimentStatus::Interrupted
-        ) && fault_started);
     let rollback_results = run_rollbacks(
         experiment,
         executor,

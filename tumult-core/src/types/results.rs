@@ -187,6 +187,69 @@ pub struct LoadResult {
     /// otherwise). Empty for tools that only report an end-of-run summary.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub samples: Vec<LoadSample>,
+    /// How the plan was carried out: windows planned and completed, an
+    /// abort, and why a run fell short. Left out of the journal when there
+    /// is nothing to say (a tool that only reports an end-of-run summary
+    /// and ran to its end).
+    #[serde(default, skip_serializing_if = "LoadExecution::is_unremarkable")]
+    pub execution: LoadExecution,
+}
+
+/// How a load plan was carried out, as opposed to what it measured.
+///
+/// `planned_windows` and `completed_windows` are set by adapters that run
+/// the plan one window at a time (oha). A plan with fewer completed than
+/// planned windows was truncated: the load never ran its full shape, so
+/// its thresholds count as unmet whatever the windows that did run
+/// measured.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadExecution {
+    /// Windows the plan called for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_windows: Option<u32>,
+    /// Windows that ran to their end and reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_windows: Option<u32>,
+    /// Completed windows in which no request was answered (a blackout).
+    /// Recorded, never a deviation by itself.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unanswered_windows: u32,
+    /// The load was ended by a halt or an interrupt, not by the plan or
+    /// the method running out.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub aborted: bool,
+    /// Why the plan fell short, in plain words; empty when it did not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
+}
+
+// serde's `skip_serializing_if` passes a reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(flag: &bool) -> bool {
+    !*flag
+}
+
+impl LoadExecution {
+    /// Nothing worth a line in the journal.
+    #[must_use]
+    pub fn is_unremarkable(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Fewer windows completed than the plan called for. `false` for a
+    /// tool that does not count windows.
+    #[must_use]
+    pub fn truncated(&self) -> bool {
+        match (self.planned_windows, self.completed_windows) {
+            (Some(planned), Some(completed)) => completed < planned,
+            _ => false,
+        }
+    }
 }
 
 /// One windowed load summary: what the tool measured between `ts_ns` and
@@ -449,9 +512,56 @@ mod tests {
             total_requests: 148_230,
             thresholds_met: true,
             samples: vec![],
+            execution: LoadExecution::default(),
         };
         let decoded: LoadResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn load_execution_round_trips_and_is_left_out_when_unremarkable() {
+        let mut result = LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_s: 1.0,
+            vus: 5,
+            throughput_rps: 10.0,
+            latency_p50_ms: 1.0,
+            latency_p95_ms: 2.0,
+            latency_p99_ms: 3.0,
+            error_rate: 0.0,
+            total_requests: 10,
+            thresholds_met: false,
+            samples: vec![],
+            execution: LoadExecution::default(),
+        };
+        let plain = serde_json::to_string(&result).expect("json");
+        assert!(!plain.contains("execution"), "{plain}");
+        let old: LoadResult = serde_json::from_str(&plain).expect("an older journal still reads");
+        assert_eq!(old.execution, LoadExecution::default());
+
+        result.execution = LoadExecution {
+            planned_windows: Some(60),
+            completed_windows: Some(35),
+            unanswered_windows: 2,
+            aborted: true,
+            reasons: vec!["25 of 60 windows were skipped".into()],
+        };
+        assert!(result.execution.truncated());
+        let decoded: LoadResult = toon_round_trip(&result);
+        assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn a_tool_that_counts_no_windows_is_never_truncated() {
+        assert!(!LoadExecution::default().truncated());
+        let full = LoadExecution {
+            planned_windows: Some(3),
+            completed_windows: Some(3),
+            ..LoadExecution::default()
+        };
+        assert!(!full.truncated());
     }
 
     #[test]
