@@ -132,11 +132,13 @@ pub(crate) fn resolve(metric: &str, m: &Measurements<'_>) -> Option<f64> {
         // A run that sent no request measured no latency and no error
         // rate; its zeroes are absence of evidence, not a fast service.
         let measured = |value: f64| (l.total_requests > 0).then_some(value);
+        // Nor is there a latency when every request failed.
+        let answered = |value: f64| measured(value).filter(|_| l.error_rate < 1.0);
         return match rest {
             "throughput_rps" => Some(l.throughput_rps),
-            "latency_p50_ms" => measured(l.latency_p50_ms),
-            "latency_p95_ms" => measured(l.latency_p95_ms),
-            "latency_p99_ms" => measured(l.latency_p99_ms),
+            "latency_p50_ms" => answered(l.latency_p50_ms),
+            "latency_p95_ms" => answered(l.latency_p95_ms),
+            "latency_p99_ms" => answered(l.latency_p99_ms),
             "error_rate" => measured(l.error_rate),
             // u64 → f64: request counts are far below 2^53.
             #[allow(clippy::cast_precision_loss)]
@@ -337,6 +339,24 @@ mod tests {
             samples: &samples,
         };
         assert_eq!(resolve("load.latency_p50_ms", &no_requests), None);
+        // Every request failed: an error rate, but still no latency.
+        let all_failed = LoadResult {
+            total_requests: 40,
+            latency_p50_ms: 0.0,
+            latency_p95_ms: 0.0,
+            latency_p99_ms: 0.0,
+            error_rate: 1.0,
+            thresholds_met: false,
+            ..load()
+        };
+        let nothing_answered = Measurements {
+            during: None,
+            post: Some(&post),
+            load: Some(&all_failed),
+            samples: &samples,
+        };
+        assert_eq!(resolve("load.latency_p95_ms", &nothing_answered), None);
+        assert_eq!(resolve("load.error_rate", &nothing_answered), Some(1.0));
         assert_eq!(resolve("load.latency_p95_ms", &no_requests), None);
         assert_eq!(resolve("load.latency_p99_ms", &no_requests), None);
         assert_eq!(resolve("load.error_rate", &no_requests), None);

@@ -185,6 +185,10 @@ tumult-forecast = { path = "tumult-forecast" }
 opentelemetry-proto = { version = "0.33", features = ["gen-tonic"] }
 tonic = "0.14"
 prost = "0.14"
+# OTel-Arrow (OTAP) receive side (tumult-ingest): codec for the vendored
+# arrow_service.proto and the CBOR carrier of map/array attribute values.
+tonic-prost = "0.14"
+ciborium = "0.2"
 
 # Analytics reports, manual import, embedded web UI
 serde_yaml = "0.9"

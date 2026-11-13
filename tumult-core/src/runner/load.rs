@@ -65,7 +65,28 @@ pub(super) fn start_load(
     Ok((load_span_guard, load_handle))
 }
 
-/// Stop the running load test, collect results, and enrich the current
+/// How the load test is ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LoadEnd {
+    /// The method finished: let the tool wind down and report.
+    Stop,
+    /// The run was halted or interrupted: end the load now, before the
+    /// rollbacks, keeping what had been measured.
+    Abort,
+}
+
+/// Whether a declared load left evidence: a result with at least one
+/// request. `true` when the experiment declares no load.
+pub(super) fn load_has_evidence(experiment: &Experiment, result: Option<&LoadResult>) -> bool {
+    experiment.load.is_none() || result.is_some_and(|r| r.total_requests > 0)
+}
+
+/// Whether the load missed its declared thresholds.
+pub(super) fn load_missed_thresholds(result: Option<&LoadResult>) -> bool {
+    result.is_some_and(|r| !r.thresholds_met)
+}
+
+/// End the running load test, collect results, and enrich the current
 /// `resilience.load` span with result metrics.
 ///
 /// Must be called while the span guard returned by [`start_load`] is still
@@ -73,9 +94,14 @@ pub(super) fn start_load(
 pub(super) fn stop_load(
     load_handle: Option<LoadHandle>,
     load_executor: Option<&std::sync::Arc<dyn LoadExecutor>>,
+    end: LoadEnd,
 ) -> Option<LoadResult> {
     if let (Some(handle), Some(load_exec)) = (load_handle, load_executor) {
-        match load_exec.stop(handle) {
+        let collected = match end {
+            LoadEnd::Stop => load_exec.stop(handle),
+            LoadEnd::Abort => load_exec.abort(handle),
+        };
+        match collected {
             Ok(result) => {
                 // Enrich the resilience.load span with result metrics
                 let span_cx = opentelemetry::Context::current();
