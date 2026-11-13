@@ -72,6 +72,29 @@
         return v == null ? 'not recovered' : `${num(v, v < 10 ? 1 : 0)} s`;
     }
 
+    const UNDETERMINED = 'undetermined';
+
+    // A probe that was not watched long enough after the fault has no
+    // recovery time, and was not seen to stay out either.
+    function probeRecovery(p: ProbeImpact): string {
+        if (p.recovery?.status === 'undetermined') return UNDETERMINED;
+        return seconds(p.recovery?.recovery_time_s);
+    }
+
+    // No time, and no probe that was seen to stay out: nothing was watched.
+    function runRecovery(r: RunImpact): string {
+        const blind = r.recovery_time_s == null && !r.unrecovered_probes && r.undetermined_probes;
+        return blind ? UNDETERMINED : seconds(r.recovery_time_s);
+    }
+
+    function undetermined(r: RunImpact): string {
+        const n = r.undetermined_probes ?? 0;
+        const of = r.evaluated_probes ?? n;
+        const noun = of === 1 ? 'probe' : 'probes';
+        const verb = n === 1 ? 'was' : 'were';
+        return `${n} of ${of} ${noun} ${verb} not sampled long enough after the fault to tell whether it recovered`;
+    }
+
     // The headline is "not recovered" as soon as one probe never settled;
     // this says how many of the evaluated probes that was.
     function unrecovered(r: RunImpact): string {
@@ -127,10 +150,15 @@
                     peak impact <strong>{num(impact.impact_peak)}×</strong> band half-width
                 </span>
             {/if}
-            <span>recovery <strong>{seconds(impact.recovery_time_s)}</strong></span>
+            <span>recovery <strong>{runRecovery(impact)}</strong></span>
             {#if impact.unrecovered_probes}
                 <span class="warn" data-testid="impact-unrecovered">
                     {unrecovered(impact)}
+                </span>
+            {/if}
+            {#if impact.undetermined_probes}
+                <span class="unknown" data-testid="impact-undetermined">
+                    {undetermined(impact)}
                 </span>
             {/if}
             {#if impact.degenerate_band}
@@ -161,11 +189,11 @@
                         windows={[{ from: p.fault.start_ms, to: p.fault.end_ms, label: 'fault' }]}
                         marks={marks(p)}
                     />
-                    <div class="facts">
+                    <div class="facts" data-testid="impact-probe-{p.probe}">
                         <span>peak {multiple(p.impact?.during_peak)}</span>
                         <span>mean during fault {multiple(p.impact?.during_mean)}</span>
                         <span>outside the band {pct(p.impact?.during_outside_ratio)}</span>
-                        <span>recovery {seconds(p.recovery?.recovery_time_s)}</span>
+                        <span>recovery {probeRecovery(p)}</span>
                         <span>counterfactual: {referenceLabel(p)}</span>
                         {#if p.degenerate_band}
                             <span class="warn" data-testid="impact-degenerate">{DEGENERATE}</span>
@@ -210,5 +238,8 @@
     }
     .warn {
         color: var(--warn);
+    }
+    .unknown {
+        font-style: italic;
     }
 </style>

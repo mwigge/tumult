@@ -340,6 +340,25 @@ async fn forecast_honours_environment_scopes() {
     assert_eq!(status, 404, "{body}");
 }
 
+/// A finished run with no probe samples of its own.
+async fn seed_bare_run(srv: &TestServer, run_id: &str, experiment_id: &str) {
+    let run = run_id.to_string();
+    let exp = experiment_id.to_string();
+    exec_write(srv, move |w| {
+        w.insert_run(&tumult_lake::NewRun {
+            id: run.clone(),
+            registry_id: "reg-impact".into(),
+            params_json: None,
+            queued_at_ns: now_ns() - 600 * NS,
+            actor: None,
+        })
+        .map_err(|e| e.to_string())?;
+        w.finish_run(&run, "passed", Some(&exp), None, None)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+}
+
 /// A run whose `health` probe was sampled once a second: `pre` steps
 /// before the fault at a flat 100 ms, 20 during-phase steps where latency
 /// triples, then 40 post-phase steps back at exactly 100 ms after a
@@ -559,6 +578,109 @@ async fn a_probe_that_never_recovered_makes_the_run_not_recovered() {
     assert_eq!(body["unrecovered_probes"], 1);
     assert_eq!(body["evaluated_probes"], 2);
     assert!(body["impact_peak"].is_number());
+}
+
+/// A probe sampled `post` times after the fault at its baseline level:
+/// 100 ± 2 before, 300 during.
+async fn seed_cut_off_probe(srv: &TestServer, experiment_id: &str, name: &str, post: i64) {
+    let exp = experiment_id.to_string();
+    let name = name.to_string();
+    let base = now_ns() - 600 * NS;
+    exec_write(srv, move |w| {
+        let mut rows = Vec::new();
+        for i in 0..60 + post {
+            let jitter = f64::from(i32::try_from(i % 5).unwrap_or(0)) - 2.0;
+            let (phase, level) = match i {
+                i if i < 40 => ("before", 100.0),
+                i if i < 60 => ("during", 300.0),
+                _ => ("post", 100.0),
+            };
+            rows.push(format!(
+                "('{exp}', '{name}', '{phase}', {}, {}, true)",
+                base + i * NS,
+                level + jitter
+            ));
+        }
+        w.execute(
+            &format!(
+                "INSERT INTO probe_samples (experiment_id, probe_name, phase, ts_ns, value, ok) \
+                 VALUES {}",
+                rows.join(", ")
+            ),
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await;
+}
+
+/// A probe that was only sampled before and during the fault, and one
+/// seen twice afterwards, were not watched long enough to be called
+/// unrecovered. They are counted apart and leave the headline alone.
+#[tokio::test]
+async fn a_probe_without_enough_post_samples_is_undetermined_not_unrecovered() {
+    let srv = spawn_server().await;
+    seed_run(&srv, "run-cut", "exp-cut", 40).await;
+    seed_cut_off_probe(&srv, "exp-cut", "cut-off", 0).await;
+    seed_cut_off_probe(&srv, "exp-cut", "seen-twice", 2).await;
+    seed_stuck_probe(&srv, "exp-other", 40).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-cut/impact").await;
+    assert_eq!(status, 200, "{body}");
+    let probes = body["probes"].as_array().unwrap();
+    let by_name = |name: &str| probes.iter().find(|p| p["probe"] == name).unwrap();
+    let health = &by_name("health")["recovery"];
+    assert_eq!(health["status"], "recovered", "{health}");
+    let cut = &by_name("cut-off")["recovery"];
+    assert_eq!(cut["status"], "undetermined", "{}", by_name("cut-off"));
+    assert_eq!(cut["observed_after_fault"], 0);
+    assert!(cut["recovery_time_s"].is_null());
+    let twice = &by_name("seen-twice")["recovery"];
+    assert_eq!(twice["status"], "undetermined", "{twice}");
+    assert_eq!(twice["observed_after_fault"], 2);
+    assert_eq!(twice["outside_after_fault"], 0, "{twice}");
+    assert_eq!(body["evaluated_probes"], 3);
+    assert_eq!(body["unrecovered_probes"], 0);
+    assert_eq!(body["undetermined_probes"], 2);
+    assert_eq!(
+        body["recovery_time_s"], health["recovery_time_s"],
+        "the headline is the probe that was watched"
+    );
+    assert!(body["recovery_time_s"].is_number());
+}
+
+/// A run where no probe was watched after the fault has no recovery time,
+/// and no probe is called unrecovered for it.
+#[tokio::test]
+async fn a_run_with_only_undetermined_probes_has_no_recovery_time() {
+    let srv = spawn_server().await;
+    seed_bare_run(&srv, "run-blind", "exp-blind").await;
+    seed_cut_off_probe(&srv, "exp-blind", "cut-off", 0).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-blind/impact").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body["recovery_time_s"].is_null());
+    assert_eq!(body["unrecovered_probes"], 0);
+    assert_eq!(body["undetermined_probes"], 1);
+    assert_eq!(body["evaluated_probes"], 1);
+    assert!(body["impact_peak"].as_f64().unwrap() > 1.0, "{body}");
+}
+
+/// A probe that stayed outside its band is unrecovered however the others
+/// were watched.
+#[tokio::test]
+async fn a_stuck_probe_is_unrecovered_next_to_an_undetermined_one() {
+    let srv = spawn_server().await;
+    seed_bare_run(&srv, "run-mixed", "exp-mixed").await;
+    seed_cut_off_probe(&srv, "exp-mixed", "cut-off", 0).await;
+    seed_stuck_probe(&srv, "exp-mixed", 40).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-mixed/impact").await;
+    assert_eq!(status, 200, "{body}");
+    let probes = body["probes"].as_array().unwrap();
+    let stuck = probes.iter().find(|p| p["probe"] == "stuck").unwrap();
+    assert_eq!(stuck["recovery"]["status"], "unrecovered", "{stuck}");
+    assert!(body["recovery_time_s"].is_null());
+    assert_eq!(body["unrecovered_probes"], 1);
+    assert_eq!(body["undetermined_probes"], 1);
 }
 
 /// With samples from before the fault, the counterfactual is a forecast

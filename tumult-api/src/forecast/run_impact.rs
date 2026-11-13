@@ -12,6 +12,7 @@ use axum::extract::{Path, State};
 use axum::{Extension, Json};
 use serde_json::{json, Value};
 use tumult_forecast::impact::{self, FaultWindow, Impact};
+use tumult_forecast::recovery::Verdict;
 use tumult_forecast::resample::{resample, step_for_window, RegularSeries};
 use tumult_forecast::ForecastError;
 
@@ -122,9 +123,11 @@ fn recovery_json(series: &RegularSeries, impact: &Impact, first: usize) -> Value
         "recovered_at_ns": recovered_at_ns,
         "recovered_at_ms": recovered_at_ns.map(|ns| ns / MS_NS),
         "recovery_time_s": recovery.seconds(series.step_ns),
+        "status": recovery.verdict(),
         "stable_steps": recovery.stable_steps,
         "outside_during_fault": recovery.outside_during_fault,
         "outside_after_fault": recovery.outside_after_fault,
+        "observed_after_fault": recovery.observed_after_fault,
     })
 }
 
@@ -163,6 +166,7 @@ fn impact_json(
 /// One probe's answer and what it adds to the run's headline.
 struct ProbeImpact {
     json: Value,
+    verdict: Verdict,
     recovery_s: Option<f64>,
     peak: Option<f64>,
     degenerate_band: bool,
@@ -191,6 +195,7 @@ async fn probe_impact(
     let peak = impact.summary.during_peak;
     Ok(ProbeImpact {
         json: impact_json(name, &series, &impact, produced.fallback_reason),
+        verdict: impact.recovery.verdict(),
         recovery_s: impact.recovery.seconds(series.step_ns),
         peak: peak.is_finite().then(|| peak.abs()),
         degenerate_band: impact.degenerate_band,
@@ -211,6 +216,8 @@ struct Headline {
     evaluated: usize,
     /// Of those, the ones that never settled back inside their band.
     unrecovered: usize,
+    /// Of those, the ones not watched long enough after the fault to say.
+    undetermined: usize,
     slowest_recovery_s: Option<f64>,
     worst_peak: Option<f64>,
     degenerate_band: bool,
@@ -219,8 +226,10 @@ struct Headline {
 impl Headline {
     fn add(&mut self, probe: &ProbeImpact) {
         self.evaluated += 1;
-        if probe.recovery_s.is_none() {
-            self.unrecovered += 1;
+        match probe.verdict {
+            Verdict::Recovered => {}
+            Verdict::Unrecovered => self.unrecovered += 1,
+            Verdict::Undetermined => self.undetermined += 1,
         }
         self.slowest_recovery_s = larger(self.slowest_recovery_s, probe.recovery_s);
         self.worst_peak = larger(self.worst_peak, probe.peak);
@@ -229,7 +238,9 @@ impl Headline {
 
     /// The run's recovery time: the slowest probe's, and `None` (not
     /// recovered) as soon as one evaluated probe never settled. A run is
-    /// not back because most of it is.
+    /// not back because most of it is. A probe that was not watched long
+    /// enough to say is left out: it is no evidence either way, and the
+    /// time is `None` only when no probe at all was seen to recover.
     fn recovery_time_s(&self) -> Option<f64> {
         if self.unrecovered > 0 {
             return None;
@@ -316,6 +327,7 @@ pub(crate) async fn run_impact(
         "stable_steps": STABLE_STEPS,
         "recovery_time_s": headline.recovery_time_s(),
         "unrecovered_probes": headline.unrecovered,
+        "undetermined_probes": headline.undetermined,
         "evaluated_probes": headline.evaluated,
         "impact_peak": headline.worst_peak,
         "degenerate_band": headline.degenerate_band,
@@ -369,12 +381,44 @@ mod tests {
     }
 
     fn probe(recovery_s: Option<f64>, peak: Option<f64>) -> ProbeImpact {
+        let verdict = match recovery_s {
+            Some(_) => Verdict::Recovered,
+            None => Verdict::Unrecovered,
+        };
         ProbeImpact {
             json: Value::Null,
+            verdict,
             recovery_s,
             peak,
             degenerate_band: false,
         }
+    }
+
+    /// A probe nobody watched after the fault is no evidence either way:
+    /// it neither nulls the time the watched probes took nor counts as one
+    /// that did not come back.
+    #[test]
+    fn an_undetermined_probe_leaves_the_headline_alone() {
+        let unwatched = ProbeImpact {
+            verdict: Verdict::Undetermined,
+            ..probe(None, Some(9.0))
+        };
+        let mut headline = Headline::default();
+        headline.add(&unwatched);
+        assert_eq!(headline.recovery_time_s(), None, "nothing was seen");
+        headline.add(&probe(Some(4.0), Some(1.0)));
+        assert_eq!(headline.recovery_time_s(), Some(4.0));
+        assert_eq!(
+            (
+                headline.unrecovered,
+                headline.undetermined,
+                headline.evaluated
+            ),
+            (0, 1, 2)
+        );
+        assert_eq!(headline.worst_peak, Some(9.0), "its peak still counts");
+        headline.add(&probe(None, None));
+        assert_eq!(headline.recovery_time_s(), None);
     }
 
     #[test]

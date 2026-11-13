@@ -281,6 +281,87 @@ test('a run whose probes all recovered has no unrecovered note', async ({ page }
     await page.goto('/runs/run-1');
     await expect(page.getByTestId('impact-summary')).toContainText('10 s');
     await expect(page.getByTestId('impact-unrecovered')).toHaveCount(0);
+    await expect(page.getByTestId('impact-undetermined')).toHaveCount(0);
+});
+
+// A probe that was not sampled after the fault: no recovery was seen, and
+// none was ruled out either.
+const unwatched = {
+    ...probe,
+    probe: 'error-rate',
+    recovery: {
+        ...probe.recovery,
+        recovered_at_ns: null,
+        recovered_at_ms: null,
+        recovery_time_s: null,
+        status: 'undetermined',
+        outside_after_fault: 0,
+        observed_after_fault: 0,
+    },
+};
+
+test('a probe not watched after the fault is undetermined, not unrecovered', async ({ page }) => {
+    const body = {
+        ...impact,
+        unrecovered_probes: 0,
+        undetermined_probes: 1,
+        evaluated_probes: 2,
+        probes: [probe, unwatched],
+    };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const summary = page.getByTestId('impact-summary');
+    // The headline is the time of the probe that was watched.
+    await expect(summary).toContainText('recovery 10 s');
+    await expect(summary).not.toContainText('not recovered');
+    await expect(page.getByTestId('impact-undetermined')).toContainText(
+        '1 of 2 probes was not sampled long enough after the fault',
+    );
+    await expect(page.getByTestId('impact-unrecovered')).toHaveCount(0);
+    const facts = page.getByTestId('impact-probe-error-rate');
+    await expect(facts).toContainText('recovery undetermined');
+    await expect(facts).not.toContainText('not recovered');
+});
+
+test('a run with no probe watched after the fault has an undetermined recovery', async ({
+    page,
+}) => {
+    const body = {
+        ...impact,
+        recovery_time_s: null,
+        unrecovered_probes: 0,
+        undetermined_probes: 1,
+        evaluated_probes: 1,
+        probes: [unwatched],
+    };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const summary = page.getByTestId('impact-summary');
+    await expect(summary).toContainText('recovery undetermined');
+    await expect(summary).not.toContainText('not recovered');
+    await expect(page.getByTestId('impact-undetermined')).toContainText('1 of 1 probe was');
+});
+
+test('an unrecovered probe outranks an undetermined one in the headline', async ({ page }) => {
+    const stuck = {
+        ...unwatched,
+        probe: 'latency',
+        recovery: { ...unwatched.recovery, status: 'unrecovered', outside_after_fault: 5 },
+    };
+    const body = {
+        ...impact,
+        recovery_time_s: null,
+        unrecovered_probes: 1,
+        undetermined_probes: 1,
+        evaluated_probes: 2,
+        probes: [stuck, unwatched],
+    };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    await expect(page.getByTestId('impact-summary')).toContainText('recovery not recovered');
+    await expect(page.getByTestId('impact-unrecovered')).toContainText('1 of 2 probes');
+    await expect(page.getByTestId('impact-undetermined')).toContainText('1 of 2 probes');
+    await expect(page.getByTestId('impact-probe-latency')).toContainText('recovery not recovered');
 });
 
 test('a fallback names its reason next to the model', async ({ page }) => {

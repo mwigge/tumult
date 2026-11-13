@@ -105,14 +105,28 @@ units of a floor and not of an observed spread.
 Recovery is the first step at or after the end of the fault from which the
 probe stays inside the band for three consecutive samples. Gaps neither
 count towards the three nor reset them. `recovery_time_s` is the distance
-from the end of the fault to that step; `null` means the run ended before
-the probe settled.
+from the end of the fault to that step; `null` means no such step was
+seen. Each probe's `recovery.status` says which kind of `null` that is:
+
+| `status` | Meaning |
+|---|---|
+| `recovered` | The probe settled; `recovery_time_s` is a number. |
+| `unrecovered` | The probe never settled although it was seen outside the band after the fault (`outside_after_fault` > 0) or was sampled at least three times after it (`observed_after_fault`). |
+| `undetermined` | The probe was sampled fewer than three times after the fault and never outside the band: a probe sampled only before and during the fault, or one whose post phase is all gaps. No recovery was seen and none was ruled out. |
 
 The run-level figure is the slowest probe, and it is `null` (not
-recovered) as soon as one evaluated probe never settled: a run is not back
-because most of its probes are. `unrecovered_probes` says how many did not
-settle, out of `evaluated_probes`; a probe that could not be evaluated
-(listed with an `error`) counts in neither.
+recovered) as soon as one evaluated probe is `unrecovered`: a run is not
+back because most of its probes are. `unrecovered_probes` says how many
+those are, out of `evaluated_probes`. An `undetermined` probe is no
+evidence either way. It is counted in `undetermined_probes`, does not turn
+the run-level figure to `null` and adds no time to it; its peak still
+counts towards `impact_peak`. When no probe recovered and none is
+unrecovered, the run-level `recovery_time_s` is `null` with
+`unrecovered_probes` at 0, and the Impact panel reads "recovery
+undetermined" instead of "not recovered". The panel names the number of
+undetermined probes in its own note, apart from the unrecovered ones. A
+probe that could not be evaluated (listed with an `error`) counts in none
+of the three.
 
 ### Which samples the counterfactual comes from
 
@@ -187,7 +201,7 @@ row is served, with the `fallback_reason` of the moment.
 
 Returns one entry per probe with the series, the fault window, the impact
 summary, recovery and provenance, plus the run-level `recovery_time_s`,
-`unrecovered_probes`, `evaluated_probes`, `impact_peak` and
+`unrecovered_probes`, `undetermined_probes`, `evaluated_probes`, `impact_peak` and
 `degenerate_band`. Instants are given in nanoseconds and
 in milliseconds (`fault.start_ms`, `recovery.recovered_at_ms`, `as_of_ms`).
 A probe that cannot be compared (no samples during the

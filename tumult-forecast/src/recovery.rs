@@ -2,6 +2,11 @@
 //! observed series re-entered the forecast band and stayed inside it for
 //! `stable_steps` observed steps. The same function gives measured RTO for
 //! disaster-recovery runs and MTTR for chaos runs; only the series differs.
+//!
+//! Not having seen a recovery is not the same as having seen none: a
+//! series that was not watched for `stable_steps` observed steps after the
+//! fault, and was never seen outside the band in them, is
+//! [`Verdict::Undetermined`], not [`Verdict::Unrecovered`].
 
 use serde::Serialize;
 
@@ -24,9 +29,36 @@ pub struct Recovery {
     pub outside_during_fault: usize,
     /// Observed steps outside the band after the fault end.
     pub outside_after_fault: usize,
+    /// Observed steps (gaps excluded) after the fault end.
+    pub observed_after_fault: usize,
+}
+
+/// What the steps watched after the fault say about a series.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    /// Settled back inside the band for `stable_steps` observed steps.
+    Recovered,
+    /// Watched long enough, or seen outside the band, and never settled.
+    Unrecovered,
+    /// Not watched long enough after the fault to say either.
+    Undetermined,
 }
 
 impl Recovery {
+    /// Whether the series recovered, did not, or was not watched long
+    /// enough to tell.
+    #[must_use]
+    pub fn verdict(&self) -> Verdict {
+        if self.recovered_at.is_some() {
+            return Verdict::Recovered;
+        }
+        if self.outside_after_fault > 0 || self.observed_after_fault >= self.stable_steps {
+            return Verdict::Unrecovered;
+        }
+        Verdict::Undetermined
+    }
+
     /// `steps_after_fault` in seconds at the series' step.
     #[must_use]
     #[allow(clippy::cast_precision_loss)] // steps and nanoseconds are far below 2^52
@@ -60,6 +92,7 @@ pub fn recovery_time(
     let status = |i: usize| inside(observed[i], lower[i], upper[i]);
     let outside_during_fault = (0..fault_end).filter(|i| status(*i) == Some(false)).count();
     let outside_after_fault = (fault_end..n).filter(|i| status(*i) == Some(false)).count();
+    let observed_after_fault = (fault_end..n).filter(|i| status(*i).is_some()).count();
     let mut run_start: Option<usize> = None;
     let mut run_len = 0;
     let mut recovered_at = None;
@@ -86,6 +119,7 @@ pub fn recovery_time(
         stable_steps,
         outside_during_fault,
         outside_after_fault,
+        observed_after_fault,
     }
 }
 
@@ -128,6 +162,37 @@ mod tests {
         assert_eq!(r.seconds(1), None);
         let never = [5.0; 10];
         assert_eq!(recovery_time(&never, &LO, &HI, 1, 1).recovered_at, None);
+    }
+
+    /// A series that was not watched after the fault, or for fewer steps
+    /// than a stable run takes and never outside the band, has not been
+    /// shown to be unrecovered.
+    #[test]
+    fn a_series_not_watched_long_enough_is_undetermined() {
+        let cut_off = recovery_time(&[5.0; 4], &LO, &HI, 4, 3);
+        assert_eq!(cut_off.observed_after_fault, 0);
+        assert_eq!(cut_off.verdict(), Verdict::Undetermined);
+        let short = recovery_time(&[5.0, 5.0, 0.5, 0.5], &LO, &HI, 2, 3);
+        assert_eq!(short.recovered_at, None);
+        assert_eq!(short.observed_after_fault, 2);
+        assert_eq!(short.verdict(), Verdict::Undetermined);
+        let gaps = [5.0, 5.0, f64::NAN, 0.5, f64::NAN, f64::NAN];
+        let gapped = recovery_time(&gaps, &LO, &HI, 2, 3);
+        assert_eq!(gapped.observed_after_fault, 1);
+        assert_eq!(gapped.verdict(), Verdict::Undetermined);
+    }
+
+    #[test]
+    fn a_series_seen_outside_or_watched_long_enough_is_unrecovered() {
+        let one_outside = recovery_time(&[5.0, 5.0, 5.0], &LO, &HI, 2, 3);
+        assert_eq!(one_outside.observed_after_fault, 1);
+        assert_eq!(one_outside.verdict(), Verdict::Unrecovered);
+        let flapping = [5.0, 0.5, 5.0, 0.5, 5.0, 0.5];
+        let watched = recovery_time(&flapping, &LO, &HI, 1, 2);
+        assert_eq!(watched.observed_after_fault, 5);
+        assert_eq!(watched.verdict(), Verdict::Unrecovered);
+        let settled = recovery_time(&[5.0, 0.5, 0.5, 0.5], &LO, &HI, 1, 3);
+        assert_eq!(settled.verdict(), Verdict::Recovered);
     }
 
     #[test]

@@ -1039,9 +1039,13 @@ export interface ProbeImpact {
     recovery?: {
         recovered_at_ms: number | null;
         recovery_time_s: number | null;
+        /** `undetermined`: not watched long enough after the fault to say. */
+        status?: 'recovered' | 'unrecovered' | 'undetermined';
         stable_steps: number;
         outside_during_fault: number;
         outside_after_fault: number;
+        /** Observed samples after the fault end. */
+        observed_after_fault?: number;
     };
     forecast?: {
         context_points: number;
@@ -1057,10 +1061,15 @@ export interface RunImpact {
     experiment_id: string;
     as_of_ms: number;
     stable_steps: number;
-    /** The slowest probe's recovery; null when any evaluated probe never recovered. */
+    /**
+     * The slowest probe's recovery; null when any evaluated probe never
+     * recovered, or when none was watched long enough to be seen recovering.
+     */
     recovery_time_s: number | null;
     /** Evaluated probes that never settled back inside their band. */
     unrecovered_probes?: number;
+    /** Evaluated probes not sampled long enough after the fault to say. */
+    undetermined_probes?: number;
     /** Probes whose impact could be evaluated. */
     evaluated_probes?: number;
     impact_peak: number | null;
