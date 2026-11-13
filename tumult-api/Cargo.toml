@@ -18,15 +18,16 @@ tumult-report.workspace = true
 tumult-compliance.workspace = true
 tumult-ingest.workspace = true
 tumult-risk = { path = "../tumult-risk" }
+tumult-forecast = { path = "../tumult-forecast" }
 sha2.workspace = true
 uuid.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+reqwest.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-reqwest.workspace = true
 tempfile.workspace = true
 async-trait.workspace = true

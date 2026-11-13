@@ -89,6 +89,17 @@
 //!   finding for a while (hash-chained, Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/forecast?metric=&target=&env=&range=&horizon=` — a semantic
+//!   metric's series resampled onto a regular step and forecast `horizon`
+//!   steps ahead with a 10–90 band; the Timestral sidecar
+//!   (`TUMULTD_FORECAST_URL`) when it answers, the built-in Holt-Winters
+//!   provider otherwise, with the model's provenance in the body and the
+//!   result cached in the lake's `forecasts` table.
+//! * `GET /api/runs/{id}/impact` — the run's counterfactual: each probe's
+//!   samples against what the metric would have done without the fault
+//!   (forecast forward from pre-fault samples, or backcast from the post
+//!   phase), the per-sample impact, and the measured recovery time; 404
+//!   when the run has no probe samples.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -126,6 +137,7 @@ pub mod authoring;
 pub mod error;
 pub use error::ApiError;
 pub mod events;
+pub mod forecast;
 pub mod gamedays;
 pub mod handlers;
 pub mod import;
@@ -175,6 +187,9 @@ pub struct ApiState {
     secure_cookies: bool,
     /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
     manifests_dir: Option<Arc<PathBuf>>,
+    /// The Timestral forecasting sidecar (`TUMULTD_FORECAST_URL`); `None`
+    /// means the built-in Holt-Winters provider.
+    forecast_url: Option<Arc<String>>,
 }
 
 impl ApiState {
@@ -203,7 +218,24 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
             manifests_dir: None,
+            forecast_url: None,
         }
+    }
+
+    /// Point the forecasting endpoints at a `tumult-forecastd` sidecar.
+    #[must_use]
+    pub fn with_forecast_url(mut self, url: Option<String>) -> Self {
+        self.forecast_url = url
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty())
+            .map(Arc::new);
+        self
+    }
+
+    /// The forecasting sidecar's base URL, when configured.
+    #[must_use]
+    pub fn forecast_url(&self) -> Option<&str> {
+        self.forecast_url.as_deref().map(String::as_str)
     }
 
     /// Point the passive risk scanner at a directory of Kubernetes manifests.
@@ -265,6 +297,7 @@ impl ApiState {
             }
         });
         let manifests_dir = std::env::var_os("KRONIKA_MANIFESTS_DIR").map(PathBuf::from);
+        let forecast_url = std::env::var("TUMULTD_FORECAST_URL").ok();
         Self::new(
             db_path,
             metrics_dir,
@@ -277,6 +310,7 @@ impl ApiState {
             secure_cookies,
         )
         .with_manifests_dir(manifests_dir)
+        .with_forecast_url(forecast_url)
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.
@@ -334,6 +368,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/risks", get(handlers::risks::risks))
         .route("/api/risks/{id}/suppress", post(handlers::risks::suppress))
         .route("/api/posture", get(handlers::risks::posture))
+        .route("/api/forecast", get(forecast::forecast))
+        .route("/api/runs/{id}/impact", get(forecast::run_impact))
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

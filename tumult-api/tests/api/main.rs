@@ -11,6 +11,7 @@ mod authoring;
 mod common;
 mod endpoints;
 mod events;
+mod forecast;
 mod gamedays;
 mod gate;
 mod manual;
