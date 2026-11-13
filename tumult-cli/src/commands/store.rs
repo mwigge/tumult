@@ -6,6 +6,29 @@ use super::validate_path_no_symlink;
 
 // ── Import command ──────────────────────────────────────────
 
+/// The load evidence of a backup: `load_results.parquet` and
+/// `probe_samples.parquet`, both or neither.
+fn load_evidence_in(parquet_dir: &Path) -> Result<Option<(PathBuf, PathBuf)>> {
+    let loads = parquet_dir.join("load_results.parquet");
+    let samples = parquet_dir.join("probe_samples.parquet");
+    match (loads.exists(), samples.exists()) {
+        (true, true) => Ok(Some((loads, samples))),
+        (false, false) => Ok(None),
+        (true, false) => bail!(
+            "probe_samples.parquet not found in {} beside load_results.parquet",
+            parquet_dir.display()
+        ),
+        (false, true) => bail!(
+            "load_results.parquet not found in {} beside probe_samples.parquet",
+            parquet_dir.display()
+        ),
+    }
+}
+
+/// Import a Parquet backup: the experiments and activities, and the load
+/// results and probe samples a performance verdict is computed from when
+/// the backup holds them.
+///
 /// # Errors
 ///
 /// Returns an error if the directory is invalid, the parquet files are missing,
@@ -29,11 +52,15 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
     if !act_path.exists() {
         bail!("activities.parquet not found in {}", parquet_dir.display());
     }
+    let load_evidence = load_evidence_in(parquet_dir)?;
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     let store = AnalyticsStore::open(&db_path)?;
     store.import_tables(&exp_path, &act_path)?;
+    if let Some((loads, samples)) = &load_evidence {
+        store.import_load_tables(loads, samples)?;
+    }
 
     let stats = store.stats()?;
     println!("Imported from: {}", parquet_dir.display());
@@ -41,6 +68,9 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
         "Store now contains: {} experiments, {} activities",
         stats.experiment_count, stats.activity_count
     );
+    if load_evidence.is_some() {
+        println!("Load results and probe samples imported");
+    }
     Ok(())
 }
 
