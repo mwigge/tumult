@@ -10,6 +10,10 @@
 //!   `targets` = name globs). Only `*` is supported in globs. The first
 //!   matching assignment wins; unmapped experiments land in a visible
 //!   synthetic `(unassigned)` node directly under the root.
+//! * ICT entities attach to nodes the same way through
+//!   `assignments[].entities`: globs over the canonical lowercase entity id
+//!   (`cif-0042`). The first matching assignment wins; an entity that
+//!   matches nothing has no declared owner.
 //! * Criticality per experiment name: `critical` weighs 3, `high` weighs 2,
 //!   everything else weighs 1 (multiplied by `defaults.weight`).
 //! * **Node score = criticality-weighted mean over ALL leaves in the
@@ -76,6 +80,8 @@ struct AssignmentSpec {
     #[serde(default)]
     targets: Vec<String>,
     #[serde(default)]
+    entities: Vec<String>,
+    #[serde(default)]
     criticality: BTreeMap<String, String>,
 }
 
@@ -118,6 +124,7 @@ pub struct Node {
 struct Assignment {
     node: usize,
     targets: Vec<String>,
+    entities: Vec<String>,
     criticality: BTreeMap<String, String>,
 }
 
@@ -322,6 +329,7 @@ impl OrgTree {
             tree.assignments.push(Assignment {
                 node,
                 targets: spec.targets,
+                entities: spec.entities,
                 criticality: spec.criticality,
             });
         }
@@ -405,6 +413,44 @@ impl OrgTree {
             }
         }
         (self.unassigned, self.default_weight)
+    }
+
+    /// The node that owns an ICT entity: the first assignment with a
+    /// matching `entities` glob. Ids compare in their canonical lowercase
+    /// form; `None` when no assignment claims the entity.
+    #[must_use]
+    pub fn assign_entity(&self, entity_id: &str) -> Option<usize> {
+        let id = entity_id.to_lowercase();
+        self.entity_globs()
+            .into_iter()
+            .find(|(glob, _)| glob_match(&glob.to_lowercase(), &id))
+            .map(|(_, node)| node)
+    }
+
+    /// Every entity glob with the node it assigns to, in file order.
+    #[must_use]
+    pub fn entity_globs(&self) -> Vec<(&str, usize)> {
+        self.globs(|a| &a.entities)
+    }
+
+    /// Every experiment-name glob with the node it assigns to, in file
+    /// order.
+    #[must_use]
+    pub fn target_globs(&self) -> Vec<(&str, usize)> {
+        self.globs(|a| &a.targets)
+    }
+
+    fn globs(&self, pick: impl Fn(&Assignment) -> &Vec<String>) -> Vec<(&str, usize)> {
+        self.assignments
+            .iter()
+            .flat_map(|a| pick(a).iter().map(|glob| (glob.as_str(), a.node)))
+            .collect()
+    }
+
+    /// Ids of the declared units, root first, in file order. The synthetic
+    /// `(unassigned)` node is not a unit and is left out.
+    pub fn unit_ids(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.nodes.len()).filter(move |&id| id != self.unassigned)
     }
 
     /// Aggregate one node from the full leaf list: score, band, coverage,
@@ -502,6 +548,65 @@ defaults: {weight: 1.0, stale_days: 30}
 
     fn tree() -> OrgTree {
         OrgTree::from_yaml(YAML).unwrap()
+    }
+
+    const ENTITY_YAML: &str = "
+nodes:
+  - {name: platform, kind: domain}
+  - {name: edge-team, parent: platform}
+  - {name: db-team, parent: platform}
+assignments:
+  - team: edge-team
+    targets: [\"edge-*\"]
+    entities: [\"cif-0042\", \"cif-01*\"]
+  - team: db-team
+    entities: [\"cif-*\"]
+";
+
+    #[test]
+    fn entity_globs_assign_entities_to_teams() {
+        let t = OrgTree::from_yaml(ENTITY_YAML).unwrap();
+        let team = |id: &str| t.assign_entity(id).map(|n| t.path_of(n));
+        assert_eq!(team("cif-0042").as_deref(), Some("platform/edge-team"));
+        assert_eq!(team("cif-0107").as_deref(), Some("platform/edge-team"));
+        // First match in file order wins; later globs catch the rest.
+        assert_eq!(team("cif-0900").as_deref(), Some("platform/db-team"));
+        // Ids are compared in their canonical lower-case form.
+        assert_eq!(team("CIF-0042").as_deref(), Some("platform/edge-team"));
+        assert_eq!(team("asset-7"), None);
+    }
+
+    #[test]
+    fn assignments_without_entities_still_parse() {
+        let t = tree();
+        assert_eq!(t.assign_entity("cif-0042"), None);
+        assert!(t.entity_globs().is_empty());
+    }
+
+    #[test]
+    fn globs_and_units_are_listed_in_file_order() {
+        let t = OrgTree::from_yaml(ENTITY_YAML).unwrap();
+        let entity: Vec<(String, String)> = t
+            .entity_globs()
+            .into_iter()
+            .map(|(glob, node)| (glob.to_string(), t.path_of(node)))
+            .collect();
+        assert_eq!(
+            entity,
+            vec![
+                ("cif-0042".to_string(), "platform/edge-team".to_string()),
+                ("cif-01*".to_string(), "platform/edge-team".to_string()),
+                ("cif-*".to_string(), "platform/db-team".to_string()),
+            ]
+        );
+        let targets: Vec<(&str, usize)> = t.target_globs();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].0, "edge-*");
+        let paths: Vec<String> = t.unit_ids().map(|id| t.path_of(id)).collect();
+        assert_eq!(
+            paths,
+            vec!["", "platform", "platform/edge-team", "platform/db-team"]
+        );
     }
 
     #[test]
