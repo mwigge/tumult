@@ -500,6 +500,8 @@ pub(crate) async fn suppress(
         .map_err(|e| internal(e.to_string()))?
         .take()
         .ok_or_else(|| internal("suppression was not recorded".into()))?;
+    // Every Star Map counts suppressions: none may outlive this write.
+    state.starmap_cache.clear();
     Ok((
         StatusCode::CREATED,
         Json(json!({

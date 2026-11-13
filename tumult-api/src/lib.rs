@@ -11,7 +11,7 @@
 //! Routes (all under `/api`; reads run against a fresh read-only
 //! connection, mutations ride the daemon's single-writer channel):
 //!
-//! * `GET /api/overview?range=24h|7d|14d` — KPI cards (value, delta vs the
+//! * `GET /api/overview?range=24h|7d|14d|30d` — KPI cards (value, delta vs the
 //!   previous equal window, sparkline), experiments per day, target-system
 //!   leaderboard, fault breakdown.
 //! * `GET /api/timeseries?metric=<name>&interval=5m|1h|1d&range=…` — any
@@ -194,6 +194,8 @@ pub struct ApiState {
     secure_cookies: bool,
     /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
     manifests_dir: Option<Arc<PathBuf>>,
+    /// Star Map responses of the last 30 s, by parameters and scopes.
+    starmap_cache: Arc<handlers::starmap_cache::StarMapCache>,
 }
 
 impl ApiState {
@@ -222,6 +224,7 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
             manifests_dir: None,
+            starmap_cache: Arc::default(),
         }
     }
 

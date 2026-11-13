@@ -3,35 +3,8 @@
 
 use std::collections::BTreeSet;
 
-use super::build::{tier_rank, Builder, ROOT, UNASSIGNED};
-use super::input::GlobRow;
-use super::model::{EdgeSource, StarKind, StarRel};
-
-/// Minimal glob: `*` matches any run of characters, everything else is
-/// literal. The same rule `org.yaml` assignments use for experiment
-/// names, repeated here because this crate sits below the one that
-/// parses the file.
-pub(super) fn glob_match(pattern: &str, name: &str) -> bool {
-    let segments: Vec<&str> = pattern.split('*').filter(|s| !s.is_empty()).collect();
-    let Some(last) = segments.last() else {
-        return pattern.contains('*') || name.is_empty();
-    };
-    let mut rest = name;
-    for (i, segment) in segments.iter().enumerate() {
-        if i == 0 && !pattern.starts_with('*') {
-            let Some(stripped) = rest.strip_prefix(segment) else {
-                return false;
-            };
-            rest = stripped;
-            continue;
-        }
-        let Some(at) = rest.find(segment) else {
-            return false;
-        };
-        rest = &rest[at + segment.len()..];
-    }
-    pattern.ends_with('*') || name.ends_with(last)
-}
+use super::build::{flag, org_id, tier_rank, Builder, ROOT, UNASSIGNED};
+use super::model::{EdgeSource, Flag, StarKind, StarRel};
 
 impl Builder<'_> {
     /// Resolve owners, then give every spine node its parent.
@@ -54,25 +27,33 @@ impl Builder<'_> {
         self.add_unassigned();
     }
 
-    /// The first glob, in file order, that matches `name` and names an
-    /// existing unit.
-    fn first_glob(&self, globs: &[GlobRow], name: &str) -> Option<String> {
-        globs
-            .iter()
-            .filter(|g| glob_match(&g.pattern, name))
-            .map(|g| format!("org:{}", g.path))
-            .find(|id| self.graph.has(id))
+    /// The unit an owner path resolved by the caller stands for, when
+    /// that unit is on the map.
+    fn unit_at(&self, path: Option<&String>) -> Option<String> {
+        path.map(|path| org_id(path))
+            .filter(|id| self.graph.has(id))
+    }
+
+    /// The unit `org.yaml` assigns an entity to. The key is the entity id
+    /// as reported, which is the node's label.
+    fn declared_owner(&self, entity: &str) -> Option<String> {
+        let key = &self.graph.nodes.get(entity)?.label;
+        self.unit_at(self.inputs.entity_owners.get(key))
     }
 
     /// The org unit an `ict.entity.owner` value names, by path or name.
     fn unit_named(&self, owner: &str) -> Option<String> {
-        let by_path = format!("org:{owner}");
+        let by_path = org_id(owner);
         if by_path != ROOT && self.graph.has(&by_path) {
             return Some(by_path);
         }
         self.facts.org_names.get(owner).cloned()
     }
 
+    /// The owner of the experiments run against `systems`. The names are
+    /// walked in byte order and the first one that has an owner decides,
+    /// so the answer never depends on run or row order: of `b-exp` (edge)
+    /// and `c-exp` (data), `b-exp` wins.
     fn owner_by_experiments(&self, systems: &BTreeSet<String>) -> Option<String> {
         let names: BTreeSet<&String> = systems
             .iter()
@@ -81,11 +62,11 @@ impl Builder<'_> {
             .collect();
         names
             .into_iter()
-            .find_map(|name| self.first_glob(&self.inputs.experiment_globs, name))
+            .find_map(|name| self.unit_at(self.inputs.experiment_owners.get(name)))
     }
 
-    /// Owner of an entity: telemetry first, then the entity globs, then
-    /// the experiment-name assignment of its systems.
+    /// Owner of an entity: telemetry first, then its `org.yaml`
+    /// assignment, then the assignment of its systems' experiments.
     fn entity_owner(&self, entity: &str) -> Option<(String, EdgeSource)> {
         let reported = self.facts.ent_owners.get(entity);
         let telemetry = reported
@@ -95,13 +76,34 @@ impl Builder<'_> {
         if let Some(unit) = telemetry {
             return Some((unit, EdgeSource::Telemetry));
         }
-        let key = entity.strip_prefix("ent:").unwrap_or(entity);
-        if let Some(unit) = self.first_glob(&self.inputs.entity_globs, key) {
+        if let Some(unit) = self.declared_owner(entity) {
             return Some((unit, EdgeSource::Declared));
         }
         let systems = self.facts.ent_systems.get(entity)?;
         let unit = self.owner_by_experiments(systems)?;
         Some((unit, EdgeSource::Declared))
+    }
+
+    /// Warnings about who owns an entity: telemetry naming more than one
+    /// owner, and telemetry disagreeing with `org.yaml`. An owner value
+    /// that names no unit counts as itself, so it disagrees with any
+    /// declared unit.
+    fn owner_flags(&self, entity: &str) -> Vec<Flag> {
+        let empty = BTreeSet::new();
+        let reported = self.facts.ent_owners.get(entity).unwrap_or(&empty);
+        let named: BTreeSet<String> = reported
+            .iter()
+            .map(|owner| self.unit_named(owner).unwrap_or_else(|| owner.clone()))
+            .collect();
+        let mut flags = Vec::new();
+        if named.len() > 1 {
+            flags.push(Flag::MultipleOwners);
+        }
+        let declared = self.declared_owner(entity);
+        if declared.is_some_and(|unit| named.iter().any(|n| *n != unit)) {
+            flags.push(Flag::OwnerConflict);
+        }
+        flags
     }
 
     fn set_parent(&mut self, id: &str, parent: &str) {
@@ -121,7 +123,14 @@ impl Builder<'_> {
 
     fn place_entity(&mut self, entity: &str) {
         let owner = self.entity_owner(entity);
+        let flags = self.owner_flags(entity);
         self.own(entity, owner);
+        let Some(node) = self.graph.nodes.get_mut(entity) else {
+            return;
+        };
+        for found in flags {
+            flag(node, found);
+        }
     }
 
     /// The entity a node hangs from: the most critical, then the
@@ -176,24 +185,5 @@ impl Builder<'_> {
             .ensure(UNASSIGNED, StarKind::Org, "(unassigned)", false);
         node.org_kind = Some("unassigned".to_string());
         node.parent = Some(ROOT.to_string());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::glob_match;
-
-    #[test]
-    fn glob_matches_like_org_yaml_assignments() {
-        assert!(glob_match("cif-*", "cif-0042"));
-        assert!(glob_match("*-0042", "cif-0042"));
-        assert!(glob_match("cif-*42", "cif-0042"));
-        assert!(glob_match("*", "anything"));
-        assert!(glob_match("cif-0042", "cif-0042"));
-        assert!(!glob_match("cif-0042", "cif-00420"));
-        assert!(!glob_match("cif-*", "xcif-0042"));
-        assert!(!glob_match("*-0043", "cif-0042"));
-        assert!(!glob_match("", "cif-0042"));
-        assert!(glob_match("", ""));
     }
 }

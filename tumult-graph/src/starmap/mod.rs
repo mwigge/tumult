@@ -5,35 +5,35 @@
 mod build;
 mod cluster;
 mod graph;
+mod ids;
 mod input;
 mod model;
 mod overlay;
 mod prune;
+mod rollup;
 mod spine;
 #[cfg(test)]
 mod tests;
 
 pub use input::{
     ArticleRow, CallRow, CoverFrom, CoverRow, DefinitionRow, DependsRow, ExperimentRow, GapRow,
-    GlobRow, OrgUnitRow, PostureRow, RiskRow, RunRow, ServiceRow, StarInputs, StarQuery,
+    OrgUnitRow, PostureRow, RiskRow, RiskSubject, RunRow, ServiceRow, StarInputs, StarQuery,
     SuppressionRow, SystemRow, WorkloadRow, DEFAULT_BUDGET, DEFAULT_DEPTH, MAX_BUDGET, MAX_DEPTH,
 };
 pub use model::{
-    ClusterWorst, Counts, EdgeSource, Evidence, Gap, Posture, RiskSummary, Sources, StarCluster,
-    StarEdge, StarKind, StarMap, StarNode, StarRel,
+    ClusterWorst, Counts, EdgeSource, Evidence, Flag, Gap, Posture, RiskSummary, Rollup,
+    SourceState, Sources, StarCluster, StarEdge, StarKind, StarMap, StarNode, StarRel,
 };
-
-/// Value of a `sources` entry whose source does not exist yet.
-pub const UNAVAILABLE: &str = "unavailable";
 
 /// Assemble the Star Map for one request.
 ///
-/// Builds nodes and typed edges from the rows, resolves owners (telemetry
-/// `ict.entity.owner`, then `org.yaml` entity globs, then the
-/// experiment-name assignment, else `(unassigned)`), picks one spine
-/// parent per node, attaches the overlay blocks, enforces the caller's
-/// environments, applies `focus`/`depth` and `kinds`, clusters to the
-/// budget and sorts by id. The same inputs in any row order give
+/// Builds nodes and typed edges from the rows, picks owners (telemetry
+/// `ict.entity.owner`, then the `org.yaml` assignment the caller resolved
+/// for the entity, then the one resolved for its experiments, else
+/// `(unassigned)`), picks one spine parent per node, attaches the overlay
+/// blocks, enforces the caller's environments, rolls counts up to
+/// entities and org units, applies `focus`/`depth` and `kinds`, clusters
+/// to the budget and sorts by id. The same inputs in any row order give
 /// byte-identical output.
 #[must_use]
 pub fn assemble(inputs: &StarInputs, query: &StarQuery) -> StarMap {
@@ -42,44 +42,57 @@ pub fn assemble(inputs: &StarInputs, query: &StarQuery) -> StarMap {
     builder.build();
     builder.assign_spine();
     builder.attach_overlays();
-    let mut graph = builder.graph;
+    let build::Builder {
+        mut graph,
+        facts,
+        risks_unplaced,
+        ..
+    } = builder;
     prune::apply_scope(&mut graph, scope);
+    rollup::apply(&mut graph, &facts.ent_systems);
 
     let before = graph.nodes.len();
     let depth = query
         .focus
         .as_ref()
         .map(|_| query.depth.unwrap_or(DEFAULT_DEPTH).clamp(1, MAX_DEPTH));
-    if let (Some(focus), Some(depth)) = (&query.focus, depth) {
-        prune::apply_focus(&mut graph, focus, depth);
-    }
+    let focus_found = match (&query.focus, depth) {
+        (Some(focus), Some(depth)) => Some(prune::apply_focus(&mut graph, focus, depth)),
+        _ => None,
+    };
     if let Some(kinds) = &query.kinds {
         prune::apply_kinds(&mut graph, kinds);
     }
     let pruned = before - graph.nodes.len();
+    // Counted before clustering, so the totals do not move with the budget.
+    let mut counts = overlay_counts(&graph);
+    counts.pruned = pruned;
+    counts.risks_unplaced = risks_unplaced;
     let (clusters, clustered) = cluster::apply_budget(&mut graph, query.budget);
     count_children(&mut graph);
+    counts.clustered = clustered;
+    counts.nodes = graph.nodes.len();
+    counts.edges = graph.edges.len();
 
-    let nodes: Vec<StarNode> = graph.nodes.into_values().collect();
-    let edges: Vec<StarEdge> = graph.edges.into_values().collect();
     StarMap {
         as_of_ns: inputs.as_of_ns,
         range: query.range.clone(),
         env: query.env.clone(),
         focus: query.focus.clone(),
+        focus_found,
         depth,
         disclaimer: tumult_core::compliance::EVIDENCE_DISCLAIMER,
         sources: Sources {
-            slo: UNAVAILABLE,
-            dora: UNAVAILABLE,
-            maturity: UNAVAILABLE,
-            conformance: "ok",
-            graph: "ok",
+            slo: SourceState::Unavailable,
+            dora: SourceState::Unavailable,
+            maturity: SourceState::Unavailable,
+            conformance: SourceState::Ok,
+            graph: SourceState::Ok,
         },
         maturity: None,
-        counts: counts(&nodes, edges.len(), pruned, clustered),
-        nodes,
-        edges,
+        counts,
+        nodes: graph.nodes.into_values().collect(),
+        edges: graph.edges.into_values().collect(),
         clusters,
     }
 }
@@ -97,16 +110,14 @@ fn count_children(graph: &mut graph::Graph) {
     }
 }
 
-fn counts(nodes: &[StarNode], edges: usize, pruned: usize, clustered: usize) -> Counts {
+/// Risk and gap totals over the nodes the request kept.
+fn overlay_counts(graph: &graph::Graph) -> Counts {
     // An entity's risks repeat those of its systems, so it is not summed.
-    let own = || nodes.iter().filter(|n| n.kind != StarKind::Entity);
+    let own = || graph.nodes.values().filter(|n| n.kind != StarKind::Entity);
     Counts {
-        nodes: nodes.len(),
-        edges,
-        pruned,
-        clustered,
         risks_open: own().map(|n| n.risks.open).sum(),
         risks_suppressed: own().map(|n| n.risks.suppressed).sum(),
-        gaps: nodes.iter().filter(|n| n.gap.is_some()).count(),
+        gaps: graph.nodes.values().filter(|n| n.gap.is_some()).count(),
+        ..Counts::default()
     }
 }

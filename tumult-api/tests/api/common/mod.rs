@@ -433,10 +433,19 @@ pub async fn exec_write(
 }
 
 pub async fn spawn_server() -> TestServer {
-    spawn_server_with_factory(Arc::new(|_env| Arc::new(SlowNoopExecutor))).await
+    spawn_server_with_org(ORG_YAML).await
+}
+
+/// The test server with another organisation file.
+pub async fn spawn_server_with_org(org_yaml: &str) -> TestServer {
+    spawn(Arc::new(|_env| Arc::new(SlowNoopExecutor)), org_yaml).await
 }
 
 async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory) -> TestServer {
+    spawn(factory, ORG_YAML).await
+}
+
+async fn spawn(factory: tumult_ingest::runs::ExecutorFactory, org_yaml: &str) -> TestServer {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("k.duckdb");
     let reports_dir = tmp.path().join("reports");
@@ -501,7 +510,7 @@ async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory
         metrics_dir,
         reports_dir.clone(),
         llm,
-        tumult_compliance::OrgTree::from_yaml(ORG_YAML).unwrap(),
+        tumult_compliance::OrgTree::from_yaml(org_yaml).unwrap(),
         Some(ingest.clone()),
         Some(run_queue),
         None,
@@ -529,6 +538,23 @@ pub async fn get(base: &str, path: &str) -> (u16, Value) {
     let status = resp.status().as_u16();
     let body: Value = resp.json().await.unwrap();
     (status, body)
+}
+
+/// GET with request headers; returns the status, the response headers and
+/// the raw body (a `304` has none).
+pub async fn get_with(
+    base: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+) -> (u16, reqwest::header::HeaderMap, String) {
+    let mut request = reqwest::Client::new().get(format!("{base}{path}"));
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let resp = request.send().await.unwrap();
+    let status = resp.status().as_u16();
+    let found = resp.headers().clone();
+    (status, found, resp.text().await.unwrap())
 }
 
 /// Create a user directly through the writer channel; returns the user id.

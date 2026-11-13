@@ -185,6 +185,40 @@ pub enum Gap {
     Missing,
 }
 
+/// Something about a node the reader should not trust at face value.
+/// Serialised as a sorted list of tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Flag {
+    /// The entity id does not have the agreed form
+    /// (`^[a-z][a-z0-9]*(-[a-z0-9]+)+$`, at most 63 characters). It is
+    /// shown exactly as reported, never rewritten.
+    MalformedId,
+    /// Telemetry reports more than one owner for the entity.
+    MultipleOwners,
+    /// Telemetry and `org.yaml` name different owners for the entity.
+    OwnerConflict,
+}
+
+/// What hangs below an entity or an org unit, counted. The `gap` of an
+/// entity is the best of its systems, so one tested system clears it;
+/// these counts say how many systems that hides.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Rollup {
+    pub systems: usize,
+    /// Systems with no evidence in any discipline.
+    pub untested_systems: usize,
+    /// Systems whose evidence is all stale.
+    pub stale_systems: usize,
+    /// Failed runs against those systems.
+    pub failed: u64,
+    pub risks_open: u64,
+    pub risks_suppressed: u64,
+    /// Nodes below with a gap: for an entity its systems, for an org
+    /// unit everything on its spine except entities.
+    pub gaps: usize,
+}
+
 /// Posture block, copied from the posture computation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Posture {
@@ -246,6 +280,10 @@ pub struct StarNode {
     pub maturity: Option<serde_json::Value>,
     /// Two different entity ids were reported for this service.
     pub conflict: bool,
+    /// Warnings about the node itself, sorted.
+    pub flags: Vec<Flag>,
+    /// Counts over what hangs below; entities and org units only.
+    pub rollup: Option<Rollup>,
     /// Known only from a declaration (manifest or topology file).
     pub declared: bool,
     /// Number of nodes whose spine parent is this node.
@@ -278,6 +316,8 @@ impl StarNode {
             dora: None,
             maturity: None,
             conflict: false,
+            flags: Vec::new(),
+            rollup: None,
             declared: false,
             children: 0,
             members: None,
@@ -317,14 +357,23 @@ pub struct StarCluster {
     pub worst: ClusterWorst,
 }
 
+/// Whether an overlay source answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceState {
+    Ok,
+    /// The source does not exist yet, or did not answer.
+    Unavailable,
+}
+
 /// Which overlay sources answered.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Sources {
-    pub slo: &'static str,
-    pub dora: &'static str,
-    pub maturity: &'static str,
-    pub conformance: &'static str,
-    pub graph: &'static str,
+    pub slo: SourceState,
+    pub dora: SourceState,
+    pub maturity: SourceState,
+    pub conformance: SourceState,
+    pub graph: SourceState,
 }
 
 /// Totals for the legend.
@@ -336,8 +385,12 @@ pub struct Counts {
     pub pruned: usize,
     /// Nodes collapsed into clusters.
     pub clustered: usize,
+    /// Risks and gaps are counted before clustering, so they do not
+    /// change with the node budget.
     pub risks_open: u64,
     pub risks_suppressed: u64,
+    /// Risks the caller may see that belong to no node on the map.
+    pub risks_unplaced: u64,
     pub gaps: usize,
 }
 
@@ -348,6 +401,9 @@ pub struct StarMap {
     pub range: String,
     pub env: Option<String>,
     pub focus: Option<String>,
+    /// With a `focus`: whether that node exists and the caller may see
+    /// it. `false` comes with an empty map.
+    pub focus_found: Option<bool>,
     pub depth: Option<u8>,
     pub disclaimer: &'static str,
     pub sources: Sources,

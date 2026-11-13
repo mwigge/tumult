@@ -5,8 +5,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::graph::Graph;
-use super::input::{CallRow, RunRow, ServiceRow, StarInputs, SystemRow, WorkloadRow};
-use super::model::{EdgeSource, Gap, Posture, StarKind, StarNode, StarRel};
+use super::ids;
+use super::input::{CallRow, RunRow, ServiceRow, StarInputs, SystemRow, WorkloadRow, ENTITY_LABEL};
+use super::model::{EdgeSource, Flag, Gap, Posture, StarKind, StarNode, StarRel};
 
 /// Id of the organisation root.
 pub(super) const ROOT: &str = "org:";
@@ -50,6 +51,8 @@ pub(super) struct Builder<'a> {
     pub include_runs: bool,
     pub graph: Graph,
     pub facts: Facts,
+    /// Visible risks that found no node to attach to.
+    pub risks_unplaced: u64,
 }
 
 /// Whether `env` is visible to the caller.
@@ -104,11 +107,39 @@ pub(super) fn keep_max(slot: &mut Option<i64>, value: i64) {
 }
 
 pub(super) fn sys_id(env: Option<&str>, system: &str) -> String {
-    format!("sys:{}/{system}", env.unwrap_or("-"))
+    format!("sys:{}/{}", ids::env_seg(env), ids::seg(system))
 }
 
-fn org_id(path: &str) -> String {
-    format!("org:{path}")
+pub(super) fn svc_id(service: &str) -> String {
+    format!("svc:{}", ids::seg(service))
+}
+
+/// Id of a definition the registry knows.
+pub(super) fn def_id(registry_id: &str) -> String {
+    format!("def:{}", ids::seg(registry_id))
+}
+
+/// Id of a definition known only by its experiment name. A registry id
+/// never contains an unencoded `/`, so the two forms cannot collide.
+fn named_def_id(name: &str) -> String {
+    format!("def:name/{}", ids::seg(name))
+}
+
+/// Id of a run, or of a manual record.
+pub(super) fn run_id(id: &str, manual: bool) -> String {
+    let prefix = if manual { "man" } else { "run" };
+    format!("{prefix}:{}", ids::seg(id))
+}
+
+pub(super) fn org_id(path: &str) -> String {
+    format!("org:{}", ids::path(path))
+}
+
+/// Add a flag, keeping the list sorted and free of repeats.
+pub(super) fn flag(node: &mut StarNode, flag: Flag) {
+    if let Err(at) = node.flags.binary_search(&flag) {
+        node.flags.insert(at, flag);
+    }
 }
 
 fn org_parent(path: &str) -> String {
@@ -137,6 +168,7 @@ impl<'a> Builder<'a> {
             include_runs,
             graph: Graph::default(),
             facts: Facts::default(),
+            risks_unplaced: 0,
         }
     }
 
@@ -197,32 +229,37 @@ impl<'a> Builder<'a> {
 
     fn add_org_unit(&mut self, path: &str, name: &str, kind: &str) {
         let id = org_id(path);
-        let parent = org_parent(path);
         let node = self.graph.ensure(&id, StarKind::Org, name, false);
         node.label = name.to_string();
         node.org_kind = Some(kind.to_string());
-        node.parent = Some(parent.clone());
+        node.parent = Some(org_parent(path));
         self.facts
             .org_names
             .entry(name.to_string())
             .or_insert_with(|| id.clone());
-        self.ensure_org_chain(&parent);
+        self.ensure_org_chain(path);
     }
 
     /// A unit whose ancestors are missing from the file still needs them.
-    fn ensure_org_chain(&mut self, id: &str) {
-        let mut current = id.to_string();
-        while !self.graph.has(&current) {
-            let path = current.trim_start_matches("org:").to_string();
-            let label = path.rsplit('/').next().unwrap_or_default().to_string();
-            let parent = org_parent(&path);
-            let node = self.graph.ensure(&current, StarKind::Org, &label, false);
+    /// Walks the path itself, never an id.
+    fn ensure_org_chain(&mut self, path: &str) {
+        let mut current = path;
+        while let Some((head, _)) = current.rsplit_once('/') {
+            let id = org_id(head);
+            if self.graph.has(&id) {
+                return;
+            }
+            let label = head.rsplit('/').next().unwrap_or_default();
+            let node = self.graph.ensure(&id, StarKind::Org, label, false);
             node.org_kind = Some("unit".to_string());
-            node.parent = Some(parent.clone());
-            current = parent;
+            node.parent = Some(org_parent(head));
+            current = head;
         }
     }
 
+    /// The entity node for an id as reported. The id is opaque: it is
+    /// trimmed and otherwise kept as it is, and one that does not have
+    /// the agreed form is flagged, not rewritten.
     fn ensure_entity(
         &mut self,
         raw: &str,
@@ -230,9 +267,12 @@ impl<'a> Builder<'a> {
         owner: Option<&str>,
         declared: bool,
     ) -> String {
-        let key = raw.trim().to_lowercase();
-        let id = format!("ent:{key}");
-        let node = self.graph.ensure(&id, StarKind::Entity, &key, declared);
+        let key = raw.trim();
+        let id = format!("ent:{}", ids::seg(key));
+        let node = self.graph.ensure(&id, StarKind::Entity, key, declared);
+        if !ids::well_formed_entity(key) {
+            flag(node, Flag::MalformedId);
+        }
         raise_tier(node, tier);
         if let Some(owner) = owner {
             self.facts
@@ -246,8 +286,11 @@ impl<'a> Builder<'a> {
 
     fn ensure_system(&mut self, env: Option<&str>, name: &str, declared: bool) -> String {
         let id = sys_id(env, name);
+        let known = self.graph.has(&id);
         let node = self.graph.ensure(&id, StarKind::System, name, declared);
-        node.env = env.map(str::to_string);
+        if !known {
+            node.env = env.map(str::to_string);
+        }
         self.facts
             .sys_by_name
             .entry(name.to_string())
@@ -258,7 +301,7 @@ impl<'a> Builder<'a> {
 
     fn ensure_component(&mut self, system: &str, component: &str, declared: bool) -> String {
         let key = system.strip_prefix("sys:").unwrap_or(system);
-        let id = format!("cmp:{key}/{component}");
+        let id = format!("cmp:{key}/{}", ids::seg(component));
         let env = self.graph.nodes.get(system).and_then(|n| n.env.clone());
         let node = self
             .graph
@@ -287,7 +330,7 @@ impl<'a> Builder<'a> {
         if !in_scope(self.scope, env) {
             return;
         }
-        let svc = format!("svc:{}", row.service);
+        let svc = svc_id(&row.service);
         let node = self
             .graph
             .ensure(&svc, StarKind::Service, &row.service, false);
@@ -384,7 +427,7 @@ impl<'a> Builder<'a> {
             let Some(registry_id) = &row.id else {
                 continue;
             };
-            let id = format!("def:{registry_id}");
+            let id = def_id(registry_id);
             self.facts
                 .def_ids
                 .entry(row.name.clone())
@@ -403,12 +446,18 @@ impl<'a> Builder<'a> {
 
     /// The definition node for an experiment name, created on first use.
     pub fn def_node(&mut self, name: &str) -> String {
-        let id = match self.facts.def_ids.get(name) {
-            Some(id) => id.clone(),
-            None => format!("def:{name}"),
-        };
+        let id = self.def_id_of(name);
         self.graph.ensure(&id, StarKind::Def, name, false);
         id
+    }
+
+    /// The id an experiment name stands for: its registered definition,
+    /// else the by-name form.
+    fn def_id_of(&self, name: &str) -> String {
+        match self.facts.def_ids.get(name) {
+            Some(id) => id.clone(),
+            None => named_def_id(name),
+        }
     }
 
     fn visible_runs(&self) -> Vec<&'a RunRow> {
@@ -504,8 +553,7 @@ impl<'a> Builder<'a> {
     }
 
     fn add_run_node(&mut self, run: &RunRow) {
-        let prefix = if run.manual { "man" } else { "run" };
-        let id = format!("{prefix}:{}", run.id);
+        let id = run_id(&run.id, run.manual);
         let node = self
             .graph
             .ensure(&id, StarKind::Run, &run.experiment, false);
@@ -545,7 +593,8 @@ impl<'a> Builder<'a> {
 
     /// Systems a workload belongs to: the labelled one (created when no
     /// telemetry or evidence knows it), else a system sharing its name
-    /// or `app` label.
+    /// or `app` label. A system is only ever created in an environment
+    /// the caller may see.
     fn workload_systems(
         &mut self,
         row: &WorkloadRow,
@@ -556,6 +605,9 @@ impl<'a> Builder<'a> {
             let found = self.systems_named(name, env);
             if !found.is_empty() {
                 return found;
+            }
+            if !in_scope(self.scope, env) {
+                return Vec::new();
             }
             return vec![self.ensure_system(env, name, true)];
         }
@@ -574,14 +626,19 @@ impl<'a> Builder<'a> {
         if let Some(found) = self.facts.svc_k8s.get(&key) {
             return (found.iter().cloned().collect(), EdgeSource::Telemetry);
         }
-        let by_app = app
-            .map(|app| format!("svc:{app}"))
-            .filter(|id| self.graph.has(id));
+        let by_app = app.map(svc_id).filter(|id| self.graph.has(id));
         (by_app.into_iter().collect(), EdgeSource::Declared)
     }
 
+    /// A workload is checked against the caller's environments before
+    /// anything is built from it: one labelled for a hidden environment,
+    /// or one with no environment and nothing visible to run under,
+    /// leaves no node, edge, tier or owner behind.
     fn add_workload(&mut self, row: &WorkloadRow) {
         let env_label = label(row, "resilience.target.environment");
+        if env_label.is_some() && !in_scope(self.scope, env_label) {
+            return;
+        }
         let app = label(row, "app").or_else(|| label(row, "app.kubernetes.io/name"));
         let systems = self.workload_systems(row, env_label, app);
         let components: Vec<String> = match label(row, "resilience.target.component") {
@@ -592,7 +649,11 @@ impl<'a> Builder<'a> {
             None => Vec::new(),
         };
         let (services, service_source) = self.workload_services(row, app);
-        if let Some(entity) = label(row, "ict.entity.id") {
+        let homeless = services.is_empty() && systems.is_empty();
+        if homeless && !in_scope(self.scope, env_label) {
+            return;
+        }
+        if let Some(entity) = label(row, ENTITY_LABEL) {
             self.declare_entity(row, entity, [&systems, &components, &services]);
         }
         let (hosts, source) = if !services.is_empty() {
@@ -608,9 +669,9 @@ impl<'a> Builder<'a> {
             .min();
         let id = format!(
             "wl:{}/{}/{}",
-            row.namespace,
-            row.kind.to_lowercase(),
-            row.name
+            ids::seg(&row.namespace),
+            ids::seg(&row.kind.to_lowercase()),
+            ids::seg(&row.name)
         );
         let node = self.graph.ensure(&id, StarKind::Workload, &row.name, false);
         node.env = env_label.map(str::to_string).or(host_env);
@@ -651,8 +712,8 @@ impl<'a> Builder<'a> {
                 .cmp(&(&b.client, &b.server, b.calls, b.errors))
         });
         for call in calls {
-            let from = format!("svc:{}", call.client);
-            let to = format!("svc:{}", call.server);
+            let from = svc_id(&call.client);
+            let to = svc_id(&call.server);
             if !self.graph.has(&from) || !self.graph.has(&to) {
                 continue;
             }
@@ -672,8 +733,8 @@ impl<'a> Builder<'a> {
         let mut rows: Vec<_> = self.inputs.depends.iter().collect();
         rows.sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
         for row in rows {
-            let from = format!("svc:{}", row.from);
-            let to = format!("svc:{}", row.to);
+            let from = svc_id(&row.from);
+            let to = svc_id(&row.to);
             self.graph.ensure(&from, StarKind::Service, &row.from, true);
             self.graph.ensure(&to, StarKind::Service, &row.to, true);
             self.graph
@@ -690,32 +751,29 @@ impl<'a> Builder<'a> {
             .collect();
         for cover in &self.inputs.covers {
             let from = match &cover.from {
-                super::input::CoverFrom::Experiment(name) => match self.facts.def_ids.get(name) {
-                    Some(id) => id.clone(),
-                    None => format!("def:{name}"),
-                },
-                super::input::CoverFrom::Manual(id) => format!("man:{id}"),
+                super::input::CoverFrom::Experiment(name) => self.def_id_of(name),
+                super::input::CoverFrom::Manual(id) => run_id(id, true),
             };
             if !self.graph.has(&from) {
                 continue;
             }
             let label = labels.get(cover.article.as_str()).copied();
             let label = label.unwrap_or(cover.article.as_str());
-            self.graph
-                .ensure(&cover.article, StarKind::Article, label, false);
+            let article = ids::path(&cover.article);
+            self.graph.ensure(&article, StarKind::Article, label, false);
             let source = if cover.evidenced {
                 EdgeSource::Evidence
             } else {
                 EdgeSource::Declared
             };
-            self.graph
-                .link(&from, StarRel::Covers, &cover.article, source);
+            self.graph.link(&from, StarRel::Covers, &article, source);
         }
     }
 
     fn add_gaps(&mut self) {
         for gap in &self.inputs.gaps {
-            let node = self.graph.ensure(&gap.id, StarKind::Gap, &gap.label, false);
+            let id = ids::path(&gap.id);
+            let node = self.graph.ensure(&id, StarKind::Gap, &gap.label, false);
             node.gap = Some(Gap::Missing);
         }
     }

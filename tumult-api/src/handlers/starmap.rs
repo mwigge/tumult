@@ -10,27 +10,41 @@
 //!
 //! Scoped principals see only their environments: every query filters on
 //! the environment, and the assembly drops what is left without one.
+//!
+//! Reading and assembling both happen on the blocking pool. The
+//! serialised response is kept for 30 s under a key made of the
+//! parameters and the principal's scopes, and carries an `ETag`; a
+//! request with `Cache-Control: no-cache` reads the lake again.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path as FsPath, PathBuf};
+use std::sync::Arc;
+use std::time::Instant;
 
 use axum::extract::{Query, State};
-use axum::{Extension, Json};
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::Extension;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tumult_compliance::OrgTree;
 use tumult_graph::starmap::{
     assemble, ArticleRow, CallRow, CoverFrom, CoverRow, DefinitionRow, DependsRow, ExperimentRow,
-    GapRow, GlobRow, OrgUnitRow, PostureRow, RiskRow, RunRow, ServiceRow, StarInputs, StarKind,
-    StarQuery, SuppressionRow, SystemRow, WorkloadRow, DEFAULT_BUDGET, MAX_BUDGET, MAX_DEPTH,
+    GapRow, OrgUnitRow, PostureRow, RiskRow, RiskSubject, RunRow, ServiceRow, StarInputs, StarKind,
+    StarMap, StarQuery, SuppressionRow, SystemRow, WorkloadRow, DEFAULT_BUDGET, MAX_BUDGET,
+    MAX_DEPTH,
 };
 use tumult_lake::Reader;
 use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, ApiError};
+use crate::handlers::starmap_cache::CachedMap;
 use crate::handlers::{conformance, risks};
-use crate::sql_util::{and_pred, env_scope_where, internal, now_ns, parse_range, with_reader};
+use crate::sql_util::{
+    and_pred, env_scope_where, invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS,
+};
 use crate::ApiState;
 
 const DEFAULT_RANGE: &str = "7d";
@@ -56,23 +70,6 @@ struct Window {
     to_ns: i64,
     /// Empty means every environment.
     envs: Vec<String>,
-}
-
-/// The org tree flattened to rows, taken before the blocking read.
-struct OrgRows {
-    units: Vec<OrgUnitRow>,
-    entity_globs: Vec<GlobRow>,
-    experiment_globs: Vec<GlobRow>,
-}
-
-/// The shared ranges plus `30d`, which only the Star Map offers: an
-/// estate changes slowly, and a month of telemetry still shows a service
-/// that reports weekly.
-fn range_seconds(range: &str) -> Option<i64> {
-    if range == "30d" {
-        return Some(30 * 86_400);
-    }
-    parse_range(range)
 }
 
 fn parse_kinds(list: &str) -> Result<Vec<StarKind>, ApiError> {
@@ -130,10 +127,8 @@ fn envs_for(principal: &Principal, env: Option<&str>) -> Result<Vec<String>, Api
 
 fn validate(params: StarMapParams, principal: &Principal) -> Result<(StarQuery, Window), ApiError> {
     let range = params.range.unwrap_or_else(|| DEFAULT_RANGE.to_string());
-    let Some(range_s) = range_seconds(&range) else {
-        return Err(bad_request(format!(
-            "invalid range {range:?}; expected 24h|7d|14d|30d"
-        )));
+    let Some(range_s) = parse_range(&range) else {
+        return Err(bad_request(invalid_range(&range)));
     };
     let envs = envs_for(principal, params.env.as_deref())?;
     let focus = params.focus.filter(|f| !f.is_empty());
@@ -158,23 +153,31 @@ fn validate(params: StarMapParams, principal: &Principal) -> Result<(StarQuery, 
     Ok((query, window))
 }
 
-fn org_rows(org: &OrgTree) -> OrgRows {
-    let glob = |(pattern, unit): (&str, usize)| GlobRow {
-        pattern: pattern.to_string(),
-        path: org.path_of(unit),
-    };
-    OrgRows {
-        units: org
-            .unit_ids()
-            .map(|id| OrgUnitRow {
-                path: org.path_of(id),
-                name: org.node(id).name.clone(),
-                kind: org.node(id).kind.clone(),
-            })
-            .collect(),
-        entity_globs: org.entity_globs().into_iter().map(glob).collect(),
-        experiment_globs: org.target_globs().into_iter().map(glob).collect(),
-    }
+fn org_units(org: &OrgTree) -> Vec<OrgUnitRow> {
+    org.unit_ids()
+        .map(|id| OrgUnitRow {
+            path: org.path_of(id),
+            name: org.node(id).name.clone(),
+            kind: org.node(id).kind.clone(),
+        })
+        .collect()
+}
+
+/// Each name with the path of the unit `owner` gives it; names nobody
+/// claims are left out. `owner` is always a method of [`OrgTree`], the
+/// one place an `org.yaml` pattern is matched.
+fn owners(
+    org: &OrgTree,
+    names: BTreeSet<String>,
+    owner: impl Fn(&str) -> Option<usize>,
+) -> BTreeMap<String, String> {
+    names
+        .into_iter()
+        .filter_map(|name| {
+            let unit = owner(&name)?;
+            Some((name, org.path_of(unit)))
+        })
+        .collect()
 }
 
 /// A non-empty string column.
@@ -250,6 +253,10 @@ fn services(
 
 /// Q2, observed calls: a child span whose parent belongs to another
 /// service. Scoped requests need both ends in an allowed environment.
+/// Both sides of the join are bounded in time: the child by the window,
+/// the parent by the window plus [`PARENT_LOOKBACK_NS`] before it, so a
+/// call whose parent started more than an hour before the window opened
+/// is not counted.
 fn calls_sql(window: &Window) -> String {
     let child = and_pred(env_scope_where("c.target_environment", &window.envs));
     let parent = and_pred(env_scope_where("p.target_environment", &window.envs));
@@ -259,9 +266,12 @@ fn calls_sql(window: &Window) -> String {
          AVG(c.duration_ns) AS avg_duration_ns \
          FROM spans c JOIN spans p ON c.parent_span_id = p.span_id \
          WHERE p.service_name <> c.service_name AND p.service_name <> '' \
-         AND c.service_name <> '' AND c.ts_ns >= {} AND c.ts_ns < {}{child}{parent} \
+         AND c.service_name <> '' AND c.ts_ns >= {from} AND c.ts_ns < {to} \
+         AND p.ts_ns >= {parent_from} AND p.ts_ns < {to}{child}{parent} \
          GROUP BY 1, 2",
-        window.from_ns, window.to_ns,
+        from = window.from_ns,
+        to = window.to_ns,
+        parent_from = window.from_ns - PARENT_LOOKBACK_NS,
     )
 }
 
@@ -285,7 +295,9 @@ fn calls(reader: &Reader, window: &Window) -> Result<Vec<CallRow>, String> {
 }
 
 /// Runs and verified manual records that started inside the window. The
-/// outcome of a run is on its root span or its completion log.
+/// outcome of a run is on its root span or its completion log; a run
+/// completes after it starts, so only logs since the window opened are
+/// joined.
 fn runs_sql(window: &Window) -> String {
     let span_scope = and_pred(env_scope_where("s.target_environment", &window.envs));
     let manual_scope = and_pred(env_scope_where("m.target_environment", &window.envs));
@@ -298,7 +310,7 @@ fn runs_sql(window: &Window) -> String {
          false AS manual \
          FROM spans s LEFT JOIN logs l \
            ON l.log_attrs['experiment_id'] = s.experiment_id \
-          AND l.body = 'experiment.completed' \
+          AND l.body = 'experiment.completed' AND l.ts_ns >= {from} \
          WHERE s.span_name = 'resilience.experiment' AND s.experiment_id IS NOT NULL \
            AND s.experiment_name IS NOT NULL \
            AND s.ts_ns >= {from} AND s.ts_ns < {to}{span_scope} \
@@ -411,25 +423,25 @@ fn workloads(inputs: &Inputs) -> Vec<WorkloadRow> {
         .collect()
 }
 
-/// Risk subjects the Star Map has a node for: a workload (by its
-/// `namespace/name`) or a registered definition (by id). Every other
-/// subject names a discipline or an objective, and the risk then belongs
-/// to its target.
-fn subjects(inputs: &Inputs) -> BTreeMap<String, String> {
+/// Risk subjects the Star Map has a node for: a workload or a registered
+/// definition (by id). Every other subject names a discipline or an
+/// objective, and the risk then belongs to its target.
+fn subjects(inputs: &Inputs) -> BTreeMap<String, RiskSubject> {
     let workloads = inputs.workloads.iter().map(|w| {
-        (
-            w.qualified_name(),
-            format!("{}/{}", namespace_of(w), w.name),
-        )
+        let subject = RiskSubject::Workload {
+            namespace: namespace_of(w),
+            name: w.name.clone(),
+        };
+        (w.qualified_name(), subject)
     });
     let definitions = inputs
         .definitions
         .iter()
-        .map(|d| (d.id.clone(), d.id.clone()));
+        .map(|d| (d.id.clone(), RiskSubject::Definition(d.id.clone())));
     workloads.chain(definitions).collect()
 }
 
-fn risk_row(risk: &Risk, subjects: &BTreeMap<String, String>) -> RiskRow {
+fn risk_row(risk: &Risk, subjects: &BTreeMap<String, RiskSubject>) -> RiskRow {
     RiskRow {
         target: risk.target.clone(),
         environment: risk.environment.clone(),
@@ -576,16 +588,14 @@ fn load(
     reader: &Reader,
     window: &Window,
     manifests_dir: Option<&FsPath>,
-    org: OrgRows,
+    org: &OrgTree,
 ) -> Result<StarInputs, String> {
     let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir)?;
     let report = tumult_risk::scan(&risk_inputs);
     let levels = conformance::levels(reader, window.from_ns, &window.envs)?;
-    Ok(StarInputs {
+    let mut inputs = StarInputs {
         as_of_ns: window.to_ns,
-        org_units: org.units,
-        entity_globs: org.entity_globs,
-        experiment_globs: org.experiment_globs,
+        org_units: org_units(org),
         services: services(reader, window, &levels)?,
         calls: calls(reader, window)?,
         systems: systems(&risk_inputs, &report),
@@ -597,25 +607,139 @@ fn load(
         articles: articles(reader)?,
         depends: depends(reader)?,
         gaps: gaps(reader)?,
+        ..StarInputs::default()
+    };
+    inputs.entity_owners = owners(org, inputs.entity_ids(), |id| org.assign_entity(id));
+    inputs.experiment_owners = owners(org, inputs.experiment_names(), |name| {
+        org.owner_of_experiment(name)
+    });
+    Ok(inputs)
+}
+
+/// Assemble inside a `starmap.assemble` span that records what was asked
+/// for and how large the answer is. `envs` is the number of environments
+/// the request is confined to, `0` for all of them.
+fn assemble_traced(
+    parent: &tracing::Span,
+    inputs: &StarInputs,
+    query: &StarQuery,
+    envs: usize,
+) -> StarMap {
+    let span = tracing::info_span!(
+        parent: parent,
+        "starmap.assemble",
+        range = %query.range,
+        envs,
+        nodes = tracing::field::Empty,
+        edges = tracing::field::Empty,
+        clustered = tracing::field::Empty,
+    );
+    let _entered = span.enter();
+    let map = assemble(inputs, query);
+    span.record("nodes", map.counts.nodes);
+    span.record("edges", map.counts.edges);
+    span.record("clustered", map.counts.clustered);
+    map
+}
+
+/// The cache key: every parameter that shapes the response, and the
+/// principal's scopes, never only the `env` parameter. JSON keeps the
+/// parts apart whatever characters they carry.
+fn cache_key(query: &StarQuery, scopes: &[String]) -> String {
+    let mut scopes = scopes.to_vec();
+    scopes.sort();
+    scopes.dedup();
+    let mut kinds: Vec<&str> = query
+        .kinds
+        .iter()
+        .flatten()
+        .map(|kind| kind.as_str())
+        .collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    json!({
+        "range": query.range,
+        "scopes": scopes,
+        "env": query.env,
+        "focus": query.focus,
+        "depth": query.depth,
+        "kinds": query.kinds.as_ref().map(|_| kinds),
+        "budget": query.budget,
+        "runs": query.include_runs,
     })
+    .to_string()
+}
+
+/// Whether the request asks for a response read from the lake now.
+fn wants_fresh(headers: &HeaderMap) -> bool {
+    headers
+        .get_all(CACHE_CONTROL)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|directive| directive.trim().eq_ignore_ascii_case("no-cache"))
+}
+
+/// Whether `If-None-Match` names `etag`. The comparison is weak, as the
+/// header asks: `W/"x"` matches `"x"`, and `*` matches anything.
+fn not_modified(headers: &HeaderMap, etag: &str) -> bool {
+    headers
+        .get_all(IF_NONE_MATCH)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .any(|candidate| candidate == "*" || candidate.trim_start_matches("W/") == etag)
+}
+
+/// The response for a serialised map: `304` when the caller already
+/// holds it. `private` because the body depends on who asked, `no-cache`
+/// so a browser revalidates with the `ETag` instead of trusting a copy.
+fn respond(map: &CachedMap, headers: &HeaderMap) -> Response {
+    let validators = [
+        (ETAG, map.etag.clone()),
+        (CACHE_CONTROL, "private, no-cache".to_string()),
+    ];
+    if not_modified(headers, &map.etag) {
+        return (StatusCode::NOT_MODIFIED, validators).into_response();
+    }
+    let json = [(CONTENT_TYPE, "application/json")];
+    (validators, json, map.body.clone()).into_response()
+}
+
+/// Read, assemble and serialise on the blocking pool.
+async fn build(state: &ApiState, query: StarQuery, window: Window) -> Result<CachedMap, ApiError> {
+    let org = Arc::clone(&state.org);
+    let manifests_dir: Option<PathBuf> = state.manifests_dir().cloned();
+    let parent = tracing::Span::current();
+    with_reader(&state.db_path, move |reader| {
+        let inputs = load(reader, &window, manifests_dir.as_deref(), &org)?;
+        let map = assemble_traced(&parent, &inputs, &query, window.envs.len());
+        serde_json::to_vec(&map)
+            .map(CachedMap::new)
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 pub(crate) async fn starmap(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<StarMapParams>,
-) -> Result<Json<Value>, ApiError> {
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
     let (query, window) = validate(params, &principal)?;
-    let org = org_rows(&state.org);
-    let manifests_dir: Option<PathBuf> = state.manifests_dir().cloned();
-    let inputs = with_reader(&state.db_path, move |reader| {
-        load(reader, &window, manifests_dir.as_deref(), org)
-    })
-    .await?;
-    let map = assemble(&inputs, &query);
-    serde_json::to_value(map)
-        .map(Json)
-        .map_err(|e| internal(e.to_string()))
+    let key = cache_key(&query, &principal.env_scopes);
+    let cache = &state.starmap_cache;
+    let cached = (!wants_fresh(&headers))
+        .then(|| cache.get(&key, Instant::now()))
+        .flatten();
+    if let Some(map) = cached {
+        return Ok(respond(&map, &headers));
+    }
+    let map = Arc::new(build(&state, query, window).await?);
+    cache.put(key, Arc::clone(&map), Instant::now());
+    Ok(respond(&map, &headers))
 }
 
 #[cfg(test)]
@@ -654,9 +778,6 @@ mod tests {
 
     #[test]
     fn parameters_are_bounded() {
-        assert_eq!(range_seconds("30d"), Some(30 * 86_400));
-        assert_eq!(range_seconds("7d"), Some(7 * 86_400));
-        assert_eq!(range_seconds("1y"), None);
         assert!(check_depth(Some(0)).is_err());
         assert!(check_depth(Some(MAX_DEPTH + 1)).is_err());
         assert_eq!(check_depth(Some(MAX_DEPTH)).ok(), Some(Some(MAX_DEPTH)));
@@ -692,6 +813,260 @@ mod tests {
         let q = runs_sql(&window);
         assert!(q.contains(&format!("s.target_environment {scope}")));
         assert!(q.contains(&format!("m.target_environment {scope}")));
+    }
+
+    #[test]
+    fn joins_are_bounded_in_time_on_both_sides() {
+        let hour = 3_600 * 1_000_000_000_i64;
+        let window = Window {
+            from_ns: 2 * hour,
+            to_ns: 3 * hour,
+            envs: vec![],
+        };
+        let q = calls_sql(&window);
+        assert!(q.contains(&format!(
+            "c.ts_ns >= {} AND c.ts_ns < {}",
+            2 * hour,
+            3 * hour
+        )));
+        assert!(
+            q.contains(&format!("p.ts_ns >= {hour} AND p.ts_ns < {}", 3 * hour)),
+            "the parent side reaches one hour before the window: {q}"
+        );
+        let q = runs_sql(&window);
+        assert!(
+            q.contains(&format!("l.ts_ns >= {}", 2 * hour)),
+            "the completion log join is bounded: {q}"
+        );
+    }
+
+    #[test]
+    fn owners_come_from_the_org_tree_matcher() {
+        let org = OrgTree::from_yaml(
+            "nodes:\n  - {name: data, kind: domain}\n  - {name: db-team, parent: data}\n\
+             assignments:\n  - team: db-team\n    targets: [\"pg-*\"]\n    entities: [\"CIF-*\"]\n",
+        )
+        .expect("org fixture");
+        let names = |list: &[&str]| list.iter().map(|n| (*n).to_string()).collect();
+        let entities = owners(&org, names(&["cif-0001", "CIF-0002", "abc-1"]), |id| {
+            org.assign_entity(id)
+        });
+        assert_eq!(
+            entities,
+            BTreeMap::from([
+                ("CIF-0002".to_string(), "data/db-team".to_string()),
+                ("cif-0001".to_string(), "data/db-team".to_string()),
+            ]),
+            "the pattern matches whatever the case, and keys stay as reported"
+        );
+        let experiments = owners(&org, names(&["pg-failover", "cache-stampede"]), |name| {
+            org.owner_of_experiment(name)
+        });
+        assert_eq!(
+            experiments,
+            BTreeMap::from([("pg-failover".to_string(), "data/db-team".to_string())])
+        );
+    }
+
+    fn query() -> StarQuery {
+        StarQuery::default()
+    }
+
+    #[test]
+    fn the_cache_key_separates_principals_and_parameters() {
+        let scopes = |list: &[&str]| -> Vec<String> { list.iter().map(|s| (*s).into()).collect() };
+        let base = cache_key(&query(), &scopes(&["demo", "prod"]));
+        assert_eq!(
+            base,
+            cache_key(&query(), &scopes(&["prod", "demo", "demo"])),
+            "scope order does not matter"
+        );
+        assert_ne!(base, cache_key(&query(), &scopes(&["demo"])));
+        assert_ne!(base, cache_key(&query(), &scopes(&[])));
+        assert_ne!(
+            cache_key(&query(), &scopes(&["a,b"])),
+            cache_key(&query(), &scopes(&["a", "b"])),
+            "scopes cannot be glued together"
+        );
+        let differing = [
+            StarQuery {
+                range: "30d".into(),
+                ..query()
+            },
+            StarQuery {
+                env: Some("demo".into()),
+                ..query()
+            },
+            StarQuery {
+                focus: Some("svc:a".into()),
+                ..query()
+            },
+            StarQuery {
+                focus: Some("svc:a".into()),
+                depth: Some(3),
+                ..query()
+            },
+            StarQuery {
+                kinds: Some(vec![StarKind::Service]),
+                ..query()
+            },
+            StarQuery {
+                budget: 7,
+                ..query()
+            },
+            StarQuery {
+                include_runs: true,
+                ..query()
+            },
+        ];
+        let mut keys: Vec<String> = differing
+            .iter()
+            .map(|q| cache_key(q, &scopes(&["demo", "prod"])))
+            .collect();
+        keys.push(base);
+        let distinct: BTreeSet<&String> = keys.iter().collect();
+        assert_eq!(distinct.len(), keys.len(), "{keys:?}");
+
+        let kinds = |list: Vec<StarKind>| StarQuery {
+            kinds: Some(list),
+            ..query()
+        };
+        assert_eq!(
+            cache_key(&kinds(vec![StarKind::System, StarKind::Service]), &[]),
+            cache_key(&kinds(vec![StarKind::Service, StarKind::System]), &[]),
+            "kind order does not matter"
+        );
+    }
+
+    fn headers(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.append(*name, value.parse().expect("header value"));
+        }
+        map
+    }
+
+    #[test]
+    fn request_headers_choose_fresh_and_not_modified() {
+        assert!(!wants_fresh(&headers(&[])));
+        assert!(wants_fresh(&headers(&[("cache-control", "no-cache")])));
+        assert!(wants_fresh(&headers(&[(
+            "cache-control",
+            "max-age=0, No-Cache"
+        )])));
+        assert!(!wants_fresh(&headers(&[("cache-control", "max-age=0")])));
+
+        let etag = "\"abc\"";
+        assert!(!not_modified(&headers(&[]), etag));
+        assert!(not_modified(
+            &headers(&[("if-none-match", "\"abc\"")]),
+            etag
+        ));
+        assert!(not_modified(
+            &headers(&[("if-none-match", "\"old\", W/\"abc\"")]),
+            etag
+        ));
+        assert!(not_modified(&headers(&[("if-none-match", "*")]), etag));
+        assert!(!not_modified(
+            &headers(&[("if-none-match", "\"abd\"")]),
+            etag
+        ));
+    }
+
+    #[test]
+    fn a_held_response_is_answered_with_304_and_no_body() {
+        let map = CachedMap::new(b"{}".to_vec());
+        let full = respond(&map, &headers(&[]));
+        assert_eq!(full.status(), StatusCode::OK);
+        assert_eq!(full.headers()[ETAG], map.etag.as_str());
+        assert_eq!(full.headers()[CACHE_CONTROL], "private, no-cache");
+        assert_eq!(full.headers()[CONTENT_TYPE], "application/json");
+
+        let mut held = HeaderMap::new();
+        held.insert(IF_NONE_MATCH, map.etag.parse().expect("etag value"));
+        let short = respond(&map, &held);
+        assert_eq!(short.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(short.headers()[ETAG], map.etag.as_str());
+        assert!(short.headers().get(CONTENT_TYPE).is_none());
+    }
+
+    /// Records the name and fields of every span, for one test.
+    #[derive(Default)]
+    struct Recorder {
+        spans: std::sync::Mutex<Vec<(String, BTreeMap<String, String>)>>,
+    }
+
+    struct Fields<'a>(&'a mut BTreeMap<String, String>);
+
+    impl tracing::field::Visit for Fields<'_> {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
+
+    impl tracing::Subscriber for Recorder {
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, attrs: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            let mut fields = BTreeMap::new();
+            attrs.record(&mut Fields(&mut fields));
+            let mut spans = self.spans.lock().expect("recorder");
+            spans.push((attrs.metadata().name().to_string(), fields));
+            tracing::span::Id::from_u64(spans.len() as u64)
+        }
+
+        fn record(&self, id: &tracing::span::Id, values: &tracing::span::Record<'_>) {
+            let mut spans = self.spans.lock().expect("recorder");
+            let at = usize::try_from(id.into_u64()).expect("span id") - 1;
+            values.record(&mut Fields(&mut spans[at].1));
+        }
+
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+        fn event(&self, _: &tracing::Event<'_>) {}
+        fn enter(&self, _: &tracing::span::Id) {}
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    #[test]
+    fn assembly_runs_inside_a_span_that_says_what_it_built() {
+        let inputs = StarInputs {
+            services: vec![
+                ServiceRow {
+                    service: "checkout".into(),
+                    system: Some("shop".into()),
+                    environment: Some("demo".into()),
+                    ..ServiceRow::default()
+                },
+                ServiceRow {
+                    service: "ledger".into(),
+                    system: Some("shop".into()),
+                    environment: Some("demo".into()),
+                    ..ServiceRow::default()
+                },
+            ],
+            ..StarInputs::default()
+        };
+        let query = StarQuery {
+            range: "14d".into(),
+            ..StarQuery::default()
+        };
+        let recorder = Arc::new(Recorder::default());
+        let map = tracing::subscriber::with_default(Arc::clone(&recorder), || {
+            assemble_traced(&tracing::Span::none(), &inputs, &query, 2)
+        });
+        assert!(map.counts.nodes > 0);
+
+        let spans = recorder.spans.lock().expect("recorder");
+        let (name, fields) = spans.first().expect("one span");
+        assert_eq!(name, "starmap.assemble");
+        assert_eq!(fields["range"], "14d");
+        assert_eq!(fields["envs"], "2");
+        assert_eq!(fields["nodes"], map.counts.nodes.to_string());
+        assert_eq!(fields["edges"], map.counts.edges.to_string());
+        assert_eq!(fields["clustered"], "0");
 
         let open = Window {
             from_ns: 100,

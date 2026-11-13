@@ -1,5 +1,5 @@
 use crate::common::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tumult_lake::SpanRow;
 
 // ---------------------------------------------------------------------------
@@ -204,27 +204,34 @@ async fn starmap_builds_the_spine_from_resource_attributes() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["range"], "7d");
 
-    // Entity ids are canonical lowercase; the owner comes from telemetry.
-    let entity = node(&body, "ent:cif-0042").expect("entity node");
+    // An entity id is shown as reported, never rewritten; one that does
+    // not have the agreed form is flagged. The owner comes from telemetry.
+    assert!(node(&body, "ent:cif-0042").is_none(), "no silent lowercase");
+    let entity = node(&body, "ent:CIF-0042").expect("entity node");
     assert_eq!(entity["kind"], "entity");
+    assert_eq!(entity["label"], "CIF-0042");
+    assert_eq!(entity["flags"], json!(["malformed_id"]));
     assert_eq!(entity["tier"], "critical");
     assert_eq!(entity["parent"], "org:data/db-team");
-    let owns = edge(&body, "org:data/db-team|owns|ent:cif-0042").expect("owns edge");
+    let owns = edge(&body, "org:data/db-team|owns|ent:CIF-0042").expect("owns edge");
     assert_eq!(owns["source"], "telemetry");
+    assert_eq!(node(&body, "ent:cif-0043").unwrap()["flags"], json!([]));
+    assert_eq!(entity["rollup"]["systems"], 1);
+    assert_eq!(entity["rollup"]["untested_systems"], 1);
 
     // The system is keyed on the promoted target column and environment.
     let system = node(&body, "sys:demo/shop").expect("system node");
     assert_eq!(system["kind"], "system");
     assert_eq!(system["env"], "demo");
-    assert_eq!(system["parent"], "ent:cif-0042");
+    assert_eq!(system["parent"], "ent:CIF-0042");
     assert_eq!(system["gap"], "missing", "nothing ever tested it");
     let component = node(&body, "cmp:demo/shop/api").expect("component node");
     assert_eq!(component["parent"], "sys:demo/shop");
     let service = node(&body, "svc:checkout").expect("service node");
     assert_eq!(service["parent"], "cmp:demo/shop/api");
     assert_eq!(service["conformance"], "spine");
-    assert!(edge(&body, "svc:checkout|implements|ent:cif-0042").is_some());
-    assert!(edge(&body, "ent:cif-0042|implements|sys:demo/shop").is_some());
+    assert!(edge(&body, "svc:checkout|implements|ent:CIF-0042").is_some());
+    assert!(edge(&body, "ent:CIF-0042|implements|sys:demo/shop").is_some());
 
     // Observed calls keep their traffic numbers.
     let calls = edge(&body, "svc:checkout|calls|svc:ledger").expect("calls edge");
@@ -237,14 +244,21 @@ async fn starmap_builds_the_spine_from_resource_attributes() {
     assert_eq!(tested["evidence"]["runs"], 2);
     assert_eq!(tested["evidence"]["failed"], 1);
     assert_eq!(tested["parent"], "org:data/db-team", "pg-* assignment");
-    assert_eq!(node(&body, "def:pg-failover").unwrap()["kind"], "def");
-    assert!(edge(&body, "sys:demo/database|tested_by|def:pg-failover").is_some());
-    let broke = edge(&body, "def:cache-stampede|broke|sys:demo/database").expect("broke edge");
+    // A definition known only by name can never take a registry id.
+    assert_eq!(node(&body, "def:name/pg-failover").unwrap()["kind"], "def");
+    assert!(edge(&body, "sys:demo/database|tested_by|def:name/pg-failover").is_some());
+    let broke = edge(&body, "def:name/cache-stampede|broke|sys:demo/database").expect("broke edge");
     assert_eq!(broke["source"], "evidence");
     assert!(
-        edge(&body, "def:pg-failover|broke|sys:demo/database").is_none(),
+        edge(&body, "def:name/pg-failover|broke|sys:demo/database").is_none(),
         "a passing run breaks nothing"
     );
+    // The org unit counts what hangs below it.
+    let team = node(&body, "org:data/db-team").expect("team node");
+    assert_eq!(team["rollup"]["systems"], 2, "{team}");
+    assert_eq!(team["rollup"]["untested_systems"], 1, "{team}");
+    assert_eq!(team["rollup"]["failed"], 1, "{team}");
+    assert!(body["counts"]["risks_unplaced"].is_u64(), "{body}");
 
     // The runner does not implement the system it tests, and the old
     // plugin-path target ids are gone.
@@ -446,7 +460,7 @@ async fn one_system_name_in_two_environments_keeps_its_own_coverage() {
         ("sys:demo/shared", "shared-chaos", "shared-dr"),
         ("sys:prod/shared", "shared-dr", "shared-chaos"),
     ] {
-        let tested = |name: &str| edge(&body, &format!("{system}|tested_by|def:{name}"));
+        let tested = |name: &str| edge(&body, &format!("{system}|tested_by|def:name/{name}"));
         assert!(tested(own).is_some(), "{system} is tested by {own}");
         assert!(tested(other).is_none(), "{system} was never run by {other}");
     }
@@ -469,4 +483,177 @@ async fn one_system_name_in_two_environments_keeps_its_own_coverage() {
     assert_eq!(envs_of(&posture["posture"]["targets"]), ["demo", "prod"]);
     let (_, scoped) = get(&srv.base, "/api/posture?env=prod").await;
     assert_eq!(envs_of(&scoped["posture"]["targets"]), ["prod"]);
+}
+
+/// `shop-team` claims every `CIF-*` entity, written the way people write
+/// it; telemetry says `db-team` owns CIF-0042.
+const ENTITY_ORG_YAML: &str = "
+nodes:
+  - {name: data, kind: domain}
+  - {name: db-team, parent: data}
+  - {name: shop-team, parent: data}
+assignments:
+  - team: db-team
+    targets: [\"pg-*\"]
+  - team: shop-team
+    entities: [\"CIF-*\"]
+";
+
+#[tokio::test]
+async fn org_patterns_assign_entities_whatever_their_case() {
+    let srv = spawn_server_with_org(ENTITY_ORG_YAML).await;
+    seed_services(&srv).await;
+    let (status, body) = get(&srv.base, "/api/starmap").await;
+    assert_eq!(status, 200, "{body}");
+
+    // One matcher reads org.yaml: an upper-case pattern claims a
+    // lower-case id, exactly as the scorecard's org tree does.
+    let ledger = node(&body, "ent:cif-0043").expect("entity node");
+    assert_eq!(ledger["parent"], "org:data/shop-team", "{ledger}");
+    let owns = edge(&body, "org:data/shop-team|owns|ent:cif-0043").expect("owns edge");
+    assert_eq!(owns["source"], "declared");
+    assert_eq!(ledger["flags"], json!([]));
+
+    // Telemetry still wins, and the disagreement is flagged.
+    let shop = node(&body, "ent:CIF-0042").expect("entity node");
+    assert_eq!(shop["parent"], "org:data/db-team", "{shop}");
+    assert_eq!(shop["flags"], json!(["malformed_id", "owner_conflict"]));
+}
+
+#[tokio::test]
+async fn starmap_answers_from_a_short_cache_with_an_etag() {
+    let srv = spawn_server().await;
+    seed_services(&srv).await;
+    let (status, headers, first) = get_with(&srv.base, "/api/starmap", &[]).await;
+    assert_eq!(status, 200, "{first}");
+    let etag = headers["etag"].to_str().unwrap().to_string();
+    assert!(etag.starts_with('"') && etag.ends_with('"'), "{etag}");
+    assert_eq!(headers["cache-control"], "private, no-cache");
+
+    // Inside the 30 s window the same request is answered from the cache:
+    // byte-identical, the assembly time included.
+    let (_, again_headers, again) = get_with(&srv.base, "/api/starmap", &[]).await;
+    assert_eq!(again, first);
+    assert_eq!(again_headers["etag"].to_str().unwrap(), etag);
+
+    // A matching validator gets 304 and no body.
+    let (status, headers, body) =
+        get_with(&srv.base, "/api/starmap", &[("If-None-Match", &etag)]).await;
+    assert_eq!(status, 304);
+    assert_eq!(headers["etag"].to_str().unwrap(), etag);
+    assert!(body.is_empty(), "{body}");
+    let (status, _, _) =
+        get_with(&srv.base, "/api/starmap", &[("If-None-Match", "\"other\"")]).await;
+    assert_eq!(status, 200);
+
+    // Another parameter set is another entry.
+    let (_, _, small) = get_with(&srv.base, "/api/starmap?budget=8", &[]).await;
+    assert_ne!(small, first);
+
+    // `Cache-Control: no-cache` on the request reads the lake again.
+    let (status, _, fresh) =
+        get_with(&srv.base, "/api/starmap", &[("Cache-Control", "no-cache")]).await;
+    assert_eq!(status, 200);
+    let as_of = |raw: &str| serde_json::from_str::<Value>(raw).unwrap()["as_of_ns"].clone();
+    assert_ne!(as_of(&fresh), as_of(&first));
+}
+
+#[tokio::test]
+async fn the_cache_never_serves_one_principal_the_map_of_another() {
+    let srv = spawn_server().await;
+    seed_services(&srv).await;
+    let admin = add_scoped_token(&srv, "everything", "viewer", &[]).await;
+    let demo = add_scoped_token(&srv, "demo-only", "viewer", &["demo"]).await;
+    let prod = add_scoped_token(&srv, "prod-only", "viewer", &["prod"]).await;
+
+    // The unscoped principal fills the cache first, for the same URL.
+    let (_, open) = get_auth(&srv.base, "/api/starmap", &admin).await;
+    assert!(node(&open, "svc:billing").is_some());
+    let (_, scoped) = get_auth(&srv.base, "/api/starmap", &demo).await;
+    assert!(node(&scoped, "svc:billing").is_none(), "prod leaked");
+    assert!(node(&scoped, "svc:checkout").is_some());
+    let (_, other) = get_auth(&srv.base, "/api/starmap", &prod).await;
+    assert!(node(&other, "svc:billing").is_some());
+    assert!(node(&other, "svc:checkout").is_none(), "demo leaked");
+}
+
+#[tokio::test]
+async fn a_suppression_shows_on_the_map_at_once() {
+    let srv = spawn_server().await;
+    let (_, before) = get(&srv.base, "/api/starmap").await;
+    assert_eq!(before["counts"]["risks_suppressed"], 0, "{before}");
+    let open = before["counts"]["risks_open"].as_u64().unwrap();
+    assert!(open > 0, "{before}");
+
+    let (_, risks) = get(&srv.base, "/api/risks").await;
+    let id = risks["risks"][0]["id"].as_str().unwrap();
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/risks/{id}/suppress", srv.base))
+        .json(&json!({"reason": "accepted", "actor": "ops"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+
+    // The write drops the cached maps; nobody waits 30 s to see it.
+    let (_, after) = get(&srv.base, "/api/starmap").await;
+    let counts = &after["counts"];
+    let placed = counts["risks_suppressed"].as_u64().unwrap();
+    assert_eq!(
+        counts["risks_open"].as_u64().unwrap() + placed,
+        open,
+        "{counts}"
+    );
+    assert_eq!(placed, 1, "{counts}");
+}
+
+#[tokio::test]
+async fn a_focus_that_is_not_on_the_map_says_so() {
+    let srv = spawn_server().await;
+    seed_services(&srv).await;
+    let (status, body) = get(&srv.base, "/api/starmap?focus=svc:nowhere").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["focus_found"], false);
+    assert!(body["nodes"].as_array().unwrap().is_empty());
+    let (_, body) = get(&srv.base, "/api/starmap?focus=svc:ledger").await;
+    assert_eq!(body["focus_found"], true);
+    let (_, body) = get(&srv.base, "/api/starmap").await;
+    assert!(body["focus_found"].is_null());
+}
+
+/// A system and a service whose names carry the id separators.
+async fn seed_awkward_names(srv: &TestServer) {
+    let rows = vec![service_span(&Svc {
+        service: "edge/proxy",
+        system: "pay|ments/eu",
+        env: "-",
+        entity: "cif-0077",
+        ..Svc::default()
+    })];
+    exec_write(srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn topology_and_the_star_map_share_escaped_ids() {
+    let srv = spawn_server().await;
+    seed_awkward_names(&srv).await;
+    let (_, map) = get(&srv.base, "/api/starmap").await;
+    let system = node(&map, "sys:%2D/pay%7Cments%2Feu").expect("escaped system id");
+    assert_eq!(system["label"], "pay|ments/eu");
+    assert_eq!(system["env"], "-");
+    assert!(node(&map, "svc:edge%2Fproxy").is_some(), "{:?}", ids(&map));
+    for e in map["edges"].as_array().unwrap() {
+        let id = e["id"].as_str().unwrap();
+        assert_eq!(id.matches('|').count(), 2, "{id}");
+    }
+
+    let (status, topology) = get(&srv.base, "/api/topology").await;
+    assert_eq!(status, 200, "{topology}");
+    let found = ids(&topology);
+    for id in ["sys:%2D/pay%7Cments%2Feu", "svc:edge%2Fproxy"] {
+        assert!(found.iter().any(|f| f == id), "{id} not in {found:?}");
+    }
 }

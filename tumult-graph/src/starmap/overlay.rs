@@ -3,8 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use super::build::{in_scope, keep_max, sys_id, Builder};
-use super::input::RiskRow;
+use super::build::{def_id, in_scope, keep_max, svc_id, sys_id, Builder};
+use super::ids;
+use super::input::{RiskRow, RiskSubject};
 use super::model::{Evidence, Gap, RiskSummary, StarKind, StarRel};
 
 fn severity_rank(severity: &str) -> u8 {
@@ -120,18 +121,22 @@ impl Builder<'_> {
         self.mark_untested_callees();
     }
 
+    /// Attach every visible risk to its node. One that has no node is
+    /// counted, never dropped silently.
     fn attach_risks(&mut self) {
         for risk in &self.inputs.risks {
             let env = risk.environment.as_deref();
             if env.is_some() && !in_scope(self.scope, env) {
                 continue;
             }
-            let Some(id) = self.risk_node(risk) else {
+            let node = self
+                .risk_node(risk)
+                .and_then(|id| self.graph.nodes.get_mut(&id));
+            let Some(node) = node else {
+                self.risks_unplaced += 1;
                 continue;
             };
-            if let Some(node) = self.graph.nodes.get_mut(&id) {
-                add_risk(&mut node.risks, risk);
-            }
+            add_risk(&mut node.risks, risk);
         }
     }
 
@@ -140,7 +145,7 @@ impl Builder<'_> {
     fn risk_node(&self, risk: &RiskRow) -> Option<String> {
         let by_subject = risk
             .subject
-            .as_deref()
+            .as_ref()
             .and_then(|subject| self.subject_node(subject));
         if by_subject.is_some() {
             return by_subject;
@@ -150,7 +155,7 @@ impl Builder<'_> {
             let system = sys_id(Some(env), target);
             return self.graph.has(&system).then_some(system);
         }
-        let service = format!("svc:{target}");
+        let service = svc_id(target);
         if self.graph.has(&service) {
             return Some(service);
         }
@@ -159,7 +164,8 @@ impl Builder<'_> {
     }
 
     fn workload_named(&self, namespace: &str, name: &str) -> Option<String> {
-        let prefix = format!("wl:{namespace}/");
+        let prefix = format!("wl:{}/", ids::seg(namespace));
+        let name = ids::seg(name);
         self.graph
             .nodes
             .range(prefix.clone()..)
@@ -171,18 +177,18 @@ impl Builder<'_> {
             .map(|(id, _)| id.clone())
     }
 
-    fn subject_node(&self, subject: &str) -> Option<String> {
-        let workload = subject
-            .split_once('/')
-            .and_then(|(namespace, name)| self.workload_named(namespace, name));
-        if workload.is_some() {
-            return workload;
-        }
-        let by_id = format!("def:{subject}");
+    fn subject_node(&self, subject: &RiskSubject) -> Option<String> {
+        let definition = match subject {
+            RiskSubject::Workload { namespace, name } => {
+                return self.workload_named(namespace, name);
+            }
+            RiskSubject::Definition(definition) => definition,
+        };
+        let by_id = def_id(definition);
         if self.graph.has(&by_id) {
             return Some(by_id);
         }
-        self.facts.def_ids.get(subject).cloned()
+        self.facts.def_ids.get(definition).cloned()
     }
 
     /// A system the coverage matrix has no row for is a gap unless a run
@@ -211,6 +217,14 @@ impl Builder<'_> {
         }
     }
 
+    /// An environment name only when the caller may see it.
+    fn visible_env<'e>(&self, env: Option<&'e str>) -> Option<&'e str> {
+        env.filter(|e| in_scope(self.scope, Some(e)))
+    }
+
+    /// An entity shows the best of the systems that implement it: one
+    /// covered system clears its gap. How many systems that hides is in
+    /// the node's `rollup` (see [`super::rollup`]).
     fn roll_up_entity(&mut self, entity: &str) {
         let empty = BTreeSet::new();
         let systems = self.facts.ent_systems.get(entity).unwrap_or(&empty);
@@ -223,7 +237,7 @@ impl Builder<'_> {
             merge_evidence(&mut evidence, &system.evidence);
             merge_risks(&mut risks, &system.risks);
             gap = gap.min(system.gap);
-            env = min_env(env, system.env.as_deref());
+            env = min_env(env, self.visible_env(system.env.as_deref()));
             last_seen = last_seen.max(system.last_seen_ns);
         }
         for (service, links) in &self.facts.svc_links {
@@ -233,7 +247,7 @@ impl Builder<'_> {
             let Some(service) = self.graph.nodes.get(service) else {
                 continue;
             };
-            env = min_env(env, service.env.as_deref());
+            env = min_env(env, self.visible_env(service.env.as_deref()));
             last_seen = last_seen.max(service.last_seen_ns);
         }
         let Some(node) = self.graph.nodes.get_mut(entity) else {

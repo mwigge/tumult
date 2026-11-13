@@ -2,7 +2,7 @@
 //! from the lake, the risk scanner, the manifests directory and `org.yaml`;
 //! nothing here knows where a row came from.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One unit of the organisation tree. The root has an empty `path`.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -12,14 +12,6 @@ pub struct OrgUnitRow {
     pub name: String,
     /// `company`, `domain`, `unit`, `team` or `unassigned`.
     pub kind: String,
-}
-
-/// One assignment glob from `org.yaml`, in file order.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct GlobRow {
-    pub pattern: String,
-    /// Path of the org unit the pattern assigns to.
-    pub path: String,
 }
 
 /// One distinct resource-attribute tuple a service reported in the window.
@@ -97,12 +89,22 @@ pub struct SuppressionRow {
     pub expires_at_ns: Option<i64>,
 }
 
+/// What a risk is filed against, when that is more specific than its
+/// target.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RiskSubject {
+    /// A workload from the manifests directory.
+    Workload { namespace: String, name: String },
+    /// An experiment definition, by registry id or by name.
+    Definition(String),
+}
+
 /// One risk from the scanner, open or suppressed.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RiskRow {
     pub target: Option<String>,
     pub environment: Option<String>,
-    pub subject: Option<String>,
+    pub subject: Option<RiskSubject>,
     pub severity: String,
     pub recommended_kind: Option<String>,
     pub suppression: Option<SuppressionRow>,
@@ -171,14 +173,22 @@ pub struct GapRow {
     pub label: String,
 }
 
-/// Everything [`super::assemble`] needs. Row order carries no meaning
-/// except in the two glob lists, where the first match wins.
+/// Label a manifest uses to name the entity behind a workload.
+pub(super) const ENTITY_LABEL: &str = "ict.entity.id";
+
+/// Everything [`super::assemble`] needs. Row order carries no meaning.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StarInputs {
     pub as_of_ns: i64,
     pub org_units: Vec<OrgUnitRow>,
-    pub entity_globs: Vec<GlobRow>,
-    pub experiment_globs: Vec<GlobRow>,
+    /// Entity id (trimmed, as reported) to the path of the org unit
+    /// `org.yaml` assigns it to. The caller resolves these with the one
+    /// matcher that reads `org.yaml`; nothing here matches a pattern.
+    /// [`StarInputs::entity_ids`] lists the ids to resolve.
+    pub entity_owners: BTreeMap<String, String>,
+    /// Experiment name to the path of the org unit that owns it, resolved
+    /// the same way. [`StarInputs::experiment_names`] lists the names.
+    pub experiment_owners: BTreeMap<String, String>,
     pub services: Vec<ServiceRow>,
     pub calls: Vec<CallRow>,
     pub systems: Vec<SystemRow>,
@@ -190,6 +200,38 @@ pub struct StarInputs {
     pub articles: Vec<ArticleRow>,
     pub depends: Vec<DependsRow>,
     pub gaps: Vec<GapRow>,
+}
+
+impl StarInputs {
+    /// Every entity id the rows mention, trimmed: the keys the caller
+    /// resolves into [`StarInputs::entity_owners`].
+    #[must_use]
+    pub fn entity_ids(&self) -> BTreeSet<String> {
+        let reported = self.services.iter().filter_map(|s| s.entity_id.as_deref());
+        let declared = self
+            .workloads
+            .iter()
+            .filter_map(|w| w.labels.get(ENTITY_LABEL).map(String::as_str));
+        reported
+            .chain(declared)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Every experiment name the rows mention: the keys the caller
+    /// resolves into [`StarInputs::experiment_owners`].
+    #[must_use]
+    pub fn experiment_names(&self) -> BTreeSet<String> {
+        let tested = self
+            .systems
+            .iter()
+            .flat_map(|s| s.experiments.iter().map(|e| &e.name));
+        let ran = self.runs.iter().map(|r| &r.experiment);
+        let defined = self.definitions.iter().map(|d| &d.name);
+        tested.chain(ran).chain(defined).cloned().collect()
+    }
 }
 
 /// Depth used when `focus` is set and `depth` is not.

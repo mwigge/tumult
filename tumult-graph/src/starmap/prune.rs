@@ -150,12 +150,13 @@ fn drop_empty_unassigned(graph: &mut Graph) {
 }
 
 /// Keep the nodes within `depth` hops of `focus` over every edge and
-/// spine link, plus the spine above them. An unknown focus keeps nothing.
-pub(super) fn apply_focus(graph: &mut Graph, focus: &str, depth: u8) {
+/// spine link, plus the spine above them. An unknown focus keeps nothing
+/// and returns `false`.
+pub(super) fn apply_focus(graph: &mut Graph, focus: &str, depth: u8) -> bool {
     if !graph.has(focus) {
         graph.nodes.clear();
         graph.edges.clear();
-        return;
+        return false;
     }
     let mut keep = neighbourhood(graph, focus, depth);
     for id in keep.clone() {
@@ -168,6 +169,7 @@ pub(super) fn apply_focus(graph: &mut Graph, focus: &str, depth: u8) {
         }
     }
     graph.retain(&keep);
+    true
 }
 
 fn neighbourhood(graph: &Graph, focus: &str, depth: u8) -> BTreeSet<String> {
