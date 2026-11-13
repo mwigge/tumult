@@ -28,7 +28,7 @@ pub(crate) fn begin_connect(host: &str, port: u16, auth_method: &str) -> SpanGua
 
 pub(crate) fn begin_execute(command: &str, timeout_s: Option<f64>) -> SpanGuard {
     let cmd_preview = if command.len() > 256 {
-        format!("{}...", &command[..256])
+        format!("{}...", &command[..command.floor_char_boundary(256)])
     } else {
         command.to_string()
     };
@@ -170,6 +170,23 @@ mod tests {
             [KeyValue::new(
                 "ssh.command",
                 format!("{}...", "x".repeat(256))
+            )]
+        );
+    }
+
+    #[test]
+    fn execute_span_truncates_a_long_command_on_a_character_boundary() {
+        // Byte 256 falls inside a two-byte character.
+        let command = format!("x{}", "é".repeat(200));
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_execute(&command, None);
+        });
+
+        assert_eq!(
+            spans[0].attributes,
+            [KeyValue::new(
+                "ssh.command",
+                format!("x{}...", "é".repeat(127))
             )]
         );
     }
