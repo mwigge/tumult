@@ -437,6 +437,54 @@ async fn auth_rejection_maps_to_authentication_failed() {
     }
 }
 
+/// Write the client key into `dir` with the given permission bits.
+#[cfg(unix)]
+fn write_client_key_with_mode(dir: &tempfile::TempDir, mode: u32) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = write_client_key(dir);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).expect("chmod key");
+    path
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn key_readable_or_writable_by_others_is_refused_before_it_is_used() {
+    // The server would accept this key; only the local permission check can
+    // refuse it. 0o700 is owner-only but executable, which is also refused.
+    let (port, _) = spawn_server(false).await;
+    for mode in [0o644, 0o640, 0o620, 0o604, 0o601, 0o700] {
+        let dir = tempfile::TempDir::new().unwrap();
+        let key_path = write_client_key_with_mode(&dir, mode);
+
+        let err = connect_err(config_for(port, key_path.clone())).await;
+
+        match err {
+            SshError::KeyPermissionsTooOpen { path, mode: seen } => {
+                assert_eq!(path, key_path.display().to_string());
+                assert_eq!(seen, mode, "reported mode for {mode:o}");
+            }
+            other => panic!("expected KeyPermissionsTooOpen for {mode:o}, got: {other:?}"),
+        }
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn owner_only_key_passes_the_permission_check() {
+    let (port, _) = spawn_server(false).await;
+    for mode in [0o600, 0o400] {
+        let dir = tempfile::TempDir::new().unwrap();
+        let key_path = write_client_key_with_mode(&dir, mode);
+
+        let session = SshSession::connect(config_for(port, key_path))
+            .await
+            .unwrap_or_else(|err| panic!("mode {mode:o} must be accepted: {err:?}"));
+
+        let result = session.execute("true").await.expect("execute");
+        assert_eq!(result.exit_code, 0);
+    }
+}
+
 #[tokio::test]
 async fn connect_times_out_against_silent_listener() {
     // A TCP listener that accepts but never speaks SSH.
