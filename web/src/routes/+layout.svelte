@@ -15,6 +15,7 @@
         operator?: boolean;
     }[] = [
         { href: '/', label: 'Overview', icon: '◧' },
+        { href: '/posture', label: 'Posture', icon: '◎' },
         { href: '/scores', label: 'Scores', icon: '▦' },
         { href: '/experiments', label: 'Experiments', icon: '⚗' },
         { href: '/runs', label: 'Runs', icon: '▶' },

@@ -776,3 +776,109 @@ export interface ScaffoldResponse {
 export type ValidateToonResponse =
     | { valid: true; registry_id: string; name: string; registered: boolean }
     | { valid: false; error: string };
+
+// --- Passive risk scan and posture (`/api/risks`, `/api/posture`) ---------
+
+export type RiskSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface RiskSuppression {
+    risk_id: string;
+    reason: string;
+    actor: string;
+    at_ns: number;
+    expires_at_ns: number | null;
+}
+
+/** One finding of the passive scanner. `id` is stable across scans. */
+export interface Risk {
+    id: string;
+    rule: string;
+    severity: RiskSeverity;
+    rank: number;
+    title: string;
+    detail: string;
+    target: string | null;
+    environment: string | null;
+    subject: string;
+    recommended_kind: string | null;
+    evidence: string[];
+    suppression: RiskSuppression | null;
+}
+
+export interface CoverageCell {
+    kind: string;
+    status: 'covered' | 'stale' | 'missing';
+    runs: number;
+    last_run_ns: number | null;
+}
+
+export interface TargetCoverage {
+    target: string;
+    environment: string | null;
+    criticality: string | null;
+    cells: CoverageCell[];
+}
+
+export interface KindCoverage {
+    kind: string;
+    covered: number;
+    stale: number;
+    missing: number;
+    ratio: number;
+}
+
+export interface Coverage {
+    kinds: string[];
+    targets: TargetCoverage[];
+    portfolio: KindCoverage[];
+}
+
+export interface RiskSummary {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    suppressed: number;
+}
+
+/** `GET /api/risks` */
+export interface RiskReport {
+    as_of_ns: number;
+    risks: Risk[];
+    suppressed: Risk[];
+    summary: RiskSummary;
+    coverage: Coverage;
+}
+
+export interface PostureComponents {
+    nfr: number | null;
+    coverage: number;
+    freshness: number | null;
+    recovery: number | null;
+}
+
+export interface TargetPosture {
+    target: string;
+    environment: string | null;
+    criticality: string | null;
+    score: number;
+    band: string;
+    components: PostureComponents;
+}
+
+/** `GET /api/posture` */
+export interface PostureResponse {
+    as_of_ns: number;
+    posture: { score: number; band: string; targets: TargetPosture[] };
+    summary: RiskSummary;
+    coverage: Coverage;
+    top_risks: Risk[];
+}
+
+/** `POST /api/risks/{id}/suppress` response: the hash-chained row. */
+export interface SuppressionRow extends RiskSuppression {
+    id: string;
+    prev_hash: string | null;
+    new_hash: string;
+}

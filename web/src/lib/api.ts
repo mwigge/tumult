@@ -30,6 +30,9 @@ import type {
     MetricDefInfo,
     MetricQueryResult,
     Overview,
+    PostureResponse,
+    RiskReport,
+    SuppressionRow,
     RegistryDefinition,
     RegistryEntry,
     ReportFile,
@@ -133,6 +136,21 @@ export const api = {
     reports: () => get<{ reports: ReportFile[] }>('/api/reports'),
 
     scores: (range: string) => get<Scorecard>(`/api/scores?range=${range}`),
+
+    // --- Passive risk scan + posture ---------------------------------------
+
+    risks: (env = '') =>
+        get<RiskReport>(`/api/risks${env ? `?env=${encodeURIComponent(env)}` : ''}`),
+
+    posture: (env = '') =>
+        get<PostureResponse>(`/api/posture${env ? `?env=${encodeURIComponent(env)}` : ''}`),
+
+    suppressRisk: (id: string, reason: string, expiresInDays?: number, actor?: string) =>
+        send<SuppressionRow>('POST', `/api/risks/${encodeURIComponent(id)}/suppress`, {
+            reason,
+            ...(expiresInDays ? { expires_in_days: expiresInDays } : {}),
+            ...(actor ? { actor } : {}),
+        }),
 
     gate: (
         target: string,
