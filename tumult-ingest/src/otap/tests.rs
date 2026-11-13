@@ -993,7 +993,7 @@ fn context(limits: super::OtapLimits, convert: Convert) -> StreamContext {
         signal: "traces",
         convert,
         guards: super::service::Guards::new(&limits),
-        connection: None,
+        slot: None,
     }
 }
 

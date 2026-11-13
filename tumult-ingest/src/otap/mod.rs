@@ -34,6 +34,7 @@
 //! committed to it; see [`decode`] and the `hostile` tests. A batch that
 //! cannot be decoded ends its stream: the IPC state after it is unknown.
 
+mod admission;
 mod arrays;
 mod attrs;
 mod common;
@@ -56,6 +57,8 @@ mod fuzz;
 mod hostile;
 #[cfg(test)]
 mod hostile_ipc;
+#[cfg(test)]
+mod hostile_shares;
 #[cfg(test)]
 mod test_encoder;
 #[cfg(test)]

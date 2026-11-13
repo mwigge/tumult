@@ -15,6 +15,7 @@
 //! | batch decoded but not convertible (multivariate metrics, orphan rows, duplicate ids, missing or malformed ids, a table of another signal, attribute limit) | `INVALID_ARGUMENT` (not retried) | stays open, until [`OtapLimits::max_rejected_batches`] of them: then closed with `INVALID_ARGUMENT` |
 //! | payload not decodable, or wider or deeper than the schema caps | `INVALID_ARGUMENT` (not retried) | closed with `INVALID_ARGUMENT` |
 //! | over a limit of the batch or of the stream itself (rows, decoded bytes, retained bytes per stream, dictionary deltas) | `INVALID_ARGUMENT` (not retried) | closed with `RESOURCE_EXHAUSTED` |
+//! | over the client's own share of the retained bytes: its connection's ([`OtapLimits::max_connection_retained_bytes`]) or its peer's ([`OtapLimits::max_peer_retained_bytes`]) | `INVALID_ARGUMENT` (not retried: the client's other streams hold the bytes) | closed with `RESOURCE_EXHAUSTED` |
 //! | over the batch deadline ([`OtapLimits::batch_deadline`]) | `INVALID_ARGUMENT` (not retried) | closed with `RESOURCE_EXHAUSTED` |
 //! | over the retained bytes all streams share ([`OtapLimits::max_retained_bytes`]) | `UNAVAILABLE` (retried: other streams hold the bytes) | closed with `RESOURCE_EXHAUSTED` |
 //! | stream read failed (oversized message, bad compression) | none | closed with the read error's status |
@@ -45,7 +46,11 @@
 //! does that: it returns the decode error from its receive loop). So a
 //! batch that can never succeed gets `INVALID_ARGUMENT` first, whatever
 //! code then closes the stream, and only the shared retained-bytes pool,
-//! which other streams may free, gets the retried `UNAVAILABLE`. The one
+//! which other clients' streams may free, gets the retried `UNAVAILABLE`.
+//! A client over its own share of that pool is not told to retry: what is
+//! in the way is what its own streams keep, and one connection could
+//! otherwise fill the pool and have every other client's batches refused
+//! (see `admission`). The one
 //! close without a status is a failed stream read: a message tonic refuses
 //! (larger than [`OtapLimits::max_message_bytes`], or badly compressed) has
 //! no batch id to answer, so an exporter configured to send larger
@@ -58,9 +63,7 @@
 //! is held until the batch is stored, so no more than that many converted
 //! batches wait for the writer however many streams are open.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -71,6 +74,7 @@ use tonic::codegen::{http, CompressionEncoding, Service};
 use tonic::server::NamedService;
 use tonic::{Request, Response, Status, Streaming};
 
+use super::admission::{Shares, StreamSlot};
 use super::decode::StreamConsumer;
 use super::limits::{OtapLimits, RetainedPool};
 use super::proto::arrow_logs_service_server::{ArrowLogsService, ArrowLogsServiceServer};
@@ -92,7 +96,7 @@ pub struct OtapGrpc {
     streams: Arc<Semaphore>,
     /// One permit per batch being decoded, converted or written.
     decodes: Arc<Semaphore>,
-    connections: Arc<Connections>,
+    shares: Arc<Shares>,
     guards: Arc<Guards>,
 }
 
@@ -118,50 +122,10 @@ impl Guards {
             rejected: LogLimiter::warnings(),
         })
     }
-}
 
-/// Open streams per client connection (keyed by the peer's socket address,
-/// which names one connection).
-#[derive(Default)]
-struct Connections(Mutex<HashMap<SocketAddr, usize>>);
-
-/// One stream's place in its connection's share; given back on drop.
-pub(super) struct ConnectionSlot {
-    connections: Arc<Connections>,
-    peer: SocketAddr,
-}
-
-impl Connections {
-    /// A slot for one more stream of `peer`, unless it already has `max`.
-    fn claim(self: &Arc<Self>, peer: SocketAddr, max: usize) -> Option<ConnectionSlot> {
-        let mut open = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        let count = open.entry(peer).or_insert(0);
-        if *count >= max {
-            return None;
-        }
-        *count += 1;
-        Some(ConnectionSlot {
-            connections: self.clone(),
-            peer,
-        })
-    }
-}
-
-impl Drop for ConnectionSlot {
-    fn drop(&mut self) {
-        let mut open = self
-            .connections
-            .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        let left = open
-            .get(&self.peer)
-            .map_or(0, |count| count.saturating_sub(1));
-        if left == 0 {
-            open.remove(&self.peer);
-            return;
-        }
-        open.insert(self.peer, left);
+    #[cfg(test)]
+    pub fn pool(&self) -> &RetainedPool {
+        &self.pool
     }
 }
 
@@ -173,9 +137,10 @@ pub(super) struct StreamContext {
     pub signal: &'static str,
     pub convert: Convert,
     pub guards: Arc<Guards>,
-    /// Held for as long as the stream lives.
-    #[expect(dead_code, reason = "only its Drop matters")]
-    pub connection: Option<ConnectionSlot>,
+    /// The stream's place in the shares of its connection and its peer,
+    /// held for as long as the stream lives. `None` without a peer
+    /// address (an in-memory transport): the receiver's totals still hold.
+    pub slot: Option<StreamSlot>,
 }
 
 impl OtapGrpc {
@@ -195,7 +160,7 @@ impl OtapGrpc {
             limits,
             streams: Arc::new(Semaphore::new(limits.max_streams)),
             decodes: Arc::new(Semaphore::new(limits.max_concurrent_decodes)),
-            connections: Arc::default(),
+            shares: Shares::new(&limits),
             guards: Guards::new(&limits),
         }
     }
@@ -255,15 +220,11 @@ impl OtapGrpc {
         convert: Convert,
     ) -> Result<Response<StatusStream>, Status> {
         authorize(self.ingest_token.as_ref(), &request)?;
-        // Without a peer address (an in-memory transport) there is no
-        // connection to give a share to; the total still holds.
-        let connection = match request.remote_addr() {
+        let slot = match request.remote_addr() {
             Some(peer) => Some(
-                self.connections
-                    .claim(peer, self.limits.max_streams_per_connection)
-                    .ok_or_else(|| {
-                        self.refuse(signal, "too many otel-arrow streams on this connection")
-                    })?,
+                self.shares
+                    .claim(peer)
+                    .map_err(|refused| self.refuse(signal, refused.reason()))?,
             ),
             None => None,
         };
@@ -278,7 +239,7 @@ impl OtapGrpc {
             signal,
             convert,
             guards: self.guards.clone(),
-            connection,
+            slot,
         };
         Ok(Response::new(respond(
             request.into_inner(),
@@ -346,7 +307,15 @@ where
     let signal = context.signal;
     let limits = context.limits;
     let wait = limits.ack_timeout;
-    let mut consumer = StreamConsumer::with_pool(limits, context.guards.pool.clone());
+    // What the stream keeps is charged to its connection, its peer and
+    // the receiver, in that order: the client's own shares answer first.
+    let accounts = context
+        .slot
+        .iter()
+        .flat_map(StreamSlot::retained)
+        .chain([context.guards.pool.clone()])
+        .collect();
+    let mut consumer = StreamConsumer::with_accounts(limits, accounts);
     let opened = Instant::now();
     let mut rejected = 0usize;
     loop {

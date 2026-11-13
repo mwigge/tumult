@@ -465,7 +465,7 @@ fn dictionary_keys_and_ids_are_checked() {
 // ---------------------------------------------------------------------------
 
 /// `columns` dictionary-encoded columns of `values` distinct 64-byte strings.
-fn dictionary_table(columns: usize, values: usize, salt: &str) -> RecordBatch {
+pub(super) fn dictionary_table(columns: usize, values: usize, salt: &str) -> RecordBatch {
     let text: Vec<String> = (0..values).map(|i| format!("{salt}{i:0>60}")).collect();
     let keys = UInt16Array::from_iter_values((0..values).map(|i| u16::try_from(i).unwrap()));
     let array: ArrayRef = Arc::new(DictionaryArray::new(

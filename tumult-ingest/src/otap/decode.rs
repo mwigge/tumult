@@ -11,8 +11,9 @@
 //! strict decoder in [`super::ipc`], never by the general Arrow IPC reader,
 //! and what the stream makes the receiver keep between batches is bounded:
 //!
-//! * bytes of schemas and dictionaries per stream and, through a
-//!   [`RetainedPool`], across all streams of the receiver;
+//! * bytes of schemas and dictionaries per stream and, through
+//!   [`RetainedPool`] accounts, per connection, per peer and across all
+//!   streams of the receiver;
 //! * delta dictionary batches per schema (each one copies the dictionary it
 //!   extends, and the copy is charged to the batch's byte budget);
 //! * the length of a `schema_id`.
@@ -24,7 +25,7 @@ use arrow::array::{Array, ArrayRef, RecordBatch};
 use arrow::ipc::MessageHeader;
 
 use super::ipc::{self, Plan};
-use super::limits::{Budget, OtapLimits, RetainedPool, MAX_SCHEMA_ID_BYTES};
+use super::limits::{Budget, OtapLimits, Retained, RetainedPool, MAX_SCHEMA_ID_BYTES};
 use super::proto::{ArrowPayload, ArrowPayloadType, BatchArrowRecords};
 use super::OtapError;
 use crate::log_guard;
@@ -203,31 +204,35 @@ pub struct StreamConsumer {
     /// Set by the first failed batch. Later payloads may depend on schemas
     /// and dictionaries the failed one carried, so nothing more is decoded.
     poisoned: bool,
-    /// The receiver-wide account of retained bytes, and this stream's share.
-    pool: Option<Arc<RetainedPool>>,
-    held: usize,
+    /// What the stream holds in the accounts of retained bytes it draws
+    /// on.
+    retained: Retained,
 }
 
 impl StreamConsumer {
     #[must_use]
     pub fn new(limits: OtapLimits) -> Self {
-        Self::build(limits, None)
-    }
-
-    fn build(limits: OtapLimits, pool: Option<Arc<RetainedPool>>) -> Self {
-        Self {
-            limits,
-            streams: HashMap::new(),
-            poisoned: false,
-            pool,
-            held: 0,
-        }
+        Self::with_accounts(limits, Vec::new())
     }
 
     /// A consumer whose retained bytes also count against `pool`.
     #[must_use]
     pub fn with_pool(limits: OtapLimits, pool: Arc<RetainedPool>) -> Self {
-        Self::build(limits, Some(pool))
+        Self::with_accounts(limits, vec![pool])
+    }
+
+    /// A consumer whose retained bytes count against every one of
+    /// `accounts`, given from the narrowest (the connection's share) to
+    /// the widest (the receiver's pool). The first account without room
+    /// is the one a refusal names.
+    #[must_use]
+    pub fn with_accounts(limits: OtapLimits, accounts: Vec<Arc<RetainedPool>>) -> Self {
+        Self {
+            limits,
+            streams: HashMap::new(),
+            poisoned: false,
+            retained: Retained::new(accounts),
+        }
     }
 
     /// Decode every payload of the batch. A new `schema_id` for a payload
@@ -252,10 +257,8 @@ impl StreamConsumer {
     /// Drop everything kept between batches and give its bytes back.
     fn release(&mut self) {
         self.streams.clear();
-        if let Some(pool) = &self.pool {
-            // Shrinking a share cannot fail.
-            let _ = pool.resize(&mut self.held, 0);
-        }
+        // Shrinking cannot fail.
+        let _ = self.retained.resize(0);
     }
 
     fn decode(&mut self, records: BatchArrowRecords) -> Result<OtapBatch, OtapError> {
@@ -372,7 +375,7 @@ impl StreamConsumer {
     }
 
     /// Check what the stream now keeps against the per-stream limit and
-    /// the receiver-wide pool.
+    /// the accounts it draws on.
     fn account(&mut self) -> Result<(), OtapError> {
         let retained = self
             .streams
@@ -386,15 +389,6 @@ impl StreamConsumer {
                 shared: false,
             });
         }
-        match &self.pool {
-            Some(pool) => pool.resize(&mut self.held, retained),
-            None => Ok(()),
-        }
-    }
-}
-
-impl Drop for StreamConsumer {
-    fn drop(&mut self) {
-        self.release();
+        self.retained.resize(retained)
     }
 }

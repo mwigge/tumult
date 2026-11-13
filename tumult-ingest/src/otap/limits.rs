@@ -74,6 +74,12 @@ pub const DEFAULT_MAX_STREAM_RETAINED_BYTES: usize = 32 * 1024 * 1024;
 /// `KRONIKA_OTAP_MAX_RETAINED_BYTES`.
 pub const DEFAULT_MAX_RETAINED_BYTES: usize = 256 * 1024 * 1024;
 
+/// The part of [`DEFAULT_MAX_RETAINED_BYTES`] the streams of one connection,
+/// and of one peer, may hold: one eighth, unless set.
+/// `KRONIKA_OTAP_MAX_CONNECTION_RETAINED_BYTES`,
+/// `KRONIKA_OTAP_MAX_PEER_RETAINED_BYTES`.
+pub const RETAINED_SHARE_DIVISOR: usize = 8;
+
 /// Delta dictionary batches one schema of a stream may apply; each one
 /// copies the dictionary it extends. `KRONIKA_OTAP_MAX_DICTIONARY_DELTAS`.
 pub const DEFAULT_MAX_DICTIONARY_DELTAS: usize = 65_536;
@@ -120,8 +126,19 @@ pub struct OtapLimits {
     pub batch_deadline: Duration,
     pub max_stream_retained_bytes: usize,
     pub max_retained_bytes: usize,
+    /// What the streams of one connection may hold of
+    /// [`Self::max_retained_bytes`].
+    pub max_connection_retained_bytes: usize,
+    /// What the streams of one peer (see `crate::listener::peer_key`) may
+    /// hold of it, over all its connections.
+    pub max_peer_retained_bytes: usize,
     pub max_dictionary_deltas: usize,
     pub max_rejected_batches: usize,
+}
+
+/// The default share of a pool of `pool` bytes.
+fn retained_share(pool: usize) -> usize {
+    (pool / RETAINED_SHARE_DIVISOR).max(1)
 }
 
 impl Default for OtapLimits {
@@ -140,6 +157,8 @@ impl Default for OtapLimits {
             batch_deadline: DEFAULT_BATCH_DEADLINE,
             max_stream_retained_bytes: DEFAULT_MAX_STREAM_RETAINED_BYTES,
             max_retained_bytes: DEFAULT_MAX_RETAINED_BYTES,
+            max_connection_retained_bytes: retained_share(DEFAULT_MAX_RETAINED_BYTES),
+            max_peer_retained_bytes: retained_share(DEFAULT_MAX_RETAINED_BYTES),
             max_dictionary_deltas: DEFAULT_MAX_DICTIONARY_DELTAS,
             max_rejected_batches: DEFAULT_MAX_REJECTED_BATCHES,
         }
@@ -213,6 +232,11 @@ impl OtapLimits {
         };
         let d = Self::default();
         let max_streams = bounded("KRONIKA_OTAP_MAX_STREAMS", d.max_streams, ceiling::STREAMS);
+        let max_retained_bytes = bounded(
+            "KRONIKA_OTAP_MAX_RETAINED_BYTES",
+            d.max_retained_bytes,
+            ceiling::RETAINED_BYTES,
+        );
         Self {
             max_rows_per_table: bounded(
                 "KRONIKA_OTAP_MAX_ROWS",
@@ -270,10 +294,18 @@ impl OtapLimits {
                 d.max_stream_retained_bytes,
                 ceiling::STREAM_RETAINED_BYTES,
             ),
-            max_retained_bytes: bounded(
-                "KRONIKA_OTAP_MAX_RETAINED_BYTES",
-                d.max_retained_bytes,
-                ceiling::RETAINED_BYTES,
+            max_retained_bytes,
+            // A share follows the pool unless it is set, and never
+            // exceeds it.
+            max_connection_retained_bytes: bounded(
+                "KRONIKA_OTAP_MAX_CONNECTION_RETAINED_BYTES",
+                retained_share(max_retained_bytes),
+                max_retained_bytes,
+            ),
+            max_peer_retained_bytes: bounded(
+                "KRONIKA_OTAP_MAX_PEER_RETAINED_BYTES",
+                retained_share(max_retained_bytes),
+                max_retained_bytes,
             ),
             max_dictionary_deltas: bounded(
                 "KRONIKA_OTAP_MAX_DICTIONARY_DELTAS",
@@ -289,19 +321,38 @@ impl OtapLimits {
     }
 }
 
-/// Bytes every open stream together may make the receiver keep between
-/// batches. One pool is shared by all streams of a receiver.
+/// An account of bytes streams make the receiver keep between batches:
+/// the pool all streams of a receiver share, or the share of it one
+/// connection or one peer may hold.
 #[derive(Debug)]
 pub struct RetainedPool {
+    what: &'static str,
     limit: usize,
+    /// Whether streams of other clients draw on the account too. Then a
+    /// batch that does not fit may fit later.
+    shared: bool,
     used: AtomicUsize,
 }
 
 impl RetainedPool {
+    /// The pool of a receiver.
     #[must_use]
     pub fn new(limit: usize) -> Arc<Self> {
         Arc::new(Self {
+            what: "retained bytes across streams",
             limit,
+            shared: true,
+            used: AtomicUsize::new(0),
+        })
+    }
+
+    /// One client's share of a pool; `what` names it in the error.
+    #[must_use]
+    pub fn share(what: &'static str, limit: usize) -> Arc<Self> {
+        Arc::new(Self {
+            what,
+            limit,
+            shared: false,
             used: AtomicUsize::new(0),
         })
     }
@@ -312,24 +363,72 @@ impl RetainedPool {
         self.used.load(Ordering::Relaxed)
     }
 
-    /// Change one stream's share from `held` to `wanted` bytes.
-    pub(super) fn resize(&self, held: &mut usize, wanted: usize) -> Result<(), OtapError> {
-        if wanted <= *held {
-            self.used.fetch_sub(*held - wanted, Ordering::Relaxed);
-            *held = wanted;
-            return Ok(());
-        }
-        let extra = wanted - *held;
+    #[must_use]
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    fn take(&self, extra: usize) -> Result<(), OtapError> {
         let fits = |used: usize| used.checked_add(extra).filter(|total| *total <= self.limit);
         self.used
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, fits)
             .map_err(|_| OtapError::StreamState {
-                what: "retained bytes across streams",
+                what: self.what,
                 limit: self.limit,
-                shared: true,
+                shared: self.shared,
             })?;
-        *held = wanted;
         Ok(())
+    }
+
+    fn give(&self, back: usize) {
+        self.used.fetch_sub(back, Ordering::Relaxed);
+    }
+}
+
+/// What one stream holds in every account it draws on: its connection's
+/// share, its peer's share and the receiver's pool, in that order. The
+/// same number of bytes is held in each; everything is given back on drop.
+#[derive(Debug, Default)]
+pub(super) struct Retained {
+    accounts: Vec<Arc<RetainedPool>>,
+    held: usize,
+}
+
+impl Retained {
+    /// `accounts` from the narrowest to the widest: the first one without
+    /// room is the one the error names, so a client over its own share is
+    /// told so, and only a full pool is reported as shared.
+    pub fn new(accounts: Vec<Arc<RetainedPool>>) -> Self {
+        Self { accounts, held: 0 }
+    }
+
+    /// Change the stream's holding to `wanted` bytes. Refused, it holds
+    /// what it held before, in every account.
+    pub fn resize(&mut self, wanted: usize) -> Result<(), OtapError> {
+        if wanted <= self.held {
+            let back = self.held - wanted;
+            self.accounts.iter().for_each(|account| account.give(back));
+            self.held = wanted;
+            return Ok(());
+        }
+        let extra = wanted - self.held;
+        for (taken, account) in self.accounts.iter().enumerate() {
+            if let Err(full) = account.take(extra) {
+                self.accounts[..taken]
+                    .iter()
+                    .for_each(|account| account.give(extra));
+                return Err(full);
+            }
+        }
+        self.held = wanted;
+        Ok(())
+    }
+}
+
+impl Drop for Retained {
+    fn drop(&mut self) {
+        // Shrinking cannot fail.
+        let _ = self.resize(0);
     }
 }
 
@@ -454,6 +553,11 @@ mod tests {
             ceiling::STREAM_RETAINED_BYTES
         );
         assert_eq!(limits.max_retained_bytes, ceiling::RETAINED_BYTES);
+        assert_eq!(
+            limits.max_connection_retained_bytes,
+            ceiling::RETAINED_BYTES
+        );
+        assert_eq!(limits.max_peer_retained_bytes, ceiling::RETAINED_BYTES);
         assert_eq!(limits.max_dictionary_deltas, ceiling::DICTIONARY_DELTAS);
         assert_eq!(limits.max_rejected_batches, ceiling::REJECTED_BATCHES);
         // What the limits feed must accept them.
@@ -516,17 +620,107 @@ mod tests {
     #[test]
     fn retained_pool_is_shared_and_gives_back_what_a_stream_drops() {
         let pool = RetainedPool::new(100);
-        let (mut a, mut b) = (0, 0);
-        pool.resize(&mut a, 60).unwrap();
-        pool.resize(&mut b, 40).unwrap();
-        let err = pool.resize(&mut b, 41).unwrap_err();
+        let mut a = Retained::new(vec![pool.clone()]);
+        let mut b = Retained::new(vec![pool.clone()]);
+        a.resize(60).unwrap();
+        b.resize(40).unwrap();
+        let err = b.resize(41).unwrap_err();
         assert!(
             matches!(err, OtapError::StreamState { shared: true, .. }),
             "{err}"
         );
-        assert_eq!((b, pool.used()), (40, 100), "a refused resize holds on");
-        pool.resize(&mut a, 0).unwrap();
-        pool.resize(&mut b, 100).unwrap();
+        assert_eq!(pool.used(), 100, "a refused resize holds on");
+        a.resize(0).unwrap();
+        b.resize(100).unwrap();
         assert_eq!(pool.used(), 100);
+        drop(b);
+        assert_eq!(pool.used(), 0, "a dropped stream holds nothing");
+    }
+
+    fn state(err: &OtapError) -> (&'static str, usize, bool) {
+        match err {
+            OtapError::StreamState {
+                what,
+                limit,
+                shared,
+            } => (what, *limit, *shared),
+            other => panic!("not a stream state error: {other}"),
+        }
+    }
+
+    #[test]
+    fn the_narrowest_full_account_is_the_one_named() {
+        let pool = RetainedPool::new(100);
+        let connection = RetainedPool::share("retained bytes per connection", 30);
+        let peer = RetainedPool::share("retained bytes per peer", 50);
+        let accounts = || vec![connection.clone(), peer.clone(), pool.clone()];
+        let mut first = Retained::new(accounts());
+        let mut second = Retained::new(accounts());
+        first.resize(20).unwrap();
+        // The connection's own share: its fault, not a shared shortage.
+        let err = second.resize(11).unwrap_err();
+        assert_eq!(state(&err), ("retained bytes per connection", 30, false));
+        assert_eq!(
+            (connection.used(), peer.used(), pool.used()),
+            (20, 20, 20),
+            "a refused stream holds nothing anywhere"
+        );
+        second.resize(10).unwrap();
+
+        // Another connection of the same peer runs into the peer's share.
+        let other = RetainedPool::share("retained bytes per connection", 30);
+        let mut third = Retained::new(vec![other.clone(), peer.clone(), pool.clone()]);
+        let err = third.resize(21).unwrap_err();
+        assert_eq!(state(&err), ("retained bytes per peer", 50, false));
+        assert_eq!((other.used(), peer.used(), pool.used()), (0, 30, 30));
+        third.resize(20).unwrap();
+
+        // Another peer runs into the pool: that is the shared shortage.
+        let far = RetainedPool::share("retained bytes per peer", 80);
+        let mut fourth = Retained::new(vec![far.clone(), pool.clone()]);
+        let err = fourth.resize(51).unwrap_err();
+        assert_eq!(state(&err), ("retained bytes across streams", 100, true));
+        assert_eq!(
+            (far.used(), pool.used()),
+            (0, 50),
+            "the share is given back"
+        );
+        fourth.resize(50).unwrap();
+
+        drop((first, second, third, fourth));
+        let all = [&connection, &peer, &other, &far, &pool];
+        assert!(all.iter().all(|account| account.used() == 0));
+    }
+
+    #[test]
+    fn shares_default_to_an_eighth_of_the_pool_and_never_exceed_it() {
+        let d = OtapLimits::default();
+        assert_eq!(d.max_connection_retained_bytes, 32 * 1024 * 1024);
+        assert_eq!(d.max_peer_retained_bytes, 32 * 1024 * 1024);
+        // A stream at its own limit fits its connection's share once.
+        assert!(d.max_stream_retained_bytes <= d.max_connection_retained_bytes);
+        assert!(2 * d.max_stream_retained_bytes > d.max_connection_retained_bytes);
+
+        let pool_only = OtapLimits::from_lookup(|name| match name {
+            "KRONIKA_OTAP_MAX_RETAINED_BYTES" => Some("8000".into()),
+            _ => None,
+        });
+        assert_eq!(pool_only.max_connection_retained_bytes, 1000);
+        assert_eq!(pool_only.max_peer_retained_bytes, 1000);
+
+        let set = OtapLimits::from_lookup(|name| match name {
+            "KRONIKA_OTAP_MAX_RETAINED_BYTES" => Some("8000".into()),
+            "KRONIKA_OTAP_MAX_CONNECTION_RETAINED_BYTES" => Some("2000".into()),
+            "KRONIKA_OTAP_MAX_PEER_RETAINED_BYTES" => Some("9000".into()),
+            _ => None,
+        });
+        assert_eq!(set.max_connection_retained_bytes, 2000);
+        assert_eq!(set.max_peer_retained_bytes, 8000, "clamped to the pool");
+
+        let tiny = OtapLimits::from_lookup(|name| match name {
+            "KRONIKA_OTAP_MAX_RETAINED_BYTES" => Some("3".into()),
+            _ => None,
+        });
+        assert_eq!(tiny.max_connection_retained_bytes, 1, "never zero");
     }
 }
