@@ -1,7 +1,7 @@
 //! Behavior tests for the oha load adapter: the start/stop lifecycle
 //! against a fake `oha` binary, including windowed sampling for a soak
-//! profile, early stop, the kill-after-grace path and the no-evidence
-//! outcome.
+//! profile, the normal stop, the immediate abort, the kill-after-grace
+//! path and the no-evidence outcomes.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -60,25 +60,62 @@ fn wait_for_calls(dir: &tempfile::TempDir, n: usize) {
 }
 
 /// A fake oha with the command line of oha 1.x (`--output-format json`;
-/// the old `-j` is rejected, as the real binary does). It prints a JSON
-/// summary whose 200 count is the concurrency it was asked for, so windows
-/// are distinguishable, plus one 503 and the deadline aborts a real run
-/// ends with.
+/// the old `-j` is rejected, as the real binary does) that insists on the
+/// flags the adapter must pass: `-w` so in-flight requests are measured
+/// and `-t` so a hung request becomes a timeout. It prints a JSON summary
+/// whose 200 count is the concurrency it was asked for, so windows are
+/// distinguishable, plus one 503.
 const FAKE_OHA_JSON: &str = r#"#!/bin/sh
 conc=0
 format=text
+wait=no
+timeout=
 while [ $# -gt 0 ]; do
   if [ "$1" = "-c" ]; then shift; conc="$1"; fi
+  if [ "$1" = "-t" ]; then shift; timeout="$1"; fi
+  if [ "$1" = "-w" ]; then wait=yes; fi
   if [ "$1" = "--output-format" ]; then shift; format="$1"; fi
   if [ "$1" = "-j" ]; then echo "error: unexpected argument '-j' found" >&2; exit 2; fi
   if [ "$1" = "--version" ]; then exit 0; fi
   shift
 done
 if [ "$format" != "json" ]; then echo "text output" ; exit 0; fi
+if [ "$wait" != "yes" ] || [ -z "$timeout" ]; then echo "missing -w or -t" >&2; exit 2; fi
 echo x >> "$(dirname "$0")/calls"
-printf '%s' "{\"summary\":{\"successRate\":1.0,\"total\":1.0,\"slowest\":0.2,\"fastest\":0.01,\"average\":0.05,\"requestsPerSec\":50.0,\"totalData\":1,\"sizePerRequest\":1,\"sizePerSec\":1},\"responseTimeHistogram\":{},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"rps\":{},\"details\":{},\"statusCodeDistribution\":{\"200\":$conc,\"503\":1},\"errorDistribution\":{\"aborted due to deadline\":$conc}}"
+#BEFORE_SUMMARY
+printf '%s' "{\"summary\":{\"successRate\":1.0,\"total\":0.1,\"slowest\":0.2,\"fastest\":0.01,\"average\":0.05,\"requestsPerSec\":50.0,\"totalData\":1,\"sizePerRequest\":1,\"sizePerSec\":1},\"responseTimeHistogram\":{},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"rps\":{},\"details\":{},\"statusCodeDistribution\":{\"200\":$conc,\"503\":1},\"errorDistribution\":{}}"
 exit 0
 "#;
+
+/// A fake oha that prints `summary` verbatim for every window.
+fn fake_printing(summary: &str) -> String {
+    format!(
+        "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\ncat <<'JSON'\n{summary}\nJSON\nexit 0\n"
+    )
+}
+
+/// A fake oha that records its pid and then sleeps far longer than any
+/// test allows.
+fn fake_hanging(dir: &tempfile::TempDir) -> String {
+    format!(
+        "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\necho $$ > {}\nexec sleep 30\n",
+        dir.path().join("pid").display()
+    )
+}
+
+/// Whether the process the hanging fake recorded is still alive. `false`
+/// when the fake never got as far as recording itself.
+#[cfg(target_os = "linux")]
+fn hanging_fake_is_alive(dir: &tempfile::TempDir) -> bool {
+    // Give a fake that was just spawned the time to record itself.
+    std::thread::sleep(Duration::from_millis(300));
+    let Ok(pid) = std::fs::read_to_string(dir.path().join("pid")) else {
+        return false;
+    };
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim()));
+    // A reaped process has no entry; a zombie is not running either.
+    stat.is_ok_and(|s| !s.contains(") Z "))
+}
 
 #[test]
 fn flat_config_is_one_window_and_one_sample() {
@@ -112,10 +149,10 @@ fn soak_profile_streams_one_sample_per_interval() {
     install_fake_oha(&dir, FAKE_OHA_JSON);
 
     let soak = LoadProfile::Soak {
-        sample_interval_s: 0.1,
+        sample_interval_s: 1.0,
     };
     let executor = OhaLoadExecutor::default();
-    let handle = executor.start(&config(Some(soak), 0.3)).expect("starts");
+    let handle = executor.start(&config(Some(soak), 3.0)).expect("starts");
     // Stop skips windows that have not started, so let all three begin.
     wait_for_calls(&dir, 3);
     let result = executor.stop(handle).expect("stops");
@@ -155,7 +192,7 @@ fn stop_finishes_the_current_window_and_skips_the_rest() {
     let _guard = ENV_LOCK.lock().expect("env lock");
     let dir = tempfile::tempdir().expect("tempdir");
     // Each window takes ~300 ms regardless of `-z`.
-    let slow = FAKE_OHA_JSON.replacen("conc=0\n", "conc=0\nsleep 0.3\n", 1);
+    let slow = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 0.3", 1);
     install_fake_oha(&dir, &slow);
 
     let soak = LoadProfile::Soak {
@@ -184,7 +221,8 @@ fn a_window_that_outlives_its_grace_is_killed_and_reported() {
         "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\nsleep 30\nexit 0\n",
     );
 
-    let executor = OhaLoadExecutor::with_window_grace(Duration::from_millis(200));
+    let executor = OhaLoadExecutor::with_window_grace(Duration::from_millis(200))
+        .with_request_timeout(Duration::from_millis(100));
     let handle = executor.start(&config(None, 0.1)).expect("starts");
     let started = Instant::now();
     let result = executor
@@ -199,6 +237,27 @@ fn a_window_that_outlives_its_grace_is_killed_and_reported() {
         elapsed < Duration::from_secs(5),
         "the kill was late: {elapsed:?}"
     );
+}
+
+#[test]
+fn stop_lets_a_window_longer_than_the_grace_finish() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    // The window takes 0.8 s; grace and request timeout are far shorter.
+    let slow = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 0.8", 1);
+    install_fake_oha(&dir, &slow);
+
+    let executor = OhaLoadExecutor::with_window_grace(Duration::from_millis(50))
+        .with_request_timeout(Duration::from_millis(50));
+    let handle = executor.start(&config(None, 1.0)).expect("starts");
+    let result = executor.stop(handle).expect("stops");
+
+    assert_eq!(
+        result.samples.len(),
+        1,
+        "a healthy in-flight window must not be killed by stop"
+    );
+    assert!(result.thresholds_met);
 }
 
 #[test]
@@ -220,32 +279,165 @@ fn failed_window_is_reported_not_hidden() {
 }
 
 #[test]
-fn dropping_a_handle_without_stop_kills_the_window() {
+fn dropping_a_handle_right_after_start_does_not_wait_for_a_window() {
     let _guard = ENV_LOCK.lock().expect("env lock");
     let dir = tempfile::tempdir().expect("tempdir");
-    let marker = dir.path().join("started");
-    // Records that it ran, then sleeps far longer than the test allows.
-    let body = format!(
-        "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\ntouch {}\nsleep 30\nexit 0\n",
-        marker.display()
-    );
-    install_fake_oha(&dir, &body);
+    install_fake_oha(&dir, &fake_hanging(&dir));
 
     let executor = OhaLoadExecutor::default();
-    let handle = executor.start(&config(None, 5.0)).expect("starts");
-    for _ in 0..100 {
-        if marker.exists() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    assert!(marker.exists(), "the fake never started");
+    let handle = executor.start(&config(None, 600.0)).expect("starts");
+    // No waiting for the window to be up: the drop races the first spawn.
     let started = Instant::now();
     drop(handle);
+    let elapsed = started.elapsed();
+
     assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "drop must kill the in-flight oha, not wait for it"
+        elapsed < Duration::from_secs(2),
+        "drop waited {elapsed:?} for a window it should have killed"
     );
+    #[cfg(target_os = "linux")]
+    assert!(!hanging_fake_is_alive(&dir), "drop left an oha running");
+}
+
+#[test]
+fn abort_kills_the_in_flight_window_at_once() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, &fake_hanging(&dir));
+
+    // A flat ten-minute load: one window that a halt must not sit out.
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(None, 600.0)).expect("starts");
+    let started = Instant::now();
+    let outcome = executor.abort(handle);
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "abort blocked for {elapsed:?}"
+    );
+    let Err(error) = outcome else {
+        panic!("an aborted first window is no evidence");
+    };
+    assert!(error.contains("cut before any window completed"), "{error}");
+    #[cfg(target_os = "linux")]
+    assert!(!hanging_fake_is_alive(&dir), "abort left an oha running");
+}
+
+#[test]
+fn abort_keeps_the_windows_that_completed() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    // The first two windows answer at once; the third hangs.
+    let third_hangs = FAKE_OHA_JSON.replacen(
+        "#BEFORE_SUMMARY",
+        "[ \"$(wc -l < \"$(dirname \"$0\")/calls\")\" -gt 2 ] && sleep 30",
+        1,
+    );
+    install_fake_oha(&dir, &third_hangs);
+
+    let soak = LoadProfile::Soak {
+        sample_interval_s: 1.0,
+    };
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(Some(soak), 60.0)).expect("starts");
+    wait_for_calls(&dir, 3);
+    let started = Instant::now();
+    let result = executor.abort(handle).expect("completed windows are kept");
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "abort blocked for {elapsed:?}"
+    );
+    assert_eq!(result.samples.len(), 2, "{:?}", result.samples);
+    assert_eq!(result.total_requests, 10);
+}
+
+#[test]
+fn a_window_that_sent_nothing_never_meets_thresholds() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    // What oha 1.16 prints when no request was answered and none failed.
+    install_fake_oha(
+        &dir,
+        &fake_printing(
+            r#"{"summary":{"successRate":null,"total":0.5,"requestsPerSec":0.0},"latencyPercentiles":{"p50":null,"p95":null,"p99":null},"statusCodeDistribution":{},"errorDistribution":{}}"#,
+        ),
+    );
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(None, 1.0)).expect("starts");
+    let result = executor.stop(handle).expect("stops");
+
+    assert_eq!(result.total_requests, 0);
+    assert!(result.samples.is_empty());
+    assert!(!result.thresholds_met, "zero requests must not pass");
+}
+
+#[test]
+fn a_window_where_every_request_timed_out_is_all_errors() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    // What oha 1.16 prints against a target that never answers (`-w -t`).
+    install_fake_oha(
+        &dir,
+        &fake_printing(
+            r#"{"summary":{"successRate":0.0,"total":1.0,"slowest":null,"requestsPerSec":3.9},"latencyPercentiles":{"p50":null,"p95":null,"p99":null},"statusCodeDistribution":{},"errorDistribution":{"timeout":4}}"#,
+        ),
+    );
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(None, 1.0)).expect("starts");
+    let result = executor.stop(handle).expect("stops");
+
+    assert_eq!(result.total_requests, 4);
+    assert!((result.error_rate - 1.0).abs() < 1e-9);
+    assert!(result.samples.is_empty(), "no answer, no latency sample");
+    assert!(!result.thresholds_met);
+}
+
+#[test]
+fn a_straggler_holding_stdout_does_not_hang_a_finished_window() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    // A child of the wrapper outlives it with the stdout pipe still open.
+    let straggler = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 30 &", 1);
+    install_fake_oha(&dir, &straggler);
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(None, 1.0)).expect("starts");
+    let started = Instant::now();
+    let result = executor.stop(handle).expect("stops");
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "the drain hung for {elapsed:?}"
+    );
+    assert_eq!(result.samples.len(), 1, "the summary was still read");
+}
+
+#[test]
+fn a_straggler_outside_the_group_fails_the_window_instead_of_hanging() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Escapes the process group, so the group kill cannot close the pipe.
+    let escaped = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "setsid sleep 30 &", 1);
+    install_fake_oha(&dir, &escaped);
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(None, 1.0)).expect("starts");
+    let started = Instant::now();
+    let result = executor.stop(handle).expect("stops");
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "the drain hung for {elapsed:?}"
+    );
+    assert!(result.samples.is_empty());
+    assert!(!result.thresholds_met);
 }
 
 #[test]

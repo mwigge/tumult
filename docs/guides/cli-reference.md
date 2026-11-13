@@ -616,7 +616,7 @@ Verdicts: `pass` (score at or above the floor, fresh evidence, no failing experi
 
 ## tumult perf
 
-Ask the daemon for a target's performance regression verdict (`GET /api/perf/{target}`): the latency samples of its latest two `service.version`s compared with a bootstrap confidence interval. Exit non-zero on a regression. Meant for the pipeline step after a build has been deployed and exercised.
+Ask the daemon for a target's performance regression verdict (`GET /api/perf/{target}`; with `--store`, `POST /api/perf/{target}/verdicts`): the latency samples of its latest two `service.version`s compared with a bootstrap confidence interval. Exit non-zero on a regression. Meant for the pipeline step after a build has been deployed and exercised.
 
 ```bash
 export TUMULT_DAEMON_URL=http://tumultd.internal:4318
@@ -630,8 +630,8 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 | `--quantile p50\|p95\|p99` | Quantile the verdict is keyed on (daemon default p95) |
 | `--min-samples <n>` | Fewer samples on either side is inconclusive (daemon default 20) |
 | `--margin-pct <n>` | Noise margin as a percentage of the baseline quantile (daemon default 5) |
-| `--env <name>` | Restrict the compared runs to one environment (403 outside a scoped token's environments) |
-| `--store` | Append the verdict to the daemon's `perf_verdicts` history (operator role); without it the command only reads |
+| `--env <name>` | Restrict the compared runs to one environment, matched exactly (403 outside a scoped token's environments; 404 when the target has no telemetry tagged with it) |
+| `--store` | Append the verdict to the daemon's `perf_verdicts` history (`POST`, operator role); without it the command only reads. Exits non-zero when the daemon did not store, whatever `--fail-on` says |
 | `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
 | `--fail-on regressed\|inconclusive\|never` | Which verdicts exit non-zero (default `regressed`) |
 | `--json` | Print the daemon's JSON answer |

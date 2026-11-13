@@ -20,11 +20,11 @@ auditable later.
    versions are the *candidate* (newest) and the *baseline*.
 2. **Runs.** Every experiment run against the target (root spans with
    `resilience.target.system`) is attributed to the version that was live
-   when it started: the one whose first-seen to last-seen window contains the
-   start (the later-deployed one when two overlap, as during a rollout or
-   after a rollback). A run that falls in a telemetry gap goes to the most
-   recent version first seen before it. Runs older than every known version
-   are ignored.
+   when it started: the version of the target's most recent span at or
+   before the run's start. A rollback is therefore handled like any other
+   deploy — after 1.1.0 is rolled back to 1.0.0, a new run belongs to 1.0.0
+   again, although 1.1.0 was first seen later. Runs older than every known
+   version are ignored.
 3. **Samples.** For each side, the `during`-phase `probe_samples` rows of its
    runs for one series — by default `load.latency_p95_ms`, the per-window p95
    a streaming load adapter writes (see the
@@ -53,10 +53,11 @@ auditable later.
    `unchanged` on purpose: the margin is where you say what you do not care
    about.
 
-## The endpoint
+## The endpoints
 
 ```
-GET /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=&store=
+GET  /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=
+POST /api/perf/{target}/verdicts?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=
 ```
 
 | Parameter | Default | Meaning |
@@ -66,33 +67,50 @@ GET /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env
 | `confidence` | `0.95` | Bootstrap interval level, in (0, 1) |
 | `min_samples` | `20` | Fewer on either side is inconclusive |
 | `margin_pct` | `5` | Noise margin as a percentage of the baseline quantile |
-| `env` | all in scope | Restrict the versions, runs and history to one environment (403 outside a scoped token's environments) |
-| `store` | `false` | `true` appends the verdict to `perf_verdicts`; needs the operator role (403 for a viewer) |
+| `env` | all in scope | Restrict the versions, runs and history to one environment (403 outside a scoped token's environments, 400 when empty) |
 
 The answer carries both sides (`version`, `runs`, `samples`, `p50`/`p95`/
 `p99`), the `comparison` (`delta`, `delta_pct`, `ci_low`, `ci_high`,
 `margin`, `iterations`, `seed`), `verdict`, `reasons`, the `versions_seen`
 with their first/last timestamps, `stored`, and `history` — the last ten
 stored verdicts for the target. An unknown target (no `service.version`
-ever seen) is a 404; a target with one version is a 200 `inconclusive`.
+seen in the environments asked for) is a 404 that names those environments;
+a target with one version is a 200 `inconclusive`.
 
-The request is a pure read by default: dashboards and viewers can ask as
-often as they like without growing the lake. `store=true` appends the
-verdict to the lake's `perf_verdicts` table (schema v18): target, probe,
-both versions, both sides' percentiles, the interval, the margin, the
-verdict and its reasons, when it was computed, and the environments it was
-computed under (`envs`, null when the caller was unscoped and passed no
-`env`). Storing is kept on the `GET` so the stored row is exactly the answer
-returned, but it is a mutation and is role-checked as one: operator and
-above. Rows are never updated, so a recomputation after more runs adds a
-newer row and the older one stays.
+`GET` is a pure read (viewer role): dashboards can ask as often as they
+like without growing the lake, and no query parameter makes it write.
+`POST …/verdicts` (operator role, in the route table like every other
+mutation) computes the same answer and appends it to the lake's
+`perf_verdicts` table (schema v18): target, probe, both versions, both
+sides' percentiles, the interval, the margin, the verdict and its reasons,
+when it was computed, and the environments it was computed under (`envs`,
+null when the caller was unscoped and passed no `env`). It answers 201 with
+`stored: true`, 409 when there is only one version and so nothing to store,
+and 503 when the daemon has no writable lake. Rows are never updated, so a
+recomputation after more runs adds a newer row and the older one stays.
 
-Environment scoping applies to everything the answer is built from. A
-token scoped to `staging` sees only the versions whose telemetry carries
-`resilience.target.environment = staging`, only the runs against that
-environment, and only the stored verdicts whose `envs` lie inside its
-scopes; a verdict stored across every environment is not shown to a scoped
-token.
+### Environments
+
+Environment scoping applies to everything the answer is built from: the
+versions, the runs, and the stored verdicts (a scoped token sees only the
+rows whose `envs` lie inside its scopes; a verdict stored across every
+environment is not shown to it).
+
+A span's environment is the first of these that is present, compared
+exactly (no case folding, no aliases — `prod` and `production` are two
+environments):
+
+1. the span attribute `resilience.target.environment`
+2. the resource attribute `resilience.target.environment`
+3. the resource attribute `deployment.environment.name`
+4. the resource attribute `deployment.environment`
+
+A service whose telemetry carries none of them is in no environment: an
+unscoped request without `env` still sees it, but `?env=staging` or a
+scoped token gets a 404 saying that no `service.version` was seen for the
+target *in environment staging* and listing the attributes above. That is
+deliberately fail-closed — untagged telemetry is never assumed to belong to
+the environment someone asked for.
 
 ## The CLI
 
@@ -114,9 +132,13 @@ perf checkout: REGRESSED (p95 of load.latency_p95_ms)
 `--fail-on regressed` (default) exits non-zero on a regression;
 `--fail-on inconclusive` also fails when there is not enough evidence to
 say; `--fail-on never` only prints. `--json` prints the daemon's answer.
-Without `--store` the command only reads; with it the daemon appends the
-verdict to `perf_verdicts`, which is what the pipeline step should do. It
-slots into a pipeline next to `tumult gate` (see `deploy/ci/`).
+Without `--store` the command only reads (`GET`); with it the command
+`POST`s to `/api/perf/{target}/verdicts` and the daemon appends the verdict
+to `perf_verdicts`, which is what the pipeline step should do. `--store`
+exits non-zero whenever the daemon did not store — a viewer token (403), a
+single version (409), or an answer without `stored: true` — whatever
+`--fail-on` says. It slots into a pipeline next to `tumult gate` (see
+`deploy/ci/`).
 
 ## A pipeline shape that works
 
@@ -133,11 +155,22 @@ slots into a pipeline next to `tumult gate` (see `deploy/ci/`).
 
 The oha adapter's `error_rate` is (transport errors + answers outside
 2xx/3xx) / requests, counted from oha's `errorDistribution` and
-`statusCodeDistribution`. k6's is its own `http_req_failed` rate, which by
-default counts answers outside 200–399 too but follows whatever
+`statusCodeDistribution`; a request that got no answer within the request
+timeout is a transport error. k6's is its own `http_req_failed` rate, which
+by default counts answers outside 200–399 too but follows whatever
 `http.setResponseCallback` the script installs — a script that declares 404
 expected does not count it. Compare error rates between runs of the same
 tool, not across tools.
+
+## Slow tails
+
+The oha adapter waits for the requests in flight at the end of each window
+and measures them, so a build whose median is unchanged but whose every
+fifth request is slow shows up in the per-window p95 and the verdict is
+`regressed`. Requests that never return are counted as timeout errors; a
+window in which nothing was answered has no latency sample at all, and a
+run made only of such windows misses its thresholds and ends `deviated`
+(see the [Load Testing Guide](load-testing-guide.md)).
 
 ## What is deferred
 

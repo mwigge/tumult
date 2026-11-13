@@ -134,6 +134,19 @@ pub trait LoadExecutor: Send + Sync {
     ///
     /// Returns an error if the process cannot be stopped or metrics cannot be parsed.
     fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String>;
+
+    /// Ends the load test at once because the run was halted or
+    /// interrupted: nothing may keep hitting the target while a fault is
+    /// still injected and rollbacks wait. Whatever had been measured is
+    /// kept. The default is [`LoadExecutor::stop`], for tools whose stop
+    /// never waits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool had measured nothing yet.
+    fn abort(&self, handle: LoadHandle) -> Result<LoadResult, String> {
+        self.stop(handle)
+    }
 }
 
 /// The adapter for a configured load tool. `jmeter` is accepted by the
