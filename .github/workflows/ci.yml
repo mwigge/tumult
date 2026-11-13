@@ -156,6 +156,24 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - run: python3 scripts/check-docs.py
 
+  forecastd:
+    name: Forecast sidecar (stub model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - run: python3 -m venv .forecastd-venv
+      # The serving stack at the versions the image locks. PyTorch and the
+      # model are left out: the suites that need them skip, the rest run
+      # against the stub model, the ASGI app included.
+      - run: grep -E '^(numpy|fastapi|uvicorn)==' forecastd/requirements.in > serve.txt
+      - run: .forecastd-venv/bin/pip install -r serve.txt ruff==0.16.10
+      - run: .forecastd-venv/bin/ruff check forecastd
+      - name: Unit tests
+        working-directory: forecastd
+        run: ../.forecastd-venv/bin/python -m unittest discover -s tests -t . -v
+      - run: bash -n scripts/proof/rip-phase3-forecast/proof.sh
+
   scripts-quality:
     name: Python, SQL and distribution checks
     runs-on: ubuntu-latest
