@@ -28,6 +28,11 @@ pub mod keys {
     pub const TARGET_ENVIRONMENT: &str = "resilience.target.environment";
     pub const SERVICE_NAME: &str = "service.name";
     pub const SERVICE_VERSION: &str = "service.version";
+    /// OTel semconv deployment environment (current and legacy spellings),
+    /// accepted as the target environment when `resilience.target.environment`
+    /// is absent.
+    pub const DEPLOYMENT_ENVIRONMENT_NAME: &str = "deployment.environment.name";
+    pub const DEPLOYMENT_ENVIRONMENT: &str = "deployment.environment";
 }
 
 /// Render an OTLP `AnyValue` as a plain string (complex values become JSON).
@@ -142,6 +147,12 @@ pub struct ResourceCtx {
     pub service_version: Option<String>,
     pub experiment_id: Option<String>,
     pub experiment_name: Option<String>,
+    /// `resilience.target.*` carried as resource attributes: how an
+    /// auto-instrumented application declares the system it is, once, at
+    /// deploy time (span-level attributes still win when present).
+    pub target_system: Option<String>,
+    pub target_technology: Option<String>,
+    pub target_environment: Option<String>,
     pub resource_attrs: Vec<(String, String)>,
 }
 
@@ -156,6 +167,11 @@ impl ResourceCtx {
             experiment_id: attr_string(attrs, keys::EXPERIMENT_ID),
             experiment_name: attr_string(attrs, keys::EXPERIMENT_NAME)
                 .or_else(|| attr_string(attrs, keys::EXPERIMENT_TITLE)),
+            target_system: attr_string(attrs, keys::TARGET_SYSTEM),
+            target_technology: attr_string(attrs, keys::TARGET_TECHNOLOGY),
+            target_environment: attr_string(attrs, keys::TARGET_ENVIRONMENT)
+                .or_else(|| attr_string(attrs, keys::DEPLOYMENT_ENVIRONMENT_NAME))
+                .or_else(|| attr_string(attrs, keys::DEPLOYMENT_ENVIRONMENT)),
             resource_attrs: unpromoted_attrs(
                 attrs,
                 &[
@@ -164,6 +180,9 @@ impl ResourceCtx {
                     keys::EXPERIMENT_ID,
                     keys::EXPERIMENT_NAME,
                     keys::EXPERIMENT_TITLE,
+                    keys::TARGET_SYSTEM,
+                    keys::TARGET_TECHNOLOGY,
+                    keys::TARGET_ENVIRONMENT,
                 ],
             ),
         }

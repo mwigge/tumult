@@ -1,0 +1,74 @@
+# OpenTelemetry Operator: one Instrumentation resource per namespace injects
+# the agent and the naming contract into every annotated pod. Workload
+# identity (k8s.*) comes from the operator's resource detection; the
+# Collector in otel-collector.yaml turns it into resilience.target.component
+# when the deployment did not name itself.
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: resilience-contract
+  namespace: shop
+spec:
+  exporter:
+    endpoint: http://otel-collector.observability:4317
+  propagators: [tracecontext, baggage]
+  sampler:
+    type: parentbased_traceidratio
+    argument: "1.0"
+  resource:
+    addK8sUIDAttributes: false
+    resourceAttributes:
+      ict.schema.version: "0.1.0"
+      deployment.environment.name: staging
+      resilience.target.environment: staging
+  env:
+    - name: OTEL_PROPAGATORS
+      value: tracecontext,baggage
+  java:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:2.20.1
+  python:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:0.58b0
+  nodejs:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:0.63.0
+  dotnet:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-dotnet:1.12.0
+---
+# A deployment opts in with one annotation and names its target. These
+# per-workload attributes are the only thing a team has to write.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: shop
+  labels: {app: checkout}
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: checkout}
+  template:
+    metadata:
+      labels: {app: checkout}
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+    spec:
+      containers:
+        - name: checkout
+          image: registry.example.com/shop/checkout:1.4.2
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: checkout
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: >-
+                service.version=1.4.2,
+                resilience.target.system=api,
+                resilience.target.technology=jvm,
+                resilience.target.component=shop/checkout,
+                resilience.target.tier=backend,
+                resilience.target.criticality=high,
+                ict.entity.id=CF-0042,
+                ict.entity.tier=critical,
+                ict.entity.owner=team-checkout
+          resources:
+            limits: {cpu: "1", memory: 1Gi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8080}
