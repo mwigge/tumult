@@ -87,6 +87,10 @@ analysis, observability, GameDays, and MCP usage.
   `/posture`): ranked findings and discipline coverage gaps from the evidence
   already in the lake, Kubernetes manifests and the span call graph, with a
   continuous posture score and hash-chained, expiring suppressions.
+- Load profiles (ramp, spike, soak) on k6 and oha behind one adapter
+  boundary, streamed load samples in the lake, and performance regression
+  verdicts per `service.version` with a bootstrap confidence interval
+  (`tumult perf`, `GET /api/perf/{target}`).
 - Deterministic and live-proxy fault injection for AI agents, plus adapters for
   Claude Code and Codex.
 

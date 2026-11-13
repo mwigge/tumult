@@ -75,6 +75,9 @@
 //!
 //! v17 adds `risk_suppressions` (`risk.rs`): the hash-chained record of
 //! passive-scan findings an operator accepted, with an optional expiry.
+//! v18 adds `perf_verdicts` (`perf.rs`): one row per performance
+//! regression verdict between two `service.version`s of a target —
+//! additive and index-free apart from the target lookup index.
 //!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
@@ -85,6 +88,7 @@ mod auth;
 mod manual;
 mod migrations;
 mod objectives;
+mod perf;
 mod risk;
 mod runs;
 mod table_stakes;
@@ -92,7 +96,7 @@ mod telemetry;
 
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 17;
+pub const CURRENT_SCHEMA_VERSION: i64 = 18;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -106,6 +110,7 @@ pub const CREATE_TABLES: &[&str] = &[
     table_stakes::DDL,
     objectives::DDL,
     risk::DDL,
+    perf::DDL,
 ];
 
 /// Rollup view: one row per experiment run, over the experiment root spans

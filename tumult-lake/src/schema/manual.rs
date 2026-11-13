@@ -61,6 +61,5 @@ CREATE TABLE IF NOT EXISTS evidence_attachments (
     added_by VARCHAR NOT NULL,
     added_at_ns BIGINT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_evidence_attachments_experiment
-    ON evidence_attachments (experiment_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_attachments_experiment ON evidence_attachments (experiment_id);
 ";

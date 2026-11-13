@@ -1,0 +1,53 @@
+title: Checkout API soaks for two hours at 20 users (oha)
+description: A soak profile on the oha adapter. 20 concurrent users for 7200 s, sampled every 30 s, so the lake holds a 240-point series per load metric (load.latency_p95_ms, load.throughput_rps, load.error_rate, …) instead of one end-of-run number. A memory leak, a growing queue or a connection pool that never recovers shows up as drift in that series.
+
+tags[3]: robustness, soak, checkout
+kind: robustness
+target:
+  system: checkout
+  technology: http
+  environment: staging
+nfr[2]:
+  - id: p95-steady
+    kind: latency
+    metric: load.latency_p95_ms
+    operator: lte
+    threshold: 300
+    criticality: blocking
+  - id: no-errors
+    kind: availability
+    metric: load.error_rate
+    operator: lte
+    threshold: 0.001
+    criticality: major
+
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/api/checkout
+  vus: 20
+  duration_s: 7200
+  profile:
+    type: soak
+    sample_interval_s: 30
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -fsS -o /dev/null http://127.0.0.1:8080/health"
+        timeout_s: 5.0
+
+method[1]:
+  - name: hold-for-the-soak
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 7200 && curl -fsS -o /dev/null http://127.0.0.1:8080/health"
+      timeout_s: 7260.0
+
+rollbacks[0]:

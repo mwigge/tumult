@@ -14,6 +14,7 @@ mod init;
 mod load;
 mod mcp;
 mod new;
+mod perf;
 mod recommend;
 mod report;
 mod run;
@@ -25,6 +26,7 @@ mod validate;
 
 pub use gameday::{cmd_gameday_analyze, cmd_gameday_create, cmd_gameday_run};
 pub use gate::{cmd_gate, FailOn, GateArgs};
+pub use perf::{cmd_perf, PerfArgs, PerfFailOn};
 pub use recommend::{cmd_agents, cmd_recommend, AgentArgs};
 pub use report::cmd_report;
 pub use run::{cmd_run, cmd_run_with_baseline_mode};

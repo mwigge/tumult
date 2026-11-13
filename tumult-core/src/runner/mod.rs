@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use crate::execution::RollbackStrategy;
-use crate::types::{Activity, LoadConfig, LoadResult};
+use crate::types::{Activity, LoadConfig, LoadResult, LoadTool};
 
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -26,7 +26,11 @@ mod guard;
 /// K6 load executor — spawns k6 and parses its summary into a `LoadResult`.
 pub mod k6;
 mod load;
+/// Tool-agnostic load plan (stages/windows) every load adapter renders.
+pub mod load_profile;
 mod nfr;
+/// oha load executor — runs the plan window by window and streams samples.
+pub mod oha;
 mod phases;
 mod sampler;
 mod telemetry;
@@ -130,6 +134,21 @@ pub trait LoadExecutor: Send + Sync {
     ///
     /// Returns an error if the process cannot be stopped or metrics cannot be parsed.
     fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String>;
+}
+
+/// The adapter for a configured load tool. `jmeter` is accepted by the
+/// definition format but has no adapter, so asking for it is an error
+/// rather than a silent fallback to k6.
+///
+/// # Errors
+///
+/// Returns an error naming the supported tools when `tool` has no adapter.
+pub fn load_executor_for(tool: &LoadTool) -> Result<std::sync::Arc<dyn LoadExecutor>, String> {
+    match tool {
+        LoadTool::K6 => Ok(std::sync::Arc::new(k6::K6LoadExecutor)),
+        LoadTool::Oha => Ok(std::sync::Arc::new(oha::OhaLoadExecutor)),
+        LoadTool::Jmeter => Err("no load adapter for jmeter; supported tools: k6, oha".into()),
+    }
 }
 
 /// Selects the probe-only measurement path or ordinary fault execution.

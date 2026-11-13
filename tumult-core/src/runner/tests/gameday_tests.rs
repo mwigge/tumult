@@ -190,6 +190,7 @@ impl LoadExecutor for RecordingLoadExecutor {
             error_rate: 0.0,
             total_requests: 10,
             thresholds_met: true,
+            samples: vec![],
         })
     }
 }
@@ -207,6 +208,7 @@ fn gameday_with_load(paths: &[&str]) -> crate::types::GameDay {
             vus: Some(1),
             duration_s: Some(5.0),
             thresholds: HashMap::new(),
+            profile: None,
         }),
         experiments: paths
             .iter()

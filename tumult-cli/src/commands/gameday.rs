@@ -2,7 +2,6 @@ use anyhow::{bail, Context, Result};
 
 use tumult_exec::ProviderExecutor;
 
-use super::load::K6LoadExecutor;
 use super::{ComplianceFramework, LoadToolArg};
 
 // ── GameDay commands ────────────────────────────────────────
@@ -41,6 +40,7 @@ pub fn cmd_gameday_create(
 
     let core_load_tool = match load_tool {
         Some(LoadToolArg::K6) => Some(LoadTool::K6),
+        Some(LoadToolArg::Oha) => Some(LoadTool::Oha),
         Some(LoadToolArg::None) | None => None,
     };
     let framework_report_str = framework.map(|fw| fw.as_report_str());
@@ -160,13 +160,13 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         experiments.push(experiment);
     }
 
-    // Create load executor if gameday has load config
-    let load_executor: Option<std::sync::Arc<dyn tumult_core::runner::LoadExecutor>> =
-        if gameday.load.is_some() {
-            Some(std::sync::Arc::new(K6LoadExecutor))
-        } else {
-            None
-        };
+    // Create the load adapter for the gameday's load tool, if any
+    let load_executor = gameday
+        .load
+        .as_ref()
+        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
+        .transpose()
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     // Spawn a task that cancels the gameday if SIGINT (Ctrl-C) is received.
     let cancel_token = tokio_util::sync::CancellationToken::new();

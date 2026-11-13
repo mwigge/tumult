@@ -98,7 +98,10 @@ not being renamed.
    (spans grouped into traces, duration percentiles, per-trace detail),
    `/api/metrics/catalog` + `/api/metrics/query` (raw sums/gauges/histograms
    with optional attribute grouping; histogram p95 interpolated in Rust) and
-   `/api/topology` (service/target call graph), and `/api/gate/{target}`
+   `/api/topology` (service/target call graph), `/api/perf/{target}`
+   (performance regression verdict between a target's latest two
+   `service.version`s, bootstrap interval, appended to `perf_verdicts`),
+   and `/api/gate/{target}`
    (the CI gate: a target's score as a `pass|warn|fail` verdict with
    reasons and evidence, computed with the same freshness-decayed model as
    `/api/scores` and confined to the principal's environment scopes), and

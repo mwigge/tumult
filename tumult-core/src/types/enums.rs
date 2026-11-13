@@ -108,6 +108,8 @@ pub enum BaselineMethod {
 pub enum LoadTool {
     K6,
     Jmeter,
+    /// `oha` HTTP load generator (JSON summary, one process per window).
+    Oha,
 }
 
 /// Where baseline data came from.
@@ -311,6 +313,7 @@ impl std::fmt::Display for LoadTool {
         match self {
             Self::K6 => write!(f, "k6"),
             Self::Jmeter => write!(f, "jmeter"),
+            Self::Oha => write!(f, "oha"),
         }
     }
 }
@@ -539,7 +542,7 @@ mod tests {
 
     #[test]
     fn load_tool_all_variants_round_trip() {
-        for tool in [LoadTool::K6, LoadTool::Jmeter] {
+        for tool in [LoadTool::K6, LoadTool::Jmeter, LoadTool::Oha] {
             let decoded: LoadTool = toon_round_trip(&tool);
             assert_eq!(decoded, tool);
         }
@@ -587,6 +590,7 @@ mod tests {
 
         assert_eq!(LoadTool::K6.to_string(), "k6");
         assert_eq!(LoadTool::Jmeter.to_string(), "jmeter");
+        assert_eq!(LoadTool::Oha.to_string(), "oha");
 
         assert_eq!(BaselineSource::Live.to_string(), "live");
         assert_eq!(BaselineSource::Historical.to_string(), "historical");

@@ -1,6 +1,6 @@
 //! Static validation of experiment definitions before execution.
 
-use crate::types::{Experiment, TestKind, Tolerance};
+use crate::types::{Experiment, LoadProfile, TestKind, Tolerance};
 
 use super::EngineError;
 
@@ -115,6 +115,7 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
     }
 
     validate_objectives(experiment)?;
+    validate_load(experiment)?;
 
     // Validate hypothesis has probes if defined
     if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
@@ -280,6 +281,72 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
     }
     if experiment.kind == TestKind::Dr && experiment.rto_target_s.is_none() {
         return Err(EngineError::DrRequiresRto);
+    }
+    Ok(())
+}
+
+/// A load profile must be realisable: it needs a duration, every length
+/// must be finite and positive, and the shaped segments must fit inside
+/// the duration. Checked here so an impossible shape fails at `validate`
+/// rather than when the load tool starts.
+fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
+    let Some(load) = experiment.load.as_ref() else {
+        return Ok(());
+    };
+    let Some(profile) = load.profile.as_ref() else {
+        return Ok(());
+    };
+    let invalid = |reason: &str| EngineError::LoadProfileInvalid {
+        reason: reason.to_string(),
+    };
+    let Some(duration_s) = load.duration_s else {
+        return Err(invalid("a profile requires duration_s"));
+    };
+    if !(duration_s.is_finite() && duration_s > 0.0) {
+        return Err(invalid("duration_s must be finite and positive"));
+    }
+    let positive = |name: &str, value: f64| -> Result<(), EngineError> {
+        if value.is_finite() && value > 0.0 {
+            return Ok(());
+        }
+        Err(invalid(&format!("{name} must be finite and positive")))
+    };
+    let vus = load.vus.unwrap_or(10);
+    match profile {
+        LoadProfile::Ramp {
+            start_vus,
+            ramp_up_s,
+        } => {
+            positive("ramp_up_s", *ramp_up_s)?;
+            if *ramp_up_s > duration_s {
+                return Err(invalid("ramp_up_s must not exceed duration_s"));
+            }
+            if *start_vus > vus {
+                return Err(invalid("start_vus must not exceed vus"));
+            }
+        }
+        LoadProfile::Spike {
+            peak_vus,
+            after_s,
+            hold_s,
+        } => {
+            positive("hold_s", *hold_s)?;
+            if !(after_s.is_finite() && *after_s >= 0.0) {
+                return Err(invalid("after_s must be finite and non-negative"));
+            }
+            if after_s + hold_s > duration_s {
+                return Err(invalid("after_s + hold_s must not exceed duration_s"));
+            }
+            if *peak_vus <= vus {
+                return Err(invalid("peak_vus must exceed vus"));
+            }
+        }
+        LoadProfile::Soak { sample_interval_s } => {
+            positive("sample_interval_s", *sample_interval_s)?;
+            if *sample_interval_s > duration_s {
+                return Err(invalid("sample_interval_s must not exceed duration_s"));
+            }
+        }
     }
     Ok(())
 }

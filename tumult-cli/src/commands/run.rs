@@ -14,7 +14,6 @@ use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
 use tumult_exec::ProviderExecutor;
 
-use super::load::K6LoadExecutor;
 use super::print_dry_run;
 
 // ── Run command ───────────────────────────────────────────────
@@ -179,13 +178,13 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         experiment.load = Some(override_config.clone());
     }
 
-    // Create K6 load executor if experiment has a load config
-    let load_executor: Option<std::sync::Arc<dyn tumult_core::runner::LoadExecutor>> =
-        if experiment.load.is_some() {
-            Some(std::sync::Arc::new(K6LoadExecutor))
-        } else {
-            None
-        };
+    // Create the load adapter for the experiment's load tool, if any
+    let load_executor = experiment
+        .load
+        .as_ref()
+        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
+        .transpose()
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     let run_config = RunConfig {
         baseline_mode,

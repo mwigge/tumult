@@ -7929,6 +7929,7 @@ dependencies = [
  "tumult-intelligence",
  "tumult-lake",
  "tumult-metrics",
+ "tumult-perf",
  "tumult-report",
  "tumult-risk",
  "uuid",
@@ -8302,6 +8303,14 @@ dependencies = [
  "opentelemetry-proto",
  "serde_json",
  "tumult-lake",
+]
+
+[[package]]
+name = "tumult-perf"
+version = "2.22.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
