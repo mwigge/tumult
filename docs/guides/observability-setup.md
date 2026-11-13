@@ -102,6 +102,75 @@ docker compose -f docker/docker-compose.grafana-full.yml up -d
 otelcol --config collector/otel-collector-grafana.yaml
 ```
 
+### OTel-Arrow carrier
+
+tumultd accepts a second carrier next to OTLP: the OpenTelemetry Protocol
+with Apache Arrow (OTel-Arrow, "OTAP"), what the Collector's `otelarrow`
+exporter speaks. Instead of one protobuf request per export, the exporter
+keeps a bidirectional gRPC stream open per signal
+(`ArrowTracesService/ArrowTraces`, `ArrowLogsService/ArrowLogs`,
+`ArrowMetricsService/ArrowMetrics`) and sends `BatchArrowRecords`: one
+Arrow IPC record batch per OTAP table (spans, span attributes, resource
+attributes, events, ...), dictionary-encoded and zstd-compressed. Each
+batch is answered with a `BatchStatus`.
+
+**Why.** Telemetry columns repeat heavily (service names, attribute keys,
+target labels), and columnar batches compress far better than row-wise
+protobuf, so the same spans cross the network in a fraction of the bytes.
+The lake is Arrow-native (DuckDB, Arrow appender), so the batches are
+decoded without a detour through protobuf allocation per span. Decoded
+batches go through the exact same `tumult-otlp` conversion and the same
+single-writer channel as OTLP: every promoted column (service, target,
+experiment, fault, outcome) and the `span_attrs` / `resource_attrs` maps
+come out identical whichever carrier delivered them. The receiver is
+always on, on the same listener as OTLP/gRPC (`KRONIKA_OTLP_GRPC_ADDR`,
+`:4317`), guarded by the same bearer token (`KRONIKA_INGEST_TOKEN`), with
+the same backpressure: a batch is acknowledged only after the writer took
+it, and a decode or write failure is reported in that batch's status
+rather than closing the stream.
+
+**Enable it in the Collector** (contrib distribution only; verified with
+`otel/opentelemetry-collector-contrib:0.157.0`; see
+`examples/otel/otel-collector.yaml` for the full pipeline):
+
+```yaml
+exporters:
+  otelarrow/tumultd:
+    endpoint: tumultd.host:4317
+    tls:
+      insecure: true            # or the daemon's TLS certificate
+    headers:
+      authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
+    compression: none           # see limits below
+    arrow:
+      disable_downgrade: true   # fail loudly instead of falling back to OTLP
+      num_streams: 2
+      max_stream_lifetime: 30s
+```
+
+**Limits.**
+
+- gRPC-level compression must be `none`: the exporter registers Go-only
+  `zstdarrowN` encodings for it that the daemon cannot negotiate. The
+  Arrow IPC payloads stay zstd-compressed (`arrow.payload_compression`,
+  default `zstd`), which is where the saving is.
+- Span links, metric exemplars and multivariate metric batches are not
+  decoded (no lake column reads them; a multivariate batch is refused in
+  its status). Summary and exponential-histogram data points are counted
+  and rejected exactly as on the OTLP path.
+- Span events arrive sorted by name from the exporter and are restored to
+  time order; attribute maps arrive sorted by key.
+- Per-batch `headers` (hpack metadata) are ignored; authenticate with the
+  stream metadata, as above.
+- A batch that fails to decode is reported as `INVALID_ARGUMENT` for that
+  batch id; later batches on the stream still decode as long as the IPC
+  reader state survives, and the exporter restarts streams every
+  `max_stream_lifetime` anyway.
+
+A live proof of the whole path (fresh daemon, real Collector container,
+`curl` OTLP/HTTP in, promoted columns out through `/api/experiments`,
+`/api/traces` and `/api/topology`) is `scripts/proof/otap/proof.sh`.
+
 ## Span Hierarchy
 
 A fault run uses `resilience.experiment` as its root span. The following
