@@ -66,3 +66,7 @@ web/playwright-report/
 web/test-results/
 
 .quality-venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
