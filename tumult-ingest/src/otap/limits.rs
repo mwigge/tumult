@@ -502,6 +502,12 @@ impl Budget {
         }
     }
 
+    /// How often [`Self::tick`] has been called.
+    #[cfg(test)]
+    pub fn ticks(&self) -> usize {
+        self.ticks.load(Ordering::Relaxed)
+    }
+
     /// [`Self::check_deadline`] for row loops: looks at the clock on the
     /// first call and then once every [`DEADLINE_STRIDE`] calls.
     pub fn tick(&self) -> Result<(), OtapError> {

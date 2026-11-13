@@ -69,7 +69,23 @@
 //! | `make_array` | buffer count and alignment of valid `ArrayData` | data comes from `build`, buffers are 64-byte aligned `MutableBuffer`s |
 //! | `RecordBatch::try_new_with_options` | none: returns errors | column types are the plan's own |
 //! | `arrow::compute::concat` (dictionary deltas) | same type on both sides | both sides are decoded with the same plan node |
-//! | `arrow::compute::cast` of a dictionary column (`arrays.rs`) | `take` indexes values by key | `Reader::keys`: every key, null slots included, is inside the dictionary |
+//! | `MutableArrayData::extend` over a dictionary column (`arrays.rs`) | the copied range lies inside the values | `Reader::keys`: every key, null slots included, is inside the dictionary; `arrays.rs` copies nothing for a null key and takes its keys from `normalized_keys`, which clamps them to the values |
+//!
+//! # What a dictionary costs per batch
+//!
+//! The values of a dictionary are validated in full (offsets, UTF-8) once,
+//! when the dictionary batch or delta that carries them is decoded:
+//! `Reader::array` ends in `ArrayDataBuilder::build`. A record batch that
+//! refers to the dictionary does not walk the values again. Its key column
+//! is built by the same checked `build`, which for a dictionary type
+//! validates the keys against the dictionary's length and, for the child,
+//! only the layout (`ArrayData::validate`: buffer counts and sizes, first
+//! and last offset), never the bytes: `validate_data` does not recurse,
+//! only `validate_full` does. The values handed to it are the retained
+//! array itself, immutable behind its `Arc`, or the `concat` of two such
+//! arrays, so they are exactly what was validated on arrival. The work per
+//! batch is therefore one pass over the keys, which counts against the
+//! batch's deadline (`Budget::tick`), whatever the size of the dictionary.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -765,6 +781,7 @@ impl<'a> Reader<'a> {
         let values = self.dictionaries.get(&id).filter(|d| !d.is_empty());
         let size = values.map_or(0, |d| d.len());
         for (i, key) in keys.as_slice_mut().chunks_exact_mut(*width).enumerate() {
+            self.budget.tick()?;
             if validity.as_ref().is_some_and(|v| v.is_null(i)) {
                 key.fill(0);
                 continue;

@@ -460,6 +460,16 @@ fn dictionary_keys_and_ids_are_checked() {
         .unwrap_or_else(|e| panic!("keys without a dictionary: {e}"));
 }
 
+/// The loop over a column of dictionary keys counts against the batch's
+/// time like the row loops of the table decoders: one tick per key.
+#[test]
+fn the_dictionary_key_loop_runs_under_the_deadline() {
+    let rows = 1000;
+    let batch = consume(ipc(&dictionary_table(3, rows, "k"))).unwrap();
+    assert_eq!(batch.get(Ty::Spans).unwrap().num_rows(), rows);
+    assert_eq!(batch.budget().ticks(), 3 * rows, "one look per key");
+}
+
 // ---------------------------------------------------------------------------
 // B2. What a stream makes the receiver keep
 // ---------------------------------------------------------------------------

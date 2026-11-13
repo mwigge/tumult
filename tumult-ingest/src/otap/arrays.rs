@@ -4,13 +4,15 @@
 //! chooses dictionary encoding per column and per batch), so every accessor
 //! sees plain arrays. A dictionary lets a few bytes on the wire stand for
 //! many rows, so the expanded size is charged to the batch's byte budget
-//! before the expansion. Id columns honour the `encoding` field metadata:
+//! before the expansion, and the expansion goes row by row under the
+//! batch's deadline. Id columns honour the `encoding` field metadata:
 //! absent or `delta` means cumulative-sum decoding, `plain` means values as
 //! sent.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use arrow::array::{make_array, new_null_array, MutableArrayData};
 use arrow::array::{Array, ArrayRef, AsArray, OffsetSizeTrait, RecordBatch};
 use arrow::buffer::NullBuffer;
 use arrow::datatypes::{
@@ -115,6 +117,31 @@ fn expanded_bytes(array: &ArrayRef, value_type: &DataType) -> Result<usize, Stri
     }
 }
 
+/// The dictionary column `column` with every row holding its own value.
+///
+/// Done row by row rather than with one `cast`, so the batch's deadline
+/// ends it part-way: every row is a [`Budget::tick`]. A row whose key is
+/// null is null; `normalized_keys` keeps every key inside the values (the
+/// IPC reader lets none through that is not).
+fn materialised(column: &ArrayRef, budget: &Budget) -> Result<ArrayRef, OtapError> {
+    let dictionary = column.as_any_dictionary();
+    let values = dictionary.values().to_data();
+    if values.is_empty() {
+        return Ok(new_null_array(values.data_type(), column.len()));
+    }
+    let keys = dictionary.keys();
+    let mut rows = MutableArrayData::new(vec![&values], true, column.len());
+    for (row, key) in dictionary.normalized_keys().into_iter().enumerate() {
+        budget.tick()?;
+        if keys.is_null(row) {
+            rows.extend_nulls(1);
+            continue;
+        }
+        rows.extend(0, key, key + 1);
+    }
+    Ok(make_array(rows.freeze()))
+}
+
 /// Total length of the variable-size values the keys refer to.
 fn referenced<O: OffsetSizeTrait>(keys: &[usize], offsets: &[O]) -> usize {
     keys.iter()
@@ -176,12 +203,7 @@ impl Table {
                 reason,
             };
             budget.charge_bytes(expanded_bytes(column, value_type).map_err(failed)?)?;
-            columns.push(arrow::compute::cast(column, value_type).map_err(|e| {
-                failed(format!(
-                    "cannot materialise dictionary: {}",
-                    log_guard::clean_display(&e)
-                ))
-            })?);
+            columns.push(materialised(column, &budget)?);
         }
         Ok(Self {
             name,
@@ -518,6 +540,7 @@ impl Table {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::array::{BooleanArray, DictionaryArray, FixedSizeBinaryArray, UInt8Array};
     use arrow::array::{StringArray, UInt16Array, UInt32Array};
     use arrow::datatypes::{Field, Schema};
     use std::collections::HashMap;
@@ -576,6 +599,54 @@ mod tests {
         let t = Table::new("T", &batch, &budget()).unwrap();
         assert_eq!(t.str_at("name", 2).unwrap(), Some("a"));
         assert_eq!(t.string_at("absent", 0).unwrap(), "");
+    }
+
+    /// Keys `[1, null, 0, 1]` into `values`, as a one-column table.
+    fn keyed(values: ArrayRef) -> RecordBatch {
+        let keys = UInt8Array::from(vec![Some(1), None, Some(0), Some(1)]);
+        let column: ArrayRef = Arc::new(DictionaryArray::new(keys, values));
+        let schema = Schema::new(vec![Field::new("c", column.data_type().clone(), true)]);
+        RecordBatch::try_new(Arc::new(schema), vec![column]).unwrap()
+    }
+
+    #[test]
+    fn every_materialised_row_is_a_tick_of_the_deadline() {
+        let budget = budget();
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["x", "yy"]));
+        let t = Table::new("T", &keyed(text), &budget).unwrap();
+        assert_eq!(budget.ticks(), 4, "one look per row");
+        let read: Vec<_> = (0..4).map(|i| t.str_at("c", i).unwrap()).collect();
+        assert_eq!(read, [Some("yy"), None, Some("x"), Some("yy")]);
+    }
+
+    #[test]
+    fn every_value_type_is_materialised_with_its_nulls() {
+        let numbers: ArrayRef = Arc::new(UInt32Array::from(vec![Some(7), None]));
+        let t = Table::new("T", &keyed(numbers), &budget()).unwrap();
+        let read: Vec<_> = (0..4).map(|i| t.u32_at("c", i).unwrap()).collect();
+        assert_eq!(read, [None, None, Some(7), None], "a null value stays null");
+
+        let flags: ArrayRef = Arc::new(BooleanArray::from(vec![false, true]));
+        let t = Table::new("T", &keyed(flags), &budget()).unwrap();
+        let read: Vec<_> = (0..4).map(|i| t.bool_at("c", i).unwrap()).collect();
+        assert_eq!(read, [Some(true), None, Some(false), Some(true)]);
+
+        let ids = [[1u8; 4].as_slice(), [2u8; 4].as_slice()];
+        let ids: ArrayRef = Arc::new(FixedSizeBinaryArray::try_from_iter(ids.into_iter()).unwrap());
+        let t = Table::new("T", &keyed(ids), &budget()).unwrap();
+        let read: Vec<_> = (0..4).map(|i| t.bytes_at("c", i).unwrap()).collect();
+        let (one, two) = ([1u8; 4].as_slice(), [2u8; 4].as_slice());
+        assert_eq!(read, [Some(two), None, Some(one), Some(two)]);
+
+        // Keys with nothing to point at: no row has a value.
+        let keys = UInt8Array::from(vec![None, None]);
+        let none: ArrayRef = Arc::new(StringArray::from(Vec::<&str>::new()));
+        let column: ArrayRef = Arc::new(DictionaryArray::new(keys, none));
+        let schema = Schema::new(vec![Field::new("c", column.data_type().clone(), true)]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![column]).unwrap();
+        let t = Table::new("T", &batch, &budget()).unwrap();
+        assert_eq!(t.str_at("c", 0).unwrap(), None);
+        assert_eq!(t.str_at("c", 1).unwrap(), None);
     }
 
     #[test]
