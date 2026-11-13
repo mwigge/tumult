@@ -18,6 +18,7 @@ server span for the requests it serves, at most one every 200 ms, as
 service "checkout" in environment PROOF_SERVICE_ENV ("demo" when unset).
 A build nobody calls is therefore silent until the load starts.
 """
+
 import itertools
 import os
 import sys
