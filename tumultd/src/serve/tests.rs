@@ -677,3 +677,79 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
     std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
     std::env::remove_var("KRONIKA_LAKE_INTERVAL");
 }
+
+/// Whether the daemon closes `client` without sending anything.
+async fn closed_by_the_daemon(client: &mut tokio::net::TcpStream) -> bool {
+    use tokio::io::AsyncReadExt;
+    let mut byte = [0u8; 1];
+    let read = tokio::time::timeout(std::time::Duration::from_secs(5), client.read(&mut byte));
+    matches!(read.await, Ok(Ok(0) | Err(_)))
+}
+
+/// The gRPC listener is bound early and handed to the server; the
+/// connection limits must still apply to it. With room for one connection
+/// the second one is closed, and its place comes back when the first ends.
+#[allow(clippy::await_holding_lock)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_pre_bound_grpc_listener_enforces_the_connection_limits() {
+    let _guard = crate::test_support::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let (grpc_port, http_port) = (free_port(), free_port());
+    daemon_env(dir.path(), grpc_port, http_port);
+    std::env::set_var("KRONIKA_GRPC_MAX_CONNECTIONS", "1");
+
+    let mut daemon = tokio::spawn(serve());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while http_get(http_port, "/healthz").await.is_err() {
+        assert!(!daemon.is_finished(), "daemon exited before serving");
+        assert!(std::time::Instant::now() < deadline, "daemon not serving");
+        tokio::task::yield_now().await;
+    }
+
+    let grpc = ("127.0.0.1", grpc_port);
+    let first = tokio::net::TcpStream::connect(grpc).await.unwrap();
+    let mut second = tokio::net::TcpStream::connect(grpc).await.unwrap();
+    let second_closed = closed_by_the_daemon(&mut second).await;
+    drop((first, second));
+    // The freed place is taken by a connection that speaks HTTP/2: the
+    // server answers its preface with a SETTINGS frame (type 4).
+    let reused = async {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        loop {
+            let mut next = tokio::net::TcpStream::connect(grpc).await.unwrap();
+            let preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\0\0\0\x04\0\0\0\0\0";
+            let mut frame = [0u8; 9];
+            if next.write_all(preface).await.is_ok() && next.read_exact(&mut frame).await.is_ok() {
+                return frame[3];
+            }
+            tokio::task::yield_now().await;
+        }
+    };
+    let settings = tokio::time::timeout(std::time::Duration::from_secs(10), reused).await;
+
+    let status = std::process::Command::new("kill")
+        .arg("-TERM")
+        .arg(std::process::id().to_string())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), &mut daemon)
+        .await
+        .expect("daemon did not stop within 30s of SIGTERM")
+        .expect("daemon task panicked");
+    for name in [
+        "KRONIKA_GRPC_MAX_CONNECTIONS",
+        "TUMULT_LAKE_PATH",
+        "KRONIKA_METRICS_DIR",
+        "KRONIKA_OTLP_GRPC_ADDR",
+        "KRONIKA_OTLP_HTTP_ADDR",
+        "KRONIKA_LAKE_INTERVAL",
+    ] {
+        std::env::remove_var(name);
+    }
+    result.expect("daemon returned an error");
+    assert!(second_closed, "a connection over the limit stayed open");
+    assert_eq!(settings.ok(), Some(4), "the freed place was not reused");
+}
