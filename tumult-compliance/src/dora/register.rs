@@ -610,6 +610,32 @@ score:
         assert_eq!(again, declared);
     }
 
+    /// The demo deployment's org file: three functions, and a critical
+    /// one that declares a service nothing in the demo reports as.
+    #[test]
+    fn the_demo_org_file_declares_three_functions_and_a_silent_critical_service() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../demo/kronika/org.yaml");
+        let register = load(Path::new(path)).unwrap().ict;
+        let ids: Vec<&str> = register
+            .functions
+            .iter()
+            .map(|f| f.function_id.as_str())
+            .collect();
+        assert_eq!(ids, ["cif-0001", "cif-0002", "cif-0003"]);
+        assert_eq!(register.functions[0].tier, "critical");
+        assert_eq!(register.legal_entities.len(), 1);
+        assert_eq!(register.legal_entities[0].profile, "simplified");
+        let silent = register
+            .services
+            .iter()
+            .find(|m| m.pattern == "order-archive")
+            .expect("the uninstrumented service is declared");
+        assert_eq!(
+            (silent.function_id.as_str(), silent.kind.as_str()),
+            ("cif-0001", MAP_SERVICE)
+        );
+    }
+
     #[test]
     fn an_org_file_without_register_sections_declares_nothing() {
         let register = parse("nodes:\n  - {name: platform, kind: domain}\n").unwrap();
