@@ -2,6 +2,11 @@ title: config corruption — invalid config rejected
 description: Corrupt an application config value and verify the validation probe rejects it — designed to DEVIATE so the rollback restores the known-good config
 
 tags[2]: configuration, resilience
+kind: robustness
+target:
+  system: config-service
+  technology: file
+  environment: demo
 
 steady_state_hypothesis:
   title: Application config has a sane timeout

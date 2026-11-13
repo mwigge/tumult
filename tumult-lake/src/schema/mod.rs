@@ -75,6 +75,9 @@
 //!
 //! v17 adds `risk_suppressions` (`risk.rs`): the hash-chained record of
 //! passive-scan findings an operator accepted, with an optional expiry.
+//! v18 adds `perf_verdicts` (`perf.rs`): one row per performance
+//! regression verdict between two `service.version`s of a target —
+//! additive and index-free apart from the target lookup index.
 //!
 //! v19 adds `forecasts` (`forecast.rs`): the cache of quantile forecasts
 //! with model provenance (model, version, weights hash, context window).
@@ -89,6 +92,7 @@ mod forecast;
 mod manual;
 mod migrations;
 mod objectives;
+mod perf;
 mod risk;
 mod runs;
 mod table_stakes;
@@ -110,6 +114,7 @@ pub const CREATE_TABLES: &[&str] = &[
     table_stakes::DDL,
     objectives::DDL,
     risk::DDL,
+    perf::DDL,
     forecast::DDL,
 ];
 
@@ -128,10 +133,11 @@ SELECT
     max(s.duration_ns) AS duration_ns,
     any_value(coalesce(s.outcome_status, l.log_attrs['status'])) AS outcome_status,
     any_value(s.hypothesis_met) AS hypothesis_met
-FROM spans s
-LEFT JOIN logs l
-    ON l.log_attrs['experiment_id'] = s.experiment_id
-    AND l.body = 'experiment.completed'
+FROM spans AS s
+LEFT JOIN logs AS l
+    ON
+        l.log_attrs['experiment_id'] = s.experiment_id
+        AND l.body = 'experiment.completed'
 WHERE s.span_name = 'resilience.experiment'
 GROUP BY s.experiment_id;
 ";

@@ -121,6 +121,44 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
                     },
                 ],
             };
+        else if (path === '/api/otel/conformance')
+            body = {
+                as_of_ns: 1,
+                range: '24h',
+                contract: {
+                    target: [
+                        'resilience.target.system',
+                        'resilience.target.technology',
+                        'resilience.target.environment',
+                    ],
+                    spine: [
+                        'ict.schema.version',
+                        'ict.entity.id',
+                        'ict.entity.tier',
+                        'ict.entity.owner',
+                    ],
+                    recommended: ['resilience.target.component', 'service.version'],
+                },
+                summary: { services: 2, spine: 1, target: 0, none: 1 },
+                services: [
+                    {
+                        service: 'checkout',
+                        spans: 40,
+                        last_seen_ns: 1,
+                        level: 'spine',
+                        missing: [],
+                        keys: [],
+                    },
+                    {
+                        service: 'legacy-batch',
+                        spans: 12,
+                        last_seen_ns: 1,
+                        level: 'none',
+                        missing: ['resilience.target.system', 'ict.entity.id'],
+                        keys: [],
+                    },
+                ],
+            };
         else if (path === '/api/scores/tree')
             body = {
                 name: 'company',
@@ -215,6 +253,13 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
         };
     });
     expect(charts).toEqual({ nfrCells: 2, trendPoints: 3 });
+
+    // The telemetry contract panel lists each service with its level and gaps.
+    const contract = page.getByTestId('conformance');
+    await expect(contract.locator('tbody tr')).toHaveCount(2);
+    await expect(contract).toContainText('legacy-batch');
+    await expect(contract).toContainText('resilience.target.system, ict.entity.id');
+    await expect(contract.locator('tbody tr').nth(0)).toContainText('spine');
 
     // Accepting a finding posts the reason and the list refreshes.
     await list.nth(0).getByRole('button', { name: 'accept' }).click();

@@ -15,6 +15,7 @@ mod forecast;
 mod gamedays;
 mod gate;
 mod manual;
+mod perf;
 mod query;
 mod reports;
 mod risks;

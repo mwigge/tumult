@@ -51,6 +51,9 @@ services:
       # /data/org.yaml is the default lookup path; KRONIKA_ORG_FILE
       # overrides it (documented here for discoverability).
       # KRONIKA_ORG_FILE: /data/org.yaml
+      # Kubernetes manifests the passive risk scan reads (/posture and
+      # /api/risks): single replicas, missing limits, no disruption budget.
+      KRONIKA_MANIFESTS_DIR: /data/manifests
       # Parquet lake: export into /data/lake on the default 24h interval;
       # retention OFF — the demo accumulates, never deletes.
       KRONIKA_RETENTION_DAYS: "0"
@@ -79,6 +82,7 @@ services:
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
+      - ../demo/kronika/manifests:/data/manifests:ro
       - ../plugins:/opt/tumult/plugins:ro
     healthcheck:
       # Exercise the authenticated store probe, not merely an HTTP listener.

@@ -58,6 +58,8 @@ mod forecast;
 pub mod lake;
 #[cfg(feature = "duckdb")]
 mod manual;
+#[cfg(feature = "duckdb")]
+mod perf;
 pub mod query_row;
 #[cfg(feature = "duckdb")]
 mod reader;
@@ -92,6 +94,8 @@ pub use forecast::ForecastRow;
 pub use manual::{
     AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
 };
+#[cfg(feature = "duckdb")]
+pub use perf::PerfVerdictRow;
 pub use query_row::QueryRow;
 #[cfg(feature = "duckdb")]
 pub use reader::Reader;

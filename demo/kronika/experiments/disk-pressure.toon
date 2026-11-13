@@ -2,6 +2,11 @@ title: disk pressure — usage detected and reclaimed
 description: Fill a chunk of the scratch filesystem, verify the pressure is observed, then reclaim it; rollback reclaims on deviation
 
 tags[2]: resource, resilience
+kind: robustness
+target:
+  system: storage
+  technology: filesystem
+  environment: demo
 
 steady_state_hypothesis:
   title: Scratch filesystem usage is below 90 percent

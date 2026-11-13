@@ -182,6 +182,31 @@ pub struct LoadResult {
     pub total_requests: u64,
     /// Whether all configured thresholds held.
     pub thresholds_met: bool,
+    /// Time series of per-window summaries, when the adapter streams them
+    /// (one per sample interval for a soak profile, one per stage
+    /// otherwise). Empty for tools that only report an end-of-run summary.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub samples: Vec<LoadSample>,
+}
+
+/// One windowed load summary: what the tool measured between `ts_ns` and
+/// `ts_ns + duration_s`. The lake stores each field as a `probe_samples`
+/// series named `load.<field>`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadSample {
+    /// Epoch-nanosecond start of the window.
+    pub ts_ns: i64,
+    /// Window length in seconds.
+    pub duration_s: f64,
+    /// Concurrency (virtual users) during the window.
+    pub vus: u32,
+    pub throughput_rps: f64,
+    pub latency_p50_ms: f64,
+    pub latency_p95_ms: f64,
+    pub latency_p99_ms: f64,
+    /// Fraction of requests that failed (0.0-1.0).
+    pub error_rate: f64,
+    pub requests: u64,
 }
 
 // ── Raw probe samples and objective verdicts ──────────────────
@@ -423,6 +448,7 @@ mod tests {
             error_rate: 0.008,
             total_requests: 148_230,
             thresholds_met: true,
+            samples: vec![],
         };
         let decoded: LoadResult = toon_round_trip(&result);
         assert_eq!(decoded, result);

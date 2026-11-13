@@ -264,6 +264,43 @@ export interface GateVerdict {
     };
 }
 
+/** One side of `GET /api/perf/{target}`: a `service.version` and its samples. */
+export interface PerfSide {
+    version: string;
+    runs: string[];
+    samples: number;
+    dropped: number;
+    p50: number | null;
+    p95: number | null;
+    p99: number | null;
+}
+
+/** `GET /api/perf/{target}`: the regression verdict between the latest two versions. */
+export interface PerfVerdict {
+    target: string;
+    probe: string;
+    verdict: 'improved' | 'unchanged' | 'regressed' | 'inconclusive';
+    reasons: string[];
+    baseline: PerfSide | null;
+    candidate: PerfSide;
+    comparison: {
+        quantile: 'p50' | 'p95' | 'p99';
+        delta: number | null;
+        delta_pct: number | null;
+        ci_low: number | null;
+        ci_high: number | null;
+        confidence: number;
+        margin: number;
+        iterations: number;
+        seed: number;
+        min_samples: number;
+    };
+    versions_seen: { version: string; first_seen_ns: number; last_seen_ns: number }[];
+    stored: boolean;
+    history: Record<string, unknown>[];
+    as_of_ns: number;
+}
+
 export type ReportTemplate = 'executive-digest' | 'game-day' | 'evidence-pack';
 
 export interface ReportMetaV2 {
@@ -897,6 +934,32 @@ export interface SuppressionRow extends RiskSuppression {
     id: string;
     prev_hash: string | null;
     new_hash: string;
+}
+
+// --- OpenTelemetry naming-contract conformance (`/api/otel/conformance`) ---
+
+export interface ConformanceKey {
+    key: string;
+    present: number;
+    required_for: 'target' | 'spine' | 'recommended';
+}
+
+export interface ServiceConformance {
+    service: string;
+    spans: number;
+    last_seen_ns: number | null;
+    level: 'none' | 'target' | 'spine';
+    missing: string[];
+    keys: ConformanceKey[];
+}
+
+/** `GET /api/otel/conformance` */
+export interface ConformanceReport {
+    as_of_ns: number;
+    range: string;
+    contract: { target: string[]; spine: string[]; recommended: string[] };
+    summary: { services: number; spine: number; target: number; none: number };
+    services: ServiceConformance[];
 }
 
 /** Which model produced a forecast; `fallback_reason` is set when the

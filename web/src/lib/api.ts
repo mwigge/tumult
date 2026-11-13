@@ -31,6 +31,7 @@ import type {
     MetricDefInfo,
     MetricQueryResult,
     Overview,
+    ConformanceReport,
     PostureResponse,
     RiskReport,
     SuppressionRow,
@@ -48,6 +49,7 @@ import type {
     Schedule,
     Scorecard,
     GateVerdict,
+    PerfVerdict,
     ScoreTree,
     Timeseries,
     Topology,
@@ -147,6 +149,11 @@ export const api = {
     posture: (env = '') =>
         get<PostureResponse>(`/api/posture${env ? `?env=${encodeURIComponent(env)}` : ''}`),
 
+    otelConformance: (range = '24h', env = '') =>
+        get<ConformanceReport>(
+            `/api/otel/conformance?range=${range}${env ? `&env=${encodeURIComponent(env)}` : ''}`,
+        ),
+
     suppressRisk: (id: string, reason: string, expiresInDays?: number, actor?: string) =>
         send<SuppressionRow>('POST', `/api/risks/${encodeURIComponent(id)}/suppress`, {
             reason,
@@ -164,6 +171,24 @@ export const api = {
         if (params.env) q.set('env', params.env);
         const qs = q.toString();
         return get<GateVerdict>(`/api/gate/${encodeURIComponent(target)}${qs ? `?${qs}` : ''}`);
+    },
+
+    perf: (
+        target: string,
+        params: {
+            probe?: string;
+            quantile?: 'p50' | 'p95' | 'p99';
+            env?: string;
+            store?: boolean;
+        } = {},
+    ) => {
+        const q = new URLSearchParams();
+        if (params.probe) q.set('probe', params.probe);
+        if (params.quantile) q.set('quantile', params.quantile);
+        if (params.env) q.set('env', params.env);
+        if (params.store !== undefined) q.set('store', String(params.store));
+        const qs = q.toString();
+        return get<PerfVerdict>(`/api/perf/${encodeURIComponent(target)}${qs ? `?${qs}` : ''}`);
     },
 
     reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),

@@ -23,6 +23,7 @@ fn config() -> LoadConfig {
         vus: Some(7),
         duration_s: Some(1.0),
         thresholds: HashMap::new(),
+        profile: None,
     }
 }
 

@@ -1,0 +1,16 @@
+[package]
+name = "tumult-perf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pure performance-regression logic: latency percentiles, a seeded bootstrap confidence interval on the baseline/candidate difference, and the improved/unchanged/regressed/inconclusive verdict"
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

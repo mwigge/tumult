@@ -376,7 +376,7 @@ fn nfr_cells(inputs: &Inputs) -> Vec<NfrCell> {
     out
 }
 
-async fn scan_for(
+pub(crate) async fn scan_for(
     state: &ApiState,
     principal: &Principal,
     env: Option<String>,

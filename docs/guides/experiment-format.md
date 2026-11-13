@@ -34,7 +34,7 @@ Every experiment has these sections:
 | `rollbacks` | No | Actions to restore system state after the experiment |
 | `estimate` | No | Phase 0 — prediction of expected outcome |
 | `baseline` | No | Phase 1 — statistical baseline acquisition config |
-| `load` | No | Load tool integration (k6) |
+| `load` | No | Load tool integration (k6 or oha) with an optional traffic profile |
 | `regulatory` | No | Regulatory framework mapping (DORA, NIS2, PCI-DSS) |
 
 ## Activity Types
@@ -226,7 +226,43 @@ Raw probe samples from the during and post phases are kept in the journal (`prob
 
 ## Load
 
-The optional `load` section drives load generation concurrent with the method. **k6 is the only supported driver** — `tool: k6`, and the `--load` CLI override accepts only `k6` or `none`. (The former `--load jmeter` CLI choice was removed: it never invoked JMeter — it silently ran k6.)
+The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`. `tool: jmeter` still parses for older files but has no adapter and fails at start rather than silently running k6.
+
+| Field | Required | Description |
+|---|---|---|
+| `tool` | Yes | `k6` or `oha` |
+| `script` | Yes | k6 script path, or the URL for oha |
+| `vus` | No | Virtual users / concurrency (default 10) |
+| `duration_s` | No | Seconds of load (default 30); required when a `profile` is set |
+| `thresholds` | No | Metric → bound. k6 scripts enforce their own; for oha the adapter checks `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate` (upper bounds) and `throughput_rps` (lower bound) against the aggregate, and an unknown name counts as unmet |
+| `profile` | No | Traffic shape, see below |
+
+### Load profiles
+
+A profile shapes the traffic over `duration_s`; without one the load is flat at `vus`. Every profile is turned into the same plan of stages, which k6 renders as `--stage` arguments and oha as one process per window, so a profile means the same thing whichever tool runs it. The validator rejects a shape that does not fit the duration.
+
+| `type` | Fields | Shape |
+|---|---|---|
+| `ramp` | `start_vus`, `ramp_up_s` | Linear ramp from `start_vus` to `vus` over `ramp_up_s`, then hold `vus` |
+| `spike` | `peak_vus`, `after_s`, `hold_s` | `vus` for `after_s`, a jump to `peak_vus` held for `hold_s`, back to `vus` for the rest |
+| `soak` | `sample_interval_s` | Constant `vus` for the whole (long) duration, with a summary sampled every `sample_interval_s` |
+
+```toon
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/api/checkout
+  vus: 20
+  duration_s: 7200
+  profile:
+    type: soak
+    sample_interval_s: 30
+```
+
+The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores each field as a `probe_samples` series named `load.<field>` in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
+
+### Robustness runs
+
+`kind: robustness` covers the runs where the question is "does it fail safely" rather than "does it recover from a fault": malformed input, saturation and soak. They use the same sections as every other experiment — the method carries the hostile inputs as probes with tolerances, the load section drives the saturation or soak, and `nfr` entries say what must hold. `examples/api-malformed-input.toon` posts oversized, truncated, wrongly typed and deeply nested bodies and expects 4xx while the health probe stays green; `examples/api-saturation.toon` ramps past capacity under cpu stress and expects shed load (429/503) rather than a dead process; `examples/checkout-soak-oha.toon` holds load for two hours and streams samples.
 
 ## Analysis (Phase 4)
 

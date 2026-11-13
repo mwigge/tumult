@@ -44,6 +44,8 @@ members = [
     "tumult-autopilot",
     # Passive risk scanning and the continuous posture score (pure logic)
     "tumult-risk",
+    # Performance-regression verdicts: percentiles, bootstrap CI, verdict (pure logic)
+    "tumult-perf",
     # Probabilistic forecasting: provider trait, Holt-Winters, impact and recovery (pure logic)
     "tumult-forecast",
     # Imported from kronika but versioned with the workspace (version.workspace = true).
@@ -86,17 +88,17 @@ tokio-netem = "0.1.1"
 clap = { version = "4", features = ["derive"] }
 
 # OpenTelemetry
-opentelemetry = { version = "0.32", features = ["trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.32", features = ["trace", "metrics", "logs", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "trace", "metrics", "logs"] }
-opentelemetry-semantic-conventions = "0.32"
-opentelemetry-stdout = { version = "0.32", features = ["trace"] }
+opentelemetry = { version = "0.33", features = ["trace", "metrics", "logs"] }
+opentelemetry_sdk = { version = "0.33", features = ["trace", "metrics", "logs", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "trace", "metrics", "logs"] }
+opentelemetry-semantic-conventions = "0.33"
+opentelemetry-stdout = { version = "0.33", features = ["trace"] }
 
 # Tracing (Rust idiomatic) + OTel bridge
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry", "fmt"] }
-tracing-opentelemetry = "0.33"
-opentelemetry-appender-tracing = "0.32"
+tracing-opentelemetry = "0.34"
+opentelemetry-appender-tracing = "0.33"
 
 # HTTP
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -180,7 +182,7 @@ tumult-intelligence = { path = "tumult-intelligence" }
 tumult-forecast = { path = "tumult-forecast" }
 
 # OTLP receive side (tumult-otlp / tumult-ingest)
-opentelemetry-proto = { version = "0.32", features = ["gen-tonic"] }
+opentelemetry-proto = { version = "0.33", features = ["gen-tonic"] }
 tonic = "0.14"
 prost = "0.14"
 

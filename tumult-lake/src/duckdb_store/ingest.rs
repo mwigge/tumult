@@ -7,6 +7,7 @@ use tumult_core::types::{Experiment, Journal};
 use crate::arrow_convert::{
     journal_to_activity_batch, journal_to_experiment_batch, journal_to_load_batch,
     journal_to_nfr_verdicts_batch, journal_to_probe_samples_batch,
+    load_samples_to_probe_samples_batch,
 };
 use crate::error::AnalyticsError;
 use crate::telemetry;
@@ -85,6 +86,15 @@ fn ingest_journal_inner(
     if let Some(ref load_result) = journal.load_result {
         let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
         insert_batch(conn, "load_results", &load_batch)?;
+        // v17: a streaming adapter's windows land next to the probe
+        // samples as `load.*` series.
+        if !load_result.samples.is_empty() {
+            insert_batch(
+                conn,
+                "probe_samples",
+                &load_samples_to_probe_samples_batch(&journal.experiment_id, load_result)?,
+            )?;
+        }
     }
     // v16: raw probe samples and objective verdicts.
     if !journal.probe_samples.is_empty() {
@@ -142,6 +152,9 @@ impl AnalyticsStore {
     ///     rollback_failures: 0,
     ///     halt: None,
     ///     blast_radius: None,
+    ///     kind: TestKind::default(),
+    ///     objectives: None,
+    ///     probe_samples: vec![],
     /// };
     ///
     /// store.ingest_journal(&journal).unwrap();
@@ -384,6 +397,7 @@ mod tests {
             error_rate: 0.02,
             total_requests: 1000,
             thresholds_met: true,
+            samples: vec![],
         });
         s.ingest_journal(&journal).unwrap();
 
@@ -484,6 +498,55 @@ mod tests {
             .query("SELECT test_kind FROM experiments WHERE experiment_id = 'plain'")
             .unwrap();
         assert_eq!(rows[0][0], "chaos");
+    }
+
+    #[test]
+    fn load_samples_ingested_as_probe_series() {
+        use tumult_core::types::{LoadResult, LoadSample, LoadTool};
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("soak-1", ExperimentStatus::Completed);
+        let window = |ts_ns: i64, p95: f64| LoadSample {
+            ts_ns,
+            duration_s: 10.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: p95,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            requests: 400,
+        };
+        journal.load_result = Some(LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1_000_000_000,
+            ended_at_ns: 21_000_000_000,
+            duration_s: 20.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 75.0,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            total_requests: 800,
+            thresholds_met: true,
+            samples: vec![window(1_000_000_000, 70.0), window(11_000_000_000, 80.0)],
+        });
+        s.ingest_journal(&journal).unwrap();
+
+        let rows = s
+            .query(
+                "SELECT ts_ns, value FROM probe_samples \
+                 WHERE probe_name = 'load.latency_p95_ms' AND phase = 'during' ORDER BY ts_ns",
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][1].parse::<f64>().unwrap(), 70.0);
+        assert_eq!(rows[1][1].parse::<f64>().unwrap(), 80.0);
+        let count = s.query("SELECT count(*) FROM probe_samples").unwrap();
+        assert_eq!(count[0][0], "10");
+        let summary = s.query("SELECT tool FROM load_results").unwrap();
+        assert_eq!(summary[0][0], "oha");
     }
 
     #[test]

@@ -87,8 +87,20 @@
 //!   dependencies, workload manifests) with the coverage matrix;
 //!   `POST /api/risks/{id}/suppress {reason, expires_in_days?}` accepts a
 //!   finding for a while (hash-chained, Operator);
+//!   `POST /api/risks/{id}/recommend` turns a finding into a registered
+//!   experiment (scaffolded from the fault catalog, or the experiment the
+//!   finding is about) and an autopilot candidate with a `risk` trigger,
+//!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/otel/conformance?range=&env=` — per service, which naming
+//!   contract attributes every span in the window carried (target columns,
+//!   ICT spine), the resulting level (`none|target|spine`) and what is
+//!   missing: the first stop when a target is absent from the posture page.
+//! * `GET /api/perf/{target}?probe=&quantile=&env=` — performance regression
+//!   verdict (`improved|unchanged|regressed|inconclusive`) between the
+//!   target's latest two `service.version`s, with a bootstrap interval;
+//!   appended to `perf_verdicts`.
 //! * `GET /api/forecast?metric=&target=&env=&range=&horizon=` — a semantic
 //!   metric's series resampled onto a regular step and forecast `horizon`
 //!   steps ahead with a 10–90 band; the Timestral sidecar
@@ -367,9 +379,18 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/gate/{target}", get(handlers::gate::gate))
         .route("/api/risks", get(handlers::risks::risks))
         .route("/api/risks/{id}/suppress", post(handlers::risks::suppress))
+        .route(
+            "/api/risks/{id}/recommend",
+            post(handlers::recommend::recommend),
+        )
         .route("/api/posture", get(handlers::risks::posture))
         .route("/api/forecast", get(forecast::forecast))
         .route("/api/runs/{id}/impact", get(forecast::run_impact))
+        .route(
+            "/api/otel/conformance",
+            get(handlers::conformance::conformance),
+        )
+        .route("/api/perf/{target}", get(handlers::perf::perf))
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

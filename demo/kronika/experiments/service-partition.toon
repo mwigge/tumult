@@ -2,6 +2,11 @@ title: service partition — endpoint loss detected and healed
 description: Partition a service by removing its endpoint descriptor, verify the loss is detectable, and heal the partition inside the fault window
 
 tags[2]: network, resilience
+kind: chaos
+target:
+  system: service
+  technology: network
+  environment: demo
 
 steady_state_hypothesis:
   title: Service endpoint descriptor is reachable

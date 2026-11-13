@@ -69,6 +69,33 @@ pub(crate) enum GateFailOn {
     Never,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfFailOnArg {
+    /// Exit non-zero on a `regressed` verdict only (default)
+    Regressed,
+    /// Exit non-zero on `regressed` or `inconclusive`
+    Inconclusive,
+    /// Always exit zero; print the verdict only
+    Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfQuantileArg {
+    P50,
+    P95,
+    P99,
+}
+
+impl PerfQuantileArg {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::P50 => "p50",
+            Self::P95 => "p95",
+            Self::P99 => "p99",
+        }
+    }
+}
+
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
     /// Print journal as JSON to stdout
@@ -133,7 +160,7 @@ pub(crate) enum Commands {
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
-        /// Path to load test script (k6 `.js`)
+        /// Path to load test script (k6 `.js`), or the URL to hit for oha
         #[arg(long)]
         load_script: Option<PathBuf>,
         /// Number of virtual users for load test
@@ -349,6 +376,40 @@ pub(crate) enum Commands {
         /// Which verdicts make the command exit non-zero
         #[arg(long, value_enum, default_value_t = GateFailOn::Fail)]
         fail_on: GateFailOn,
+        /// Print the daemon's JSON answer instead of the summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Performance gate: ask the daemon for a target's regression verdict
+    /// between its latest two service.versions (`GET /api/perf/{target}`)
+    Perf {
+        /// Target system as recorded on the experiments (e.g. `payments-api`)
+        target: String,
+        /// Probe series to compare (daemon default `load.latency_p95_ms`)
+        #[arg(long)]
+        probe: Option<String>,
+        /// Quantile the verdict is keyed on (daemon default p95)
+        #[arg(long, value_enum)]
+        quantile: Option<PerfQuantileArg>,
+        /// Fewer samples on either side is inconclusive (daemon default 20)
+        #[arg(long)]
+        min_samples: Option<u32>,
+        /// Noise margin as a percentage of the baseline quantile (daemon default 5)
+        #[arg(long)]
+        margin_pct: Option<f64>,
+        /// Restrict the compared runs to one environment
+        #[arg(long)]
+        env: Option<String>,
+        /// Append the verdict to the daemon's `perf_verdicts` history
+        /// (needs the operator role); the default only reads
+        #[arg(long)]
+        store: bool,
+        /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
+        #[arg(long)]
+        daemon_url: Option<String>,
+        /// Which verdicts make the command exit non-zero
+        #[arg(long, value_enum, default_value_t = PerfFailOnArg::Regressed)]
+        fail_on: PerfFailOnArg,
         /// Print the daemon's JSON answer instead of the summary
         #[arg(long)]
         json: bool,

@@ -118,9 +118,12 @@ fn span_to_row(span: &Span, resource: &ResourceCtx) -> SpanRow {
         fault_subtype: common::attr_string(attrs, keys::FAULT_SUBTYPE),
         fault_severity: common::attr_string(attrs, keys::FAULT_SEVERITY),
         blast_radius: common::attr_string(attrs, keys::FAULT_BLAST_RADIUS),
-        target_system: common::attr_string(attrs, keys::TARGET_SYSTEM),
-        target_technology: common::attr_string(attrs, keys::TARGET_TECHNOLOGY),
-        target_environment: common::attr_string(attrs, keys::TARGET_ENVIRONMENT),
+        target_system: common::attr_string(attrs, keys::TARGET_SYSTEM)
+            .or_else(|| resource.target_system.clone()),
+        target_technology: common::attr_string(attrs, keys::TARGET_TECHNOLOGY)
+            .or_else(|| resource.target_technology.clone()),
+        target_environment: common::attr_string(attrs, keys::TARGET_ENVIRONMENT)
+            .or_else(|| resource.target_environment.clone()),
         plugin_name: common::attr_string(attrs, keys::FAULT_PLUGIN)
             .or_else(|| common::attr_string(attrs, keys::PLUGIN_NAME)),
         hypothesis_met: common::attr_bool(attrs, keys::OUTCOME_HYPOTHESIS_MET),
@@ -425,5 +428,76 @@ mod tests {
         assert_eq!(row.ts_ns, i64::MAX);
         assert_eq!(row.duration_ns, 0);
         assert_eq!(row.parent_span_id.as_deref(), Some("0303030303030303"));
+    }
+
+    /// An auto-instrumented application declares its target once, as
+    /// resource attributes; every span it emits is then attributable to that
+    /// system, and the semconv deployment environment stands in for
+    /// `resilience.target.environment`.
+    #[test]
+    fn resource_target_attributes_promote_when_spans_carry_none() {
+        let span = Span {
+            name: "GET /checkout".into(),
+            attributes: vec![kv("http.request.method", Value::StringValue("GET".into()))],
+            ..bare_span()
+        };
+        let req = request_for(
+            vec![span],
+            vec![
+                kv("service.name", Value::StringValue("checkout".into())),
+                kv("service.version", Value::StringValue("1.4.2".into())),
+                kv(
+                    "deployment.environment.name",
+                    Value::StringValue("staging".into()),
+                ),
+                kv("resilience.target.system", Value::StringValue("api".into())),
+                kv(
+                    "resilience.target.technology",
+                    Value::StringValue("jvm".into()),
+                ),
+                kv("ict.entity.id", Value::StringValue("CF-0042".into())),
+            ],
+        );
+        let rows = trace_request_to_spans(&req);
+        let row = &rows[0];
+        assert_eq!(row.service_name, "checkout");
+        assert_eq!(row.target_system.as_deref(), Some("api"));
+        assert_eq!(row.target_technology.as_deref(), Some("jvm"));
+        assert_eq!(row.target_environment.as_deref(), Some("staging"));
+        assert!(
+            row.resource_attrs
+                .iter()
+                .any(|(k, v)| k == "ict.entity.id" && v == "CF-0042"),
+            "spine attributes stay queryable in resource_attrs: {:?}",
+            row.resource_attrs
+        );
+        assert!(!row
+            .resource_attrs
+            .iter()
+            .any(|(k, _)| k == "resilience.target.system"));
+    }
+
+    /// Span-level target attributes win over the resource declaration.
+    #[test]
+    fn span_target_attributes_override_resource_ones() {
+        let span = Span {
+            attributes: vec![kv(
+                "resilience.target.environment",
+                Value::StringValue("prod".into()),
+            )],
+            ..bare_span()
+        };
+        let req = request_for(
+            vec![span],
+            vec![
+                kv("service.name", Value::StringValue("checkout".into())),
+                kv(
+                    "deployment.environment",
+                    Value::StringValue("staging".into()),
+                ),
+            ],
+        );
+        let row = &trace_request_to_spans(&req)[0];
+        assert_eq!(row.target_environment.as_deref(), Some("prod"));
     }
 }

@@ -98,7 +98,10 @@ not being renamed.
    (spans grouped into traces, duration percentiles, per-trace detail),
    `/api/metrics/catalog` + `/api/metrics/query` (raw sums/gauges/histograms
    with optional attribute grouping; histogram p95 interpolated in Rust) and
-   `/api/topology` (service/target call graph), and `/api/gate/{target}`
+   `/api/topology` (service/target call graph), `/api/perf/{target}`
+   (performance regression verdict between a target's latest two
+   `service.version`s, bootstrap interval, appended to `perf_verdicts`),
+   and `/api/gate/{target}`
    (the CI gate: a target's score as a `pass|warn|fail` verdict with
    reasons and evidence, computed with the same freshness-decayed model as
    `/api/scores` and confined to the principal's environment scopes), and
@@ -107,12 +110,14 @@ not being renamed.
    the span call graph, registered definitions and the Kubernetes
    manifests under `KRONIKA_MANIFESTS_DIR`, with the coverage matrix and
    the continuous posture score; `POST /api/risks/{id}/suppress` accepts a
-   finding for a while), and `/api/forecast` + `/api/runs/{id}/impact`
-   (forecast bands for semantic metrics and the counterfactual impact and
-   recovery time of a run's probes; the provider is the built-in
-   Holt-Winters in `tumult-forecast`, or the `tumult-forecastd` Timestral
-   sidecar when `TUMULTD_FORECAST_URL` is set, with the model named in
-   every response). Mutating routes exist but
+   finding for a while; `POST /api/risks/{id}/recommend` turns one into a
+   registered experiment and an autopilot candidate with a `risk`
+   trigger, gated and recorded when a policy is loaded), and
+   `/api/forecast` + `/api/runs/{id}/impact` (forecast bands for semantic
+   metrics and the counterfactual impact and recovery time of a run's
+   probes; the provider is the built-in Holt-Winters in `tumult-forecast`,
+   or the `tumult-forecastd` Timestral sidecar when `TUMULTD_FORECAST_URL`
+   is set, with the model named in every response). Mutating routes exist but
    stay read-only in spirit: they ride the single-writer channel (run
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with

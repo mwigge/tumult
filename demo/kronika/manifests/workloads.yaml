@@ -1,0 +1,91 @@
+# Demo workloads for the passive risk scan (KRONIKA_MANIFESTS_DIR). Names
+# match the `target.system` of the seeded experiments so the posture page
+# links manifest findings to the evidence. Deliberately uneven: api-worker
+# and config-service carry the classic gaps; batch-worker and
+# message-queue are the well-configured counterparts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-worker
+  namespace: demo
+  labels: {app: api-worker, tier: compute}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels: {app: api-worker, tier: compute}
+    spec:
+      containers:
+        - name: api
+          image: demo/api-worker:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-service
+  namespace: demo
+  labels: {app: config-service, tier: data}
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels: {app: config-service, tier: data}
+    spec:
+      containers:
+        - name: config
+          image: demo/config-service:latest
+          resources: {limits: {cpu: "500m", memory: 256Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-worker
+  namespace: demo
+  labels: {app: batch-worker, tier: compute}
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels: {app: batch-worker, tier: compute}
+    spec:
+      containers:
+        - name: worker
+          image: demo/batch-worker:latest
+          resources: {limits: {cpu: "1", memory: 512Mi}}
+          readinessProbe: {httpGet: {path: /ready, port: 8080}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: batch-worker
+  namespace: demo
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: batch-worker}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: message-queue
+  namespace: demo
+  labels: {app: message-queue, tier: data}
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels: {app: message-queue, tier: data}
+    spec:
+      containers:
+        - name: broker
+          image: demo/message-queue:latest
+          resources: {limits: {cpu: "1", memory: 1Gi}}
+          readinessProbe: {tcpSocket: {port: 5672}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: message-queue
+  namespace: demo
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: message-queue}}

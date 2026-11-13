@@ -2,6 +2,11 @@ title: batch worker pool — all jobs complete without strays
 description: Fan out a small batch of background jobs and verify every one of them completes
 
 tags[2]: process, resilience
+kind: robustness
+target:
+  system: batch-worker
+  technology: process
+  environment: demo
 
 steady_state_hypothesis:
   title: Batch scratch area is clean and ready

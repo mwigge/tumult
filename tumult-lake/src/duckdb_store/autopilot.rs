@@ -78,36 +78,59 @@ pub struct ClassHistory {
 // Every method below delegates fallible storage operations to DuckDB and
 // returns `AnalyticsError`; documenting that same condition on each small
 // store accessor would obscure their behavioral contract.
+/// The one INSERT behind both the analytics store and the daemon's single
+/// writer (the API records risk-triggered decisions through the latter).
+pub(crate) fn insert_decision(conn: &duckdb::Connection, d: &DecisionRecord) -> duckdb::Result<()> {
+    conn.execute(
+        "INSERT INTO autopilot_decisions VALUES
+         (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?,
+          CAST(? AS JSON), CAST(? AS JSON), ?, ?)",
+        params![
+            d.id,
+            d.decided_at_ns,
+            d.trigger,
+            d.service_id,
+            d.tier,
+            d.plugin,
+            d.action,
+            d.article_id,
+            d.score,
+            d.reasons.to_string(),
+            d.confidence,
+            d.playbook,
+            d.validator.to_string(),
+            d.verdict,
+            d.gate_rules.to_string(),
+            d.gate_detail.to_string(),
+            d.policy_hash,
+            d.autonomy_score,
+        ],
+    )?;
+    Ok(())
+}
+
+impl crate::Writer {
+    /// Append one autopilot decision on the single writer: the API's
+    /// risk-triggered candidates land here, never through a second
+    /// connection.
+    ///
+    /// # Errors
+    /// Returns an error if the insert fails.
+    pub fn insert_autopilot_decision(
+        &self,
+        d: &DecisionRecord,
+    ) -> Result<(), crate::error::StoreError> {
+        insert_decision(&self.conn, d)?;
+        Ok(())
+    }
+}
+
 #[allow(clippy::missing_errors_doc)]
 impl AnalyticsStore {
     /// Append one decision. INSERT only — a decision is immutable once
     /// written; later developments are `append_autopilot_event` rows.
     pub fn insert_autopilot_decision(&self, d: &DecisionRecord) -> Result<(), AnalyticsError> {
-        self.conn.execute(
-            "INSERT INTO autopilot_decisions VALUES
-             (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?,
-              CAST(? AS JSON), CAST(? AS JSON), ?, ?)",
-            params![
-                d.id,
-                d.decided_at_ns,
-                d.trigger,
-                d.service_id,
-                d.tier,
-                d.plugin,
-                d.action,
-                d.article_id,
-                d.score,
-                d.reasons.to_string(),
-                d.confidence,
-                d.playbook,
-                d.validator.to_string(),
-                d.verdict,
-                d.gate_rules.to_string(),
-                d.gate_detail.to_string(),
-                d.policy_hash,
-                d.autonomy_score,
-            ],
-        )?;
+        insert_decision(&self.conn, d)?;
         Ok(())
     }
 
