@@ -79,6 +79,9 @@ services:
       #   TUMULTD_FORECAST_URL=http://forecastd:8700 \
       #     docker compose -f docker/docker-compose.kronika.yml --profile forecast up
       TUMULTD_FORECAST_URL: ${TUMULTD_FORECAST_URL:-}
+      # Seconds a failing sidecar is skipped before it is tried again
+      # (the Holt-Winters fallback answers meanwhile); 0 disables the breaker.
+      TUMULTD_FORECAST_COOLDOWN_S: ${TUMULTD_FORECAST_COOLDOWN_S:-30}
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
@@ -225,8 +228,10 @@ services:
     # The image bundles no weights: mount a local snapshot at /weights
     # (FORECASTD_WEIGHTS_DIR on the host) for offline use, or leave the
     # default and let the first start download them into the hf-cache volume.
-    # FORECASTD_MODEL=stub serves a deterministic model with no weights at
-    # all, for smoke runs.
+    # The profile runs the real model. Pin the weights with
+    # FORECASTD_MODEL_REVISION (a hub commit) so every start loads the same
+    # files. FORECASTD_MODEL=stub is the offline mode: a linear stand-in with
+    # no weights, which names itself `stub` in every forecast's provenance.
     profiles: ["forecast"]
     build:
       context: ../forecastd
@@ -236,7 +241,9 @@ services:
       FORECASTD_BIND: 0.0.0.0:8700
       FORECASTD_MODEL: ${FORECASTD_MODEL:-timestral}
       FORECASTD_MODEL_SIZE: ${FORECASTD_MODEL_SIZE:-5M}
+      FORECASTD_MODEL_REVISION: ${FORECASTD_MODEL_REVISION:-}
       FORECASTD_WEIGHTS_PATH: ${FORECASTD_WEIGHTS_PATH:-}
+      FORECASTD_THREADS: ${FORECASTD_THREADS:-4}
       HF_HOME: /cache/hf
     volumes:
       - tumult-kronika-hf-cache:/cache/hf
@@ -246,6 +253,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 24
+    # The 5M model holds about 0.35 GB resident on CPU.
+    mem_limit: 2g
     restart: unless-stopped
 
 volumes:

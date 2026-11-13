@@ -48,6 +48,8 @@ spec:
             # on your own series before switching.
             - { name: FORECASTD_MODEL_SIZE, value: "5M" }
             - { name: FORECASTD_WEIGHTS_PATH, value: /weights }
+            # Torch threads; keep it at or below the CPU limit.
+            - { name: FORECASTD_THREADS, value: "2" }
             # Never reach for the hub when the weights are mounted.
             - { name: HF_HUB_OFFLINE, value: "1" }
             - { name: HF_HOME, value: /tmp/hf }

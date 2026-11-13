@@ -10,6 +10,10 @@
 #   docker build -f forecastd/Dockerfile -t tumult-forecastd forecastd/
 #   docker run -p 8700:8700 -v ./weights/Timestral-5M:/weights:ro \
 #     -e FORECASTD_WEIGHTS_PATH=/weights tumult-forecastd
+#
+# The default is the real model. FORECASTD_MODEL=stub is the offline mode: a
+# linear stand-in that needs no weights and names itself `stub` in every
+# response.
 
 FROM python:3.12-slim-bookworm
 
@@ -19,7 +23,11 @@ ENV PIP_NO_CACHE_DIR=1 \
     FORECASTD_BIND=0.0.0.0:8700 \
     FORECASTD_MODEL=timestral \
     FORECASTD_MODEL_SIZE=5M \
+    FORECASTD_THREADS=4 \
     HF_HOME=/cache/hf
+
+# The Timestral release the service is tested against (1.0.0, Apache-2.0).
+ARG TIMESTRAL_COMMIT=a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git curl ca-certificates \
@@ -34,7 +42,8 @@ COPY forecastd/ ./forecastd/
 # model forecasts in tens of milliseconds on a few CPU threads.
 RUN pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.4" \
     && pip install ".[serve]" \
-    && pip install "git+https://github.com/mistralai/timestral.git"
+    && pip install "timestral @ git+https://github.com/mistralai/timestral.git@${TIMESTRAL_COMMIT}" \
+    && python -c "import timestral, torch; print('timestral', timestral.__version__, 'torch', torch.__version__)"
 
 RUN mkdir -p /cache/hf /weights && chown -R forecastd:forecastd /cache /weights
 USER forecastd
