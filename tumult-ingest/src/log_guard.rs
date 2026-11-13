@@ -11,6 +11,7 @@
 //! counts the rest, kind by kind: a flood of one warning does not hide the
 //! first of another.
 
+use std::net::IpAddr;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -207,29 +208,36 @@ pub(crate) static REJECTED_TOKENS: LogLimiter = LogLimiter::warnings();
 
 /// [`warn_rejected_token`] under the process-wide limiter.
 #[cfg(not(test))]
-pub(crate) fn warn_rejected(carrier: &'static str, presented: bool) {
-    warn_rejected_token(&REJECTED_TOKENS, carrier, presented);
+pub(crate) fn warn_rejected(carrier: &'static str, presented: bool, peer: Option<IpAddr>) {
+    warn_rejected_token(&REJECTED_TOKENS, carrier, presented, peer);
 }
 
 /// [`warn_rejected_token`] under a limiter per test thread, so tests do not
 /// use up each other's burst.
 #[cfg(test)]
-pub(crate) fn warn_rejected(carrier: &'static str, presented: bool) {
+pub(crate) fn warn_rejected(carrier: &'static str, presented: bool, peer: Option<IpAddr>) {
     thread_local! {
         static LIMITER: LogLimiter = const { LogLimiter::warnings() };
     }
-    LIMITER.with(|limiter| warn_rejected_token(limiter, carrier, presented));
+    LIMITER.with(|limiter| warn_rejected_token(limiter, carrier, presented, peer));
 }
 
-/// Log one rejected bearer token (rate-limited), saying only whether a
-/// credential was presented, never what it was.
-pub(crate) fn warn_rejected_token(limiter: &LogLimiter, carrier: &'static str, presented: bool) {
+/// Log one rejected bearer token (rate-limited), saying where the call
+/// came from and whether a credential was presented, never what it was.
+/// Behind a proxy `peer` is the proxy.
+pub(crate) fn warn_rejected_token(
+    limiter: &LogLimiter,
+    carrier: &'static str,
+    presented: bool,
+    peer: Option<IpAddr>,
+) {
     let Some(suppressed) = limiter.allow(carrier) else {
         return;
     };
     tracing::warn!(
         carrier,
         presented,
+        peer = peer.map(tracing::field::display),
         suppressed,
         "ingest bearer token rejected"
     );
@@ -363,11 +371,23 @@ mod tests {
     fn rejected_token_warning_is_limited_and_names_the_carrier() {
         let (logs, _guard) = crate::test_logs::capture();
         let limiter = LogLimiter::new(2, Duration::from_secs(3600));
+        let peer = IpAddr::from([203, 0, 113, 9]);
         for _ in 0..50 {
-            warn_rejected_token(&limiter, "grpc", true);
+            warn_rejected_token(&limiter, "grpc", true, Some(peer));
         }
         let text = logs.text();
         assert_eq!(text.lines().count(), 2, "{text}");
         assert!(text.contains("carrier=\"grpc\"") && text.contains("presented=true"));
+        assert_eq!(text.matches(" peer=203.0.113.9 ").count(), 2, "{text}");
+    }
+
+    #[test]
+    fn rejected_token_warning_without_a_known_peer_says_nothing_of_one() {
+        let (logs, _guard) = crate::test_logs::capture();
+        let limiter = LogLimiter::new(2, Duration::from_secs(3600));
+        warn_rejected_token(&limiter, "http", false, None);
+        let text = logs.text();
+        assert!(text.contains("ingest bearer token rejected"), "{text}");
+        assert!(!text.contains("peer"), "{text}");
     }
 }

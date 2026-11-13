@@ -10,7 +10,7 @@
 //! tumultd's ops router (behind the API auth middleware), not here.
 
 use axum::body::Bytes;
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -26,6 +26,7 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
 use prost::Message;
+use std::net::SocketAddr;
 
 use crate::error::IngestError;
 use crate::writer::{Batch, IngestWriter};
@@ -67,7 +68,11 @@ async fn require_bearer(
             .and_then(|v| v.to_str().ok());
         let authorized = presented.is_some_and(|v| tumult_auth::constant_time_eq(v, &expected));
         if !authorized {
-            crate::log_guard::warn_rejected("http", presented.is_some());
+            let peer = req
+                .extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ConnectInfo(peer)| peer.ip());
+            crate::log_guard::warn_rejected("http", presented.is_some(), peer);
             return status_response(StatusCode::UNAUTHORIZED, "unauthorized".into());
         }
     }
@@ -294,6 +299,8 @@ mod tests {
         let app = router_with_token(ingest, Some("kro_secret".into()));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
+        // As the daemon serves it: with the peer address of each call.
+        let app = app.into_make_service_with_connect_info::<SocketAddr>();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         addr
     }
@@ -317,6 +324,7 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("presented=true"), "{text}");
+        assert!(text.contains(" peer=127.0.0.1 "), "{text}");
         assert!(!text.contains("kro_other") && !text.contains("kro_secret"));
 
         // A flood of them is summarised, not repeated.

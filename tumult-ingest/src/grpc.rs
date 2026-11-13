@@ -5,7 +5,8 @@
 //! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
 //! export call (and every Arrow stream) must carry an
 //! `authorization: Bearer <token>` metadata entry; anything else is rejected
-//! with `UNAUTHENTICATED`.
+//! with `UNAUTHENTICATED`. The token is checked on the headers of a call
+//! ([`bearer`]), before its message is read or decoded.
 
 use opentelemetry_proto::tonic::collector::logs::v1::logs_service_server::{
     LogsService, LogsServiceServer,
@@ -116,19 +117,20 @@ fn build(
     };
     let otap =
         crate::otap::service::OtapGrpc::with_limits(ingest.clone(), token.clone(), otap_limits);
+    let otlp = OtlpGrpc {
+        ingest,
+        ingest_token: token.clone(),
+    };
     Ok(builder
-        .add_service(TraceServiceServer::new(OtlpGrpc {
-            ingest: ingest.clone(),
-            ingest_token: token.clone(),
-        }))
-        .add_service(MetricsServiceServer::new(OtlpGrpc {
-            ingest: ingest.clone(),
-            ingest_token: token.clone(),
-        }))
-        .add_service(LogsServiceServer::new(OtlpGrpc {
-            ingest,
-            ingest_token: token,
-        }))
+        .add_service(TraceServiceServer::with_interceptor(
+            otlp.clone(),
+            bearer(token.clone()),
+        ))
+        .add_service(MetricsServiceServer::with_interceptor(
+            otlp.clone(),
+            bearer(token.clone()),
+        ))
+        .add_service(LogsServiceServer::with_interceptor(otlp, bearer(token)))
         // OTel-Arrow: same listener, same token, same writer channel.
         .add_service(otap.clone().traces())
         .add_service(otap.clone().logs())
@@ -155,12 +157,29 @@ pub(crate) fn authorize<T>(
     match presented {
         Some(v) if tumult_auth::constant_time_eq(v, &expected) => Ok(()),
         _ => {
-            crate::log_guard::warn_rejected("grpc", presented.is_some());
+            let peer = request.remote_addr().map(|peer| peer.ip());
+            crate::log_guard::warn_rejected("grpc", presented.is_some(), peer);
             Err(Status::unauthenticated("missing or invalid bearer token"))
         }
     }
 }
 
+/// [`authorize`] as an interceptor: it sees the headers of a call and
+/// answers before the body is read, so a caller without the token cannot
+/// make the receiver buffer and decode a message. (An Arrow stream is
+/// checked the same way when it opens: its messages are read lazily.)
+fn bearer(
+    ingest_token: Option<std::sync::Arc<String>>,
+) -> impl tonic::service::Interceptor + Clone {
+    move |request: Request<()>| {
+        authorize(ingest_token.as_ref(), &request)?;
+        Ok(request)
+    }
+}
+
+/// The unary OTLP services. Each call checks the token again: the
+/// interceptor is set where the router is built, the check here holds
+/// wherever the service is used.
 #[derive(Clone)]
 struct OtlpGrpc {
     ingest: IngestWriter,
@@ -325,6 +344,56 @@ mod tests {
         let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
         let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
         (d, store, ingest)
+    }
+
+    /// The token is looked at before the message: someone without it does
+    /// not get the receiver to read and decode megabytes, and the warning
+    /// says where the call came from.
+    #[tokio::test]
+    async fn a_unary_call_without_the_token_is_refused_before_its_message_is_decoded() {
+        use opentelemetry_proto::tonic::collector::trace::v1::trace_service_client::TraceServiceClient;
+        use opentelemetry_proto::tonic::trace::v1::ResourceSpans;
+
+        let router = router_with_token(IngestWriter::stopped_for_test(), Some("kro_secret".into()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let incoming = tonic::codegen::tokio_stream::wrappers::TcpListenerStream::new(listener);
+        let server = tokio::spawn(router.serve_with_incoming(incoming));
+        let mut client = TraceServiceClient::connect(format!("http://{addr}"))
+            .await
+            .unwrap();
+
+        // More than the server decodes (4 MiB): had the message been
+        // looked at, the answer would be about its size.
+        let too_large = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                schema_url: "x".repeat(5 * 1024 * 1024),
+                ..ResourceSpans::default()
+            }],
+        };
+        let with_token = |bearer: &'static str| {
+            let mut request = Request::new(too_large.clone());
+            request
+                .metadata_mut()
+                .insert("authorization", MetadataValue::from_static(bearer));
+            request
+        };
+        let (logs, _guard) = crate::test_logs::capture();
+        let refused = client.export(with_token("Bearer kro_other")).await;
+        let refused = refused.unwrap_err();
+        assert_eq!(refused.code(), tonic::Code::Unauthenticated, "{refused}");
+        let refused = client.export(Request::new(too_large.clone())).await;
+        let refused = refused.unwrap_err();
+        assert_eq!(refused.code(), tonic::Code::Unauthenticated, "{refused}");
+        let text = logs.text();
+        assert_eq!(text.matches(" peer=127.0.0.1 ").count(), 2, "{text}");
+        assert_eq!(text.matches("carrier=\"grpc\"").count(), 2, "{text}");
+
+        // With the token the message is read, and its size is the answer.
+        let read = client.export(with_token("Bearer kro_secret")).await;
+        let read = read.unwrap_err();
+        assert_eq!(read.code(), tonic::Code::OutOfRange, "{read}");
+        server.abort();
     }
 
     #[tokio::test]
