@@ -120,8 +120,9 @@ impl McpAuth {
         }
         // 3. No auth configured.
         tracing::warn!(
-            "no MCP auth configured (no {AUTH_CONFIG_ENV}, no {TOKEN_ENV}) — server running \
-             without authentication; loopback binds only"
+            name: "mcp.auth.disabled",
+            "no MCP auth configured (no TUMULT_MCP_AUTH_CONFIG, no TUMULT_MCP_TOKEN) — server \
+             running without authentication; loopback binds only"
         );
         Ok(Self::none())
     }
@@ -132,7 +133,11 @@ impl McpAuth {
     #[must_use]
     pub fn from_env() -> Self {
         Self::load().unwrap_or_else(|e| {
-            tracing::error!("MCP auth config error: {e}; refusing all requests (fail-closed)");
+            tracing::error!(
+                name: "mcp.auth.config.invalid",
+                { error.message = %e },
+                "MCP auth config invalid; refusing all requests (fail-closed)"
+            );
             Self {
                 mode: AuthMode::Denied,
             }
@@ -245,8 +250,11 @@ struct AuthTokenEntry {
 /// Fail-closed: an empty file, an empty token, an unknown role, or a duplicate
 /// token is an error (the server must not start with an ambiguous config).
 fn parse_auth_config(contents: &str) -> std::result::Result<Vec<(String, Role)>, String> {
-    let parsed: AuthConfigFile =
-        toml::from_str(contents).map_err(|e| format!("invalid MCP auth config: {e}"))?;
+    // Only the parser's message, never its rendered form: the rendered error
+    // quotes the offending source line, and in this file that line can hold
+    // a bearer token. The message ends up in logs and in the startup error.
+    let parsed: AuthConfigFile = toml::from_str(contents)
+        .map_err(|e| format!("invalid MCP auth config: {}", e.message()))?;
     if parsed.tokens.is_empty() {
         return Err("MCP auth config contains no [[tokens]] entries".into());
     }
@@ -597,5 +605,66 @@ mod tests {
             Some(Role::Operator),
             "the legacy token maps to the operator role"
         );
+    }
+
+    // ── Log events ────────────────────────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_malformed_config_is_reported_without_echoing_its_tokens() {
+        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("mcp-auth.toml");
+        // An unterminated string: the TOML parser's rendered error quotes
+        // the offending line, which is the line holding the token.
+        std::fs::write(
+            &path,
+            "[[tokens]]\ntoken = \"tok-super-secret-value\nrole = \"viewer\"\n",
+        )
+        .unwrap();
+        std::env::set_var(AUTH_CONFIG_ENV, &path);
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        let loaded = McpAuth::load();
+        let auth = McpAuth::from_env();
+        let logs = capture.snapshot();
+        std::env::remove_var(AUTH_CONFIG_ENV);
+
+        let message = loaded.err().expect("a malformed config must not load");
+        assert!(message.contains("invalid MCP auth config"), "{message}");
+        assert!(!message.contains("tok-super-secret-value"), "{message}");
+        assert!(auth.is_configured(), "a broken config must fail closed");
+        let invalid = logs.named("mcp.auth.config.invalid");
+        assert_eq!(invalid.len(), 1, "{}", logs.raw);
+        assert_eq!(invalid[0]["level"], "ERROR");
+        assert!(
+            invalid[0]["error.message"]
+                .as_str()
+                .is_some_and(|text| text.contains("invalid MCP auth config")),
+            "{}",
+            logs.raw
+        );
+        assert!(!logs.raw.contains("tok-super-secret-value"), "{}", logs.raw);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn running_without_auth_is_a_named_warning() {
+        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
+        if default_config_path().is_some_and(|p| p.exists()) {
+            // A real ~/.tumult/mcp-auth.toml configures auth by design; this
+            // environment cannot exercise the open mode.
+            return;
+        }
+        std::env::remove_var(AUTH_CONFIG_ENV);
+        std::env::remove_var(TOKEN_ENV);
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        let auth = McpAuth::load().expect("no auth configured is not an error");
+        let logs = capture.snapshot();
+
+        assert!(!auth.is_configured());
+        let disabled = logs.named("mcp.auth.disabled");
+        assert_eq!(disabled.len(), 1, "{}", logs.raw);
+        assert_eq!(disabled[0]["level"], "WARN");
+        let message = disabled[0]["message"].as_str().unwrap();
+        assert!(message.contains(AUTH_CONFIG_ENV), "{message}");
+        assert!(message.contains(TOKEN_ENV), "{message}");
     }
 }

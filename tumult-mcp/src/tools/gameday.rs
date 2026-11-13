@@ -185,8 +185,8 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
         for key in skipped_config.iter().chain(&skipped_secrets) {
             tracing::warn!(
-                key = %key,
-                file = %exp_path.display(),
+                name: "mcp.gameday.env_key.skipped",
+                { config.key = %key, file.path = %exp_path.display() },
                 "config/secret key does not form a valid env var name after uppercasing; \
                  usable in templates but not injected as TUMULT_*"
             );

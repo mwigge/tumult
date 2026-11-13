@@ -174,11 +174,24 @@ async fn run_health_server(host: &str, port: u16) {
     let listener = match TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            tracing::error!(addr = %addr, error = %e, "failed to bind health server");
+            tracing::error!(
+                name: "mcp.health.bind_failed",
+                {
+                    server.address = host,
+                    server.port = port,
+                    error.message = %e,
+                    "error.type" = "io",
+                },
+                "failed to bind health server"
+            );
             return;
         }
     };
-    tracing::info!("Health endpoint listening on http://{addr}/health");
+    tracing::info!(
+        name: "mcp.health.listening",
+        { server.address = host, server.port = port, url.path = "/health" },
+        "health endpoint listening"
+    );
 
     let body = format!(
         r#"{{"status":"ok","version":"{}"}}"#,
@@ -206,8 +219,18 @@ async fn run_health_server(host: &str, port: u16) {
             let _permit = permit;
             // Read (and discard) the request — we respond the same regardless of path.
             let mut buf = [0u8; 1024];
+            // A failed read changes nothing: the response does not depend on
+            // the request.
             let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await;
-            let _ = stream.write_all(resp.as_bytes()).await;
+            if let Err(error) = stream.write_all(resp.as_bytes()).await {
+                tracing::debug!(
+                    name: "mcp.health.response_failed",
+                    { error.message = %error, "error.type" = "io" },
+                    "health response not delivered"
+                );
+            }
+            // The peer may already have closed; the socket is dropped next
+            // either way.
             let _ = stream.shutdown().await;
         });
     }
@@ -222,20 +245,25 @@ async fn shutdown_signal() {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("failed to register SIGTERM handler");
         tokio::select! {
-            _ = ctrl_c => {
-                tracing::info!("received SIGINT, shutting down");
-            }
-            _ = sigterm.recv() => {
-                tracing::info!("received SIGTERM, shutting down");
-            }
+            _ = ctrl_c => shutdown_requested("SIGINT"),
+            _ = sigterm.recv() => shutdown_requested("SIGTERM"),
         }
     }
 
     #[cfg(not(unix))]
     {
         ctrl_c.await.ok();
-        tracing::info!("received SIGINT, shutting down");
+        shutdown_requested("SIGINT");
     }
+}
+
+/// Reports the signal that is shutting the server down.
+fn shutdown_requested(signal: &'static str) {
+    tracing::info!(
+        name: "mcp.shutdown.signal",
+        { signal },
+        "shutdown signal received"
+    );
 }
 
 /// Run the Tumult MCP server until it exits or a shutdown signal arrives.
@@ -322,9 +350,13 @@ pub async fn serve(opts: ServeOptions) -> SdkResult<()> {
         }
         Transport::Http => {
             tracing::info!(
-                "Tumult MCP server listening on http://{}:{}/mcp",
-                opts.host,
-                opts.port
+                name: "mcp.server.listening",
+                {
+                    server.address = opts.host.as_str(),
+                    server.port = opts.port,
+                    url.path = "/mcp",
+                },
+                "MCP server listening"
             );
             let allowed_origins = allowed_http_origins(&opts.host, opts.port);
             let server = hyper_server::create_server(
@@ -375,7 +407,7 @@ fn flush_telemetry() {
     opentelemetry::global::set_tracer_provider(
         opentelemetry::trace::noop::NoopTracerProvider::new(),
     );
-    tracing::info!("telemetry flushed, exiting");
+    tracing::info!(name: "mcp.telemetry.flushed", "telemetry flushed, exiting");
 }
 
 #[cfg(test)]
@@ -524,5 +556,48 @@ mod tests {
         std::env::remove_var("TUMULT_MCP_AUTH_CONFIG");
         let err = result.expect_err("an unreadable auth config must abort startup");
         assert!(err.to_string().contains("auth config"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_health_bind_is_an_error_event_with_address_and_cause() {
+        let blocker = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = blocker.local_addr().unwrap().port();
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            run_health_server("127.0.0.1", port),
+        )
+        .await
+        .expect("a failed bind must return, not hang");
+        let logs = capture.snapshot();
+
+        let failed = logs.named("mcp.health.bind_failed");
+        assert_eq!(failed.len(), 1, "{}", logs.raw);
+        assert_eq!(failed[0]["level"], "ERROR");
+        assert_eq!(failed[0]["server.address"], "127.0.0.1");
+        assert_eq!(failed[0]["server.port"], port);
+        assert_eq!(failed[0]["error.type"], "io");
+        assert!(failed[0]["error.message"].is_string(), "{}", logs.raw);
+    }
+
+    #[tokio::test]
+    async fn the_health_listener_announces_its_address_and_port() {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        let served = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            run_health_server("127.0.0.1", port),
+        )
+        .await;
+        let logs = capture.snapshot();
+
+        assert!(served.is_err(), "the health server runs until cancelled");
+        let listening = logs.named("mcp.health.listening");
+        assert_eq!(listening.len(), 1, "{}", logs.raw);
+        assert_eq!(listening[0]["server.address"], "127.0.0.1");
+        assert_eq!(listening[0]["server.port"], port);
+        assert_eq!(listening[0]["message"], "health endpoint listening");
     }
 }
