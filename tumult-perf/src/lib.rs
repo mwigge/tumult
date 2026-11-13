@@ -21,7 +21,8 @@ mod stats;
 
 pub use rng::SplitMix64;
 pub use stats::{
-    bootstrap_difference, percentile_sorted, percentiles, Interval, Percentiles, Quantile,
+    bootstrap_difference, cluster_bootstrap_difference, percentile_sorted, percentiles,
+    weighted_percentile, Interval, Percentiles, Quantile, Window,
 };
 
 /// The outcome of a comparison.
@@ -45,6 +46,10 @@ impl std::fmt::Display for Verdict {
     }
 }
 
+/// The fewest runs a side needs for a verdict other than `inconclusive`,
+/// unless the caller says otherwise.
+pub const DEFAULT_MIN_RUNS: usize = 3;
+
 /// Knobs of a comparison; [`CompareOptions::default`] is the documented
 /// default (p95, 95 % confidence, 2000 resamples, 20 samples minimum, a
 /// 5 % noise margin).
@@ -60,6 +65,10 @@ pub struct CompareOptions {
     pub seed: u64,
     /// Fewer samples on either side is `inconclusive`.
     pub min_samples: usize,
+    /// Fewer runs with samples on either side is `inconclusive`: the
+    /// interval is drawn from whole runs, and one or two give it nothing
+    /// to draw from.
+    pub min_runs: usize,
     /// Noise band as a percentage of the baseline quantile; a difference
     /// inside it is `unchanged` however significant.
     pub noise_margin_pct: f64,
@@ -73,6 +82,7 @@ impl Default for CompareOptions {
             iterations: 2000,
             seed: 0x5EED_0000_0000_0001,
             min_samples: 20,
+            min_runs: DEFAULT_MIN_RUNS,
             noise_margin_pct: 5.0,
         }
     }
@@ -83,6 +93,9 @@ impl Default for CompareOptions {
 pub struct SampleSummary {
     /// Finite samples used.
     pub n: usize,
+    /// Runs that hold at least one of them.
+    #[serde(default)]
+    pub runs: usize,
     /// Non-finite inputs that were dropped.
     pub dropped: usize,
     pub p50: Option<f64>,
@@ -91,14 +104,15 @@ pub struct SampleSummary {
 }
 
 impl SampleSummary {
-    fn of(values: &[f64], dropped: usize) -> Self {
-        let p = stats::percentiles(values);
+    fn of(runs: &[Vec<Window>], dropped: usize) -> Self {
+        let mut all: Vec<Window> = runs.iter().flatten().copied().collect();
         Self {
-            n: values.len(),
+            n: all.len(),
+            runs: runs.len(),
             dropped,
-            p50: p.map(|p| p.p50),
-            p95: p.map(|p| p.p95),
-            p99: p.map(|p| p.p99),
+            p50: stats::weighted_percentile(&mut all, 50.0),
+            p95: stats::weighted_percentile(&mut all, 95.0),
+            p99: stats::weighted_percentile(&mut all, 99.0),
         }
     }
 
@@ -134,18 +148,51 @@ pub struct Comparison {
     pub reasons: Vec<String>,
 }
 
-/// The finite values of `values` and how many were dropped.
-fn finite(values: &[f64]) -> (Vec<f64>, usize) {
-    let kept: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
-    let dropped = values.len() - kept.len();
+/// Whether a window says anything: a finite value behind a positive,
+/// finite duration.
+fn usable(window: &Window) -> bool {
+    window.value.is_finite() && window.weight.is_finite() && window.weight > 0.0
+}
+
+/// The usable windows of `runs`, run by run without the runs left empty,
+/// and how many windows were dropped.
+fn usable_runs(runs: &[Vec<Window>]) -> (Vec<Vec<Window>>, usize) {
+    let mut dropped = 0;
+    let mut kept = Vec::with_capacity(runs.len());
+    for run in runs {
+        let windows: Vec<Window> = run.iter().copied().filter(usable).collect();
+        dropped += run.len() - windows.len();
+        if !windows.is_empty() {
+            kept.push(windows);
+        }
+    }
     (kept, dropped)
 }
 
-/// Compare `candidate` against `baseline`.
+/// Compare independent samples: every value is a run of its own, so the
+/// interval is the plain bootstrap. For load windows use
+/// [`compare_runs`]; windows of one run are not independent.
 #[must_use]
 pub fn compare(baseline: &[f64], candidate: &[f64], opts: &CompareOptions) -> Comparison {
-    let (base, base_dropped) = finite(baseline);
-    let (cand, cand_dropped) = finite(candidate);
+    let singles = |values: &[f64]| -> Vec<Vec<Window>> {
+        values.iter().map(|v| vec![Window::whole(*v)]).collect()
+    };
+    compare_runs(&singles(baseline), &singles(candidate), opts)
+}
+
+/// Compare the runs of `candidate` against those of `baseline`, each run
+/// its windows in order. Percentiles weigh a window by its duration, and
+/// the interval is a cluster bootstrap over runs
+/// ([`cluster_bootstrap_difference`]): a side needs `min_runs` runs and
+/// `min_samples` windows for a verdict other than `inconclusive`.
+#[must_use]
+pub fn compare_runs(
+    baseline: &[Vec<Window>],
+    candidate: &[Vec<Window>],
+    opts: &CompareOptions,
+) -> Comparison {
+    let (base, base_dropped) = usable_runs(baseline);
+    let (cand, cand_dropped) = usable_runs(candidate);
     let baseline = SampleSummary::of(&base, base_dropped);
     let candidate = SampleSummary::of(&cand, cand_dropped);
     let q = opts.quantile;
@@ -153,7 +200,7 @@ pub fn compare(baseline: &[f64], candidate: &[f64], opts: &CompareOptions) -> Co
     for (side, s) in [("baseline", &baseline), ("candidate", &candidate)] {
         if s.dropped > 0 {
             reasons.push(format!(
-                "{side}: {} non-finite sample(s) dropped",
+                "{side}: {} non-finite or zero-length sample(s) dropped",
                 s.dropped
             ));
         }
@@ -192,6 +239,17 @@ pub fn compare(baseline: &[f64], candidate: &[f64], opts: &CompareOptions) -> Co
                 opts.min_samples
             )
         })
+        .chain(
+            [("baseline", baseline.runs), ("candidate", candidate.runs)]
+                .into_iter()
+                .filter(|(_, runs)| *runs < opts.min_runs)
+                .map(|(side, runs)| {
+                    format!(
+                        "{side} has {runs} run(s) with samples; at least {} needed",
+                        opts.min_runs
+                    )
+                }),
+        )
         .collect::<Vec<_>>();
     // An empty side can never be resampled, whatever `min_samples` says.
     let empty: Vec<String> = [
@@ -210,8 +268,14 @@ pub fn compare(baseline: &[f64], candidate: &[f64], opts: &CompareOptions) -> Co
         }
         return done(Verdict::Inconclusive, None, reasons);
     }
-    let ci =
-        stats::bootstrap_difference(&base, &cand, q, opts.confidence, opts.iterations, opts.seed);
+    let ci = stats::cluster_bootstrap_difference(
+        &base,
+        &cand,
+        q,
+        opts.confidence,
+        opts.iterations,
+        opts.seed,
+    );
     let (verdict, reason) = classify(ci, margin, q);
     reasons.push(reason);
     done(verdict, Some(ci), reasons)
@@ -468,6 +532,136 @@ mod tests {
         assert_eq!(json["quantile"], "p95");
         let back: Comparison = serde_json::from_value(json).expect("round trip");
         assert_eq!(back, a);
+    }
+
+    /// `runs` runs of `windows` whole windows each, run `i` around
+    /// `levels[i]`.
+    fn runs_at(levels: &[f64], windows: usize) -> Vec<Vec<Window>> {
+        levels
+            .iter()
+            .map(|level| {
+                around(*level, windows, 2.0)
+                    .into_iter()
+                    .map(Window::whole)
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn too_few_runs_is_inconclusive_with_a_reason() {
+        let opts = CompareOptions::default();
+        assert_eq!(opts.min_runs, 3);
+        let base = runs_at(&[100.0, 100.0, 100.0], 20);
+        let two = runs_at(&[150.0, 150.0], 30);
+        let c = compare_runs(&base, &two, &opts);
+        assert_eq!(c.verdict, Verdict::Inconclusive, "{c:?}");
+        assert_eq!((c.baseline.runs, c.candidate.runs), (3, 2));
+        assert_eq!((c.baseline.n, c.candidate.n), (60, 60));
+        assert!(c.interval.is_none());
+        assert!(
+            c.reasons
+                .iter()
+                .any(|r| r == "candidate has 2 run(s) with samples; at least 3 needed"),
+            "{:?}",
+            c.reasons
+        );
+        // A run without a usable window is not a run.
+        let mut hollow = runs_at(&[150.0, 150.0], 30);
+        hollow.push(vec![Window::whole(f64::NAN)]);
+        hollow.push(Vec::new());
+        let c = compare_runs(&base, &hollow, &opts);
+        assert_eq!(c.candidate.runs, 2);
+        assert_eq!(c.candidate.dropped, 1);
+        assert_eq!(c.verdict, Verdict::Inconclusive);
+        // Enough of them: a verdict.
+        let three = runs_at(&[150.0, 150.0, 150.0], 20);
+        let c = compare_runs(&base, &three, &opts);
+        assert_eq!(c.verdict, Verdict::Regressed, "{c:?}");
+        let lenient = CompareOptions {
+            min_runs: 2,
+            ..opts
+        };
+        assert_eq!(
+            compare_runs(&base, &two, &lenient).verdict,
+            Verdict::Regressed
+        );
+    }
+
+    #[test]
+    fn one_slow_run_among_several_is_not_called_a_regression() {
+        // A third of the candidate's windows are slow, all of them in one
+        // run. Window by window that is a p95 well above the baseline's;
+        // run by run it is one run out of three.
+        let base = runs_at(&[100.0, 100.0, 100.0], 40);
+        let cand = runs_at(&[100.0, 100.0, 140.0], 40);
+        let flat =
+            |runs: &[Vec<Window>]| -> Vec<f64> { runs.iter().flatten().map(|w| w.value).collect() };
+        let opts = CompareOptions::default();
+        let by_window = compare(&flat(&base), &flat(&cand), &opts);
+        assert_eq!(by_window.verdict, Verdict::Regressed, "{by_window:?}");
+        let by_run = compare_runs(&base, &cand, &opts);
+        assert_ne!(by_run.verdict, Verdict::Regressed, "{by_run:?}");
+        let ci = by_run.interval.expect("interval");
+        assert!(ci.low <= by_run.margin, "{by_run:?}");
+        // Every run slow: a regression either way.
+        let all = runs_at(&[140.0, 140.0, 140.0], 40);
+        assert_eq!(compare_runs(&base, &all, &opts).verdict, Verdict::Regressed);
+    }
+
+    #[test]
+    fn a_shortened_window_weighs_by_its_sampled_duration() {
+        let opts = CompareOptions {
+            quantile: Quantile::P99,
+            ..CompareOptions::default()
+        };
+        let base = runs_at(&[100.0, 100.0, 100.0], 30);
+        let with_tail = |weight: f64| -> Vec<Vec<Window>> {
+            let mut runs = runs_at(&[100.0, 100.0, 100.0], 30);
+            for run in &mut runs {
+                // Two slow closing windows a run.
+                run.push(Window {
+                    value: 400.0,
+                    weight,
+                });
+                run.push(Window {
+                    value: 400.0,
+                    weight,
+                });
+            }
+            runs
+        };
+        let whole = compare_runs(&base, &with_tail(1.0), &opts);
+        assert_eq!(whole.candidate.p99, Some(400.0));
+        let cut = compare_runs(&base, &with_tail(0.01), &opts);
+        assert!(cut.candidate.p99.unwrap() < 110.0, "{cut:?}");
+        assert_eq!(cut.candidate.n, 96);
+        // A window with no duration says nothing.
+        let none = compare_runs(&base, &with_tail(0.0), &opts);
+        assert_eq!((none.candidate.n, none.candidate.dropped), (90, 6));
+    }
+
+    #[test]
+    fn the_same_runs_and_seed_give_the_same_interval() {
+        let base = runs_at(
+            &[100.0, 104.0, 98.0, 101.0, 96.0, 107.0, 102.0, 99.0, 105.0],
+            25,
+        );
+        let cand = runs_at(
+            &[
+                108.0, 112.0, 103.0, 109.0, 115.0, 106.0, 111.0, 104.0, 118.0,
+            ],
+            25,
+        );
+        let opts = CompareOptions::default();
+        let a = compare_runs(&base, &cand, &opts);
+        let b = compare_runs(&base, &cand, &opts);
+        assert_eq!(a, b);
+        assert!(a.interval.is_some());
+        let reseeded = CompareOptions { seed: 42, ..opts };
+        let c = compare_runs(&base, &cand, &reseeded);
+        assert_eq!(c.seed, 42);
+        assert_ne!(c.interval, a.interval, "another seed draws other runs");
     }
 
     #[test]
