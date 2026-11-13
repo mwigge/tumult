@@ -518,6 +518,8 @@ mod tests {
             latency_p99_ms: 90.0,
             error_rate: 0.0,
             requests: 400,
+            counts: None,
+            request_timeout_ms: None,
         };
         journal.load_result = Some(LoadResult {
             tool: LoadTool::Oha,
@@ -547,7 +549,7 @@ mod tests {
         assert_eq!(rows[0][1].parse::<f64>().unwrap(), 70.0);
         assert_eq!(rows[1][1].parse::<f64>().unwrap(), 80.0);
         let count = s.query("SELECT count(*) FROM probe_samples").unwrap();
-        assert_eq!(count[0][0], "10");
+        assert_eq!(count[0][0], "12");
         let summary = s.query("SELECT tool FROM load_results").unwrap();
         assert_eq!(summary[0][0], "oha");
     }
@@ -563,20 +565,46 @@ mod tests {
             target_version: Some(TargetVersion {
                 version: version.into(),
                 version_source,
+                shares: Vec::new(),
             }),
             ..sample_journal(id, ExperimentStatus::Completed)
+        };
+        let share = |version: &str, requests: u64| VersionShare {
+            version: version.into(),
+            requests,
+        };
+        let mixed = Journal {
+            target_version: TargetVersion::observed(vec![share("1.5.1", 60), share("1.6.0", 40)]),
+            ..sample_journal("v-mixed", ExperimentStatus::Completed)
         };
         s.ingest_journals(&[
             recorded("v-declared", "1.5.0", VersionSource::Declared),
             recorded("v-observed", "1.5.1", VersionSource::Observed),
+            mixed,
             sample_journal("v-unknown", ExperimentStatus::Completed),
         ])
         .unwrap();
 
+        // A window more than one version served is kept with its shares.
+        let shares = s
+            .query(
+                "SELECT experiment_id, target_version, version_source, version_shares \
+                 FROM experiments WHERE version_shares IS NOT NULL",
+            )
+            .unwrap();
+        assert_eq!(
+            lines(&shares),
+            [concat!(
+                "v-mixed|1.5.1|mixed|",
+                r#"[{"version":"1.5.1","requests":60},{"version":"1.6.0","requests":40}]"#
+            )]
+        );
+
         let rows = s
             .query(
                 "SELECT experiment_id, target_version, version_source FROM experiments \
-                 WHERE target_version IS NOT NULL ORDER BY experiment_id",
+                 WHERE version_shares IS NULL AND target_version IS NOT NULL \
+                 ORDER BY experiment_id",
             )
             .unwrap();
         assert_eq!(
@@ -594,9 +622,19 @@ mod tests {
 
     #[test]
     fn how_a_load_was_executed_is_kept_with_its_result() {
-        use tumult_core::types::{LoadExecution, LoadResult, LoadSample, LoadTool};
+        use tumult_core::types::{LoadExecution, LoadResult, LoadSample, LoadTool, RequestCounts};
 
         let s = AnalyticsStore::in_memory().unwrap();
+        let counts = RequestCounts {
+            sent: 800,
+            ok: 500,
+            timed_out: 200,
+            transport: 10,
+            http_4xx: 20,
+            http_5xx: 60,
+            http_other: 5,
+            unclassified: 5,
+        };
         let window = |ts_ns: i64, duration_s: f64| LoadSample {
             ts_ns,
             duration_s,
@@ -607,6 +645,13 @@ mod tests {
             latency_p99_ms: 90.0,
             error_rate: 0.0,
             requests: 400,
+            counts: Some(RequestCounts {
+                sent: 400,
+                ok: 250,
+                timed_out: 100,
+                ..RequestCounts::default()
+            }),
+            request_timeout_ms: Some(2000.0),
         };
         let load = |samples: Vec<LoadSample>, execution: LoadExecution| LoadResult {
             tool: LoadTool::Oha,
@@ -634,6 +679,8 @@ mod tests {
                 lost_to_unanswered: 2,
                 aborted: true,
                 reasons: vec!["2 of 24 windows skipped".into()],
+                requests: Some(counts),
+                censored_windows: 1,
             },
         ));
         // A tool that counts no windows and streamed none.
@@ -659,6 +706,45 @@ mod tests {
             )
             .unwrap();
         assert_eq!(plain[0][0], "1");
+
+        // What became of the requests, by class, and the censored windows.
+        let requests = s
+            .query(
+                "SELECT requests_sent, requests_ok, requests_timed_out, requests_transport, \
+                 requests_http_4xx, requests_http_5xx, requests_http_other, \
+                 requests_unclassified, censored_windows \
+                 FROM load_results WHERE experiment_id = 'cut-short'",
+            )
+            .unwrap();
+        assert_eq!(lines(&requests), ["800|500|200|10|20|60|5|5|1"]);
+        // A tool that does not say leaves them unknown, not zero.
+        let unknown = s
+            .query(
+                "SELECT count(*) FROM load_results WHERE experiment_id = 'plain' \
+                 AND requests_sent IS NULL AND requests_ok IS NULL \
+                 AND requests_timed_out IS NULL AND requests_unclassified IS NULL \
+                 AND censored_windows = 0",
+            )
+            .unwrap();
+        assert_eq!(unknown[0][0], "1");
+        // Each window keeps its own counts and timeout as series.
+        let windows = s
+            .query(
+                "SELECT probe_name, count(*), CAST(sum(value) AS BIGINT) FROM probe_samples \
+                 WHERE experiment_id = 'cut-short' AND (probe_name LIKE 'load.request%' \
+                 OR probe_name = 'load.window_s') GROUP BY probe_name ORDER BY probe_name",
+            )
+            .unwrap();
+        assert_eq!(
+            lines(&windows),
+            [
+                "load.request_timeout_ms|2|4000",
+                "load.requests_ok|2|500",
+                "load.requests_sent|2|800",
+                "load.requests_timed_out|2|200",
+                "load.window_s|2|12",
+            ]
+        );
     }
 
     #[test]

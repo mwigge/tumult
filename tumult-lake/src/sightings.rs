@@ -1,31 +1,65 @@
-//! Which `service.version`s a service has reported, per environment, and
-//! which of them served a given window.
+//! Which `service.version`s a service has reported, per environment, when
+//! each was last deployed, and which of them served a given window.
 //!
 //! `service_version_sightings` is a rollup of `spans`: one row per
 //! (service, environment, version) with the first and the last time the
-//! service's own telemetry carried that version there. The writer keeps
-//! it current inside the transaction that inserts the spans, so reading a
-//! service's deployment history costs a scan of a table whose size
-//! follows the number of versions, never the number of spans. A lake
-//! written before the rollup existed is backfilled once, on open.
+//! service's own telemetry carried that version there, and when its
+//! latest deployment began. The writer keeps it current inside the
+//! transaction that inserts the spans, so reading a service's deployment
+//! history costs a scan of a table whose size follows the number of
+//! versions, never the number of spans.
+//!
+//! The key is kept in code: the one writer reads a service's rows, folds
+//! the new sightings in and writes back the rows that changed, an update
+//! where the key is held and an insert where it is not. The table carries
+//! no unique index because its rows are updated in place (the lake's
+//! crash-robustness rule for updated tables), and its environment may be
+//! NULL, which a primary key does not admit.
+//!
+//! A version is deployed again when it speaks after a silence longer than
+//! [`REDEPLOY_GAP`] during which another version of the service spoke in
+//! the same environment: a rollback, or a redeploy after a newer build.
+//!
+//! A lake written before the rollup existed, or before it knew
+//! deployments, is read back from its spans once, a day of spans at a
+//! step: a bounded stretch when the lake is opened, then one step with
+//! every batch of spans stored, until `sightings_backfill` says done.
+//! While that runs the rollup is incomplete, and [`Reader`] says so.
 //!
 //! An environment is matched exactly, and spans that name none are an
 //! environment of their own (`None`): they never stand in for a named one.
 
-use std::cmp::Ordering;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use duckdb::{params, Connection};
 use tumult_core::runner::{RunWindow, TargetVersionResolver};
+use tumult_core::types::{bounded_version_text, VersionShare, MAX_VERSION_LEN};
 
 use crate::error::StoreError;
 use crate::rows::SpanRow;
 use crate::store::with_tx;
 use crate::{Reader, Store, Writer};
 
-/// A `service.version` in one environment and when the service's
-/// telemetry there first and last carried it.
+/// The silence after which a version that speaks again, another having
+/// spoken meanwhile, counts as deployed anew.
+pub const REDEPLOY_GAP: Duration = Duration::from_secs(600);
+
+/// How long opening a lake may spend reading an old lake's spans back
+/// into the rollup before it leaves the rest to later steps.
+pub(crate) const BACKFILL_OPEN_BUDGET: Duration = Duration::from_secs(2);
+
+const SECOND_NS: i64 = 1_000_000_000;
+/// The span of spans one backfill step reads.
+const BACKFILL_STEP_NS: i64 = 86_400 * SECOND_NS;
+/// Sightings are folded a minute of spans at a time, so one batch that
+/// spans a rollback still shows the silence between its deployments.
+const BUCKET_NS: i64 = 60 * SECOND_NS;
+
+/// A `service.version` in one environment: when the service's telemetry
+/// there first and last carried it, and when its latest deployment began.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionSighting {
     /// `None` for spans that name no environment.
@@ -33,211 +67,405 @@ pub struct VersionSighting {
     pub version: String,
     pub first_seen_ns: i64,
     pub last_seen_ns: i64,
+    /// The first sight, or the sight that ended a silence in which
+    /// another version spoke.
+    pub last_deployed_ns: i64,
+    /// How many times it was deployed: 1 unless it came back.
+    pub deployments: u32,
+    /// The telemetry's version text broke the bounds every version is
+    /// held to and was cut to them.
+    pub sanitized: bool,
 }
 
-/// The rollup as the spans stored give it.
-const FROM_SPANS: &str = "
-INSERT INTO service_version_sightings
+impl VersionSighting {
+    /// Deployed again after another version.
+    #[must_use]
+    pub fn redeployed(&self) -> bool {
+        self.deployments > 1
+    }
+}
+
+/// The versioned spans of one service, environment and version inside
+/// one minute.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Sight {
+    service: String,
+    environment: Option<String>,
+    version: String,
+    sanitized: bool,
+    first_ns: i64,
+    last_ns: i64,
+}
+
+/// (environment, version): the rollup's key under one service.
+type Key = (Option<String>, String);
+
+/// One rollup row, without its key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Held {
+    first_ns: i64,
+    last_ns: i64,
+    deployed_ns: i64,
+    deployments: u32,
+    sanitized: bool,
+}
+
+/// The rollup rows of one service, merged per key.
+const HELD: &str = "
 SELECT
-    service_name,
-    target_environment,
+    environment,
     service_version,
-    min(ts_ns) AS first_seen_ns,
-    max(ts_ns) AS last_seen_ns
-FROM spans
-WHERE service_version IS NOT NULL AND service_version <> ''
-GROUP BY service_name, target_environment, service_version;
+    min(first_seen_ns) AS first_seen_ns,
+    max(last_seen_ns) AS last_seen_ns,
+    max(coalesce(last_deployed_ns, first_seen_ns)) AS last_deployed_ns,
+    max(coalesce(deployments, 1)) AS deployments,
+    coalesce(bool_or(sanitized), false) AS sanitized
+FROM service_version_sightings
+WHERE service_name = ?
+GROUP BY environment, service_version
+ORDER BY first_seen_ns, service_version, environment
 ";
 
-/// Fill an empty rollup from the spans already stored: the one-time
-/// upgrade of a lake written before the rollup existed. A rollup that
-/// holds a row is left alone, so this is safe on every open.
-pub(crate) fn backfill(conn: &Connection) -> Result<(), duckdb::Error> {
-    let held: i64 = conn.query_row(
-        "SELECT count(*) FROM (SELECT 1 FROM service_version_sightings LIMIT 1) AS held",
-        params![],
-        |row| row.get(0),
-    )?;
-    if held > 0 {
-        return Ok(());
+/// A span's `service.version` as the lake stores it: within the bounds
+/// every version is held to, and whether it had to be cut to them.
+/// `None` for a span that names no version.
+pub(crate) fn stored_version(row: &SpanRow) -> Option<(Cow<'_, str>, bool)> {
+    let version = row.service_version.as_deref()?;
+    Some(bounded_version_text(version))
+}
+
+/// Whether a sight at `at_ns` begins a new deployment of the version
+/// `row` holds: it comes after a silence longer than [`REDEPLOY_GAP`],
+/// and another version of the same environment was first seen before it
+/// and still spoke more than the gap into that silence.
+fn returned_after_another(held: &BTreeMap<Key, Held>, key: &Key, row: &Held, at_ns: i64) -> bool {
+    let gap_ns = i64::try_from(REDEPLOY_GAP.as_nanos()).unwrap_or(i64::MAX);
+    if at_ns <= row.last_ns.saturating_add(gap_ns) {
+        return false;
     }
-    conn.execute_batch(FROM_SPANS)
+    held.iter().any(|((environment, version), other)| {
+        environment == &key.0
+            && version != &key.1
+            && other.last_ns > row.last_ns.saturating_add(gap_ns)
+            && other.first_ns < at_ns
+    })
 }
 
-/// A run of digits as a number of any size: fewer digits (leading zeros
-/// aside) is less, the same count compares digit by digit. Nothing is
-/// parsed into a machine word, so no number is too long to order.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Number {
-    digits: usize,
-    text: String,
-}
-
-impl Number {
-    /// `None` unless `text` is one or more ASCII digits.
-    fn read(text: &str) -> Option<Self> {
-        if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        let significant = text.trim_start_matches('0');
-        Some(Self {
-            digits: significant.len(),
-            text: significant.to_string(),
-        })
+/// Fold one sight into the rows of its service.
+fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
+    let key = (sight.environment.clone(), sight.version.clone());
+    let Some(mut row) = held.get(&key).copied() else {
+        held.insert(
+            key,
+            Held {
+                first_ns: sight.first_ns,
+                last_ns: sight.last_ns,
+                deployed_ns: sight.first_ns,
+                deployments: 1,
+                sanitized: sight.sanitized,
+            },
+        );
+        return;
+    };
+    if returned_after_another(held, &key, &row, sight.first_ns) {
+        row.deployed_ns = sight.first_ns;
+        row.deployments = row.deployments.saturating_add(1);
+    } else if sight.first_ns < row.first_ns && row.deployments == 1 {
+        // Spans that arrived late move the one deployment's start back.
+        row.deployed_ns = sight.first_ns;
     }
-
-    fn is_zero(&self) -> bool {
-        self.digits == 0
-    }
+    row.first_ns = row.first_ns.min(sight.first_ns);
+    row.last_ns = row.last_ns.max(sight.last_ns);
+    row.sanitized |= sight.sanitized;
+    held.insert(key, row);
 }
 
-/// One identifier of a pre-release tag: numbers sort below text.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Part {
-    Number(Number),
-    Text(String),
-}
+/// A service, environment and version within one minute of a batch.
+type Bucket<'a> = (&'a str, Option<&'a str>, Cow<'a, str>, i64);
 
-impl Part {
-    /// `None` unless `text` is one or more of `[0-9A-Za-z-]`.
-    fn read(text: &str) -> Option<Self> {
-        let fits = |b: u8| b.is_ascii_alphanumeric() || b == b'-';
-        if text.is_empty() || !text.bytes().all(fits) {
-            return None;
-        }
-        Some(Number::read(text).map_or_else(|| Self::Text(text.to_string()), Self::Number))
-    }
-}
-
-/// What follows the numbers: a pre-release sorts below its release, and a
-/// tag that is the start of another below the longer one.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Stage {
-    Pre(Vec<Part>),
-    Release,
-}
-
-/// What a version string is ordered by. The variants are the two classes,
-/// in their order: everything that reads as a version, then all other
-/// text. Two strings are compared inside one class only, which is what
-/// makes the order total.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Rank {
-    /// Dotted numbers without their trailing zeros (`1.2` and `1.2.0` are
-    /// the same number), then the stage.
-    Version(Vec<Number>, Stage),
-    Text,
-}
-
-/// The fewest dotted numbers a version has: one number alone is a date,
-/// a build counter or a sha that happens to be all digits.
-const MIN_NUMBERS: usize = 2;
-
-impl Rank {
-    fn of(text: &str) -> Self {
-        Self::version(text).unwrap_or(Self::Text)
-    }
-
-    /// `None` unless `text` is an optional `v`, two or more dotted
-    /// numbers, an optional `-` pre-release of dotted identifiers and an
-    /// optional `+` build tag (which does not rank).
-    fn version(text: &str) -> Option<Self> {
-        let text = text.strip_prefix('v').unwrap_or(text);
-        let text = text
-            .split_once('+')
-            .map_or(text, |(version, _build)| version);
-        let (core, pre) = match text.split_once('-') {
-            Some((core, pre)) => (core, Some(pre)),
-            None => (text, None),
-        };
-        let mut numbers = core
-            .split('.')
-            .map(Number::read)
-            .collect::<Option<Vec<_>>>()?;
-        if numbers.len() < MIN_NUMBERS {
-            return None;
-        }
-        while numbers.last().is_some_and(Number::is_zero) {
-            numbers.pop();
-        }
-        let stage = match pre {
-            None => Stage::Release,
-            Some(tag) => Stage::Pre(tag.split('.').map(Part::read).collect::<Option<_>>()?),
-        };
-        Some(Self::Version(numbers, stage))
-    }
-}
-
-/// Order two version strings. A string that reads as a version — an
-/// optional leading `v`, two or more dotted numbers, an optional
-/// pre-release and build tag — sorts before one that does not (a sha, a
-/// date, a branch name). Versions compare by their numbers (`1.10.0`
-/// above `1.9.0`, however long the numbers), then a pre-release below its
-/// release with its identifiers compared as semver compares them; build
-/// metadata does not rank. Everything the rank leaves equal, and all
-/// other text, is ordered by the string itself, so the order is total:
-/// only the same string compares equal.
-#[must_use]
-pub fn version_cmp(a: &str, b: &str) -> Ordering {
-    Rank::of(a).cmp(&Rank::of(b)).then_with(|| a.cmp(b))
-}
-
-/// The version that served a window, from `(version, spans)` counts: the
-/// one with most spans, then the one deployed latest (`deployed_at_ns`),
-/// then the greater version. `None` when nothing was counted.
-#[must_use]
-pub fn most_served(counts: &[(String, u64)], deployed_at_ns: impl Fn(&str) -> i64) -> Option<&str> {
-    counts
-        .iter()
-        .max_by(|(a, served_a), (b, served_b)| {
-            served_a
-                .cmp(served_b)
-                .then_with(|| deployed_at_ns(a).cmp(&deployed_at_ns(b)))
-                .then_with(|| version_cmp(a, b))
-        })
-        .map(|(version, _)| version.as_str())
-}
-
-/// (service, environment, version) → (first, last) over one batch.
-type Seen<'a> = BTreeMap<(&'a str, Option<&'a str>, &'a str), (i64, i64)>;
-
-fn seen_in(rows: &[SpanRow]) -> Seen<'_> {
-    let mut seen = Seen::new();
+/// The versioned spans of one batch as sights, oldest first. With `upto`
+/// only the spans at or before it: the rest are the backfill's to read.
+fn sights_in(rows: &[SpanRow], upto: Option<i64>) -> Vec<Sight> {
+    let mut seen: BTreeMap<Bucket<'_>, (i64, i64, bool)> = BTreeMap::new();
     for row in rows {
-        let Some(version) = row.service_version.as_deref().filter(|v| !v.is_empty()) else {
+        if upto.is_some_and(|upto| row.ts_ns > upto) {
+            continue;
+        }
+        let Some((version, cut)) = stored_version(row).filter(|(v, _)| !v.is_empty()) else {
             continue;
         };
         let key = (
             row.service_name.as_str(),
             row.target_environment.as_deref(),
             version,
+            row.ts_ns.div_euclid(BUCKET_NS),
         );
-        let span = seen.entry(key).or_insert((row.ts_ns, row.ts_ns));
+        let span = seen.entry(key).or_insert((row.ts_ns, row.ts_ns, cut));
         span.0 = span.0.min(row.ts_ns);
         span.1 = span.1.max(row.ts_ns);
+        span.2 |= cut;
     }
-    seen
+    let mut sights: Vec<Sight> = seen
+        .into_iter()
+        .map(
+            |((service, environment, version, _), (first_ns, last_ns, sanitized))| Sight {
+                service: service.to_string(),
+                environment: environment.map(str::to_string),
+                version: version.into_owned(),
+                sanitized,
+                first_ns,
+                last_ns,
+            },
+        )
+        .collect();
+    sights.sort_by_key(|sight| sight.first_ns);
+    sights
 }
 
-/// Widen the rollup with the versioned spans of one batch. Runs inside
-/// the caller's transaction.
-pub(crate) fn note_sightings(conn: &Connection, rows: &[SpanRow]) -> Result<(), StoreError> {
-    let seen = seen_in(rows);
-    if seen.is_empty() {
-        return Ok(());
-    }
-    let mut widen = conn.prepare(
+fn held_of(conn: &Connection, service: &str) -> Result<BTreeMap<Key, Held>, duckdb::Error> {
+    let mut stmt = conn.prepare(HELD)?;
+    let rows = stmt.query_map(params![service], |row| {
+        Ok((
+            (row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?),
+            Held {
+                first_ns: row.get(2)?,
+                last_ns: row.get(3)?,
+                deployed_ns: row.get(4)?,
+                deployments: row.get(5)?,
+                sanitized: row.get(6)?,
+            },
+        ))
+    })?;
+    rows.collect()
+}
+
+/// Write the rows of `service` that differ from what the rollup held:
+/// an update where the key is there, an insert where it is not.
+fn store_changed(
+    conn: &Connection,
+    service: &str,
+    before: &BTreeMap<Key, Held>,
+    after: &BTreeMap<Key, Held>,
+) -> Result<(), duckdb::Error> {
+    let mut update = conn.prepare(
         "UPDATE service_version_sightings
-         SET first_seen_ns = least(first_seen_ns, ?), last_seen_ns = greatest(last_seen_ns, ?)
+         SET first_seen_ns = ?, last_seen_ns = ?, last_deployed_ns = ?,
+             deployments = ?, sanitized = ?
          WHERE service_name = ? AND service_version = ?
            AND environment IS NOT DISTINCT FROM ?",
     )?;
-    let mut add = conn.prepare("INSERT INTO service_version_sightings VALUES (?, ?, ?, ?, ?)")?;
-    for ((service, environment, version), (first, last)) in seen {
-        let widened = widen.execute(params![first, last, service, version, environment])?;
-        if widened == 0 {
-            add.execute(params![service, environment, version, first, last])?;
+    let mut insert = conn.prepare(
+        "INSERT INTO service_version_sightings
+            (service_name, environment, service_version, first_seen_ns, last_seen_ns,
+             last_deployed_ns, deployments, sanitized)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )?;
+    for (key, row) in after {
+        let (environment, version) = key;
+        match before.get(key) {
+            Some(held) if held == row => {}
+            Some(_) => {
+                update.execute(params![
+                    row.first_ns,
+                    row.last_ns,
+                    row.deployed_ns,
+                    row.deployments,
+                    row.sanitized,
+                    service,
+                    version,
+                    environment
+                ])?;
+            }
+            None => {
+                insert.execute(params![
+                    service,
+                    environment,
+                    version,
+                    row.first_ns,
+                    row.last_ns,
+                    row.deployed_ns,
+                    row.deployments,
+                    row.sanitized
+                ])?;
+            }
         }
+    }
+    Ok(())
+}
+
+/// Fold `sights` (oldest first) into the rollup. Runs inside the caller's
+/// transaction.
+fn record(conn: &Connection, sights: &[Sight]) -> Result<(), duckdb::Error> {
+    let mut by_service: BTreeMap<&str, Vec<&Sight>> = BTreeMap::new();
+    for sight in sights {
+        by_service.entry(&sight.service).or_default().push(sight);
+    }
+    for (service, sights) in by_service {
+        let before = held_of(conn, service)?;
+        let mut after = before.clone();
+        for sight in sights {
+            fold(&mut after, sight);
+        }
+        store_changed(conn, service, &before, &after)?;
+    }
+    Ok(())
+}
+
+/// Where the one-time reading of an old lake's spans stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Backfill {
+    NotStarted,
+    /// Spans up to and including this instant have been read.
+    Running(i64),
+    Done,
+}
+
+fn backfill_state(conn: &Connection) -> Result<Backfill, duckdb::Error> {
+    let mut stmt = conn.prepare("SELECT done, cursor_ns FROM sightings_backfill LIMIT 1")?;
+    let mut rows = stmt.query(params![])?;
+    let Some(row) = rows.next()? else {
+        return Ok(Backfill::NotStarted);
+    };
+    if row.get::<_, bool>(0)? {
+        return Ok(Backfill::Done);
+    }
+    Ok(Backfill::Running(
+        row.get::<_, Option<i64>>(1)?.unwrap_or(i64::MIN),
+    ))
+}
+
+fn in_tx<T>(
+    conn: &Connection,
+    f: impl FnOnce() -> Result<T, duckdb::Error>,
+) -> Result<T, duckdb::Error> {
+    conn.execute_batch("BEGIN TRANSACTION")?;
+    match f() {
+        Ok(value) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(value)
+        }
+        Err(e) => {
+            if let Err(rollback) = conn.execute_batch("ROLLBACK") {
+                tracing::warn!(
+                    error.message = %rollback,
+                    "lake.sightings.rollback_failed"
+                );
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Empty the rollup and set the backfill to read every span again.
+/// Runs inside the caller's transaction.
+fn backfill_restart(conn: &Connection) -> Result<(), duckdb::Error> {
+    conn.execute_batch(
+        "DELETE FROM service_version_sightings;
+         DELETE FROM sightings_backfill;
+         INSERT INTO sightings_backfill (done, cursor_ns) VALUES (false, NULL);",
+    )
+}
+
+/// Read the next day of versioned spans into the rollup and move the
+/// cursor past it; `true` when no span is left to read, which marks the
+/// backfill done. Runs inside the caller's transaction.
+fn backfill_step(conn: &Connection) -> Result<bool, duckdb::Error> {
+    let Backfill::Running(cursor) = backfill_state(conn)? else {
+        return Ok(true);
+    };
+    let next: Option<i64> = conn.query_row(
+        "SELECT min(ts_ns) FROM spans
+         WHERE ts_ns > ? AND service_version IS NOT NULL AND service_version <> ''",
+        params![cursor],
+        |row| row.get(0),
+    )?;
+    let Some(next) = next else {
+        conn.execute_batch("UPDATE sightings_backfill SET done = true")?;
+        return Ok(true);
+    };
+    let upto = next.saturating_add(BACKFILL_STEP_NS);
+    let mut stmt = conn.prepare(
+        "SELECT service_name, target_environment, service_version,
+                min(ts_ns) AS first_ns, max(ts_ns) AS last_ns
+         FROM spans
+         WHERE ts_ns > ? AND ts_ns <= ?
+           AND service_version IS NOT NULL AND service_version <> ''
+         GROUP BY service_name, target_environment, service_version, ts_ns // ?
+         ORDER BY first_ns",
+    )?;
+    let rows = stmt.query_map(params![cursor, upto, BUCKET_NS], |row| {
+        let version: String = row.get(2)?;
+        let (version, sanitized) = bounded_version_text(&version);
+        Ok(Sight {
+            service: row.get(0)?,
+            environment: row.get(1)?,
+            version: version.into_owned(),
+            sanitized,
+            first_ns: row.get(3)?,
+            last_ns: row.get(4)?,
+        })
+    })?;
+    let sights = rows.collect::<Result<Vec<_>, _>>()?;
+    record(conn, &sights)?;
+    conn.execute("UPDATE sightings_backfill SET cursor_ns = ?", params![upto])?;
+    Ok(false)
+}
+
+/// Step the backfill until it is done or `budget` is spent, each step in
+/// a transaction of its own; `true` when it is done.
+fn backfill_for(conn: &Connection, budget: Duration) -> Result<bool, duckdb::Error> {
+    let started = Instant::now();
+    loop {
+        let done = in_tx(conn, || backfill_step(conn))?;
+        if done || started.elapsed() >= budget {
+            return Ok(done);
+        }
+    }
+}
+
+/// On opening a lake: begin the backfill where none was recorded (a lake
+/// written before the rollup knew deployments; on a new lake it ends at
+/// once, there being no spans) and give a running one
+/// [`BACKFILL_OPEN_BUDGET`]. A finished backfill is never run again.
+pub(crate) fn backfill(conn: &Connection) -> Result<(), duckdb::Error> {
+    match backfill_state(conn)? {
+        Backfill::Done => return Ok(()),
+        Backfill::NotStarted => in_tx(conn, || backfill_restart(conn))?,
+        Backfill::Running(_) => {}
+    }
+    let done = backfill_for(conn, BACKFILL_OPEN_BUDGET)?;
+    if !done {
+        tracing::info!(
+            budget_ms = u64::try_from(BACKFILL_OPEN_BUDGET.as_millis()).unwrap_or(u64::MAX),
+            "lake.sightings.backfill.running"
+        );
+    }
+    Ok(())
+}
+
+/// Fold the versioned spans of one batch into the rollup. Runs inside the
+/// caller's transaction. While the backfill runs, spans it has yet to
+/// reach are left to it, and each batch moves it one step on.
+pub(crate) fn note_sightings(conn: &Connection, rows: &[SpanRow]) -> Result<(), StoreError> {
+    let cut = rows
+        .iter()
+        .filter(|row| stored_version(row).is_some_and(|(_, cut)| cut))
+        .count();
+    if cut > 0 {
+        tracing::warn!(
+            spans = cut,
+            max_len = MAX_VERSION_LEN,
+            "lake.span.version_sanitized"
+        );
+    }
+    let state = backfill_state(conn)?;
+    let upto = match state {
+        Backfill::Running(cursor) => Some(cursor),
+        Backfill::NotStarted | Backfill::Done => None,
+    };
+    record(conn, &sights_in(rows, upto))?;
+    if upto.is_some() {
+        backfill_step(conn)?;
     }
     Ok(())
 }
@@ -249,85 +477,118 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn version_sightings(&self, service: &str) -> Result<Vec<VersionSighting>, StoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT environment, service_version,
-                    min(first_seen_ns) AS first_seen_ns, max(last_seen_ns) AS last_seen_ns
-             FROM service_version_sightings WHERE service_name = ?
-             GROUP BY environment, service_version
-             ORDER BY first_seen_ns, service_version, environment",
-        )?;
-        let rows = stmt.query_map(params![service], |row| {
-            Ok(VersionSighting {
-                environment: row.get(0)?,
-                version: row.get(1)?,
-                first_seen_ns: row.get(2)?,
-                last_seen_ns: row.get(3)?,
+        let held = held_of(&self.conn, service)?;
+        let mut sightings: Vec<VersionSighting> = held
+            .into_iter()
+            .map(|((environment, version), row)| VersionSighting {
+                environment,
+                version,
+                first_seen_ns: row.first_ns,
+                last_seen_ns: row.last_ns,
+                last_deployed_ns: row.deployed_ns,
+                deployments: row.deployments,
+                sanitized: row.sanitized,
             })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(StoreError::from)
+            .collect();
+        sightings.sort_by(|a, b| {
+            a.first_seen_ns
+                .cmp(&b.first_seen_ns)
+                .then_with(|| a.version.cmp(&b.version))
+                .then_with(|| a.environment.cmp(&b.environment))
+        });
+        Ok(sightings)
     }
 
-    /// The version of `service` that served `[from_ns, to_ns]` in
-    /// `environment` (`None`: the spans that name no environment): the
-    /// one carried by most of the service's spans inside the window, by
-    /// the rule of [`most_served`]. `None` when the service reported
-    /// nothing versioned there in that time.
+    /// Whether the rollup is still being read back from an old lake's
+    /// spans, and so may miss versions and deployments.
     ///
     /// # Errors
-    /// Returns an error if a query fails.
-    pub fn observed_version(
+    /// Returns an error if the query fails.
+    pub fn version_backfill_running(&self) -> Result<bool, StoreError> {
+        Ok(matches!(backfill_state(&self.conn)?, Backfill::Running(_)))
+    }
+
+    /// The versions of `service` that served `[from_ns, to_ns]` in
+    /// `environment` (`None`: the spans that name no environment), with
+    /// the requests each served, most first. A request is a span the
+    /// service received (kind server or consumer) or began (no parent);
+    /// the spans a request fans out into inside the service are not
+    /// counted, so a chatty build weighs no more than a quiet one. With
+    /// `namespace`, only spans whose resource carries that
+    /// `service.namespace`. Empty when the service reported nothing
+    /// versioned there in that time.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    pub fn observed_versions(
         &self,
         service: &str,
         environment: Option<&str>,
+        namespace: Option<&str>,
         from_ns: i64,
         to_ns: i64,
-    ) -> Result<Option<String>, StoreError> {
+    ) -> Result<Vec<VersionShare>, StoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT service_version, count(*) FROM spans
              WHERE service_name = ? AND ts_ns BETWEEN ? AND ?
                AND target_environment IS NOT DISTINCT FROM ?
                AND service_version IS NOT NULL AND service_version <> ''
+               AND (upper(span_kind) IN ('SERVER', 'CONSUMER')
+                    OR parent_span_id IS NULL OR parent_span_id = '')
+               AND (? IS NULL OR resource_attrs['service.namespace'] = ?)
              GROUP BY service_version",
         )?;
-        let rows = stmt.query_map(params![service, from_ns, to_ns, environment], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
-        })?;
-        let counts = rows.collect::<Result<Vec<_>, _>>()?;
-        if counts.is_empty() {
-            return Ok(None);
+        let rows = stmt.query_map(
+            params![service, from_ns, to_ns, environment, namespace, namespace],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
+        )?;
+        let mut requests: BTreeMap<String, u64> = BTreeMap::new();
+        for row in rows {
+            let (version, served) = row?;
+            let (version, _) = bounded_version_text(&version);
+            *requests.entry(version.into_owned()).or_default() += served;
         }
-        let deployed: BTreeMap<String, i64> = self
-            .version_sightings(service)?
+        let mut shares: Vec<VersionShare> = requests
             .into_iter()
-            .filter(|sighting| sighting.environment.as_deref() == environment)
-            .map(|sighting| (sighting.version, sighting.first_seen_ns))
+            .map(|(version, requests)| VersionShare { version, requests })
             .collect();
-        let deployed_at = |version: &str| deployed.get(version).copied().unwrap_or(i64::MIN);
-        Ok(most_served(&counts, deployed_at).map(str::to_string))
+        shares.sort_by(|a, b| {
+            b.requests
+                .cmp(&a.requests)
+                .then_with(|| a.version.cmp(&b.version))
+        });
+        Ok(shares)
     }
 }
 
 impl Writer {
-    /// Rebuild the rollup from the spans stored, for use after spans
-    /// arrived by another road than [`Writer::insert_spans`] (a bulk
-    /// import).
+    /// Rebuild the rollup from the spans stored, to the end, for use
+    /// after spans arrived by another road than [`Writer::insert_spans`]
+    /// (a bulk import).
     ///
     /// # Errors
     /// Returns an error if the rebuild fails (the rollup is left as it was).
     pub fn rebuild_version_sightings(&self) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
-            self.conn
-                .execute_batch("DELETE FROM service_version_sightings")?;
-            self.conn.execute_batch(FROM_SPANS)?;
+            backfill_restart(&self.conn)?;
+            while !backfill_step(&self.conn)? {}
             Ok(())
         })
     }
+
+    /// Give a backfill that is still running up to `budget` more; `true`
+    /// when the rollup is complete.
+    ///
+    /// # Errors
+    /// Returns an error if a step fails (the steps before it are kept).
+    pub fn continue_version_backfill(&self, budget: Duration) -> Result<bool, StoreError> {
+        Ok(backfill_for(&self.conn, budget)?)
+    }
 }
 
-/// Answers a runner's question about the version that served its run from
-/// the target's spans in the store at a path, on a read-only connection
-/// opened for the question.
+/// Answers a runner's question about the versions that served its run
+/// from the target's spans in the store at a path, on a read-only
+/// connection opened for the question.
 #[derive(Debug, Clone)]
 pub struct StoredVersions {
     path: PathBuf,
@@ -344,14 +605,15 @@ impl StoredVersions {
 }
 
 impl TargetVersionResolver for StoredVersions {
-    fn resolve(&self, window: &RunWindow) -> Result<Option<String>, String> {
+    fn resolve(&self, window: &RunWindow) -> Result<Vec<VersionShare>, String> {
         let reader = Store::at(&self.path)
             .read_only()
             .map_err(|e| format!("cannot read the store at {}: {e}", self.path.display()))?;
         reader
-            .observed_version(
+            .observed_versions(
                 &window.system,
                 window.environment.as_deref(),
+                window.namespace.as_deref(),
                 window.started_at_ns,
                 window.ended_at_ns,
             )
@@ -360,396 +622,4 @@ impl TargetVersionResolver for StoredVersions {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const S: i64 = 1_000_000_000;
-
-    fn span(service: &str, version: Option<&str>, env: Option<&str>, ts_ns: i64) -> SpanRow {
-        SpanRow {
-            ts_ns,
-            trace_id: format!("t-{service}-{ts_ns}"),
-            span_id: format!("s-{ts_ns}"),
-            span_name: "GET /".into(),
-            span_kind: "SERVER".into(),
-            status_code: "OK".into(),
-            service_name: service.into(),
-            service_version: version.map(str::to_string),
-            target_environment: env.map(str::to_string),
-            events: "[]".into(),
-            ..SpanRow::default()
-        }
-    }
-
-    fn lake() -> (tempfile::TempDir, Store) {
-        let dir = tempfile::TempDir::new().unwrap();
-        let store = Store::open(&dir.path().join("lake.duckdb")).unwrap();
-        (dir, store)
-    }
-
-    type Seen = (Option<String>, String, i64, i64);
-
-    fn seen(store: &Store, service: &str) -> Vec<Seen> {
-        store
-            .read_only()
-            .unwrap()
-            .version_sightings(service)
-            .unwrap()
-            .into_iter()
-            .map(|s| (s.environment, s.version, s.first_seen_ns, s.last_seen_ns))
-            .collect()
-    }
-
-    fn demo(version: &str, first: i64, last: i64) -> Seen {
-        (Some("demo".into()), version.into(), first * S, last * S)
-    }
-
-    #[test]
-    fn versions_compare_by_their_numbers_before_their_text() {
-        use Ordering::{Equal, Greater, Less};
-        assert_eq!(version_cmp("1.10.0", "1.9.0"), Greater);
-        assert_eq!(version_cmp("1.9.0", "1.10.0"), Less);
-        assert_eq!(version_cmp("v2.0.0", "1.99.99"), Greater);
-        assert_eq!(version_cmp("2.0", "1.9.9"), Greater);
-        assert_eq!(version_cmp("1.2.3", "1.2.3"), Equal);
-        // A pre-release sorts below its release, and its parts by number.
-        assert_eq!(version_cmp("1.0.0-rc.1", "1.0.0"), Less);
-        assert_eq!(version_cmp("1.0.0-rc.10", "1.0.0-rc.2"), Greater);
-        assert_eq!(version_cmp("1.0.0-alpha", "1.0.0-alpha.1"), Less);
-        assert_eq!(version_cmp("1.0.0-1", "1.0.0-alpha"), Less);
-        // Build metadata does not order; the text breaks the tie so the
-        // order stays total.
-        assert_eq!(version_cmp("1.0.0+b2", "1.0.1+b1"), Less);
-        assert_eq!(version_cmp("1.0.0+b2", "1.0.0+b1"), Greater);
-        assert_eq!(version_cmp("1.2", "1.2.0"), Less);
-        // Anything that does not read as a version is text, and all text
-        // sorts above every version: a sha, a date, a bare number, nothing.
-        assert_eq!(version_cmp("main-abd", "main-abc"), Greater);
-        assert_eq!(version_cmp("2024-06-01", "9.0.0"), Greater);
-        assert_eq!(version_cmp("0a1b2c3", "9.0.0"), Greater);
-        assert_eq!(version_cmp("1234567", "9.0.0"), Greater);
-        assert_eq!(version_cmp("", "1.0.0"), Greater);
-        assert_eq!(version_cmp("1.0.0", "main"), Less);
-    }
-
-    #[test]
-    fn numbers_too_long_for_a_machine_word_still_compare_as_numbers() {
-        use Ordering::{Greater, Less};
-        let huge = "1.99999999999999999999999999999999999999.0";
-        let huger = "1.100000000000000000000000000000000000000.0";
-        assert_eq!(version_cmp(huge, huger), Less);
-        assert_eq!(version_cmp(huge, "1.2.0"), Greater);
-        assert_eq!(
-            version_cmp("1.0.0-99999999999999999999999", "1.0.0-2"),
-            Greater
-        );
-        // Leading zeros do not make a number greater.
-        assert_eq!(version_cmp("1.007.0", "1.8.0"), Less);
-    }
-
-    /// Versions of every kind the order has to place: releases, a `v`
-    /// prefix, pre-releases, build metadata, equal numbers spelled
-    /// differently, numbers past `u64`, shas, dates, branch names, nothing.
-    const CORPUS: [&str; 30] = [
-        "1.0.0",
-        "v1.0.0",
-        "1.0",
-        "1.0.0.0",
-        "1.0.0-alpha",
-        "1.0.0-alpha.1",
-        "1.0.0-alpha.beta",
-        "1.0.0-beta.2",
-        "1.0.0-beta.11",
-        "1.0.0-rc.1",
-        "1.0.0-1",
-        "1.0.0-",
-        "1.0.0+build.5",
-        "1.0.0+build.10",
-        "1.0.0-rc.1+sha.5114f85",
-        "1.10.0",
-        "1.9.0",
-        "01.9.0",
-        "2.0.0",
-        "18446744073709551616.0.0",
-        "18446744073709551615.0.0",
-        "99999999999999999999999999.1",
-        "2024-06-01",
-        "2024.06.01",
-        "20240601",
-        "0a1b2c3",
-        "5114f85",
-        "main",
-        "",
-        "v",
-    ];
-
-    #[test]
-    fn the_version_order_is_total_over_a_mixed_corpus() {
-        use Ordering::Equal;
-        for a in CORPUS {
-            assert_eq!(version_cmp(a, a), Equal, "{a:?} equals itself");
-            for b in CORPUS {
-                let ab = version_cmp(a, b);
-                assert_eq!(ab, version_cmp(b, a).reverse(), "antisymmetry: {a:?} {b:?}");
-                assert_eq!(ab == Equal, a == b, "only equal text is equal: {a:?} {b:?}");
-                for c in CORPUS {
-                    if ab.is_le() && version_cmp(b, c).is_le() {
-                        assert!(version_cmp(a, c).is_le(), "transitivity: {a:?} {b:?} {c:?}");
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn sorting_any_permutation_of_the_corpus_gives_one_order() {
-        let mut expected = CORPUS.to_vec();
-        expected.sort_by(|a, b| version_cmp(a, b));
-        // Every version sorts before all text.
-        let reads = |v: &str| version_cmp(v, "0.0").is_ge() && version_cmp(v, "").is_lt();
-        let first_text = expected.iter().position(|v| !reads(v)).unwrap();
-        assert!(
-            expected[first_text..].iter().all(|v| !reads(v)),
-            "{expected:?}"
-        );
-        assert_eq!(expected[first_text - 1], "99999999999999999999999999.1");
-        assert_eq!(first_text, 22, "{expected:?}");
-        // Rotations, the reverse, and a few hundred seeded shuffles.
-        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
-        let mut next = move |bound: usize| {
-            state = state
-                .wrapping_mul(6_364_136_223_846_793_005)
-                .wrapping_add(1_442_695_040_888_963_407);
-            usize::try_from(state >> 33).unwrap_or(0) % bound
-        };
-        let mut permutations: Vec<Vec<&str>> = (0..CORPUS.len())
-            .map(|by| {
-                let mut rotated = CORPUS.to_vec();
-                rotated.rotate_left(by);
-                rotated
-            })
-            .collect();
-        permutations.push(CORPUS.iter().rev().copied().collect());
-        for _ in 0..300 {
-            let mut shuffled = CORPUS.to_vec();
-            for i in (1..shuffled.len()).rev() {
-                shuffled.swap(i, next(i + 1));
-            }
-            permutations.push(shuffled);
-        }
-        for mut permutation in permutations {
-            permutation.sort_by(|a, b| version_cmp(a, b));
-            assert_eq!(permutation, expected);
-        }
-    }
-
-    #[test]
-    fn inserting_spans_keeps_first_and_last_sight_per_environment() {
-        let (_dir, store) = lake();
-        let writer = store.writer().unwrap();
-        writer
-            .insert_spans(&[
-                span("checkout", Some("1.0.0"), Some("demo"), 20 * S),
-                span("checkout", Some("1.0.0"), Some("demo"), 10 * S),
-                span("checkout", Some("1.0.0"), Some("prod"), 15 * S),
-                span("checkout", Some("1.1.0"), None, 30 * S),
-                span("checkout", None, Some("demo"), 99 * S),
-                span("ledger", Some("3.0.0"), Some("demo"), 5 * S),
-            ])
-            .unwrap();
-        // A later batch widens what is there, in both directions.
-        writer
-            .insert_spans(&[
-                span("checkout", Some("1.0.0"), Some("demo"), 40 * S),
-                span("checkout", Some("1.0.0"), Some("demo"), 4 * S),
-                span("checkout", Some("1.1.0"), None, 31 * S),
-            ])
-            .unwrap();
-        drop(writer);
-        assert_eq!(
-            seen(&store, "checkout"),
-            vec![
-                demo("1.0.0", 4, 40),
-                (Some("prod".into()), "1.0.0".into(), 15 * S, 15 * S),
-                (None, "1.1.0".into(), 30 * S, 31 * S),
-            ]
-        );
-        assert_eq!(seen(&store, "ledger").len(), 1);
-        assert!(seen(&store, "nobody").is_empty());
-    }
-
-    #[test]
-    fn a_lake_written_before_the_rollup_is_backfilled_once_on_open() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let db = dir.path().join("lake.duckdb");
-        {
-            let store = Store::open(&db).unwrap();
-            let writer = store.writer().unwrap();
-            writer
-                .insert_spans(&[
-                    span("checkout", Some("1.0.0"), Some("demo"), 10 * S),
-                    span("checkout", Some("1.0.0"), Some("demo"), 50 * S),
-                    span("checkout", Some("1.1.0"), Some("demo"), 60 * S),
-                ])
-                .unwrap();
-        }
-        // As an older build left it: spans and no rollup.
-        duckdb::Connection::open(&db)
-            .unwrap()
-            .execute_batch("DROP TABLE IF EXISTS service_version_sightings")
-            .unwrap();
-        let expected = vec![demo("1.0.0", 10, 50), demo("1.1.0", 60, 60)];
-        let store = Store::open(&db).unwrap();
-        assert_eq!(seen(&store, "checkout"), expected);
-        // Opening again adds nothing.
-        drop(store);
-        let store = Store::open(&db).unwrap();
-        assert_eq!(seen(&store, "checkout"), expected);
-    }
-
-    #[test]
-    fn a_rebuild_reads_the_rollup_back_from_the_spans() {
-        let (_dir, store) = lake();
-        let writer = store.writer().unwrap();
-        writer
-            .insert_spans(&[
-                span("checkout", Some("1.0.0"), Some("demo"), 10 * S),
-                span("checkout", Some("1.1.0"), Some("demo"), 60 * S),
-            ])
-            .unwrap();
-        // Spans that arrived by a bulk import, past `insert_spans`.
-        writer
-            .conn
-            .execute_batch(
-                "INSERT INTO spans (ts_ns, trace_id, span_id, span_name, span_kind, \
-                 duration_ns, status_code, status_message, service_name, service_version, \
-                 target_environment) VALUES \
-                 (70000000000, 't', 's', 'GET /', 'SERVER', 0, 'OK', '', 'checkout', \
-                 '1.2.0', 'demo')",
-            )
-            .unwrap();
-        assert_eq!(seen(&store, "checkout").len(), 2);
-        writer.rebuild_version_sightings().unwrap();
-        assert_eq!(
-            seen(&store, "checkout"),
-            vec![
-                demo("1.0.0", 10, 10),
-                demo("1.1.0", 60, 60),
-                demo("1.2.0", 70, 70)
-            ]
-        );
-    }
-
-    #[test]
-    fn the_observed_version_is_the_one_with_most_spans_in_the_window_and_environment() {
-        let (_dir, store) = lake();
-        let writer = store.writer().unwrap();
-        let mut rows = vec![
-            // Before the window: 0.9.0 was live.
-            span("checkout", Some("0.9.0"), Some("demo"), 50 * S),
-            // A busy other environment inside the window.
-            span("checkout", Some("2.0.0"), Some("prod"), 110 * S),
-            span("checkout", Some("2.0.0"), Some("prod"), 111 * S),
-            span("checkout", Some("2.0.0"), Some("prod"), 112 * S),
-            span("checkout", Some("2.0.0"), Some("prod"), 113 * S),
-            // Untagged spans are an environment of their own.
-            span("checkout", Some("3.0.0"), None, 120 * S),
-        ];
-        rows.extend((0..3).map(|i| span("checkout", Some("1.0.0"), Some("demo"), (100 + i) * S)));
-        rows.extend((0..2).map(|i| span("checkout", Some("1.1.0"), Some("demo"), (150 + i) * S)));
-        writer.insert_spans(&rows).unwrap();
-        drop(writer);
-        let reader = store.read_only().unwrap();
-        let observed = |env: Option<&str>, from: i64, to: i64| {
-            reader
-                .observed_version("checkout", env, from * S, to * S)
-                .unwrap()
-        };
-        assert_eq!(observed(Some("demo"), 100, 200).as_deref(), Some("1.0.0"));
-        assert_eq!(observed(Some("prod"), 100, 200).as_deref(), Some("2.0.0"));
-        assert_eq!(observed(None, 100, 200).as_deref(), Some("3.0.0"));
-        // The bounds are inclusive; nothing inside is nothing observed,
-        // whatever spoke before.
-        assert_eq!(observed(Some("demo"), 151, 151).as_deref(), Some("1.1.0"));
-        assert_eq!(observed(Some("demo"), 60, 90), None);
-        assert_eq!(observed(Some("staging"), 0, 500), None);
-    }
-
-    #[test]
-    fn a_tie_inside_the_window_goes_to_the_latest_deploy_then_the_greater_version() {
-        let (_dir, store) = lake();
-        let writer = store.writer().unwrap();
-        writer
-            .insert_spans(&[
-                // 1.9.0 was deployed after 1.10.0 here.
-                span("checkout", Some("1.10.0"), Some("demo"), 10 * S),
-                span("checkout", Some("1.9.0"), Some("demo"), 20 * S),
-                span("checkout", Some("1.10.0"), Some("demo"), 100 * S),
-                span("checkout", Some("1.9.0"), Some("demo"), 101 * S),
-                // Both first seen at the same instant.
-                span("ledger", Some("1.9.0"), Some("demo"), 100 * S),
-                span("ledger", Some("1.10.0"), Some("demo"), 100 * S),
-            ])
-            .unwrap();
-        drop(writer);
-        let reader = store.read_only().unwrap();
-        let observed = |service: &str| {
-            reader
-                .observed_version(service, Some("demo"), 100 * S, 200 * S)
-                .unwrap()
-        };
-        assert_eq!(observed("checkout").as_deref(), Some("1.9.0"));
-        assert_eq!(observed("ledger").as_deref(), Some("1.10.0"));
-    }
-
-    #[test]
-    fn most_served_ranks_by_spans_then_deploy_then_version() {
-        let counts = vec![("1.0.0".to_string(), 90), ("1.1.0".to_string(), 10)];
-        assert_eq!(most_served(&counts, |_| 0), Some("1.0.0"));
-        let even = vec![("1.9.0".to_string(), 5), ("1.10.0".to_string(), 5)];
-        let deployed = |v: &str| if v == "1.9.0" { 9 } else { 3 };
-        assert_eq!(most_served(&even, deployed), Some("1.9.0"));
-        assert_eq!(most_served(&even, |_| 0), Some("1.10.0"));
-        assert_eq!(most_served(&[], |_| 0), None);
-    }
-
-    #[test]
-    fn a_runner_is_told_the_version_that_served_its_window_in_its_environment() {
-        let (dir, store) = lake();
-        let writer = store.writer().unwrap();
-        let mut rows = vec![
-            span("checkout", Some("1.0.0"), Some("demo"), 50 * S),
-            span("checkout", Some("3.0.0"), None, 120 * S),
-        ];
-        rows.extend((0..3).map(|i| span("checkout", Some("1.1.0"), Some("demo"), (100 + i) * S)));
-        writer.insert_spans(&rows).unwrap();
-        drop(writer);
-        let versions = StoredVersions::at(&dir.path().join("lake.duckdb"));
-        let window = |environment: Option<&str>, from: i64, to: i64| RunWindow {
-            system: "checkout".into(),
-            environment: environment.map(str::to_string),
-            started_at_ns: from * S,
-            ended_at_ns: to * S,
-        };
-        let demo = versions.resolve(&window(Some("demo"), 90, 130));
-        assert_eq!(demo, Ok(Some("1.1.0".to_string())));
-        let untagged = versions.resolve(&window(None, 90, 130));
-        assert_eq!(untagged, Ok(Some("3.0.0".to_string())));
-        assert_eq!(versions.resolve(&window(Some("prod"), 90, 130)), Ok(None));
-        assert_eq!(versions.resolve(&window(Some("demo"), 60, 70)), Ok(None));
-    }
-
-    #[test]
-    fn a_store_that_cannot_be_read_is_an_error_not_an_absent_version() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let versions = StoredVersions::at(&dir.path().join("missing.duckdb"));
-        let window = RunWindow {
-            system: "checkout".into(),
-            environment: None,
-            started_at_ns: 0,
-            ended_at_ns: S,
-        };
-        let error = versions.resolve(&window).unwrap_err();
-        assert!(error.contains("missing.duckdb"), "{error}");
-    }
-}
+mod tests;

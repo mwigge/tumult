@@ -60,7 +60,7 @@ impl Writer {
                     r.status_code,
                     r.status_message,
                     r.service_name,
-                    r.service_version,
+                    crate::sightings::stored_version(r).map(|(version, _)| version),
                     r.experiment_id,
                     r.experiment_name,
                     r.outcome_status,

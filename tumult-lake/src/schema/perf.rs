@@ -7,9 +7,11 @@
 //! history can be filtered by a principal's scopes.
 //!
 //! Added later without a schema version, by the same additive pattern as
-//! `envs`: the version a run recorded for its target on `experiments`,
-//! how a load was executed on `load_results`, and the
-//! `service_version_sightings` rollup (see `crate::sightings`). The new
+//! `envs`: the version a run recorded for its target on `experiments`
+//! (with the shares of a window more than one version served), how a load
+//! was executed and what became of its requests on `load_results`, and
+//! the `service_version_sightings` rollup with the state of its one-time
+//! backfill (see `crate::sightings`). The new
 //! columns are appended, so they follow the Arrow layouts in
 //! `arrow_convert` position for position, and the rollup carries no index
 //! because its rows are updated in place.
@@ -41,10 +43,26 @@ ALTER TABLE load_results ADD COLUMN IF NOT EXISTS completed_windows INTEGER;
 ALTER TABLE load_results ADD COLUMN IF NOT EXISTS unanswered_windows INTEGER;
 ALTER TABLE load_results ADD COLUMN IF NOT EXISTS lost_to_unanswered INTEGER;
 ALTER TABLE load_results ADD COLUMN IF NOT EXISTS sampled_duration_s DOUBLE;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS version_shares VARCHAR;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_sent BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_ok BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_timed_out BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_transport BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_http_4xx BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_http_5xx BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_http_other BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS requests_unclassified BIGINT;
+ALTER TABLE load_results ADD COLUMN IF NOT EXISTS censored_windows INTEGER;
 CREATE TABLE IF NOT EXISTS service_version_sightings (
     service_name VARCHAR NOT NULL, environment VARCHAR,
     service_version VARCHAR NOT NULL,
     first_seen_ns BIGINT NOT NULL, last_seen_ns BIGINT NOT NULL
+);
+ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS last_deployed_ns BIGINT;
+ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS deployments INTEGER;
+ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS sanitized BOOLEAN;
+CREATE TABLE IF NOT EXISTS sightings_backfill (
+    done BOOLEAN NOT NULL, cursor_ns BIGINT
 );
 ";
 
@@ -89,7 +107,7 @@ mod tests {
         assert_eq!(
             one("SELECT count(*) AS n FROM experiments \
                  WHERE experiment_id = 'old-run' AND target_version IS NULL \
-                 AND version_source IS NULL"),
+                 AND version_source IS NULL AND version_shares IS NULL"),
             1
         );
         assert_eq!(
@@ -99,6 +117,22 @@ mod tests {
                  AND unanswered_windows IS NULL AND lost_to_unanswered IS NULL \
                  AND sampled_duration_s IS NULL"),
             1
+        );
+        assert_eq!(
+            one("SELECT count(*) AS n FROM load_results \
+                 WHERE experiment_id = 'old-run' AND requests_sent IS NULL \
+                 AND requests_ok IS NULL AND requests_timed_out IS NULL \
+                 AND requests_transport IS NULL AND requests_http_4xx IS NULL \
+                 AND requests_http_5xx IS NULL AND requests_http_other IS NULL \
+                 AND requests_unclassified IS NULL AND censored_windows IS NULL"),
+            1
+        );
+        // The rollup of an older build gains its deployment columns.
+        assert_eq!(
+            one("SELECT count(*) AS n FROM service_version_sightings \
+                 WHERE last_deployed_ns IS NOT NULL OR deployments IS NOT NULL \
+                 OR sanitized IS NOT NULL"),
+            0
         );
         assert_eq!(
             one("SELECT count(*) AS n FROM service_version_sightings"),

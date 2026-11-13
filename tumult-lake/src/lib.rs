@@ -76,6 +76,8 @@ mod sightings;
 mod store;
 pub mod telemetry;
 #[cfg(feature = "duckdb")]
+mod version_order;
+#[cfg(feature = "duckdb")]
 mod webhooks;
 #[cfg(feature = "duckdb")]
 mod writer;
@@ -110,11 +112,13 @@ pub use schedules::ScheduleRow;
 #[cfg(feature = "duckdb")]
 pub use schema::CURRENT_SCHEMA_VERSION;
 #[cfg(feature = "duckdb")]
-pub use sightings::{most_served, version_cmp, StoredVersions, VersionSighting};
+pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};
 #[cfg(feature = "duckdb")]
 pub use store::Store;
 #[cfg(feature = "duckdb")]
 pub(crate) use store::{migrate, query_json_rows, with_tx};
+#[cfg(feature = "duckdb")]
+pub use version_order::version_cmp;
 pub use webhooks::{WebhookDeadLetter, WebhookRow};
 #[cfg(feature = "duckdb")]
 pub use writer::Writer;

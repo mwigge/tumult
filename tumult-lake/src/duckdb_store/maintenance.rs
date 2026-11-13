@@ -4,10 +4,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arrow::array::ArrayRef;
+use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 
 use duckdb::params;
 
+use crate::arrow_convert::{experiments_schema, journal_probe_samples_schema, load_results_schema};
 use crate::error::AnalyticsError;
 use crate::export::{export_parquet, import_parquet};
 use crate::telemetry;
@@ -77,13 +79,7 @@ impl AnalyticsStore {
                 .to_string(),
         );
 
-        let exp_batch = self.query_to_batch(
-            "SELECT experiment_id, title, status, started_at_ns, ended_at_ns, \
-             duration_ms, method_step_count, rollback_count, hypothesis_before_met, \
-             hypothesis_after_met, estimate_accuracy, resilience_score, \
-             test_kind, rto_target_s, rpo_target_s, rto_measured_s, rpo_measured_s \
-             FROM experiments",
-        )?;
+        let exp_batch = self.query_to_batch(&select_of(&experiments_schema(), "experiments"))?;
         let act_batch = self.query_to_batch(
             "SELECT experiment_id, name, activity_type, status, started_at_ns, \
              duration_ms, output, error, phase FROM activity_results",
@@ -96,6 +92,79 @@ impl AnalyticsStore {
             + std::fs::metadata(activities_path).map_or(0, |m| m.len());
         telemetry::event_export_completed("parquet", total_rows, total_bytes);
 
+        Ok(())
+    }
+
+    /// Export the load results and the probe samples (every window of
+    /// every load among them) to Parquet files: with the experiments,
+    /// the evidence a performance verdict is computed from.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any `DuckDB` query or Parquet write fails.
+    #[must_use = "callers must handle export errors"]
+    pub fn export_load_tables(
+        &self,
+        load_results_path: &Path,
+        probe_samples_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        let loads = self.query_to_batch(&select_of(&load_results_schema(), "load_results"))?;
+        let samples =
+            self.query_to_batch(&select_of(&journal_probe_samples_schema(), "probe_samples"))?;
+        export_parquet(&loads, load_results_path)?;
+        export_parquet(&samples, probe_samples_path)?;
+        telemetry::event_export_completed(
+            "parquet",
+            loads.num_rows() + samples.num_rows(),
+            std::fs::metadata(load_results_path).map_or(0, |m| m.len())
+                + std::fs::metadata(probe_samples_path).map_or(0, |m| m.len()),
+        );
+        Ok(())
+    }
+
+    /// Import what [`AnalyticsStore::export_load_tables`] wrote, in one
+    /// transaction. A file written before a column existed imports with
+    /// that column unknown.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Parquet read or `DuckDB` insert fails
+    /// (nothing is kept).
+    #[must_use = "callers must handle import errors"]
+    pub fn import_load_tables(
+        &self,
+        load_results_path: &Path,
+        probe_samples_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        self.conn.execute_batch("BEGIN TRANSACTION")?;
+        let imported = self
+            .import_padded("load_results", &load_results_schema(), load_results_path)
+            .and_then(|()| {
+                self.import_padded(
+                    "probe_samples",
+                    &journal_probe_samples_schema(),
+                    probe_samples_path,
+                )
+            });
+        if let Err(e) = imported {
+            if let Err(rollback) = self.conn.execute_batch("ROLLBACK") {
+                tracing::warn!(error.message = %rollback, "lake.import.rollback_failed");
+            }
+            return Err(e);
+        }
+        self.conn.execute_batch("COMMIT")?;
+        Ok(())
+    }
+
+    fn import_padded(
+        &self,
+        table: &str,
+        schema: &Schema,
+        path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        for batch in &import_parquet(path)? {
+            self.insert_batch(table, &pad_batch(batch, schema)?)?;
+        }
         Ok(())
     }
 
@@ -141,10 +210,7 @@ impl AnalyticsStore {
         experiments_path: &Path,
         activities_path: &Path,
     ) -> Result<(), AnalyticsError> {
-        let exp_batches = import_parquet(experiments_path)?;
-        for batch in &exp_batches {
-            self.insert_batch("experiments", &pad_experiment_batch(batch)?)?;
-        }
+        self.import_padded("experiments", &experiments_schema(), experiments_path)?;
         let act_batches = import_parquet(activities_path)?;
         for batch in &act_batches {
             self.insert_batch("activity_results", batch)?;
@@ -153,20 +219,32 @@ impl AnalyticsStore {
     }
 }
 
-/// Widen an `experiments` batch exported before schema v16 (12 columns) to
-/// the current layout by appending null columns, so old Parquet backups
-/// still import. Batches already at the current width pass through.
-fn pad_experiment_batch(batch: &RecordBatch) -> Result<RecordBatch, AnalyticsError> {
-    let schema = crate::arrow_convert::experiments_schema();
+/// `SELECT` of the columns `schema` names from `table`, in its order: an
+/// export follows the layout its import appends by, column for column.
+fn select_of(schema: &Schema, table: &str) -> String {
+    let columns: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+    format!("SELECT {} FROM {table}", columns.join(", "))
+}
+
+/// Widen a batch exported before the table gained its latest columns
+/// (an `experiments` export before schema v16 has 12) to `schema` by
+/// appending null columns, so old Parquet backups still import. Batches
+/// already at the current width pass through.
+fn pad_batch(batch: &RecordBatch, schema: &Schema) -> Result<RecordBatch, AnalyticsError> {
     if batch.num_columns() >= schema.fields().len() {
         return Ok(batch.clone());
     }
     let rows = batch.num_rows();
+    let mut fields = batch.schema().fields().to_vec();
     let mut columns: Vec<ArrayRef> = batch.columns().to_vec();
     for field in schema.fields().iter().skip(batch.num_columns()) {
+        fields.push(Arc::new(field.as_ref().clone().with_nullable(true)));
         columns.push(arrow::array::new_null_array(field.data_type(), rows));
     }
-    Ok(RecordBatch::try_new(Arc::new(schema), columns)?)
+    Ok(RecordBatch::try_new(
+        Arc::new(Schema::new(fields)),
+        columns,
+    )?)
 }
 
 #[cfg(test)]
@@ -312,6 +390,157 @@ mod tests {
             .unwrap();
         assert_eq!(rows[0][0], "old-1");
         assert_eq!(rows[0][1], "true");
+    }
+
+    /// A run with everything a performance verdict reads: the version it
+    /// recorded, how its load was executed, and its windows.
+    fn load_run(id: &str) -> Journal {
+        let window = |ts_ns: i64| LoadSample {
+            ts_ns,
+            duration_s: 5.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 70.0,
+            latency_p99_ms: 2000.0,
+            error_rate: 0.25,
+            requests: 200,
+            counts: Some(RequestCounts {
+                sent: 200,
+                ok: 150,
+                timed_out: 50,
+                ..RequestCounts::default()
+            }),
+            request_timeout_ms: Some(2000.0),
+        };
+        let mut journal = sample_journal(id, ExperimentStatus::Completed);
+        journal.target_version = TargetVersion::observed(vec![
+            VersionShare {
+                version: "1.5.0".into(),
+                requests: 70,
+            },
+            VersionShare {
+                version: "1.4.0".into(),
+                requests: 30,
+            },
+        ]);
+        journal.load_result = Some(LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_s: 10.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 70.0,
+            latency_p99_ms: 2000.0,
+            error_rate: 0.25,
+            total_requests: 400,
+            thresholds_met: false,
+            samples: vec![window(1), window(2)],
+            execution: LoadExecution {
+                planned_windows: Some(2),
+                completed_windows: Some(2),
+                requests: Some(RequestCounts {
+                    sent: 400,
+                    ok: 300,
+                    timed_out: 100,
+                    ..RequestCounts::default()
+                }),
+                censored_windows: 2,
+                ..LoadExecution::default()
+            },
+        });
+        journal
+    }
+
+    const EVIDENCE: [&str; 3] = [
+        "SELECT * FROM experiments ORDER BY experiment_id",
+        "SELECT * FROM load_results ORDER BY experiment_id",
+        "SELECT * FROM probe_samples ORDER BY experiment_id, ts_ns, probe_name",
+    ];
+
+    fn evidence(s: &AnalyticsStore) -> Vec<Vec<String>> {
+        EVIDENCE
+            .iter()
+            .map(|sql| {
+                let rows = s.query(sql).unwrap();
+                rows.iter().map(|row| row.join("|")).collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_export_and_import_keep_the_evidence_of_a_performance_verdict() {
+        let d = tempfile::TempDir::new().unwrap();
+        let path = |name: &str| d.path().join(name);
+        let exported = AnalyticsStore::in_memory().unwrap();
+        exported
+            .ingest_journals(&[load_run("r1"), load_run("r2")])
+            .unwrap();
+        exported
+            .export_tables(&path("experiments.parquet"), &path("activities.parquet"))
+            .unwrap();
+        exported
+            .export_load_tables(
+                &path("load_results.parquet"),
+                &path("probe_samples.parquet"),
+            )
+            .unwrap();
+
+        let imported = AnalyticsStore::in_memory().unwrap();
+        imported
+            .import_tables(&path("experiments.parquet"), &path("activities.parquet"))
+            .unwrap();
+        imported
+            .import_load_tables(
+                &path("load_results.parquet"),
+                &path("probe_samples.parquet"),
+            )
+            .unwrap();
+
+        let before = evidence(&exported);
+        assert_eq!(before[0].len(), 2);
+        assert!(before[0][0].contains("|1.5.0|mixed|[{"), "{:?}", before[0]);
+        assert!(
+            before[1][0].ends_with("|400|300|100|0|0|0|0|0|2"),
+            "{:?}",
+            before[1]
+        );
+        assert_eq!(before[2].len(), 2 * 2 * 10);
+        assert_eq!(evidence(&imported), before);
+    }
+
+    #[test]
+    fn load_results_exported_before_the_request_counts_still_import() {
+        use super::{export_parquet, journal_probe_samples_schema};
+
+        let d = tempfile::TempDir::new().unwrap();
+        let (loads, samples) = (d.path().join("l.parquet"), d.path().join("s.parquet"));
+        let older = AnalyticsStore::in_memory().unwrap();
+        older.ingest_journal(&load_run("r1")).unwrap();
+        let narrow = older
+            .query_to_batch(
+                "SELECT experiment_id, tool, started_at_ns, ended_at_ns, duration_s, vus, \
+                 throughput_rps, latency_p50_ms, latency_p95_ms, latency_p99_ms, error_rate, \
+                 total_requests, thresholds_met FROM load_results",
+            )
+            .unwrap();
+        export_parquet(&narrow, &loads).unwrap();
+        let none = arrow::record_batch::RecordBatch::new_empty(std::sync::Arc::new(
+            journal_probe_samples_schema(),
+        ));
+        export_parquet(&none, &samples).unwrap();
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_load_tables(&loads, &samples).unwrap();
+        let rows = s
+            .query(
+                "SELECT experiment_id, total_requests, aborted IS NULL, requests_sent IS NULL \
+                 FROM load_results",
+            )
+            .unwrap();
+        assert_eq!(rows[0].join("|"), "r1|400|true|true");
     }
 
     #[test]
