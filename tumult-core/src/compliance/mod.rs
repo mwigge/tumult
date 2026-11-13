@@ -10,6 +10,7 @@ mod citations;
 mod dates;
 mod evidence;
 mod framework;
+mod requirements;
 mod signals;
 
 pub use citations::{
@@ -18,6 +19,12 @@ pub use citations::{
 pub use dates::{current_year_month, months_since_verified, parse_year_month, stale_citations};
 pub use evidence::{EvidenceStrength, EvidenceType};
 pub use framework::ComplianceFramework;
+pub use requirements::{
+    applicable, article_title, requirement, EntityFlags, EntityProfile, EvidenceClass, Feed,
+    FlagRule, FunctionScope, MicroRule, Profile, ProfileSet, Requirement, Selector, ARTICLES,
+    CORE_WEIGHT_MIN, EXPECTED_STATUS_DESIGNED, EXPECTED_STATUS_EXISTING, EXPECTED_STATUS_OPERATING,
+    FLAG_NAMES, GATING_WEIGHT, REQUIREMENTS, REQUIREMENTS_VERSION,
+};
 pub use signals::{compliance_verdict, ComplianceSignals, DEFAULT_MTTR_TARGET_S};
 
 #[cfg(test)]
