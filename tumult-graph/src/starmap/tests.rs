@@ -1005,6 +1005,32 @@ fn focus_depth_defaults_to_two_and_widens_with_depth() {
 }
 
 #[test]
+fn an_entity_focus_resolves_whatever_its_case() {
+    let inputs = StarInputs {
+        org_units: org(),
+        services: vec![svc_ent("checkout", "CIF-0042"), svc("Ledger")],
+        ..StarInputs::default()
+    };
+    for asked in ["ent:CIF-0042", "ent:cif-0042", "ent:Cif-0042"] {
+        let query = StarQuery {
+            focus: Some(asked.to_string()),
+            ..StarQuery::default()
+        };
+        let map = assemble(&inputs, &query);
+        assert_eq!(map.focus_found, Some(true), "{asked}");
+        assert_eq!(map.focus.as_deref(), Some("ent:cif-0042"), "the node's id");
+        assert_eq!(node(&map, "ent:cif-0042").label, "CIF-0042");
+    }
+
+    // Only entity ids fold case: a service is named as it reports itself.
+    let query = StarQuery {
+        focus: Some("svc:ledger".to_string()),
+        ..StarQuery::default()
+    };
+    assert_eq!(assemble(&inputs, &query).focus_found, Some(false));
+}
+
+#[test]
 fn unknown_focus_returns_an_empty_map() {
     let map = assemble(
         &chain(),

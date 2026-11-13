@@ -25,6 +25,17 @@ pub use model::{
     SourceState, Sources, StarCluster, StarEdge, StarKind, StarMap, StarNode, StarRel,
 };
 
+/// The node id a `focus` names. Entity ids carry the lower-case form
+/// of the id as reported (entities compare without regard to case), so
+/// an entity focus is folded the same way; every other id is taken as
+/// given.
+fn focus_id(asked: &str) -> String {
+    match asked.strip_prefix("ent:") {
+        Some(entity) => format!("ent:{}", entity.to_lowercase()),
+        None => asked.to_string(),
+    }
+}
+
 /// Assemble the Star Map for one request.
 ///
 /// Builds nodes and typed edges from the rows, picks owners (telemetry
@@ -52,11 +63,11 @@ pub fn assemble(inputs: &StarInputs, query: &StarQuery) -> StarMap {
     rollup::apply(&mut graph, &facts.ent_systems);
 
     let before = graph.nodes.len();
-    let depth = query
-        .focus
+    let focus = query.focus.as_deref().map(focus_id);
+    let depth = focus
         .as_ref()
         .map(|_| query.depth.unwrap_or(DEFAULT_DEPTH).clamp(1, MAX_DEPTH));
-    let focus_found = match (&query.focus, depth) {
+    let focus_found = match (&focus, depth) {
         (Some(focus), Some(depth)) => Some(prune::apply_focus(&mut graph, focus, depth)),
         _ => None,
     };
@@ -78,7 +89,7 @@ pub fn assemble(inputs: &StarInputs, query: &StarQuery) -> StarMap {
         as_of_ns: inputs.as_of_ns,
         range: query.range.clone(),
         env: query.env.clone(),
-        focus: query.focus.clone(),
+        focus,
         focus_found,
         depth,
         disclaimer: tumult_core::compliance::EVIDENCE_DISCLAIMER,
