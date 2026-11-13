@@ -30,13 +30,13 @@ fn schedule(id: &str, enabled: bool, next_run_at_ns: i64) -> ScheduleRow {
 }
 
 #[test]
-fn schema_is_v15() {
+fn schema_is_v18() {
     let (_d, store) = fixture();
     assert_eq!(
         store.writer().unwrap().schema_version().unwrap(),
         CURRENT_SCHEMA_VERSION
     );
-    assert_eq!(CURRENT_SCHEMA_VERSION, 15);
+    assert_eq!(CURRENT_SCHEMA_VERSION, 18);
 }
 
 #[test]

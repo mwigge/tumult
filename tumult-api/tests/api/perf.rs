@@ -29,7 +29,7 @@ fn service_span(id: &str, version: &str, ts: i64) -> SpanRow {
         blast_radius: None,
         target_system: None,
         target_technology: None,
-        target_environment: None,
+        target_environment: Some("demo".into()),
         plugin_name: None,
         hypothesis_met: None,
         recovery_time_s: None,
@@ -150,7 +150,14 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
     let srv = spawn_server().await;
     seed_perf(&srv).await;
 
+    // The default is a pure read: nothing is stored, however often asked.
     let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["stored"], false);
+    let (_, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(body["history"].as_array().unwrap().len(), 0, "{body}");
+
+    let (status, body) = get(&srv.base, "/api/perf/checkout?store=true").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["target"], "checkout");
     assert_eq!(body["probe"], "load.latency_p95_ms");
@@ -176,7 +183,7 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
 
     // The verdict was appended: the next call sees it as history, and the
     // answer is deterministic.
-    let (status, again) = get(&srv.base, "/api/perf/checkout?store=false").await;
+    let (status, again) = get(&srv.base, "/api/perf/checkout").await;
     assert_eq!(status, 200, "{again}");
     assert_eq!(again["stored"], false);
     let history = again["history"].as_array().unwrap();
@@ -218,25 +225,25 @@ async fn perf_unknown_target_is_404_and_bad_options_are_400() {
 async fn perf_honours_quantile_probe_and_min_samples() {
     let srv = spawn_server().await;
     seed_perf(&srv).await;
-    let (status, body) = get(&srv.base, "/api/perf/checkout?quantile=p50&store=false").await;
+    let (status, body) = get(&srv.base, "/api/perf/checkout?quantile=p50").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["comparison"]["quantile"], "p50");
     assert_eq!(body["verdict"], "regressed", "{body}");
 
     // A series nobody wrote: both sides empty, so inconclusive.
-    let (status, body) = get(&srv.base, "/api/perf/checkout?probe=nope&store=false").await;
+    let (status, body) = get(&srv.base, "/api/perf/checkout?probe=nope").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["verdict"], "inconclusive");
     assert_eq!(body["candidate"]["samples"], 0);
 
-    let (status, body) = get(&srv.base, "/api/perf/checkout?min_samples=100&store=false").await;
+    let (status, body) = get(&srv.base, "/api/perf/checkout?min_samples=100").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["verdict"], "inconclusive");
 }
 
-/// Scoped principals: `env` outside the scopes is a 403; a prod-scoped
-/// viewer sees the versions but none of the demo runs, so the verdict
-/// is inconclusive rather than leaking demo samples.
+/// Scoped principals: `env` outside the scopes is a 403, and a prod-scoped
+/// viewer sees neither the demo versions nor the demo runs — the target
+/// does not exist for it — rather than leaking demo evidence.
 #[tokio::test]
 async fn perf_respects_environment_scopes() {
     let srv = spawn_server().await;
@@ -244,13 +251,41 @@ async fn perf_respects_environment_scopes() {
     let token = add_scoped_token(&srv, "perf-viewer", "viewer", &["prod"]).await;
     let (status, body) = get_auth(&srv.base, "/api/perf/checkout?env=demo", &token).await;
     assert_eq!(status, 403, "{body}");
-    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=false", &token).await;
-    assert_eq!(status, 200, "{body}");
-    assert_eq!(body["verdict"], "inconclusive", "{body}");
-    assert_eq!(body["candidate"]["samples"], 0);
+    let (status, body) = get_auth(&srv.base, "/api/perf/checkout", &token).await;
+    assert_eq!(status, 404, "{body}");
 
     let demo = add_scoped_token(&srv, "perf-demo", "viewer", &["demo"]).await;
-    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=false", &demo).await;
+    let (status, body) = get_auth(&srv.base, "/api/perf/checkout", &demo).await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["verdict"], "regressed", "{body}");
+    assert_eq!(body["versions_seen"].as_array().unwrap().len(), 2);
+}
+
+/// Storing is a mutation: a viewer may read the verdict but not append
+/// it, and a stored row is visible only inside the environments it was
+/// computed under.
+#[tokio::test]
+async fn perf_store_needs_operator_and_history_is_environment_scoped() {
+    let srv = spawn_server().await;
+    seed_perf(&srv).await;
+    let viewer = add_scoped_token(&srv, "perf-viewer", "viewer", &["demo"]).await;
+    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=true", &viewer).await;
+    assert_eq!(status, 403, "{body}");
+
+    let operator = add_scoped_token(&srv, "perf-operator", "operator", &["demo"]).await;
+    let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=true", &operator).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["stored"], true);
+
+    // The demo-scoped viewer sees the stored row, with its environments.
+    let (_, body) = get_auth(&srv.base, "/api/perf/checkout", &viewer).await;
+    let history = body["history"].as_array().unwrap();
+    assert_eq!(history.len(), 1, "{body}");
+    assert_eq!(history[0]["envs"], serde_json::json!(["demo"]));
+
+    // A principal scoped to demo and prod sees it too; one scoped to
+    // another environment sees neither the target nor the row.
+    let wide = add_scoped_token(&srv, "perf-wide", "viewer", &["demo", "prod"]).await;
+    let (_, body) = get_auth(&srv.base, "/api/perf/checkout", &wide).await;
+    assert_eq!(body["history"].as_array().unwrap().len(), 1, "{body}");
 }

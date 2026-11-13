@@ -8,8 +8,11 @@
 //! version first seen before the run started. The samples are the run's
 //! `during`-phase `probe_samples` rows for one series (default
 //! `load.latency_p95_ms`, the per-window p95 a streaming load adapter
-//! writes). The verdict is `tumult_perf::compare`'s, and it is appended to
-//! `perf_verdicts` so every build keeps its row.
+//! writes). The verdict is `tumult_perf::compare`'s. The request is a pure
+//! read unless `store=true`, which appends the verdict to `perf_verdicts`
+//! and needs the operator role; stored rows carry the environment list
+//! they were computed under, and a scoped principal's versions, runs and
+//! history are all restricted to its environments.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -26,6 +29,7 @@ use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, not_found, ApiError};
 use crate::sql_util::{and_pred, env_scope_where, internal, now_ns, sql_string, with_reader};
 use crate::ApiState;
+use tumult_auth::Role;
 
 /// The series compared when `probe` is not given.
 pub(crate) const DEFAULT_PROBE: &str = "load.latency_p95_ms";
@@ -40,7 +44,8 @@ pub(crate) struct PerfQuery {
     min_samples: Option<usize>,
     margin_pct: Option<f64>,
     env: Option<String>,
-    /// `false` computes without appending to `perf_verdicts`.
+    /// `true` appends the verdict to `perf_verdicts` (operator and above).
+    /// The default is a pure read.
     store: Option<bool>,
 }
 
@@ -111,8 +116,25 @@ pub(crate) struct Side {
     pub samples: Vec<f64>,
 }
 
-/// Attribute every run to the most recent version first seen before the
-/// run started; runs older than every version are unattributed. Returns
+/// The version a run started under. A version whose `[first_seen,
+/// last_seen]` window contains the start wins (the latest-deployed one
+/// when several overlap); a run in a telemetry gap falls back to the most
+/// recent version first seen before it. `by_first` is sorted by
+/// `first_seen_ns`. `None` for a run older than every version.
+fn owner_of<'a>(by_first: &[&'a VersionSeen], started_at_ns: i64) -> Option<&'a VersionSeen> {
+    let mut seen_before = by_first
+        .iter()
+        .rev()
+        .filter(|v| v.first_seen_ns <= started_at_ns);
+    let fallback = seen_before.clone().next();
+    seen_before
+        .find(|v| started_at_ns <= v.last_seen_ns)
+        .or(fallback)
+        .copied()
+}
+
+/// Attribute every run to the version live when it started (see
+/// [`owner_of`]); runs older than every version are unattributed. Returns
 /// `(candidate, baseline)`: the two versions most recently seen, newest
 /// first. `None` when the target has no versions at all.
 pub(crate) fn split(evidence: &Evidence) -> Option<(Side, Option<Side>)> {
@@ -125,11 +147,7 @@ pub(crate) fn split(evidence: &Evidence) -> Option<(Side, Option<Side>)> {
 
     let mut runs_of: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for run in &evidence.runs {
-        let owner = by_first
-            .iter()
-            .rev()
-            .find(|v| v.first_seen_ns <= run.started_at_ns);
-        if let Some(v) = owner {
+        if let Some(v) = owner_of(&by_first, run.started_at_ns) {
             runs_of
                 .entry(v.version.as_str())
                 .or_default()
@@ -162,10 +180,11 @@ fn load_evidence(
     envs: &[String],
 ) -> Result<Evidence, String> {
     let t = sql_string(target);
+    let scope = and_pred(env_scope_where("target_environment", envs));
     let versions = reader
         .query_json_rows(&format!(
             "SELECT service_version AS v, min(ts_ns) AS first_seen, max(ts_ns) AS last_seen \
-             FROM spans WHERE service_name = {t} AND service_version IS NOT NULL \
+             FROM spans WHERE service_name = {t} AND service_version IS NOT NULL{scope} \
              GROUP BY service_version ORDER BY last_seen DESC"
         ))
         .map_err(|e| e.to_string())?
@@ -178,7 +197,6 @@ fn load_evidence(
             })
         })
         .collect();
-    let scope = and_pred(env_scope_where("target_environment", envs));
     let runs: Vec<RunSeen> = reader
         .query_json_rows(&format!(
             "SELECT experiment_id AS id, min(ts_ns) AS started \
@@ -220,7 +238,7 @@ fn load_evidence(
             .collect()
     };
     let history = reader
-        .perf_verdicts(target, HISTORY_LIMIT)
+        .perf_verdicts(target, envs, HISTORY_LIMIT)
         .map_err(|e| e.to_string())?;
     Ok(Evidence {
         versions,
@@ -238,6 +256,7 @@ fn verdict_row(
     candidate: &str,
     c: &Comparison,
     computed_at_ns: i64,
+    envs: &[String],
 ) -> PerfVerdictRow {
     let n = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
     PerfVerdictRow {
@@ -263,6 +282,7 @@ fn verdict_row(
         verdict: c.verdict.to_string(),
         reasons: c.reasons.clone(),
         computed_at_ns,
+        envs: (!envs.is_empty()).then(|| envs.to_vec()),
     }
 }
 
@@ -326,9 +346,15 @@ pub(crate) async fn perf(
         }
         None => principal.env_scopes.clone(),
     };
+    let store = q.store.unwrap_or(false);
+    if store && principal.role < Role::Operator {
+        return Err(forbidden(
+            "storing a perf verdict needs the operator role".to_string(),
+        ));
+    }
     let as_of_ns = now_ns();
     let evidence = {
-        let (target, probe) = (target.clone(), probe.clone());
+        let (target, probe, envs) = (target.clone(), probe.clone(), envs.clone());
         with_reader(&state.db_path, move |reader| {
             load_evidence(reader, &target, &probe, &envs)
         })
@@ -342,7 +368,7 @@ pub(crate) async fn perf(
     let (comparison, baseline_json, stored) = match &baseline {
         Some(baseline) => {
             let c = compare(&baseline.samples, &candidate.samples, &opts);
-            let stored = if q.store.unwrap_or(true) {
+            let stored = if store {
                 let row = verdict_row(
                     &target,
                     &probe,
@@ -350,6 +376,7 @@ pub(crate) async fn perf(
                     &candidate.version,
                     &c,
                     as_of_ns,
+                    &envs,
                 );
                 store_verdict(&state, row).await?
             } else {
@@ -469,13 +496,24 @@ mod tests {
         // 1.6.0 was seen first but 1.5.0 is still live later (a rollback).
         let evidence = Evidence {
             versions: vec![seen("1.6.0", 100, 300), seen("1.5.0", 50, 900)],
-            runs: vec![],
+            runs: vec![
+                run("both", 200),
+                run("after-rollback", 600),
+                run("late", 950),
+            ],
             samples: vec![],
             history: vec![],
         };
         let (candidate, baseline) = split(&evidence).expect("versions");
         assert_eq!(candidate.version, "1.5.0");
-        assert_eq!(baseline.unwrap().version, "1.6.0");
+        // Only 1.5.0 was live at 600: the rollback run is its evidence, not
+        // 1.6.0's, although 1.6.0 was first seen later.
+        assert_eq!(candidate.runs, vec!["after-rollback"]);
+        let baseline = baseline.expect("baseline");
+        assert_eq!(baseline.version, "1.6.0");
+        // Both were live at 200 (the later-deployed one wins); nothing was
+        // live at 950, which falls back to the latest first-seen version.
+        assert_eq!(baseline.runs, vec!["both", "late"]);
     }
 
     #[test]
