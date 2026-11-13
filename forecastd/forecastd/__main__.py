@@ -24,8 +24,14 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     log = logging.getLogger("forecastd")
-    host, port = parse_bind(os.environ.get("FORECASTD_BIND", "0.0.0.0:8700"))
-    model = load_model_from_env()
+    try:
+        host, port = parse_bind(os.environ.get("FORECASTD_BIND", "0.0.0.0:8700"))
+        model = load_model_from_env()
+    except Exception:  # noqa: BLE001 - reported, and the process does not start
+        # A bad setting, weights that are not the pinned ones, a model that
+        # will not load: none of them may leave a half-working service up.
+        log.exception("forecastd cannot start")
+        return 1
     log.info("loaded model %s", model.info.as_dict())
     try:
         import uvicorn

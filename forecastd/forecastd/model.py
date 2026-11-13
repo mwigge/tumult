@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import threading
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from statistics import NormalDist
 from typing import Protocol
@@ -35,6 +37,21 @@ TIMESTRAL_SOURCE = (
     "git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff"
 )
 DEFAULT_MODEL_SIZE = "5M"
+DEFAULT_MODEL_ID = "mistralai/Timestral-5M"
+# The weights this service is tested against: the hub commit of
+# ``mistralai/Timestral-5M`` and the ``hash_weights`` digest of its files.
+# Weights with any other digest are refused before they are loaded.
+DEFAULT_MODEL_REVISION = "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f"
+DEFAULT_WEIGHTS_SHA256 = "4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+# The two files Timestral reads from a checkpoint directory. Only these are
+# hashed, so a download that also brought a README or the hub's bookkeeping
+# verifies the same as a bare snapshot.
+CHECKPOINT_FILES = ("config.json", "model.safetensors")
+
+
+class WeightsMismatch(RuntimeError):
+    """The weights on disk are not the pinned ones; nothing was loaded."""
 
 
 @dataclass(frozen=True)
@@ -128,20 +145,80 @@ class StubModel:
         return out
 
 
-def hash_weights(path: str | os.PathLike[str] | None) -> str:
+def _weight_files(root: Path, only: tuple[str, ...] | None) -> list[Path]:
+    if root.is_file():
+        return [root]
+    if only is None:
+        return sorted(p for p in root.rglob("*") if p.is_file())
+    files = [root / name for name in sorted(only)]
+    missing = [file.name for file in files if not file.is_file()]
+    if missing:
+        raise FileNotFoundError(f"{root} has no {' or '.join(missing)}")
+    return files
+
+
+def hash_weights(
+    path: str | os.PathLike[str] | None, only: tuple[str, ...] | None = None
+) -> str:
     """SHA-256 over every file under ``path`` (sorted by name), or
-    ``unverified`` when there is no path to read."""
+    ``unverified`` when there is no path to read. ``only`` names the files
+    in the directory that count; all of them must exist."""
     if path is None:
         return "unverified"
-    root = Path(path)
-    files = [root] if root.is_file() else sorted(p for p in root.rglob("*") if p.is_file())
     digest = hashlib.sha256()
-    for file in files:
+    for file in _weight_files(Path(path), only):
         digest.update(file.name.encode())
         with file.open("rb") as handle:
             for chunk in iter(lambda: handle.read(1 << 20), b""):
                 digest.update(chunk)
     return digest.hexdigest()
+
+
+def verify_weights(
+    path: str | os.PathLike[str], expected: str, only: tuple[str, ...] | None = None
+) -> str:
+    """Hash the files under ``path`` and return the digest when it is the
+    expected one. Raises ``WeightsMismatch`` otherwise: the caller has not
+    opened the weights yet and must not."""
+    actual = hash_weights(path, only)
+    if actual != expected:
+        raise WeightsMismatch(
+            f"the weights at {path} hash to {actual}, not the pinned {expected}; "
+            "refusing to load them (set FORECASTD_WEIGHTS_SHA256 only after checking "
+            "where the files came from)"
+        )
+    return actual
+
+
+def _default_model(env: dict[str, str]) -> bool:
+    size = env.get("FORECASTD_MODEL_SIZE") or DEFAULT_MODEL_SIZE
+    model_id = env.get("FORECASTD_MODEL_ID") or DEFAULT_MODEL_ID
+    return size == DEFAULT_MODEL_SIZE and model_id == DEFAULT_MODEL_ID
+
+
+def weights_pin(env: dict[str, str]) -> tuple[str | None, str]:
+    """The ``(revision, sha256)`` the weights must match.
+
+    The default model is pinned to the tested revision and digest;
+    ``FORECASTD_MODEL_REVISION`` and ``FORECASTD_WEIGHTS_SHA256`` override
+    either. Any other model has no tested pin and must bring both (the
+    digest alone when ``FORECASTD_WEIGHTS_PATH`` mounts the files, since a
+    directory has no hub revision — the revision is then ``None``)."""
+    revision = env.get("FORECASTD_MODEL_REVISION") or None
+    sha = (env.get("FORECASTD_WEIGHTS_SHA256") or "").strip().lower() or None
+    mounted = bool(env.get("FORECASTD_WEIGHTS_PATH"))
+    if sha is not None and not _SHA256.fullmatch(sha):
+        raise ValueError("FORECASTD_WEIGHTS_SHA256 must be 64 hexadecimal characters")
+    if _default_model(env):
+        revision = revision or DEFAULT_MODEL_REVISION
+        sha = sha or DEFAULT_WEIGHTS_SHA256
+    if sha is None or (revision is None and not mounted):
+        raise ValueError(
+            "only the default model has a tested pin: another size or model id needs "
+            "FORECASTD_WEIGHTS_SHA256 and FORECASTD_MODEL_REVISION "
+            "(the revision is not needed with FORECASTD_WEIGHTS_PATH)"
+        )
+    return (None if mounted else revision), sha
 
 
 def snapshot_revision(checkpoint: Path) -> str:
@@ -156,14 +233,16 @@ class TimestralModel:
 
     ``weights_path`` points at a local directory holding ``config.json``
     and ``model.safetensors`` (air-gapped deployments); otherwise the model
-    id is fetched through the Hugging Face hub cache, at ``revision`` when
-    one is pinned. Either way the provenance carries the SHA-256 of the
-    files that were loaded. The weights carry a modified-MIT licence; they
+    id is fetched through the Hugging Face hub cache at ``revision``.
+    Either way the files are hashed and compared with ``weights_sha256``
+    before the forecaster opens them; a mismatch raises ``WeightsMismatch``
+    and nothing is loaded. The weights carry a modified-MIT licence; they
     are never bundled in the container image — see the README.
     """
 
     def __init__(
         self,
+        weights_sha256: str,
         size: str = DEFAULT_MODEL_SIZE,
         model_id: str | None = None,
         weights_path: str | None = None,
@@ -186,6 +265,7 @@ class TimestralModel:
             torch.set_num_threads(threads)
         resolved_id = model_id or f"mistralai/Timestral-{size}"
         checkpoint = Path(resolve_checkpoint(weights_path or resolved_id, revision=revision))
+        weights_hash = verify_weights(checkpoint, weights_sha256, CHECKPOINT_FILES)
         self._forecaster = TimestralForecaster.from_pretrained(checkpoint)
         self._lock = threading.Lock()
         self.levels = tuple(float(level) for level in self._forecaster.quantile_levels)
@@ -194,7 +274,7 @@ class TimestralModel:
             model_id=resolved_id,
             size=size,
             version=_package_version("timestral"),
-            weights_hash=hash_weights(checkpoint),
+            weights_hash=weights_hash,
             revision=snapshot_revision(checkpoint),
         )
 
@@ -218,11 +298,11 @@ class TimestralModel:
 
 
 def _package_version(name: str) -> str:
+    """The installed version, or ``unknown`` for a package that was put on
+    the path without its metadata. Anything else that goes wrong is raised."""
     try:
-        from importlib.metadata import version
-
-        return version(name)
-    except Exception:  # noqa: BLE001 - a missing distribution is not an error here
+        return metadata.version(name)
+    except metadata.PackageNotFoundError:
         return "unknown"
 
 
@@ -252,20 +332,23 @@ def load_model_from_env(environ: dict[str, str] | None = None) -> ForecastModel:
     """Pick the model from ``FORECASTD_MODEL``: ``timestral`` (the default,
     the real model) or ``stub`` (the offline stand-in, no torch and no
     weights). ``FORECASTD_MODEL_SIZE`` (5M), ``FORECASTD_MODEL_ID``,
-    ``FORECASTD_MODEL_REVISION``, ``FORECASTD_WEIGHTS_PATH`` and
-    ``FORECASTD_THREADS`` (4, or fewer on a smaller host) configure the
-    real one."""
+    ``FORECASTD_MODEL_REVISION``, ``FORECASTD_WEIGHTS_SHA256``,
+    ``FORECASTD_WEIGHTS_PATH`` and ``FORECASTD_THREADS`` (4, or fewer on a
+    smaller host) configure the real one; see ``weights_pin`` for which
+    weights it will agree to load."""
     env = os.environ if environ is None else environ
     kind = env.get("FORECASTD_MODEL", "timestral").lower()
     if kind == "stub":
         return StubModel()
     if kind != "timestral":
         raise ValueError(f"unknown FORECASTD_MODEL {kind!r}; expected timestral or stub")
+    revision, weights_sha256 = weights_pin(env)
     return TimestralModel(
-        size=env.get("FORECASTD_MODEL_SIZE", DEFAULT_MODEL_SIZE),
+        weights_sha256=weights_sha256,
+        size=env.get("FORECASTD_MODEL_SIZE") or DEFAULT_MODEL_SIZE,
         model_id=env.get("FORECASTD_MODEL_ID") or None,
         weights_path=env.get("FORECASTD_WEIGHTS_PATH") or None,
-        revision=env.get("FORECASTD_MODEL_REVISION") or None,
+        revision=revision,
         threads=_optional_int(env.get("FORECASTD_THREADS"), "FORECASTD_THREADS")
         or default_threads(),
     )

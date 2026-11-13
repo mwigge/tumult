@@ -20,10 +20,17 @@ import threading
 import time
 import unittest
 import urllib.request
+from unittest import mock
 
 import numpy as np
 
-from forecastd.model import TIMESTRAL_LEVELS, load_model_from_env
+from forecastd.model import (
+    DEFAULT_MODEL_REVISION,
+    DEFAULT_WEIGHTS_SHA256,
+    TIMESTRAL_LEVELS,
+    WeightsMismatch,
+    load_model_from_env,
+)
 from forecastd.server import serve
 from forecastd.service import MAX_CONTEXT, MAX_HORIZON, BadRequest, handle_forecast, handle_healthz
 
@@ -50,6 +57,7 @@ class TimestralModelTests(unittest.TestCase):
         weights = os.environ.get("FORECASTD_TEST_WEIGHTS_PATH")
         if weights:
             env["FORECASTD_WEIGHTS_PATH"] = weights
+        cls.env = env
         started = time.perf_counter()
         cls.model = load_model_from_env(env)
         cls.load_s = time.perf_counter() - started
@@ -65,13 +73,30 @@ class TimestralModelTests(unittest.TestCase):
         self.assertEqual(info.model_id, "mistralai/Timestral-5M")
         self.assertEqual(info.size, "5M")
         self.assertRegex(info.version, r"^\d+\.\d+")
-        self.assertRegex(info.weights_hash, r"^[0-9a-f]{64}$")
+        # Exactly the tested weights: the default pin was enforced on load.
+        self.assertEqual(info.weights_hash, DEFAULT_WEIGHTS_SHA256)
         if not os.environ.get("FORECASTD_TEST_WEIGHTS_PATH"):
-            self.assertRegex(info.revision, r"^[0-9a-f]{40}$", "a hub snapshot is a commit")
+            self.assertEqual(info.revision, DEFAULT_MODEL_REVISION)
         self.assertEqual(self.model.levels, TIMESTRAL_LEVELS)
         health = handle_healthz(self.model)
         self.assertEqual(health["revision"], info.revision)
         self.assertEqual(health["weights_hash"], info.weights_hash)
+
+    def test_weights_that_do_not_match_the_pin_are_never_opened(self) -> None:
+        from timestral import TimestralForecaster
+
+        wrong = dict(self.env, FORECASTD_WEIGHTS_SHA256="00" * 32)
+        with mock.patch.object(TimestralForecaster, "from_pretrained") as opened:
+            with self.assertRaises(WeightsMismatch) as raised:
+                load_model_from_env(wrong)
+        opened.assert_not_called()
+        self.assertIn(DEFAULT_WEIGHTS_SHA256, str(raised.exception))
+
+    def test_the_model_refusing_a_request_is_a_bad_request(self) -> None:
+        refusal = ValueError("unsupported prediction_length")
+        with mock.patch.object(self.model._forecaster, "forecast", side_effect=refusal):
+            with self.assertRaises(BadRequest):
+                handle_forecast({"context": seasonal(64).tolist(), "horizon": 4}, self.model)
 
     def test_output_is_variates_by_horizon_by_levels(self) -> None:
         one = self.run_model(seasonal(256)[None, :], 24)

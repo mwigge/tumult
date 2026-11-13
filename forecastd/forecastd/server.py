@@ -12,16 +12,28 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from . import service
 from .model import ForecastModel
 from .service import BadRequest, handle_forecast, handle_healthz
 
 log = logging.getLogger("forecastd")
-MAX_BODY = 64 << 20
+# How long a connection may sit without sending or taking bytes. The
+# forecast itself is not socket time and is not bounded by this.
+REQUEST_TIMEOUT_S = 30
+
+
+def _content_length(header: str | None) -> int | None:
+    """The announced body length, or ``None`` when it is not a plain
+    non-negative number."""
+    if header is None or not (header.isascii() and header.isdigit()):
+        return None
+    return int(header)
 
 
 def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "tumult-forecastd"
+        timeout = REQUEST_TIMEOUT_S
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             log.info("%s " + format, self.address_string(), *args)
@@ -44,12 +56,26 @@ def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
             if self.path.split("?", 1)[0] != "/forecast":
                 self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return
-            length = int(self.headers.get("content-length") or 0)
-            if length <= 0 or length > MAX_BODY:
-                self._send(HTTPStatus.BAD_REQUEST, {"error": "body is empty or too large"})
+            length = _content_length(self.headers.get("content-length"))
+            if not length:
+                self._send(HTTPStatus.BAD_REQUEST, {"error": "content-length must be positive"})
+                return
+            if length > service.MAX_BODY:
+                # Answered without reading the body; the connection closes.
+                self.close_connection = True
+                self._send(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    {"error": f"body is larger than {service.MAX_BODY} bytes"},
+                )
                 return
             try:
-                payload = json.loads(self.rfile.read(length))
+                raw = self.rfile.read(length)
+            except TimeoutError:
+                log.warning("%s sent no body within %d s", self.address_string(), REQUEST_TIMEOUT_S)
+                self.close_connection = True
+                return
+            try:
+                payload = json.loads(raw)
             except ValueError:
                 self._send(HTTPStatus.BAD_REQUEST, {"error": "body is not JSON"})
                 return

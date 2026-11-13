@@ -7,15 +7,40 @@ import unittest
 
 import numpy as np
 
+from forecastd import model as model_module
+from forecastd.__main__ import main
 from forecastd.model import (
+    CHECKPOINT_FILES,
+    DEFAULT_MODEL_REVISION,
+    DEFAULT_WEIGHTS_SHA256,
     TIMESTRAL_LEVELS,
     StubModel,
+    WeightsMismatch,
     default_threads,
     hash_weights,
     load_model_from_env,
     snapshot_revision,
+    verify_weights,
+    weights_pin,
 )
-from forecastd.service import BadRequest, handle_forecast, handle_healthz
+from forecastd.service import (
+    MAX_BODY,
+    MAX_CONTEXT,
+    MAX_COVARIATES,
+    MAX_HORIZON,
+    MAX_LEVELS,
+    MAX_VARIATES,
+    BadRequest,
+    handle_forecast,
+    handle_healthz,
+)
+
+
+class RefusingModel(StubModel):
+    """A model that turns the request down the way Timestral does."""
+
+    def forecast(self, context, horizon, past_covariates, known_covariates):
+        raise ValueError("prediction_length exceeds what this checkpoint supports")
 
 
 class StubModelTests(unittest.TestCase):
@@ -122,6 +147,68 @@ class HandleForecastTests(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaises(BadRequest):
                 handle_forecast(payload, self.model)
 
+    def test_only_numbers_and_null_are_values(self) -> None:
+        nan, inf = float("nan"), float("inf")
+        bad_values = ["1.5", True, False, nan, inf, -inf, {}, [1.0], 10**400]
+        for value in bad_values:
+            for field in ("context", "past_covariates", "known_covariates"):
+                payload = {
+                    "context": [1.0, 2.0, 3.0],
+                    "horizon": 1,
+                    "past_covariates": [[0.0, 0.0, 0.0]],
+                    "known_covariates": [[0.0, 0.0, 0.0, 0.0]],
+                }
+                rows = [1.0, value, 3.0, 4.0][: 4 if field == "known_covariates" else 3]
+                payload[field] = rows if field == "context" else [rows]
+                with self.subTest(value=value, field=field), self.assertRaises(BadRequest):
+                    handle_forecast(payload, self.model)
+        # A gap is still a gap, and whole numbers are numbers.
+        body = handle_forecast({"context": [1, None, 3.0, 4], "horizon": 1}, self.model)
+        self.assertEqual(body["context_points"], 3)
+
+    def test_quantile_levels_must_be_plain_numbers(self) -> None:
+        for levels in (["0.5"], [True], [float("nan")], [0.5] * (MAX_LEVELS + 1), [None]):
+            with self.subTest(levels=levels), self.assertRaises(BadRequest):
+                handle_forecast(
+                    {"context": [1.0, 2.0], "horizon": 1, "quantile_levels": levels}, self.model
+                )
+
+    def test_the_number_of_series_is_bounded(self) -> None:
+        row = [1.0, 2.0, 3.0]
+        ok = handle_forecast({"context": [row] * MAX_VARIATES, "horizon": 1}, self.model)
+        self.assertEqual(len(ok["quantiles"]), MAX_VARIATES)
+        too_many = [
+            {"context": [row] * (MAX_VARIATES + 1), "horizon": 1},
+            {"context": row, "horizon": 1, "past_covariates": [row] * (MAX_COVARIATES + 1)},
+            {
+                "context": row,
+                "horizon": 1,
+                "known_covariates": [[0.0] * 4] * (MAX_COVARIATES + 1),
+            },
+        ]
+        for payload in too_many:
+            with self.subTest(payload=len(str(payload))), self.assertRaises(BadRequest):
+                handle_forecast(payload, self.model)
+
+    def test_rows_must_be_arrays_of_one_length(self) -> None:
+        for context in ([[1.0, 2.0], 3.0], [[1.0, 2.0], "ab"], [[1.0], []], [[]]):
+            with self.subTest(context=context), self.assertRaises(BadRequest):
+                handle_forecast({"context": context, "horizon": 1}, self.model)
+
+    def test_the_limits_are_what_the_daemon_mirrors(self) -> None:
+        # tumult-api/src/forecast/client.rs reads these two from this file.
+        self.assertEqual(MAX_CONTEXT, 32_768)
+        self.assertEqual(MAX_HORIZON, 4_096)
+        self.assertLessEqual(MAX_BODY, 8 << 20)
+        with self.assertRaises(BadRequest):
+            handle_forecast({"context": [1.0, 2.0], "horizon": MAX_HORIZON + 1}, self.model)
+
+    def test_a_request_the_model_refuses_is_a_bad_request(self) -> None:
+        # Not a server fault: the daemon must not open its circuit for it.
+        with self.assertRaises(BadRequest) as raised:
+            handle_forecast({"context": [1.0, 2.0, 3.0], "horizon": 2}, RefusingModel())
+        self.assertIn("prediction_length", str(raised.exception))
+
     def test_healthz_reports_the_model(self) -> None:
         body = handle_healthz(self.model)
         self.assertEqual(body["status"], "ok")
@@ -173,6 +260,137 @@ class EnvironmentTests(unittest.TestCase):
                 load_model_from_env({"FORECASTD_MODEL": "timestral", "FORECASTD_THREADS": bad})
         with self.assertRaises(ValueError):
             load_model_from_env({"FORECASTD_MODEL": "prophet"})
+
+
+
+class WeightsPinTests(unittest.TestCase):
+    """Which weights may be loaded, decided before anything is loaded."""
+
+    def test_the_default_model_is_pinned_to_the_tested_weights(self) -> None:
+        self.assertEqual(DEFAULT_MODEL_REVISION, "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f")
+        self.assertEqual(
+            DEFAULT_WEIGHTS_SHA256,
+            "4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a",
+        )
+        self.assertEqual(weights_pin({}), (DEFAULT_MODEL_REVISION, DEFAULT_WEIGHTS_SHA256))
+        explicit = {"FORECASTD_MODEL_SIZE": "5M", "FORECASTD_MODEL_ID": "mistralai/Timestral-5M"}
+        self.assertEqual(weights_pin(explicit), (DEFAULT_MODEL_REVISION, DEFAULT_WEIGHTS_SHA256))
+
+    def test_the_environment_overrides_the_pin(self) -> None:
+        sha = "ab" * 32
+        env = {"FORECASTD_MODEL_REVISION": "cafe", "FORECASTD_WEIGHTS_SHA256": sha.upper()}
+        self.assertEqual(weights_pin(env), ("cafe", sha))
+        # A new revision without its hash keeps the tested hash: it will not match.
+        only_revision = weights_pin({"FORECASTD_MODEL_REVISION": "cafe"})
+        self.assertEqual(only_revision, ("cafe", DEFAULT_WEIGHTS_SHA256))
+
+    def test_another_model_must_bring_its_own_pin(self) -> None:
+        sha = "cd" * 32
+        for env in (
+            {"FORECASTD_MODEL_SIZE": "28M"},
+            {"FORECASTD_MODEL_SIZE": "28M", "FORECASTD_MODEL_REVISION": "cafe"},
+            {"FORECASTD_MODEL_SIZE": "28M", "FORECASTD_WEIGHTS_SHA256": sha},
+            {"FORECASTD_MODEL_ID": "someone/else", "FORECASTD_MODEL_REVISION": "cafe"},
+        ):
+            with self.subTest(env=env), self.assertRaises(ValueError) as raised:
+                weights_pin(env)
+            self.assertIn("FORECASTD_WEIGHTS_SHA256", str(raised.exception))
+        both = {
+            "FORECASTD_MODEL_SIZE": "28M",
+            "FORECASTD_MODEL_REVISION": "cafe",
+            "FORECASTD_WEIGHTS_SHA256": sha,
+        }
+        self.assertEqual(weights_pin(both), ("cafe", sha))
+        # A mounted directory has no hub revision to pin; its hash is enough.
+        mounted = {
+            "FORECASTD_MODEL_SIZE": "28M",
+            "FORECASTD_WEIGHTS_PATH": "/weights",
+            "FORECASTD_WEIGHTS_SHA256": sha,
+        }
+        self.assertEqual(weights_pin(mounted), (None, sha))
+
+    def test_a_malformed_hash_is_refused(self) -> None:
+        for bad in ("abc", "g" * 64, "ab" * 33):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                weights_pin({"FORECASTD_WEIGHTS_SHA256": bad})
+
+    def test_weights_that_do_not_match_are_refused(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "model.safetensors").write_bytes(b"weights")
+            actual = hash_weights(root)
+            self.assertEqual(verify_weights(root, actual), actual)
+            with self.assertRaises(WeightsMismatch) as raised:
+                verify_weights(root, "00" * 32)
+            message = str(raised.exception)
+            self.assertIn(actual, message)
+            self.assertIn("00" * 32, message)
+            (root / "model.safetensors").write_bytes(b"tampered")
+            with self.assertRaises(WeightsMismatch):
+                verify_weights(root, actual)
+
+    def test_only_the_files_the_model_reads_are_hashed(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare"
+            bare.mkdir()
+            (bare / "config.json").write_bytes(b"{}")
+            (bare / "model.safetensors").write_bytes(b"weights")
+            pinned = hash_weights(bare)
+            # The same two files as a full download leaves them.
+            full = Path(tmp) / "full"
+            (full / ".cache" / "huggingface").mkdir(parents=True)
+            (full / ".cache" / "huggingface" / "state.json").write_bytes(b"x")
+            (full / "README.md").write_bytes(b"read me")
+            for name in CHECKPOINT_FILES:
+                (full / name).write_bytes((bare / name).read_bytes())
+            self.assertNotEqual(hash_weights(full), pinned)
+            self.assertEqual(verify_weights(full, pinned, CHECKPOINT_FILES), pinned)
+            (full / "model.safetensors").write_bytes(b"other")
+            with self.assertRaises(WeightsMismatch):
+                verify_weights(full, pinned, CHECKPOINT_FILES)
+            (full / "config.json").unlink()
+            with self.assertRaises(FileNotFoundError):
+                verify_weights(full, pinned, CHECKPOINT_FILES)
+
+    def test_the_pin_is_checked_before_the_model_is_selected(self) -> None:
+        # Raised by the pin, not by a missing torch: nothing was imported.
+        with self.assertRaises(ValueError) as raised:
+            load_model_from_env({"FORECASTD_MODEL": "timestral", "FORECASTD_MODEL_SIZE": "28M"})
+        self.assertIn("FORECASTD_WEIGHTS_SHA256", str(raised.exception))
+
+
+class PackageVersionTests(unittest.TestCase):
+    def test_a_missing_distribution_is_unknown(self) -> None:
+        self.assertEqual(model_module._package_version("no-such-distribution-xyz"), "unknown")
+
+    def test_any_other_failure_is_not_swallowed(self) -> None:
+        from unittest import mock
+
+        with mock.patch("importlib.metadata.version", side_effect=OSError("disk gone")):
+            with self.assertRaises(OSError):
+                model_module._package_version("numpy")
+
+
+class MainTests(unittest.TestCase):
+    def test_a_configuration_that_cannot_load_exits_non_zero(self) -> None:
+        import os
+        from unittest import mock
+
+        for env in (
+            {"FORECASTD_MODEL": "prophet"},
+            {"FORECASTD_MODEL": "timestral", "FORECASTD_WEIGHTS_SHA256": "nope"},
+            {"FORECASTD_MODEL": "stub", "FORECASTD_BIND": "8700"},
+        ):
+            with self.subTest(env=env), mock.patch.dict(os.environ, env, clear=True):
+                with self.assertLogs("forecastd", level="ERROR"):
+                    self.assertEqual(main(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
