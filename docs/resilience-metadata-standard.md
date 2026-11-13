@@ -507,6 +507,8 @@ used across tumult telemetry:
 | `resilience.*` | Experiment/runner spans and their attributes | `resilience.experiment`, `resilience.probe`, `resilience.analytics.ingest` |
 | `<component>.*` | Component and client spans, one prefix per subsystem | `k8s.*`, `clickhouse.*`, `cypher.*` |
 
+Log events follow the same idea: the event name is `<component>.<thing>.<what happened>` (`daemon.starting`, `cli.journal.skipped`), control-plane identifiers on a log event use the `resilience.*` attribute names (`resilience.run.id`, `resilience.experiment.id`), and errors are `error.message` and `error.type`. The full table is in [the logging guide](guides/logging.md).
+
 **Known quirk — duplicate root span names.** The core runner's experiment
 root span is `resilience.experiment`, while the agentic runner
 (tumult-agentic) roots its traces at `tumult.experiment`. The two names are
