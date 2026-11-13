@@ -1,0 +1,77 @@
+# Known test-hygiene offenders in crates that other branches are changing.
+# One `path::name  # reason` per line. Do not add entries: fix the test.
+# Remove an entry when its test is fixed; the guard reports entries that no
+# longer match. Regenerate the raw list with:
+#   python3 scripts/check-test-hygiene.py --list
+
+# tumult-api: deferred, the crate is being changed elsewhere
+tumult-api/src/ask.rs::guard_accepts_legit_aggregate_query  # no-assert
+
+# tumult-cli: deferred, the crate is being changed elsewhere
+tumult-cli/src/cli/tests/cli_and_run.rs::cli_debug_assert  # no-assert
+tumult-cli/src/commands/analyze.rs::aggregate_on_empty_store_reports_absence  # no-assert
+tumult-cli/src/commands/analyze.rs::aggregate_renders_store_wide_stats  # no-assert
+tumult-cli/src/commands/analyze.rs::analyze_accepts_a_single_journal_file  # no-assert
+tumult-cli/src/commands/analyze.rs::analyze_skips_experiment_definitions_and_warns_on_malformed_toon  # no-assert
+tumult-cli/src/commands/analyze.rs::query_runs_normal_select  # no-assert
+tumult-cli/src/commands/analyze.rs::select_only_allows_plain_select  # no-assert
+tumult-cli/src/commands/analyze.rs::summary_on_empty_store_reports_no_experiments  # no-assert
+tumult-cli/src/commands/analyze.rs::summary_renders_full_timeline_and_load_block  # no-assert
+tumult-cli/src/commands/chaosgraph.rs::query_and_neighbors_succeed_against_seeded_store  # no-assert
+tumult-cli/src/commands/tests/compliance.rs::compliance_scans_directory_and_skips_malformed_journals  # no-assert
+tumult-cli/src/commands/tests/compliance.rs::compliance_sources_lists_registry_for_each_framework  # no-assert
+tumult-cli/src/commands/tests/new.rs::templates_lists_every_curated_starter  # no-assert
+tumult-cli/src/commands/tests/report.rs::compliance_runs_over_journal_with_mttr  # no-assert
+tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_existing_store  # no-assert
+tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_missing_store  # no-assert
+tumult-cli/src/commands/tests/store_commands.rs::store_stats_without_store_reports_absence  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_accepts_a_single_journal_file  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_last_window_excludes_old_journals  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_reports_metric_over_journal_dir  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_skips_malformed_journals_with_warning  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_supports_every_documented_metric  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_target_filter_selects_matching_titles  # no-assert
+tumult-cli/src/commands/tests/trend.rs::trend_without_data_points_reports_absence  # no-assert
+tumult-cli/src/commands/tests/validate_extra.rs::validate_renders_summary_for_full_featured_experiment  # no-assert
+tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_but_passes_on_unknown_native_plugin  # no-assert
+tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_but_passes_on_unknown_script_plugin  # no-assert
+tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_on_unknown_function_of_known_native_plugin  # no-assert
+tumult-cli/src/commands/topology.rs::import_map_lineage_and_recommend_round_trip  # no-assert
+tumult-cli/src/dispatch_tests.rs::cli_definition_passes_clap_debug_assert  # no-assert
+tumult-cli/src/dispatch_tests.rs::dispatch_agents_lists_adapters  # no-assert
+tumult-cli/src/dispatch_tests.rs::dispatch_compliance_report_and_sources  # no-assert
+tumult-cli/src/dispatch_tests.rs::dispatch_recommend_against_populated_store  # no-assert
+tumult-cli/src/dispatch_tests.rs::dispatch_run_dry_run_covers_every_rollback_strategy  # no-assert
+
+# tumult-core: deferred, the crate is being changed elsewhere
+tumult-core/src/controls.rs::emit_to_empty_registry_does_not_panic  # no-assert
+tumult-core/src/engine/validation/tests.rs::validate_accepts_well_formed_objectives_and_targets  # no-assert
+
+# tumult-ingest: deferred, the crate is being changed elsewhere
+tumult-ingest/src/writer.rs::spawn_reconnect_persists_batches_like_spawn  # no-assert
+
+# tumult-lake: deferred, the crate is being changed elsewhere
+tumult-lake/src/telemetry.rs::duplicate_event_does_not_panic  # no-assert
+tumult-lake/src/telemetry.rs::export_guard_creates_and_drops_span  # no-assert
+tumult-lake/src/telemetry.rs::import_guard_creates_and_drops_span  # no-assert
+tumult-lake/src/telemetry.rs::ingest_guard_creates_and_drops_span  # no-assert
+tumult-lake/src/telemetry.rs::purge_guard_creates_and_drops_span  # no-assert
+tumult-lake/src/telemetry.rs::query_guard_creates_and_drops_span  # no-assert
+tumult-lake/src/telemetry.rs::query_truncates_long_sql  # no-assert
+tumult-lake/src/telemetry.rs::record_gauges_does_not_panic  # no-assert
+tumult-lake/tests/backup.rs::relative_restore_child  # no-assert
+
+# tumult-mcp: deferred, the crate is being changed elsewhere
+tumult-mcp/src/server.rs::health_server_logs_and_returns_when_the_port_is_taken  # no-assert
+tumult-mcp/src/telemetry.rs::current_context_captured_while_span_active  # no-assert
+tumult-mcp/src/telemetry.rs::tool_call_span_does_not_panic  # no-assert
+tumult-mcp/src/telemetry.rs::tool_error_event_does_not_panic  # no-assert
+
+# tumult-otel: deferred, the crate is being changed elsewhere
+tumult-otel/src/agentic_span/mod.rs::record_agentic_run_is_safe_without_provider  # no-assert
+tumult-otel/src/tests.rs::metrics_can_be_created  # no-assert
+tumult-otel/src/tests.rs::shutdown_also_shuts_down_global_provider_without_panic  # no-assert
+
+# tumultd: deferred, the crate is being changed elsewhere
+tumultd/src/lake_jobs.rs::shutdown_drains_with_lake_scheduler_enabled  # no-assert
+tumultd/src/serve/tests.rs::two_listeners_that_stop_cleanly_are_a_clean_stop  # no-assert
