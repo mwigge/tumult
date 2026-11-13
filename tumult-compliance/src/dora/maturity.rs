@@ -232,7 +232,8 @@ pub fn conformance_of(services: &[(&Service, f64)], lmax: u8) -> (Pillar, Option
             .filter(|(s, _)| s.level >= level)
             .map(|(_, c)| c)
             .sum();
-        *share = 100.0 * at / total;
+        // `+ 0.0` turns the `-0.0` of an empty sum into `0.0`.
+        *share = 100.0 * at / total + 0.0;
     }
     let value = 100.0 * reached / (total * f64::from(lmax));
     (Pillar::Value(value), Some(shares))
@@ -983,6 +984,21 @@ mod tests {
         pillar
             .value()
             .unwrap_or_else(|| panic!("{pillar:?} has no value"))
+    }
+
+    /// An empty share is `0`, not the `-0` an empty float sum gives: the
+    /// gate text prints it.
+    #[test]
+    fn a_level_no_service_reaches_has_a_plain_zero_share() {
+        let spine = Service::observed("payments-api", 1, &["cif-0001"], 0);
+        let (_, shares) = conformance_of(&[(&spine, 3.0)], 2);
+        let shares = shares.unwrap();
+        assert_eq!(shares[0], 100.0);
+        assert!(
+            shares[1] == 0.0 && shares[1].is_sign_positive(),
+            "{shares:?}"
+        );
+        assert_eq!(format!("{:.0}", shares[3]), "0");
     }
 
     #[test]
