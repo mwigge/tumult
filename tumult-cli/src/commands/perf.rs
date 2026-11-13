@@ -33,6 +33,11 @@ pub struct PerfArgs {
     pub min_samples: Option<u32>,
     pub margin_pct: Option<f64>,
     pub env: Option<String>,
+    /// The version to compare against, instead of the one deployed just
+    /// before the candidate.
+    pub baseline: Option<String>,
+    /// The version to judge, instead of the one deployed last.
+    pub candidate: Option<String>,
     /// Have the daemon append the verdict to `perf_verdicts` (operator
     /// role); without it the command only reads. The command fails when
     /// the verdict was not stored.
@@ -48,6 +53,16 @@ pub struct PerfSide {
     pub version: String,
     pub samples: u64,
     pub quantile_value: Option<f64>,
+    /// Runs whose samples are in the comparison.
+    pub runs: u64,
+    /// Runs whose version was read from the target's spans because the
+    /// run recorded none.
+    pub inferred: u64,
+    /// Aborted or truncated runs left out of the samples.
+    pub excluded: u64,
+    /// Load windows planned, and how many of them nothing answered in.
+    pub planned: u64,
+    pub unanswered: u64,
 }
 
 /// The daemon's answer (`GET /api/perf/{target}`); unknown fields are
@@ -56,6 +71,13 @@ pub struct PerfSide {
 pub struct PerfResponse {
     pub target: String,
     pub probe: String,
+    /// The one environment the answer is for; `None` for telemetry that
+    /// names none.
+    pub environment: Option<String>,
+    /// `explicit` or `deployment_order`.
+    pub selection: Option<String>,
+    /// Runs no version could be given.
+    pub unattributed: u64,
     pub verdict: String,
     pub reasons: Vec<String>,
     pub quantile: String,
@@ -70,12 +92,25 @@ pub struct PerfResponse {
     pub duplicate: bool,
 }
 
+/// A count at a JSON pointer; absent (an older daemon) is zero.
+fn count(v: &Value, pointer: &str) -> u64 {
+    v.pointer(pointer).and_then(Value::as_u64).unwrap_or(0)
+}
+
 fn side(v: &Value, quantile: &str) -> Option<PerfSide> {
     let version = v.get("version")?.as_str()?.to_owned();
     Some(PerfSide {
         version,
         samples: v.get("samples").and_then(Value::as_u64).unwrap_or_default(),
         quantile_value: v.get(quantile).and_then(Value::as_f64),
+        runs: v
+            .get("runs")
+            .and_then(Value::as_array)
+            .map_or(0, |runs| runs.len() as u64),
+        inferred: count(v, "/attribution/inferred"),
+        excluded: count(v, "/partial/excluded"),
+        planned: count(v, "/windows/planned"),
+        unanswered: count(v, "/windows/unanswered"),
     })
 }
 
@@ -106,6 +141,15 @@ impl PerfResponse {
         Ok(Self {
             target: str_field("target")?,
             probe: str_field("probe")?,
+            environment: v
+                .get("environment")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            selection: v
+                .get("selection")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            unattributed: count(v, "/unattributed_runs/count"),
             verdict: str_field("verdict")?,
             reasons: v
                 .get("reasons")
@@ -147,6 +191,48 @@ fn fmt_opt(v: Option<f64>) -> String {
     v.map_or_else(|| "n/a".to_string(), |v| format!("{v:.1}"))
 }
 
+/// How the two versions were chosen and where; nothing for a daemon that
+/// does not say.
+fn selection_line(resp: &PerfResponse) -> Option<String> {
+    let how = match resp.selection.as_deref()? {
+        "explicit" => "named on the request",
+        _ => "the two deployed last",
+    };
+    let place = resp.environment.as_deref().map_or_else(
+        || "telemetry without an environment".to_string(),
+        |env| format!("environment {env}"),
+    );
+    Some(format!("  versions: {how}, in {place}\n"))
+}
+
+/// One side: its quantile, then what weakens its evidence, if anything.
+fn side_lines(role: &str, side: &PerfSide) -> String {
+    let mut out = format!(
+        "  {role:<9} {}: {} ms over {} sample(s) in {} run(s)\n",
+        side.version,
+        fmt_opt(side.quantile_value),
+        side.samples,
+        side.runs
+    );
+    let mut runs = Vec::new();
+    if side.inferred > 0 {
+        runs.push(format!("{} run(s) attributed from spans", side.inferred));
+    }
+    if side.excluded > 0 {
+        runs.push(format!("{} partial run(s) left out", side.excluded));
+    }
+    if !runs.is_empty() {
+        out.push_str(&format!("      {}\n", runs.join("; ")));
+    }
+    if side.unanswered > 0 {
+        out.push_str(&format!(
+            "      {} of {} load window(s) went unanswered\n",
+            side.unanswered, side.planned
+        ));
+    }
+    out
+}
+
 /// Human-readable rendering of the perf answer.
 #[must_use]
 pub fn render(resp: &PerfResponse) -> String {
@@ -157,20 +243,11 @@ pub fn render(resp: &PerfResponse) -> String {
         resp.quantile,
         resp.probe
     );
+    out.push_str(&selection_line(resp).unwrap_or_default());
     if let Some(b) = &resp.baseline {
-        out.push_str(&format!(
-            "  baseline  {}: {} ms over {} sample(s)\n",
-            b.version,
-            fmt_opt(b.quantile_value),
-            b.samples
-        ));
+        out.push_str(&side_lines("baseline", b));
     }
-    out.push_str(&format!(
-        "  candidate {}: {} ms over {} sample(s)\n",
-        resp.candidate.version,
-        fmt_opt(resp.candidate.quantile_value),
-        resp.candidate.samples
-    ));
+    out.push_str(&side_lines("candidate", &resp.candidate));
     if let Some(delta) = resp.delta {
         let pct = resp
             .delta_pct
@@ -188,6 +265,12 @@ pub fn render(resp: &PerfResponse) -> String {
     }
     for reason in &resp.reasons {
         out.push_str(&format!("  - {reason}\n"));
+    }
+    if resp.unattributed > 0 {
+        out.push_str(&format!(
+            "  {} run(s) could not be attributed to a version\n",
+            resp.unattributed
+        ));
     }
     if resp.stored && resp.duplicate {
         out.push_str(
@@ -251,6 +334,12 @@ pub fn query_params(args: &PerfArgs) -> Vec<(&'static str, String)> {
     }
     if let Some(env) = &args.env {
         query.push(("env", env.clone()));
+    }
+    if let Some(baseline) = &args.baseline {
+        query.push(("baseline", baseline.clone()));
+    }
+    if let Some(candidate) = &args.candidate {
+        query.push(("candidate", candidate.clone()));
     }
     query
 }
@@ -407,6 +496,8 @@ mod tests {
             min_samples: None,
             margin_pct: None,
             env: None,
+            baseline: None,
+            candidate: None,
             store: false,
             daemon_url: None,
             fail_on: PerfFailOn::Regressed,
@@ -433,6 +524,97 @@ mod tests {
         assert_eq!(
             query_params(&stored),
             vec![("quantile", "p99".to_string()), ("env", "demo".to_string())]
+        );
+    }
+
+    #[test]
+    fn named_versions_go_to_the_daemon_as_baseline_and_candidate() {
+        let named = PerfArgs {
+            baseline: Some("1.3.0".into()),
+            candidate: Some("1.5.0".into()),
+            ..args()
+        };
+        assert_eq!(
+            query_params(&named),
+            vec![
+                ("baseline", "1.3.0".to_string()),
+                ("candidate", "1.5.0".to_string())
+            ]
+        );
+        let one = PerfArgs {
+            candidate: Some("1.5.0".into()),
+            ..args()
+        };
+        assert_eq!(query_params(&one), vec![("candidate", "1.5.0".to_string())]);
+    }
+
+    fn evidence() -> Value {
+        let mut v = answer();
+        v["environment"] = "demo".into();
+        v["selection"] = "deployment_order".into();
+        v["baseline"]["attribution"] =
+            serde_json::json!({"declared": 0, "observed": 1, "inferred": 2});
+        v["baseline"]["runs"] = serde_json::json!(["a", "b", "c"]);
+        v["baseline"]["partial"] = serde_json::json!(
+            {"truncated": 1, "aborted": 1, "halted": 0, "deviated": 1, "excluded": 2});
+        v["candidate"]["windows"] = serde_json::json!(
+            {"planned": 24, "completed": 24, "unanswered": 3, "unanswered_share": 0.125});
+        v["unattributed_runs"] = serde_json::json!({"count": 4, "reasons": {}, "runs": []});
+        v
+    }
+
+    #[test]
+    fn render_says_how_the_versions_were_chosen_and_how_good_the_evidence_is() {
+        let resp = PerfResponse::from_value(&evidence()).unwrap();
+        assert_eq!(resp.environment.as_deref(), Some("demo"));
+        assert_eq!(resp.unattributed, 4);
+        let baseline = resp.baseline.as_ref().unwrap();
+        assert_eq!((baseline.runs, baseline.inferred, baseline.excluded), (3, 2, 2));
+        assert_eq!((resp.candidate.planned, resp.candidate.unanswered), (24, 3));
+        let text = render(&resp);
+        assert!(
+            text.contains("  versions: the two deployed last, in environment demo\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("baseline  1.4.0: 100.0 ms over 40 sample(s) in 3 run(s)\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "      2 run(s) attributed from spans; 2 partial run(s) left out\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("      3 of 24 load window(s) went unanswered\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("  4 run(s) could not be attributed to a version\n"),
+            "{text}"
+        );
+
+        let mut named = evidence();
+        named["selection"] = "explicit".into();
+        named["environment"] = Value::Null;
+        let text = render(&PerfResponse::from_value(&named).unwrap());
+        assert!(
+            text.contains("  versions: named on the request, in telemetry without an environment\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn render_adds_no_notes_to_clean_evidence_or_to_an_older_daemon() {
+        let text = render(&PerfResponse::from_value(&answer()).unwrap());
+        assert!(!text.contains("versions:"), "{text}");
+        assert!(!text.contains("attributed"), "{text}");
+        assert!(!text.contains("unanswered"), "{text}");
+        assert!(!text.contains("left out"), "{text}");
+        assert!(
+            text.contains("baseline  1.4.0: 100.0 ms over 40 sample(s) in 1 run(s)\n"),
+            "{text}"
         );
     }
 

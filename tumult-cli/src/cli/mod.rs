@@ -157,6 +157,12 @@ pub(crate) enum Commands {
         /// Template variable substitution: KEY=VALUE (may be repeated)
         #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
         vars: Vec<String>,
+        /// The version of the target this run measures (its
+        /// `service.version`), recorded on the run as declared; without
+        /// it and without `target.version` in the file, the version is
+        /// observed from the target's telemetry when the run ends
+        #[arg(long, value_name = "VERSION")]
+        target_version: Option<String>,
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
@@ -398,9 +404,17 @@ pub(crate) enum Commands {
         /// Noise margin as a percentage of the baseline quantile (daemon default 5)
         #[arg(long)]
         margin_pct: Option<f64>,
-        /// Restrict the compared runs to one environment
+        /// The environment to compare in; needed when the target has
+        /// versions in more than one
         #[arg(long)]
         env: Option<String>,
+        /// Version to compare against (default: the one deployed just
+        /// before the candidate)
+        #[arg(long)]
+        baseline: Option<String>,
+        /// Version to judge (default: the one deployed last)
+        #[arg(long)]
+        candidate: Option<String>,
         /// Append the verdict to the daemon's `perf_verdicts` history
         /// (needs the operator role; a retry with the same evidence
         /// appends nothing and still succeeds); the default only reads

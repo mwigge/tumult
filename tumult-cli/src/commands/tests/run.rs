@@ -532,6 +532,7 @@ rollbacks[1]:
         std::collections::HashMap::new(),
         None,
         tumult_core::runner::BaselineMode::Only,
+        None,
     )
     .await
     .unwrap();
@@ -542,4 +543,93 @@ rollbacks[1]:
     assert!(journal
         .experiment_title
         .ends_with("[baseline-only observation]"));
+}
+
+const TARGETED: &str = "
+title: Versioned run
+target:
+  system: checkout
+  environment: demo
+method[1]:
+  - name: echo-action
+    activity_type: action
+    provider:
+      type: process
+      path: echo
+      arguments[1]: hello
+";
+
+async fn run_with_version(
+    dir: &Path,
+    toon: &str,
+    version: Option<&str>,
+) -> anyhow::Result<tumult_core::types::Journal> {
+    let experiment = dir.join("versioned.toon");
+    std::fs::write(&experiment, toon).unwrap();
+    let journal = dir.join("journal.toon");
+    cmd_run_with_baseline_mode(
+        &experiment,
+        &journal,
+        true,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+        tumult_core::runner::BaselineMode::Full,
+        version,
+    )
+    .await?;
+    Ok(tumult_core::journal::read_journal(&journal).unwrap())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_records_the_version_given_on_the_command_line() {
+    use tumult_core::types::VersionSource;
+
+    let dir = TempDir::new().unwrap();
+    let journal = run_with_version(dir.path(), TARGETED, Some("1.5.0"))
+        .await
+        .unwrap();
+    let recorded = journal.target_version.expect("a recorded version");
+    assert_eq!(recorded.version, "1.5.0");
+    assert_eq!(recorded.version_source, VersionSource::Declared);
+
+    // It wins over the file's.
+    let filed = format!("{TARGETED}").replace("  environment: demo", "  version: 1.4.0");
+    let journal = run_with_version(dir.path(), &filed, Some("1.5.0"))
+        .await
+        .unwrap();
+    assert_eq!(journal.target_version.unwrap().version, "1.5.0");
+    let journal = run_with_version(dir.path(), &filed, None).await.unwrap();
+    assert_eq!(journal.target_version.unwrap().version, "1.4.0");
+
+    // A run that does not report to a store asks nobody: no version.
+    let journal = run_with_version(dir.path(), TARGETED, None).await.unwrap();
+    assert!(journal.target_version.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_refuses_a_version_without_a_target_before_anything_executes() {
+    let dir = TempDir::new().unwrap();
+    let marker = dir.path().join("ran");
+    let targetless = format!(
+        "
+title: No target
+method[1]:
+  - name: touch
+    activity_type: action
+    provider:
+      type: process
+      path: touch
+      arguments[1]: {}
+",
+        marker.display()
+    );
+    let error = run_with_version(dir.path(), &targetless, Some("1.5.0"))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("no `target` block"), "{error}");
+    assert!(!marker.exists());
+    assert!(!dir.path().join("journal.toon").exists());
 }

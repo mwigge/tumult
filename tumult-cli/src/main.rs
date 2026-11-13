@@ -67,6 +67,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             no_ingest,
             output_format,
             vars,
+            target_version,
             load,
             load_script,
             load_vus,
@@ -95,6 +96,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                     cli::BaselineMode::Skip => tumult_core::runner::BaselineMode::Skip,
                     cli::BaselineMode::Only => tumult_core::runner::BaselineMode::Only,
                 },
+                target_version.as_deref(),
             )
             .await?;
             // If --output-format json was specified, print the journal as JSON to stdout
@@ -504,6 +506,8 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             min_samples,
             margin_pct,
             env,
+            baseline,
+            candidate,
             store,
             daemon_url,
             fail_on,
@@ -521,6 +525,8 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 min_samples,
                 margin_pct,
                 env,
+                baseline,
+                candidate,
                 store,
                 daemon_url,
                 fail_on,

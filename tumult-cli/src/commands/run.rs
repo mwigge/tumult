@@ -44,11 +44,14 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         vars,
         load_override,
         tumult_core::runner::BaselineMode::Full,
+        None,
     )
     .await
 }
 
 /// Runs an experiment with an explicitly enforced measurement mode.
+/// `target_version` declares the version of the target the run measures,
+/// over one the file declares.
 ///
 /// # Errors
 /// Returns an error when validation, measurement, execution or journal writing fails.
@@ -63,6 +66,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     vars: std::collections::HashMap<String, String, S>,
     load_override: Option<tumult_core::types::LoadConfig>,
     baseline_mode: tumult_core::runner::BaselineMode,
+    target_version: Option<&str>,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = tokio::fs::metadata(experiment_path)
@@ -118,6 +122,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
             .with_context(|| "failed to apply template variables to experiment")?
     };
 
+    super::target_version::declare(&mut experiment, target_version)?;
     validate_experiment(&experiment)?;
 
     if dry_run {
@@ -186,8 +191,13 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         .transpose()
         .map_err(|e| anyhow::anyhow!(e))?;
 
+    // The version that served the run is asked of the store the run
+    // reports to; a run that reports to none asks nobody.
+    let version_resolver = auto_ingest
+        .then(super::target_version::resolver)
+        .flatten();
     let run_config = RunConfig {
-        version_resolver: None,
+        version_resolver,
         baseline_mode,
         rollback_strategy,
         cancellation_token: Some(cancel_token),
@@ -204,6 +214,12 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     output.write(&encode_journal(&journal)?)?;
 
     println!("Status: {:?}", journal.status);
+    if let Some(measured) = &journal.target_version {
+        println!(
+            "Target version: {} ({})",
+            measured.version, measured.version_source
+        );
+    }
     println!("Duration: {}ms", journal.duration_ms);
     println!("Method steps: {} executed", journal.method_results.len());
     if !journal.rollback_results.is_empty() {
