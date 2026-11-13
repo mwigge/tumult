@@ -14,9 +14,11 @@
 //! [`params::HouseParams`]: those are house choices, not regulation.
 
 pub mod coverage;
+pub mod loader;
 pub mod maturity;
 pub mod model;
 pub mod params;
+pub mod register;
 pub mod rollup;
 pub mod status;
 #[cfg(test)]
