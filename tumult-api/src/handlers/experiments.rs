@@ -25,8 +25,13 @@ pub(crate) struct ExperimentParams {
     target: Option<String>,
     fault: Option<String>,
     q: Option<String>,
+    /// The whole experiment name, compared exactly.
+    name: Option<String>,
     origin: Option<String>,
 }
+
+/// Longest `q` or `name` accepted, in characters.
+const MAX_TEXT_FILTER: usize = 200;
 
 /// The root-span ↔ completed-log join used by the list and detail queries.
 const EXPERIMENT_FROM: &str = "FROM spans s LEFT JOIN logs l \
@@ -93,7 +98,7 @@ pub(crate) async fn experiments(
         ));
     }
     if let Some(q) = &params.q {
-        if q.chars().count() > 200 {
+        if q.chars().count() > MAX_TEXT_FILTER {
             return Err(bad("q too long (max 200 chars)".into()));
         }
         let like = sql_contains(q);
@@ -101,6 +106,12 @@ pub(crate) async fn experiments(
             "(s.experiment_name ILIKE {like} ESCAPE '\\' \
              OR s.experiment_id ILIKE {like} ESCAPE '\\')"
         ));
+    }
+    if let Some(name) = &params.name {
+        if name.chars().count() > MAX_TEXT_FILTER {
+            return Err(bad("name too long (max 200 chars)".into()));
+        }
+        wheres.push(format!("s.experiment_name = {}", sql_string(name)));
     }
     let origin = params.origin.as_deref();
     if let Some(o) = origin {
@@ -153,6 +164,9 @@ pub(crate) async fn experiments(
                 "(m.experiment_name ILIKE {like} ESCAPE '\\' \
                  OR m.id ILIKE {like} ESCAPE '\\')"
             ));
+        }
+        if let Some(name) = &params.name {
+            mwheres.push(format!("m.experiment_name = {}", sql_string(name)));
         }
         let manual_sql = format!(
             "SELECT m.id, m.experiment_name AS name, m.executed_at_ns AS started_ns, \

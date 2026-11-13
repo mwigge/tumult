@@ -37,6 +37,10 @@ async fn experiments_rejects_invalid_filters() {
     assert_eq!(status, 400);
     assert!(body["error"].as_str().unwrap().contains("q too long"));
 
+    let (status, body) = get(&srv.base, &format!("/api/experiments?name={long_q}")).await;
+    assert_eq!(status, 400);
+    assert!(body["error"].as_str().unwrap().contains("name too long"));
+
     let (status, body) = get(&srv.base, "/api/experiments?range=3h").await;
     assert_eq!(status, 400);
     assert!(body["error"].as_str().unwrap().contains("invalid range"));

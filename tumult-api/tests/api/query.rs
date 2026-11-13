@@ -93,6 +93,17 @@ async fn experiments_lists_filters_and_searches() {
     let rows = body["experiments"].as_array().unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["name"], "cache-stampede");
+
+    // `name` is the whole name, not a part of it.
+    let (status, body) = get(&srv.base, "/api/experiments?name=cache-stampede").await;
+    assert_eq!(status, 200, "{body}");
+    let rows = body["experiments"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["name"], "cache-stampede");
+    let (_, body) = get(&srv.base, "/api/experiments?name=cache").await;
+    assert_eq!(body["experiments"].as_array().unwrap().len(), 0);
+    let (_, body) = get(&srv.base, "/api/experiments?name=CACHE-STAMPEDE").await;
+    assert_eq!(body["experiments"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]
