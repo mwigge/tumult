@@ -88,7 +88,9 @@ counts what sits below it: `systems`, `untested_systems`, `stale_systems`,
 it as "5 of 6 systems untested" on the node. `counts.gaps` is taken before
 clustering, so it does not change with `budget`, and
 `counts.risks_unplaced` says how many findings name a target that is not
-on the map.
+on the map. A token scoped to environments counts only findings in those
+environments: a finding on a node hidden from it, or one with no
+environment at all, is not counted.
 
 ## Lenses and marks
 

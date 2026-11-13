@@ -122,7 +122,7 @@ impl Builder<'_> {
     }
 
     /// Attach every visible risk to its node. One that has no node is
-    /// counted, never dropped silently.
+    /// counted, never dropped silently, when it is the caller's to count.
     fn attach_risks(&mut self) {
         for risk in &self.inputs.risks {
             let env = risk.environment.as_deref();
@@ -133,7 +133,7 @@ impl Builder<'_> {
                 .risk_node(risk)
                 .and_then(|id| self.graph.nodes.get_mut(&id));
             let Some(node) = node else {
-                self.risks_unplaced += 1;
+                self.risks_unplaced += u64::from(in_scope(self.scope, env));
                 continue;
             };
             add_risk(&mut node.risks, risk);

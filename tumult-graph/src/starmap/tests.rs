@@ -1563,17 +1563,75 @@ fn risks_without_a_node_are_counted_as_unplaced() {
     assert_eq!(map.counts.risks_open, 1);
     assert_eq!(map.counts.risks_unplaced, 2);
 
-    // A risk in an environment the caller may not see is not theirs to count.
+    // A scoped caller counts only what is in its environments: not a
+    // risk elsewhere, and not one with no environment at all.
+    let scoped = |env: &str| {
+        let query = StarQuery {
+            scope: Some(vec![env.to_string()]),
+            ..StarQuery::default()
+        };
+        assemble(&inputs, &query).counts.risks_unplaced
+    };
+    assert_eq!(scoped("other"), 0);
+    assert_eq!(scoped("demo"), 1, "the one naming `nowhere` in demo");
+}
+
+#[test]
+fn a_risk_on_a_node_dropped_for_scope_is_not_counted_as_unplaced() {
+    let on_workload = |name: &str| RiskRow {
+        target: None,
+        environment: None,
+        subject: Some(RiskSubject::Workload {
+            namespace: "demo".to_string(),
+            name: name.to_string(),
+        }),
+        ..risk("", "high", false)
+    };
+    let inputs = StarInputs {
+        org_units: org(),
+        services: vec![
+            svc("checkout"),
+            ServiceRow {
+                environment: Some("production".to_string()),
+                ..svc("billing")
+            },
+        ],
+        workloads: vec![
+            workload("checkout", &[("app", "checkout")]),
+            workload("vault", &[("resilience.target.environment", "production")]),
+        ],
+        risks: vec![
+            on_workload("checkout"),
+            // Its workload is labelled for an environment out of scope.
+            on_workload("vault"),
+            // Its service reports only from production.
+            RiskRow {
+                environment: None,
+                ..risk("billing", "high", false)
+            },
+        ],
+        ..StarInputs::default()
+    };
+
+    // Everything has a node for a caller who may see everything.
+    let open = build(&inputs);
+    assert_eq!(open.counts.risks_unplaced, 0);
+    assert_eq!(open.counts.risks_open, 3);
+
     let scoped = assemble(
         &inputs,
         &StarQuery {
-            scope: Some(vec!["other".to_string()]),
+            scope: Some(vec!["demo".to_string()]),
             ..StarQuery::default()
         },
     );
+    assert!(!has_node(&scoped, "wl:demo/deployment/vault"));
+    assert!(!has_node(&scoped, "svc:billing"));
+    assert_eq!(node(&scoped, "wl:demo/deployment/checkout").risks.open, 1);
+    assert_eq!(scoped.counts.risks_open, 1);
     assert_eq!(
-        scoped.counts.risks_unplaced, 1,
-        "only the environment-less one"
+        scoped.counts.risks_unplaced, 0,
+        "a hidden node's risk must not show as a count"
     );
 }
 

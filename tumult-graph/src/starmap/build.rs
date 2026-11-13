@@ -51,7 +51,10 @@ pub(super) struct Builder<'a> {
     pub include_runs: bool,
     pub graph: Graph,
     pub facts: Facts,
-    /// Visible risks that found no node to attach to.
+    /// Risks that found no node to attach to. A scoped caller counts
+    /// only those in its environments: one with no environment names
+    /// either a node dropped for scope or something environment-less,
+    /// and scope hides both.
     pub risks_unplaced: u64,
 }
 
