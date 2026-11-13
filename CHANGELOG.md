@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- OpenTelemetry crates upgraded to the 0.33 line (`opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `opentelemetry-proto`, `opentelemetry-stdout`, `opentelemetry-appender-tracing`; `tracing-opentelemetry` 0.34). No API changes were needed.
+- The schema DDL and views the lake embeds in Rust constants are formatted and linted with sqlfluff (`scripts/lint-embedded-sql.sh`, also in CI); index statements sit on one line and views alias tables explicitly. No semantic change.
 - The ClickHouse backend keeps its pre-v16 `experiments` shape; objective verdicts and raw samples are DuckDB-lake only for now.
 
 ## [2.22.0] - 2026-10-09
