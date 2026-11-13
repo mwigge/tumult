@@ -13,8 +13,11 @@ carriers and the rows are identical whichever one delivered them. The Arrow
 receiver treats every declared size as hostile: rows, attributes, decoded
 bytes, message size, retained dictionary bytes, open streams, stream age
 and decode time are bounded by the `KRONIKA_OTAP_*` limits
-(`tumult-ingest::otap::limits`), connections by `KRONIKA_GRPC_MAX_CONNECTIONS*`
-(`tumult-ingest::listener`). Because release builds abort on panic, Arrow
+(`tumult-ingest::otap::limits`), connections, their handshake time and
+their age by the `KRONIKA_GRPC_*` limits (`tumult-ingest::listener`). One
+connection or peer (an IPv4 address or an IPv6 /64) gets only a share of
+the streams and of the retained bytes, and waiting batches are decoded
+peer by peer in turn. Because release builds abort on panic, Arrow
 IPC is decoded by a checked reader of its own (`tumult-ingest::otap::ipc`)
 that accepts only the column types OTAP uses.
 Everything lives in this repository as first-class `tumult-*` crates.

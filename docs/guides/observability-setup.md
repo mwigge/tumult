@@ -183,11 +183,12 @@ are chosen for how the `otelarrow` exporter reacts to them.
 | Payload not decodable (malformed IPC, a column type outside the allowlist, a schema over the structural caps, payload type `UNKNOWN`) | `INVALID_ARGUMENT` (not retried) | closed with `INVALID_ARGUMENT` |
 | Over a limit of the batch or of the stream itself (rows, decoded bytes, bytes retained per stream, dictionary deltas) | `INVALID_ARGUMENT` (not retried) | closed with `RESOURCE_EXHAUSTED` |
 | Over the batch deadline | `INVALID_ARGUMENT` (not retried) | closed with `RESOURCE_EXHAUSTED` |
-| Over the retained bytes all streams share | `UNAVAILABLE` (retried: other streams hold the bytes) | closed with `RESOURCE_EXHAUSTED` |
+| Over the client's own share of the retained bytes (its connection's or its peer's) | `INVALID_ARGUMENT` (not retried: the client's own streams hold the bytes) | closed with `RESOURCE_EXHAUSTED` |
+| Over the retained bytes all streams share | `UNAVAILABLE` (retried: other clients' streams hold the bytes) | closed with `RESOURCE_EXHAUSTED` |
 | Message over the size limit, or a broken gRPC frame | none | closed with the read error (`OUT_OF_RANGE` for size) |
 | No message for the idle timeout, or the stream is older than its lifetime | none | closed with `UNAVAILABLE` |
 | The client takes no status for the ack timeout | none | closed |
-| Too many open streams, in total or on one connection | none | refused with `RESOURCE_EXHAUSTED` |
+| Too many open streams, in total, on one connection or from one peer | none | refused with `RESOURCE_EXHAUSTED` |
 | Missing or wrong token | none | refused with `UNAUTHENTICATED`, logged at WARN without the token |
 
 A payload that cannot be decoded may have carried the schema or
@@ -243,17 +244,23 @@ zero or unparsable one by the default, each with a warning at startup.
 | `KRONIKA_OTAP_MAX_MESSAGE_BYTES` | 4194304 | 268435456 | one `BatchArrowRecords` message, before and after gRPC decompression |
 | `KRONIKA_OTAP_MAX_STREAMS` | 64 | 4096 | Arrow streams open at once |
 | `KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION` | 32 | `MAX_STREAMS` | Arrow streams open at once from one connection (one peer socket address) |
-| `KRONIKA_OTAP_MAX_CONCURRENT_DECODES` | 4 | 256 | batches decoded, converted or waiting for the writer at once; the permit is held until the batch is stored |
+| `KRONIKA_OTAP_MAX_STREAMS_PER_PEER` | half of `MAX_STREAMS` (32) | `MAX_STREAMS` | Arrow streams open at once from one peer, over all its connections |
+| `KRONIKA_OTAP_MAX_CONCURRENT_DECODES` | 4 | 256 | batches decoded, converted or waiting for the writer at once; the permit is held until the batch is stored. Waiting batches take turns peer by peer, then connection by connection |
 | `KRONIKA_OTAP_STREAM_IDLE_SECS` | 300 | 86400 | silence before a stream is closed |
 | `KRONIKA_OTAP_STREAM_LIFETIME_SECS` | 600 | 604800 | age at which a stream is closed, however busy |
 | `KRONIKA_OTAP_ACK_TIMEOUT_SECS` | 30 | 3600 | how long a status may wait for a client that does not read |
 | `KRONIKA_OTAP_BATCH_DEADLINE_MS` | 10000 | 600000 | wall-clock time to decode and convert one batch, checked inside the row loops |
 | `KRONIKA_OTAP_MAX_STREAM_RETAINED_BYTES` | 33554432 | 1073741824 | schemas and dictionaries one stream keeps between batches |
 | `KRONIKA_OTAP_MAX_RETAINED_BYTES` | 268435456 | 17179869184 | the same, all streams together |
+| `KRONIKA_OTAP_MAX_CONNECTION_RETAINED_BYTES` | an eighth of `MAX_RETAINED_BYTES` (33554432) | `MAX_RETAINED_BYTES` | the same, all streams of one connection |
+| `KRONIKA_OTAP_MAX_PEER_RETAINED_BYTES` | an eighth of `MAX_RETAINED_BYTES` (33554432) | `MAX_RETAINED_BYTES` | the same, all streams of one peer |
 | `KRONIKA_OTAP_MAX_DICTIONARY_DELTAS` | 65536 | 16777216 | delta dictionary batches per stream |
 | `KRONIKA_OTAP_MAX_REJECTED_BATCHES` | 8 | 1000000 | refused batches before the stream is closed |
 | `KRONIKA_GRPC_MAX_CONNECTIONS` | 1024 | 65536 | TCP connections open on the gRPC listener |
-| `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER` | 64 | `MAX_CONNECTIONS` | TCP connections open from one peer IP address |
+| `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER` | 64 | `MAX_CONNECTIONS` | TCP connections open from one peer |
+| `KRONIKA_GRPC_HANDSHAKE_TIMEOUT_SECS` | 10 | 300 | time a new connection has to finish the TLS handshake and send the HTTP/2 preface |
+| `KRONIKA_GRPC_MAX_CONNECTION_AGE_SECS` | 1800 | 604800 | age a connection may reach |
+| `KRONIKA_GRPC_MAX_CONNECTION_AGE_GRACE_SECS` | 600 | 3600 | time after that age at which the connection is cut, whatever is in flight |
 
 Not configurable: 256 fields and 64 dictionaries per schema, schema nesting
 4 deep, schema ids of 256 bytes, field names of 128 bytes, CBOR attribute
@@ -262,21 +269,54 @@ bytes.
 
 The connection limits are the gRPC listener's: unary OTLP/gRPC exports and
 OTel-Arrow streams share them, and a connection over a limit is closed as
-soon as it is accepted. The listener also allows 64 concurrent HTTP/2
-streams and 64 in-flight requests per connection, pings every 30 s and
-drops a connection whose ping goes unanswered for 20 s. Only zstd is
-accepted for Arrow IPC buffer compression (what the exporter uses); LZ4
-payloads are refused. Within `KRONIKA_OTAP_MAX_DECODED_BYTES` a small
-compressed message may still expand a lot; the budget bounds the result,
-not the ratio.
+soon as it is accepted. A connection that has not finished the TLS
+handshake and sent the HTTP/2 preface within
+`KRONIKA_GRPC_HANDSHAKE_TIMEOUT_SECS` is closed and its place given back,
+so silent connections cannot use up the limit; a slow client that keeps
+making progress has the whole time. No connection lives longer than the
+connection age plus its grace (40 minutes by default): it is cut then and
+the client reconnects, so keep the exporter's `max_stream_lifetime` well
+below it. The listener also allows 64 concurrent HTTP/2 streams and 64
+in-flight requests per connection, switches TCP keepalive on for every
+accepted socket, pings every 30 s and drops a connection whose ping goes
+unanswered for 20 s.
+
+**Peers and proxies.** A peer is an IPv4 address or an IPv6 /64 (one host
+usually has a whole /64 to pick source addresses from). The per-peer
+limits, `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER`,
+`KRONIKA_OTAP_MAX_STREAMS_PER_PEER` and
+`KRONIKA_OTAP_MAX_PEER_RETAINED_BYTES`, keep one peer from taking every
+connection, every stream slot or the whole retained pool, and waiting
+batches are decoded peer by peer in turn. Behind a proxy, a load balancer
+or NAT every client arrives from one address and they all share one peer's
+allowance: raise the three per-peer variables there (each up to its total)
+and let the proxy limit its clients. With the defaults all Collectors
+behind one address share 64 connections, 32 streams and 32 MiB of retained
+schemas and dictionaries. The `peer` in a rejected-token warning is then
+the proxy's address as well.
+
+Only zstd is accepted for Arrow IPC buffer compression (what the exporter
+uses); LZ4 payloads are refused. Before memory is allocated for a
+compressed buffer its zstd frame headers are read: the content sizes they
+carry must add up to the declared size, and the declared size must not be
+more than the compressed bytes can hold. Within
+`KRONIKA_OTAP_MAX_DECODED_BYTES` a small compressed message may still
+expand a lot; the budget bounds the result, not the ratio.
+
+The ingest token is checked before a request body is read: a unary
+OTLP/gRPC export without it is refused before its message is decoded.
 
 **Logs.** Text a peer chooses (schema ids, field names, error text built
 from them) is cut to 256 bytes and has control characters, line breaks
-included, escaped before it reaches a log line or a `BatchStatus`; column
-types are named by kind only. The warnings a peer can cause at will
-(rejected token on gRPC and HTTP, refused stream, refused connection,
-rejected or undecodable batch, failed stream read) are limited to 10 of a
-kind per 10 s; the next one logged carries `suppressed=<n>`.
+included, quotes and backslashes escaped before it reaches a log line or a
+`BatchStatus`; in a log line it is a quoted value, so it cannot add
+`key=value` pairs of its own. Column types are named by kind only. The
+warnings a peer can cause at will (rejected token on gRPC and HTTP, refused
+stream, refused connection, rejected or undecodable batch, failed stream
+read) are limited per 10 s, counted kind by kind, so a flood of one does
+not hide the first of another; the next one logged carries
+`suppressed=<n>`. A rejected-token warning carries the peer's IP address
+(`peer=`), never the token.
 
 A live proof of the whole path (fresh daemon under an address-space cap,
 real Collector container, `curl` OTLP/HTTP traces, logs and metrics in,
