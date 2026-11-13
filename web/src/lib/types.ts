@@ -1057,7 +1057,12 @@ export interface RunImpact {
     experiment_id: string;
     as_of_ms: number;
     stable_steps: number;
+    /** The slowest probe's recovery; null when any evaluated probe never recovered. */
     recovery_time_s: number | null;
+    /** Evaluated probes that never settled back inside their band. */
+    unrecovered_probes?: number;
+    /** Probes whose impact could be evaluated. */
+    evaluated_probes?: number;
     impact_peak: number | null;
     /** True when any probe's reference band was degenerate. */
     degenerate_band: boolean;

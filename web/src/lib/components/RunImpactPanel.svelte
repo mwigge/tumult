@@ -72,6 +72,14 @@
         return v == null ? 'not recovered' : `${num(v, v < 10 ? 1 : 0)} s`;
     }
 
+    // The headline is "not recovered" as soon as one probe never settled;
+    // this says how many of the evaluated probes that was.
+    function unrecovered(r: RunImpact): string {
+        const n = r.unrecovered_probes ?? 0;
+        const of = r.evaluated_probes ?? n;
+        return `${n} of ${of} ${of === 1 ? 'probe' : 'probes'} did not settle back inside the band`;
+    }
+
     function pct(v: number | null | undefined): string {
         return v == null ? '—' : `${Math.round(v * 100)} %`;
     }
@@ -120,6 +128,11 @@
                 </span>
             {/if}
             <span>recovery <strong>{seconds(impact.recovery_time_s)}</strong></span>
+            {#if impact.unrecovered_probes}
+                <span class="warn" data-testid="impact-unrecovered">
+                    {unrecovered(impact)}
+                </span>
+            {/if}
             {#if impact.degenerate_band}
                 <span class="warn" data-testid="impact-degenerate">{DEGENERATE}</span>
             {/if}

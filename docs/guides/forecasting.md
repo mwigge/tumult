@@ -75,7 +75,13 @@ Recovery is the first step at or after the end of the fault from which the
 probe stays inside the band for three consecutive samples. Gaps neither
 count towards the three nor reset them. `recovery_time_s` is the distance
 from the end of the fault to that step; `null` means the run ended before
-the probe settled. The run-level figure is the slowest probe.
+the probe settled.
+
+The run-level figure is the slowest probe, and it is `null` (not
+recovered) as soon as one evaluated probe never settled: a run is not back
+because most of its probes are. `unrecovered_probes` says how many did not
+settle, out of `evaluated_probes`; a probe that could not be evaluated
+(listed with an `error`) counts in neither.
 
 ### Which samples the counterfactual comes from
 
@@ -140,7 +146,8 @@ row is served, with the `fallback_reason` of the moment.
 
 Returns one entry per probe with the series, the fault window, the impact
 summary, recovery and provenance, plus the run-level `recovery_time_s`,
-`impact_peak` and `degenerate_band`. Instants are given in nanoseconds and
+`unrecovered_probes`, `evaluated_probes`, `impact_peak` and
+`degenerate_band`. Instants are given in nanoseconds and
 in milliseconds (`fault.start_ms`, `recovery.recovered_at_ms`, `as_of_ms`).
 A probe that cannot be compared (no samples during the
 fault, or none after it) is listed with an `error` instead of numbers.

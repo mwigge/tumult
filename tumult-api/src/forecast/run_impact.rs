@@ -204,6 +204,40 @@ fn larger(worst: Option<f64>, candidate: Option<f64>) -> Option<f64> {
     }
 }
 
+/// What the evaluated probes add up to for the run as a whole.
+#[derive(Debug, Default)]
+struct Headline {
+    /// Probes whose impact could be evaluated.
+    evaluated: usize,
+    /// Of those, the ones that never settled back inside their band.
+    unrecovered: usize,
+    slowest_recovery_s: Option<f64>,
+    worst_peak: Option<f64>,
+    degenerate_band: bool,
+}
+
+impl Headline {
+    fn add(&mut self, probe: &ProbeImpact) {
+        self.evaluated += 1;
+        if probe.recovery_s.is_none() {
+            self.unrecovered += 1;
+        }
+        self.slowest_recovery_s = larger(self.slowest_recovery_s, probe.recovery_s);
+        self.worst_peak = larger(self.worst_peak, probe.peak);
+        self.degenerate_band |= probe.degenerate_band;
+    }
+
+    /// The run's recovery time: the slowest probe's, and `None` (not
+    /// recovered) as soon as one evaluated probe never settled. A run is
+    /// not back because most of it is.
+    fn recovery_time_s(&self) -> Option<f64> {
+        if self.unrecovered > 0 {
+            return None;
+        }
+        self.slowest_recovery_s
+    }
+}
+
 /// The run's experiment and its probe samples in time order; `None` when
 /// the run does not exist or is outside `scopes`.
 async fn load_samples(
@@ -259,15 +293,11 @@ pub(crate) async fn run_impact(
         return Err(not_found(format!("run {id:?} has no probe samples")));
     }
     let mut probes = Vec::new();
-    let mut worst_recovery_s: Option<f64> = None;
-    let mut worst_peak: Option<f64> = None;
-    let mut degenerate_band = false;
+    let mut headline = Headline::default();
     for (name, samples) in group_samples(&rows) {
         match probe_impact(&state, &name, &samples).await {
             Ok(probe) => {
-                worst_recovery_s = larger(worst_recovery_s, probe.recovery_s);
-                worst_peak = larger(worst_peak, probe.peak);
-                degenerate_band |= probe.degenerate_band;
+                headline.add(&probe);
                 probes.push(probe.json);
             }
             Err(error) => probes.push(json!({"probe": name, "error": error})),
@@ -284,9 +314,11 @@ pub(crate) async fn run_impact(
         "as_of_ns": as_of_ns,
         "as_of_ms": as_of_ns / MS_NS,
         "stable_steps": STABLE_STEPS,
-        "recovery_time_s": worst_recovery_s,
-        "impact_peak": worst_peak,
-        "degenerate_band": degenerate_band,
+        "recovery_time_s": headline.recovery_time_s(),
+        "unrecovered_probes": headline.unrecovered,
+        "evaluated_probes": headline.evaluated,
+        "impact_peak": headline.worst_peak,
+        "degenerate_band": headline.degenerate_band,
         "provenance": provenance,
         "probes": probes,
     })))
@@ -336,12 +368,40 @@ mod tests {
         assert!(g["a"].during.is_empty());
     }
 
+    fn probe(recovery_s: Option<f64>, peak: Option<f64>) -> ProbeImpact {
+        ProbeImpact {
+            json: Value::Null,
+            recovery_s,
+            peak,
+            degenerate_band: false,
+        }
+    }
+
     #[test]
-    fn the_headline_keeps_the_largest_value_seen() {
-        assert_eq!(larger(None, None), None);
-        assert_eq!(larger(None, Some(2.0)), Some(2.0));
-        assert_eq!(larger(Some(3.0), None), Some(3.0));
-        assert_eq!(larger(Some(3.0), Some(2.0)), Some(3.0));
-        assert_eq!(larger(Some(1.0), Some(2.0)), Some(2.0));
+    fn the_headline_is_the_slowest_recovery_and_the_largest_peak() {
+        let mut headline = Headline::default();
+        assert_eq!(headline.recovery_time_s(), None, "nothing was evaluated");
+        headline.add(&probe(Some(3.0), Some(2.0)));
+        headline.add(&probe(Some(1.0), None));
+        headline.add(&probe(Some(2.0), Some(7.5)));
+        assert_eq!(headline.recovery_time_s(), Some(3.0));
+        assert_eq!(headline.worst_peak, Some(7.5));
+        assert_eq!(headline.evaluated, 3);
+        assert_eq!(headline.unrecovered, 0);
+    }
+
+    /// One probe that never came back is the run's answer, however fast
+    /// the others settled, and whichever order they arrive in.
+    #[test]
+    fn the_headline_is_not_recovered_when_any_probe_did_not_recover() {
+        for order in [[Some(4.0), None], [None, Some(4.0)]] {
+            let mut headline = Headline::default();
+            for recovery_s in order {
+                headline.add(&probe(recovery_s, Some(1.0)));
+            }
+            assert_eq!(headline.recovery_time_s(), None, "{order:?}");
+            assert_eq!(headline.unrecovered, 1);
+            assert_eq!(headline.evaluated, 2);
+        }
     }
 }

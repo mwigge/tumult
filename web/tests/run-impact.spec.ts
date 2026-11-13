@@ -87,6 +87,8 @@ const impact = {
     as_of_ms: 0,
     stable_steps: 3,
     recovery_time_s: 10 as number | null,
+    unrecovered_probes: 0,
+    evaluated_probes: 1,
     impact_peak: 4.2 as number | null,
     degenerate_band: false,
     provenance,
@@ -225,6 +227,7 @@ test('a run that never settled says so and has no recovery mark', async ({ page 
     const unsettled = {
         ...impact,
         recovery_time_s: null,
+        unrecovered_probes: 1,
         probes: [
             {
                 ...probe,
@@ -243,6 +246,41 @@ test('a run that never settled says so and has no recovery mark', async ({ page 
     await expect(page.getByTestId('impact')).toContainText('recovery not recovered');
     const chart = await chartOption(page);
     expect(chart.marks).toEqual([['peak', ts[1]]]);
+});
+
+test('one probe that never recovered makes the headline not recovered', async ({ page }) => {
+    const stuck = {
+        ...probe,
+        probe: 'error-rate',
+        recovery: {
+            ...probe.recovery,
+            recovered_at_ns: null,
+            recovered_at_ms: null,
+            recovery_time_s: null,
+        },
+    };
+    const body = {
+        ...impact,
+        recovery_time_s: null,
+        unrecovered_probes: 1,
+        evaluated_probes: 2,
+        probes: [probe, stuck],
+    };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const summary = page.getByTestId('impact-summary');
+    await expect(summary).toContainText('recovery not recovered');
+    // The probe that did settle keeps its own time; the headline does not borrow it.
+    await expect(summary).not.toContainText('10 s');
+    await expect(page.getByTestId('impact-unrecovered')).toContainText('1 of 2 probes');
+    await expect(page.getByTestId('impact')).toContainText('recovery 10 s');
+});
+
+test('a run whose probes all recovered has no unrecovered note', async ({ page }) => {
+    await mockApi(page, { status: 200, body: impact });
+    await page.goto('/runs/run-1');
+    await expect(page.getByTestId('impact-summary')).toContainText('10 s');
+    await expect(page.getByTestId('impact-unrecovered')).toHaveCount(0);
 });
 
 test('a fallback names its reason next to the model', async ({ page }) => {

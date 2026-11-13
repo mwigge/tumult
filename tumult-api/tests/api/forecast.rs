@@ -389,8 +389,71 @@ async fn impact_backcasts_from_the_post_phase_and_measures_recovery() {
         body["as_of_ns"].as_i64().unwrap() / 1_000_000
     );
     assert_eq!(body["recovery_time_s"], recovery["recovery_time_s"]);
+    assert_eq!(body["unrecovered_probes"], 0);
+    assert_eq!(body["evaluated_probes"], 1);
     assert!(p["forecast"]["context_points"].as_u64().unwrap() >= 30);
     assert_eq!(p["provenance"]["model"], "holt-winters");
+}
+
+/// A second probe that never comes back: 100 ± 2 before the fault, 300
+/// during it and 200 ± 2 for as long as it was watched.
+async fn seed_stuck_probe(srv: &TestServer, experiment_id: &str, pre: i64) {
+    let exp = experiment_id.to_string();
+    let base = now_ns() - 600 * NS;
+    exec_write(srv, move |w| {
+        let mut rows = Vec::new();
+        for i in 0..pre + 60 {
+            let jitter = f64::from(i32::try_from(i % 5).unwrap_or(0)) - 2.0;
+            let (phase, level) = match i - pre {
+                d if d < 0 => ("before", 100.0),
+                d if d < 20 => ("during", 300.0),
+                _ => ("post", 200.0),
+            };
+            rows.push(format!(
+                "('{exp}', 'stuck', '{phase}', {}, {}, true)",
+                base + i * NS,
+                level + jitter
+            ));
+        }
+        w.execute(
+            &format!(
+                "INSERT INTO probe_samples (experiment_id, probe_name, phase, ts_ns, value, ok) \
+                 VALUES {}",
+                rows.join(", ")
+            ),
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await;
+}
+
+/// One probe recovered within seconds, the other never did. The run did
+/// not recover, and the headline must not report the first one's time.
+#[tokio::test]
+async fn a_probe_that_never_recovered_makes_the_run_not_recovered() {
+    let srv = spawn_server().await;
+    seed_run(&srv, "run-stuck", "exp-stuck", 40).await;
+    seed_stuck_probe(&srv, "exp-stuck", 40).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-stuck/impact").await;
+    assert_eq!(status, 200, "{body}");
+    let probes = body["probes"].as_array().unwrap();
+    assert_eq!(probes.len(), 2);
+    let by_name = |name: &str| probes.iter().find(|p| p["probe"] == name).unwrap();
+    assert!(
+        by_name("health")["recovery"]["recovery_time_s"].is_number(),
+        "{body}"
+    );
+    assert!(by_name("stuck")["recovery"]["recovery_time_s"].is_null());
+    assert!(
+        body["recovery_time_s"].is_null(),
+        "{}",
+        body["recovery_time_s"]
+    );
+    assert_eq!(body["unrecovered_probes"], 1);
+    assert_eq!(body["evaluated_probes"], 2);
+    assert!(body["impact_peak"].is_number());
 }
 
 /// With samples from before the fault, the counterfactual is a forecast
