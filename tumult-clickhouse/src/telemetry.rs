@@ -41,8 +41,8 @@ pub(crate) fn begin_connect(url: &str, database: &str) -> SpanGuard {
         .with_attributes(vec![
             KeyValue::new("db.system", "clickhouse"),
             KeyValue::new("db.name", database.to_string()),
-            KeyValue::new("server.address", url.to_string()),
-            // OTel semantic convention: sanitized connection string.
+            // Both carry the sanitized form: the raw URL may embed credentials.
+            KeyValue::new("server.address", safe_url.clone()),
             KeyValue::new("db.connection_string", safe_url),
         ])
         .start(&tracer);
@@ -125,6 +125,24 @@ mod tests {
             [
                 KeyValue::new("db.name", "tumult"),
                 KeyValue::new("db.schema.version", 1_i64),
+            ]
+        );
+    }
+
+    #[test]
+    fn connect_span_never_carries_the_credentials_of_the_url() {
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_connect("http://admin:secret@clickhouse.internal:8123", "tumult");
+        });
+
+        let sanitized = "http://****:****@clickhouse.internal:8123";
+        assert_eq!(
+            spans[0].attributes,
+            [
+                KeyValue::new("db.system", "clickhouse"),
+                KeyValue::new("db.name", "tumult"),
+                KeyValue::new("server.address", sanitized),
+                KeyValue::new("db.connection_string", sanitized),
             ]
         );
     }
