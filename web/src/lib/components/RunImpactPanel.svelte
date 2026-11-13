@@ -199,6 +199,7 @@
                     <FanChart
                         id="impact-{i}"
                         series={p.series}
+                        name={p.probe}
                         label="{p.probe}: observed values against the counterfactual forecast"
                         windows={[{ from: p.fault.start_ms, to: p.fault.end_ms, label: 'fault' }]}
                         marks={marks(p)}

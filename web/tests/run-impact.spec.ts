@@ -99,6 +99,10 @@ const impact = {
 type Answer = { status: number; body: unknown; delayMs?: number };
 
 async function mockApi(page: import('@playwright/test').Page, answer: Answer) {
+    // Charts mirror their option only when this registry is already there.
+    await page.addInitScript(() => {
+        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
+    });
     await page.route('**/api/**', async (route) => {
         const path = new URL(route.request().url()).pathname;
         let body: unknown = {};
@@ -131,6 +135,7 @@ async function chartOption(page: import('@playwright/test').Page) {
         .toBe(true);
     return page.evaluate(() => {
         type Series = {
+            id?: string;
             name?: string;
             data?: [number, number | null][];
             markArea?: { data?: [{ name?: string; xAxis?: number }, { xAxis?: number }][] };
@@ -139,7 +144,7 @@ async function chartOption(page: import('@playwright/test').Page) {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };
         const opt = w.__tumultCharts?.['impact-0'] as { series?: Series[] } | undefined;
         const series = opt?.series ?? [];
-        const observed = series.find((s) => s.name === 'observed');
+        const observed = series.find((s) => s.id === 'observed');
         const forecast = series.find((s) => s.name === 'forecast');
         const band = series.find((s) => s.name === '80 % band');
         const area = observed?.markArea?.data?.[0];
@@ -152,6 +157,25 @@ async function chartOption(page: import('@playwright/test').Page) {
         };
     });
 }
+
+test('markup in a probe name is shown as text in the chart tooltip', async ({ page }) => {
+    const payload = `<img src=x onerror="window.__fired = 1"><b id="planted">p95</b>`;
+    await mockApi(page, {
+        status: 200,
+        body: { ...impact, probes: [{ ...probe, probe: payload }] },
+    });
+    await page.goto('/runs/run-1');
+    await chartOption(page);
+    const chart = page.locator('[data-chart="impact-0"]');
+    const box = await chart.boundingBox();
+    if (!box) throw new Error('the chart has no box');
+    // The tooltip follows the pointer along the time axis.
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(box.x + box.width / 2 + 4, box.y + box.height / 2);
+    await expect(chart).toContainText(payload);
+    await expect(chart.locator('img, #planted')).toHaveCount(0);
+    expect(await page.evaluate(() => '__fired' in window)).toBe(false);
+});
 
 test('run page shows the counterfactual impact with band, fault window and provenance', async ({
     page,

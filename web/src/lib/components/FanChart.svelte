@@ -6,6 +6,7 @@
     // are drawn widest first so narrower ones sit on top.
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
+    import { esc } from '#lib/starmap/style.js';
     import EChart from './EChart.svelte';
 
     export interface FanBand {
@@ -27,6 +28,7 @@
         windows = [],
         thresholds = [],
         marks = [],
+        name = 'observed',
         unit = '',
         height = 260,
         id,
@@ -36,6 +38,8 @@
         windows?: { from: number; to: number; label?: string; color?: string }[];
         thresholds?: { value: number; label?: string }[];
         marks?: { at: number; label?: string }[];
+        /** What the observed line is called in the tooltip. */
+        name?: string;
         unit?: string;
         height?: number;
         id?: string;
@@ -47,6 +51,31 @@
 
     function pairs(values: (number | null)[]): [number, number | null][] {
         return series.ts.map((x, i) => [x, values[i] ?? null]);
+    }
+
+    interface TipRow {
+        marker?: string;
+        seriesName?: string;
+        axisValueLabel?: string;
+        value?: unknown;
+    }
+
+    function shown(value: unknown): string {
+        const y = Array.isArray(value) ? value[1] : value;
+        if (typeof y !== 'number' || !Number.isFinite(y)) return '–';
+        return String(Number(y.toPrecision(6)));
+    }
+
+    // ECharts renders what a formatter returns as HTML, and the series name
+    // and the unit come from the lake: both are escaped. The marker is
+    // ECharts' own swatch.
+    function tip(params: unknown): string {
+        const rows = (Array.isArray(params) ? params : [params]) as TipRow[];
+        const lines = rows.map(
+            (r) =>
+                `${r.marker ?? ''}${esc(r.seriesName)}: <b>${esc(shown(r.value))}</b> ${esc(unit)}`,
+        );
+        return [esc(rows[0]?.axisValueLabel), ...lines].join('<br/>');
     }
 
     const option: EChartsCoreOption = $derived.by(() => {
@@ -82,7 +111,8 @@
             ];
         });
         const observed = {
-            name: 'observed',
+            id: 'observed',
+            name,
             type: 'line',
             data: pairs(series.observed),
             lineStyle: { color: t.text, width: 1.6 },
@@ -137,7 +167,7 @@
             : [];
         return {
             grid: { left: 48, right: 16, top: 24, bottom: 28 },
-            tooltip: { trigger: 'axis', ...t.tooltip },
+            tooltip: { trigger: 'axis', ...t.tooltip, formatter: tip },
             xAxis: { type: 'time' },
             yAxis: { type: 'value', name: unit, scale: true },
             series: [...bandSeries, observed, ...median],
