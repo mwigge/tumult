@@ -193,9 +193,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
 
     // The version that served the run is asked of the store the run
     // reports to; a run that reports to none asks nobody.
-    let version_resolver = auto_ingest
-        .then(super::target_version::resolver)
-        .flatten();
+    let version_resolver = auto_ingest.then(super::target_version::resolver).flatten();
     let run_config = RunConfig {
         version_resolver,
         baseline_mode,

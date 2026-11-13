@@ -569,7 +569,10 @@ mod tests {
         assert_eq!(resp.environment.as_deref(), Some("demo"));
         assert_eq!(resp.unattributed, 4);
         let baseline = resp.baseline.as_ref().unwrap();
-        assert_eq!((baseline.runs, baseline.inferred, baseline.excluded), (3, 2, 2));
+        assert_eq!(
+            (baseline.runs, baseline.inferred, baseline.excluded),
+            (3, 2, 2)
+        );
         assert_eq!((resp.candidate.planned, resp.candidate.unanswered), (24, 3));
         let text = render(&resp);
         assert!(
@@ -581,9 +584,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains(
-                "      2 run(s) attributed from spans; 2 partial run(s) left out\n"
-            ),
+            text.contains("      2 run(s) attributed from spans; 2 partial run(s) left out\n"),
             "{text}"
         );
         assert!(
@@ -600,7 +601,9 @@ mod tests {
         named["environment"] = Value::Null;
         let text = render(&PerfResponse::from_value(&named).unwrap());
         assert!(
-            text.contains("  versions: named on the request, in telemetry without an environment\n"),
+            text.contains(
+                "  versions: named on the request, in telemetry without an environment\n"
+            ),
             "{text}"
         );
     }

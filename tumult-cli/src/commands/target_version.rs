@@ -142,12 +142,14 @@ impl DaemonVersions {
             .await
             .map_err(|e| format!("version request to {url} failed: {e}"))?;
         let status = answer.status();
-        let body: Value = answer
-            .json()
-            .await
-            .map_err(|e| format!("version request to {url}: HTTP {status}, unreadable body: {e}"))?;
+        let body: Value = answer.json().await.map_err(|e| {
+            format!("version request to {url}: HTTP {status}, unreadable body: {e}")
+        })?;
         if !status.is_success() {
-            let why = body.get("error").and_then(Value::as_str).unwrap_or("no reason given");
+            let why = body
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("no reason given");
             return Err(format!("version request to {url}: HTTP {status}: {why}"));
         }
         Ok(version_in(&body))
@@ -387,13 +389,19 @@ mod tests {
         assert_eq!(versions.resolve(&window(None)), Ok(None));
         let heads = daemon.heads.lock().unwrap().clone();
         assert_eq!(heads.len(), 3, "{heads:?}");
-        assert!(!heads[0].to_lowercase().contains("authorization"), "{heads:?}");
+        assert!(
+            !heads[0].to_lowercase().contains("authorization"),
+            "{heads:?}"
+        );
     }
 
     #[test]
     fn a_refusal_or_a_dead_daemon_is_an_error_and_is_not_asked_again() {
         let daemon = daemon(vec![
-            (403, r#"{"error":"environment demo is outside the principal's scopes"}"#),
+            (
+                403,
+                r#"{"error":"environment demo is outside the principal's scopes"}"#,
+            ),
             (200, r#"{"version":"1.5.0"}"#),
         ]);
         let error = asking(&daemon, None)

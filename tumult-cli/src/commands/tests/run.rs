@@ -596,7 +596,7 @@ async fn run_records_the_version_given_on_the_command_line() {
     assert_eq!(recorded.version_source, VersionSource::Declared);
 
     // It wins over the file's.
-    let filed = format!("{TARGETED}").replace("  environment: demo", "  version: 1.4.0");
+    let filed = TARGETED.replace("  environment: demo", "  version: 1.4.0");
     let journal = run_with_version(dir.path(), &filed, Some("1.5.0"))
         .await
         .unwrap();
