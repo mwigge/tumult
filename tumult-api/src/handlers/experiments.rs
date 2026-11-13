@@ -10,7 +10,8 @@ use serde_json::{json, Value};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, env_scope_where, env_trace_exists, sql_contains, sql_string, windows, with_reader,
+    and_pred, env_scope_where, env_trace_exists, invalid_range, sql_contains, sql_string, windows,
+    with_reader,
 };
 use crate::ApiState;
 
@@ -56,7 +57,7 @@ pub(crate) async fn experiments(
     }
     if let Some(range) = &params.range {
         let Some((cur, _)) = windows(range) else {
-            return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+            return Err(bad(invalid_range(range)));
         };
         wheres.push(format!("s.ts_ns >= {} AND s.ts_ns < {}", cur.0, cur.1));
     }
@@ -136,7 +137,7 @@ pub(crate) async fn experiments(
         }
         if let Some(range) = &params.range {
             let Some((cur, _)) = windows(range) else {
-                return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+                return Err(bad(invalid_range(range)));
             };
             mwheres.push(format!(
                 "m.executed_at_ns >= {} AND m.executed_at_ns < {}",
