@@ -8061,6 +8061,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tracing",
+ "tumult-core",
  "tumult-lake",
  "typst",
  "typst-pdf",
