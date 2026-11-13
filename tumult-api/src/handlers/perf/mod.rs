@@ -109,6 +109,8 @@
 
 mod answer;
 mod evidence;
+#[cfg(test)]
+mod roundtrip_tests;
 mod select;
 
 use std::sync::{Arc, Mutex};
