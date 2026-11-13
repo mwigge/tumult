@@ -16,6 +16,7 @@ tumult-ingest.workspace = true
 tumult-metrics.workspace = true
 tumult-report.workspace = true
 tumult-api.workspace = true
+tumult-core = { path = "../tumult-core" }
 tumult-exec = { path = "../tumult-exec" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-auth = { path = "../tumult-auth" }

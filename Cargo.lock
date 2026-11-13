@@ -8448,6 +8448,7 @@ dependencies = [
  "tumult-api",
  "tumult-auth",
  "tumult-compliance",
+ "tumult-core",
  "tumult-exec",
  "tumult-ingest",
  "tumult-intelligence",
