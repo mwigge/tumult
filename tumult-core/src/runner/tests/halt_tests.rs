@@ -176,3 +176,46 @@ fn no_guard_breach_completes_normally() {
     assert_eq!(journal.status, ExperimentStatus::Completed);
     assert!(journal.halt.is_none());
 }
+
+#[test]
+fn guard_breach_aborts_the_load_instead_of_waiting_for_its_plan() {
+    let mut exp = minimal_experiment();
+    exp.guards = vec![health_guard()];
+    exp.method = vec![test_action("action-1"), test_action("action-2")];
+    exp.rollbacks = vec![test_action("rollback-1")];
+    exp.load = Some(LoadConfig {
+        tool: LoadTool::Oha,
+        script: "http://127.0.0.1:1/".into(),
+        vus: Some(4),
+        // A flat ten-minute load a normal stop would sit out.
+        duration_s: Some(600.0),
+        thresholds: HashMap::new(),
+        profile: None,
+    });
+
+    let (guard_exit_sender, guard_exit_receiver) = mpsc::channel();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(HaltingExecutor {
+        method_calls: Arc::new(Mutex::new(Vec::new())),
+        rollback_ran: Arc::new(AtomicBool::new(false)),
+        guard_exit_sender: Mutex::new(Some(guard_exit_sender)),
+        guard_exit_receiver: Mutex::new(guard_exit_receiver),
+    });
+    let (load, events) = super::load_tests::ScriptedLoad::healthy();
+    let config = RunConfig {
+        load_executor: Some(Arc::new(load)),
+        ..default_config()
+    };
+
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &config,
+        &fast_sampling(),
+    )
+    .unwrap();
+
+    assert_eq!(journal.status, ExperimentStatus::Halted);
+    assert_eq!(*events.lock().unwrap(), vec!["load.abort"]);
+    assert!(journal.load_result.is_some(), "what was measured is kept");
+}

@@ -352,6 +352,11 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         }
         LoadProfile::Soak { sample_interval_s } => {
             positive("sample_interval_s", *sample_interval_s)?;
+            if *sample_interval_s < crate::runner::load_profile::MIN_WINDOW_S {
+                return Err(invalid(
+                    "sample_interval_s must be at least 1 second: a shorter window measures too few requests",
+                ));
+            }
             if *sample_interval_s > duration_s {
                 return Err(invalid("sample_interval_s must not exceed duration_s"));
             }

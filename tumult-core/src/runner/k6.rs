@@ -220,6 +220,33 @@ impl LoadExecutor for K6LoadExecutor {
             samples: vec![],
         })
     }
+
+    fn abort(&self, handle: LoadHandle) -> Result<LoadResult, String> {
+        let k6 = handle
+            .inner
+            .downcast::<K6Handle>()
+            .map_err(|_| "invalid load handle")?;
+        let finished = Self::abort_running(k6)?;
+        self.stop(LoadHandle { inner: finished })
+    }
+}
+
+impl K6LoadExecutor {
+    /// The abort path: a k6 that has already exited is collected as on a
+    /// normal stop; one still running is killed at once and leaves no
+    /// result, since k6 writes its summary only on a clean exit.
+    fn abort_running(mut handle: Box<K6Handle>) -> Result<Box<K6Handle>, String> {
+        match handle.child.try_wait() {
+            Ok(Some(_)) => Ok(handle),
+            Ok(None) => {
+                // Both fail only when the process is already gone.
+                let _ = handle.child.kill();
+                let _ = handle.child.wait();
+                Err("k6 was aborted before it finished; no summary".into())
+            }
+            Err(e) => Err(format!("k6 wait failed: {e}")),
+        }
+    }
 }
 
 /// The k6 arguments that shape the traffic: a flat config is `--vus N
