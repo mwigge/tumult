@@ -35,8 +35,9 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 ///
 /// # Errors
 ///
-/// Returns an error when the version is blank or the experiment declares
-/// no target to attach it to.
+/// Returns an error when the version is blank, longer than
+/// [`tumult_core::types::MAX_VERSION_LEN`] bytes or holds a control
+/// character, or when the experiment declares no target to attach it to.
 pub(crate) fn declare(experiment: &mut Experiment, version: Option<&str>) -> Result<()> {
     let Some(version) = version else {
         return Ok(());
@@ -44,6 +45,9 @@ pub(crate) fn declare(experiment: &mut Experiment, version: Option<&str>) -> Res
     let version = version.trim();
     if version.is_empty() {
         bail!("--target-version must name a version");
+    }
+    if let Err(e) = tumult_core::types::check_version_text(version) {
+        bail!("--target-version: {e}");
     }
     let Some(target) = experiment.target.as_mut() else {
         bail!(
@@ -243,6 +247,25 @@ mod tests {
             targetless.to_string().contains("no `target` block"),
             "{targetless}"
         );
+    }
+
+    #[test]
+    fn a_version_on_the_command_line_is_held_to_the_bounds() {
+        let long = "9".repeat(tumult_core::types::MAX_VERSION_LEN + 1);
+        let refused = declare(&mut experiment(Some("")), Some(&long)).unwrap_err();
+        assert!(
+            refused
+                .to_string()
+                .contains("--target-version: a version is at most 128 bytes"),
+            "{refused}"
+        );
+        let mut filed = experiment(Some("1.4.0"));
+        let refused = declare(&mut filed, Some("1.5.0\u{7}")).unwrap_err();
+        assert!(
+            refused.to_string().contains("no control characters"),
+            "{refused}"
+        );
+        assert_eq!(declared(&filed), Some("1.4.0"), "the file's is left alone");
     }
 
     #[test]

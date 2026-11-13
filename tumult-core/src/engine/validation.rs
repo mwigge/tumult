@@ -116,6 +116,7 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
 
     validate_objectives(experiment)?;
     validate_load(experiment)?;
+    validate_target_version(experiment)?;
 
     // Validate hypothesis has probes if defined
     if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
@@ -289,6 +290,20 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
 /// must be finite and positive, and the shaped segments must fit inside
 /// the duration. Checked here so an impossible shape fails at `validate`
 /// rather than when the load tool starts.
+/// A declared version is held to the bounds of every version string.
+fn validate_target_version(experiment: &Experiment) -> Result<(), EngineError> {
+    let Some(version) = experiment
+        .target
+        .as_ref()
+        .and_then(|target| target.declared_version())
+    else {
+        return Ok(());
+    };
+    crate::types::check_version_text(version).map_err(|e| EngineError::TargetVersionInvalid {
+        reason: e.to_string(),
+    })
+}
+
 fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());

@@ -10,6 +10,7 @@ mod ids;
 mod journal;
 mod results;
 mod target;
+mod version_text;
 
 pub use definition::*;
 pub use enums::*;
@@ -18,6 +19,7 @@ pub use ids::*;
 pub use journal::*;
 pub use results::*;
 pub use target::*;
+pub use version_text::*;
 
 #[cfg(test)]
 pub(crate) mod test_support {
