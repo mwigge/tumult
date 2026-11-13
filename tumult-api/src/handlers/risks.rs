@@ -19,7 +19,7 @@ use std::path::{Path as FsPath, PathBuf};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::{Extension, Json};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tumult_compliance::scoring::{ExperimentScore, RunState};
 use tumult_lake::Reader;
@@ -335,6 +335,47 @@ fn gather(
     })
 }
 
+/// One objective verdict from the latest run of an experiment, flattened
+/// for the posture page's NFR heatmap (targets × objectives, hue = margin).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct NfrCell {
+    target: String,
+    environment: Option<String>,
+    experiment: String,
+    nfr_id: String,
+    kind: String,
+    state: String,
+    criticality: String,
+    threshold: f64,
+    observed: Option<f64>,
+    margin: Option<f64>,
+}
+
+fn nfr_cells(inputs: &Inputs) -> Vec<NfrCell> {
+    let mut out: Vec<NfrCell> = inputs
+        .targets
+        .iter()
+        .flat_map(|t| {
+            t.experiments.iter().flat_map(move |e| {
+                e.verdicts.iter().map(move |v| NfrCell {
+                    target: t.target.clone(),
+                    environment: t.environment.clone(),
+                    experiment: e.name.clone(),
+                    nfr_id: v.nfr_id.clone(),
+                    kind: v.kind.clone(),
+                    state: v.state.clone(),
+                    criticality: v.criticality.clone(),
+                    threshold: v.threshold,
+                    observed: v.observed,
+                    margin: v.margin,
+                })
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.target.cmp(&b.target).then(a.nfr_id.cmp(&b.nfr_id)));
+    out
+}
+
 async fn scan_for(
     state: &ApiState,
     principal: &Principal,
@@ -376,6 +417,7 @@ pub(crate) async fn posture(
         "summary": report.summary,
         "coverage": report.coverage,
         "top_risks": top,
+        "nfrs": nfr_cells(&inputs),
     });
     Ok(Json(body))
 }
@@ -534,6 +576,46 @@ mod tests {
         never.last_run_ns = None;
         let targets = targets_from(&[untargeted, never], &BTreeMap::new(), &BTreeMap::new());
         assert!(targets.is_empty());
+    }
+
+    #[test]
+    fn nfr_cells_flatten_verdicts_per_target_and_objective() {
+        let verdict = |id: &str, margin: f64| Verdict {
+            nfr_id: id.into(),
+            kind: "latency".into(),
+            state: if margin >= 0.0 { "met" } else { "breached" }.into(),
+            criticality: "major".into(),
+            threshold: 100.0,
+            observed: Some(100.0 - margin),
+            margin: Some(margin),
+        };
+        let inputs = Inputs {
+            targets: vec![TargetEvidence {
+                target: "db".into(),
+                environment: Some("demo".into()),
+                experiments: vec![ExperimentLatest {
+                    name: "pg".into(),
+                    kind: "dr".into(),
+                    last_run_ns: 1,
+                    passed: true,
+                    outcome: None,
+                    evidence_id: None,
+                    verdicts: vec![verdict("p99", 10.0), verdict("avail", -2.0)],
+                    rto_target_s: None,
+                    rto_measured_s: None,
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let cells = nfr_cells(&inputs);
+        assert_eq!(cells.len(), 2);
+        assert_eq!(
+            (cells[0].nfr_id.as_str(), cells[0].state.as_str()),
+            ("avail", "breached")
+        );
+        assert_eq!(cells[1].experiment, "pg");
+        assert_eq!(cells[1].margin, Some(10.0));
     }
 
     #[test]

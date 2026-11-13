@@ -94,6 +94,49 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
                 summary: { total: 3, critical: 0, high: 2, medium: 0, low: 1, suppressed: 0 },
                 coverage,
                 top_risks: risks,
+                nfrs: [
+                    {
+                        target: 'database',
+                        environment: 'demo',
+                        experiment: 'pg-failover',
+                        nfr_id: 'p99_latency',
+                        kind: 'latency',
+                        state: 'met',
+                        criticality: 'major',
+                        threshold: 250,
+                        observed: 180,
+                        margin: 70,
+                    },
+                    {
+                        target: 'database',
+                        environment: 'demo',
+                        experiment: 'pg-failover',
+                        nfr_id: 'availability',
+                        kind: 'availability',
+                        state: 'breached',
+                        criticality: 'blocking',
+                        threshold: 99.9,
+                        observed: 99.1,
+                        margin: -0.8,
+                    },
+                ],
+            };
+        else if (path === '/api/scores/tree')
+            body = {
+                name: 'company',
+                path: '',
+                score: 62.5,
+                band: 'fair',
+                weight: 1,
+                scored: 1,
+                expected: 1,
+                children: [],
+                delta: 1.5,
+                sparkline: [
+                    [1, 58],
+                    [2, 60],
+                    [3, 62.5],
+                ],
             };
         else if (path === '/api/risks')
             body = suppressed
@@ -159,6 +202,19 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
         return opt?.series?.[0]?.data?.length ?? -1;
     });
     expect(cells).toBe(7);
+
+    // The NFR heatmap has one cell per verdict; the trend carries the sparkline.
+    const charts = await page.evaluate(() => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const nfr = w.__tumultCharts?.nfr as { series?: { data?: unknown[] }[] } | undefined;
+        const trend = w.__tumultCharts?.trend as
+            { series?: { name?: string; data?: unknown[] }[] } | undefined;
+        return {
+            nfrCells: nfr?.series?.[0]?.data?.length ?? -1,
+            trendPoints: trend?.series?.find((s) => s.name === 'observed')?.data?.length ?? -1,
+        };
+    });
+    expect(charts).toEqual({ nfrCells: 2, trendPoints: 3 });
 
     // Accepting a finding posts the reason and the list refreshes.
     await list.nth(0).getByRole('button', { name: 'accept' }).click();

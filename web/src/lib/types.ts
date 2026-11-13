@@ -867,6 +867,21 @@ export interface TargetPosture {
     components: PostureComponents;
 }
 
+/** One objective verdict from the latest run of an experiment, for the
+    NFR heatmap (targets × objectives, hue = margin). */
+export interface NfrCell {
+    target: string;
+    environment: string | null;
+    experiment: string;
+    nfr_id: string;
+    kind: string;
+    state: 'met' | 'breached' | 'inconclusive' | string;
+    criticality: string;
+    threshold: number;
+    observed: number | null;
+    margin: number | null;
+}
+
 /** `GET /api/posture` */
 export interface PostureResponse {
     as_of_ns: number;
@@ -874,6 +889,7 @@ export interface PostureResponse {
     summary: RiskSummary;
     coverage: Coverage;
     top_risks: Risk[];
+    nfrs: NfrCell[];
 }
 
 /** `POST /api/risks/{id}/suppress` response: the hash-chained row. */

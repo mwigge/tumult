@@ -6,11 +6,16 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
-    import type { MeResponse, PostureResponse, Risk, RiskReport } from '#lib/types.js';
+    import type { MeResponse, PostureResponse, Risk, RiskReport, ScoreTree } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
+    import FanChart from '#lib/components/FanChart.svelte';
+    import type { FanSeries } from '#lib/components/FanChart.svelte';
 
     let posture: PostureResponse | null = $state(null);
     let report: RiskReport | null = $state(null);
+    let tree: ScoreTree | null = $state(null);
+    const TREND_RANGE = '14d';
+    const TREND_MS = 14 * 86_400_000;
     let error: string | null = $state(null);
     let me = $state<MeResponse | null>(null);
     let showSuppressed = $state(false);
@@ -35,6 +40,10 @@
         } catch (e) {
             error = String(e);
         }
+        // The trend is decoration; its failure never hides the scan.
+        api.scoreTree('', TREND_RANGE)
+            .then((t) => (tree = t))
+            .catch(() => (tree = null));
     }
 
     $effect(() => {
@@ -144,6 +153,64 @@
     });
 
     const pct = (v: number | null) => (v == null ? '–' : `${Math.round(v)}`);
+
+    // NFR heatmap: targets × objectives, hue = margin (negative = breached).
+    const nfrOption: EChartsCoreOption | null = $derived.by(() => {
+        if (!posture || posture.nfrs.length === 0) return null;
+        const ids = [...new Set(posture.nfrs.map((n) => n.nfr_id))];
+        const targets = [...new Set(posture.nfrs.map((n) => n.target))];
+        const cells = posture.nfrs;
+        const value = (n: (typeof cells)[number]) =>
+            n.margin ?? (n.state === 'met' ? 0.5 : n.state === 'breached' ? -0.5 : 0);
+        const span = Math.max(1, ...cells.map((n) => Math.abs(value(n))));
+        return {
+            grid: { left: 110, right: 16, top: 10, bottom: 40 },
+            tooltip: {
+                ...t.tooltip,
+                formatter: (p: { data?: (number | string)[] }) => {
+                    const i = Number(p.data?.[3] ?? -1);
+                    const n = cells[i];
+                    if (!n) return '';
+                    return (
+                        `<b>${n.target}</b> · ${n.nfr_id} (${n.experiment})<br/>${n.state}` +
+                        (n.observed != null ? ` · observed ${n.observed} vs ${n.threshold}` : '') +
+                        (n.margin != null ? ` · margin ${n.margin}` : '')
+                    );
+                },
+            },
+            xAxis: { type: 'category', data: ids, axisLabel: { color: t.text } },
+            yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
+            visualMap: {
+                show: false,
+                min: -span,
+                max: span,
+                inRange: { color: [t.fail, t.warn, t.ok] },
+            },
+            series: [
+                {
+                    type: 'heatmap',
+                    data: cells.map((n, i) => [
+                        ids.indexOf(n.nfr_id),
+                        targets.indexOf(n.target),
+                        value(n),
+                        i,
+                    ]),
+                    itemStyle: { borderColor: 'transparent', borderWidth: 2 },
+                },
+            ],
+        };
+    });
+
+    // Score trend over the range: bucket indices become timestamps ending now.
+    const trend: FanSeries | null = $derived.by(() => {
+        if (!tree || tree.sparkline.length === 0) return null;
+        const n = tree.sparkline.length;
+        const now = Date.now();
+        return {
+            ts: tree.sparkline.map((p) => now - TREND_MS + (TREND_MS * p[0]) / n),
+            observed: tree.sparkline.map((p) => p[1]),
+        };
+    });
 </script>
 
 <div class="page-head">
@@ -274,6 +341,30 @@
             {/if}
         </section>
     </div>
+
+    {#if nfrOption || trend}
+        <div class="grid cols-2 below">
+            {#if nfrOption}
+                <section class="panel" data-testid="nfrs">
+                    <h2>Objectives</h2>
+                    <EChart
+                        option={nfrOption}
+                        id="nfr"
+                        height={Math.max(
+                            160,
+                            28 * new Set(posture.nfrs.map((n) => n.target)).size + 60,
+                        )}
+                    />
+                </section>
+            {/if}
+            {#if trend}
+                <section class="panel" data-testid="trend">
+                    <h2>Compliance score, {TREND_RANGE}</h2>
+                    <FanChart series={trend} unit="score" id="trend" height={220} />
+                </section>
+            {/if}
+        </div>
+    {/if}
 
     <section class="panel score" data-testid="posture">
         <h2>Posture score</h2>
@@ -415,7 +506,8 @@
         color: var(--fail);
         font-size: 12.5px;
     }
-    .score {
+    .score,
+    .below {
         margin-top: 14px;
     }
     .headline {

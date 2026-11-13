@@ -84,6 +84,7 @@ async fn posture_returns_score_summary_and_top_risks() {
         body["summary"]["total"].as_u64().unwrap()
     );
     assert!(body["coverage"]["targets"].is_array());
+    assert!(body["nfrs"].is_array(), "{body}");
 }
 
 /// Suppressing a finding moves it from `risks` to `suppressed` with the
