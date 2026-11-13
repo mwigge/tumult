@@ -19,6 +19,7 @@
 //! See `docs/guides/logging.md` for the field vocabulary and event naming.
 
 mod bridge;
+mod capped;
 mod error;
 mod fields;
 mod filter;
@@ -31,6 +32,7 @@ use std::io::{IsTerminal, Write};
 use std::sync::OnceLock;
 
 use opentelemetry_sdk::logs::SdkLoggerProvider;
+use serde_json::Value;
 use tracing::{Level, Subscriber};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -38,13 +40,14 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 use bridge::LogBridgeSlot;
+use format::DirectEvent;
 
 pub use bridge::AttachError;
 pub use error::{err, err_sources, error_type, ErrorChain, SourceChain};
 pub use fields::{bounded, TypedFields, MAX_FIELD_BYTES};
 pub use filter::{default_directives, is_exporter_internal};
 pub use format::{EventFormatter, LogFormat, LogResource};
-pub use sanitize::{redact_url, sanitize_url};
+pub use sanitize::{redact_url, sanitize_url, server_address, ServerAddress};
 pub use selection::{choose_format, FormatChoice, FORMAT_ENV};
 
 /// Environment variable naming the deployment environment (`prod`, `dev`,
@@ -58,13 +61,26 @@ pub const ENVIRONMENT_ATTRIBUTE: &str = "deployment.environment.name";
 const RUST_LOG_ENV: &str = "RUST_LOG";
 const NO_COLOR_ENV: &str = "NO_COLOR";
 const RESOURCE_ATTRIBUTES_ENV: &str = "OTEL_RESOURCE_ATTRIBUTES";
+const BACKTRACE_ENV: &str = "RUST_BACKTRACE";
+
+const FATAL_EVENT: &str = "process.fatal";
+const FATAL_MESSAGE: &str = "exiting because of an unrecoverable error";
+const PANIC_EVENT: &str = "process.panic";
+const PANIC_MESSAGE: &str = "process panicked";
 
 /// The version stamped on log lines and on the OpenTelemetry resource.
 pub(crate) const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The bridge slot of the globally installed subscriber. Set exactly once,
-/// by the [`init`] call that installed it.
-static GLOBAL_BRIDGE: OnceLock<LogBridgeSlot> = OnceLock::new();
+/// What the [`init`] call that installed the global subscriber left behind.
+/// Set exactly once.
+static INSTALLED: OnceLock<Installed> = OnceLock::new();
+
+struct Installed {
+    /// The bridge slot of the installed subscriber.
+    bridge: LogBridgeSlot,
+    /// The identity stamped on lines written past the subscriber.
+    resource: LogResource,
+}
 
 /// What a binary decides about its logging.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +93,10 @@ pub struct LogOptions {
     /// Forces a format. `None` (the default) honours `TUMULT_LOG_FORMAT`
     /// and otherwise picks text for a terminal and JSON for everything else.
     pub format: Option<LogFormat>,
+    /// Modules (each with its submodules) whose events are written to
+    /// stderr but never exported over OTLP. See
+    /// [`with_local_only_targets`](Self::with_local_only_targets).
+    pub local_only_targets: Vec<String>,
 }
 
 impl LogOptions {
@@ -87,6 +107,7 @@ impl LogOptions {
             service_name: service_name.into(),
             default_level: Level::INFO,
             format: None,
+            local_only_targets: Vec::new(),
         }
     }
 
@@ -118,6 +139,23 @@ impl LogOptions {
         self.format = Some(format);
         self
     }
+
+    /// Keeps the events of `targets` (module paths, each covering its
+    /// submodules) out of the OTLP export. They are still written to stderr.
+    ///
+    /// A process that receives its own export needs this for the modules on
+    /// the receiving path: an error logged there while storing a record
+    /// would be exported, received, fail the same way and be logged again,
+    /// without end.
+    #[must_use]
+    pub fn with_local_only_targets<I, T>(mut self, targets: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<String>,
+    {
+        self.local_only_targets = targets.into_iter().map(Into::into).collect();
+        self
+    }
 }
 
 /// Why [`init`] did not install the subscriber.
@@ -136,7 +174,9 @@ pub enum InitError {
 /// installs.
 ///
 /// Also installs a panic hook that reports panics as a `process.panic`
-/// error event instead of the default unstructured message.
+/// error event instead of the default unstructured message. The hook that
+/// was installed before runs after it when `RUST_BACKTRACE` asks for a
+/// backtrace, so the backtrace follows the event.
 ///
 /// # Errors
 ///
@@ -157,20 +197,22 @@ pub fn init(options: LogOptions) -> Result<(), InitError> {
     };
     let (filter, rejected_filter) =
         filter::env_filter(env_value(RUST_LOG_ENV).as_deref(), options.default_level);
+    let resource = process_resource(options.service_name);
     let pipeline = Pipeline {
-        formatter: EventFormatter::new(choice.format, process_resource(options.service_name)),
+        formatter: EventFormatter::new(choice.format, resource.clone()),
         filter,
         writer: std::io::stderr,
         ansi: stderr_is_terminal && std::env::var_os(NO_COLOR_ENV).is_none(),
+        local_only: options.local_only_targets,
     };
-    let (subscriber, slot) = pipeline.build();
+    let (subscriber, bridge) = pipeline.build();
     subscriber
         .try_init()
         .map_err(|e| InitError::Install(e.to_string()))?;
-    GLOBAL_BRIDGE
-        .set(slot)
+    INSTALLED
+        .set(Installed { bridge, resource })
         .map_err(|_| InitError::AlreadyInitialized)?;
-    std::panic::set_hook(Box::new(panic_hook));
+    install_panic_hook();
     report_rejected_settings(choice.rejected.as_deref(), rejected_filter.as_deref());
     Ok(())
 }
@@ -180,46 +222,92 @@ pub fn init(options: LogOptions) -> Result<(), InitError> {
 /// With no subscriber there is nothing to log through, so this writes one
 /// JSON line — shaped like every other log line — straight to stderr.
 pub fn report_init_failure(service_name: &str, error: &InitError) {
-    let line = init_failure_line(service_name, error, chrono::Utc::now());
-    // A failed write means stderr itself is gone: there is nowhere left to
-    // report anything to.
-    let _ = writeln!(std::io::stderr().lock(), "{line}");
+    let resource = process_resource(service_name.to_string());
+    write_to_stderr(&init_failure_line(&resource, error, chrono::Utc::now()));
 }
 
 fn init_failure_line(
-    service_name: &str,
+    resource: &LogResource,
     error: &InitError,
     now: chrono::DateTime<chrono::Utc>,
 ) -> String {
-    serde_json::json!({
-        "timestamp": now.to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
-        "level": "ERROR",
-        "target": module_path!(),
-        "event.name": "logging.init.failed",
-        "message": "logging could not be initialised",
-        "service.name": service_name,
-        "service.version": SERVICE_VERSION,
-        "error.type": error_type(error),
-        "error.message": error.to_string(),
-    })
-    .to_string()
+    let event = DirectEvent {
+        name: "logging.init.failed",
+        message: "logging could not be initialised",
+        fields: vec![
+            ("error.type", Value::from(error_type(error))),
+            ("error.message", capped_value(&error.to_string())),
+        ],
+    };
+    format::error_line(resource, now, module_path!(), event)
 }
 
 /// Logs the error that is about to end the process as a `process.fatal`
 /// error event. Binaries call this instead of letting `main` return the
 /// error, which would print it unstructured.
+///
+/// The event is never lost to the log filter: when the filter would drop
+/// it (`RUST_LOG=off`, or a filter that names other crates only), the same
+/// line is written to stderr directly.
 pub fn log_fatal<E: std::fmt::Display + ?Sized>(error: &E) {
+    let message = err(error).to_string();
+    if emit_fatal(&message) {
+        return;
+    }
+    write_past_the_subscriber(DirectEvent {
+        name: FATAL_EVENT,
+        message: FATAL_MESSAGE,
+        fields: vec![("error.message", capped_value(&message))],
+    });
+}
+
+/// Emits the `process.fatal` event through the subscriber. Returns whether
+/// the subscriber takes error events from here; `false` means nothing was
+/// written.
+fn emit_fatal(message: &str) -> bool {
+    if !tracing::enabled!(Level::ERROR) {
+        return false;
+    }
     tracing::error!(
         name: "process.fatal",
-        { error.message = %err(error) },
+        { error.message = message },
         "exiting because of an unrecoverable error"
     );
+    true
+}
+
+/// Writes `event` as one JSON line straight to stderr, for an event the
+/// subscriber would filter away.
+fn write_past_the_subscriber(event: DirectEvent) {
+    let now = chrono::Utc::now();
+    let Some(installed) = INSTALLED.get() else {
+        let unknown = process_resource("unknown_service".to_string());
+        write_to_stderr(&format::error_line(&unknown, now, module_path!(), event));
+        return;
+    };
+    write_to_stderr(&format::error_line(
+        &installed.resource,
+        now,
+        module_path!(),
+        event,
+    ));
+}
+
+fn write_to_stderr(line: &str) {
+    // A failed write means stderr itself is gone: there is nowhere left to
+    // report anything to.
+    let _ = writeln!(std::io::stderr().lock(), "{line}");
+}
+
+/// `text` as a JSON string, capped like every formatted field.
+fn capped_value(text: &str) -> Value {
+    Value::from(bounded(text).as_ref())
 }
 
 /// Whether [`init`] has installed the subscriber in this process.
 #[must_use]
 pub fn is_initialized() -> bool {
-    GLOBAL_BRIDGE.get().is_some()
+    INSTALLED.get().is_some()
 }
 
 /// Starts mirroring log events to `provider` over OTLP.
@@ -229,19 +317,20 @@ pub fn is_initialized() -> bool {
 /// [`AttachError::NotInitialized`] before [`init`], and
 /// [`AttachError::AlreadyAttached`] when a provider is already attached.
 pub(crate) fn attach_log_bridge(provider: &SdkLoggerProvider) -> Result<(), AttachError> {
-    GLOBAL_BRIDGE
+    INSTALLED
         .get()
         .ok_or(AttachError::NotInitialized)?
+        .bridge
         .attach(provider)
 }
 
 /// Stops mirroring log events over OTLP, before the logger provider is shut
 /// down. A no-op when [`init`] has not installed the subscriber.
 pub(crate) fn detach_log_bridge() {
-    let Some(slot) = GLOBAL_BRIDGE.get() else {
+    let Some(installed) = INSTALLED.get() else {
         return;
     };
-    slot.detach();
+    installed.bridge.detach();
 }
 
 /// The deployment environment for this process, if configured.
@@ -292,6 +381,9 @@ struct Pipeline<W> {
     filter: EnvFilter,
     writer: W,
     ansi: bool,
+    /// Modules whose events are not exported; see
+    /// [`LogOptions::with_local_only_targets`].
+    local_only: Vec<String>,
 }
 
 impl<W> Pipeline<W>
@@ -305,7 +397,7 @@ where
             .with(self.filter)
             .with(format::event_layer(self.formatter, self.writer, self.ansi))
             .with(tracing_opentelemetry::layer())
-            .with(slot.layer());
+            .with(slot.layer_keeping_local(self.local_only));
         (subscriber, slot)
     }
 }
@@ -329,24 +421,75 @@ fn report_rejected_settings(format: Option<&str>, filter: Option<&str>) {
     }
 }
 
-fn panic_hook(info: &std::panic::PanicHookInfo<'_>) {
+/// Replaces the panic hook with one that reports the panic as a
+/// `process.panic` event, then hands over to the hook it replaced when a
+/// backtrace was asked for.
+///
+/// The previous hook (normally the standard one) prints the unstructured
+/// `thread ... panicked at` message. That is noise next to the event, so it
+/// only runs when `RUST_BACKTRACE` is set, where it is the one thing able to
+/// print the backtrace.
+fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        report_panic(info);
+        if backtrace_requested(env_value(BACKTRACE_ENV).as_deref()) {
+            previous(info);
+        }
+    }));
+}
+
+/// Whether a `RUST_BACKTRACE` value asks for a backtrace: any value but `0`.
+fn backtrace_requested(rust_backtrace: Option<&str>) -> bool {
+    rust_backtrace.is_some_and(|value| value != "0")
+}
+
+/// Reports a panic as the `process.panic` event; past the subscriber when
+/// its filter would drop the event, so a panic is never silent.
+fn report_panic(info: &std::panic::PanicHookInfo<'_>) {
     let message = info
         .payload_as_str()
         .unwrap_or("panic with a non-string payload");
     let location = info.location().map(|at| (at.file(), at.line()));
-    log_panic_event(message, location);
+    if emit_panic(message, location) {
+        return;
+    }
+    write_past_the_subscriber(panic_event(message, location));
 }
 
-/// Emits the `process.panic` event for a panic with `message` raised at
-/// `location` (`(file, line)`).
-fn log_panic_event(message: &str, location: Option<(&str, u32)>) {
+/// The `process.panic` event as a line of its own, with the fields
+/// [`emit_panic`] logs.
+fn panic_event(message: &str, location: Option<(&str, u32)>) -> DirectEvent {
+    let mut fields = vec![
+        ("exception.type", Value::from("panic")),
+        ("exception.message", capped_value(message)),
+    ];
+    if let Some((file, line)) = location {
+        fields.push(("code.file.path", capped_value(file)));
+        fields.push(("code.line.number", Value::from(line)));
+    }
+    DirectEvent {
+        name: PANIC_EVENT,
+        message: PANIC_MESSAGE,
+        fields,
+    }
+}
+
+/// Emits the `process.panic` event, for a panic with `message` raised at
+/// `location` (`(file, line)`), through the subscriber. Returns whether the
+/// subscriber takes error events from here; `false` means nothing was
+/// written.
+fn emit_panic(message: &str, location: Option<(&str, u32)>) -> bool {
+    if !tracing::enabled!(Level::ERROR) {
+        return false;
+    }
     let Some((file, line)) = location else {
         tracing::error!(
             name: "process.panic",
             { "exception.type" = "panic", exception.message = message },
             "process panicked"
         );
-        return;
+        return true;
     };
     tracing::error!(
         name: "process.panic",
@@ -358,6 +501,7 @@ fn log_panic_event(message: &str, location: Option<(&str, u32)>) {
         },
         "process panicked"
     );
+    true
 }
 
 #[cfg(test)]
@@ -367,19 +511,134 @@ mod tests {
     use serde_json::Value;
     use tracing::Level;
 
+    use super::format::test_support::{fixed_clock, resource};
     use super::format::test_support::{formatter, Capture};
     use super::{
-        environment_from, filter, log_panic_event, report_rejected_settings, LogFormat, LogOptions,
-        Pipeline,
+        backtrace_requested, emit_fatal, emit_panic, environment_from, filter, format, panic_event,
+        report_rejected_settings, LogFormat, LogOptions, Pipeline,
     };
 
     fn pipeline(capture: &Capture) -> Pipeline<Capture> {
+        filtered_pipeline(capture, None)
+    }
+
+    /// A pipeline filtered as `RUST_LOG=<rust_log>` would filter it.
+    fn filtered_pipeline(capture: &Capture, rust_log: Option<&str>) -> Pipeline<Capture> {
         Pipeline {
             formatter: formatter(LogFormat::Json),
-            filter: filter::env_filter(None, Level::INFO).0,
+            filter: filter::env_filter(rust_log, Level::INFO).0,
             writer: capture.clone(),
             ansi: false,
+            local_only: Vec::new(),
         }
+    }
+
+    /// Runs `emit` under a subscriber filtered by `rust_log`; returns what
+    /// `emit` returned and the lines it logged.
+    fn under_filter<T>(rust_log: &str, emit: impl FnOnce() -> T) -> (T, Vec<Value>) {
+        let capture = Capture::default();
+        let (subscriber, _slot) = filtered_pipeline(&capture, Some(rust_log)).build();
+        let returned = tracing::subscriber::with_default(subscriber, emit);
+        (returned, json_lines(&capture))
+    }
+
+    #[test]
+    fn a_fatal_event_the_filter_drops_is_reported_as_not_emitted() {
+        for rust_log in ["off", "tumult_core=debug"] {
+            let (emitted, lines) = under_filter(rust_log, || emit_fatal("locked"));
+            assert!(!emitted, "RUST_LOG={rust_log}");
+            assert!(lines.is_empty(), "RUST_LOG={rust_log}: {lines:?}");
+        }
+    }
+
+    #[test]
+    fn a_fatal_event_the_filter_keeps_is_emitted_once() {
+        for rust_log in ["error", "info", "tumult_otel=error"] {
+            let (emitted, lines) = under_filter(rust_log, || emit_fatal("locked"));
+            assert!(emitted, "RUST_LOG={rust_log}");
+            assert_eq!(lines.len(), 1, "RUST_LOG={rust_log}");
+            assert_eq!(lines[0]["event.name"], "process.fatal");
+            assert_eq!(lines[0]["error.message"], "locked");
+        }
+    }
+
+    #[test]
+    fn a_panic_event_the_filter_drops_is_reported_as_not_emitted() {
+        for rust_log in ["off", "tumult_core=debug"] {
+            let (emitted, lines) = under_filter(rust_log, || emit_panic("boom", None));
+            assert!(!emitted, "RUST_LOG={rust_log}");
+            assert!(lines.is_empty(), "RUST_LOG={rust_log}: {lines:?}");
+        }
+    }
+
+    #[test]
+    fn the_direct_panic_line_carries_the_fields_of_the_emitted_event() {
+        let (emitted, lines) = under_filter("info", || {
+            emit_panic("boom\nbang", Some(("src/lib.rs", 42)))
+        });
+        assert!(emitted);
+        let direct = format::error_line(
+            &resource(),
+            fixed_clock(),
+            module_path!().trim_end_matches("::tests"),
+            panic_event("boom\nbang", Some(("src/lib.rs", 42))),
+        );
+        let mut direct: Value = serde_json::from_str(&direct).unwrap();
+        let mut emitted = lines[0].clone();
+        for line in [&mut direct, &mut emitted] {
+            line.as_object_mut().unwrap().remove("timestamp");
+        }
+        assert_eq!(direct, emitted);
+    }
+
+    #[test]
+    fn a_direct_panic_line_without_a_location_omits_the_code_fields() {
+        let event = panic_event("boom", None);
+        let keys: Vec<_> = event.fields.iter().map(|(key, _)| *key).collect();
+        assert_eq!(keys, ["exception.type", "exception.message"]);
+    }
+
+    #[test]
+    fn a_backtrace_is_requested_by_any_value_but_zero() {
+        assert!(!backtrace_requested(None));
+        assert!(!backtrace_requested(Some("0")));
+        assert!(backtrace_requested(Some("1")));
+        assert!(backtrace_requested(Some("full")));
+    }
+
+    #[test]
+    fn local_only_targets_are_logged_but_not_exported() {
+        let capture = Capture::default();
+        let pipeline = Pipeline {
+            local_only: vec!["tumult_ingest::writer".to_string()],
+            ..pipeline(&capture)
+        };
+        let (subscriber, slot) = pipeline.build();
+        let exporter = InMemoryLogExporter::default();
+        let logger_provider = SdkLoggerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        slot.attach(&logger_provider).unwrap();
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::error!(target: "tumult_ingest::writer", "failed to persist ingest batch");
+            tracing::error!(target: "tumult_ingest::runs", "run failed");
+        });
+
+        assert_eq!(json_lines(&capture).len(), 2, "both logged locally");
+        let records = exporter.get_emitted_logs().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].record.target().map(AsRef::as_ref),
+            Some("tumult_ingest::runs")
+        );
+    }
+
+    #[test]
+    fn local_only_targets_are_set_through_the_builder() {
+        let options = LogOptions::new("tumultd").with_local_only_targets(["a::b", "c"]);
+        assert_eq!(options.local_only_targets, ["a::b", "c"]);
+        assert!(LogOptions::new("tumultd").local_only_targets.is_empty());
     }
 
     fn json_lines(capture: &Capture) -> Vec<Value> {
@@ -507,7 +766,7 @@ mod tests {
         let capture = Capture::default();
         let (subscriber, _slot) = pipeline(&capture).build();
         tracing::subscriber::with_default(subscriber, || {
-            log_panic_event("index out of bounds\nsecond line", Some(("src/lib.rs", 42)));
+            emit_panic("index out of bounds\nsecond line", Some(("src/lib.rs", 42)));
         });
         let lines = json_lines(&capture);
         assert_eq!(lines.len(), 1);
@@ -527,7 +786,9 @@ mod tests {
     fn panic_without_a_location_omits_the_code_fields() {
         let capture = Capture::default();
         let (subscriber, _slot) = pipeline(&capture).build();
-        tracing::subscriber::with_default(subscriber, || log_panic_event("boom", None));
+        tracing::subscriber::with_default(subscriber, || {
+            emit_panic("boom", None);
+        });
         let event = &json_lines(&capture)[0];
         assert!(event.get("code.file.path").is_none());
         assert!(event.get("code.line.number").is_none());
@@ -561,9 +822,12 @@ mod tests {
 
     #[test]
     fn init_failure_is_one_json_line_shaped_like_a_log_event() {
-        let now = super::format::test_support::fixed_clock();
+        let resource = super::LogResource {
+            service_name: "tumultd".to_string(),
+            ..resource()
+        };
         let error = super::InitError::Install("a global subscriber\nis already set".into());
-        let line = super::init_failure_line("tumultd", &error, now);
+        let line = super::init_failure_line(&resource, &error, fixed_clock());
         assert!(!line.contains('\n'), "{line}");
         let event: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(event["timestamp"], "2026-01-01T00:00:00.000000Z");

@@ -128,6 +128,11 @@ where
         .event_format(formatter)
         .with_writer(writer)
         .with_ansi(ansi)
+        // A failed write must stay silent. With this on, the layer reports
+        // the failure with `eprintln!`, which panics when stderr is the
+        // thing that failed (a closed pipe); the panic hook logs, fails the
+        // same way, and the process aborts before any rollback runs.
+        .log_internal_errors(false)
 }
 
 /// The identifiers of the OpenTelemetry span active when an event fired.
@@ -219,25 +224,14 @@ impl EventRecord {
     }
 
     fn write_json(self, resource: &LogResource, mut writer: Writer<'_>) -> fmt::Result {
-        let mut line = JsonLine::default();
-        line.reserved("timestamp", Value::String(self.timestamp));
-        line.reserved("level", Value::from(self.level.as_str()));
-        line.reserved("target", Value::String(self.target));
-        if let Some(name) = self.name {
-            line.reserved("event.name", Value::from(name));
-        }
-        line.reserved("message", Value::String(self.message));
-        line.reserved("service.name", Value::from(resource.service_name.as_str()));
-        line.reserved(
-            "service.version",
-            Value::from(resource.service_version.as_str()),
-        );
-        if let Some(environment) = &resource.environment {
-            line.reserved(
-                "deployment.environment.name",
-                Value::from(bounded(environment).as_ref()),
-            );
-        }
+        let head = LineHead {
+            timestamp: self.timestamp,
+            level: self.level,
+            target: self.target,
+            name: self.name,
+            message: self.message,
+        };
+        let mut line = JsonLine::start(head, resource);
         if let Some(trace) = self.trace {
             line.reserved("trace_id", Value::String(trace.trace_id));
             line.reserved("span_id", Value::String(trace.span_id));
@@ -249,8 +243,8 @@ impl EventRecord {
         for (key, value) in self.fields {
             line.field(key, value);
         }
-        let json = serde_json::to_string(&line).map_err(|_| fmt::Error)?;
-        writeln!(writer, "{}", escape_remaining_controls(&json))
+        let json = line.render().map_err(|_| fmt::Error)?;
+        writeln!(writer, "{json}")
     }
 
     fn write_text(&self, mut writer: Writer<'_>) -> fmt::Result {
@@ -314,6 +308,52 @@ where
         .collect()
 }
 
+/// An error event written without going through the subscriber; see
+/// [`error_line`].
+pub(crate) struct DirectEvent {
+    /// Emitted as `event.name`.
+    pub(crate) name: &'static str,
+    /// Emitted as `message`.
+    pub(crate) message: &'static str,
+    /// The event's own fields, in order.
+    pub(crate) fields: Vec<(&'static str, Value)>,
+}
+
+/// Renders `event` as one ERROR line of the JSON format, for the moments
+/// when the subscriber cannot be used: before it is installed, or when the
+/// filter would drop an event that must not be lost.
+pub(crate) fn error_line(
+    resource: &LogResource,
+    now: DateTime<Utc>,
+    target: &str,
+    event: DirectEvent,
+) -> String {
+    let head = LineHead {
+        timestamp: now.to_rfc3339_opts(SecondsFormat::Micros, true),
+        level: Level::ERROR,
+        target: target.to_string(),
+        name: Some(event.name),
+        message: event.message.to_string(),
+    };
+    let mut line = JsonLine::start(head, resource);
+    for (key, value) in event.fields {
+        line.field(key.to_string(), value);
+    }
+    // A map of JSON values always serialises; the fallback only keeps this
+    // function total.
+    line.render()
+        .unwrap_or_else(|_| format!("{{\"level\":\"ERROR\",\"event.name\":\"{}\"}}", event.name))
+}
+
+/// What every line starts with, whatever produced it.
+struct LineHead {
+    timestamp: String,
+    level: Level,
+    target: String,
+    name: Option<&'static str>,
+    message: String,
+}
+
 /// A JSON object whose keys keep insertion order, independent of how
 /// `serde_json` was compiled.
 #[derive(Default)]
@@ -322,6 +362,37 @@ struct JsonLine {
 }
 
 impl JsonLine {
+    /// A line holding the keys every line starts with, in their fixed
+    /// order: `head`, then the service identity from `resource`.
+    fn start(head: LineHead, resource: &LogResource) -> Self {
+        let mut line = Self::default();
+        line.reserved("timestamp", Value::String(head.timestamp));
+        line.reserved("level", Value::from(head.level.as_str()));
+        line.reserved("target", Value::String(head.target));
+        if let Some(name) = head.name {
+            line.reserved("event.name", Value::from(name));
+        }
+        line.reserved("message", Value::String(head.message));
+        line.reserved("service.name", Value::from(resource.service_name.as_str()));
+        line.reserved(
+            "service.version",
+            Value::from(resource.service_version.as_str()),
+        );
+        if let Some(environment) = &resource.environment {
+            line.reserved(
+                "deployment.environment.name",
+                Value::from(bounded(environment).as_ref()),
+            );
+        }
+        line
+    }
+
+    /// The line as text, every control character escaped.
+    fn render(&self) -> Result<String, serde_json::Error> {
+        let json = serde_json::to_string(self)?;
+        Ok(escape_remaining_controls(&json).into_owned())
+    }
+
     /// Adds a key owned by the formatter.
     fn reserved(&mut self, key: &'static str, value: Value) {
         self.entries.push((key.to_string(), value));
@@ -793,5 +864,43 @@ mod tests {
         assert_eq!(out, r"\u007f\u2028\ud83d\ude00");
         let decoded: String = serde_json::from_str(&format!("\"{out}\"")).unwrap();
         assert_eq!(decoded, "\u{7f}\u{2028}\u{1f600}");
+    }
+
+    #[test]
+    fn a_direct_error_line_is_shaped_like_a_formatted_event() {
+        let event = super::DirectEvent {
+            name: "process.fatal",
+            message: "exiting because of an unrecoverable error",
+            fields: vec![
+                ("error.message", json!("open store: locked\nby pid 7")),
+                ("level", json!("spoofed")),
+            ],
+        };
+        let line = super::error_line(
+            &LogResource {
+                environment: Some("prod".to_string()),
+                ..resource()
+            },
+            super::test_support::fixed_clock(),
+            "tumult_otel::logging",
+            event,
+        );
+        assert!(!line.contains('\n'), "{line}");
+        let parsed: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(
+            parsed,
+            json!({
+                "timestamp": "2026-01-01T00:00:00.000000Z",
+                "level": "ERROR",
+                "target": "tumult_otel::logging",
+                "event.name": "process.fatal",
+                "message": "exiting because of an unrecoverable error",
+                "service.name": "tumult-test",
+                "service.version": "9.9.9",
+                "deployment.environment.name": "prod",
+                "error.message": "open store: locked\nby pid 7",
+                "field.level": "spoofed",
+            })
+        );
     }
 }

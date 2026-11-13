@@ -10,16 +10,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_sdk::logs::{SdkLogger, SdkLoggerProvider};
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use tracing::{span, Event, Subscriber};
-use tracing_subscriber::filter::{filter_fn, FilterExt};
+use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::{Context, Filter};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
-use super::filter::is_exporter_internal;
+use super::capped::{CappedLogger, CappedProvider};
+use super::filter::is_exportable;
 
-type Bridge = OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>;
+type Bridge = OpenTelemetryTracingBridge<CappedProvider, CappedLogger>;
 
 /// Why a logger provider could not be attached to the log bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -49,9 +50,10 @@ struct SlotState {
 impl LogBridgeSlot {
     /// Starts exporting events to `provider`.
     pub(crate) fn attach(&self, provider: &SdkLoggerProvider) -> Result<(), AttachError> {
+        let capped = CappedProvider::new(provider.clone());
         self.0
             .bridge
-            .set(OpenTelemetryTracingBridge::new(provider))
+            .set(OpenTelemetryTracingBridge::new(&capped))
             .map_err(|_| AttachError::AlreadyAttached)
     }
 
@@ -72,18 +74,29 @@ impl LogBridgeSlot {
 
     /// The subscriber layer for this slot, wrapped in the filter that keeps
     /// the exporter's own events out of the export.
+    #[cfg(test)]
     pub(crate) fn layer<S>(&self) -> impl Layer<S>
     where
         S: Subscriber + for<'a> LookupSpan<'a>,
     {
-        LateBridge(self.clone()).with_filter(export_filter())
+        self.layer_keeping_local(Vec::new())
+    }
+
+    /// [`layer`](Self::layer), which also keeps the events of the
+    /// `local_only` modules out of the export.
+    pub(crate) fn layer_keeping_local<S>(&self, local_only: Vec<String>) -> impl Layer<S>
+    where
+        S: Subscriber + for<'a> LookupSpan<'a>,
+    {
+        LateBridge(self.clone()).with_filter(export_filter(local_only))
     }
 }
 
-/// Passes every event except those from the exporter's own stack. It is a
-/// per-layer filter, so it holds whatever `RUST_LOG` is set to.
-fn export_filter<S>() -> impl Filter<S> {
-    filter_fn(|metadata| is_exporter_internal(metadata.target())).not()
+/// Passes every event except those from the exporter's own stack and from
+/// the `local_only` modules. It is a per-layer filter, so it holds whatever
+/// `RUST_LOG` is set to.
+fn export_filter<S>(local_only: Vec<String>) -> impl Filter<S> {
+    filter_fn(move |metadata| is_exportable(metadata.target(), &local_only))
 }
 
 /// Forwards to the bridge while the slot holds one; a no-op before a
@@ -126,6 +139,7 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt;
 
     use super::{AttachError, LogBridgeSlot};
+    use crate::logging::fields::{bounded, MAX_FIELD_BYTES};
 
     fn provider() -> (SdkLoggerProvider, InMemoryLogExporter) {
         let exporter = InMemoryLogExporter::default();
@@ -195,6 +209,24 @@ mod tests {
     }
 
     #[test]
+    fn local_only_modules_never_reach_the_exporter() {
+        let slot = LogBridgeSlot::default();
+        let (provider, exporter) = provider();
+        slot.attach(&provider).unwrap();
+        let local_only = vec!["tumult_ingest::writer".to_string()];
+        let subscriber = tracing_subscriber::registry().with(slot.layer_keeping_local(local_only));
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::error!(target: "tumult_ingest::writer", "failed to persist ingest batch");
+            tracing::error!(target: "tumult_ingest::writer::retry", "reconnect failed");
+            tracing::error!(target: "tumult_ingest::runs", "run failed");
+        });
+        assert_eq!(
+            exported(&exporter),
+            [("tumult_ingest::runs".to_string(), "run failed".to_string())]
+        );
+    }
+
+    #[test]
     fn events_after_detach_are_not_exported() {
         let slot = LogBridgeSlot::default();
         let (provider, exporter) = provider();
@@ -239,6 +271,60 @@ mod tests {
         });
         let logs = exporter.get_emitted_logs().unwrap();
         assert_eq!(logs[0].record.event_name(), Some("auth.login.failed"));
+    }
+
+    /// Byte lengths of every string the exporter received: the body, then
+    /// each string attribute.
+    fn exported_string_lengths(exporter: &InMemoryLogExporter) -> Vec<usize> {
+        let logs = exporter.get_emitted_logs().unwrap();
+        let record = &logs[0].record;
+        record
+            .body()
+            .into_iter()
+            .chain(record.attributes_iter().map(|(_, value)| value))
+            .filter_map(|value| match value {
+                opentelemetry::logs::AnyValue::String(text) => Some(text.as_str().len()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn exported_strings_are_capped_like_the_local_line() {
+        let slot = LogBridgeSlot::default();
+        let (provider, exporter) = provider();
+        slot.attach(&provider).unwrap();
+        let subscriber = tracing_subscriber::registry().with(slot.layer());
+        let huge = "\u{e9}".repeat(MAX_FIELD_BYTES * 2);
+        let capped = bounded(&huge).len();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::warn!(
+                name: "plugin.output",
+                { process.stdout = huge.as_str(), process.debugged = ?huge, rows = 3 },
+                "{huge}"
+            );
+        });
+        let lengths = exported_string_lengths(&exporter);
+        assert_eq!(lengths.len(), 3, "body and two string attributes");
+        assert!(capped < huge.len());
+        for length in lengths {
+            assert!(length <= capped, "{length} bytes exported, cap {capped}");
+        }
+    }
+
+    #[test]
+    fn short_exported_strings_are_left_alone() {
+        let slot = LogBridgeSlot::default();
+        let (provider, exporter) = provider();
+        slot.attach(&provider).unwrap();
+        let subscriber = tracing_subscriber::registry().with(slot.layer());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::warn!(name: "auth.login.failed", { user.name = "alice" }, "login failed");
+        });
+        assert_eq!(
+            exported_string_lengths(&exporter),
+            ["login failed".len(), "alice".len()]
+        );
     }
 
     #[test]

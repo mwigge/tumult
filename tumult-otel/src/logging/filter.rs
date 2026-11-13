@@ -34,6 +34,21 @@ pub fn is_exporter_internal(target: &str) -> bool {
         .any(|internal| is_crate_or_family(crate_name, internal))
 }
 
+/// Whether an event from `target` may leave the process over OTLP: it is
+/// neither from the exporter's own stack nor from one of the `local_only`
+/// modules (each covering its submodules).
+pub(crate) fn is_exportable(target: &str, local_only: &[String]) -> bool {
+    !is_exporter_internal(target) && !local_only.iter().any(|module| is_within(target, module))
+}
+
+/// `target` is `module` or one of its submodules; `tumult_ingest::writer`
+/// covers `tumult_ingest::writer::retry` but not `tumult_ingest::writers`.
+fn is_within(target: &str, module: &str) -> bool {
+    target
+        .strip_prefix(module)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+}
+
 /// `name` is `family` itself or a member such as `family_util`/`family-sdk`.
 fn is_crate_or_family(name: &str, family: &str) -> bool {
     let Some(rest) = name.strip_prefix(family) else {
@@ -206,5 +221,28 @@ mod tests {
             tracing::debug!(target: "tumult_api", "api debug");
         });
         assert_eq!(messages, ["api info"]);
+    }
+
+    #[test]
+    fn local_only_modules_and_their_submodules_are_not_exportable() {
+        let local_only = [
+            "tumult_ingest::writer".to_string(),
+            "tumult_lake".to_string(),
+        ];
+        let exportable = |target| super::is_exportable(target, &local_only);
+        assert!(!exportable("tumult_ingest::writer"));
+        assert!(!exportable("tumult_ingest::writer::retry"));
+        assert!(!exportable("tumult_lake"));
+        assert!(!exportable("tumult_lake::writer"));
+        assert!(exportable("tumult_ingest::writers"));
+        assert!(exportable("tumult_ingest::runs"));
+        assert!(exportable("tumult_lakehouse::sync"));
+        assert!(exportable("tumultd::serve"));
+    }
+
+    #[test]
+    fn the_exporter_stack_is_not_exportable_whatever_is_listed() {
+        assert!(!super::is_exportable("tonic::transport", &[]));
+        assert!(super::is_exportable("tumultd::serve", &[]));
     }
 }

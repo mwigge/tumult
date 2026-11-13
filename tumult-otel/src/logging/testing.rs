@@ -20,12 +20,15 @@
 use std::io;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use opentelemetry::logs::AnyValue;
+use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::logs::{LogBatch, LogExporter, SdkLoggerProvider};
 use serde_json::Value;
 use tracing::subscriber::DefaultGuard;
 use tracing::Level;
 use tracing_subscriber::fmt::MakeWriter;
 
-use super::{filter, EventFormatter, LogFormat, LogResource, Pipeline};
+use super::{filter, EventFormatter, LogFormat, LogOptions, LogResource, Pipeline};
 
 /// The `service.name` on captured lines.
 pub const SERVICE_NAME: &str = "tumult-test";
@@ -120,6 +123,113 @@ impl LogCapture {
     }
 }
 
+/// A log record as the OTLP exporter received it; see [`ExportCapture`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedEvent {
+    /// The module the event came from.
+    pub target: String,
+    /// The event's name, when it has one.
+    pub event_name: Option<String>,
+    /// The event's message, when it is text.
+    pub body: Option<String>,
+}
+
+/// Captures the current thread's events twice until dropped: the lines
+/// written locally, and the records handed to the OTLP exporter.
+///
+/// The subscriber is built from a binary's own [`LogOptions`], so a test
+/// can assert on what that binary would export — above all on what it must
+/// not. Records reach the exporter as they are emitted; there is no batch
+/// to wait for.
+pub struct ExportCapture {
+    sink: Sink,
+    exporter: RecordingExporter,
+    // Declared before the provider: the subscriber goes first, so nothing
+    // is emitted into a provider that is shutting down.
+    _guard: DefaultGuard,
+    _provider: SdkLoggerProvider,
+}
+
+impl ExportCapture {
+    /// Starts capturing with the level and local-only targets of `options`.
+    ///
+    /// # Panics
+    ///
+    /// When the freshly built subscriber already has an exporter attached,
+    /// which cannot happen.
+    #[must_use]
+    pub fn start(options: &LogOptions) -> Self {
+        let sink = Sink::default();
+        let exporter = RecordingExporter::default();
+        let provider = SdkLoggerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        let pipeline = Pipeline {
+            local_only: options.local_only_targets.clone(),
+            ..pipeline(&sink, options.default_level)
+        };
+        let (subscriber, slot) = pipeline.build();
+        slot.attach(&provider)
+            .expect("a new bridge slot has nothing attached");
+        Self {
+            sink,
+            exporter,
+            _guard: tracing::subscriber::set_default(subscriber),
+            _provider: provider,
+        }
+    }
+
+    /// Every record exported so far, oldest first.
+    #[must_use]
+    pub fn exported(&self) -> Vec<ExportedEvent> {
+        self.exporter.events()
+    }
+
+    /// Everything written locally so far.
+    ///
+    /// # Panics
+    ///
+    /// When a captured line is not a JSON object — which would be a bug in
+    /// the formatter, and should fail the test.
+    #[must_use]
+    pub fn local(&self) -> Captured {
+        parse(self.sink.text())
+    }
+}
+
+/// An exporter that keeps what it is given.
+#[derive(Debug, Clone, Default)]
+struct RecordingExporter(Arc<Mutex<Vec<ExportedEvent>>>);
+
+impl RecordingExporter {
+    fn events(&self) -> Vec<ExportedEvent> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl LogExporter for RecordingExporter {
+    fn export(
+        &self,
+        batch: LogBatch<'_>,
+    ) -> impl std::future::Future<Output = OTelSdkResult> + Send {
+        let mut events = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        for (record, _scope) in batch.iter() {
+            events.push(ExportedEvent {
+                target: record.target().map(ToString::to_string).unwrap_or_default(),
+                event_name: record.event_name().map(str::to_string),
+                body: match record.body() {
+                    Some(AnyValue::String(text)) => Some(text.as_str().to_string()),
+                    _ => None,
+                },
+            });
+        }
+        std::future::ready(Ok(()))
+    }
+}
+
 /// Runs `emit` and returns what it logged at `level` and above.
 ///
 /// # Panics
@@ -144,6 +254,7 @@ fn pipeline(sink: &Sink, level: Level) -> Pipeline<Sink> {
         filter: filter::env_filter(None, level).0,
         writer: sink.clone(),
         ansi: false,
+        local_only: Vec::new(),
     }
 }
 
@@ -162,7 +273,27 @@ fn parse(raw: String) -> Captured {
 mod tests {
     use tracing::Level;
 
-    use super::{capture_json, LogCapture, SERVICE_NAME};
+    use super::{capture_json, ExportCapture, ExportedEvent, LogCapture, SERVICE_NAME};
+    use crate::logging::LogOptions;
+
+    #[test]
+    fn export_capture_separates_what_is_logged_from_what_is_exported() {
+        let options = LogOptions::new("tumultd").with_local_only_targets(["tumult_ingest"]);
+        let capture = ExportCapture::start(&options);
+        tracing::error!(target: "tumult_ingest::writer", "failed to persist ingest batch");
+        tracing::warn!(name: "daemon.stopped", "daemon stopped");
+        tracing::debug!(name: "a.hidden", "below the level");
+
+        assert_eq!(capture.local().events.len(), 2);
+        assert_eq!(
+            capture.exported(),
+            [ExportedEvent {
+                target: module_path!().to_string(),
+                event_name: Some("daemon.stopped".to_string()),
+                body: Some("daemon stopped".to_string()),
+            }]
+        );
+    }
 
     #[test]
     fn closure_capture_returns_parsed_events_in_order() {
