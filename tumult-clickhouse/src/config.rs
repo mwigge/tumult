@@ -39,6 +39,7 @@ impl ClickHouseConfig {
     /// | `TUMULT_CLICKHOUSE_DATABASE` | `tumult` |
     /// | `TUMULT_CLICKHOUSE_USER` | `default` |
     /// | `TUMULT_CLICKHOUSE_PASSWORD` | (empty) |
+    #[must_use]
     pub fn from_env() -> Self {
         let query_timeout_secs = std::env::var("TUMULT_CLICKHOUSE_QUERY_TIMEOUT_SECS")
             .ok()
@@ -47,12 +48,7 @@ impl ClickHouseConfig {
         let url = std::env::var("TUMULT_CLICKHOUSE_URL")
             .unwrap_or_else(|_| "http://localhost:8123".into());
         let password = std::env::var("TUMULT_CLICKHOUSE_PASSWORD").unwrap_or_default();
-        if !password.is_empty() && url.starts_with("http://") {
-            tracing::warn!(
-                "ClickHouse password is set with an HTTP (non-TLS) URL; \
-                 credentials will be sent in cleartext"
-            );
-        }
+        warn_if_cleartext_password(&url, &password);
         Self {
             url,
             database: std::env::var("TUMULT_CLICKHOUSE_DATABASE")
@@ -68,6 +64,19 @@ impl ClickHouseConfig {
     pub fn is_configured() -> bool {
         std::env::var("TUMULT_CLICKHOUSE_URL").is_ok()
     }
+}
+
+/// Warns when a password would travel over plain HTTP. The URL is logged
+/// without userinfo; the password is never logged.
+fn warn_if_cleartext_password(url: &str, password: &str) {
+    if password.is_empty() || !url.starts_with("http://") {
+        return;
+    }
+    tracing::warn!(
+        name: "clickhouse.config.cleartext_password",
+        { url.full = %tumult_otel::logging::sanitize_url(url) },
+        "ClickHouse password is set with an HTTP (non-TLS) URL, credentials will be sent in cleartext"
+    );
 }
 
 impl Default for ClickHouseConfig {
@@ -123,5 +132,22 @@ mod tests {
             debug_output.contains("[REDACTED]"),
             "Debug output must show [REDACTED] for password"
         );
+    }
+
+    #[test]
+    fn a_password_over_plain_http_is_a_named_warning_without_the_password() {
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::WARN, || {
+            warn_if_cleartext_password("http://admin:url-secret@ch.internal:8123", "pw-secret");
+            warn_if_cleartext_password("https://ch.internal:8443", "pw-secret");
+            warn_if_cleartext_password("http://ch.internal:8123", "");
+        });
+
+        let events = logs.named("clickhouse.config.cleartext_password");
+        assert_eq!(events.len(), 1, "only password + http warns: {}", logs.raw);
+        assert_eq!(events[0]["level"], "WARN");
+        assert_eq!(events[0]["url.full"], "http://ch.internal:8123");
+        for secret in ["url-secret", "pw-secret"] {
+            assert!(!logs.raw.contains(secret), "{secret} leaked: {}", logs.raw);
+        }
     }
 }

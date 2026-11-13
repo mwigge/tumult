@@ -144,3 +144,35 @@ fn analytics_backend_sync_methods_do_not_panic_inside_tokio_task() {
         .expect("task should not panic");
     });
 }
+
+#[test]
+fn a_connection_retry_is_a_named_warning_without_credentials() {
+    let config = ClickHouseConfig {
+        url: "http://admin:url-secret@clickhouse.internal:8123".into(),
+        password: "pw-secret".into(),
+        ..ClickHouseConfig::default()
+    };
+    let error = AnalyticsError::ClickHouse(format!(
+        "bad response from {} (key pw-secret rejected)",
+        config.url
+    ));
+    let logs = tumult_otel::logging::testing::capture_json(tracing::Level::WARN, || {
+        log_connect_retry(&config, 2, 3, std::time::Duration::from_secs(4), &error);
+    });
+
+    let event = &logs.named("clickhouse.connect.retrying")[0];
+    assert_eq!(event["level"], "WARN");
+    assert_eq!(event["url.full"], "http://clickhouse.internal:8123");
+    assert_eq!(event["attempt"], 2);
+    assert_eq!(event["max_attempts"], 3);
+    assert_eq!(event["backoff_s"], 4);
+    let message = event["error.message"].as_str().unwrap();
+    assert!(
+        message.contains("http://clickhouse.internal:8123"),
+        "{message}"
+    );
+    assert!(event.get("error").is_none(), "legacy field: {event}");
+    for secret in ["url-secret", "pw-secret"] {
+        assert!(!logs.raw.contains(secret), "{secret} leaked: {}", logs.raw);
+    }
+}
