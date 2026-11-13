@@ -1,6 +1,6 @@
 //! Function-register storage (schema v20): legal entities, functions, the
-//! telemetry-to-function mapping and the daily per-requirement evidence
-//! status.
+//! telemetry-to-function mapping, the daily per-requirement evidence
+//! status and the daily maturity level.
 //!
 //! The register is declared in `org.yaml` and synced here on daemon start.
 //! The sync is the only writer of the register tables and preserves one
@@ -107,6 +107,21 @@ pub struct RequirementStatusRow {
     pub value: Option<f64>,
     /// `snapshot`: computed on the day it describes. Only those rows are
     /// read back as score inputs.
+    pub source: String,
+}
+
+/// One `maturity_daily` row: what the score showed for a legal entity on
+/// one day.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaturityDailyRow {
+    /// Days since the Unix epoch (UTC).
+    pub as_of_day: i64,
+    pub lei: String,
+    pub level: u8,
+    pub index: f64,
+    /// The unknown share the index was shown with.
+    pub unknown_share: f64,
+    /// `snapshot`: computed on the day it describes.
     pub source: String,
 }
 
@@ -246,15 +261,34 @@ fn read_register(conn: &duckdb::Connection) -> Result<IctRegister, StoreError> {
     })
 }
 
+/// Latest day number the day arithmetic accepts (the year 2243): keeps
+/// `DATE + INTEGER` inside the range of both types.
+const MAX_DAY: i64 = 100_000;
+
+fn day_sql(day: i64) -> String {
+    format!(
+        "DATE '1970-01-01' + CAST({} AS INTEGER)",
+        day.clamp(0, MAX_DAY)
+    )
+}
+
+const DAY_NUMBER: &str = "CAST(datediff('day', DATE '1970-01-01', as_of) AS BIGINT) AS as_of_day";
+
+/// Status rows of the days `from_day..=to_day`, oldest first, at most
+/// `limit` of them. Over the limit the oldest rows are left out.
 fn read_status(
     conn: &duckdb::Connection,
     from_day: i64,
+    to_day: i64,
+    limit: usize,
 ) -> Result<Vec<RequirementStatusRow>, StoreError> {
     let sql = format!(
-        "SELECT CAST(datediff('day', DATE '1970-01-01', as_of) AS BIGINT) AS as_of_day, \
-         function_id, requirement_id, status, value, source FROM requirement_status_daily \
-         WHERE as_of >= DATE '1970-01-01' + CAST({from_day} AS INTEGER) \
-         ORDER BY as_of, function_id, requirement_id"
+        "SELECT * FROM (SELECT {DAY_NUMBER}, function_id, requirement_id, status, value, \
+         source FROM requirement_status_daily WHERE as_of BETWEEN {} AND {} \
+         ORDER BY as_of DESC, function_id DESC, requirement_id DESC LIMIT {limit}) AS newest \
+         ORDER BY as_of_day, function_id, requirement_id",
+        day_sql(from_day),
+        day_sql(to_day)
     );
     Ok(query_json_rows(conn, &sql)?
         .iter()
@@ -264,6 +298,44 @@ fn read_status(
             requirement_id: text(row, "requirement_id"),
             status: text(row, "status"),
             value: row.get("value").and_then(Value::as_f64),
+            source: text(row, "source"),
+        })
+        .collect())
+}
+
+/// Maturity rows of one legal entity for the days `from_day..=to_day`,
+/// oldest first. One row per day, so the range bounds the result.
+fn read_maturity(
+    conn: &duckdb::Connection,
+    lei: &str,
+    from_day: i64,
+    to_day: i64,
+) -> Result<Vec<MaturityDailyRow>, StoreError> {
+    let sql = format!(
+        "SELECT {DAY_NUMBER}, lei, level, index_value, unknown_share, source \
+         FROM maturity_daily WHERE lei = '{}' AND as_of BETWEEN {} AND {} ORDER BY as_of",
+        lei.replace('\'', "''"),
+        day_sql(from_day),
+        day_sql(to_day)
+    );
+    Ok(query_json_rows(conn, &sql)?
+        .iter()
+        .map(|row| MaturityDailyRow {
+            as_of_day: row.get("as_of_day").and_then(Value::as_i64).unwrap_or(0),
+            lei: text(row, "lei"),
+            level: row
+                .get("level")
+                .and_then(Value::as_u64)
+                .and_then(|level| u8::try_from(level).ok())
+                .unwrap_or(0),
+            index: row
+                .get("index_value")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
+            unknown_share: row
+                .get("unknown_share")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0),
             source: text(row, "source"),
         })
         .collect())
@@ -476,15 +548,74 @@ impl Writer {
         })
     }
 
-    /// Status rows on or after `from_day`, read on the write connection.
+    /// Write maturity rows, replacing any row already stored for the same
+    /// day and legal entity.
+    ///
+    /// # Errors
+    /// Returns an error if a statement fails (the transaction is rolled back).
+    pub fn upsert_maturity_daily(
+        &self,
+        rows: &[MaturityDailyRow],
+        computed_at_ns: i64,
+    ) -> Result<(), StoreError> {
+        with_tx(&self.conn, || {
+            for row in rows {
+                self.conn.execute(
+                    "DELETE FROM maturity_daily \
+                     WHERE as_of = DATE '1970-01-01' + CAST(? AS INTEGER) AND lei = ?",
+                    params![row.as_of_day, row.lei],
+                )?;
+                self.conn.execute(
+                    "INSERT INTO maturity_daily (as_of, lei, level, index_value, \
+                     unknown_share, source, computed_at_ns) \
+                     VALUES (DATE '1970-01-01' + CAST(? AS INTEGER), ?, ?, ?, ?, ?, ?)",
+                    params![
+                        row.as_of_day,
+                        row.lei,
+                        i64::from(row.level),
+                        row.index,
+                        row.unknown_share,
+                        row.source,
+                        computed_at_ns
+                    ],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Delete the status and maturity rows of every day before
+    /// `before_day`. Returns the number of rows deleted.
+    ///
+    /// # Errors
+    /// Returns an error if a statement fails (the transaction is rolled back).
+    pub fn prune_score_snapshots(&self, before_day: i64) -> Result<usize, StoreError> {
+        let cut = day_sql(before_day);
+        with_tx(&self.conn, || {
+            let status = self.conn.execute(
+                &format!("DELETE FROM requirement_status_daily WHERE as_of < {cut}"),
+                [],
+            )?;
+            let maturity = self.conn.execute(
+                &format!("DELETE FROM maturity_daily WHERE as_of < {cut}"),
+                [],
+            )?;
+            Ok(status + maturity)
+        })
+    }
+
+    /// Status rows of the days `from_day..=to_day`, read on the write
+    /// connection; see [`Reader::requirement_status_between`].
     ///
     /// # Errors
     /// Returns an error if the table cannot be read.
-    pub fn requirement_status_since(
+    pub fn requirement_status_between(
         &self,
         from_day: i64,
+        to_day: i64,
+        limit: usize,
     ) -> Result<Vec<RequirementStatusRow>, StoreError> {
-        read_status(&self.conn, from_day)
+        read_status(&self.conn, from_day, to_day, limit)
     }
 }
 
@@ -498,16 +629,33 @@ impl Reader {
         read_register(&self.conn)
     }
 
-    /// Status rows on or after `from_day` (days since the Unix epoch),
-    /// oldest first.
+    /// Status rows of the days `from_day..=to_day` (days since the Unix
+    /// epoch), oldest first, at most `limit` of them. Over the limit the
+    /// oldest rows are left out, which can only shorten a streak.
     ///
     /// # Errors
     /// Returns an error if the table cannot be read.
-    pub fn requirement_status_since(
+    pub fn requirement_status_between(
         &self,
         from_day: i64,
+        to_day: i64,
+        limit: usize,
     ) -> Result<Vec<RequirementStatusRow>, StoreError> {
-        read_status(&self.conn, from_day)
+        read_status(&self.conn, from_day, to_day, limit)
+    }
+
+    /// Maturity rows of one legal entity for the days
+    /// `from_day..=to_day`, oldest first.
+    ///
+    /// # Errors
+    /// Returns an error if the table cannot be read.
+    pub fn maturity_daily_between(
+        &self,
+        lei: &str,
+        from_day: i64,
+        to_day: i64,
+    ) -> Result<Vec<MaturityDailyRow>, StoreError> {
+        read_maturity(&self.conn, lei, from_day, to_day)
     }
 }
 

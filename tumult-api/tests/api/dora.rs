@@ -144,7 +144,14 @@ async fn dora_lists_the_functions_and_their_cells() {
     assert_eq!(body["functions"][0]["register_codes"][0], "F1");
     assert_eq!(body["readiness"]["functions"], 2);
     assert_eq!(body["readiness"]["with_rto"], 1);
-    assert_eq!(body["readiness"]["register"]["connected"], true);
+    // Declared in the org file, and nothing of it ingested: not connected.
+    assert_eq!(body["readiness"]["register"]["connected"], false);
+    let feed = list(&body["feeds"])
+        .iter()
+        .find(|f| f["name"] == "register")
+        .unwrap_or_else(|| panic!("no register feed in {body}"));
+    assert_eq!(feed["declared"], true);
+    assert_eq!(feed["connected"], false);
     for cell in list(&body["cells"]) {
         assert!(cell["unknown"].is_number(), "{cell}");
         assert!(cell["state"].is_string(), "{cell}");
@@ -215,11 +222,11 @@ async fn maturity_names_the_scale_internal_and_lists_nodes_by_kind() {
     assert_eq!(body["scale"]["internal"], true);
     assert!((1..=5).contains(&body["level"].as_u64().unwrap()));
     assert_eq!(body["target"], 3);
-    assert!(body["headline"]
-        .as_str()
-        .unwrap()
-        .ends_with("of target 3 (simplified)"));
+    let headline = body["headline"].as_str().unwrap();
+    assert!(headline.contains("of target 3 (simplified)"), "{headline}");
+    assert!(headline.ends_with("% unknown"), "{headline}");
     assert!(body["unknown_share"].is_number());
+    assert_eq!(body["unknown_share"], body["rollup"]["unknown_share"]);
     assert_eq!(list(&body["gates"]).len(), 4);
     assert!(list(&body["nodes"]).is_empty());
     let history = list(&body["history"]);
@@ -300,6 +307,120 @@ async fn an_uninstrumented_critical_service_counts_at_the_floor_until_it_reports
     assert!(unknown(&reporting) < unknown(&silent));
 }
 
+/// Every score document says which house parameters it was scored with
+/// and where the function register stands, so a lowered gate or a
+/// refused org file is never silent.
+#[tokio::test]
+async fn every_score_document_names_its_parameters_and_the_register_state() {
+    let srv = spawn_server().await;
+    register(&srv).await;
+    for path in ["/api/dora", "/api/dora/24", "/api/maturity"] {
+        let (status, body) = get(&srv.base, path).await;
+        assert_eq!(status, 200, "{path}: {body}");
+        assert_eq!(body["params"]["source"], "defaults", "{path}");
+        assert_eq!(body["params"]["fallback"], false, "{path}");
+        assert_eq!(body["params"]["reason"], Value::Null, "{path}");
+        assert_eq!(body["params"]["overridden"], serde_json::json!([]));
+        // The test server has no org file.
+        assert_eq!(body["register_state"], "none", "{path}");
+        assert!(body["register_reason"].is_string(), "{path}");
+    }
+}
+
+/// A past quarter is what the daily job stored for it and nothing else.
+#[tokio::test]
+async fn maturity_history_shows_stored_days_and_no_data_for_the_rest() {
+    let srv = spawn_server().await;
+    register(&srv).await;
+    let (_, body) = get(&srv.base, "/api/maturity").await;
+    let history = list(&body["history"]);
+    assert_eq!(history.len(), 5, "{body}");
+    for past in &history[..4] {
+        assert_eq!(past["state"], "no_data", "{past}");
+        assert_eq!(past["level"], Value::Null, "{past}");
+        assert_eq!(past["index"], Value::Null, "{past}");
+    }
+    assert_eq!(history[4]["state"], "today");
+
+    // The job stored the last day of the previous quarter.
+    let ends = tumult_compliance::dora::report::quarter_ends(now_ns(), 4);
+    let day = ends.last().unwrap().div_euclid(DAY);
+    let row = tumult_lake::MaturityDailyRow {
+        as_of_day: day,
+        lei: LEI.into(),
+        level: 2,
+        index: 2.4,
+        unknown_share: 0.25,
+        source: "snapshot".into(),
+    };
+    let at = now_ns();
+    exec_write(&srv, move |w| {
+        w.upsert_maturity_daily(&[row], at)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (_, body) = get(&srv.base, "/api/maturity").await;
+    let history = list(&body["history"]);
+    assert_eq!(history[3]["state"], "stored", "{body}");
+    assert_eq!(history[3]["level"], 2);
+    assert_eq!(history[3]["index"], 2.4);
+    assert_eq!(history[3]["unknown_share"], 0.25);
+    assert_eq!(history[2]["state"], "no_data");
+
+    // Stored days are of the registered profile: another one has none.
+    let (_, full) = get(&srv.base, "/api/maturity?profile=full").await;
+    assert_eq!(full["profile_overridden"], true);
+    let past = &list(&full["history"])[3];
+    assert_eq!(past["state"], "no_data", "{past}");
+    assert!(past["reason"].is_string(), "{past}");
+    assert_eq!(body["profile_overridden"], false);
+}
+
+/// A principal limited to some environments gets the functions its
+/// telemetry binds to, a document marked partial, and nothing of the
+/// register beyond that.
+#[tokio::test]
+async fn a_scoped_token_gets_only_its_functions_and_a_document_marked_partial() {
+    let srv = spawn_server().await;
+    register(&srv).await;
+    insert_spans(
+        &srv,
+        vec![spine_span("payments-api", "cif-0001", now_ns() - DAY)],
+    )
+    .await;
+    let ids = |body: &Value| -> Vec<String> {
+        list(&body["functions"])
+            .iter()
+            .filter_map(|f| f["entity_id"].as_str().map(str::to_owned))
+            .collect()
+    };
+    let (_, open) = get(&srv.base, "/api/dora").await;
+    assert_eq!(ids(&open), ["cif-0001", "cif-0002"]);
+    assert_eq!(open["scoped"], false);
+    assert_eq!(open["scope_note"], Value::Null);
+    assert_eq!(open["readiness"]["register"]["rows"], 2);
+
+    let demo = add_scoped_token(&srv, "demo-viewer", "viewer", &["demo"]).await;
+    let (status, scoped) = get_auth(&srv.base, "/api/dora", &demo).await;
+    assert_eq!(status, 200, "{scoped}");
+    assert_eq!(ids(&scoped), ["cif-0001"]);
+    assert_eq!(scoped["scoped"], true);
+    assert!(scoped["scope_note"].is_string());
+    assert_eq!(scoped["readiness"]["register"]["rows"], 0, "{scoped}");
+    let (_, level) = get_auth(&srv.base, "/api/maturity", &demo).await;
+    assert_eq!(level["scoped"], true);
+    assert!(list(&level["history"])[..4]
+        .iter()
+        .all(|past| past["state"] == "no_data"));
+
+    let other = add_scoped_token(&srv, "other-viewer", "viewer", &["elsewhere"]).await;
+    let (status, none) = get_auth(&srv.base, "/api/dora", &other).await;
+    assert_eq!(status, 200, "{none}");
+    assert_eq!(ids(&none), Vec::<String>::new());
+    assert_eq!(none["scoped"], true);
+}
+
 #[tokio::test]
 async fn a_scoped_principal_cannot_score_another_environment() {
     let srv = spawn_server().await;
@@ -353,4 +474,39 @@ async fn conformance_lists_malformed_entity_ids_as_received() {
     assert_eq!(listed[1]["service"], "old-gateway");
     assert_eq!(listed[1]["entity_id"], "Core Banking");
     assert_eq!(listed[1]["flagged_at_ingest"], false);
+}
+
+/// The list of malformed ids is bounded: a stored id of any length is
+/// reported cut and marked, and more rows than the limit are cut and
+/// the document says so.
+#[tokio::test]
+async fn conformance_bounds_the_malformed_ids_in_length_and_in_number() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let long = "X".repeat(5_000);
+    insert_spans(&srv, vec![spine_span("old-gateway", &long, now - DAY / 3)]).await;
+    let (status, body) = get(&srv.base, "/api/otel/conformance?range=24h").await;
+    assert_eq!(status, 200, "{body}");
+    let listed = list(&body["malformed_entity_ids"]);
+    assert_eq!(listed.len(), 1, "{body}");
+    let shown = listed[0]["entity_id"].as_str().unwrap();
+    assert_eq!(
+        shown,
+        "X".repeat(64),
+        "cut to one past the longest valid id"
+    );
+    assert_eq!(listed[0]["truncated"], true);
+    assert_eq!(listed[0]["reason"], "longer than 63 characters");
+    assert_eq!(body["malformed_entity_ids_truncated"], false);
+    assert_eq!(body["malformed_entity_ids_limit"], 500);
+
+    let many: Vec<_> = (0..501)
+        .map(|i| spine_span("noisy", &format!("Bad Id {i:04}"), now - DAY / 5))
+        .collect();
+    insert_spans(&srv, many).await;
+    let (_, body) = get(&srv.base, "/api/otel/conformance?range=24h").await;
+    assert_eq!(list(&body["malformed_entity_ids"]).len(), 500, "the limit");
+    assert_eq!(body["summary"]["malformed_entity_ids"], 500);
+    assert_eq!(body["malformed_entity_ids_truncated"], true);
+    assert_eq!(list(&body["malformed_entity_ids"])[0]["truncated"], false);
 }

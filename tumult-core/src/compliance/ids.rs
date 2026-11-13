@@ -22,9 +22,14 @@ pub const ENTITY_ID_MAX_LEN: usize = 63;
 pub const ENTITY_ID_ATTR: &str = "ict.entity.id";
 
 /// Resource attribute the ingest path sets to `"true"` next to an
-/// `ict.entity.id` that does not match the canonical form. The original
-/// value is kept untouched.
+/// `ict.entity.id` that does not match the canonical form. The value is
+/// kept as received, except that one longer than [`ENTITY_ID_MAX_LEN`]
+/// is cut to that length and ends in [`ENTITY_ID_TRUNCATION_MARK`].
 pub const ENTITY_ID_MALFORMED_ATTR: &str = "tumult.ict.entity.id.malformed";
+
+/// Last character of a stored `ict.entity.id` that was cut at ingest. It
+/// is outside the canonical form, so a cut value never reads as valid.
+pub const ENTITY_ID_TRUNCATION_MARK: char = '~';
 
 /// Length of a LEI.
 const LEI_LEN: usize = 20;
@@ -77,6 +82,21 @@ fn entity_id_fault(id: &str) -> Option<&'static str> {
         return Some("needs at least two hyphen-separated groups");
     }
     None
+}
+
+/// The longest prefix of `value` that is at most `max` bytes and ends on
+/// a character boundary. Used to bound a value a sender controls before
+/// it is stored or logged.
+#[must_use]
+pub fn truncated(value: &str, max: usize) -> &str {
+    if value.len() <= max {
+        return value;
+    }
+    let mut end = max;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
 }
 
 /// Check an `ict.entity.id` against the canonical form.
@@ -158,6 +178,17 @@ mod tests {
         assert!(entity_id_is_valid(&ok));
         let long = format!("a-{}", "0".repeat(ENTITY_ID_MAX_LEN - 1));
         assert!(!entity_id_is_valid(&long));
+    }
+
+    #[test]
+    fn truncation_keeps_whole_characters_within_the_bound() {
+        assert_eq!(truncated("cif-0042", 63), "cif-0042");
+        assert_eq!(truncated("cif-0042", 3), "cif");
+        // 'å' is two bytes: a cut inside it backs off to the boundary.
+        assert_eq!(truncated("aå", 2), "a");
+        assert_eq!(truncated("aå", 3), "aå");
+        assert_eq!(truncated("å", 0), "");
+        assert_eq!(truncated(&"x".repeat(10_000), 128).len(), 128);
     }
 
     #[test]

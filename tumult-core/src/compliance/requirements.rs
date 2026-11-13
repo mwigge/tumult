@@ -18,7 +18,7 @@ use super::evidence::EvidenceStrength;
 
 /// Version of the requirement registry. Bump on any row change so a score
 /// can be traced to the rule set that produced it.
-pub const REQUIREMENTS_VERSION: &str = "2026.11";
+pub const REQUIREMENTS_VERSION: &str = "2026.11.1";
 
 /// Evidence status code: a declaration exists but no qualifying evidence.
 pub const EXPECTED_STATUS_DESIGNED: u8 = 1;
@@ -315,6 +315,26 @@ pub enum Selector {
     Feed(Feed),
 }
 
+/// Who restricts a row to some functions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeBasis {
+    /// The provision itself names the functions it binds.
+    Regulation,
+    /// The provision binds every function; the house checks the row on
+    /// critical or important functions only.
+    House,
+}
+
+impl ScopeBasis {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Regulation => "regulation",
+            Self::House => "house",
+        }
+    }
+}
+
 /// One row of the requirement registry.
 #[derive(Debug, Clone, Copy)]
 pub struct Requirement {
@@ -334,6 +354,10 @@ pub struct Requirement {
     pub window_days: u32,
     /// Functions the row binds.
     pub scope: FunctionScope,
+    /// Whether the provision or the house draws that boundary.
+    pub scope_basis: ScopeBasis,
+    /// A microenterprise has no fixed interval for the row.
+    pub micro_periodic: bool,
     /// Strength cap applied to automated evidence for this row.
     pub strength: EvidenceStrength,
     /// Framework profiles the row applies to.
@@ -380,6 +404,17 @@ impl Requirement {
             FlagRule::CsdOrCcp => flags.csd || flags.ccp,
             FlagRule::TlptDesignated => flags.tlpt_designated,
         }
+    }
+
+    /// Days in which evidence counts at full freshness for this entity;
+    /// `None` when the provision sets no interval for it, so a record of
+    /// any age counts in full.
+    #[must_use]
+    pub fn window_for(&self, entity: &EntityProfile) -> Option<u32> {
+        if self.micro_periodic && entity.flags.microenterprise {
+            return None;
+        }
+        Some(self.window_days)
     }
 
     /// Whether the row binds a function of this tier.
@@ -465,8 +500,9 @@ const SECURITY: &[&str] = &["security"];
 const TABLETOP: &[&str] = &["tabletop", "gameday"];
 /// Manual exercise types that rehearse a plan end to end.
 const REHEARSAL: &[&str] = &["drill", "failover", "gameday", "tabletop"];
-/// Threat-led penetration tests.
-const PENTEST: &[&str] = &["pentest"];
+/// Threat-led penetration tests. An ordinary penetration test record
+/// (`pentest`) is not one.
+const TLPT: &[&str] = &["tlpt"];
 
 /// Row template: a normal-weight, all-function, any-profile row. Every
 /// registry row spells out only what differs from it.
@@ -488,6 +524,8 @@ const fn row(
         evidence,
         window_days: YEAR,
         scope: FunctionScope::All,
+        scope_basis: ScopeBasis::Regulation,
+        micro_periodic: false,
         strength: EvidenceStrength::Direct,
         profiles: ProfileSet::Any,
         micro: MicroRule::Any,
@@ -522,6 +560,20 @@ impl Requirement {
         self
     }
 
+    /// The restriction to critical or important functions is the
+    /// house's, not the provision's.
+    const fn house_scope(mut self) -> Self {
+        self.scope = FunctionScope::CriticalImportant;
+        self.scope_basis = ScopeBasis::House;
+        self
+    }
+
+    /// "Periodically" for a microenterprise: no fixed interval there.
+    const fn micro_periodic(mut self) -> Self {
+        self.micro_periodic = true;
+        self
+    }
+
     const fn window(mut self, days: u32) -> Self {
         self.window_days = days;
         self
@@ -552,7 +604,8 @@ pub const REQUIREMENTS: &[Requirement] = &[
         Manual,
         Selector::Attestation,
     )
-    .full(),
+    .full()
+    .micro_periodic(),
     row(
         "dora.art9.1",
         "9",
@@ -622,7 +675,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         "dora.art11.6b",
         "11",
         "Art. 11(6)(b)",
-        "Crisis communication plans tested at least yearly",
+        "Crisis communication plans tested",
         2,
         Manual,
         Selector::Exercise {
@@ -815,7 +868,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         "dora.art16.1.h",
         "16",
         "Art. 16(1)(h)",
-        "Lessons from tests and incidents fed into training",
+        "Lessons from tests and incidents fed into the ICT risk assessment and into training",
         1,
         Manual,
         Selector::Attestation,
@@ -899,7 +952,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         Selector::Programme,
     )
     .micro(MicroRule::Exempt)
-    .critical_important(),
+    .house_scope(),
     row(
         "dora.art24.3",
         "24",
@@ -910,7 +963,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         Selector::FunctionAssessed,
     )
     .micro(MicroRule::Exempt)
-    .critical_important(),
+    .house_scope(),
     row(
         "dora.art24.4",
         "24",
@@ -921,7 +974,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         Selector::Attestation,
     )
     .micro(MicroRule::Exempt)
-    .critical_important(),
+    .house_scope(),
     row(
         "dora.art24.5",
         "24",
@@ -932,7 +985,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         Selector::Remediation,
     )
     .micro(MicroRule::Exempt)
-    .critical_important(),
+    .house_scope(),
     row(
         "dora.art24.6",
         "24",
@@ -982,11 +1035,12 @@ pub const REQUIREMENTS: &[Requirement] = &[
         5,
         Manual,
         Selector::Exercise {
-            types: PENTEST,
+            types: TLPT,
             cited: false,
         },
     )
     .full()
+    .micro(MicroRule::Exempt)
     .flagged(FlagRule::TlptDesignated)
     .window(THREE_YEARS)
     .critical_important(),
@@ -1183,6 +1237,83 @@ mod tests {
         assert!(ids(&simplified)
             .iter()
             .all(|id| !id.starts_with("dora.art26.")));
+    }
+
+    /// Art. 26(1) asks for a threat-led test: an ordinary penetration
+    /// test record is not one, and microenterprises are outside Art. 26.
+    #[test]
+    fn the_tlpt_row_takes_a_tlpt_record_and_exempts_microenterprises() {
+        let row = requirement("dora.art26.1").unwrap();
+        assert_eq!(
+            row.selector,
+            Selector::Exercise {
+                types: &["tlpt"],
+                cited: false
+            }
+        );
+        assert_eq!(row.micro, MicroRule::Exempt);
+        let micro = profile("full", &["tlpt_designated", "microenterprise"]);
+        assert!(ids(&micro).iter().all(|id| !id.starts_with("dora.art26.")));
+    }
+
+    #[test]
+    fn titles_claim_no_more_and_no_less_than_the_provision() {
+        let title = |id: &str| requirement(id).unwrap().title;
+        // The yearly frequency belongs to point (a), not to point (b).
+        assert_eq!(title("dora.art11.6b"), "Crisis communication plans tested");
+        // Art. 16(1)(h) feeds the conclusions into the risk assessment
+        // first, and into training second.
+        assert_eq!(
+            title("dora.art16.1.h"),
+            "Lessons from tests and incidents fed into the ICT risk assessment and into training"
+        );
+    }
+
+    /// Art. 24(1), (3), (4) and (5) bind every function. Checking them
+    /// on critical or important functions only is the house's choice,
+    /// and the row says so.
+    #[test]
+    fn the_house_restriction_of_art_24_rows_is_marked_as_such() {
+        for id in [
+            "dora.art24.1",
+            "dora.art24.3",
+            "dora.art24.4",
+            "dora.art24.5",
+        ] {
+            let row = requirement(id).unwrap();
+            assert_eq!(row.scope, FunctionScope::CriticalImportant, "{id}");
+            assert_eq!(row.scope_basis, ScopeBasis::House, "{id}");
+            assert_eq!(row.scope_basis.as_str(), "house");
+        }
+        // Art. 24(6) names critical or important functions itself.
+        let stated = requirement("dora.art24.6").unwrap();
+        assert_eq!(stated.scope_basis, ScopeBasis::Regulation);
+        assert_eq!(stated.scope_basis.as_str(), "regulation");
+        let house: Vec<&str> = REQUIREMENTS
+            .iter()
+            .filter(|r| r.scope_basis == ScopeBasis::House)
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(house.len(), 4, "{house:?}");
+    }
+
+    /// Art. 6(5): at least once a year, or periodically for a
+    /// microenterprise. The house sets no window where the text sets none.
+    #[test]
+    fn a_microenterprise_reviews_the_framework_periodically_not_yearly() {
+        let row = requirement("dora.art6.5").unwrap();
+        assert_eq!(row.window_for(&profile("full", &[])), Some(365));
+        assert_eq!(row.window_for(&profile("full", &["microenterprise"])), None);
+        // Every other row keeps its window for a microenterprise.
+        let micro = profile("full", &["microenterprise"]);
+        for other in REQUIREMENTS.iter().filter(|r| r.id != "dora.art6.5") {
+            assert_eq!(
+                other.window_for(&micro),
+                Some(other.window_days),
+                "{}",
+                other.id
+            );
+        }
     }
 
     #[test]

@@ -82,7 +82,8 @@
 //! v19 is reserved for the forecast tables, which land separately; this
 //! build does not create them. v20 adds the function register (`ict.rs`):
 //! `ict_legal_entities`, `ict_functions`, `ict_function_services` and the
-//! daily `requirement_status_daily` snapshots — additive and index-free.
+//! daily `requirement_status_daily` and `maturity_daily` snapshots —
+//! additive and index-free.
 //! Every statement is `IF NOT EXISTS`, so a database at v18 or at v19
 //! migrates to v20 the same way.
 //!

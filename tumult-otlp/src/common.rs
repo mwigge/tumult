@@ -3,7 +3,95 @@
 
 use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
 use opentelemetry_proto::tonic::resource::v1::Resource;
-use tumult_core::compliance::{entity_id_is_valid, ENTITY_ID_ATTR, ENTITY_ID_MALFORMED_ATTR};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use tumult_core::compliance::{
+    entity_id_is_valid, truncated, ENTITY_ID_ATTR, ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN,
+    ENTITY_ID_TRUNCATION_MARK,
+};
+
+/// Seconds between two warnings about a malformed `ict.entity.id`. A
+/// sender can repeat a bad id on every resource, so the log gets one
+/// event per interval with the number it left out; the counter has all.
+pub const MALFORMED_WARN_INTERVAL_S: u64 = 60;
+
+static MALFORMED_ENTITY_IDS: AtomicU64 = AtomicU64::new(0);
+static MALFORMED_WARN: WarnLimit = WarnLimit::new();
+
+/// Resources received since start whose `ict.entity.id` was malformed.
+#[must_use]
+pub fn malformed_entity_ids_total() -> u64 {
+    MALFORMED_ENTITY_IDS.load(Ordering::Relaxed)
+}
+
+/// Lets one event through per interval and counts the ones it holds back.
+struct WarnLimit {
+    next_s: AtomicU64,
+    suppressed: AtomicU64,
+}
+
+impl WarnLimit {
+    const fn new() -> Self {
+        Self {
+            next_s: AtomicU64::new(0),
+            suppressed: AtomicU64::new(0),
+        }
+    }
+
+    /// `Some(n)` when an event may be written at `now_s`, with `n` the
+    /// number held back since the last one; `None` when this one is
+    /// held back too.
+    fn allow(&self, now_s: u64, every_s: u64) -> Option<u64> {
+        let next = self.next_s.load(Ordering::Relaxed);
+        let won = now_s >= next
+            && self
+                .next_s
+                .compare_exchange(next, now_s + every_s, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok();
+        if !won {
+            self.suppressed.fetch_add(1, Ordering::Relaxed);
+            return None;
+        }
+        Some(self.suppressed.swap(0, Ordering::Relaxed))
+    }
+}
+
+fn now_s() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+}
+
+/// Count a malformed id and, at most once per interval, say so.
+fn note_malformed(stored: &str) {
+    let total = MALFORMED_ENTITY_IDS.fetch_add(1, Ordering::Relaxed) + 1;
+    let Some(suppressed) = MALFORMED_WARN.allow(now_s(), MALFORMED_WARN_INTERVAL_S) else {
+        return;
+    };
+    // `stored` is already cut to the id length; `?` escapes what the
+    // sender put in it.
+    tracing::warn!(
+        "ict.entity.id" = ?stored,
+        "ict.entity.id.malformed_total" = total,
+        "log.suppressed" = suppressed,
+        "malformed ict.entity.id received"
+    );
+}
+
+/// What the lake stores of a malformed id: the value as received, or,
+/// when it is longer than an id can be, its start with the truncation
+/// mark as last character. The mark is outside the canonical form, so a
+/// cut value never reads as a valid id.
+fn bounded_entity_id(value: &str) -> Option<String> {
+    if value.len() <= ENTITY_ID_MAX_LEN {
+        return None;
+    }
+    let keep = ENTITY_ID_MAX_LEN - ENTITY_ID_TRUNCATION_MARK.len_utf8();
+    let mut cut = truncated(value, keep).to_string();
+    cut.push(ENTITY_ID_TRUNCATION_MARK);
+    Some(cut)
+}
 
 /// The promoted, materialized `resilience.*` span attributes. Everything else
 /// lands in the attribute maps.
@@ -191,15 +279,25 @@ impl ResourceCtx {
 }
 
 /// Mark a resource whose `ict.entity.id` is not in the canonical form
-/// with [`ENTITY_ID_MALFORMED_ATTR`]. The id itself is stored exactly as
+/// with [`ENTITY_ID_MALFORMED_ATTR`]. The id itself is stored as
 /// received: lower-casing it here would hide the sender's mistake and
-/// could merge two different ids. A flag the sender set is dropped, so the
-/// attribute always states this check's own verdict.
+/// could merge two different ids. Only its length is bounded (see
+/// [`bounded_entity_id`]). A flag the sender set is dropped, so the
+/// attribute always states this check's own verdict. Every malformed id
+/// is counted ([`malformed_entity_ids_total`]).
 fn flag_malformed_entity_id(mut attrs: Vec<(String, String)>) -> Vec<(String, String)> {
     attrs.retain(|(key, _)| key != ENTITY_ID_MALFORMED_ATTR);
-    let malformed = attrs
-        .iter()
-        .any(|(key, value)| key == ENTITY_ID_ATTR && !entity_id_is_valid(value));
+    let mut malformed = false;
+    for (_, value) in attrs
+        .iter_mut()
+        .filter(|(key, value)| key == ENTITY_ID_ATTR && !entity_id_is_valid(value))
+    {
+        malformed = true;
+        if let Some(cut) = bounded_entity_id(value) {
+            *value = cut;
+        }
+        note_malformed(value);
+    }
     if malformed {
         attrs.push((ENTITY_ID_MALFORMED_ATTR.to_string(), "true".to_string()));
     }
@@ -226,6 +324,57 @@ mod tests {
         attrs
             .iter()
             .any(|(k, v)| k == ENTITY_ID_MALFORMED_ATTR && v == "true")
+    }
+
+    fn entity_id(attrs: &[(String, String)]) -> &str {
+        attrs
+            .iter()
+            .find(|(k, _)| k == ENTITY_ID_ATTR)
+            .map(|(_, v)| v.as_str())
+            .expect("the id is kept")
+    }
+
+    /// The lake never stores more of an id than an id can be long, and
+    /// what it stores of an over-long one can never pass for a valid id.
+    #[test]
+    fn an_over_long_entity_id_is_stored_truncated_and_flagged() {
+        // Truncating this one to 63 bytes would leave a valid-looking id.
+        let long = format!("cif-{}", "0".repeat(5_000));
+        let markup = format!("<img src=x onerror=alert(1)>{}", "å".repeat(5_000));
+        for sent in [long, markup] {
+            let resource = resource_with(&[("ict.entity.id", &sent)]);
+            let ctx = ResourceCtx::from_resource(Some(&resource));
+            let stored = entity_id(&ctx.resource_attrs);
+            assert!(stored.len() <= ENTITY_ID_MAX_LEN, "{} bytes", stored.len());
+            assert!(stored.ends_with(ENTITY_ID_TRUNCATION_MARK), "{stored}");
+            assert!(sent.starts_with(stored.trim_end_matches(ENTITY_ID_TRUNCATION_MARK)));
+            assert!(!entity_id_is_valid(stored), "{stored}");
+            assert!(flagged(&ctx.resource_attrs));
+        }
+    }
+
+    #[test]
+    fn every_malformed_entity_id_is_counted() {
+        let before = malformed_entity_ids_total();
+        let bad = resource_with(&[("ict.entity.id", "CF-0042")]);
+        let good = resource_with(&[("ict.entity.id", "cif-0042")]);
+        let _ = ResourceCtx::from_resource(Some(&bad));
+        let _ = ResourceCtx::from_resource(Some(&bad));
+        let _ = ResourceCtx::from_resource(Some(&good));
+        // Other tests count too, so the total is a floor.
+        assert!(malformed_entity_ids_total() >= before + 2);
+    }
+
+    #[test]
+    fn the_warning_is_written_at_most_once_per_interval_and_says_what_it_left_out() {
+        let limit = WarnLimit::new();
+        assert_eq!(limit.allow(1_000, 60), Some(0), "the first one is written");
+        assert_eq!(limit.allow(1_000, 60), None);
+        assert_eq!(limit.allow(1_030, 60), None);
+        assert_eq!(limit.allow(1_059, 60), None);
+        assert_eq!(limit.allow(1_060, 60), Some(3), "three were left out");
+        assert_eq!(limit.allow(1_061, 60), None);
+        assert_eq!(limit.allow(1_120, 60), Some(1));
     }
 
     #[test]

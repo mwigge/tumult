@@ -137,6 +137,12 @@ pub fn render_prometheus() -> String {
         "Schedule fires.",
         load(&SCHEDULE_FIRES),
     );
+    push_counter(
+        &mut out,
+        "tumultd_malformed_entity_ids_total",
+        "Resources received with a malformed ict.entity.id.",
+        tumult_otlp::common::malformed_entity_ids_total(),
+    );
     push_gauge(
         &mut out,
         "tumultd_active_campaigns",
@@ -171,6 +177,7 @@ mod tests {
             "tumultd_webhook_deliveries_failed_total",
             "tumultd_webhook_dead_letters_total",
             "tumultd_schedule_fires_total",
+            "tumultd_malformed_entity_ids_total",
             "tumultd_active_campaigns",
             "tumultd_supervisor_last_tick_ns",
         ] {

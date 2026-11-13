@@ -52,7 +52,8 @@ pub fn format_day(day: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-/// Day number of a `YYYY-MM-DD` date; `None` when the text is not one.
+/// Day number of a `YYYY-MM-DD` date; `None` when the text is not one or
+/// names a day that does not exist.
 #[must_use]
 pub fn parse_day(text: &str) -> Option<i64> {
     let mut parts = text.trim().splitn(3, '-');
@@ -62,7 +63,10 @@ pub fn parse_day(text: &str) -> Option<i64> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
-    Some(days_from_civil(year, month, day))
+    // A day the month does not have (30 February) lands in the next
+    // month, so it does not read back as written.
+    let number = days_from_civil(year, month, day);
+    (format_day(number) == format!("{year:04}-{month:02}-{day:02}")).then_some(number)
 }
 
 /// Criticality tier of a function.
@@ -415,9 +419,12 @@ pub struct Facts {
     pub topology_observed: bool,
 }
 
-/// Authoritative daily values of `v(function, requirement)`, keyed by
-/// `(function id, requirement id)` then day number.
-pub type Snapshots = BTreeMap<(String, String), BTreeMap<i64, f64>>;
+/// Stored daily values of `v(function, requirement)`, keyed by
+/// `(function id, requirement id)` then day number: the rows the daily
+/// job wrote on the day they describe. `None` is a day stored as unknown
+/// or without events. A day with no entry was never stored. Neither
+/// counts toward the Operating streak.
+pub type Snapshots = BTreeMap<(String, String), BTreeMap<i64, Option<f64>>>;
 
 /// Everything the scores read, for one legal entity.
 #[derive(Debug, Clone, PartialEq)]
@@ -505,6 +512,18 @@ mod tests {
         assert_eq!(parse_day("2026-11-13T10:00:00Z"), Some(d));
         assert_eq!(parse_day("yesterday"), None);
         assert_eq!(parse_day("2026-13-01"), None);
+        // A day the month does not have is no date.
+        for impossible in [
+            "2026-02-30",
+            "2026-02-29",
+            "2026-04-31",
+            "2025-11-31",
+            "2026-00-10",
+        ] {
+            assert_eq!(parse_day(impossible), None, "{impossible}");
+        }
+        assert!(parse_day("2028-02-29").is_some());
+        assert!(parse_day("2026-12-31").is_some());
     }
 
     #[test]

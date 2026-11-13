@@ -8,6 +8,8 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tumult_core::compliance::requirement;
 
 /// Weight of a function by criticality tier (`c_f`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -406,6 +408,7 @@ impl Default for HouseParams {
             ("drill", "dr"),
             ("gameday", "chaos"),
             ("pentest", "security"),
+            ("tlpt", "security"),
         ];
         Self {
             criticality: CriticalityWeights::default(),
@@ -445,40 +448,212 @@ impl Default for HouseParams {
     }
 }
 
+/// Tolerance when a value is compared with a threshold: a value within
+/// this distance below the threshold holds. It absorbs the rounding of
+/// the products `outcome · strength · freshness` (0.75 is not always
+/// exactly 0.75 in binary) and nothing else.
+pub const VALUE_EPS: f64 = 1e-9;
+
 impl HouseParams {
-    /// Check that the parameters describe a usable model.
+    /// Whether a cell value reaches the Existing threshold, within
+    /// [`VALUE_EPS`].
+    #[must_use]
+    pub fn holds(&self, value: f64) -> bool {
+        value + VALUE_EPS >= self.existing_threshold
+    }
+
+    /// Check that the parameters describe a usable model: every share
+    /// and factor within 0..=1, every gate threshold a percentage and no
+    /// gate easier than the one below it, weights that sum to one where
+    /// the formula needs it, levels and day counts in range, and every
+    /// name one the model knows.
     ///
     /// # Errors
     /// Names the first parameter that is out of range.
     pub fn validate(&self) -> Result<(), String> {
-        let unit = [
-            ("existing_threshold", self.existing_threshold),
-            ("operating_share", self.operating_share),
-            ("band_good", self.band_good),
-            ("band_fair", self.band_fair),
+        self.check_shares()?;
+        self.check_weights()?;
+        self.check_gates()?;
+        self.check_levels_and_days()?;
+        self.check_order()?;
+        self.check_names()
+    }
+
+    fn check_shares(&self) -> Result<(), String> {
+        let (o, s, w) = (&self.outcome, &self.strength, &self.pillar_weights);
+        let mut shares = vec![
+            ("existing_threshold".to_string(), self.existing_threshold),
+            ("operating_share".to_string(), self.operating_share),
+            ("band_good".to_string(), self.band_good),
+            ("band_fair".to_string(), self.band_fair),
+            ("outcome.passed".to_string(), o.passed),
+            ("outcome.partial".to_string(), o.partial),
+            ("outcome.failed".to_string(), o.failed),
+            ("strength.direct".to_string(), s.direct),
+            ("strength.supporting".to_string(), s.supporting),
+            ("strength.indirect".to_string(), s.indirect),
+            ("strength.manual_test".to_string(), s.manual_test),
+            ("slo.low_budget".to_string(), self.slo.low_budget),
             (
-                "gates.l3_max_unknown_share",
+                "slo.low_budget_credit".to_string(),
+                self.slo.low_budget_credit,
+            ),
+            ("loop_closure_weight".to_string(), self.loop_closure_weight),
+            (
+                "loop_previously_tested_weight".to_string(),
+                self.loop_previously_tested_weight,
+            ),
+            (
+                "gates.l3_max_unknown_share".to_string(),
                 self.gates.l3_max_unknown_share,
             ),
         ];
-        for (name, value) in unit {
-            if !(0.0..=1.0).contains(&value) {
-                return Err(format!("score.{name} must be within 0..=1, got {value}"));
+        for (set, weights) in [("full", &w.full), ("reduced", &w.reduced)] {
+            for (pillar, value) in weights.named() {
+                shares.push((format!("pillar_weights.{set}.{pillar}"), value));
             }
         }
-        if self.freshness_decay_fraction <= 0.0 {
-            return Err("score.freshness_decay_fraction must be positive".into());
-        }
-        if self.operating_days == 0 {
-            return Err("score.operating_days must be at least 1".into());
-        }
         for (kind, omega) in &self.rollup.own_share {
-            if !(0.0..=1.0).contains(omega) {
+            shares.push((format!("rollup.own_share.{kind}"), *omega));
+        }
+        for (name, value) in shares {
+            within(&name, value, 0.0, 1.0)?;
+        }
+        Ok(())
+    }
+
+    fn check_weights(&self) -> Result<(), String> {
+        let c = &self.criticality;
+        for (name, value) in [
+            ("criticality.critical", c.critical),
+            ("criticality.important", c.important),
+            ("criticality.other", c.other),
+            ("freshness_decay_fraction", self.freshness_decay_fraction),
+        ] {
+            if !(value.is_finite() && value > 0.0) {
+                return Err(format!("score.{name} must be positive, got {value}"));
+            }
+        }
+        let mut weights = vec![
+            ("slo.blocking_weight".to_string(), self.slo.blocking_weight),
+            ("slo.major_weight".to_string(), self.slo.major_weight),
+            ("slo.minor_weight".to_string(), self.slo.minor_weight),
+            (
+                "rollup.unassigned_weight".to_string(),
+                self.rollup.unassigned_weight,
+            ),
+        ];
+        for (kind, weight) in &self.kind_weights {
+            weights.push((format!("kind_weights.{kind}"), *weight));
+        }
+        for (name, value) in weights {
+            if !(value.is_finite() && value >= 0.0) {
+                return Err(format!("score.{name} must be zero or more, got {value}"));
+            }
+        }
+        if !self.kind_weights.values().any(|weight| *weight > 0.0) {
+            return Err("score.kind_weights must weigh at least one discipline".into());
+        }
+        let w = &self.pillar_weights;
+        for (set, weights) in [("full", &w.full), ("reduced", &w.reduced)] {
+            let sum: f64 = weights.named().iter().map(|(_, value)| value).sum();
+            if (sum - 1.0).abs() > WEIGHT_SUM_EPS {
                 return Err(format!(
-                    "score.rollup.own_share.{kind} must be within 0..=1, got {omega}"
+                    "score.pillar_weights.{set} must sum to 1, got {sum}"
                 ));
             }
         }
+        let sum = self.loop_closure_weight + self.loop_previously_tested_weight;
+        if (sum - 1.0).abs() > WEIGHT_SUM_EPS {
+            return Err(format!(
+                "score.loop_closure_weight and score.loop_previously_tested_weight must sum \
+                 to 1, got {sum}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_gates(&self) -> Result<(), String> {
+        let g = &self.gates;
+        // Each chain is one pillar across the levels that gate on it.
+        let chains: [&[(&str, f64)]; 8] = [
+            &[("l2_c1", g.l2_c1), ("l3_c1", g.l3_c1)],
+            &[("l3_c2", g.l3_c2)],
+            &[("l4_c3", g.l4_c3)],
+            &[("l5_c4", g.l5_c4)],
+            &[
+                ("l2_coverage", g.l2_coverage),
+                ("l3_coverage", g.l3_coverage),
+                ("l4_coverage", g.l4_coverage),
+                ("l5_coverage", g.l5_coverage),
+            ],
+            &[
+                ("l3_slo", g.l3_slo),
+                ("l4_slo", g.l4_slo),
+                ("l5_slo", g.l5_slo),
+            ],
+            &[
+                ("l3_recovery", g.l3_recovery),
+                ("l4_recovery", g.l4_recovery),
+                ("l5_recovery", g.l5_recovery),
+            ],
+            &[("l4_loop", g.l4_loop), ("l5_loop", g.l5_loop)],
+        ];
+        for chain in chains {
+            for (name, value) in chain {
+                within(&format!("gates.{name}"), *value, 0.0, 100.0)?;
+            }
+        }
+        for chain in chains {
+            for pair in chain.windows(2) {
+                let ((below, low), (name, value)) = (pair[0], pair[1]);
+                if value < low {
+                    return Err(format!(
+                        "score.gates.{name} must be at least score.gates.{below} ({low}), \
+                         got {value}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn check_levels_and_days(&self) -> Result<(), String> {
+        let days = [
+            ("operating_days", self.operating_days),
+            ("test_window_days", self.test_window_days),
+            ("recovery_window_days", self.recovery_window_days),
+            ("loop_window_days", self.loop_window_days),
+            ("conformance.window_days", self.conformance.window_days),
+            ("gates.l3_slo_history_days", self.gates.l3_slo_history_days),
+        ];
+        for (name, value) in days {
+            if value == 0 {
+                return Err(format!("score.{name} must be at least 1"));
+            }
+        }
+        let (t, c) = (&self.targets, &self.conformance_ceiling);
+        let levels = [
+            ("targets.full", t.full, 5),
+            ("targets.full_tlpt_designated", t.full_tlpt_designated, 5),
+            ("targets.full_microenterprise", t.full_microenterprise, 5),
+            ("targets.simplified", t.simplified, 5),
+            (
+                "targets.simplified_microenterprise",
+                t.simplified_microenterprise,
+                5,
+            ),
+            ("conformance_ceiling.full", c.full, 4),
+            ("conformance_ceiling.reduced", c.reduced, 4),
+        ];
+        for (name, value, top) in levels {
+            if !(1..=top).contains(&value) {
+                return Err(format!(
+                    "score.{name} must be within 1..={top}, got {value}"
+                ));
+            }
+        }
+        within("rollup.unknown_floor", self.rollup.unknown_floor, 1.0, 5.0)?;
         for (id, status) in &self.expected_status {
             if !(1..=3).contains(status) {
                 return Err(format!(
@@ -488,11 +663,204 @@ impl HouseParams {
         }
         Ok(())
     }
+
+    /// Weaker evidence never counts for more than stronger evidence.
+    fn check_order(&self) -> Result<(), String> {
+        let (o, s) = (&self.outcome, &self.strength);
+        let pairs = [
+            ("outcome.failed", o.failed, "outcome.partial", o.partial),
+            ("outcome.partial", o.partial, "outcome.passed", o.passed),
+            (
+                "strength.indirect",
+                s.indirect,
+                "strength.supporting",
+                s.supporting,
+            ),
+            (
+                "strength.supporting",
+                s.supporting,
+                "strength.direct",
+                s.direct,
+            ),
+            ("band_fair", self.band_fair, "band_good", self.band_good),
+        ];
+        for (name, value, above, top) in pairs {
+            if value > top {
+                return Err(format!(
+                    "score.{name} must be at most score.{above} ({top}), got {value}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_names(&self) -> Result<(), String> {
+        let unknown_row =
+            |name: &str, id: &str| format!("score.{name}: '{id}' is not a requirement id");
+        for id in self.expected_status.keys() {
+            if requirement(id).is_none() {
+                return Err(unknown_row(&format!("expected_status.{id}"), id));
+            }
+        }
+        for (name, id) in [
+            ("simplified_test_row", &self.simplified_test_row),
+            ("tlpt_row", &self.tlpt_row),
+        ] {
+            if requirement(id).is_none() {
+                return Err(unknown_row(name, id));
+            }
+        }
+        for id in &self.management_report_rows {
+            if requirement(id).is_none() {
+                return Err(unknown_row("management_report_rows", id));
+            }
+        }
+        for kind in self.rollup.own_share.keys() {
+            node_kind(&format!("rollup.own_share.{kind}"), kind)?;
+        }
+        for (kind, pillars) in &self.rollup.own_pillars {
+            let name = format!("rollup.own_pillars.{kind}");
+            node_kind(&name, kind)?;
+            if let Some(letter) = pillars
+                .iter()
+                .find(|p| !PILLAR_LETTERS.contains(&p.as_str()))
+            {
+                return Err(format!(
+                    "score.{name}: '{letter}' is not one of {PILLAR_LETTERS:?}"
+                ));
+            }
+        }
+        for (exercise, kind) in &self.manual_kinds {
+            if !self.kind_weights.contains_key(kind) {
+                return Err(format!(
+                    "score.manual_kinds.{exercise}: '{kind}' has no weight in score.kind_weights"
+                ));
+            }
+        }
+        for (level, keys) in self.conformance.levels().iter().enumerate() {
+            if keys.iter().any(|key| key.trim().is_empty()) {
+                return Err(format!(
+                    "score.conformance.level{}: an attribute key is empty",
+                    level + 1
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Every parameter that differs from the house default, by its
+    /// dotted path in the `score:` section, sorted by path. A key the
+    /// defaults have and the parameters lack shows the value `null`.
+    #[must_use]
+    pub fn overrides(&self) -> Vec<Override> {
+        let own = serde_json::to_value(self).unwrap_or(Value::Null);
+        let default = serde_json::to_value(Self::default()).unwrap_or(Value::Null);
+        let mut out = Vec::new();
+        diff("", &own, &default, &mut out);
+        out.sort_by(|a, b| a.key.cmp(&b.key));
+        out
+    }
+}
+
+/// One parameter set to something other than the house default.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Override {
+    /// Dotted path below `score:`.
+    pub key: String,
+    pub value: Value,
+    pub default: Value,
+}
+
+fn diff(path: &str, own: &Value, default: &Value, out: &mut Vec<Override>) {
+    if own == default {
+        return;
+    }
+    let (Some(own_map), Some(default_map)) = (own.as_object(), default.as_object()) else {
+        out.push(Override {
+            key: path.to_string(),
+            value: own.clone(),
+            default: default.clone(),
+        });
+        return;
+    };
+    let keys: std::collections::BTreeSet<&String> =
+        own_map.keys().chain(default_map.keys()).collect();
+    for key in keys {
+        let child = if path.is_empty() {
+            key.clone()
+        } else {
+            format!("{path}.{key}")
+        };
+        diff(
+            &child,
+            own_map.get(key).unwrap_or(&Value::Null),
+            default_map.get(key).unwrap_or(&Value::Null),
+            out,
+        );
+    }
+}
+
+/// How far a set of weights may be from summing to one.
+const WEIGHT_SUM_EPS: f64 = 1e-6;
+/// Node kinds the roll-up knows.
+const NODE_KINDS: [&str; 6] = [
+    "workload",
+    "service",
+    "component",
+    "system",
+    "entity",
+    "org",
+];
+/// Pillar letters a node can observe.
+const PILLAR_LETTERS: [&str; 5] = ["C", "T", "S", "R", "L"];
+
+fn within(name: &str, value: f64, low: f64, high: f64) -> Result<(), String> {
+    if value.is_finite() && (low..=high).contains(&value) {
+        return Ok(());
+    }
+    Err(format!(
+        "score.{name} must be within {low}..={high}, got {value}"
+    ))
+}
+
+fn node_kind(name: &str, kind: &str) -> Result<(), String> {
+    if NODE_KINDS.contains(&kind) {
+        return Ok(());
+    }
+    Err(format!(
+        "score.{name}: '{kind}' is not one of {NODE_KINDS:?}"
+    ))
+}
+
+impl PillarWeights {
+    /// The five weights with their names in the `score:` section.
+    #[must_use]
+    pub fn named(&self) -> [(&'static str, f64); 5] {
+        [
+            ("conformance", self.conformance),
+            ("coverage", self.coverage),
+            ("slo", self.slo),
+            ("recovery", self.recovery),
+            ("loop", self.loop_),
+        ]
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_existing_threshold_holds_within_the_stated_tolerance() {
+        let p = HouseParams::default();
+        assert!(p.holds(0.75));
+        assert!(p.holds(1.0 * 0.75 * 1.0));
+        // 0.1 · 7.5 and 3 · 0.25 − 2e-10 are 0.75 up to rounding.
+        assert!(p.holds(0.75 - VALUE_EPS / 2.0));
+        assert!(!p.holds(0.75 - 2.0 * VALUE_EPS));
+        assert!(!p.holds(0.7499));
+        assert!(!p.holds(f64::NAN));
+    }
 
     #[test]
     fn defaults_are_the_documented_house_values() {
@@ -527,6 +895,293 @@ mod tests {
         assert_eq!(p.targets.full, 4);
         assert_eq!(p.targets.simplified, 3);
         assert_eq!(p.gates, GateThresholds::default());
+    }
+
+    /// The error of validating the overrides in `yaml`.
+    fn refused(yaml: &str) -> String {
+        let params: HouseParams =
+            serde_yaml::from_str(yaml).unwrap_or_else(|e| panic!("{yaml}: {e}"));
+        params.validate().expect_err(&format!("accepted:\n{yaml}"))
+    }
+
+    fn assert_refused(cases: &[(&str, &str)]) {
+        for (yaml, names) in cases {
+            let error = refused(yaml);
+            assert!(error.contains(names), "{yaml} gave: {error}");
+        }
+    }
+
+    #[test]
+    fn every_share_and_factor_is_finite_and_within_0_to_1() {
+        assert_refused(&[
+            ("existing_threshold: -0.1\n", "score.existing_threshold"),
+            ("existing_threshold: .nan\n", "score.existing_threshold"),
+            ("operating_share: .inf\n", "score.operating_share"),
+            ("band_good: 1.2\n", "score.band_good"),
+            ("band_fair: -1\n", "score.band_fair"),
+            ("outcome: {passed: 1.5}\n", "score.outcome.passed"),
+            ("outcome: {partial: -0.5}\n", "score.outcome.partial"),
+            ("outcome: {failed: 2}\n", "score.outcome.failed"),
+            ("strength: {direct: 3}\n", "score.strength.direct"),
+            (
+                "strength: {supporting: 1.01}\n",
+                "score.strength.supporting",
+            ),
+            ("strength: {indirect: -0.01}\n", "score.strength.indirect"),
+            ("strength: {manual_test: 7}\n", "score.strength.manual_test"),
+            ("slo: {low_budget: 1.5}\n", "score.slo.low_budget"),
+            (
+                "slo: {low_budget_credit: -1}\n",
+                "score.slo.low_budget_credit",
+            ),
+            ("loop_closure_weight: 1.5\n", "score.loop_closure_weight"),
+            (
+                "gates: {l3_max_unknown_share: 50}\n",
+                "score.gates.l3_max_unknown_share",
+            ),
+            (
+                "rollup: {own_share: {service: 1.5}}\n",
+                "score.rollup.own_share.service",
+            ),
+            (
+                "pillar_weights: {full: {conformance: -0.2, coverage: 0.65, slo: 0.25, \
+                 recovery: 0.2, loop: 0.1}}\n",
+                "score.pillar_weights.full.conformance",
+            ),
+        ]);
+    }
+
+    #[test]
+    fn every_gate_threshold_is_a_percentage() {
+        let names = [
+            "l2_c1",
+            "l2_coverage",
+            "l3_c1",
+            "l3_c2",
+            "l3_coverage",
+            "l3_slo",
+            "l3_recovery",
+            "l4_c3",
+            "l4_coverage",
+            "l4_slo",
+            "l4_recovery",
+            "l4_loop",
+            "l5_c4",
+            "l5_coverage",
+            "l5_slo",
+            "l5_recovery",
+            "l5_loop",
+        ];
+        for name in names {
+            for bad in ["-1", "100.5", ".nan"] {
+                let error = refused(&format!("gates: {{{name}: {bad}}}\n"));
+                assert!(
+                    error.contains(&format!("score.gates.{name} ")),
+                    "{name}: {bad} gave: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_gate_is_never_easier_than_the_one_below_it() {
+        assert_refused(&[
+            ("gates: {l3_coverage: 10}\n", "score.gates.l3_coverage"),
+            ("gates: {l4_coverage: 50}\n", "score.gates.l4_coverage"),
+            ("gates: {l5_coverage: 70}\n", "score.gates.l5_coverage"),
+            ("gates: {l3_c1: 40}\n", "score.gates.l3_c1"),
+            ("gates: {l4_slo: 70}\n", "score.gates.l4_slo"),
+            ("gates: {l5_slo: 85}\n", "score.gates.l5_slo"),
+            ("gates: {l4_recovery: 50}\n", "score.gates.l4_recovery"),
+            ("gates: {l5_recovery: 70}\n", "score.gates.l5_recovery"),
+            ("gates: {l5_loop: 50}\n", "score.gates.l5_loop"),
+        ]);
+        // Lowering a whole chain in order is a valid house choice.
+        let lowered: HouseParams = serde_yaml::from_str(
+            "gates: {l2_coverage: 10, l3_coverage: 20, l4_coverage: 30, l5_coverage: 40}\n",
+        )
+        .unwrap();
+        lowered.validate().unwrap();
+    }
+
+    #[test]
+    fn pillar_and_loop_weights_sum_to_one() {
+        assert_refused(&[
+            (
+                "pillar_weights: {full: {conformance: 0.2, coverage: 0.25, slo: 0.25, \
+                 recovery: 0.2, loop: 0.2}}\n",
+                "score.pillar_weights.full must sum to 1",
+            ),
+            (
+                "pillar_weights: {reduced: {conformance: 0.2, coverage: 0.3, slo: 0.15, \
+                 recovery: 0.2, loop: 0.05}}\n",
+                "score.pillar_weights.reduced must sum to 1",
+            ),
+            (
+                "loop_closure_weight: 0.5\n",
+                "score.loop_closure_weight and score.loop_previously_tested_weight must sum to 1",
+            ),
+        ]);
+    }
+
+    #[test]
+    fn weights_are_finite_and_not_negative_and_some_must_be_positive() {
+        assert_refused(&[
+            ("criticality: {critical: 0}\n", "score.criticality.critical"),
+            (
+                "criticality: {important: -2}\n",
+                "score.criticality.important",
+            ),
+            ("criticality: {other: .inf}\n", "score.criticality.other"),
+            (
+                "freshness_decay_fraction: 0\n",
+                "score.freshness_decay_fraction",
+            ),
+            (
+                "freshness_decay_fraction: .nan\n",
+                "score.freshness_decay_fraction",
+            ),
+            ("kind_weights: {chaos: -1}\n", "score.kind_weights.chaos"),
+            ("kind_weights: {chaos: .inf}\n", "score.kind_weights.chaos"),
+            ("kind_weights: {chaos: 0}\n", "score.kind_weights"),
+            ("slo: {blocking_weight: -3}\n", "score.slo.blocking_weight"),
+            ("slo: {major_weight: .nan}\n", "score.slo.major_weight"),
+            ("slo: {minor_weight: -1}\n", "score.slo.minor_weight"),
+            (
+                "rollup: {unassigned_weight: -1}\n",
+                "score.rollup.unassigned_weight",
+            ),
+        ]);
+    }
+
+    #[test]
+    fn levels_and_day_counts_are_in_range() {
+        assert_refused(&[
+            ("operating_days: 0\n", "score.operating_days"),
+            ("test_window_days: 0\n", "score.test_window_days"),
+            ("recovery_window_days: 0\n", "score.recovery_window_days"),
+            ("loop_window_days: 0\n", "score.loop_window_days"),
+            (
+                "conformance: {window_days: 0}\n",
+                "score.conformance.window_days",
+            ),
+            (
+                "gates: {l3_slo_history_days: 0}\n",
+                "score.gates.l3_slo_history_days",
+            ),
+            ("targets: {full: 0}\n", "score.targets.full"),
+            (
+                "targets: {full_tlpt_designated: 6}\n",
+                "score.targets.full_tlpt_designated",
+            ),
+            ("targets: {simplified: 9}\n", "score.targets.simplified"),
+            (
+                "conformance_ceiling: {full: 5}\n",
+                "score.conformance_ceiling.full",
+            ),
+            (
+                "conformance_ceiling: {reduced: 0}\n",
+                "score.conformance_ceiling.reduced",
+            ),
+            (
+                "rollup: {unknown_floor: 0.5}\n",
+                "score.rollup.unknown_floor",
+            ),
+            (
+                "rollup: {unknown_floor: 5.5}\n",
+                "score.rollup.unknown_floor",
+            ),
+            (
+                "expected_status: {dora.art24.6: 0}\n",
+                "score.expected_status.dora.art24.6",
+            ),
+        ]);
+    }
+
+    #[test]
+    fn a_weaker_outcome_or_mapping_never_counts_for_more() {
+        assert_refused(&[
+            ("outcome: {failed: 0.9}\n", "score.outcome.failed"),
+            ("outcome: {partial: 0.4}\n", "score.outcome.partial"),
+            ("strength: {indirect: 0.9}\n", "score.strength.indirect"),
+            ("strength: {supporting: 0.1}\n", "score.strength.supporting"),
+            ("band_fair: 0.9\n", "score.band_fair"),
+        ]);
+    }
+
+    #[test]
+    fn names_the_model_does_not_know_are_refused() {
+        assert_refused(&[
+            (
+                "expected_status: {dora.art99.9: 2}\n",
+                "score.expected_status.dora.art99.9",
+            ),
+            (
+                "simplified_test_row: rts1774.art400\n",
+                "score.simplified_test_row",
+            ),
+            ("tlpt_row: dora.art26.99\n", "score.tlpt_row"),
+            (
+                "management_report_rows: [dora.art13.5, nope]\n",
+                "score.management_report_rows",
+            ),
+            (
+                "rollup: {own_share: {cluster: 0.5}}\n",
+                "score.rollup.own_share.cluster",
+            ),
+            (
+                "rollup: {own_pillars: {cluster: [T]}}\n",
+                "score.rollup.own_pillars.cluster",
+            ),
+            (
+                "rollup: {own_pillars: {service: [X]}}\n",
+                "score.rollup.own_pillars.service",
+            ),
+            (
+                "manual_kinds: {drill: teleport}\n",
+                "score.manual_kinds.drill",
+            ),
+            (
+                "conformance: {level1: [\"\"]}\n",
+                "score.conformance.level1",
+            ),
+        ]);
+        assert!(serde_yaml::from_str::<HouseParams>("gates: {l6_loop: 1}\n").is_err());
+        assert!(serde_yaml::from_str::<HouseParams>("outcome: {maybe: 1}\n").is_err());
+    }
+
+    #[test]
+    fn overrides_list_every_changed_key_with_its_default() {
+        assert!(HouseParams::default().overrides().is_empty());
+        let p: HouseParams = serde_yaml::from_str(
+            "operating_days: 90\ngates: {l2_coverage: 10, l3_coverage: 20}\n\
+             kind_weights: {chaos: 5}\nexpected_status: {dora.art24.6: 2}\n",
+        )
+        .unwrap();
+        let seen: Vec<(String, String, String)> = p
+            .overrides()
+            .into_iter()
+            .map(|o| (o.key, o.value.to_string(), o.default.to_string()))
+            .collect();
+        let want = [
+            ("expected_status.dora.art24.6", "2", "null"),
+            ("gates.l2_coverage", "10.0", "25.0"),
+            ("gates.l3_coverage", "20.0", "60.0"),
+            ("kind_weights.dr", "null", "3.0"),
+            ("kind_weights.load", "null", "2.0"),
+            ("kind_weights.nfr", "null", "1.0"),
+            ("kind_weights.performance", "null", "1.0"),
+            ("kind_weights.robustness", "null", "1.0"),
+            ("kind_weights.security", "null", "1.0"),
+            ("kind_weights.chaos", "5.0", "3.0"),
+            ("operating_days", "90", "180"),
+        ];
+        let mut want: Vec<(String, String, String)> = want
+            .iter()
+            .map(|(k, v, d)| ((*k).to_string(), (*v).to_string(), (*d).to_string()))
+            .collect();
+        want.sort();
+        assert_eq!(seen, want);
     }
 
     #[test]

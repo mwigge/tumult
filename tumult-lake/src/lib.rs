@@ -92,7 +92,7 @@ pub use error::StoreError;
 #[cfg(feature = "duckdb")]
 pub use ict::{
     is_critical_or_important, IctFunction, IctFunctionService, IctLegalEntity, IctRegister,
-    PlannedTest, RequirementStatusRow,
+    MaturityDailyRow, PlannedTest, RequirementStatusRow,
 };
 #[cfg(feature = "duckdb")]
 pub use manual::{

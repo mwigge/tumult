@@ -19,10 +19,13 @@
 //!   connected, every row that needs one is unknown, and no gate fact
 //!   that depends on one holds. Listing a feed in the register is a
 //!   declaration: it is reported ([`FeedState`]) and never scored.
-//! - **Snapshots**: rows of `requirement_status_daily` stored on the day
-//!   they describe. A day without a stored row is recomputed from the
-//!   dated evidence. A caller scoped to some environments gets no stored
-//!   rows at all: they were computed over every environment.
+//! - **Snapshots**: rows of `requirement_status_daily` stored by the
+//!   daily job on the day they describe. Only these count toward the
+//!   Operating streak: a day without a stored row, or stored as unknown,
+//!   ends it, and nothing is reconstructed from the time of the
+//!   evidence. A caller scoped to some environments gets no stored rows
+//!   at all (they were computed over every environment), so nothing it
+//!   sees is Operating.
 //!
 //! Without a registered function the loader stands in one unregistered
 //! function per `ict.entity.id` seen in telemetry, so an unregistered
@@ -32,7 +35,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde_json::Value;
-use tumult_core::compliance::EntityProfile;
+use tumult_core::compliance::{entity_id_is_valid, truncated, EntityProfile};
 use tumult_lake::{IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader};
 
 use super::model::{
@@ -49,6 +52,15 @@ pub const SNAPSHOT_SOURCE: &str = "snapshot";
 /// Days of stored snapshots that count as "two quarters" of posture
 /// history for the level-5 gate.
 pub const TWO_QUARTERS_DAYS: i64 = 182;
+/// Most status rows one load reads. A deployment of 200 functions and
+/// 150 requirements stores 30 000 rows a day, so the 183-day window is
+/// 5.5 million rows there; the limit keeps one request from reading
+/// more than about a sixth of that. Over the limit the oldest days are
+/// left out, which shortens a streak and never lengthens one.
+pub const STATUS_ROW_LIMIT: usize = 1_000_000;
+/// Most bytes of a value from a file or a sender that one log event
+/// carries.
+pub const LOG_VALUE_MAX_LEN: usize = 128;
 /// Discipline of an automated run that names none.
 pub const DEFAULT_RUN_KIND: &str = "chaos";
 /// Name shown for the stand-in legal entity of a deployment that has
@@ -111,6 +123,12 @@ pub struct Loaded {
     pub register: Vec<IctFunction>,
     /// Every feed the score knows, with what the lake holds of it.
     pub feeds: Vec<FeedState>,
+    /// The request scored under another profile than the registered one.
+    pub profile_overridden: bool,
+    /// The caller is limited to some environments: only the functions
+    /// its telemetry binds to are loaded, and no register data beyond
+    /// the entity scored.
+    pub scoped: bool,
     pub inputs: Inputs,
 }
 
@@ -232,7 +250,7 @@ fn registered_functions(rows: &[IctFunction]) -> Vec<Function> {
 fn unregistered_functions(rows: &[&Value]) -> Vec<Function> {
     let mut tiers: BTreeMap<String, Tier> = BTreeMap::new();
     for row in rows {
-        let Some(id) = text(row, "entity") else {
+        let Some(id) = text(row, "entity").filter(|id| entity_id_is_valid(id)) else {
             continue;
         };
         let tier = text(row, "tier").map_or(Tier::Other, |t| Tier::parse(&t));
@@ -272,7 +290,11 @@ impl Mapper {
             match row.kind.as_str() {
                 MAP_ENTITY => mapper.entity.push(pair),
                 MAP_SERVICE => mapper.service.push(pair),
-                other => tracing::warn!(kind = other, "unknown function mapping kind skipped"),
+                other => tracing::warn!(
+                    "resilience.function.id" = ?truncated(&row.function_id, LOG_VALUE_MAX_LEN),
+                    "resilience.mapping.kind" = ?truncated(other, LOG_VALUE_MAX_LEN),
+                    "unknown function mapping kind skipped"
+                ),
             }
         }
         mapper
@@ -379,7 +401,16 @@ fn carries(key: &str) -> String {
     )
 }
 
-fn attr(key: &str) -> String {
+/// SQL expression: the attribute `key`, from the resource or the span.
+/// The key is written into the statement, so it is a compile-time name
+/// of letters, digits, dots and underscores and nothing else; a value
+/// that comes from a file or a request goes through [`quoted`] instead.
+fn attr(key: &'static str) -> String {
+    let plain = !key.is_empty()
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_');
+    assert!(plain, "attribute key is not a plain name");
     format!("COALESCE(resource_attrs['{key}'], span_attrs['{key}'])")
 }
 
@@ -607,6 +638,11 @@ impl Loader<'_> {
             };
             services.extend(service_of(row, functions, self.params));
         }
+        if !self.request.envs.is_empty() {
+            // A declared name with no telemetry is register data the
+            // scoped caller has no view of.
+            return services;
+        }
         for (glob, function) in &self.own.service {
             if services.iter().any(|s| glob_match(glob, &s.name)) {
                 continue;
@@ -660,7 +696,7 @@ impl Loader<'_> {
         let back = i64::from(self.params.operating_days).max(TWO_QUARTERS_DAYS);
         let rows = self
             .reader
-            .requirement_status_since(today - back - 1)
+            .requirement_status_between(today - back - 1, today, STATUS_ROW_LIMIT)
             .map_err(store)?;
         let mut snapshots = Snapshots::new();
         let mut first = None;
@@ -672,7 +708,7 @@ impl Loader<'_> {
             snapshots
                 .entry((row.function_id, row.requirement_id))
                 .or_default()
-                .insert(row.as_of_day, row.value.unwrap_or(0.0));
+                .insert(row.as_of_day, row.value);
         }
         Ok((snapshots, first))
     }
@@ -737,13 +773,46 @@ pub fn load(
         snapshots,
         ..Inputs::empty(request.as_of_ns, profile)
     };
-    Ok(Loaded {
+    let profile_overridden = request.profile.is_some()
+        && profile_of(&entity, None).map_or(true, |own| own.label() != profile.label());
+    let loaded = Loaded {
         feeds: feed_states(&entity),
         entity,
         entities: register.legal_entities,
         register: rows,
+        profile_overridden,
+        scoped: false,
         inputs,
-    })
+    };
+    if request.envs.is_empty() {
+        return Ok(loaded);
+    }
+    Ok(scoped(loaded))
+}
+
+/// What a caller limited to some environments may have of `loaded`: the
+/// functions its own telemetry and evidence bind to, and of the register
+/// only the entity scored, without its sign-off and register codes.
+fn scoped(mut loaded: Loaded) -> Loaded {
+    let inputs = &mut loaded.inputs;
+    let mut visible: BTreeSet<String> = BTreeSet::new();
+    for evidence in &inputs.evidence {
+        visible.extend(evidence.functions.iter().cloned());
+    }
+    for service in &inputs.services {
+        visible.extend(service.functions.iter().cloned());
+    }
+    inputs.functions.retain(|f| visible.contains(&f.id));
+    for function in &mut inputs.functions {
+        function.register_codes.clear();
+    }
+    inputs.workloads.clear();
+    loaded.entity.registry_signed_by = None;
+    loaded.entity.registry_signed_at = None;
+    loaded.entities = vec![loaded.entity.clone()];
+    loaded.register.clear();
+    loaded.scoped = true;
+    loaded
 }
 
 #[cfg(test)]
@@ -1159,6 +1228,151 @@ functions:
         assert_eq!(loaded.inputs.services[0].functions, ["cif-0001"]);
     }
 
+    /// An id that is not in the canonical form is a sender's mistake or
+    /// an attack, never a function: it would otherwise be shown as a row
+    /// label on the page.
+    /// `attr` writes its key into SQL, so it takes only a plain
+    /// compile-time name and refuses anything else outright.
+    #[test]
+    #[should_panic(expected = "attribute key is not a plain name")]
+    fn attr_refuses_a_key_that_is_not_a_plain_name() {
+        let _ = attr("ict.entity.id'] OR TRUE --");
+    }
+
+    #[test]
+    fn attr_reads_a_plain_key_from_both_attribute_maps() {
+        assert_eq!(
+            attr("ict.entity.id"),
+            "COALESCE(resource_attrs['ict.entity.id'], span_attrs['ict.entity.id'])"
+        );
+    }
+
+    #[test]
+    fn a_malformed_entity_id_never_becomes_a_stand_in_function() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&dir.path().join("kronika.duckdb")).unwrap();
+        let with_id = |service: &str, id: &str| {
+            let mut span = spine_span(service, NOW - DAY_NS);
+            for (key, value) in &mut span.resource_attrs {
+                if key == "ict.entity.id" {
+                    *value = id.to_string();
+                }
+            }
+            span
+        };
+        let long = format!(
+            "a-{}",
+            "0".repeat(tumult_core::compliance::ENTITY_ID_MAX_LEN)
+        );
+        seed(
+            &store,
+            &[
+                with_id("checkout", "cif-0001"),
+                with_id("evil", "<img src=x onerror=alert(1)>"),
+                with_id("legacy", "CF-0042"),
+                with_id("wordy", &long),
+            ],
+            &[],
+        );
+        let loaded = loaded(&store, request(&[]));
+        let ids: Vec<&str> = loaded
+            .inputs
+            .functions
+            .iter()
+            .map(|f| f.id.as_str())
+            .collect();
+        assert_eq!(ids, ["cif-0001"]);
+    }
+
+    /// A caller scoped to some environments sees the functions its own
+    /// telemetry binds to and nothing of the register beyond them.
+    #[test]
+    fn a_scoped_caller_gets_only_the_functions_it_can_see_and_no_register_data() {
+        const TWO_FIRMS: &str = "
+legal_entities:
+  - lei: 529900T8BM49AURSDO55
+    name: Demo Firm
+    profile: simplified
+    registry_signed_by: Head of Compliance
+    registry_signed_at: 2026-10-01
+  - {lei: 506700GE1G29325QX363, name: Other Firm, profile: full}
+functions:
+  - id: cif-0001
+    lei: 529900T8BM49AURSDO55
+    name: Payments
+    tier: critical
+    services: [\"payments-*\", \"ledger\"]
+  - {id: cif-0002, lei: 529900T8BM49AURSDO55, name: Reporting, tier: important}
+  - {id: cif-0003, lei: 506700GE1G29325QX363, name: Custody, tier: critical}
+";
+        let (_dir, store) = store_with(TWO_FIRMS);
+        let mut staging = spine_span("payments-api", NOW - DAY_NS);
+        staging.target_environment = Some("staging".into());
+        seed(&store, &[staging], &[]);
+        let workloads = [Workload {
+            id: "wl:shop/deployment/payments-api".into(),
+            service: Some("payments-api".into()),
+        }];
+
+        let all = Request {
+            lei: Some(LEI),
+            workloads: &workloads,
+            ..request(&[])
+        };
+        let open = loaded(&store, all);
+        assert_eq!(open.inputs.functions.len(), 2);
+        assert_eq!(open.entities.len(), 2);
+        assert_eq!(
+            open.entity.registry_signed_by.as_deref(),
+            Some("Head of Compliance")
+        );
+        assert!(!open.scoped);
+
+        let envs = vec!["staging".to_string()];
+        let scoped = loaded(
+            &store,
+            Request {
+                lei: Some(LEI),
+                workloads: &workloads,
+                ..request(&envs)
+            },
+        );
+        assert!(scoped.scoped);
+        let ids: Vec<&str> = scoped
+            .inputs
+            .functions
+            .iter()
+            .map(|f| f.id.as_str())
+            .collect();
+        assert_eq!(ids, ["cif-0001"], "Reporting has nothing in staging");
+        assert!(scoped.inputs.functions[0].register_codes.is_empty());
+        assert!(scoped.register.is_empty());
+        assert_eq!(scoped.entities.len(), 1);
+        assert_eq!(scoped.entities[0].lei, LEI);
+        assert_eq!(scoped.entity.registry_signed_by, None);
+        assert_eq!(scoped.entity.registry_signed_at, None);
+        assert!(scoped.inputs.workloads.is_empty());
+        let services: Vec<&str> = scoped
+            .inputs
+            .services
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(services, ["payments-api"], "no declared name it cannot see");
+
+        // Nothing in the environment: no function at all, not the register.
+        let none = vec!["dev".to_string()];
+        let empty = loaded(
+            &store,
+            Request {
+                lei: Some(LEI),
+                ..request(&none)
+            },
+        );
+        assert!(empty.inputs.functions.is_empty());
+        assert!(empty.inputs.services.is_empty());
+    }
+
     #[test]
     fn the_request_can_override_the_profile_and_must_name_a_known_entity() {
         let (_dir, store) = store_with(ORG);
@@ -1168,6 +1382,18 @@ functions:
             profile: Some("full"),
             ..request(&[])
         };
+        let overridden = load(&reader, full, &params).unwrap();
+        assert!(overridden.profile_overridden);
+        let same = Request {
+            profile: Some("simplified"),
+            ..request(&[])
+        };
+        assert!(!load(&reader, same, &params).unwrap().profile_overridden);
+        assert!(
+            !load(&reader, request(&[]), &params)
+                .unwrap()
+                .profile_overridden
+        );
         assert_eq!(
             load(&reader, full, &params).unwrap().inputs.entity.label(),
             "full"

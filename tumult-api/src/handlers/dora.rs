@@ -13,9 +13,15 @@
 //! same lake under another entity profile without changing the register.
 //! Scoped principals see only their own environments; `env` narrows the
 //! score to one of them.
+//!
+//! Every document carries the `params` block and the register state of
+//! [`crate::score::ScoreRuntime`], and is reused from its cache for a few
+//! seconds: a score is at most the cache TTL behind the lake.
 
 use std::path::Path as FsPath;
+use std::sync::Arc;
 
+use crate::score::Stamp;
 use axum::extract::{Path, Query, State};
 use axum::{Extension, Json};
 use serde::Deserialize;
@@ -65,8 +71,14 @@ struct Scope {
     lei: Option<String>,
     profile: Option<String>,
     as_of_ns: i64,
-    workloads: Vec<Workload>,
-    params: HouseParams,
+    workloads: Arc<Vec<Workload>>,
+    params: Arc<HouseParams>,
+    /// What the document says about those parameters and the register.
+    stamp: Stamp,
+    /// The generation of the score runtime the request started under.
+    generation: u64,
+    /// Where the response is cached; `None` when it is not.
+    key: Option<String>,
 }
 
 impl Scope {
@@ -104,33 +116,63 @@ fn workload(w: &tumult_risk::Workload) -> Workload {
     }
 }
 
-/// Workloads of the manifests directory; none when it is not configured.
+/// Workloads of the manifests directory and a note for each document it
+/// skipped; nothing when no directory is configured. Reads the directory:
+/// requests use the copy [`crate::score::ScoreRuntime`] holds.
 ///
 /// # Errors
 /// Returns a message when the directory cannot be read.
-pub fn manifest_workloads(dir: Option<&FsPath>) -> Result<Vec<Workload>, String> {
+pub fn read_manifests(dir: Option<&FsPath>) -> Result<(Vec<Workload>, Vec<String>), String> {
     let Some(dir) = dir else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     };
     let manifests = tumult_risk::manifests::load_dir(dir)
         .map_err(|e| format!("manifests at {}: {e}", dir.display()))?;
-    for note in &manifests.notes {
-        tracing::warn!(note, "manifest document skipped");
-    }
-    Ok(manifests.workloads.iter().map(workload).collect())
+    let workloads = manifests.workloads.iter().map(workload).collect();
+    Ok((workloads, manifests.notes))
 }
 
-fn scope(state: &ApiState, principal: &Principal, q: &ScoreQuery) -> Result<Scope, ApiError> {
+/// A longer key is a request nobody repeats; it is served uncached.
+const CACHE_KEY_MAX_LEN: usize = 512;
+
+/// Everything a score document depends on besides the lake and the
+/// runtime: the endpoint, the environments the caller may see and the
+/// query. Two callers with different scopes never share an entry.
+fn cache_key(
+    endpoint: &str,
+    article: Option<&str>,
+    envs: &[String],
+    q: &ScoreQuery,
+) -> Option<String> {
+    let key =
+        serde_json::json!([endpoint, article, envs, q.lei, q.profile, q.by, q.entity]).to_string();
+    (key.len() <= CACHE_KEY_MAX_LEN).then_some(key)
+}
+
+fn scope(
+    state: &ApiState,
+    principal: &Principal,
+    q: &ScoreQuery,
+    endpoint: &str,
+    article: Option<&str>,
+) -> Result<Scope, ApiError> {
     let envs = envs_for(principal, q.env.clone())?;
-    let workloads = manifest_workloads(state.manifests_dir().map(std::path::PathBuf::as_path))
-        .map_err(internal)?;
+    let runtime = state.score_runtime();
+    // Read before the parameters and the workloads: a reload in between
+    // moves the generation on, and this response is then not cached.
+    let generation = runtime.generation();
+    let workloads = runtime.workloads().map_err(internal)?;
+    let view = runtime.view();
     Ok(Scope {
+        key: cache_key(endpoint, article, &envs, q),
+        generation,
         envs,
         lei: q.lei.clone(),
         profile: q.profile.clone(),
         as_of_ns: now_ns(),
         workloads,
-        params: state.score_params().clone(),
+        params: view.params,
+        stamp: view.stamp,
     })
 }
 
@@ -144,7 +186,8 @@ fn load(reader: &Reader, scope: &Scope) -> Result<Result<Loaded, Refusal>, Strin
     }
 }
 
-/// Load the legal entity and build one document from its scored matrix.
+/// Load the legal entity and build one document from its scored matrix,
+/// or reuse the one built for the same request a moment ago.
 async fn document(
     state: &ApiState,
     scope: Scope,
@@ -152,6 +195,15 @@ async fn document(
         + Send
         + 'static,
 ) -> Result<Json<Value>, ApiError> {
+    let runtime = Arc::clone(state.score_runtime());
+    let (key, generation, asked_at_ns) = (scope.key.clone(), scope.generation, scope.as_of_ns);
+    let stamp = scope.stamp.clone();
+    let hit = key
+        .as_deref()
+        .and_then(|key| runtime.cached(key, asked_at_ns));
+    if let Some(doc) = hit {
+        return Ok(Json(doc));
+    }
     let outcome = with_reader(&state.db_path, move |reader| {
         let loaded = match load(reader, &scope)? {
             Ok(loaded) => loaded,
@@ -161,7 +213,12 @@ async fn document(
         build(reader, &scope, &loaded, &matrix)
     })
     .await?;
-    Ok(Json(outcome?))
+    let mut doc = outcome?;
+    stamp.apply(&mut doc);
+    if let Some(key) = key {
+        runtime.store(key, generation, &doc, asked_at_ns);
+    }
+    Ok(Json(doc))
 }
 
 pub(crate) async fn dora(
@@ -170,7 +227,7 @@ pub(crate) async fn dora(
     Query(q): Query<ScoreQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let by = DoraBy::parse(q.by.as_deref()).map_err(bad_request)?;
-    let scope = scope(&state, &principal, &q)?;
+    let scope = scope(&state, &principal, &q, "dora", None)?;
     document(&state, scope, move |_, _, loaded, matrix| {
         Ok(Ok(report::dora(loaded, matrix, by)))
     })
@@ -183,7 +240,7 @@ pub(crate) async fn article(
     Path(key): Path<String>,
     Query(q): Query<ScoreQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let scope = scope(&state, &principal, &q)?;
+    let scope = scope(&state, &principal, &q, "article", Some(&key))?;
     let entity = q.entity;
     document(&state, scope, move |_, _, loaded, matrix| {
         let doc = report::article(loaded, matrix, &key, entity.as_deref());
@@ -198,11 +255,10 @@ pub(crate) async fn maturity(
     Query(q): Query<ScoreQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let by = MaturityBy::parse(q.by.as_deref()).map_err(bad_request)?;
-    let scope = scope(&state, &principal, &q)?;
-    document(&state, scope, move |reader, scope, loaded, matrix| {
+    let scope = scope(&state, &principal, &q, "maturity", None)?;
+    document(&state, scope, move |reader, _, loaded, matrix| {
         let assessment = report::assess(matrix);
-        let history = report::history(reader, &scope.request(), &scope.params, &assessment)
-            .map_err(|e| e.to_string())?;
+        let history = report::history(reader, loaded, &assessment).map_err(|e| e.to_string())?;
         Ok(Ok(report::maturity(loaded, &assessment, by, history)))
     })
     .await
@@ -240,8 +296,53 @@ mod tests {
 
     #[test]
     fn no_manifests_directory_means_no_workloads() {
-        assert_eq!(manifest_workloads(None), Ok(Vec::new()));
-        let missing = manifest_workloads(Some(FsPath::new("/nonexistent/manifests")));
+        assert_eq!(read_manifests(None), Ok((Vec::new(), Vec::new())));
+        let missing = read_manifests(Some(FsPath::new("/nonexistent/manifests")));
         assert!(missing.is_err());
+    }
+
+    fn query(lei: Option<&str>, entity: Option<&str>) -> ScoreQuery {
+        ScoreQuery {
+            lei: lei.map(str::to_owned),
+            profile: None,
+            by: None,
+            env: None,
+            entity: entity.map(str::to_owned),
+        }
+    }
+
+    /// Two requests share a cached response only when the endpoint, the
+    /// visible environments and every query field are the same.
+    #[test]
+    fn the_cache_key_separates_scopes_endpoints_and_query_fields() {
+        let demo = vec!["demo".to_string()];
+        let base = cache_key("dora", None, &[], &query(None, None)).unwrap();
+        assert_eq!(
+            cache_key("dora", None, &[], &query(None, None)).unwrap(),
+            base
+        );
+        let others = [
+            cache_key("maturity", None, &[], &query(None, None)),
+            cache_key("dora", Some("24"), &[], &query(None, None)),
+            cache_key("dora", None, &demo, &query(None, None)),
+            cache_key("dora", None, &[], &query(Some("X"), None)),
+            cache_key("dora", None, &[], &query(None, Some("X"))),
+        ];
+        let mut seen = vec![base];
+        for key in others.into_iter().flatten() {
+            assert!(!seen.contains(&key), "{key} is not its own entry");
+            seen.push(key);
+        }
+        assert_eq!(seen.len(), 6);
+        // A field cannot be made to read as its neighbour.
+        assert_ne!(
+            cache_key("dora", None, &[], &query(Some("a\",\"b"), None)),
+            cache_key("dora", None, &[], &query(Some("a"), Some("b")))
+        );
+        let long = "x".repeat(CACHE_KEY_MAX_LEN);
+        assert_eq!(
+            cache_key("dora", None, &[], &query(Some(&long), None)),
+            None
+        );
     }
 }

@@ -70,15 +70,21 @@ impl Status {
     }
 }
 
-/// Unbroken days before `today` on which the value held at or above the
-/// Existing threshold, counted back from yesterday and capped at the
-/// Operating window. The caller has already established that today's
-/// value holds.
-pub fn streak_days(value_on: impl Fn(i64) -> f64, today: i64, params: &HouseParams) -> u32 {
+/// Unbroken stored days before `today` on which the value held at or
+/// above the Existing threshold, counted back from yesterday and capped
+/// at the Operating window. `stored_on` returns the value the daily job
+/// stored for a day: `None` for a day it stored nothing, or stored as
+/// unknown, and such a day ends the streak. The caller has already
+/// established that today's value holds.
+pub fn streak_days(
+    stored_on: impl Fn(i64) -> Option<f64>,
+    today: i64,
+    params: &HouseParams,
+) -> u32 {
     let mut days = 0;
     while days < params.operating_days {
         let day = today - i64::from(days) - 1;
-        if value_on(day) < params.existing_threshold {
+        if !stored_on(day).is_some_and(|value| params.holds(value)) {
             break;
         }
         days += 1;
@@ -101,7 +107,7 @@ pub fn cell_status(cell: &MatrixCell<'_>, params: &HouseParams) -> Status {
         CellState::NoEvents => return Status::NoEvents,
         CellState::Scored => {}
     }
-    if cell.cell.v < params.existing_threshold {
+    if !params.holds(cell.cell.v) {
         return if cell.declared {
             Status::Designed
         } else {
@@ -393,6 +399,7 @@ mod tests {
     use super::super::model::{
         format_day, parse_day, Evidence, Function, Inputs, PlannedTest, Tier, DAY_NS,
     };
+    use super::super::worked::with_stored_days;
     use super::*;
 
     fn day(date: &str) -> i64 {
@@ -403,8 +410,14 @@ mod tests {
         day * DAY_NS + DAY_NS / 2
     }
 
+    /// [`restore_tested`] with the daily job having stored every one of
+    /// the 200 days before today.
+    fn restore_stored(today: i64, age: i64) -> Inputs {
+        with_stored_days(restore_tested(today, age), 200)
+    }
+
     /// One critical function with a passed restore test `age` days before
-    /// the synthetic clock's "today".
+    /// the synthetic clock's "today". Nothing is stored.
     fn restore_tested(today: i64, age: i64) -> Inputs {
         let mut inputs = Inputs::empty(noon(today), EntityProfile::full());
         inputs.functions = vec![Function::new("cif-0042", Tier::Critical)];
@@ -425,16 +438,25 @@ mod tests {
     }
 
     #[test]
-    fn evidence_179_days_old_is_existing_and_180_days_old_is_operating() {
+    fn stored_179_days_is_existing_and_stored_180_days_is_operating() {
         let today = day("2026-11-13");
-        let at_179 = restore_status(&restore_tested(today, 179));
+        let at_179 = restore_status(&restore_stored(today, 179));
         assert_eq!(at_179.status, Status::Existing);
         assert_eq!(at_179.streak_days, 179);
         assert_eq!(at_179.days_until_operating, Some(1));
 
-        let at_180 = restore_status(&restore_tested(today, 180));
+        let at_180 = restore_status(&restore_stored(today, 180));
         assert_eq!(at_180.status, Status::Operating);
         assert_eq!(at_180.days_until_operating, None);
+    }
+
+    #[test]
+    fn evidence_with_no_stored_daily_row_is_never_operating() {
+        let today = day("2026-11-13");
+        let status = restore_status(&restore_tested(today, 300));
+        assert_eq!(status.status, Status::Existing);
+        assert_eq!(status.streak_days, 0, "event time is not a stored day");
+        assert_eq!(status.days_until_operating, Some(180));
     }
 
     #[test]
@@ -442,15 +464,54 @@ mod tests {
         let start = day("2026-05-17");
         let mut inputs = restore_tested(start, 0);
         inputs.as_of_ns = noon(start + 179);
-        assert_eq!(restore_status(&inputs).status, Status::Existing);
+        let at_179 = with_stored_days(inputs.clone(), 200);
+        assert_eq!(restore_status(&at_179).status, Status::Existing);
+        // The same stored rows a day later, before that day's job ran:
+        // the day in between has no row, so the streak is broken.
+        let mut skipped = at_179.clone();
+        skipped.as_of_ns = noon(start + 180);
+        assert_eq!(restore_status(&skipped).streak_days, 0);
         inputs.as_of_ns = noon(start + 180);
+        let at_180 = with_stored_days(inputs, 200);
+        assert_eq!(restore_status(&at_180).status, Status::Operating);
+    }
+
+    #[test]
+    fn a_day_stored_as_unknown_breaks_the_streak() {
+        let today = day("2026-11-13");
+        let mut inputs = restore_stored(today, 300);
         assert_eq!(restore_status(&inputs).status, Status::Operating);
+        let key = ("cif-0042".to_string(), "dora.art12.2".to_string());
+        inputs
+            .snapshots
+            .get_mut(&key)
+            .unwrap()
+            .insert(today - 5, None);
+        let broken = restore_status(&inputs);
+        assert_eq!(broken.status, Status::Existing);
+        assert_eq!(broken.streak_days, 4);
+    }
+
+    #[test]
+    fn a_day_the_job_did_not_run_breaks_the_streak() {
+        let today = day("2026-11-13");
+        let mut inputs = restore_stored(today, 300);
+        let key = ("cif-0042".to_string(), "dora.art12.2".to_string());
+        inputs
+            .snapshots
+            .get_mut(&key)
+            .unwrap()
+            .remove(&(today - 31));
+        let broken = restore_status(&inputs);
+        assert_eq!(broken.status, Status::Existing);
+        assert_eq!(broken.streak_days, 30);
+        assert_eq!(broken.days_until_operating, Some(150));
     }
 
     #[test]
     fn a_one_day_gap_in_the_stored_history_resets_the_streak() {
         let today = day("2026-11-13");
-        let mut inputs = restore_tested(today, 300);
+        let mut inputs = restore_stored(today, 300);
         assert_eq!(restore_status(&inputs).status, Status::Operating);
 
         let key = ("cif-0042".to_string(), "dora.art12.2".to_string());
@@ -458,7 +519,7 @@ mod tests {
             .snapshots
             .entry(key)
             .or_default()
-            .insert(today - 10, 0.0);
+            .insert(today - 10, Some(0.0));
         let broken = restore_status(&inputs);
         assert_eq!(broken.status, Status::Existing);
         assert_eq!(
@@ -482,7 +543,7 @@ mod tests {
         let mut new = Evidence::run("run-new", "cif-0042", "dr", noon(today - 20));
         new.experiment = "restore".into();
         inputs.evidence = vec![old, new];
-        let status = restore_status(&inputs);
+        let status = restore_status(&with_stored_days(inputs, 200));
         assert_eq!(status.status, Status::Existing);
         assert_eq!(status.streak_days, 20);
     }
@@ -490,7 +551,7 @@ mod tests {
     #[test]
     fn the_date_180_days_of_evidence_is_reached_follows_the_streak() {
         let today = day("2026-11-13");
-        let status = restore_status(&restore_tested(today, 150));
+        let status = restore_status(&restore_stored(today, 150));
         let reached = today + i64::from(status.days_until_operating.unwrap());
         assert_eq!(format_day(reached), "2026-12-13");
     }
@@ -545,6 +606,7 @@ mod tests {
                 noon(today - age),
             ));
         }
+        let inputs = with_stored_days(inputs, 200);
         let params = HouseParams::default();
         let matrix = Matrix::build(&inputs, &params);
         let row = matrix.row("dora.art12.2").unwrap();
@@ -563,7 +625,7 @@ mod tests {
     #[test]
     fn article_counts_split_meets_gap_unknown_and_na() {
         let today = day("2026-11-13");
-        let inputs = restore_tested(today, 200);
+        let inputs = restore_stored(today, 200);
         let params = HouseParams::default();
         let matrix = Matrix::build(&inputs, &params);
         let report = report(&matrix, None);
@@ -586,7 +648,7 @@ mod tests {
     #[test]
     fn the_daily_snapshot_carries_one_row_per_cell() {
         let today = day("2026-11-13");
-        let inputs = restore_tested(today, 200);
+        let inputs = restore_stored(today, 200);
         let params = HouseParams::default();
         let matrix = Matrix::build(&inputs, &params);
         let rows = daily(&matrix);

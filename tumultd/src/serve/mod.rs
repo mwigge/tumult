@@ -221,10 +221,9 @@ pub(crate) async fn serve() -> Result<()> {
     let score_task = crate::score_jobs::spawn_score_jobs(
         crate::score_jobs::ScoreJobs {
             db_path: config.db_path.clone(),
-            org_file: tumult_api::org_file_path(&config.db_path),
-            manifests_dir: api_state.manifests_dir().cloned(),
-            params: std::sync::Arc::new(api_state.score_params().clone()),
+            runtime: std::sync::Arc::clone(api_state.score_runtime()),
             interval: crate::score_jobs::snapshot_interval_from_env(),
+            reload: crate::score_jobs::reload_interval_from_env(),
         },
         ingest.clone(),
         background_shutdown.clone(),

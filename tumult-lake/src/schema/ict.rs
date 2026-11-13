@@ -1,8 +1,9 @@
 //! v20 function-register DDL: the legal entities a deployment serves, the
 //! functions each one registers, the mapping from telemetry identity to
-//! function, and the daily per-requirement evidence status.
+//! function, the daily per-requirement evidence status and the daily
+//! maturity level of each legal entity.
 //!
-//! All four tables are additive and index-free under the same
+//! All five tables are additive and index-free under the same
 //! crash-robustness rule as the v5 run tables: the register is rewritten
 //! on every sync and the status table is upserted daily, so a daemon
 //! killed mid-write must not come back with desynced ART indexes. The
@@ -19,6 +20,8 @@
 /// reused. `ict_function_services`: the `ict.entity.id` values and service
 /// globs that map telemetry to a function. `requirement_status_daily`: the
 /// evidence status of one requirement for one function on one day.
+/// `maturity_daily`: the level, index and unknown share shown for one
+/// legal entity on one day, which the quarterly history is read from.
 pub(super) const DDL: &str = "
 CREATE TABLE IF NOT EXISTS ict_legal_entities (
     lei VARCHAR NOT NULL,
@@ -69,6 +72,16 @@ CREATE TABLE IF NOT EXISTS requirement_status_daily (
     requirement_id VARCHAR NOT NULL,
     status VARCHAR NOT NULL,
     value DOUBLE,
+    source VARCHAR NOT NULL,
+    computed_at_ns BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS maturity_daily (
+    as_of DATE NOT NULL,
+    lei VARCHAR NOT NULL,
+    level INTEGER NOT NULL,
+    index_value DOUBLE NOT NULL,
+    unknown_share DOUBLE NOT NULL,
     source VARCHAR NOT NULL,
     computed_at_ns BIGINT NOT NULL
 );

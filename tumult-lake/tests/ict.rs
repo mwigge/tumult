@@ -6,7 +6,7 @@
 #![cfg(feature = "duckdb")]
 
 use tumult_lake::{
-    IctFunction, IctFunctionService, IctLegalEntity, IctRegister, PlannedTest,
+    IctFunction, IctFunctionService, IctLegalEntity, IctRegister, MaturityDailyRow, PlannedTest,
     RequirementStatusRow, Store, CURRENT_SCHEMA_VERSION,
 };
 
@@ -122,7 +122,7 @@ fn a_database_already_at_v19_migrates_to_v20() {
     let rows = store
         .read_only()
         .unwrap()
-        .requirement_status_since(0)
+        .requirement_status_between(0, 30_000, 1_000)
         .unwrap();
     assert!(rows.is_empty());
 }
@@ -253,7 +253,7 @@ fn status_snapshots_upsert_per_day_function_and_requirement() {
     drop(writer);
 
     let reader = store.read_only().unwrap();
-    let all = reader.requirement_status_since(0).unwrap();
+    let all = reader.requirement_status_between(0, 30_000, 1_000).unwrap();
     assert_eq!(
         all,
         vec![
@@ -261,7 +261,122 @@ fn status_snapshots_upsert_per_day_function_and_requirement() {
             row(20_001, "existing", Some(0.75))
         ]
     );
-    let recent = reader.requirement_status_since(20_001).unwrap();
+    let recent = reader
+        .requirement_status_between(20_001, 30_000, 1_000)
+        .unwrap();
     assert_eq!(recent.len(), 1);
     assert_eq!(recent[0].as_of_day, 20_001);
+}
+
+fn status_row(day: i64) -> RequirementStatusRow {
+    RequirementStatusRow {
+        as_of_day: day,
+        function_id: "cif-0042".into(),
+        requirement_id: "rts1774.art40".into(),
+        status: "existing".into(),
+        value: Some(1.0),
+        source: "snapshot".into(),
+    }
+}
+
+#[test]
+fn status_rows_are_read_in_a_bounded_range_and_the_newest_are_kept() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    let rows: Vec<RequirementStatusRow> = (20_000..20_010).map(status_row).collect();
+    writer.upsert_requirement_status(&rows, 5).unwrap();
+    drop(writer);
+    let reader = store.read_only().unwrap();
+    let days = |from: i64, to: i64, limit: usize| -> Vec<i64> {
+        reader
+            .requirement_status_between(from, to, limit)
+            .unwrap()
+            .iter()
+            .map(|r| r.as_of_day)
+            .collect()
+    };
+    assert_eq!(days(20_003, 20_005, 100), [20_003, 20_004, 20_005]);
+    // A day after the range is not read, however many rows are allowed.
+    assert_eq!(days(20_008, 20_008, 100), [20_008]);
+    // Over the limit the oldest rows go: a shorter streak, never a longer one.
+    assert_eq!(days(20_000, 20_009, 3), [20_007, 20_008, 20_009]);
+}
+
+fn maturity_row(day: i64, lei: &str, level: u8, index: f64) -> MaturityDailyRow {
+    MaturityDailyRow {
+        as_of_day: day,
+        lei: lei.into(),
+        level,
+        index,
+        unknown_share: 0.25,
+        source: "snapshot".into(),
+    }
+}
+
+#[test]
+fn maturity_snapshots_upsert_per_day_and_legal_entity() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    writer
+        .upsert_maturity_daily(
+            &[
+                maturity_row(20_000, LEI, 2, 2.5),
+                maturity_row(20_001, LEI, 2, 2.6),
+                maturity_row(20_001, OTHER_LEI, 4, 4.4),
+            ],
+            5,
+        )
+        .unwrap();
+    writer
+        .upsert_maturity_daily(&[maturity_row(20_001, LEI, 3, 3.1)], 6)
+        .unwrap();
+    drop(writer);
+    let reader = store.read_only().unwrap();
+    assert_eq!(
+        reader.maturity_daily_between(LEI, 0, 30_000).unwrap(),
+        vec![
+            maturity_row(20_000, LEI, 2, 2.5),
+            maturity_row(20_001, LEI, 3, 3.1)
+        ]
+    );
+    assert_eq!(
+        reader
+            .maturity_daily_between(OTHER_LEI, 20_001, 20_001)
+            .unwrap(),
+        vec![maturity_row(20_001, OTHER_LEI, 4, 4.4)]
+    );
+    assert!(reader
+        .maturity_daily_between(LEI, 20_002, 30_000)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn pruning_drops_only_the_snapshot_days_before_the_cut() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    let rows: Vec<RequirementStatusRow> = (20_000..20_004).map(status_row).collect();
+    writer.upsert_requirement_status(&rows, 5).unwrap();
+    let levels: Vec<MaturityDailyRow> = (20_000..20_004)
+        .map(|day| maturity_row(day, LEI, 2, 2.5))
+        .collect();
+    writer.upsert_maturity_daily(&levels, 5).unwrap();
+    assert_eq!(writer.prune_score_snapshots(20_002).unwrap(), 4);
+    assert_eq!(writer.prune_score_snapshots(20_002).unwrap(), 0);
+    drop(writer);
+    let reader = store.read_only().unwrap();
+    let status: Vec<i64> = reader
+        .requirement_status_between(0, 30_000, 100)
+        .unwrap()
+        .iter()
+        .map(|r| r.as_of_day)
+        .collect();
+    assert_eq!(status, [20_002, 20_003]);
+    let maturity: Vec<i64> = reader
+        .maturity_daily_between(LEI, 0, 30_000)
+        .unwrap()
+        .iter()
+        .map(|r| r.as_of_day)
+        .collect();
+    assert_eq!(maturity, [20_002, 20_003]);
 }

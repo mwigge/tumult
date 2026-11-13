@@ -22,7 +22,7 @@ use tumult_core::compliance::{
     applicable, EvidenceStrength, Feed, Requirement, Selector, ARTICLES, REQUIREMENTS,
 };
 
-use super::model::{day_of, end_of_day, Evidence, Function, IncidentFeed, Inputs, SloFeed, Source};
+use super::model::{day_of, Evidence, Function, IncidentFeed, Inputs, SloFeed, Source};
 use super::params::HouseParams;
 use super::status;
 
@@ -325,7 +325,9 @@ impl<'a> Ctx<'a> {
     fn manual_row(&self, req: &Requirement, evidence: &'a Evidence, as_of_ns: i64) -> Scored<'a> {
         let o = evidence.outcome.factor(self.params);
         let s = strength_factor(req.strength, self.params);
-        self.score(evidence, as_of_ns, req.window_days, o, s)
+        // No interval set for this entity: a record of any age is fresh.
+        let window = req.window_for(&self.inputs.entity).unwrap_or(u32::MAX);
+        self.score(evidence, as_of_ns, window, o, s)
     }
 
     /// Every piece of evidence the row's selector accepts for a function,
@@ -944,19 +946,12 @@ fn matrix_cell<'a>(
         .inputs
         .snapshots
         .get(&(function.id.clone(), req.id.to_string()));
-    let value_on = |day: i64| -> f64 {
-        if let Some(value) = stored.and_then(|days| days.get(&day)) {
-            return *value;
-        }
-        let past = ctx.evaluate(req, function, end_of_day(day));
-        if past.state != CellState::Scored {
-            return 0.0;
-        }
-        past.v
-    };
-    let holds = cell.state == CellState::Scored && cell.v >= ctx.params.existing_threshold;
+    // Only a row the daily job stored on its own day counts: nothing is
+    // reconstructed from the time of the evidence.
+    let stored_on = |day: i64| stored.and_then(|days| days.get(&day)).copied().flatten();
+    let holds = cell.state == CellState::Scored && ctx.params.holds(cell.v);
     let streak_days = if holds {
-        status::streak_days(value_on, today, ctx.params)
+        status::streak_days(stored_on, today, ctx.params)
     } else {
         0
     };
@@ -1144,6 +1139,59 @@ mod tests {
         );
         assert_eq!(cell.v, 0.75);
         assert_eq!(cell.best.unwrap().evidence.id, "man-1");
+    }
+
+    /// A penetration test record is not a threat-led test: only a record
+    /// of type `tlpt` scores the Art. 26(1) row.
+    #[test]
+    fn a_plain_pentest_record_does_not_score_the_tlpt_row() {
+        let mut inputs = art24_inputs();
+        inputs.entity = EntityProfile::parse("full", &["tlpt_designated".to_string()]).unwrap();
+        inputs.evidence.push(Evidence::manual(
+            "man-pentest",
+            &["cif-0042"],
+            "pentest",
+            ns("2026-08-01"),
+        ));
+        let params = HouseParams::default();
+        let req = requirement("dora.art26.1").unwrap();
+        let plain = Ctx::new(&inputs, &params)
+            .evaluate(req, &inputs.functions[0], inputs.as_of_ns)
+            .v;
+        assert_eq!(plain, 0.0, "a pentest record scored the TLPT row");
+
+        inputs.evidence.push(Evidence::manual(
+            "man-tlpt",
+            &["cif-0042"],
+            "tlpt",
+            ns("2026-08-02"),
+        ));
+        let ctx = Ctx::new(&inputs, &params);
+        let cell = ctx.evaluate(req, &inputs.functions[0], inputs.as_of_ns);
+        assert_eq!(cell.v, 1.0);
+        assert_eq!(cell.best.unwrap().evidence.id, "man-tlpt");
+    }
+
+    /// Art. 6(5) sets no yearly interval for a microenterprise, so an
+    /// old review still counts in full there and decays everywhere else.
+    #[test]
+    fn a_microenterprise_framework_review_does_not_age_after_a_year() {
+        let mut inputs = art24_inputs();
+        let mut review = Evidence::manual("man-review", &["cif-0042"], "other", ns("2023-01-10"));
+        review.cited = vec!["dora.art6.5".to_string()];
+        inputs.evidence.push(review);
+        let params = HouseParams::default();
+        let req = requirement("dora.art6.5").unwrap();
+        let yearly = Ctx::new(&inputs, &params)
+            .evaluate(req, &inputs.functions[0], inputs.as_of_ns)
+            .v;
+        assert!(yearly < 0.01, "{yearly}");
+
+        inputs.entity = EntityProfile::parse("full", &["microenterprise".to_string()]).unwrap();
+        let periodic = Ctx::new(&inputs, &params)
+            .evaluate(req, &inputs.functions[0], inputs.as_of_ns)
+            .v;
+        assert_eq!(periodic, 1.0);
     }
 
     #[test]

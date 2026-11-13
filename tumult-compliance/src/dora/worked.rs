@@ -4,10 +4,40 @@
 
 use tumult_core::compliance::EntityProfile;
 
+use super::coverage::Matrix;
 use super::model::{
-    parse_day, Evidence, Facts, Function, Incident, IncidentFeed, Inputs, Outcome, PlannedTest,
-    Service, Slo, SloCriticality, SloFeed, Tier, DAY_NS,
+    day_of, end_of_day, parse_day, Evidence, Facts, Function, Incident, IncidentFeed, Inputs,
+    Outcome, PlannedTest, Service, Slo, SloCriticality, SloFeed, Tier, DAY_NS,
 };
+use super::params::HouseParams;
+use super::status;
+
+/// The inputs with the rows the daily job would have stored had it run
+/// on each of the `days` days before the as-of day: the status of every
+/// cell as of the end of that day. Fixtures use it to state "the job has
+/// been running"; production reads stored rows and never does this.
+pub fn with_stored_days(mut inputs: Inputs, days: i64) -> Inputs {
+    let params = HouseParams::default();
+    let today = day_of(inputs.as_of_ns);
+    let mut past = inputs.clone();
+    past.snapshots.clear();
+    for day in (today - days)..today {
+        past.as_of_ns = end_of_day(day);
+        for row in status::daily(&Matrix::build(&past, &params)) {
+            let key = (row.function_id, row.requirement_id.to_string());
+            inputs
+                .snapshots
+                .entry(key)
+                .or_default()
+                .insert(day, row.value);
+        }
+    }
+    inputs
+}
+
+/// Days of stored history the worked examples carry: past the Operating
+/// window, so every streak is decided by the evidence, not by the store.
+pub const STORED_DAYS: i64 = 200;
 
 /// Noon UTC of a `YYYY-MM-DD` date, in nanoseconds.
 pub fn ns(date: &str) -> i64 {
@@ -302,7 +332,7 @@ pub fn bank_a() -> Inputs {
         register_reconciled_ns: Some(ago(20)),
         ..Facts::default()
     };
-    inputs
+    with_stored_days(inputs, STORED_DAYS)
 }
 
 /// Worked example B: a small investment firm, profile `simplified`, not
@@ -360,5 +390,5 @@ pub fn firm_b() -> Inputs {
         Service::observed("intranet", 0, &["ops-0003"], ago(1)),
     ];
     inputs.incidents = IncidentFeed::Connected(Vec::new());
-    inputs
+    with_stored_days(inputs, STORED_DAYS)
 }

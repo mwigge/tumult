@@ -704,7 +704,7 @@ impl Gate<'_, '_> {
                 self.params(),
             ));
         format!(
-            "{} evidence for {which} is {} days old; {days} days of unbroken evidence is reached on {}",
+            "{} evidence for {which} has {} stored days in a row; {days} days of unbroken evidence is reached on {}",
             gating_noun(req),
             cell.streak_days,
             format_day(reached)
@@ -975,7 +975,7 @@ pub fn assess(matrix: &Matrix<'_>, scope: Scope) -> Maturity {
 mod tests {
     use tumult_core::compliance::EntityProfile;
 
-    use super::super::model::{round2, Inputs, Tier};
+    use super::super::model::{round2, Evidence, Inputs, Tier};
     use super::super::worked::{bank_a, firm_b, ns};
     use super::*;
 
@@ -1030,6 +1030,38 @@ mod tests {
             m.reason().as_deref(),
             Some("next level blocked by: evidence-grade telemetry (L4) on 40 % of services")
         );
+    }
+
+    /// Every intermediate of worked example A, to two decimals, each
+    /// derived from the inputs in `worked.rs`. Service weight is the
+    /// criticality of its function: 4 services at 3, 8 at 2, 8 at 1.5,
+    /// 40 in all.
+    #[test]
+    fn worked_example_a_intermediates_follow_from_its_inputs() {
+        let inputs = bank_a();
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&inputs, &params);
+        let m = assess(&matrix, Scope::Entity);
+
+        // Levels by weight: 16 at L4, 18 at L3, 1.5 at L2, 4.5 at L1.
+        // Mean level (16·4 + 18·3 + 1.5·2 + 4.5·1) / 40 = 3.1375.
+        assert_eq!(round2(value(&m.pillars.conformance)), 78.44);
+        let shares = m.pillars.shares.unwrap().map(round2);
+        // C_1 40/40; C_2 (40 − 4.5)/40; C_3 (40 − 6)/40; C_4 16/40.
+        assert_eq!(shares, [100.0, 88.75, 85.0, 40.0]);
+        assert_eq!(round2(value(&m.pillars.coverage)), 87.92);
+        assert_eq!(round2(value(&m.pillars.slo)), 93.06);
+        // One important function (c = 2) of Σc = 15 breached: 13/15.
+        assert_eq!(round2(value(&m.pillars.recovery)), 86.67);
+        assert_eq!(value(&m.pillars.loop_), 72.5);
+        // 1 + 4 · (0.20·78.4375 + 0.25·87.92 + 0.25·93.06 + 0.20·86.67
+        //          + 0.10·72.5) / 100.
+        assert_eq!(round2(m.index), 4.42);
+        assert!((m.index - 4.4207).abs() < 5e-4, "{}", m.index);
+
+        let portfolio = matrix.portfolio(None);
+        assert_eq!(round2(portfolio.unknown), 0.05);
+        assert_eq!(round2(portfolio.coverage.unwrap()), 0.96);
     }
 
     #[test]
@@ -1106,8 +1138,8 @@ mod tests {
         assert_eq!(
             m.reason().as_deref(),
             Some(
-                "level 3 blocked by: restore-test evidence for the critical function is 150 \
-                 days old; 180 days of unbroken evidence is reached on 2026-12-13"
+                "level 3 blocked by: restore-test evidence for the critical function has 150 \
+                 stored days in a row; 180 days of unbroken evidence is reached on 2026-12-13"
             )
         );
     }
@@ -1262,6 +1294,30 @@ mod tests {
             .failing
             .iter()
             .any(|f| f.contains("threat-led penetration test")));
+    }
+
+    /// The level 5 gate asks for a threat-led test: a penetration test
+    /// record leaves it shut, a `tlpt` record satisfies the fact.
+    #[test]
+    fn a_pentest_record_does_not_satisfy_the_tlpt_fact_of_the_level_5_gate() {
+        let tlpt_fails = |exercise: &str| {
+            let mut inputs = bank_a();
+            inputs.entity = EntityProfile::parse("full", &["tlpt_designated".to_string()]).unwrap();
+            let everyone: Vec<String> = inputs.functions.iter().map(|f| f.id.clone()).collect();
+            let named: Vec<&str> = everyone.iter().map(String::as_str).collect();
+            let at = inputs.as_of_ns - 60 * 86_400_000_000_000;
+            inputs
+                .evidence
+                .push(Evidence::manual("man-test", &named, exercise, at));
+            let params = HouseParams::default();
+            let matrix = Matrix::build(&inputs, &params);
+            assess(&matrix, Scope::Entity).gates[3]
+                .failing
+                .iter()
+                .any(|f| f.contains("threat-led penetration test"))
+        };
+        assert!(tlpt_fails("pentest"), "a pentest record opened the fact");
+        assert!(!tlpt_fails("tlpt"));
     }
 
     #[test]

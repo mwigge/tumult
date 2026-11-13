@@ -10,3 +10,4 @@ tumult-lake.workspace = true
 tumult-core = { path = "../tumult-core" }
 opentelemetry-proto.workspace = true
 serde_json.workspace = true
+tracing.workspace = true

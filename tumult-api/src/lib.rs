@@ -157,6 +157,7 @@ pub mod manual;
 pub mod registry;
 pub mod runs;
 pub mod schedules;
+pub mod score;
 pub mod sql_util;
 pub mod webhooks;
 
@@ -198,9 +199,9 @@ pub struct ApiState {
     secure_cookies: bool,
     /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
     manifests_dir: Option<Arc<PathBuf>>,
-    /// House parameters of the DORA coverage and maturity scores (the
-    /// `score:` section of the org file; defaults without one).
-    score_params: Arc<tumult_compliance::dora::params::HouseParams>,
+    /// House parameters, register state, workloads and response cache of
+    /// the DORA coverage and maturity scores.
+    score: Arc<score::ScoreRuntime>,
 }
 
 impl ApiState {
@@ -229,24 +230,23 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
             manifests_dir: None,
-            score_params: Arc::default(),
+            // No org file, default parameters, no response cache: the
+            // daemon passes its own runtime.
+            score: Arc::new(score::ScoreRuntime::default().with_ttl(std::time::Duration::ZERO)),
         }
     }
 
-    /// Score with these house parameters instead of the defaults.
+    /// Score with this runtime (org file, manifests, response cache).
     #[must_use]
-    pub fn with_score_params(
-        mut self,
-        params: tumult_compliance::dora::params::HouseParams,
-    ) -> Self {
-        self.score_params = Arc::new(params);
+    pub fn with_score_runtime(mut self, runtime: Arc<score::ScoreRuntime>) -> Self {
+        self.score = runtime;
         self
     }
 
-    /// The house parameters of the DORA coverage and maturity scores.
+    /// The shared state of the DORA score endpoints.
     #[must_use]
-    pub fn score_params(&self) -> &tumult_compliance::dora::params::HouseParams {
-        &self.score_params
+    pub fn score_runtime(&self) -> &Arc<score::ScoreRuntime> {
+        &self.score
     }
 
     /// Point the passive risk scanner at a directory of Kubernetes manifests.
@@ -282,9 +282,7 @@ impl ApiState {
             .parent()
             .map_or_else(|| PathBuf::from("reports"), |d| d.join("reports"));
         let org_path = org_file_path(&db_path);
-        let score_params = org_path
-            .as_deref()
-            .map_or_else(Default::default, score_params_from);
+        let score_org_file = org_path.clone();
         let org = org_path
             .filter(|p| p.exists())
             .map_or_else(tumult_compliance::OrgTree::empty, |p| {
@@ -320,8 +318,13 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
         )
-        .with_manifests_dir(manifests_dir)
-        .with_score_params(score_params)
+        .with_manifests_dir(manifests_dir.clone())
+        .with_score_runtime(Arc::new(score::ScoreRuntime::open(
+            score_org_file,
+            manifests_dir,
+            score::cache_ttl_from_env(),
+            sql_util::now_ns(),
+        )))
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.
@@ -355,8 +358,6 @@ impl ApiState {
     }
 }
 
-/// The `score:` section of the org file. A missing file or section means
-/// the defaults; an invalid file logs a warning and falls back to them.
 /// Where the org file (org tree, function register, score parameters)
 /// is read from: `KRONIKA_ORG_FILE`, else `<db dir>/org.yaml`.
 #[must_use]
@@ -364,16 +365,6 @@ pub fn org_file_path(db_path: &std::path::Path) -> Option<PathBuf> {
     std::env::var_os("KRONIKA_ORG_FILE")
         .map(PathBuf::from)
         .or_else(|| db_path.parent().map(|d| d.join("org.yaml")))
-}
-
-fn score_params_from(path: &std::path::Path) -> tumult_compliance::dora::params::HouseParams {
-    match tumult_compliance::dora::register::load(path) {
-        Ok(register) => register.params,
-        Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "invalid function register; scoring with default house parameters");
-            tumult_compliance::dora::params::HouseParams::default()
-        }
-    }
 }
 
 /// Build the API router. Merge into the daemon's HTTP server.

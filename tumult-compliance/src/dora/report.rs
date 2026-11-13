@@ -18,7 +18,7 @@ use serde_json::{json, Map, Value};
 use tumult_core::compliance::{
     article_title, EvidenceClass, ARTICLES, EVIDENCE_DISCLAIMER, REQUIREMENTS_VERSION,
 };
-use tumult_lake::{Reader, RequirementStatusRow};
+use tumult_lake::{MaturityDailyRow, Reader, RequirementStatusRow, StoreError, Writer};
 
 use super::coverage::{CellState, Matrix, MatrixCell, MatrixRow, RowState, Scored};
 use super::loader::{self, LoadError, Loaded, Request, SNAPSHOT_SOURCE};
@@ -35,6 +35,20 @@ pub const SCALE_SOURCE: &str = "Internal house scale. DORA defines no maturity l
 pub const SCALE_LEVELS: [&str; 5] = ["Initial", "Repeatable", "Defined", "Measured", "Improving"];
 /// Quarter ends the maturity history looks back over.
 pub const HISTORY_QUARTERS: usize = 4;
+/// Days of daily snapshots the lake keeps; older days are deleted each
+/// time a snapshot is stored. The Operating streak and the two-quarter
+/// gate fact read the last 183 days, and the history reads the current
+/// quarter and the four before it (at most 458 days), so 800 days keeps
+/// both whole with more than a year to spare.
+pub const SNAPSHOT_RETENTION_DAYS: i64 = 800;
+/// Said in every document served to a caller limited to some
+/// environments.
+pub const SCOPE_NOTE: &str = "Partial view: only the functions with telemetry or evidence in \
+     your environments are listed, and the level is of that part alone. Register data, stored \
+     history and the Operating status cover every environment and are not shown.";
+/// Why a view other than the stored one has no past quarters.
+pub const HISTORY_NOT_STORED: &str = "Stored days are of every environment under the \
+     registered profile; this view has none.";
 /// Decimal places of a coverage value or share.
 const SHARE_PLACES: i32 = 4;
 /// Decimal places of an index or a pillar value.
@@ -400,8 +414,9 @@ fn requirement_json(
         "title": req.title,
         "weight": req.weight,
         "evidence": req.evidence.as_str(),
-        "window_days": req.window_days,
+        "window_days": req.window_for(&ctx.inputs.entity),
         "scope": req.scope.as_str(),
+        "scope_basis": req.scope_basis.as_str(),
         "strength": req.strength.as_str(),
         "coverage": opt_share(row_coverage(matrix, row)),
         "state": row.state(only).as_str(),
@@ -563,6 +578,8 @@ fn expectation(matrix: &Matrix<'_>, row: &MatrixRow<'_>, row_status: &RowStatus)
         "cite": req.cite,
         "title": req.title,
         "weight": req.weight,
+        "scope_basis": req.scope_basis.as_str(),
+        "window_days": req.window_for(&inputs.entity),
         "expected": status::rank_name(row_status.expected),
         "actual": row_status.status.as_str(),
         "gap": row_status.gap,
@@ -668,6 +685,16 @@ fn header(loaded: &Loaded) -> Map<String, Value> {
     map.insert("profile".into(), json!(inputs.entity.profile.as_str()));
     map.insert("profile_label".into(), json!(inputs.entity.label()));
     map.insert("profile_flags".into(), json!(inputs.entity.flag_names()));
+    map.insert(
+        "profile_overridden".into(),
+        json!(loaded.profile_overridden),
+    );
+    map.insert("registered_profile".into(), json!(loaded.entity.profile));
+    map.insert("scoped".into(), json!(loaded.scoped));
+    map.insert(
+        "scope_note".into(),
+        json!(loaded.scoped.then_some(SCOPE_NOTE)),
+    );
     map.insert(
         "legal_entities".into(),
         Value::Array(legal_entities(loaded)),
@@ -850,14 +877,23 @@ impl Assessment {
         self.level() < by_index.max(by_pillars)
     }
 
-    /// `level n of target m (profile)`.
+    /// The unknown share the shown index is read with: the roll-up
+    /// root's, computed over the same tree as [`Self::index`].
+    #[must_use]
+    pub fn unknown_share(&self) -> f64 {
+        self.root()
+            .map_or(self.entity.unknown_share, |root| root.unknown_share)
+    }
+
+    /// `level n of target m (profile), p % unknown`.
     #[must_use]
     pub fn headline(&self) -> String {
         format!(
-            "level {} of target {} ({})",
+            "level {} of target {} ({}), {} % unknown",
             self.level(),
             self.entity.target,
-            self.entity.label
+            self.entity.label,
+            (self.unknown_share() * 100.0).round()
         )
     }
 }
@@ -1034,15 +1070,40 @@ pub fn cap_sentence(node: &NodeScore) -> Option<String> {
     ))
 }
 
-/// One point of the maturity history: the quarter that ends on the
-/// as-of day, with the level and index shown on that day.
+/// One point of the maturity history: the quarter `day` lies in, with
+/// the level, index and unknown share shown on that day. `state` is
+/// `stored` for a day the daily job stored and `today` for the live one.
 #[must_use]
-pub fn history_point(as_of_ns: i64, level: u8, shown_index: f64) -> Value {
+pub fn history_point(
+    state: &str,
+    day: i64,
+    level: u8,
+    shown_index: f64,
+    unknown_share: f64,
+) -> Value {
     json!({
-        "quarter": quarter_label(day_of(as_of_ns)),
-        "as_of_ns": as_of_ns,
+        "quarter": quarter_label(day),
+        "state": state,
+        "as_of": format_day(day),
+        "as_of_ns": end_of_day(day),
         "level": level,
         "index": index(shown_index),
+        "unknown_share": share(unknown_share),
+        "reason": null,
+    })
+}
+
+/// A quarter with no stored day.
+fn no_data_point(quarter: &str, reason: Option<&str>) -> Value {
+    json!({
+        "quarter": quarter,
+        "state": "no_data",
+        "as_of": null,
+        "as_of_ns": null,
+        "level": null,
+        "index": null,
+        "unknown_share": null,
+        "reason": reason,
     })
 }
 
@@ -1077,37 +1138,70 @@ pub fn quarter_ends(as_of_ns: i64, count: usize) -> Vec<i64> {
     ends
 }
 
-/// The maturity of the legal entity at the end of each of the last
-/// [`HISTORY_QUARTERS`] quarters the lake has anything for, then today's.
+/// The maturity of the legal entity in each of the last
+/// [`HISTORY_QUARTERS`] finished quarters, then today's.
+///
+/// A past quarter shows what the daily job stored on its last stored
+/// day: the level, index and unknown share as they were computed then,
+/// against the register and the evidence of that day. Nothing is
+/// recomputed, so a later change of the register does not rewrite the
+/// past. A quarter with no stored day is `no_data`. Stored days are of
+/// every environment under the registered profile, so a scoped caller
+/// and a profile override get `no_data` for every past quarter.
 ///
 /// # Errors
-/// As [`loader::load`].
+/// `Store` when the stored days cannot be read.
 pub fn history(
     reader: &Reader,
-    request: &Request<'_>,
-    params: &HouseParams,
+    loaded: &Loaded,
     today: &Assessment,
 ) -> Result<Vec<Value>, LoadError> {
-    let mut points = Vec::new();
-    for as_of_ns in quarter_ends(request.as_of_ns, HISTORY_QUARTERS) {
-        let past = Request {
-            as_of_ns,
-            ..*request
-        };
-        let loaded = loader::load(reader, past, params)?;
-        if loaded.inputs.evidence.is_empty() && loaded.inputs.services.is_empty() {
-            continue;
-        }
-        let past = assess(&Matrix::build(&loaded.inputs, params));
-        points.push(history_point(as_of_ns, past.level(), past.index()));
-    }
+    let as_of_ns = loaded.inputs.as_of_ns;
+    let ends: Vec<i64> = quarter_ends(as_of_ns, HISTORY_QUARTERS)
+        .into_iter()
+        .map(day_of)
+        .collect();
+    let other_view = loaded.scoped || loaded.profile_overridden;
+    let stored = match (ends.first(), ends.last()) {
+        (Some(first), Some(last)) if !other_view => reader
+            .maturity_daily_between(&loaded.entity.lei, first - QUARTER_MAX_DAYS, *last)
+            .map_err(|e| LoadError::Store(e.to_string()))?,
+        _ => Vec::new(),
+    };
+    let reason = other_view.then_some(HISTORY_NOT_STORED);
+    let mut points: Vec<Value> = ends
+        .iter()
+        .map(|end| {
+            let quarter = quarter_label(*end);
+            let last = stored
+                .iter()
+                .rev()
+                .filter(|row| row.source == SNAPSHOT_SOURCE)
+                .find(|row| quarter_label(row.as_of_day) == quarter);
+            match last {
+                Some(row) => history_point(
+                    "stored",
+                    row.as_of_day,
+                    row.level,
+                    row.index,
+                    row.unknown_share,
+                ),
+                None => no_data_point(&quarter, reason),
+            }
+        })
+        .collect();
     points.push(history_point(
-        request.as_of_ns,
+        "today",
+        day_of(as_of_ns),
         today.level(),
         today.index(),
+        today.unknown_share(),
     ));
     Ok(points)
 }
+
+/// No quarter is longer than this many days.
+const QUARTER_MAX_DAYS: i64 = 92;
 
 /// The maturity document. `by` selects the node rows listed under
 /// `nodes`; the root row is always under `rollup`.
@@ -1130,6 +1224,7 @@ pub fn maturity(
     map.insert("index".into(), json!(index(assessment.index())));
     map.insert("flat_level".into(), json!(m.level));
     map.insert("flat_index".into(), json!(index(m.index)));
+    map.insert("flat_unknown_share".into(), json!(share(m.unknown_share)));
     map.insert("target".into(), json!(m.target));
     map.insert("headline".into(), json!(assessment.headline()));
     map.insert("gate_level".into(), json!(m.gate_level));
@@ -1151,7 +1246,10 @@ pub fn maturity(
                 .collect(),
         ),
     );
-    map.insert("unknown_share".into(), json!(share(m.unknown_share)));
+    map.insert(
+        "unknown_share".into(),
+        json!(share(assessment.unknown_share())),
+    );
     map.insert("history".into(), Value::Array(history));
     map.insert("rollup".into(), json!(root.map(node_json)));
     map.insert("rollup_headline".into(), json!(root.and_then(cap_sentence)));
@@ -1185,8 +1283,52 @@ pub fn snapshot_rows(matrix: &Matrix<'_>) -> Vec<RequirementStatusRow> {
         .collect()
 }
 
-/// Today's status rows of every registered legal entity, over all
-/// environments: what the daily job stores.
+/// What the daily job stores for one day: the status of every cell and
+/// the level shown for every legal entity.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Snapshot {
+    pub status: Vec<RequirementStatusRow>,
+    pub maturity: Vec<MaturityDailyRow>,
+}
+
+impl Snapshot {
+    fn add(&mut self, loaded: &Loaded, params: &HouseParams) {
+        let matrix = Matrix::build(&loaded.inputs, params);
+        let assessment = assess(&matrix);
+        self.status.extend(snapshot_rows(&matrix));
+        self.maturity.push(MaturityDailyRow {
+            as_of_day: day_of(loaded.inputs.as_of_ns),
+            lei: loaded.entity.lei.clone(),
+            level: assessment.level(),
+            index: assessment.index(),
+            unknown_share: assessment.unknown_share(),
+            source: SNAPSHOT_SOURCE.to_string(),
+        });
+    }
+
+    /// The day the snapshot describes.
+    fn day(&self) -> Option<i64> {
+        self.maturity.iter().map(|row| row.as_of_day).max()
+    }
+
+    /// Store the day, replacing what was stored for it, and delete the
+    /// days older than [`SNAPSHOT_RETENTION_DAYS`] before it. Returns
+    /// the number of rows deleted.
+    ///
+    /// # Errors
+    /// Returns an error if a statement fails.
+    pub fn store(&self, writer: &Writer, computed_at_ns: i64) -> Result<usize, StoreError> {
+        writer.upsert_requirement_status(&self.status, computed_at_ns)?;
+        writer.upsert_maturity_daily(&self.maturity, computed_at_ns)?;
+        let Some(day) = self.day() else {
+            return Ok(0);
+        };
+        writer.prune_score_snapshots(day - SNAPSHOT_RETENTION_DAYS)
+    }
+}
+
+/// Today's snapshot of every registered legal entity, over all
+/// environments under the registered profile: what the daily job stores.
 ///
 /// # Errors
 /// As [`loader::load`].
@@ -1195,7 +1337,7 @@ pub fn snapshot_all(
     params: &HouseParams,
     workloads: &[Workload],
     as_of_ns: i64,
-) -> Result<Vec<RequirementStatusRow>, LoadError> {
+) -> Result<Snapshot, LoadError> {
     let request = Request {
         envs: &[],
         lei: None,
@@ -1204,17 +1346,17 @@ pub fn snapshot_all(
         workloads,
     };
     let first = loader::load(reader, request, params)?;
-    let mut rows = snapshot_rows(&Matrix::build(&first.inputs, params));
+    let mut snapshot = Snapshot::default();
+    snapshot.add(&first, params);
     let others = first.entities.iter().filter(|e| e.lei != first.entity.lei);
     for entity in others {
         let one = Request {
             lei: Some(&entity.lei),
             ..request
         };
-        let loaded = loader::load(reader, one, params)?;
-        rows.extend(snapshot_rows(&Matrix::build(&loaded.inputs, params)));
+        snapshot.add(&loader::load(reader, one, params)?, params);
     }
-    Ok(rows)
+    Ok(snapshot)
 }
 
 #[cfg(test)]
@@ -1237,7 +1379,188 @@ mod tests {
             feeds: super::super::loader::feed_states(&entity),
             entity,
             register: Vec::new(),
+            profile_overridden: false,
+            scoped: false,
             inputs,
+        }
+    }
+
+    /// The index shown is the roll-up root's, so the unknown share beside
+    /// it is the root's too, and the headline says it.
+    #[test]
+    fn the_unknown_share_shown_is_the_one_of_the_rolled_up_index() {
+        let mut inputs = firm_b();
+        inputs
+            .services
+            .push(Service::silent("payments-ledger-archive", &["cif-0001"]));
+        let doc = maturity_of(inputs, None);
+        assert_eq!(doc["index"], doc["rollup"]["index"]);
+        assert_eq!(doc["unknown_share"], doc["rollup"]["unknown_share"]);
+        let rolled = doc["unknown_share"].as_f64().unwrap();
+        let flat = doc["flat_unknown_share"].as_f64().unwrap();
+        assert!((rolled - flat).abs() > 0.01, "rolled {rolled}, flat {flat}");
+        let percent = (rolled * 100.0).round();
+        assert_eq!(
+            doc["headline"],
+            format!("level 1 of target 3 (simplified), {percent} % unknown")
+        );
+    }
+
+    /// The reader sees which scope restriction is the house's and that a
+    /// microenterprise has no window on the framework review.
+    #[test]
+    fn a_row_says_when_its_scope_is_house_and_when_it_has_no_window() {
+        let mut inputs = bank_a();
+        let by_id = |doc: &Value, id: &str| {
+            list(&doc["requirements"])
+                .iter()
+                .find(|r| r["id"] == id)
+                .unwrap_or_else(|| panic!("no row {id}"))
+                .clone()
+        };
+        let art24 = article_of(inputs.clone(), "24");
+        assert_eq!(by_id(&art24, "dora.art24.1")["scope_basis"], "house");
+        assert_eq!(by_id(&art24, "dora.art24.6")["scope_basis"], "regulation");
+        let art6 = article_of(inputs.clone(), "6");
+        assert_eq!(by_id(&art6, "dora.art6.5")["window_days"], 365);
+
+        inputs.entity =
+            tumult_core::compliance::EntityProfile::parse("full", &["microenterprise".to_string()])
+                .unwrap();
+        let art6 = article_of(inputs, "6");
+        assert_eq!(by_id(&art6, "dora.art6.5")["window_days"], Value::Null);
+    }
+
+    /// The expectation table carries the marks of the article rows, so
+    /// the page can label a house scope without a second request.
+    #[test]
+    fn an_expectation_says_when_its_scope_is_house_and_what_its_window_is() {
+        let doc = dora_of(bank_a(), DoraBy::Entity);
+        let by_id = |id: &str| {
+            list(&doc["expectations"])
+                .iter()
+                .find(|r| r["id"] == id)
+                .unwrap_or_else(|| panic!("no row {id}"))
+                .clone()
+        };
+        assert_eq!(by_id("dora.art24.1")["scope_basis"], "house");
+        assert_eq!(by_id("dora.art24.6")["scope_basis"], "regulation");
+        assert_eq!(by_id("dora.art6.5")["window_days"], 365);
+    }
+
+    fn article_of(inputs: Inputs, key: &str) -> Value {
+        let loaded = loaded(inputs);
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&loaded.inputs, &params);
+        article(&loaded, &matrix, key, None).unwrap()
+    }
+
+    #[test]
+    fn a_profile_override_and_a_scoped_view_are_named_in_every_document() {
+        let params = HouseParams::default();
+        let plain = dora_of(firm_b(), DoraBy::Entity);
+        assert_eq!(plain["profile_overridden"], false);
+        assert_eq!(plain["registered_profile"], "simplified");
+        assert_eq!(plain["scoped"], false);
+        assert_eq!(plain["scope_note"], Value::Null);
+
+        let mut loaded = loaded(firm_b());
+        loaded.profile_overridden = true;
+        loaded.entity.profile = "full".into();
+        loaded.scoped = true;
+        let matrix = Matrix::build(&loaded.inputs, &params);
+        for doc in [
+            dora(&loaded, &matrix, DoraBy::Entity),
+            article(&loaded, &matrix, "24", None).unwrap(),
+            maturity(&loaded, &assess(&matrix), None, Vec::new()),
+        ] {
+            assert_eq!(doc["profile_overridden"], true);
+            assert_eq!(doc["registered_profile"], "full");
+            assert_eq!(doc["profile"], "simplified");
+            assert_eq!(doc["scoped"], true);
+            assert_eq!(doc["scope_note"], SCOPE_NOTE);
+        }
+    }
+
+    fn stored_level(day: &str, level: u8, index: f64) -> tumult_lake::MaturityDailyRow {
+        tumult_lake::MaturityDailyRow {
+            as_of_day: super::super::model::parse_day(day).unwrap(),
+            lei: "529900T8BM49AURSDO55".into(),
+            level,
+            index,
+            unknown_share: 0.4,
+            source: SNAPSHOT_SOURCE.into(),
+        }
+    }
+
+    /// History is what was stored on the day, never today's register
+    /// applied to old evidence; a quarter with no stored day says so.
+    #[test]
+    fn history_is_read_from_stored_days_and_a_quarter_without_one_is_no_data() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let mut other = stored_level("2026-06-25", 5, 4.9);
+        other.lei = "506700GE1G29325QX363".into();
+        let mut restated = stored_level("2026-06-28", 5, 4.9);
+        restated.source = "backfill".into();
+        writer
+            .upsert_maturity_daily(
+                &[
+                    stored_level("2026-05-10", 1, 1.2),
+                    stored_level("2026-06-20", 2, 2.4567),
+                    other,
+                    restated,
+                    stored_level("2026-12-31", 3, 3.1),
+                ],
+                1,
+            )
+            .unwrap();
+        drop(writer);
+        let reader = store.read_only().unwrap();
+        let mut inputs = firm_b();
+        inputs.as_of_ns = ns("2027-01-15");
+        let mut loaded = loaded(inputs);
+        let params = HouseParams::default();
+        let today = assess(&Matrix::build(&loaded.inputs, &params));
+
+        let points = history(&reader, &loaded, &today).unwrap();
+        let seen: Vec<(&str, &str)> = points
+            .iter()
+            .map(|p| (p["quarter"].as_str().unwrap(), p["state"].as_str().unwrap()))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("2026-Q1", "no_data"),
+                ("2026-Q2", "stored"),
+                ("2026-Q3", "no_data"),
+                ("2026-Q4", "stored"),
+                ("2027-Q1", "today"),
+            ]
+        );
+        assert_eq!(points[0]["level"], Value::Null);
+        assert_eq!(points[0]["index"], Value::Null);
+        assert_eq!(points[0]["unknown_share"], Value::Null);
+        // The last stored day of the quarter, as stored.
+        assert_eq!(points[1]["as_of"], "2026-06-20");
+        assert_eq!(points[1]["level"], 2);
+        assert_eq!(points[1]["index"], 2.457);
+        assert_eq!(points[1]["unknown_share"], 0.4);
+        assert_eq!(points[3]["as_of"], "2026-12-31");
+        assert_eq!(points[4]["level"], today.level());
+        assert_eq!(points[4]["index"], index(today.index()));
+        assert_eq!(points[4]["unknown_share"], share(today.unknown_share()));
+
+        // Stored days are of every environment under the registered
+        // profile: another view has no history but today's.
+        for (scoped, overridden) in [(true, false), (false, true)] {
+            loaded.scoped = scoped;
+            loaded.profile_overridden = overridden;
+            let points = history(&reader, &loaded, &today).unwrap();
+            assert_eq!(points.len(), 5);
+            assert!(points[..4].iter().all(|p| p["state"] == "no_data"));
+            assert_eq!(points[4]["state"], "today");
         }
     }
 
@@ -1519,7 +1842,11 @@ mod tests {
         assert_eq!(doc["level"], doc["rollup"]["level"]);
         assert_eq!(doc["index"], doc["rollup"]["index"]);
         let shown = doc["level"].as_u64().unwrap();
-        assert_eq!(doc["headline"], format!("level {shown} of target 3 (full)"));
+        let unknown = (doc["unknown_share"].as_f64().unwrap() * 100.0).round();
+        assert_eq!(
+            doc["headline"],
+            format!("level {shown} of target 3 (full), {unknown} % unknown")
+        );
         assert_eq!(doc["scale"]["internal"], true);
         assert_eq!(list(&doc["scale"]["levels"]).len(), 5);
         assert_eq!(doc["weights"]["slo"], 0.25);
@@ -1534,7 +1861,14 @@ mod tests {
         assert_eq!(rounded(doc["flat_index"].as_f64().unwrap(), 2), 3.60);
         assert_eq!(doc["level"], 2);
         assert_eq!(doc["index"], doc["rollup"]["index"]);
-        assert_eq!(doc["headline"], "level 2 of target 3 (simplified)");
+        assert!(
+            doc["headline"]
+                .as_str()
+                .unwrap()
+                .starts_with("level 2 of target 3 (simplified), "),
+            "{}",
+            doc["headline"]
+        );
         assert_eq!(doc["capped"], true);
         assert_eq!(doc["cap"]["rule"], "gate");
         assert_eq!(doc["cap"]["level"], 2);
@@ -1599,7 +1933,10 @@ mod tests {
         // The page shows the roll-up, and the flat pillar result next to it.
         assert_eq!(doc["level"], 1);
         assert_eq!(doc["flat_level"], 2);
-        assert_eq!(doc["headline"], "level 1 of target 3 (simplified)");
+        assert!(doc["headline"]
+            .as_str()
+            .unwrap()
+            .starts_with("level 1 of target 3 (simplified), "));
         assert_eq!(doc["capped"], true);
         assert_eq!(doc["cap"]["rule"], "weakest_critical_child");
         assert_eq!(doc["cap"]["level"], 1);
@@ -1611,11 +1948,14 @@ mod tests {
     }
 
     #[test]
-    fn a_history_point_carries_the_shown_level_and_index() {
-        let point = history_point(worked_ns(), 2, 3.4567);
+    fn a_history_point_carries_the_shown_level_index_and_unknown_share() {
+        let point = history_point("today", day_of(worked_ns()), 2, 3.4567, 0.123_45);
         assert_eq!(point["level"], 2);
         assert_eq!(point["index"], 3.457);
+        assert_eq!(point["unknown_share"], 0.1235);
         assert_eq!(point["quarter"], "2026-Q4");
+        assert_eq!(point["as_of"], "2026-11-13");
+        assert_eq!(point["state"], "today");
     }
 
     #[test]
@@ -1664,7 +2004,22 @@ functions:
         writer.sync_ict_register(&declared.ict, now).unwrap();
         let params = HouseParams::default();
 
-        let rows = snapshot_all(&store.read_only().unwrap(), &params, &[], now).unwrap();
+        let snapshot = snapshot_all(&store.read_only().unwrap(), &params, &[], now).unwrap();
+        let levels: Vec<(&str, u8)> = snapshot
+            .maturity
+            .iter()
+            .map(|m| (m.lei.as_str(), m.level))
+            .collect();
+        assert_eq!(
+            levels,
+            [("506700GE1G29325QX363", 1), ("529900T8BM49AURSDO55", 1)]
+        );
+        assert!(snapshot
+            .maturity
+            .iter()
+            .all(|m| m.as_of_day == day_of(now) && m.source == SNAPSHOT_SOURCE));
+        assert!(snapshot.maturity.iter().all(|m| m.unknown_share > 0.0));
+        let rows = &snapshot.status;
         let functions: BTreeSet<&str> = rows.iter().map(|r| r.function_id.as_str()).collect();
         assert_eq!(functions, BTreeSet::from(["cif-0001", "cif-0002"]));
         assert!(rows
@@ -1678,7 +2033,21 @@ functions:
         assert!(!has("cif-0001", "dora.art9."));
         assert!(has("cif-0002", "dora.art9."));
 
-        writer.upsert_requirement_status(&rows, now).unwrap();
+        // Storing keeps the retention: a day older than it goes.
+        let today = day_of(now);
+        let mut old = stored_level("2026-01-01", 2, 2.0);
+        old.as_of_day = today - SNAPSHOT_RETENTION_DAYS - 1;
+        let mut kept = old.clone();
+        kept.as_of_day = today - SNAPSHOT_RETENTION_DAYS;
+        writer.upsert_maturity_daily(&[old, kept], now).unwrap();
+        assert_eq!(snapshot.store(&writer, now).unwrap(), 1, "one day pruned");
+        let stored = store
+            .read_only()
+            .unwrap()
+            .maturity_daily_between("529900T8BM49AURSDO55", 0, today)
+            .unwrap();
+        let days: Vec<i64> = stored.iter().map(|m| m.as_of_day).collect();
+        assert_eq!(days, [today - SNAPSHOT_RETENTION_DAYS, today]);
         let request = Request {
             envs: &[],
             lei: None,
