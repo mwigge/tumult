@@ -101,7 +101,13 @@ not being renamed.
    `/api/topology` (service/target call graph), and `/api/gate/{target}`
    (the CI gate: a target's score as a `pass|warn|fail` verdict with
    reasons and evidence, computed with the same freshness-decayed model as
-   `/api/scores` and confined to the principal's environment scopes). Mutating routes exist but
+   `/api/scores` and confined to the principal's environment scopes), and
+   `/api/risks` + `/api/posture` (the passive risk scan: ranked findings
+   from the latest evidence per target and discipline, objective verdicts,
+   the span call graph, registered definitions and the Kubernetes
+   manifests under `KRONIKA_MANIFESTS_DIR`, with the coverage matrix and
+   the continuous posture score; `POST /api/risks/{id}/suppress` accepts a
+   finding for a while). Mutating routes exist but
    stay read-only in spirit: they ride the single-writer channel (run
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with
@@ -267,6 +273,15 @@ secondary indexes left it exposed to the same post-SIGKILL ART-desync
 fatal-UPDATE bug class the v5 run-table rebuild fixed. The v8 migration
 rebuilds it index-free by table-scan copy; `manual_experiment_audit` and
 `evidence_attachments` keep their indexes because they are INSERT-only.
+
+v16 adds the objectives family: `experiments.test_kind` plus RTO/RPO target
+and measured columns, the raw `probe_samples` time series and `nfr_verdicts`
+(one row per objective evaluated against a run). v17 adds `risk_suppressions`:
+the append-only record of passive-scan findings an operator accepted for a
+while, hash-chained per risk id (`prev_hash → new_hash`, the `run_audit` link
+function) so an auditor can verify nothing was silenced off the record.
+Suppressions carry an optional expiry; the scanner applies the latest active
+row per finding at read time.
 
 ## Roadmap: external tooling on the lake
 

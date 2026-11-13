@@ -44,6 +44,14 @@ breakdown over the selected window.
 
 ![Overview dashboard](../assets/overview-dashboard.png)
 
+Posture opens the way the market now reads resilience: the ranked findings of
+the passive risk scan (a failed latest run, a discipline with no evidence, a
+breached objective, a dependency nothing has ever tested, a workload with one
+replica or no disruption budget) and the coverage matrix of targets against
+the seven disciplines, then the continuous posture score per target. No fault
+runs for any of it. An operator can accept a finding for a while; the
+suppression is hash-chained in the lake and expires on its own.
+
 Scores roll per-experiment results up by org domain to the company root, with
 coverage against expected evidence and the weakest member called out. The
 treemap drills from company to domain to member.

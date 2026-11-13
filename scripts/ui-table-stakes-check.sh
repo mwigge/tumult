@@ -331,6 +331,27 @@ if [[ -n "$HIT" ]]; then
 fi
 kill "$RECEIVER_PID" 2>/dev/null || true
 
+# ── passive risk scan + posture ──────────────────────────────────
+echo ""
+echo "-- risks + posture"
+RISKS_JSON=$(get /api/risks)
+check "GET /api/risks returns a ranked report" pyjson 'assert d["risks"] == sorted(d["risks"], key=lambda r: -r["rank"]); assert d["summary"]["total"] == len(d["risks"]); assert len(d["coverage"]["kinds"]) == 7' <<< "$RISKS_JSON"
+POSTURE_JSON=$(get /api/posture)
+check "GET /api/posture carries a bounded score and the top findings" pyjson 'assert 0 <= d["posture"]["score"] <= 100; assert d["posture"]["band"] in ("good", "fair", "poor"); assert len(d["top_risks"]) <= 5' <<< "$POSTURE_JSON"
+FIRST_RISK=$(pyjson 'print(d["risks"][0]["id"] if d["risks"] else "")' <<< "$RISKS_JSON")
+if [[ -n "$FIRST_RISK" ]]; then
+  BEFORE_TOTAL=$(pyjson 'print(d["summary"]["total"])' <<< "$RISKS_JSON")
+  check "POST /api/risks/{id}/suppress is 201 for an admin" test "$(status POST "/api/risks/$FIRST_RISK/suppress" '{"reason":"smoke: accepted for a day","expires_in_days":1}')" = 201
+  AFTER_JSON=$(get /api/risks)
+  check "a suppressed finding moves aside and keeps its reason" pyjson "assert d['summary']['total'] == $BEFORE_TOTAL - 1; assert any(r['id'] == '$FIRST_RISK' and r['suppression']['reason'].startswith('smoke') for r in d['suppressed'])" <<< "$AFTER_JSON"
+  check "a second suppression chains onto the first" bash -c "post '/api/risks/$FIRST_RISK/suppress' '{\"reason\":\"smoke: extended\"}' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"prev_hash\"]'"
+  check "a viewer cannot suppress" test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $VIEWER_TOKEN" -H "$CT" -d '{"reason":"nope"}' "$BASE/api/risks/$FIRST_RISK/suppress")" = 403
+else
+  info "no open findings to suppress (empty lake?)"
+fi
+check "POST /api/risks/{id}/suppress rejects an unknown id" test "$(status POST /api/risks/r_nope/suppress '{"reason":"x"}')" = 404
+check "POST /api/risks/{id}/suppress rejects an empty reason" test "$(status POST "/api/risks/${FIRST_RISK:-r_nope}/suppress" '{"reason":" "}')" = 400
+
 # ── summary ──────────────────────────────────────────────────────
 echo ""
 echo "------------------------------------------------------------------"

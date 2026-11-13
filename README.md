@@ -83,6 +83,10 @@ analysis, observability, GameDays, and MCP usage.
   targets measured against recovery, raw probe time series in the lake, and
   a CI gate (`tumult gate`, `GET /api/gate/{target}`) that turns a target's
   evidence into a pass/warn/fail verdict.
+- A passive risk scan and posture page (`GET /api/risks`, `GET /api/posture`,
+  `/posture`): ranked findings and discipline coverage gaps from the evidence
+  already in the lake, Kubernetes manifests and the span call graph, with a
+  continuous posture score and hash-chained, expiring suppressions.
 - Deterministic and live-proxy fault injection for AI agents, plus adapters for
   Claude Code and Codex.
 

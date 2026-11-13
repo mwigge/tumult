@@ -7,6 +7,33 @@
 
     let { children } = $props();
 
+    // Theme: dark is the default; `light` forces light, `auto` follows the
+    // OS preference. Persisted per browser; applied as data-theme on <html>
+    // so lib/theme.css and the ECharts themes pick it up.
+    type Theme = 'dark' | 'light' | 'auto';
+    const THEMES: Theme[] = ['dark', 'light', 'auto'];
+    const THEME_GLYPH: Record<Theme, string> = { dark: '◐', light: '○', auto: '◑' };
+    let theme = $state<Theme>('dark');
+    $effect(() => {
+        try {
+            const saved = localStorage.getItem('tumult.theme');
+            if (saved === 'light' || saved === 'auto' || saved === 'dark') theme = saved;
+        } catch {
+            /* storage unavailable: stay dark */
+        }
+    });
+    $effect(() => {
+        document.documentElement.dataset.theme = theme;
+        try {
+            localStorage.setItem('tumult.theme', theme);
+        } catch {
+            /* storage unavailable */
+        }
+    });
+    function cycleTheme() {
+        theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+    }
+
     const NAV: {
         href: string;
         label: string;
@@ -94,6 +121,10 @@
                     {/if}
                 {/each}
             </nav>
+            <button class="theme" onclick={cycleTheme} title="theme: {theme} (click to change)">
+                {THEME_GLYPH[theme]}
+                {theme}
+            </button>
             {#if me?.auth_required && me.authenticated}
                 <div class="user-chip">
                     <div class="who">
@@ -115,6 +146,22 @@
 {/if}
 
 <style>
+    .theme {
+        margin: 8px 18px 0;
+        align-self: flex-start;
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text-dim);
+        font: inherit;
+        font-size: 11.5px;
+        padding: 2px 8px;
+        cursor: pointer;
+    }
+    .theme:hover {
+        color: var(--text);
+        border-color: var(--border-strong);
+    }
     .user-chip {
         margin-top: auto;
         padding: 12px 18px 0;
