@@ -53,6 +53,49 @@ where
     Err(error)
 }
 
+/// What runs beside the listeners and holds the ingest writer open.
+struct Workers {
+    /// Tells the background tasks to stop.
+    shutdown: tokio_util::sync::CancellationToken,
+    /// The background tasks by name; each holds an `IngestWriter` clone.
+    tasks: Vec<(&'static str, tokio::task::JoinHandle<()>)>,
+    run_queue: tumult_ingest::RunQueue,
+    writer: tokio::task::JoinHandle<()>,
+}
+
+impl Workers {
+    /// Stop everything and wait until the writer has persisted what was
+    /// queued. Order matters: signal the background tasks that hold an
+    /// `IngestWriter` clone, wait for them to finish so those clones are
+    /// dropped, and only then wait for the writer channel to close: the
+    /// drain completes only once every sender is gone.
+    async fn drain(self) -> Result<()> {
+        self.shutdown.cancel();
+        for (name, task) in self.tasks {
+            task.await
+                .with_context(|| format!("{name} task panicked"))?;
+        }
+        self.run_queue.shutdown();
+        drop(self.run_queue);
+        self.writer.await.context("ingest writer task")
+    }
+}
+
+/// The end of the daemon's life, once the public listeners have stopped
+/// as `served` says: the loopback listener, then the drain.
+async fn finish(
+    served: Result<()>,
+    loopback: Option<Listener<tonic::transport::Error>>,
+    workers: Workers,
+) -> Result<()> {
+    served?;
+    if let Some(mut task) = loopback {
+        stopped(&mut task, "internal gRPC loopback server").await?;
+    }
+    tracing::info!("servers stopped; draining ingest writer");
+    workers.drain().await
+}
+
 /// Wait for SIGTERM or SIGINT.
 async fn shutdown_signal(name: &'static str) {
     #[cfg(unix)]
@@ -343,38 +386,23 @@ pub(crate) async fn serve() -> Result<()> {
         result
     });
 
-    until_both_stop(grpc_server, http_server).await?;
-    if let Some(task) = internal_grpc_server {
-        task.await
-            .context("internal gRPC loopback task panicked")?
-            .context("internal gRPC loopback server")?;
-    }
-
-    tracing::info!("servers stopped; draining ingest writer");
-    // Both servers are down; their channel clones (moved into the tasks)
-    // are dropped. Order matters from here: signal the background tasks
-    // that hold an `IngestWriter` clone, wait for them to finish so those
-    // clones are dropped, and only then wait for the writer channel to
-    // close — the drain completes only once every sender is gone.
-    background_shutdown.cancel();
-    if let Some(task) = lake_task {
-        task.await.context("lake scheduler task panicked")?;
-    }
-    schedule_task
-        .await
-        .context("schedule scheduler task panicked")?;
-    webhook_task
-        .await
-        .context("webhook dispatcher task panicked")?;
-    gameday_task
-        .await
-        .context("gameday supervisor task panicked")?;
-    retention_task
-        .await
-        .context("run retention task panicked")?;
-    run_queue.shutdown();
-    drop(run_queue);
-    writer_task.await.context("ingest writer task")?;
+    let mut tasks = vec![
+        ("schedule scheduler", schedule_task),
+        ("webhook dispatcher", webhook_task),
+        ("gameday supervisor", gameday_task),
+        ("run retention", retention_task),
+    ];
+    tasks.extend(lake_task.map(|task| ("lake scheduler", task)));
+    let workers = Workers {
+        shutdown: background_shutdown,
+        tasks,
+        run_queue,
+        writer: writer_task,
+    };
+    // Both servers are down once this returns; their channel clones
+    // (moved into the tasks) are dropped.
+    let served = until_both_stop(grpc_server, http_server).await;
+    finish(served, internal_grpc_server, workers).await?;
     tracing::info!("tumultd stopped cleanly");
     Ok(())
 }
