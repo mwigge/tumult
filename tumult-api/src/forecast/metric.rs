@@ -257,7 +257,11 @@ async fn load(
             context_end_ns: series.end_ns(),
         };
         let cached = reader.latest_forecast(&lookup).unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "forecast cache lookup failed; fitting afresh");
+            tracing::warn!(
+                error.type = "cache_lookup",
+                error.message = %e,
+                "forecast cache lookup failed; fitting afresh"
+            );
             None
         });
         Ok((series, cached))
@@ -282,7 +286,11 @@ async fn store(state: &ApiState, row: ForecastRow) {
         })))
         .await;
     if let Err(e) = written {
-        tracing::warn!(error = %e, "forecast cache write failed; serving the forecast uncached");
+        tracing::warn!(
+            error.type = "cache_write",
+            error.message = %e,
+            "forecast cache write failed; serving the forecast uncached"
+        );
     }
 }
 

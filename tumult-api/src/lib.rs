@@ -295,9 +295,13 @@ impl ApiState {
     pub fn forecast_from_env(self) -> Result<Self, String> {
         let url = std::env::var("TUMULTD_FORECAST_URL").ok();
         let cooldown_raw = std::env::var("TUMULTD_FORECAST_COOLDOWN_S").ok();
-        let cooldown = forecast::breaker::parse_cooldown(cooldown_raw.as_deref())
-            .unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "invalid TUMULTD_FORECAST_COOLDOWN_S; using the default");
+        let cooldown =
+            forecast::breaker::parse_cooldown(cooldown_raw.as_deref()).unwrap_or_else(|e| {
+                tracing::warn!(
+                    error.type = "invalid_config",
+                    error.message = %e,
+                    "invalid TUMULTD_FORECAST_COOLDOWN_S; using the default"
+                );
                 forecast::breaker::DEFAULT_COOLDOWN
             });
         self.with_forecast_cooldown(cooldown)
