@@ -21,7 +21,7 @@
 //! | stream read failed (oversized message, bad compression) | none | closed with the read error's status |
 //! | no message for [`OtapLimits::stream_idle`], or the stream is older than [`OtapLimits::stream_lifetime`] | none | closed with `UNAVAILABLE` |
 //! | the client does not take a status for [`OtapLimits::ack_timeout`] | none | closed |
-//! | more streams than [`OtapLimits::max_streams`], or than [`OtapLimits::max_streams_per_connection`] on one connection | none | refused with `RESOURCE_EXHAUSTED` |
+//! | more streams than [`OtapLimits::max_streams`], than [`OtapLimits::max_streams_per_connection`] on one connection, or than [`OtapLimits::max_streams_per_peer`] from one peer | none | refused with `RESOURCE_EXHAUSTED` |
 //! | decode task panicked (builds that unwind only) | none | closed with `INTERNAL` |
 //!
 //! The release profile sets `panic = "abort"`: there a panic ends the
@@ -61,7 +61,10 @@
 //! [`OtapLimits::max_concurrent_decodes`] batches at once, so a large batch
 //! never stalls the async workers that serve other connections. The permit
 //! is held until the batch is stored, so no more than that many converted
-//! batches wait for the writer however many streams are open.
+//! batches wait for the writer however many streams are open. Batches that
+//! wait for a permit take turns by peer and by connection (see
+//! `decode_gate`), so a client with many streams does not keep the others
+//! waiting behind all of its batches.
 
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -76,6 +79,7 @@ use tonic::{Request, Response, Status, Streaming};
 
 use super::admission::{Shares, StreamSlot};
 use super::decode::StreamConsumer;
+use super::decode_gate::{Client, DecodeGate};
 use super::limits::{OtapLimits, RetainedPool};
 use super::proto::arrow_logs_service_server::{ArrowLogsService, ArrowLogsServiceServer};
 use super::proto::arrow_metrics_service_server::{ArrowMetricsService, ArrowMetricsServiceServer};
@@ -95,7 +99,7 @@ pub struct OtapGrpc {
     /// One permit per open stream, across the three services.
     streams: Arc<Semaphore>,
     /// One permit per batch being decoded, converted or written.
-    decodes: Arc<Semaphore>,
+    decodes: Arc<DecodeGate>,
     shares: Arc<Shares>,
     guards: Arc<Guards>,
 }
@@ -133,7 +137,7 @@ impl Guards {
 pub(super) struct StreamContext {
     pub ingest: IngestWriter,
     pub limits: OtapLimits,
-    pub decodes: Arc<Semaphore>,
+    pub decodes: Arc<DecodeGate>,
     pub signal: &'static str,
     pub convert: Convert,
     pub guards: Arc<Guards>,
@@ -159,7 +163,7 @@ impl OtapGrpc {
             ingest_token,
             limits,
             streams: Arc::new(Semaphore::new(limits.max_streams)),
-            decodes: Arc::new(Semaphore::new(limits.max_concurrent_decodes)),
+            decodes: DecodeGate::new(limits.max_concurrent_decodes),
             shares: Shares::new(&limits),
             guards: Guards::new(&limits),
         }
@@ -206,6 +210,7 @@ impl OtapGrpc {
                 signal,
                 max_streams = self.limits.max_streams,
                 max_streams_per_connection = self.limits.max_streams_per_connection,
+                max_streams_per_peer = self.limits.max_streams_per_peer,
                 suppressed,
                 "OTAP stream refused: {why}"
             );
@@ -420,7 +425,11 @@ async fn handle_batch(
         status_code: code as i32,
         status_message: message,
     };
-    let Ok(permit) = context.decodes.clone().acquire_owned().await else {
+    let client = context
+        .slot
+        .as_ref()
+        .map_or_else(Client::default, StreamSlot::client);
+    let Some(permit) = context.decodes.request(client).permit().await else {
         return (
             None,
             Outcome::Close(Status::unavailable("otel-arrow receiver is shutting down")),

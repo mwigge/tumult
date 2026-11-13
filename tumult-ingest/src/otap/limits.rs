@@ -43,6 +43,11 @@ pub const DEFAULT_MAX_STREAMS: usize = 64;
 /// `KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION`.
 pub const DEFAULT_MAX_STREAMS_PER_CONNECTION: usize = 32;
 
+/// The part of the open streams one peer (see `crate::listener::peer_key`)
+/// may hold over all its connections: half, unless set, so no single peer
+/// takes every slot. `KRONIKA_OTAP_MAX_STREAMS_PER_PEER`.
+pub const STREAMS_PEER_DIVISOR: usize = 2;
+
 /// Batches decoded, converted and written at once; further batches wait,
 /// which is the backpressure the exporter sees. The permit is held until the
 /// batch is stored, so this also bounds the converted batches in memory.
@@ -119,6 +124,7 @@ pub struct OtapLimits {
     pub max_message_bytes: usize,
     pub max_streams: usize,
     pub max_streams_per_connection: usize,
+    pub max_streams_per_peer: usize,
     pub max_concurrent_decodes: usize,
     pub stream_idle: Duration,
     pub stream_lifetime: Duration,
@@ -136,6 +142,11 @@ pub struct OtapLimits {
     pub max_rejected_batches: usize,
 }
 
+/// The default share one peer gets of `streams` streams.
+fn peer_streams(streams: usize) -> usize {
+    (streams / STREAMS_PEER_DIVISOR).max(1)
+}
+
 /// The default share of a pool of `pool` bytes.
 fn retained_share(pool: usize) -> usize {
     (pool / RETAINED_SHARE_DIVISOR).max(1)
@@ -150,6 +161,7 @@ impl Default for OtapLimits {
             max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
             max_streams: DEFAULT_MAX_STREAMS,
             max_streams_per_connection: DEFAULT_MAX_STREAMS_PER_CONNECTION,
+            max_streams_per_peer: peer_streams(DEFAULT_MAX_STREAMS),
             max_concurrent_decodes: DEFAULT_MAX_CONCURRENT_DECODES,
             stream_idle: DEFAULT_STREAM_IDLE,
             stream_lifetime: DEFAULT_STREAM_LIFETIME,
@@ -262,6 +274,11 @@ impl OtapLimits {
             max_streams_per_connection: bounded(
                 "KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION",
                 d.max_streams_per_connection.min(max_streams),
+                max_streams,
+            ),
+            max_streams_per_peer: bounded(
+                "KRONIKA_OTAP_MAX_STREAMS_PER_PEER",
+                peer_streams(max_streams),
                 max_streams,
             ),
             max_concurrent_decodes: bounded(
@@ -539,6 +556,7 @@ mod tests {
         let limits = OtapLimits::from_lookup(|_| Some(usize::MAX.to_string()));
         assert_eq!(limits.max_streams, ceiling::STREAMS);
         assert_eq!(limits.max_streams_per_connection, ceiling::STREAMS);
+        assert_eq!(limits.max_streams_per_peer, ceiling::STREAMS);
         assert_eq!(limits.max_concurrent_decodes, ceiling::CONCURRENT_DECODES);
         assert_eq!(limits.max_rows_per_table, ceiling::ROWS);
         assert_eq!(limits.max_attributes_per_batch, ceiling::ATTRIBUTES);
@@ -577,6 +595,25 @@ mod tests {
             _ => None,
         });
         assert_eq!(limits.max_streams_per_connection, 8);
+        assert_eq!(limits.max_streams_per_peer, 4, "half the total");
+    }
+
+    #[test]
+    fn a_peer_gets_half_the_streams_unless_told_otherwise() {
+        let d = OtapLimits::default();
+        assert_eq!((d.max_streams, d.max_streams_per_peer), (64, 32));
+        let set = |total: &'static str, peer: &'static str| {
+            OtapLimits::from_lookup(move |name| match name {
+                "KRONIKA_OTAP_MAX_STREAMS" => Some(total.into()),
+                "KRONIKA_OTAP_MAX_STREAMS_PER_PEER" => Some(peer.into()),
+                _ => None,
+            })
+            .max_streams_per_peer
+        };
+        assert_eq!(set("10", "3"), 3);
+        assert_eq!(set("10", "10"), 10, "one peer may be given everything");
+        assert_eq!(set("10", "11"), 10, "but never more than there is");
+        assert_eq!(set("1", "x"), 1, "never zero");
     }
 
     #[test]

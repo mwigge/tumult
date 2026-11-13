@@ -989,7 +989,7 @@ fn context(limits: super::OtapLimits, convert: Convert) -> StreamContext {
     StreamContext {
         ingest: IngestWriter::stopped_for_test(),
         limits,
-        decodes: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+        decodes: super::decode_gate::DecodeGate::new(1),
         signal: "traces",
         convert,
         guards: super::service::Guards::new(&limits),
@@ -1331,7 +1331,7 @@ async fn decode_permit_is_held_until_the_batch_is_written() {
         .await
         .expect("the converted batch reaches the writer queue");
     assert_eq!(
-        decodes.available_permits(),
+        decodes.free(),
         0,
         "the decode permit was given back while the batch still waits for the writer"
     );
@@ -1341,5 +1341,5 @@ async fn decode_permit_is_held_until_the_batch_is_written() {
     let ack = out.next().await.unwrap().unwrap();
     assert_eq!(ack.status_code, StatusCode::Ok as i32);
     assert!(out.next().await.is_none());
-    assert_eq!(decodes.available_permits(), 1, "stored: the permit is back");
+    assert_eq!(decodes.free(), 1, "stored: the permit is back");
 }

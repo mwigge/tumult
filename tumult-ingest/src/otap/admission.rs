@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use super::decode_gate::Client;
 use super::limits::{OtapLimits, RetainedPool};
 use crate::listener::peer_key;
 
@@ -46,12 +47,14 @@ pub(super) struct Shares {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Refused {
     Connection,
+    Peer,
 }
 
 impl Refused {
     pub fn reason(self) -> &'static str {
         match self {
             Self::Connection => "too many otel-arrow streams on this connection",
+            Self::Peer => "too many otel-arrow streams from this peer",
         }
     }
 }
@@ -83,6 +86,10 @@ impl Shares {
         let on_connection = connections.get(&addr).map_or(0, |held| held.streams);
         if on_connection >= limits.max_streams_per_connection {
             return Err(Refused::Connection);
+        }
+        let of_peer = peers.get(&peer).map_or(0, |held| held.streams);
+        if of_peer >= limits.max_streams_per_peer {
+            return Err(Refused::Peer);
         }
         let connection = connections.entry(addr).or_insert_with(|| {
             Holder::new(
@@ -116,6 +123,14 @@ impl StreamSlot {
     /// to, the narrowest first.
     pub fn retained(&self) -> impl Iterator<Item = Arc<RetainedPool>> + '_ {
         self.retained.iter().cloned()
+    }
+
+    /// Whose stream this is, for taking turns at decoding.
+    pub fn client(&self) -> Client {
+        Client {
+            peer: Some(self.peer),
+            connection: Some(self.connection),
+        }
     }
 }
 
@@ -153,6 +168,7 @@ mod tests {
     fn limits() -> OtapLimits {
         OtapLimits {
             max_streams_per_connection: 2,
+            max_streams_per_peer: 3,
             max_connection_retained_bytes: 100,
             max_peer_retained_bytes: 150,
             ..OtapLimits::default()
@@ -174,12 +190,41 @@ mod tests {
     }
 
     #[test]
+    fn a_peer_holds_no_more_streams_than_its_share_over_all_connections() {
+        let shares = Shares::new(&limits());
+        let mut held: Vec<StreamSlot> = ["192.0.2.1:1000", "192.0.2.1:1000", "192.0.2.1:1001"]
+            .into_iter()
+            .map(|a| shares.claim(addr(a)).ok().unwrap())
+            .collect();
+        // A connection with room of its own, but the peer has none left.
+        let refused = shares.claim(addr("192.0.2.1:1001")).err();
+        assert_eq!(refused, Some(Refused::Peer));
+        assert_eq!(shares.claim(addr("192.0.2.1:1002")).err(), refused);
+        assert_eq!(shares.holders(), (2, 1), "a refusal leaves nothing behind");
+        // An IPv6 peer is its /64, whatever the address in it.
+        let v6: Vec<StreamSlot> = (1..=3)
+            .map(|host| shares.claim(addr(&format!("[2001:db8::{host}]:1000"))))
+            .map(|slot| slot.ok().unwrap())
+            .collect();
+        let refused = shares.claim(addr("[2001:db8::4]:1000")).err();
+        assert_eq!(refused, Some(Refused::Peer));
+        // Other peers are not affected, and a closed stream makes room.
+        let _other = shares.claim(addr("192.0.2.2:1000")).ok().unwrap();
+        held.pop();
+        let _again = shares.claim(addr("192.0.2.1:1002")).ok().unwrap();
+        assert_eq!(held[0].client(), held[1].client());
+        assert_ne!(held[0].client(), v6[0].client());
+    }
+
+    #[test]
     fn streams_of_one_connection_charge_one_account_and_peers_another() {
         let shares = Shares::new(&limits());
         let a1 = shares.claim(addr("192.0.2.1:1000")).ok().unwrap();
         let a2 = shares.claim(addr("192.0.2.1:1000")).ok().unwrap();
         let b = shares.claim(addr("192.0.2.1:2000")).ok().unwrap();
         let other = shares.claim(addr("192.0.2.2:1000")).ok().unwrap();
+        assert_eq!(a1.client().peer, b.client().peer, "one peer");
+        assert_ne!(a1.client(), b.client(), "two connections");
         let accounts = |slot: &StreamSlot| slot.retained().collect::<Vec<_>>();
         let (a1, a2, b, other) = (accounts(&a1), accounts(&a2), accounts(&b), accounts(&other));
         assert!(Arc::ptr_eq(&a1[0], &a2[0]), "one account per connection");

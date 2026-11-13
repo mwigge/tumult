@@ -39,6 +39,7 @@ mod arrays;
 mod attrs;
 mod common;
 mod decode;
+mod decode_gate;
 mod ipc;
 pub mod limits;
 mod logs;
