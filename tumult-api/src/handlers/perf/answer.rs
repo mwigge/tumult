@@ -7,6 +7,7 @@ use tumult_lake::PerfVerdictRow;
 use tumult_perf::{percentile_sorted, Comparison, SampleSummary};
 
 use super::select::{Attributed, Attribution, Env, Reason, Side, VersionSeen};
+use super::{FailureShares, FAILURE_SHARE_MARGIN};
 
 /// Unattributed runs listed one by one; the count covers all of them.
 const UNATTRIBUTED_LISTED: usize = 50;
@@ -24,13 +25,22 @@ pub(crate) struct Answer {
     pub as_of_ns: i64,
     /// Whether the request named a version.
     pub explicit: bool,
+    /// Which rule chose the pair, in words.
+    pub selection_rule: String,
+    /// The lake's version history is still being read back.
+    pub backfill_running: bool,
     pub include_partial: bool,
     pub min_samples: usize,
+    pub min_runs: usize,
     /// The environment's versions in deployment order, latest first.
     pub versions: Vec<VersionSeen>,
     pub candidate: Side,
     pub baseline: Option<Side>,
     pub comparison: Comparison,
+    /// Why the verdict is what it is, as codes, the deciding one first.
+    pub reason_codes: Vec<&'static str>,
+    /// The share of their requests the sides failed, when both counted.
+    pub failure: Option<FailureShares>,
     /// Runs inside the request's scope that no version could be given.
     pub unattributed: Vec<(String, Env, Reason)>,
     /// Runs of the environment that measured neither side's version.
@@ -111,9 +121,29 @@ fn side_json(side: &Side, summary: &SampleSummary) -> Value {
             "planned": side.windows.planned,
             "completed": side.windows.completed,
             "unanswered": side.windows.unanswered,
+            "lost": side.windows.lost,
             "unanswered_share": side.windows.unanswered_share(),
+            "censored": side.windows.censored,
+        },
+        "requests": {
+            "sent": side.requests.sent,
+            "failed": side.requests.failed,
+            "failure_share": side.requests.failure_share(),
+            "runs_without_counts": side.requests.runs_without_counts,
         },
         "distribution": distribution(&side.samples),
+    })
+}
+
+fn failure_json(failure: Option<FailureShares>) -> Value {
+    let Some(f) = failure else {
+        return Value::Null;
+    };
+    json!({
+        "baseline": f.baseline,
+        "candidate": f.candidate,
+        "delta": f.candidate - f.baseline,
+        "margin": FAILURE_SHARE_MARGIN,
     })
 }
 
@@ -142,7 +172,12 @@ impl Answer {
         let selection = if self.explicit {
             "explicit"
         } else {
-            "deployment_order"
+            "latest_deployment"
+        };
+        let backfill = if self.backfill_running {
+            "running"
+        } else {
+            "done"
         };
         json!({
             "target": self.target,
@@ -152,8 +187,12 @@ impl Answer {
             "range": self.range,
             "since_ns": self.since_ns,
             "selection": selection,
+            "selection_rule": self.selection_rule,
+            "backfill": backfill,
             "include_partial": self.include_partial,
             "verdict": c.verdict,
+            "reason": self.reason_codes.first(),
+            "reason_codes": self.reason_codes,
             "reasons": c.reasons,
             "baseline": baseline,
             "candidate": side_json(&self.candidate, &c.candidate),
@@ -168,11 +207,15 @@ impl Answer {
                 "iterations": c.iterations,
                 "seed": c.seed,
                 "min_samples": self.min_samples,
+                "min_runs": self.min_runs,
+                "failure_share": failure_json(self.failure),
             },
             "versions_seen": self.versions.iter().map(|v| json!({
                 "version": v.version,
                 "first_seen_ns": v.first_seen_ns,
                 "last_seen_ns": v.last_seen_ns,
+                "last_deployed_ns": v.last_deployed_ns,
+                "redeployed": v.redeployed,
             })).collect::<Vec<_>>(),
             "unattributed_runs": unattributed_json(&self.unattributed),
             "runs_on_other_versions": self.runs_on_other_versions,

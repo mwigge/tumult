@@ -1,21 +1,33 @@
-//! What the lake holds about a target, read for one request. Every query
-//! is bounded by the request's lookback: runs are the experiment root
-//! spans at or after it, and the target's spans are read only around the
-//! runs that recorded no version. Versions come from the
-//! `service_version_sightings` rollup, never from a scan of the spans.
+//! What the lake holds about a target, read for one request. Runs and
+//! samples are bounded by the request's lookback: runs are the experiment
+//! root spans at or after it, and the target's spans are read only around
+//! the runs that recorded no version. Versions are not bounded by it:
+//! they come from the `service_version_sightings` rollup and from every
+//! run that recorded one, never from a scan of the target's spans.
+//!
+//! Whatever a request supplied — the target, the series, the principal's
+//! scopes, the lookback — reaches the lake as a bound parameter, never as
+//! part of a statement's text.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde_json::Value;
-use tumult_lake::{Reader, VersionSighting};
+use tumult_core::runner::VERSION_WINDOW_SKEW;
+use tumult_core::types::bounded_version_text;
+use tumult_lake::{Reader, SqlParam, VersionSighting};
 
-use super::select::{Env, Execution, Run, STALE_NS};
-use crate::sql_util::{and_pred, env_scope_where, sql_string};
+use super::select::{Env, Execution, RecordedVersion, Run, Sample, STALE_NS};
 
 /// Stored verdicts returned as history.
 const HISTORY_LIMIT: usize = 10;
 /// Stored verdicts read to find the ones of the unnamed environment.
 const UNNAMED_HISTORY_SCAN: usize = 200;
+/// The series a latency sample's window length and request timeout are
+/// written under, beside it.
+const WINDOW_SERIES: &str = "load.window_s";
+const TIMEOUT_SERIES: &str = "load.request_timeout_ms";
+/// The series a request timeout censors.
+const LATENCY_PREFIX: &str = "load.latency_";
 
 /// What a verdict is decided from.
 #[derive(Debug, Default)]
@@ -23,52 +35,115 @@ pub(crate) struct Evidence {
     /// The target's versions per environment, within the principal's
     /// scopes, whenever seen.
     pub sightings: Vec<VersionSighting>,
+    /// The versions runs against the target recorded, whenever they ran.
+    pub recorded: Vec<RecordedVersion>,
     /// The runs against the target inside the lookback, in start order.
     pub runs: Vec<Run>,
-    /// `(experiment_id, value)` of the requested series for those runs, in
-    /// a fixed order.
-    pub samples: Vec<(String, f64)>,
+    /// The requested series of those runs, in a fixed order.
+    pub samples: Vec<Sample>,
+    /// The rollup is still being read back from an old lake's spans:
+    /// versions and deployments may be missing from `sightings`.
+    pub backfill_running: bool,
 }
 
-/// The experiment root spans against `t` at or after `since_ns`.
-fn roots_where(t: &str, scope: &str, since_ns: i64) -> String {
+/// `$n` holds the principal's scopes as a JSON list, or null for every
+/// environment: the predicate that keeps `column` inside them.
+fn in_scopes(n: usize, column: &str) -> String {
     format!(
-        "span_name = 'resilience.experiment' AND target_system = {t} \
-         AND experiment_id IS NOT NULL AND ts_ns >= {since_ns}{scope}"
+        "(${n} IS NULL OR list_contains(\
+         from_json(CAST(${n} AS VARCHAR), '[\"VARCHAR\"]'), {column}))"
+    )
+}
+
+fn scopes_param(scopes: &[String]) -> SqlParam {
+    if scopes.is_empty() {
+        return SqlParam::Null;
+    }
+    SqlParam::text_list(scopes)
+}
+
+/// The experiment root spans against the target `$1` at or after `$2`,
+/// inside the scopes `$3`.
+fn roots_where() -> String {
+    format!(
+        "span_name = 'resilience.experiment' AND target_system = $1 \
+         AND experiment_id IS NOT NULL AND ts_ns >= $2 AND {}",
+        in_scopes(3, "target_environment")
     )
 }
 
 /// The CTE every run query starts from: `runs`, one row per run against
 /// the target with its window, its environment and the version it
 /// recorded — on its journal, or else on its root span.
-fn runs_cte(roots: &str) -> String {
+fn runs_cte() -> String {
     format!(
         "WITH roots AS (\
          SELECT experiment_id AS id, min(ts_ns) AS started, \
          max(ts_ns + duration_ns) AS ended, min(target_environment) AS env, \
          max(span_attrs['resilience.target.version']) AS span_version, \
          max(span_attrs['resilience.target.version_source']) AS span_source \
-         FROM spans WHERE {roots} GROUP BY experiment_id), \
+         FROM spans WHERE {} GROUP BY experiment_id), \
          runs AS (\
          SELECT r.id, r.started, r.ended, r.env, e.status, \
          coalesce(nullif(e.target_version, ''), nullif(r.span_version, '')) AS version, \
          CASE WHEN nullif(e.target_version, '') IS NOT NULL THEN e.version_source \
          ELSE r.span_source END AS version_source \
-         FROM roots AS r LEFT JOIN experiments AS e ON r.id = e.experiment_id)"
+         FROM roots AS r LEFT JOIN experiments AS e ON r.id = e.experiment_id)",
+        roots_where()
     )
 }
 
-/// The target's own versioned spans, joined to the runs that recorded no
-/// version, in exactly the run's environment.
-fn unrecorded_join(t: &str, since_ns: i64) -> String {
-    format!(
-        "FROM runs AS u INNER JOIN spans AS s \
-         ON s.target_environment IS NOT DISTINCT FROM u.env \
-         WHERE u.version IS NULL AND s.service_name = {t} \
-         AND s.service_version IS NOT NULL AND s.service_version <> '' \
-         AND s.ts_ns >= {}",
-        since_ns.saturating_sub(STALE_NS)
-    )
+/// The target's own versioned spans at or after `$4`, joined to the runs
+/// that recorded no version, in exactly the run's environment.
+const UNRECORDED_JOIN: &str = "FROM runs AS u INNER JOIN spans AS s \
+     ON s.target_environment IS NOT DISTINCT FROM u.env \
+     WHERE u.version IS NULL AND s.service_name = $1 \
+     AND s.service_version IS NOT NULL AND s.service_version <> '' \
+     AND s.ts_ns >= $4";
+
+/// A span that is a request the service received or began, as the lake
+/// counts them for a run's window.
+const IS_REQUEST: &str = "(upper(s.span_kind) IN ('SERVER', 'CONSUMER') \
+     OR s.parent_span_id IS NULL OR s.parent_span_id = '')";
+
+/// What a request asks about, as the parameters of its statements.
+struct Asked {
+    target: String,
+    since_ns: i64,
+    scopes: SqlParam,
+}
+
+impl Asked {
+    /// `$1`, `$2`, `$3`: the target, the lookback and the scopes.
+    fn runs(&self) -> Vec<SqlParam> {
+        vec![
+            SqlParam::Text(self.target.clone()),
+            SqlParam::Int(self.since_ns),
+            self.scopes.clone(),
+        ]
+    }
+
+    /// The same with `$4`: how far back the target's own spans are read.
+    fn spans(&self) -> Vec<SqlParam> {
+        let mut params = self.runs();
+        params.push(SqlParam::Int(self.since_ns.saturating_sub(STALE_NS)));
+        params
+    }
+
+    /// The same as [`Asked::runs`] without a lookback.
+    fn whenever(&self) -> Vec<SqlParam> {
+        vec![
+            SqlParam::Text(self.target.clone()),
+            SqlParam::Int(i64::MIN),
+            self.scopes.clone(),
+        ]
+    }
+}
+
+fn rows(reader: &Reader, sql: &str, params: &[SqlParam]) -> Result<Vec<Value>, String> {
+    reader
+        .query_json_rows_bound(sql, params)
+        .map_err(|e| e.to_string())
 }
 
 fn text(row: &Value, key: &str) -> Option<String> {
@@ -83,17 +158,22 @@ fn flag(row: &Value, key: &str) -> bool {
     count(row, key).is_some_and(|n| n != 0)
 }
 
+/// A version as a span or a journal gave it, held to the bounds.
+fn version_of(row: &Value, key: &str) -> Option<String> {
+    let raw = row.get(key).and_then(Value::as_str)?;
+    Some(bounded_version_text(raw).0.into_owned())
+}
+
 fn run_of(row: &Value) -> Option<Run> {
-    let recorded = text(row, "version").map(|version| {
-        let declared = row.get("version_source").and_then(Value::as_str) == Some("declared");
-        (version, declared)
-    });
+    let source = row.get("version_source").and_then(Value::as_str);
+    let recorded = version_of(row, "version").map(|version| (version, source == Some("declared")));
     Some(Run {
         experiment_id: text(row, "id")?,
         started_at_ns: row.get("started")?.as_i64()?,
         ended_at_ns: row.get("ended")?.as_i64()?,
         environment: text(row, "env"),
         recorded,
+        mixed: source == Some("mixed"),
         status: text(row, "status"),
         execution: Execution {
             aborted: flag(row, "aborted"),
@@ -102,6 +182,8 @@ fn run_of(row: &Value) -> Option<Run> {
             completed: count(row, "completed"),
             unanswered: count(row, "unanswered").unwrap_or(0),
             lost: count(row, "lost").unwrap_or(0),
+            requests_sent: count(row, "sent"),
+            requests_ok: count(row, "ok"),
         },
         inside: Vec::new(),
         before: Vec::new(),
@@ -110,95 +192,153 @@ fn run_of(row: &Value) -> Option<Run> {
 
 /// The runs, in start order, with how their load was executed. A run
 /// ingested twice is read once.
-fn load_runs(reader: &Reader, cte: &str) -> Result<Vec<Run>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "{cte} SELECT u.id, u.started, u.ended, u.env, u.status, u.version, \
-             u.version_source, \
-             CAST(l.aborted AS INTEGER) AS aborted, CAST(l.truncated AS INTEGER) AS truncated, \
-             l.planned_windows AS planned, l.completed_windows AS completed, \
-             l.unanswered_windows AS unanswered, l.lost_to_unanswered AS lost \
-             FROM runs AS u LEFT JOIN load_results AS l ON u.id = l.experiment_id \
-             ORDER BY u.started, u.id"
-        ))
-        .map_err(|e| e.to_string())?;
+fn load_runs(reader: &Reader, asked: &Asked) -> Result<Vec<Run>, String> {
+    let sql = format!(
+        "{} SELECT u.id, u.started, u.ended, u.env, u.status, u.version, \
+         u.version_source, \
+         CAST(l.aborted AS INTEGER) AS aborted, CAST(l.truncated AS INTEGER) AS truncated, \
+         l.planned_windows AS planned, l.completed_windows AS completed, \
+         l.unanswered_windows AS unanswered, l.lost_to_unanswered AS lost, \
+         l.requests_sent AS sent, l.requests_ok AS ok \
+         FROM runs AS u LEFT JOIN load_results AS l ON u.id = l.experiment_id \
+         ORDER BY u.started, u.id",
+        runs_cte()
+    );
     let mut seen = HashSet::new();
-    Ok(rows
+    Ok(rows(reader, &sql, &asked.runs())?
         .iter()
         .filter_map(run_of)
         .filter(|run| seen.insert(run.experiment_id.clone()))
         .collect())
 }
 
-/// Per run without a recorded version, how many of the target's spans
-/// each version has inside the run's window: at most runs × versions
-/// rows.
+/// Per run without a recorded version, how many requests each version of
+/// the target served inside the run's window, widened by the clock skew
+/// a runner allows for: at most runs × versions rows.
 fn load_inside(
     reader: &Reader,
-    cte: &str,
-    join: &str,
+    asked: &Asked,
 ) -> Result<HashMap<String, Vec<(String, u64)>>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "{cte} SELECT u.id AS id, s.service_version AS v, count(*) AS n {join} \
-             AND s.ts_ns >= u.started AND s.ts_ns <= u.ended \
-             GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version"
-        ))
-        .map_err(|e| e.to_string())?;
-    let mut inside: HashMap<String, Vec<(String, u64)>> = HashMap::new();
-    for row in &rows {
-        let (Some(id), Some(v), Some(n)) = (text(row, "id"), text(row, "v"), count(row, "n"))
+    let skew_ns = i64::try_from(VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
+    let sql = format!(
+        "{} SELECT u.id AS id, s.service_version AS v, count(*) AS n {UNRECORDED_JOIN} \
+         AND s.ts_ns >= u.started - {skew_ns} AND s.ts_ns <= u.ended + {skew_ns} \
+         AND {IS_REQUEST} \
+         GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
+        runs_cte()
+    );
+    let mut inside: HashMap<String, BTreeMap<String, u64>> = HashMap::new();
+    for row in &rows(reader, &sql, &asked.spans())? {
+        let (Some(id), Some(v), Some(n)) = (text(row, "id"), version_of(row, "v"), count(row, "n"))
         else {
             continue;
         };
-        inside.entry(id).or_default().push((v, n));
+        *inside.entry(id).or_default().entry(v).or_default() += n;
     }
-    Ok(inside)
+    Ok(inside
+        .into_iter()
+        .map(|(id, served)| (id, served.into_iter().collect()))
+        .collect())
 }
 
 /// Per run without a recorded version, each version's last span before
 /// the run's start and no more than [`STALE_NS`] before it.
 fn load_before(
     reader: &Reader,
-    cte: &str,
-    join: &str,
+    asked: &Asked,
 ) -> Result<HashMap<String, Vec<(String, i64)>>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "{cte} SELECT u.id AS id, s.service_version AS v, max(s.ts_ns) AS last {join} \
-             AND s.ts_ns < u.started AND s.ts_ns >= u.started - {STALE_NS} \
-             GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version"
-        ))
-        .map_err(|e| e.to_string())?;
-    let mut before: HashMap<String, Vec<(String, i64)>> = HashMap::new();
-    for row in &rows {
+    let sql = format!(
+        "{} SELECT u.id AS id, s.service_version AS v, max(s.ts_ns) AS last {UNRECORDED_JOIN} \
+         AND s.ts_ns < u.started AND s.ts_ns >= u.started - {STALE_NS} \
+         GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
+        runs_cte()
+    );
+    let mut before: HashMap<String, BTreeMap<String, i64>> = HashMap::new();
+    for row in &rows(reader, &sql, &asked.spans())? {
         let (Some(id), Some(v), Some(last)) = (
             text(row, "id"),
-            text(row, "v"),
+            version_of(row, "v"),
             row.get("last").and_then(Value::as_i64),
         ) else {
             continue;
         };
-        before.entry(id).or_default().push((v, last));
+        let at = before.entry(id).or_default().entry(v).or_insert(last);
+        *at = (*at).max(last);
     }
-    Ok(before)
+    Ok(before
+        .into_iter()
+        .map(|(id, last)| (id, last.into_iter().collect()))
+        .collect())
 }
 
-/// The requested probe series of the runs, as `(experiment_id, value)`.
-/// The order is total, so the same lake always yields the same sequence.
-fn load_samples(reader: &Reader, probe: &str, roots: &str) -> Result<Vec<(String, f64)>, String> {
-    let rows = reader
-        .query_json_rows(&format!(
-            "SELECT experiment_id AS id, value FROM probe_samples \
-             WHERE probe_name = {} AND phase = 'during' AND experiment_id IN (\
-             SELECT experiment_id FROM spans WHERE {roots}) \
-             ORDER BY ts_ns, experiment_id, value",
-            sql_string(probe)
-        ))
-        .map_err(|e| e.to_string())?;
-    Ok(rows
+/// The versions runs against the target recorded, per environment, with
+/// the first and the last of those runs — whenever they ran. A run two
+/// versions shared recorded neither.
+fn load_recorded(reader: &Reader, asked: &Asked) -> Result<Vec<RecordedVersion>, String> {
+    let sql = format!(
+        "{} SELECT u.env AS env, u.version AS version, \
+         min(u.started) AS first, max(u.ended) AS last \
+         FROM runs AS u WHERE u.version IS NOT NULL \
+         AND coalesce(u.version_source, '') <> 'mixed' \
+         GROUP BY u.env, u.version ORDER BY u.env, u.version",
+        runs_cte()
+    );
+    Ok(rows(reader, &sql, &asked.whenever())?
         .iter()
-        .filter_map(|row| Some((text(row, "id")?, row.get("value")?.as_f64()?)))
+        .filter_map(|row| {
+            Some(RecordedVersion {
+                environment: text(row, "env"),
+                version: version_of(row, "version")?,
+                first_ns: row.get("first")?.as_i64()?,
+                last_ns: row.get("last")?.as_i64()?,
+            })
+        })
+        .collect())
+}
+
+fn sample_of(row: &Value, latency: bool) -> Option<Sample> {
+    let value = row.get("value")?.as_f64()?;
+    let timeout = row.get("timeout").and_then(Value::as_f64);
+    Some(Sample {
+        run: text(row, "id")?,
+        value,
+        weight: row.get("weight").and_then(Value::as_f64).unwrap_or(1.0),
+        censored: latency && timeout.is_some_and(|t| value >= t),
+    })
+}
+
+/// The series `$4` of the runs, each sample with the seconds of load
+/// behind it and whether it is a request given up on at its timeout. The
+/// order is total, so the same lake always yields the same sequence.
+fn load_samples(reader: &Reader, asked: &Asked, probe: &str) -> Result<Vec<Sample>, String> {
+    let beside = |series: &str| {
+        format!(
+            "(SELECT experiment_id, ts_ns, max(value) AS value FROM mine \
+             WHERE probe_name = '{series}' GROUP BY experiment_id, ts_ns)"
+        )
+    };
+    let sql = format!(
+        "WITH mine AS (\
+         SELECT experiment_id, ts_ns, probe_name, value FROM probe_samples \
+         WHERE phase = 'during' AND experiment_id IN (\
+         SELECT experiment_id FROM spans WHERE {roots})) \
+         SELECT p.experiment_id AS id, p.value AS value, w.value AS weight, \
+         t.value AS timeout \
+         FROM mine AS p \
+         LEFT JOIN {window} AS w ON w.experiment_id = p.experiment_id AND w.ts_ns = p.ts_ns \
+         LEFT JOIN {timeout} AS t ON t.experiment_id = p.experiment_id AND t.ts_ns = p.ts_ns \
+         WHERE p.probe_name = $4 \
+         ORDER BY p.ts_ns, p.experiment_id, p.value",
+        roots = roots_where(),
+        window = beside(WINDOW_SERIES),
+        timeout = beside(TIMEOUT_SERIES),
+    );
+    let mut params = asked.runs();
+    params.push(SqlParam::Text(probe.to_string()));
+    let latency = probe.starts_with(LATENCY_PREFIX);
+    Ok(rows(reader, &sql, &params)?
+        .iter()
+        .filter_map(|row| sample_of(row, latency))
         .collect())
 }
 
@@ -225,8 +365,8 @@ fn load_sightings(
         .collect())
 }
 
-/// Read the target's versions, runs and samples inside `scopes` and the
-/// lookback.
+/// Read the target's versions, and its runs and samples inside the
+/// lookback, all inside `scopes`.
 pub(crate) fn load(
     reader: &Reader,
     target: &str,
@@ -234,21 +374,25 @@ pub(crate) fn load(
     scopes: &[String],
     since_ns: i64,
 ) -> Result<Evidence, String> {
-    let t = sql_string(target);
-    let scope = and_pred(env_scope_where("target_environment", scopes));
-    let roots = roots_where(&t, &scope, since_ns);
-    let cte = runs_cte(&roots);
-    let join = unrecorded_join(&t, since_ns);
-    let mut inside = load_inside(reader, &cte, &join)?;
-    let mut before = load_before(reader, &cte, &join)?;
-    let mut runs = load_runs(reader, &cte)?;
+    let asked = Asked {
+        target: target.to_string(),
+        since_ns,
+        scopes: scopes_param(scopes),
+    };
+    let mut inside = load_inside(reader, &asked)?;
+    let mut before = load_before(reader, &asked)?;
+    let mut runs = load_runs(reader, &asked)?;
     for run in &mut runs {
         run.inside = inside.remove(&run.experiment_id).unwrap_or_default();
         run.before = before.remove(&run.experiment_id).unwrap_or_default();
     }
     Ok(Evidence {
         sightings: load_sightings(reader, target, scopes)?,
-        samples: load_samples(reader, probe, &roots)?,
+        recorded: load_recorded(reader, &asked)?,
+        samples: load_samples(reader, &asked, probe)?,
+        backfill_running: reader
+            .version_backfill_running()
+            .map_err(|e| e.to_string())?,
         runs,
     })
 }
@@ -288,20 +432,19 @@ pub(crate) fn targets(
     scopes: &[String],
     since_ns: i64,
 ) -> Result<Vec<TargetSeen>, String> {
-    let scope = and_pred(env_scope_where("target_environment", scopes));
-    let rows = reader
-        .query_json_rows(&format!(
-            "SELECT target_system AS target, target_environment AS env, \
-             count(DISTINCT experiment_id) AS runs, max(ts_ns) AS last_run \
-             FROM spans WHERE span_name = 'resilience.experiment' \
-             AND target_system IS NOT NULL AND experiment_id IS NOT NULL \
-             AND ts_ns >= {since_ns}{scope} \
-             GROUP BY target_system, target_environment \
-             ORDER BY target_system, target_environment NULLS LAST"
-        ))
-        .map_err(|e| e.to_string())?;
+    let sql = format!(
+        "SELECT target_system AS target, target_environment AS env, \
+         count(DISTINCT experiment_id) AS runs, max(ts_ns) AS last_run \
+         FROM spans WHERE span_name = 'resilience.experiment' \
+         AND target_system IS NOT NULL AND experiment_id IS NOT NULL \
+         AND ts_ns >= $1 AND {} \
+         GROUP BY target_system, target_environment \
+         ORDER BY target_system, target_environment NULLS LAST",
+        in_scopes(2, "target_environment")
+    );
+    let params = [SqlParam::Int(since_ns), scopes_param(scopes)];
     let mut targets: Vec<TargetSeen> = Vec::new();
-    for row in &rows {
+    for row in &rows(reader, &sql, &params)? {
         let (Some(target), Some(runs), Some(last)) = (
             text(row, "target"),
             count(row, "runs"),

@@ -5,7 +5,9 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use tumult_lake::{most_served, version_cmp, VersionSighting};
+use tumult_core::types::OBSERVED_VERSION_MIN_SHARE;
+use tumult_lake::{version_cmp, VersionSighting, REDEPLOY_GAP};
+use tumult_perf::Window;
 
 /// An environment: `None` is the telemetry that names none.
 pub(crate) type Env = Option<String>;
@@ -16,6 +18,10 @@ pub(crate) const STALE_NS: i64 = 3_600 * 1_000_000_000;
 /// The share of its load windows a side may lose to silence and still be
 /// compared.
 pub(crate) const UNANSWERED_LIMIT: f64 = 0.10;
+/// [`REDEPLOY_GAP`] in nanoseconds: how long a baseline may keep reporting
+/// after the candidate came back and still have been replaced by it.
+#[allow(clippy::cast_possible_wrap)]
+pub(crate) const REDEPLOY_GAP_NS: i64 = REDEPLOY_GAP.as_secs() as i64 * 1_000_000_000;
 
 /// `<n>` followed by `s`, `m`, `h`, `d` or `w` as seconds; `None` for
 /// anything else, zero included.
@@ -67,6 +73,9 @@ pub(crate) enum Reason {
     NoTelemetryInEnvironment,
     /// It did, but neither inside the run's window nor shortly before.
     NoSpansNearRun,
+    /// More than one version served the run's window and none of them
+    /// nearly all of it: what the run measured is no single version.
+    MixedVersions,
 }
 
 impl Reason {
@@ -74,6 +83,7 @@ impl Reason {
         match self {
             Self::NoTelemetryInEnvironment => "no_target_telemetry_in_environment",
             Self::NoSpansNearRun => "no_target_spans_near_run",
+            Self::MixedVersions => "mixed_versions",
         }
     }
 }
@@ -88,6 +98,10 @@ pub(crate) struct Execution {
     pub unanswered: u64,
     /// Windows skipped behind an unanswered one.
     pub lost: u64,
+    /// The requests the load sent and the ones answered well; `None`
+    /// when the tool counted none.
+    pub requests_sent: Option<u64>,
+    pub requests_ok: Option<u64>,
 }
 
 /// A run against the target.
@@ -100,11 +114,14 @@ pub(crate) struct Run {
     /// The version the run recorded, and whether it was declared (rather
     /// than observed by the runner).
     pub recorded: Option<(String, bool)>,
+    /// The runner saw more than one version serve the run's window.
+    pub mixed: bool,
     /// The journal's status, when the journal reached the lake.
     pub status: Option<String>,
     pub execution: Execution,
-    /// `(version, spans)`: the target's spans inside the run's window, in
-    /// the run's environment. Read for runs that recorded no version.
+    /// `(version, requests)`: the requests the target served inside the
+    /// run's window, in the run's environment. Read for runs that
+    /// recorded no version.
     pub inside: Vec<(String, u64)>,
     /// `(version, last span)`: the target's spans before the run's start
     /// and no more than [`STALE_NS`] before it, in the run's environment.
@@ -119,14 +136,19 @@ pub(crate) struct Attributed {
 }
 
 /// The version a run measured: the one it recorded; else the one that
-/// carried most of the target's spans inside its window, ties to the
+/// served nearly all ([`OBSERVED_VERSION_MIN_SHARE`]) of the target's
+/// requests inside its window; else, when the window is silent, the
+/// version of the target's last span shortly before the run, ties to the
 /// version deployed latest in the run's environment and then to the
-/// greater version; else the version of the target's last span shortly
-/// before the run. Only spans of exactly the run's environment count.
+/// greater version. A window two versions shared belongs to neither.
+/// Only spans of exactly the run's environment count.
 pub(crate) fn owner_of(
     sightings: &[VersionSighting],
     run: &Run,
 ) -> Result<(String, Attribution), Reason> {
+    if run.mixed {
+        return Err(Reason::MixedVersions);
+    }
     if let Some((version, declared)) = &run.recorded {
         let how = if *declared {
             Attribution::Declared
@@ -135,17 +157,23 @@ pub(crate) fn owner_of(
         };
         return Ok((version.clone(), how));
     }
+    if let Some((version, served)) = run.inside.iter().max_by_key(|(_, served)| *served) {
+        let all: u64 = run.inside.iter().map(|(_, served)| *served).sum();
+        #[allow(clippy::cast_precision_loss)]
+        let nearly_all = *served as f64 >= OBSERVED_VERSION_MIN_SHARE * all as f64;
+        if !nearly_all {
+            return Err(Reason::MixedVersions);
+        }
+        return Ok((version.clone(), Attribution::Inferred));
+    }
     let deployed = |version: &str| {
         sightings
             .iter()
             .filter(|s| s.environment == run.environment && s.version == version)
-            .map(|s| s.first_seen_ns)
-            .min()
+            .map(|s| s.last_deployed_ns)
+            .max()
             .unwrap_or(i64::MIN)
     };
-    if let Some(version) = most_served(&run.inside, deployed) {
-        return Ok((version.to_string(), Attribution::Inferred));
-    }
     let last = run.before.iter().max_by(|(a, at_a), (b, at_b)| {
         at_a.cmp(at_b)
             .then_with(|| deployed(a).cmp(&deployed(b)))
@@ -176,64 +204,101 @@ pub(crate) struct VersionSeen {
     pub version: String,
     pub first_seen_ns: i64,
     pub last_seen_ns: i64,
+    /// When the version was last put into service: its first sight, or,
+    /// when it came back after another version had taken over, the start
+    /// of its latest return.
+    pub last_deployed_ns: i64,
+    /// Whether it came back after another version had taken over.
+    pub redeployed: bool,
 }
 
-/// Deployment order, latest first: by first sight, then by version.
+/// A version runs recorded in one environment, whenever they ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordedVersion {
+    pub environment: Env,
+    pub version: String,
+    /// The start of the earliest run that recorded it.
+    pub first_ns: i64,
+    /// The end of the latest.
+    pub last_ns: i64,
+}
+
+/// Deployment order, latest first: by the latest deployment, then by
+/// version.
 fn deployment_order(a: &VersionSeen, b: &VersionSeen) -> Ordering {
-    b.first_seen_ns
-        .cmp(&a.first_seen_ns)
+    b.last_deployed_ns
+        .cmp(&a.last_deployed_ns)
         .then_with(|| version_cmp(&b.version, &a.version))
 }
 
 fn as_seen(sighting: &VersionSighting) -> VersionSeen {
+    let redeployed = sighting.deployments > 1;
     VersionSeen {
         version: sighting.version.clone(),
         first_seen_ns: sighting.first_seen_ns,
         last_seen_ns: sighting.last_seen_ns,
+        last_deployed_ns: if redeployed {
+            sighting.last_deployed_ns
+        } else {
+            sighting.first_seen_ns
+        },
+        redeployed,
     }
 }
 
-/// The version a run measured as its environment saw it: the sighting of
-/// it there, or else the run's own window.
-fn seen_by(sightings: &[VersionSighting], run: &Run, version: &str) -> VersionSeen {
-    sightings
-        .iter()
-        .find(|s| s.environment == run.environment && s.version == version)
-        .map_or_else(
-            || VersionSeen {
-                version: version.to_string(),
-                first_seen_ns: run.started_at_ns,
-                last_seen_ns: run.ended_at_ns,
-            },
-            as_seen,
-        )
+/// A version known only from a run: seen for the length of that run.
+fn seen_for(version: &str, from_ns: i64, to_ns: i64) -> VersionSeen {
+    VersionSeen {
+        version: version.to_string(),
+        first_seen_ns: from_ns,
+        last_seen_ns: to_ns,
+        last_deployed_ns: from_ns,
+        redeployed: false,
+    }
+}
+
+/// Stretch `seen` over a run that recorded its version. A version that
+/// never came back was deployed when it was first seen, by a span or by
+/// a run.
+fn stretch(seen: &mut VersionSeen, from_ns: i64, to_ns: i64) {
+    seen.first_seen_ns = seen.first_seen_ns.min(from_ns);
+    seen.last_seen_ns = seen.last_seen_ns.max(to_ns);
+    if !seen.redeployed {
+        seen.last_deployed_ns = seen.first_seen_ns;
+    }
 }
 
 /// The target's versions per environment, each list in deployment order,
-/// latest first. A version is one the target's spans carried at or after
-/// `since_ns`, or one a run measured; a version a run recorded counts as
-/// seen for the length of that run.
+/// latest first. A version is one the target's spans ever carried, one a
+/// run ever recorded (`recorded`), or one a run of the lookback was read
+/// to have measured; none of it depends on how far back the samples are
+/// read. A version only runs know counts as seen for the length of those
+/// runs.
 pub(crate) fn versions_by_env(
     sightings: &[VersionSighting],
-    since_ns: i64,
+    recorded: &[RecordedVersion],
     runs: &[Attributed],
 ) -> BTreeMap<Env, Vec<VersionSeen>> {
     let mut seen: BTreeMap<(Env, String), VersionSeen> = BTreeMap::new();
-    for s in sightings.iter().filter(|s| s.last_seen_ns >= since_ns) {
+    for s in sightings {
         seen.insert((s.environment.clone(), s.version.clone()), as_seen(s));
+    }
+    for r in recorded {
+        seen.entry((r.environment.clone(), r.version.clone()))
+            .and_modify(|entry| stretch(entry, r.first_ns, r.last_ns))
+            .or_insert_with(|| seen_for(&r.version, r.first_ns, r.last_ns));
     }
     for a in runs {
         let Ok((version, how)) = &a.owner else {
             continue;
         };
+        let (from_ns, to_ns) = (a.run.started_at_ns, a.run.ended_at_ns);
         let entry = seen
             .entry((a.run.environment.clone(), version.clone()))
-            .or_insert_with(|| seen_by(sightings, &a.run, version));
-        if *how == Attribution::Inferred {
-            continue;
+            .or_insert_with(|| seen_for(version, from_ns, to_ns));
+        if *how != Attribution::Inferred {
+            stretch(entry, from_ns, to_ns);
         }
-        entry.first_seen_ns = entry.first_seen_ns.min(a.run.started_at_ns);
-        entry.last_seen_ns = entry.last_seen_ns.max(a.run.ended_at_ns);
     }
     let mut by_env: BTreeMap<Env, Vec<VersionSeen>> = BTreeMap::new();
     for ((env, _), version) in seen {
@@ -243,6 +308,15 @@ pub(crate) fn versions_by_env(
         versions.sort_by(deployment_order);
     }
     by_env
+}
+
+/// Whether the order of `candidate` before `baseline` rests on a redeploy
+/// that cannot be told from two builds running side by side: the
+/// candidate came back, and the baseline kept reporting for longer than
+/// [`REDEPLOY_GAP_NS`] after that.
+pub(crate) fn redeploy_is_ambiguous(candidate: &VersionSeen, baseline: &VersionSeen) -> bool {
+    candidate.redeployed
+        && baseline.last_seen_ns > candidate.last_deployed_ns.saturating_add(REDEPLOY_GAP_NS)
 }
 
 /// Environments in a stable order: by name, the unnamed one last.
@@ -358,6 +432,54 @@ pub(crate) struct Windows {
     pub unanswered: u64,
     /// Windows skipped behind an unanswered one.
     pub lost: u64,
+    /// Windows whose sample is a request given up on at its timeout: the
+    /// true value is that or more.
+    pub censored: u64,
+}
+
+/// The requests of a side's included runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Requests {
+    pub sent: u64,
+    /// Sent and not answered well: timed out, refused, or answered with
+    /// an error.
+    pub failed: u64,
+    /// Included runs whose tool counted no requests; they are in neither
+    /// number.
+    pub runs_without_counts: usize,
+}
+
+impl Requests {
+    /// The share of the counted requests that failed; `None` when none
+    /// were counted.
+    pub(crate) fn failure_share(&self) -> Option<f64> {
+        if self.sent == 0 {
+            return None;
+        }
+        #[allow(clippy::cast_precision_loss)]
+        Some(self.failed as f64 / self.sent as f64)
+    }
+
+    fn add(&mut self, execution: &Execution) {
+        let (Some(sent), Some(ok)) = (execution.requests_sent, execution.requests_ok) else {
+            self.runs_without_counts += 1;
+            return;
+        };
+        self.sent += sent;
+        self.failed += sent.saturating_sub(ok);
+    }
+}
+
+/// One sample of the requested series.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Sample {
+    /// The run it belongs to.
+    pub run: String,
+    pub value: f64,
+    /// The seconds of load behind it; 1 when the run does not say.
+    pub weight: f64,
+    /// The value is a request timeout: the truth is that or more.
+    pub censored: bool,
 }
 
 impl Windows {
@@ -385,8 +507,15 @@ pub(crate) struct Side {
     pub details: Vec<RunDetail>,
     /// The samples of the included runs.
     pub samples: Vec<f64>,
+    /// The same samples run by run, each with the seconds behind it; a
+    /// run without samples is not listed.
+    pub by_run: Vec<Vec<Window>>,
     pub partial: Partial,
     pub windows: Windows,
+    pub requests: Requests,
+    /// The least a censored sample reported: a quantile at or above it is
+    /// a floor, not a measurement.
+    pub censored_floor: Option<f64>,
 }
 
 impl Side {
@@ -435,18 +564,41 @@ fn add_windows(windows: &mut Windows, execution: &Execution) {
     windows.lost += execution.lost;
 }
 
+/// The samples of one run as windows, and what the censored ones say.
+fn windows_of(id: &str, samples: &[Sample], side: &mut Side) {
+    let mut run = Vec::new();
+    for s in samples.iter().filter(|s| s.run == id) {
+        run.push(Window {
+            value: s.value,
+            weight: s.weight,
+        });
+        side.samples.push(s.value);
+        if !s.censored {
+            continue;
+        }
+        side.windows.censored += 1;
+        let floor = side.censored_floor.map_or(s.value, |f| f.min(s.value));
+        side.censored_floor = Some(floor);
+    }
+    if !run.is_empty() {
+        side.by_run.push(run);
+    }
+}
+
 /// The side for `version` in `env`: the runs of that environment that
 /// measured it. A run whose load was aborted or truncated is counted but
-/// its samples and windows stay out, unless `include_partial`.
+/// its samples, windows and requests stay out, unless `include_partial`.
 pub(crate) fn side(
     version: &str,
     env: &Env,
     runs: &[Attributed],
-    samples: &[(String, f64)],
+    samples: &[Sample],
     include_partial: bool,
 ) -> Side {
-    let mut details = Vec::new();
-    let mut windows = Windows::default();
+    let mut side = Side {
+        version: version.to_string(),
+        ..Side::default()
+    };
     for a in runs.iter().filter(|a| &a.run.environment == env) {
         let Ok((owner, how)) = &a.owner else {
             continue;
@@ -456,31 +608,18 @@ pub(crate) fn side(
         }
         let d = detail(a, *how, include_partial);
         if d.included {
-            add_windows(&mut windows, &a.run.execution);
+            add_windows(&mut side.windows, &a.run.execution);
+            side.requests.add(&a.run.execution);
+            windows_of(&d.experiment_id, samples, &mut side);
         }
-        details.push(d);
+        side.details.push(d);
     }
-    let included: Vec<&str> = details
-        .iter()
-        .filter(|d| d.included)
-        .map(|d| d.experiment_id.as_str())
-        .collect();
-    let samples = samples
-        .iter()
-        .filter(|(id, _)| included.contains(&id.as_str()))
-        .map(|(_, value)| *value)
-        .collect();
-    Side {
-        version: version.to_string(),
-        partial: partial_of(&details),
-        details,
-        samples,
-        windows,
-    }
+    side.partial = partial_of(&side.details);
+    side
 }
 
-/// Why a side that lost too many windows to silence cannot be compared;
-/// `None` when it can.
+/// What a side that lost too many windows to silence says about it;
+/// `None` when it lost no more than [`UNANSWERED_LIMIT`].
 pub(crate) fn unanswered_reason(role: &str, side: &Side) -> Option<String> {
     let share = side.windows.unanswered_share()?;
     if share <= UNANSWERED_LIMIT {
@@ -488,8 +627,7 @@ pub(crate) fn unanswered_reason(role: &str, side: &Side) -> Option<String> {
     }
     Some(format!(
         "{role} {}: {} of {} load windows went unanswered ({:.0}%), more than the {:.0}% a \
-         side may lose and still be compared; the latencies that were measured leave out the \
-         time nothing answered",
+         side may lose; the latencies that were measured leave out the time nothing answered",
         side.version,
         side.windows.unanswered,
         side.windows.reached(),
@@ -510,6 +648,9 @@ mod tests {
             version: version.into(),
             first_seen_ns: first,
             last_seen_ns: last,
+            last_deployed_ns: first,
+            deployments: 1,
+            sanitized: false,
         }
     }
 
@@ -538,6 +679,26 @@ mod tests {
             version: version.into(),
             first_seen_ns: first,
             last_seen_ns: first,
+            last_deployed_ns: first,
+            redeployed: false,
+        }
+    }
+
+    fn recorded(version: &str, first: i64, last: i64) -> RecordedVersion {
+        RecordedVersion {
+            environment: Some("demo".into()),
+            version: version.into(),
+            first_ns: first,
+            last_ns: last,
+        }
+    }
+
+    fn sample(id: &str, value: f64) -> Sample {
+        Sample {
+            run: id.into(),
+            value,
+            weight: 1.0,
+            censored: false,
         }
     }
 
@@ -580,18 +741,47 @@ mod tests {
     fn an_unrecorded_run_is_read_from_the_window_then_from_shortly_before() {
         let sightings = [demo("1.0.0", 0, 100 * S), demo("1.1.0", 50 * S, 90 * S)];
         let inferred = |version: &str| Ok((version.to_string(), Attribution::Inferred));
-        // Most spans inside the window; what spoke before does not matter.
-        let most = served("a", &[("1.0.0", 7), ("1.1.0", 3)], &[("1.1.0", 40 * S)]);
+        // Nearly every request inside the window; what spoke before does
+        // not matter.
+        let most = served("a", &[("1.0.0", 97), ("1.1.0", 3)], &[("1.1.0", 40 * S)]);
         assert_eq!(owner_of(&sightings, &most), inferred("1.0.0"));
-        // An even split goes to the version deployed latest there.
-        let even = served("b", &[("1.0.0", 5), ("1.1.0", 5)], &[]);
-        assert_eq!(owner_of(&sightings, &even), inferred("1.1.0"));
         // A silent window: the version that spoke last before the run.
         let quiet = served("c", &[], &[("1.0.0", 60 * S), ("1.1.0", 40 * S)]);
         assert_eq!(owner_of(&sightings, &quiet), inferred("1.0.0"));
         // The same instant: deployed latest.
         let tie = served("d", &[], &[("1.0.0", 60 * S), ("1.1.0", 60 * S)]);
         assert_eq!(owner_of(&sightings, &tie), inferred("1.1.0"));
+    }
+
+    #[test]
+    fn a_window_two_versions_shared_belongs_to_neither() {
+        let sightings = [demo("1.0.0", 0, 100 * S), demo("1.1.0", 50 * S, 90 * S)];
+        // Seven requests in ten is most of them and still a mix: what the
+        // run measured is neither version.
+        for inside in [
+            [("1.0.0", 7), ("1.1.0", 3)],
+            [("1.0.0", 5), ("1.1.0", 5)],
+            [("1.0.0", 94), ("1.1.0", 6)],
+        ] {
+            let shared = served("m", &inside, &[("1.0.0", 40 * S)]);
+            assert_eq!(
+                owner_of(&sightings, &shared),
+                Err(Reason::MixedVersions),
+                "{inside:?}"
+            );
+        }
+        let nearly = served("n", &[("1.0.0", 95), ("1.1.0", 5)], &[]);
+        assert_eq!(
+            owner_of(&sightings, &nearly),
+            Ok(("1.0.0".to_string(), Attribution::Inferred))
+        );
+        // A run whose runner saw the mix and recorded it stays out too,
+        // whatever version it wrote beside it.
+        let mut frozen = served("f", &[("1.1.0", 9)], &[]);
+        frozen.recorded = Some(("1.1.0".into(), false));
+        frozen.mixed = true;
+        assert_eq!(owner_of(&sightings, &frozen), Err(Reason::MixedVersions));
+        assert_eq!(Reason::MixedVersions.as_str(), "mixed_versions");
     }
 
     #[test]
@@ -629,11 +819,12 @@ mod tests {
             sighting(Some("prod"), "1.8.0", 400 * S, 500 * S),
             sighting(None, "3.0.0", 0, 500 * S),
         ];
-        let by_env = versions_by_env(&sightings, 20 * S, &[]);
+        let by_env = versions_by_env(&sightings, &[], &[]);
         // The same first sight: the greater version number is the later.
+        // A version last seen long ago is still one that was deployed.
         assert_eq!(
             names(&by_env[&Some("demo".to_string())]),
-            vec!["1.10.0", "1.9.0", "1.8.0"]
+            vec!["1.10.0", "1.9.0", "1.8.0", "0.1.0"]
         );
         assert_eq!(names(&by_env[&Some("prod".to_string())]), vec!["1.8.0"]);
         assert_eq!(names(&by_env[&None]), vec!["3.0.0"]);
@@ -642,7 +833,7 @@ mod tests {
             demo("1.8.0", 10 * S, 9_000 * S),
             demo("1.9.0", 20 * S, 500 * S),
         ];
-        let by_env = versions_by_env(&later, 0, &[]);
+        let by_env = versions_by_env(&later, &[], &[]);
         assert_eq!(
             names(&by_env[&Some("demo".to_string())]),
             vec!["1.9.0", "1.8.0"]
@@ -650,22 +841,86 @@ mod tests {
     }
 
     #[test]
+    fn a_version_deployed_again_is_the_latest_and_says_so() {
+        let rolled_back = VersionSighting {
+            last_deployed_ns: 3_000 * S,
+            deployments: 2,
+            ..demo("1.8.0", 10 * S, 9_000 * S)
+        };
+        let sightings = [rolled_back, demo("1.9.0", 20 * S, 2_000 * S)];
+        let by_env = versions_by_env(&sightings, &[], &[]);
+        let versions = &by_env[&Some("demo".to_string())];
+        assert_eq!(names(versions), vec!["1.8.0", "1.9.0"]);
+        assert!(versions[0].redeployed);
+        assert_eq!(versions[0].first_seen_ns, 10 * S);
+        assert_eq!(versions[0].last_deployed_ns, 3_000 * S);
+        assert!(!versions[1].redeployed);
+        assert_eq!(versions[1].last_deployed_ns, versions[1].first_seen_ns);
+        // The baseline went quiet before the rollback: the order is plain.
+        assert!(!redeploy_is_ambiguous(&versions[0], &versions[1]));
+    }
+
+    #[test]
+    fn a_redeployed_candidate_beside_a_live_baseline_cannot_be_ordered() {
+        let again = VersionSeen {
+            last_seen_ns: 9_000 * S,
+            last_deployed_ns: 3_000 * S,
+            redeployed: true,
+            ..seen("1.8.0", 10 * S)
+        };
+        let live = VersionSeen {
+            last_seen_ns: 9_000 * S,
+            ..seen("1.9.0", 20 * S)
+        };
+        // Both versions kept reporting long after the old one came back:
+        // two builds side by side, and no telling which is the newer.
+        assert!(redeploy_is_ambiguous(&again, &live));
+        // A baseline that trailed off as the candidate returned is not.
+        let drained = VersionSeen {
+            last_seen_ns: 3_000 * S + REDEPLOY_GAP_NS,
+            ..live.clone()
+        };
+        assert!(!redeploy_is_ambiguous(&again, &drained));
+        // Without a redeploy, two live versions are a canary in order.
+        let fresh = VersionSeen {
+            redeployed: false,
+            ..again
+        };
+        assert!(!redeploy_is_ambiguous(&fresh, &live));
+    }
+
+    #[test]
     fn a_version_only_a_run_recorded_is_a_version_of_its_environment() {
         let sightings = [demo("1.0.0", 0, 100 * S), demo("0.9.0", 0, S)];
-        let mut declared = run("r", Some("demo"));
-        declared.started_at_ns = 200 * S;
-        declared.ended_at_ns = 260 * S;
-        declared.recorded = Some(("2.0.0".into(), true));
-        // A run read from spans older than the lookback keeps its version
-        // in the list, with the sighting's own times.
-        let old = served("o", &[("0.9.0", 4)], &[]);
-        let runs = attribute(&sightings, vec![declared, old]);
-        let by_env = versions_by_env(&sightings, 50 * S, &runs);
+        // Whenever the runs were: the list does not follow the lookback.
+        let declared = [
+            recorded("2.0.0", 200 * S, 260 * S),
+            recorded("0.5.0", -100 * S, -40 * S),
+            // A run that declared 0.9.0 before any span of it was kept.
+            recorded("0.9.0", -50 * S, 10 * S),
+        ];
+        let by_env = versions_by_env(&sightings, &declared, &[]);
         let demo_versions = &by_env[&Some("demo".to_string())];
-        assert_eq!(names(demo_versions), vec!["2.0.0", "1.0.0", "0.9.0"]);
+        assert_eq!(
+            names(demo_versions),
+            vec!["2.0.0", "1.0.0", "0.9.0", "0.5.0"]
+        );
         assert_eq!(demo_versions[0].first_seen_ns, 200 * S);
         assert_eq!(demo_versions[0].last_seen_ns, 260 * S);
-        assert_eq!(demo_versions[2].last_seen_ns, S);
+        assert_eq!(demo_versions[2].first_seen_ns, -50 * S);
+        assert_eq!(demo_versions[2].last_deployed_ns, -50 * S);
+        assert_eq!(demo_versions[2].last_seen_ns, 10 * S);
+        assert!(!demo_versions[2].redeployed);
+        // A run read from spans the rollup does not hold yet keeps its
+        // version in the list, for the length of the run.
+        let mut early = served("o", &[("0.4.0", 4)], &[]);
+        early.started_at_ns = 300 * S;
+        early.ended_at_ns = 360 * S;
+        let runs = attribute(&sightings, vec![early]);
+        let by_env = versions_by_env(&sightings, &[], &runs);
+        let demo_versions = &by_env[&Some("demo".to_string())];
+        assert_eq!(names(demo_versions), vec!["0.4.0", "1.0.0", "0.9.0"]);
+        assert_eq!(demo_versions[0].first_seen_ns, 300 * S);
     }
 
     #[test]
@@ -756,7 +1011,15 @@ mod tests {
             unanswered,
             lost,
             truncated: completed + lost < planned,
-            aborted: false,
+            ..Execution::default()
+        }
+    }
+
+    fn counted(sent: u64, ok: u64) -> Execution {
+        Execution {
+            requests_sent: Some(sent),
+            requests_ok: Some(ok),
+            ..windows(10, 10, 0, 0)
         }
     }
 
@@ -780,7 +1043,7 @@ mod tests {
                 owner: Err(Reason::NoSpansNearRun),
             },
         ];
-        let samples: Vec<(String, f64)> = [
+        let samples: Vec<Sample> = [
             ("whole", 1.0),
             ("halted", 2.0),
             ("elsewhere", 3.0),
@@ -788,15 +1051,24 @@ mod tests {
             ("other", 5.0),
             ("untagged", 6.0),
             ("unknown", 7.0),
+            ("whole", 8.0),
         ]
         .iter()
-        .map(|(id, value)| ((*id).to_string(), *value))
+        .map(|(id, value)| sample(id, *value))
         .collect();
         let demo_env = Some("demo".to_string());
 
         let s = side("1.1.0", &demo_env, &runs, &samples, false);
         assert_eq!(s.runs(), vec!["whole", "deviated"]);
-        assert_eq!(s.samples, vec![1.0, 4.0]);
+        assert_eq!(s.samples, vec![1.0, 8.0, 4.0]);
+        // The windows stay with their run, in the run's order.
+        assert_eq!(
+            s.by_run,
+            vec![
+                vec![Window::whole(1.0), Window::whole(8.0)],
+                vec![Window::whole(4.0)],
+            ]
+        );
         assert_eq!(s.details.len(), 3);
         assert_eq!(
             s.partial,
@@ -814,12 +1086,66 @@ mod tests {
 
         let s = side("1.1.0", &demo_env, &runs, &samples, true);
         assert_eq!(s.runs(), vec!["whole", "halted", "deviated"]);
-        assert_eq!(s.samples, vec![1.0, 2.0, 4.0]);
+        assert_eq!(s.samples, vec![1.0, 8.0, 2.0, 4.0]);
         assert_eq!(s.partial.excluded, 0);
         assert_eq!(s.windows.completed, 24);
 
         let s = side("1.1.0", &None, &runs, &samples, false);
         assert_eq!(s.runs(), vec!["untagged"]);
+    }
+
+    #[test]
+    fn a_side_adds_up_its_requests_and_its_censored_windows() {
+        let mut cut = measured("cut", None, "1.1.0", counted(900, 100));
+        cut.run.execution.aborted = true;
+        let runs = [
+            measured("a", None, "1.1.0", counted(1000, 900)),
+            measured("b", None, "1.1.0", counted(3000, 2700)),
+            // A tool that counted nothing: unknown, not zero failures.
+            measured("silent", None, "1.1.0", windows(10, 10, 0, 0)),
+            cut,
+        ];
+        let samples = vec![
+            sample("a", 20.0),
+            Sample {
+                censored: true,
+                weight: 0.5,
+                ..sample("a", 2000.0)
+            },
+            Sample {
+                censored: true,
+                ..sample("b", 1500.0)
+            },
+            sample("b", 30.0),
+        ];
+        let s = side("1.1.0", &None, &runs, &samples, false);
+        assert_eq!(
+            s.requests,
+            Requests {
+                sent: 4000,
+                failed: 400,
+                runs_without_counts: 1
+            }
+        );
+        assert_eq!(s.requests.failure_share(), Some(0.1));
+        assert_eq!(s.windows.censored, 2);
+        // The least a censored window reported: every quantile at or
+        // above it is a floor, not a measurement.
+        assert_eq!(s.censored_floor, Some(1500.0));
+        assert_eq!(
+            s.by_run[0][1],
+            Window {
+                value: 2000.0,
+                weight: 0.5
+            }
+        );
+        // The aborted run's requests come in only when it does.
+        let s = side("1.1.0", &None, &runs, &samples, true);
+        assert_eq!(s.requests.sent, 4900);
+        assert_eq!(s.requests.failed, 1200);
+        let none = side("1.1.0", &None, &runs[2..3], &[], false);
+        assert_eq!(none.requests.failure_share(), None);
+        assert_eq!(none.censored_floor, None);
     }
 
     #[test]
