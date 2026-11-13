@@ -5,6 +5,9 @@ use crate::faults::FaultTargetResponse;
 
 use super::config::ProxyState;
 
+/// Longest request path written to a log event, in characters.
+const MAX_LOGGED_PATH_CHARS: usize = 256;
+
 /// Emit per-request evidence to the tracing log and, if configured, the JSONL
 /// journal. The body is summarised by length and contract verdicts only — no
 /// raw payload is persisted, preserving the metadata-only capture default.
@@ -47,15 +50,20 @@ pub(crate) fn record(
         applied.join(",")
     };
 
+    // The path is request input: it is cut before it is logged, and the
+    // query string (which can carry credentials) is never included.
     tracing::info!(
-        scenario = %state.scenario,
-        method = %parts.method,
-        path = %parts.uri.path(),
-        status,
-        latency_ms,
-        faults = %faults,
-        contracts = %verdicts.join(","),
-        body_bytes = body.len(),
+        name: "agentic.proxy.request",
+        {
+            agentic.scenario = %state.scenario,
+            http.request.method = %parts.method,
+            url.path = bounded_path(parts.uri.path()),
+            http.response.status_code = status,
+            latency_ms,
+            agentic.faults = %faults,
+            agentic.contracts = %verdicts.join(","),
+            http.response.body.size = body.len(),
+        },
         "proxied request"
     );
 
@@ -79,22 +87,155 @@ pub(crate) fn record(
                 .join(","),
             body.len(),
         );
-        append_journal_line(path, &line);
+        if let Err(error) = append_journal_line(path, &line) {
+            // Journal lines are evidence: a dropped one must leave a trace.
+            tracing::error!(
+                name: "agentic.proxy.journal.write_failed",
+                {
+                    file.path = %path.display(),
+                    error.type = "io",
+                    error.message = %tumult_otel::logging::err(&error),
+                },
+                "proxy journal line not written"
+            );
+        }
     }
 }
 
-fn append_journal_line(path: &std::path::Path, line: &str) {
+/// The first [`MAX_LOGGED_PATH_CHARS`] characters of `path`.
+fn bounded_path(path: &str) -> &str {
+    match path.char_indices().nth(MAX_LOGGED_PATH_CHARS) {
+        Some((end, _)) => &path[..end],
+        None => path,
+    }
+}
+
+/// Appends `line` to the JSONL journal at `path`, creating the file and its
+/// parent directory when missing.
+fn append_journal_line(path: &std::path::Path, line: &str) -> std::io::Result<()> {
     use std::io::Write as _;
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent)?;
         }
     }
-    if let Ok(mut file) = std::fs::OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
-    {
-        let _ = writeln!(file, "{line}");
+        .open(path)?;
+    writeln!(file, "{line}")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicU64;
+
+    use tracing::Level;
+    use tumult_otel::logging::testing::capture_json;
+
+    use super::{record, ProxyState, MAX_LOGGED_PATH_CHARS};
+
+    fn state(journal_path: Option<PathBuf>) -> ProxyState {
+        ProxyState {
+            upstream: "http://127.0.0.1:1".to_string(),
+            scenario: "rate-limit-storm".to_string(),
+            faults: Vec::new(),
+            contracts: Vec::new(),
+            client: reqwest::Client::new(),
+            journal_path,
+            seed: 7,
+            tumult_client: tumult_otel::agentic::TumultClient::Unknown,
+            counter: AtomicU64::new(0),
+        }
+    }
+
+    fn request_parts(uri: &str) -> axum::http::request::Parts {
+        axum::http::Request::builder()
+            .method("POST")
+            .uri(uri)
+            .body(())
+            .unwrap()
+            .into_parts()
+            .0
+    }
+
+    #[test]
+    fn a_proxied_request_is_a_named_event_with_semantic_fields() {
+        let state = state(None);
+        let parts = request_parts("/v1/messages?api_key=sk-secret");
+        let logs = capture_json(Level::INFO, || {
+            record(&state, &parts, &["latency".to_string()], 429, "{}", 12);
+        });
+
+        let event = &logs.named("agentic.proxy.request")[0];
+        assert_eq!(event["level"], "INFO");
+        assert_eq!(event["agentic.scenario"], "rate-limit-storm");
+        assert_eq!(event["http.request.method"], "POST");
+        assert_eq!(event["url.path"], "/v1/messages");
+        assert_eq!(event["http.response.status_code"], 429);
+        assert_eq!(event["latency_ms"], 12);
+        assert_eq!(event["agentic.faults"], "latency");
+        assert_eq!(event["http.response.body.size"], 2);
+        for legacy in ["method", "path", "status"] {
+            assert!(
+                event.get(legacy).is_none(),
+                "legacy field {legacy}: {event}"
+            );
+        }
+        assert!(!logs.raw.contains("sk-secret"), "{}", logs.raw);
+    }
+
+    #[test]
+    fn an_oversized_request_path_is_cut_in_the_log_event() {
+        let state = state(None);
+        let hostile = format!("/{}", "a".repeat(4 * MAX_LOGGED_PATH_CHARS));
+        let parts = request_parts(&hostile);
+        let logs = capture_json(Level::INFO, || {
+            record(&state, &parts, &[], 200, "", 1);
+        });
+
+        let logged = logs.named("agentic.proxy.request")[0]["url.path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(logged.chars().count(), MAX_LOGGED_PATH_CHARS);
+        assert!(hostile.starts_with(&logged));
+    }
+
+    #[test]
+    fn a_journal_line_that_cannot_be_written_is_an_error_event() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let blocker = dir.path().join("not-a-directory");
+        std::fs::write(&blocker, b"file").unwrap();
+        let journal = blocker.join("proxy.jsonl");
+        let state = state(Some(journal.clone()));
+        let parts = request_parts("/v1/messages");
+
+        let logs = capture_json(Level::INFO, || {
+            record(&state, &parts, &[], 200, "", 1);
+        });
+
+        let event = &logs.named("agentic.proxy.journal.write_failed")[0];
+        assert_eq!(event["level"], "ERROR");
+        assert_eq!(event["file.path"], journal.to_str().unwrap());
+        assert_eq!(event["error.type"], "io");
+        assert!(event["error.message"].is_string(), "{event}");
+    }
+
+    #[test]
+    fn a_written_journal_line_logs_no_failure() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let journal = dir.path().join("nested").join("proxy.jsonl");
+        let state = state(Some(journal.clone()));
+        let parts = request_parts("/v1/messages");
+
+        let logs = capture_json(Level::INFO, || {
+            record(&state, &parts, &[], 200, "", 1);
+        });
+
+        assert!(logs.named("agentic.proxy.journal.write_failed").is_empty());
+        let written = std::fs::read_to_string(&journal).unwrap();
+        assert_eq!(written.lines().count(), 1, "{written}");
     }
 }
