@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -225,11 +226,138 @@ class JsonFormatterTests(unittest.TestCase):
         self.assertNotIn("SECRET", line)
         self.assertNotIn("Expires", line)
         fields = json.loads(line)["fields"]
+        # The query runs to the next blank: the quote after it may be part
+        # of the secret, so it goes too.
         self.assertEqual(
             fields["error.message"],
-            f"cannot fetch '{url}?[redacted]' or https://[redacted]@hub.example/x",
+            f"cannot fetch '{url}?[redacted] or https://[redacted]@hub.example/x",
         )
         self.assertIn(f"for url: {url}?[redacted] (Request ID: 7)", fields["error.stack"])
+
+
+class RedactionTests(unittest.TestCase):
+    """What a URL in an error may give away, and what redacting it costs."""
+
+    def check(self, text: str, expected: str) -> None:
+        self.assertEqual(logs.redact_urls(text), expected)
+        self.assertNotIn("SECRET", logs.redact_urls(text))
+
+    def test_a_fragment_is_redacted(self) -> None:
+        self.check(
+            "sent to https://h.example/cb#access_token=SECRET then failed",
+            "sent to https://h.example/cb#[redacted] then failed",
+        )
+        self.check("https://h.example/cb#SECRET", "https://h.example/cb#[redacted]")
+
+    def test_a_query_is_redacted_up_to_the_next_blank(self) -> None:
+        # A bracket or a quote does not end a query: both may be in one.
+        self.check(
+            "(see https://h.example/x?a=(1)&sig=SECRET) next",
+            "(see https://h.example/x?[redacted] next",
+        )
+        self.check(
+            "for https://h.example/x?name=o'brien&token=SECRET next",
+            "for https://h.example/x?[redacted] next",
+        )
+        self.check(
+            'for https://h.example/x?a="1"&t=<SECRET>\nnext',
+            "for https://h.example/x?[redacted]\nnext",
+        )
+        self.check("https://h.example/x?a=1#state=SECRET", "https://h.example/x?[redacted]")
+
+    def test_the_scheme_is_found_whatever_its_case(self) -> None:
+        self.check(
+            "HTTPS://me:SECRET@h.example/x?t=SECRET",
+            "HTTPS://[redacted]@h.example/x?[redacted]",
+        )
+        self.check("Http://h.example/?SECRET", "Http://h.example/?[redacted]")
+
+    def test_any_scheme_is_a_url(self) -> None:
+        self.check(
+            "s3://KEY:SECRET@bucket/weights?versionId=SECRET",
+            "s3://[redacted]@bucket/weights?[redacted]",
+        )
+        self.check("git+ssh://SECRET@h.example/r.git", "git+ssh://[redacted]@h.example/r.git")
+        self.check("redis://:SECRET@cache:6379/0", "redis://[redacted]@cache:6379/0")
+        self.check("x-a.b1://SECRET@h/p#SECRET", "x-a.b1://[redacted]@h/p#[redacted]")
+
+    def test_path_parameters_are_redacted(self) -> None:
+        self.check(
+            "https://h.example/a;jsessionid=SECRET/b;k=SECRET;l=SECRET?x=SECRET",
+            "https://h.example/a;[redacted]/b;[redacted];[redacted]?[redacted]",
+        )
+        self.check("https://h.example/a;sid=SECRET", "https://h.example/a;[redacted]")
+
+    def test_a_url_inside_a_path_loses_its_credentials_too(self) -> None:
+        self.check(
+            "https://proxy.example/https://me:SECRET@h.example/x;s=SECRET",
+            "https://proxy.example/https://[redacted]@h.example/x;[redacted]",
+        )
+
+    def test_the_host_and_the_path_stay(self) -> None:
+        for plain in (
+            "https://h.example:8443/repo/model.safetensors",
+            "(https://h.example/x) 'https://h.example/y'",
+            "mail a@b.example; ratio 3:1? see #7",
+            "no url at all",
+            "",
+        ):
+            with self.subTest(plain):
+                self.assertEqual(logs.redact_urls(plain), plain)
+
+    def test_schemes_end_to_end_are_redacted_in_time_that_grows_with_the_text(self) -> None:
+        # 200 KB of ``http://``: a pattern that looks for the end of every
+        # URL from every scheme reads the text once per scheme.
+        hostile = "http://" * (200_000 // 7)
+        started = time.process_time()
+        out = logs.redact_urls(hostile)
+        spent = time.process_time() - started
+        self.assertEqual(out, hostile)
+        self.assertLess(spent, 2.0, "milliseconds are expected")
+        blanks = ("http://a?b " * 20_000) + ("x" * 100_000)
+        started = time.process_time()
+        logs.redact_urls(blanks)
+        self.assertLess(time.process_time() - started, 2.0)
+
+    def test_an_error_is_cut_before_it_is_redacted(self) -> None:
+        # The work is bounded by what a line may carry, not by how much an
+        # error chose to say.
+        seen: list[int] = []
+        redact = logs.redact_urls
+
+        def measured(text: str, *args: object) -> str:
+            seen.append(len(text))
+            return redact(text, *args)
+
+        huge = "http://h.example/?" + "q" * 1_000_000
+        with mock.patch.object(logs, "redact_urls", measured):
+            fields = logs.error_fields(RuntimeError(huge), stack=huge)
+        self.assertEqual(sorted(seen), [logs.MAX_STRING, logs.MAX_STACK])
+        self.assertEqual(fields["error.message"], "http://h.example/?[redacted]" + logs.TRUNCATED)
+        self.assertEqual(fields["error.stack"], "http://h.example/?[redacted]" + logs.TRUNCATED)
+
+    def test_a_cut_inside_the_credentials_gives_none_of_them_away(self) -> None:
+        # The ``@`` that would have marked them is beyond the cut.
+        lead = "a" * (logs.MAX_STRING - 30)
+        text = f"{lead} https://me:{'SECRET' * 40}@h.example/x"
+        message = logs.error_fields(RuntimeError(text))["error.message"]
+        self.assertNotIn("SECRE", message)
+        self.assertEqual(message, f"{lead} https://[redacted]" + logs.TRUNCATED)
+
+    def test_a_cut_after_the_host_keeps_the_host(self) -> None:
+        lead = "a" * (logs.MAX_STRING - 30)
+        text = f"{lead} https://h.example/{'p' * 100}"
+        message = logs.error_fields(RuntimeError(text))["error.message"]
+        self.assertTrue(message.startswith(f"{lead} https://h.example/ppp"), message[-60:])
+        self.assertTrue(message.endswith(logs.TRUNCATED))
+
+    def test_redacting_does_not_take_a_field_past_its_limit(self) -> None:
+        # Each of these grows when its credentials are replaced.
+        text = "s3://a@b " * 2_000
+        message = logs.error_fields(RuntimeError(text))["error.message"]
+        self.assertLessEqual(len(message), logs.MAX_STRING + len(logs.TRUNCATED))
+        self.assertTrue(message.startswith("s3://[redacted]@b s3://[redacted]@b "))
+        self.assertTrue(message.endswith(logs.TRUNCATED))
 
     def test_a_field_named_like_a_record_attribute_is_kept(self) -> None:
         logger, stream = capture(JsonFormatter())
@@ -353,9 +481,16 @@ class ConfigureTests(unittest.TestCase):
         # closed stream.
         logs.configure({})
         self.stream.close()
-        event(logging.getLogger("forecastd"), logging.INFO, "model.loaded", "model loaded")
+        # Neither call raises: that is the whole assertion here.
+        event(logging.getLogger("forecastd"), logging.INFO, "lost", "not written")
         logging.getLogger("uvicorn.error").warning("Started server process [%d]", 7)
-        self.assertFalse(logging.raiseExceptions)
+        # Stderr is back (a supervisor reopened it): the next record is
+        # written to it, by the handler that lost the two before.
+        back = io.StringIO()
+        with mock.patch.object(sys, "stderr", back):
+            event(logging.getLogger("forecastd"), logging.INFO, "model.loaded", "model loaded")
+        written = [json.loads(line) for line in lines(back)]
+        self.assertEqual([entry["event"] for entry in written], ["model.loaded"])
 
     def test_a_bad_setting_changes_nothing(self) -> None:
         before = logging.getLogger().handlers[:]

@@ -51,17 +51,63 @@ UNFORMATTABLE = "log.unformattable"
 
 ExcInfo = tuple[type[BaseException], BaseException, TracebackType | None]
 REDACTED = "[redacted]"
-# The two places a URL carries a secret: ``user:password@`` and the query
-# string (a token, or the signature of a pre-signed download).
-_URL_USER = re.compile(r"(https?://)[^\s/@'\"<>]+@")
-_URL_QUERY = re.compile(r"(https?://[^\s?#'\"<>]*)\?[^\s'\"<>)]*")
+# A URL is whatever follows ``://`` up to the next blank, under any scheme
+# and in any case. Each pattern is one character class repeated, and the
+# rest is ``str`` methods, so the text is read a fixed number of times
+# however it is built.
+_SCHEME_END = "://"
+_BLANKS = re.compile(r"(\s+)")
+_PATH_PARAMETER = re.compile(r";[^/;]*")
 
 
-def redact_urls(text: str) -> str:
-    """``text`` with the credentials and the query string of every URL in
-    it replaced: an error from a download quotes the URL it failed on."""
-    text = _URL_USER.sub(rf"\1{REDACTED}@", text)
-    return _URL_QUERY.sub(rf"\1?{REDACTED}", text)
+def _authority(part: str, cut: bool) -> str:
+    """What follows one ``://``, up to the query: host and path, without
+    the ``user:password@`` before the host and without ``;name=value``
+    path parameters. ``cut`` says the text was cut off right here: with no
+    ``/`` yet, what looks like a host may be the first half of a password."""
+    host, slash, path = part.partition("/")
+    _, at, name = host.rpartition("@")
+    if at:
+        host = f"{REDACTED}@{name}"
+    elif cut and not slash:
+        return REDACTED
+    return _PATH_PARAMETER.sub(f";{REDACTED}", host + slash + path)
+
+
+def _word(word: str, cut: bool) -> str:
+    """One run of text without blanks, with the URL in it redacted."""
+    head, scheme_end, rest = word.partition(_SCHEME_END)
+    if not scheme_end:
+        return word
+    tail = ""
+    marks = [at for at in (rest.find("?"), rest.find("#")) if at != -1]
+    if marks:
+        # A query or a fragment runs to the end of the word: a bracket or
+        # a quote may be part of it, and so may a second URL.
+        first = min(marks)
+        tail = rest[first] + REDACTED
+        rest = rest[:first]
+        cut = False
+    # A path may hold a URL of its own (a proxy, a redirect).
+    parts = rest.split(_SCHEME_END)
+    last = len(parts) - 1
+    kept = [_authority(part, cut and at == last) for at, part in enumerate(parts)]
+    return head + _SCHEME_END + _SCHEME_END.join(kept) + tail
+
+
+def redact_urls(text: str, cut: bool = False) -> str:
+    """``text`` with every URL in it reduced to scheme, host and path: the
+    credentials, the path parameters, the query and the fragment are
+    replaced. An error from a download quotes the URL it failed on.
+    ``cut`` says ``text`` is the start of something longer."""
+    if _SCHEME_END not in text:
+        return text
+    words = _BLANKS.split(text)
+    last = len(words) - 1
+    # Even entries are words, odd ones the blanks between them.
+    return "".join(
+        _word(word, cut and at == last) if at % 2 == 0 else word for at, word in enumerate(words)
+    )
 
 
 def clip(value: str, limit: int = MAX_STRING) -> str:
@@ -69,6 +115,18 @@ def clip(value: str, limit: int = MAX_STRING) -> str:
     if len(value) <= limit:
         return value
     return value[:limit] + TRUNCATED
+
+
+def redacted(value: str, limit: int = MAX_STRING) -> str:
+    """``value`` cut to ``limit`` characters, then without what its URLs
+    could give away, and marked when it was cut. The cut comes first, so
+    the work is bounded by the limit and not by what an error chose to
+    say; redacting can lengthen the text, so it is cut once more."""
+    cut = len(value) > limit
+    out = redact_urls(value[:limit], cut)
+    if len(out) > limit:
+        cut = True
+    return out[:limit] + TRUNCATED if cut else out
 
 
 def _text(value: object) -> str:
@@ -118,10 +176,10 @@ def error_fields(error: BaseException, stack: str | None = None) -> dict[str, An
     host and path and lose what could be a secret."""
     fields: dict[str, Any] = {
         "error.type": type(error).__name__,
-        "error.message": clip(redact_urls(_text(error))),
+        "error.message": redacted(_text(error)),
     }
     if stack is not None:
-        fields["error.stack"] = clip(redact_urls(stack), MAX_STACK)
+        fields["error.stack"] = redacted(stack, MAX_STACK)
     return fields
 
 
@@ -258,6 +316,19 @@ def _thread_crashed(args: threading.ExceptHookArgs) -> None:
     )
 
 
+class _Stderr(logging.StreamHandler):
+    """Writes to whatever ``sys.stderr`` is when the record arrives, not
+    to what it was when logging was configured: a stream that was closed
+    and put back is written to again."""
+
+    def __init__(self) -> None:
+        logging.Handler.__init__(self)
+
+    @property
+    def stream(self) -> Any:
+        return sys.stderr
+
+
 def configure(env: Mapping[str, str]) -> None:
     """Send every record of the process through one formatter on stderr:
     this package's, uvicorn's, the ``warnings`` module's and any uncaught
@@ -269,7 +340,7 @@ def configure(env: Mapping[str, str]) -> None:
     # lost; ``logging`` would otherwise print a traceback to the same
     # stream, as text, and can fail the caller doing it.
     logging.raiseExceptions = False
-    handler = logging.StreamHandler(sys.stderr)
+    handler = _Stderr()
     handler.setFormatter(formatter)
     root = logging.getLogger()
     root.handlers[:] = [handler]
