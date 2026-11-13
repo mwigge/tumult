@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proof-service
+  namespace: demo
+  labels: {app: proof-service}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels: {app: proof-service}
+    spec:
+      containers:
+        - name: app
+          image: proof:latest
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: proof-db
+  namespace: demo
+  labels: {app: proof-db}
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels: {app: proof-db}
+    spec:
+      containers:
+        - name: db
+          image: db:latest
+          resources: {limits: {cpu: "1", memory: 1Gi}}
+          readinessProbe: {httpGet: {path: /ready, port: 5432}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: proof-db
+  namespace: demo
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: proof-db}}
