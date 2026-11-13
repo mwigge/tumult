@@ -1,5 +1,6 @@
 # OpenTelemetry Collector (contrib) used by scripts/proof/otap/proof.sh:
-# OTLP/HTTP in from curl, OTel-Arrow out to tumultd, no fallback to OTLP.
+# OTLP/HTTP in from curl, OTel-Arrow out to tumultd for all three signals,
+# no fallback to OTLP.
 receivers:
   otlp:
     protocols:
@@ -21,8 +22,10 @@ exporters:
       authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
     arrow:
       disable_downgrade: true
+      # One long-lived stream per signal, so the second batch the proof
+      # sends is a continuation of the first one's schemas and dictionaries.
       num_streams: 1
-      max_stream_lifetime: 30s
+      max_stream_lifetime: 10m
     retry_on_failure:
       enabled: false
 
@@ -32,6 +35,14 @@ service:
       level: info
   pipelines:
     traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otelarrow/tumultd]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otelarrow/tumultd]
+    metrics:
       receivers: [otlp]
       processors: [batch]
       exporters: [otelarrow/tumultd]
