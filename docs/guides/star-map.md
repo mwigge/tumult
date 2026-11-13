@@ -22,11 +22,18 @@ under `KRONIKA_MANIFESTS_DIR`.
 | Component | `cmp:<environment>/<system>/<component>` | `resilience.target.component` |
 | Service | `svc:<service.name>` | spans in the window |
 | Workload | `wl:<namespace>/<kind>/<name>` | manifests |
-| Definition | `def:<registry id or name>` | registered definitions and the experiments that ran |
+| Definition | `def:<registry id>`, or `def:name/<name>` when only the name is known | registered definitions and the experiments that ran |
 
-Entity ids are compared in lowercase: `CIF-0042` and `cif-0042` are the
-same entity, and `cif-0042` is the form to write. A system without an
-environment gets `-` in its place.
+An id segment keeps the name as reported, except that `%`, `/` and `|`
+are written `%25`, `%2F` and `%7C`, so a name can never be mistaken for
+structure. A system without an environment gets `-` in its place (an
+environment that is literally called `-` is written `%2D`).
+
+Entity ids are shown exactly as telemetry reports them and are never
+rewritten: `CIF-0042` and `cif-0042` are two nodes. The agreed form is
+lower-case segments joined by `-`, starting with a letter, at most 63
+characters (`cif-0042`); an entity whose id does not have it carries the
+flag `malformed_id` and is still shown.
 
 A workload joins the map without telemetry when its manifest carries the
 naming contract as labels (`resilience.target.system`,
@@ -54,9 +61,34 @@ assignments:
     entities: ["cif-0002", "cif-01*"]
 ```
 
-Globs are case-insensitive and the first matching assignment wins. A
-service whose telemetry names more than one entity carries
-`conflict: true`.
+Globs are case-insensitive and the first matching assignment wins; an
+empty glob is rejected when `org.yaml` is loaded. The Star Map and the
+score tree use the same matcher. In step 3 the experiment names are walked
+in byte order and the first one that has an owner decides, so the answer
+does not depend on the order runs arrived in.
+
+A service whose telemetry names more than one entity carries
+`conflict: true`. An entity carries `flags` when its ownership should not
+be taken at face value:
+
+| Flag | Meaning |
+|---|---|
+| `multiple_owners` | telemetry reports more than one `ict.entity.owner` for it |
+| `owner_conflict` | telemetry names an owner other than the one `org.yaml` assigns |
+| `malformed_id` | the id does not have the agreed form |
+
+## Gaps and roll-ups
+
+A system is a gap when it has no evidence in any discipline (`missing`) or
+only stale evidence (`stale`). An entity shows the best of its systems:
+one tested system clears the entity's own gap. So that this does not hide
+anything, every entity and organisation unit carries a `rollup` that
+counts what sits below it: `systems`, `untested_systems`, `stale_systems`,
+`failed` runs, `risks_open`, `risks_suppressed` and `gaps`. The tooltip and the drawer show
+it as "5 of 6 systems untested" on the node. `counts.gaps` is taken before
+clustering, so it does not change with `budget`, and
+`counts.risks_unplaced` says how many findings name a target that is not
+on the map.
 
 ## Lenses and marks
 
@@ -76,6 +108,11 @@ verdicts, manual records, findings). Double-click, or "Focus here", to
 show only its neighbourhood. Range, environment, lens, selection and focus
 are in the URL, so a view can be shared as a link.
 
+Everything the chart offers is also reachable without a pointer: the node
+list beside it has a filter and one button per node that opens the same
+drawer. Opening the drawer moves focus to its title, Escape closes it and
+focus returns to where it was.
+
 ## API
 
 `GET /api/starmap?range=&env=&focus=&depth=&kinds=&budget=&include=`
@@ -93,8 +130,20 @@ are in the URL, so a view can be shared as a link.
 The response has `nodes`, `edges` (`owns`, `implements`, `runs_on`,
 `calls`, `depends_on`, `tested_by`, `broke`, `covers`, `measures`, each
 with the `source` it was learned from), `clusters`, `counts` and
-`sources`. The same data in any order gives the same response.
-`GET /api/topology` remains as a compatibility view.
+`sources` (each `ok` or `unavailable`). With `focus`, `focus_found` says
+whether that node exists inside the caller's scopes. The same data in any
+order gives the same response.
+
+The response is cached for 30 seconds per parameter set and set of scopes
+and carries an `ETag`; `If-None-Match` with the current value answers
+`304`. Send `Cache-Control: no-cache` to read the lake again. Suppressing
+a risk drops the cache, so the map shows it at once.
+
+`GET /api/topology` remains as a compatibility view of the service and
+system call graph. Its ids are the Star Map's (`svc:`,
+`sys:<environment>/<system>`; a target known only by
+`resilience.target.name` is `sys:-/<name>`), it covers `7d` unless `range`
+says otherwise, and the earlier `tgt:` ids are gone.
 
 ## What is not there yet
 
@@ -102,18 +151,32 @@ with the `source` it was learned from), `clusters`, `counts` and
 matching node fields are `null`. They are reserved for the SLO, DORA and
 maturity overlays.
 
-When the maturity overlay arrives, a parent's level is rolled up from its
-children by one rule: the criticality-weighted mean of the children,
-capped by the weakest critical child, with a child of unknown maturity
-counted at the lowest level so that it lowers the parent rather than
-disappearing from it. A unit can therefore never look more mature than its
-most important system, and missing evidence is never read as good news.
+The roll-up of maturity is a proposal, not a decision: the rule and its
+weights are pending the DORA score work and may change with it. As
+proposed, a parent's level is the criticality-weighted mean of its
+children, capped by the weakest critical child, with a child of unknown
+maturity counted at the lowest level so that it lowers the parent rather
+than disappearing from it. A unit could then never look more mature than
+its most important system, and missing evidence would never be read as
+good news. Nothing in the map computes this yet; the `rollup` counts above
+are plain sums and carry no weights.
 
 ## Proof
 
-`scripts/proof/starmap-step1/proof.sh` starts a fresh daemon with the demo
-`org.yaml` and manifests, runs the demo experiments through the CLI and
-asserts on the map: the organisation and its teams, workloads with
-`runs_on` edges, every definition referenced, the untested workload as a
-gap, the failed run on its system and a suppressed finding with its
-expiry.
+`scripts/proof/starmap-step1/proof.sh` starts a fresh daemon on free
+loopback ports with a private lake, the demo `org.yaml` and manifests,
+runs the demo experiments through the CLI (each must end with its expected
+exit code and status) and asserts on the map: the organisation and its
+teams, workloads with `runs_on` edges, every definition referenced, the
+untested workload as a gap, the failed run on its system, the roll-up to
+the organisation, a suppressed finding with its expiry, the cache and its
+`ETag`. It checks before every write that the daemon it started is still
+the one running, and removes the daemon and its files on exit.
+
+`make demo-check` asserts the same minimum on the Krönika demo stack:
+`scripts/demo-check.sh` brings `docker/docker-compose.kronika.yml` up as
+its own compose project on a fresh volume, runs the seed and calls
+`scripts/starmap-check.py` (the organisation, 3 teams, 4 workloads with
+`runs_on` edges, 8 definitions referenced, a gap, a failed run, a
+suppressed risk, no `tgt:` id). `STARMAP_URL=<daemon> scripts/demo-check.sh
+--starmap-only` checks a daemon that is already running.

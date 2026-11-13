@@ -30,7 +30,7 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Agentic Observability](agentic-observability.md) | OTel instrumentation for agent runs: spans, metrics, and trace capture for agentic scenarios |
 | [Agentic Scenarios](agentic-scenarios.md) | Author and run agentic fault-injection scenario packs |
 | [Token Efficiency](token-efficiency.md) | TOON vs JSON token costs; keeping agent context small |
-| [Star Map](star-map.md) | One graph from organisation to workload with evidence, risk and conformance lenses; `GET /api/starmap`, `entities` in `org.yaml`, the maturity roll-up rule |
+| [Star Map](star-map.md) | One graph from organisation to workload with evidence, risk and conformance lenses; `GET /api/starmap`, `entities` in `org.yaml`, flags and roll-up counts, the proposed maturity roll-up |
 | [Topology](topology.md) | Declared service topology, compliance lineage, and injection recommendations |
 | [Autopilot](autopilot.md) | Policy-gated autonomous fault injection with audit-before-act decisions |
 | [Experiment Scheduling](scheduling.md) | Recurring experiments and GameDays on a schedule |
