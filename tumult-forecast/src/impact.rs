@@ -36,10 +36,12 @@
 //! * **A band has a floor.** A probe that only ever reports `200`, `true`
 //!   or a quantised gauge leaves a band of zero width, and an impact
 //!   normalised by it would be undefined or, with float noise, absurdly
-//!   large. Every band is therefore at least [`crate::band::floor`] of the
-//!   reference samples wide on each side — the pre-fault samples for a
-//!   baseline, the settled post samples for a backcast, never the fault's
-//!   own — and an [`Impact`] whose band had to be widened says so in
+//!   large. Every band is therefore at least [`crate::band::floor_within`]
+//!   of the reference samples wide on each side — the pre-fault samples
+//!   for a baseline, the settled post samples for a backcast, never the
+//!   fault's own; the rest of the series only lends its step to a
+//!   reference that never moved — and an [`Impact`] whose band had to be
+//!   widened says so in
 //!   [`Impact::degenerate_band`]: its impact numbers are in units of that
 //!   floor, not of an observed spread, and can be very large.
 //! * **Strays are gapped sparingly.** A post sample is left out of the
@@ -188,7 +190,7 @@ impl Plan {
             forecast.quantiles.reverse();
             forecast.quantiles.truncate(self.fault.end);
         }
-        let floor = band::floor(self.reference_samples(values));
+        let floor = band::floor_within(self.reference_samples(values), values);
         forecast.apply_band_floor(floor);
         let median = forecast.median();
         let (lower, upper) = forecast
@@ -765,10 +767,13 @@ mod tests {
         let impact = counterfactual(&HoltWinters::new(), &values, fault, 2).unwrap();
         assert_eq!(impact.reference, Reference::PostBackcast);
         assert!(impact.degenerate_band);
-        let peak = impact.summary.during_peak;
-        assert!(peak.is_finite() && peak > 1.0, "{:?}", impact.summary);
+        assert!(
+            (impact.summary.during_peak - 2.0).abs() < 1e-6,
+            "a boolean flip is two half-widths: {:?}",
+            impact.summary
+        );
         let post = &impact.samples[3];
-        assert!(post.upper > post.lower, "{post:?}");
+        assert!(post.upper - post.lower >= 1.0 - 1e-9, "{post:?}");
         assert!(post.impact.abs() < 1e-9);
         assert_eq!(impact.recovery.steps_after_fault, Some(0));
     }
@@ -814,6 +819,71 @@ mod tests {
         assert!(impact.recovery.recovered_at.is_some());
         assert_eq!(impact.forecast.provenance.model, "holt-winters");
         assert_eq!(impact.samples.len(), 8);
+    }
+
+    /// A provider that answers with a line: every level at the last
+    /// observed context value.
+    struct Line;
+
+    impl ForecastProvider for Line {
+        fn forecast(&self, request: &ForecastRequest<'_>) -> Result<Forecast, ForecastError> {
+            let last = request.context.iter().rev().find(|v| v.is_finite());
+            let at = *last.ok_or(ForecastError::EmptyContext)?;
+            Ok(Forecast {
+                levels: request.levels.to_vec(),
+                quantiles: vec![vec![at; request.levels.len()]; request.horizon],
+                context_points: request.context.len(),
+                insufficient_history: false,
+                degenerate_band: false,
+                provenance: Provenance {
+                    model: "line".into(),
+                    version: "0".into(),
+                    weights_hash: "none".into(),
+                },
+            })
+        }
+
+        fn model(&self) -> &'static str {
+            "line"
+        }
+    }
+
+    /// A gauge that reports the mean of a constant 0.1: the last bit
+    /// differs between samples. A post phase at 0.1001 is one floor width
+    /// away, not ten to the thirteenth.
+    #[test]
+    fn float_noise_in_a_constant_baseline_does_not_explode_the_impact() {
+        let noisy = 0.1 + f64::EPSILON / 8.0;
+        let mut values: Vec<f64> = (0..20)
+            .map(|i| if i % 2 == 0 { 0.1 } else { noisy })
+            .collect();
+        values.extend([0.3, 0.3, 0.3]);
+        values.extend([0.1001; 6]);
+        let fault = FaultWindow { start: 20, end: 23 };
+        let impact = counterfactual(&Line, &values, fault, 3).unwrap();
+        assert!(impact.degenerate_band);
+        let post = impact.samples[3].impact;
+        assert!(post > 0.5 && post < 2.0, "{post}");
+        assert!(impact.summary.during_peak < 5_000.0, "{:?}", impact.summary);
+    }
+
+    /// Six of forty baseline samples are thirty second timeouts from an
+    /// earlier incident. The service runs at 50 ms; a post phase stuck at
+    /// 190 ms has not recovered.
+    #[test]
+    fn an_earlier_incident_in_the_baseline_does_not_hide_a_stuck_post_phase() {
+        let mut values: Vec<f64> = jitter(40).iter().map(|j| 50.0 + 2.0 * j).collect();
+        for at in [2, 8, 14, 20, 26, 32] {
+            values[at] = 30_000.0;
+        }
+        values.extend([900.0, 900.0, 900.0]);
+        values.extend([190.0; 8]);
+        let fault = FaultWindow { start: 40, end: 43 };
+        let impact = counterfactual(&Line, &values, fault, 3).unwrap();
+        assert_eq!(impact.reference, Reference::Baseline);
+        assert_eq!(impact.recovery.recovered_at, None, "{:?}", impact.recovery);
+        let outside = impact.samples[3..].iter().filter(|s| s.impact > 1.0);
+        assert_eq!(outside.count(), 8, "{:?}", impact.samples);
     }
 
     /// Deterministic pseudo-noise in `[-1, 1)` with no season to absorb.

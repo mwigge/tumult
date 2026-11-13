@@ -58,19 +58,40 @@ in the width, an absurd `1e15`. Every band therefore has a floor. It is
 taken from the **reference samples only**: the pre-fault samples of a
 `baseline`, the settled post-phase samples of a `post_backcast`. Fault
 samples never count, so thirty-second timeouts cannot widen the band around
-a fifty-millisecond baseline. The half width is never less than the larger
-of
+a fifty-millisecond baseline.
 
-* 1 % of the reference's spread (half its 10–90 % range), or, when the
-  reference does not vary at all, 0.1 % of its level (the median absolute
-  value), and
-* half the observed resolution (the smallest gap between two distinct
-  values inside the 10–90 % range).
+Strays inside the reference are set aside as well. The floor is computed
+over the reference's core: the samples within three interquartile ranges of
+its quartiles, or, when the quartiles coincide, within one level (the
+median absolute value) of the median. An earlier incident in the baseline,
+such as thirty-second timeouts in a sixth of the pre-fault samples, does
+not widen the floor, and neither does one spike in eight samples. A
+difference of a billionth of the level or less is float noise and counts as
+no difference: a gauge that reports the mean of a constant, with the last
+bit changing between samples, is still a constant. The half width is never
+less than the larger of
 
-It is `1e-9` only when all of that is zero (a reference that is zero
-throughout). The floor follows how the reference moves, not where it sits:
-a gauge at 8e9 that moves by 1e6 is floored at a share of 1e6, and a series
-of the order 1e-7 at a share of its own spread.
+* 1 % of the core's spread (half its 10–90 % range), or, when the core does
+  not vary, 0.1 % of the level, and
+* half the observed step: the smallest gap between two distinct values
+  anywhere in the core, so a `200` that was once a `201`, or forty samples
+  of 53 with three of 54, give a floor of 0.5.
+
+A reference that never moved shows no step of its own. The impact
+computation then takes the smallest step of the whole run's series, when
+that step is no larger than the level (or the level is zero): a health
+check that was `0` throughout the post phase and `1` during the fault gets
+a band one wide and an impact of 2 for the flip. The 300 between a `200`
+and a `500` is no step of 200, so that probe keeps the 0.1 % floor. Half of
+the smallest gap in the series cannot reach any other value of the series,
+so the fault's own scale never hides the fault.
+
+The floor is `1e-9` only when all of that is zero (a reference that is zero
+throughout with no other value in the series). It follows how the reference
+moves, not where it sits: a gauge at 8e9 that moves by 1e6 is floored at a
+share of 1e6, and a series of the order 1e-7 at a share of its own spread.
+A reference at level zero has no scale to judge a stray by, so a mostly
+zero counter with one large value keeps that value in its core.
 
 A band that had to be widened to the floor is flagged: `degenerate_band:
 true` on the forecast, on the probe's impact entry and on the run-level

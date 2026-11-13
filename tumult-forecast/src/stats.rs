@@ -49,6 +49,16 @@ pub fn resolution(values: &[f64]) -> Option<f64> {
     positive_gaps(values).into_iter().reduce(f64::min)
 }
 
+/// [`resolution`], ignoring gaps of `noise` or less: two values that
+/// differ only in their last bits are one value.
+#[must_use]
+pub fn resolution_above(values: &[f64], noise: f64) -> Option<f64> {
+    positive_gaps(values)
+        .into_iter()
+        .filter(|gap| *gap > noise)
+        .reduce(f64::min)
+}
+
 /// How many distinct finite values there are.
 #[must_use]
 pub fn distinct(values: &[f64]) -> usize {
@@ -117,6 +127,8 @@ mod tests {
         assert_eq!(distinct(&[3.0, 1.0, 1.0, 1.5, f64::NAN]), 3);
         assert_eq!(distinct(&[2.0, 2.0]), 1);
         assert_eq!(distinct(&[f64::NAN]), 0);
+        assert_eq!(resolution_above(&[1.0, 1.25, 3.0], 0.25), Some(1.75));
+        assert_eq!(resolution_above(&[1.0, 1.25], 0.25), None);
     }
 
     #[test]
