@@ -8292,15 +8292,19 @@ dependencies = [
 name = "tumult-otel"
 version = "2.22.0"
 dependencies = [
+ "chrono",
  "opentelemetry",
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "serde",
+ "serde_json",
+ "thiserror 2.0.19",
  "tokio",
  "tonic",
  "tracing",
+ "tracing-log",
  "tracing-opentelemetry",
  "tracing-subscriber",
 ]
