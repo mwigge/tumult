@@ -21,5 +21,9 @@ tracing = { workspace = true }
 # frontend on top. `gql` comes along with `edge` but is unused here.
 grafeo = { version = "0.5", default-features = false, features = ["edge", "cypher"] }
 
+[dev-dependencies]
+# Log capture for the tests of this crate's log events.
+tumult-otel = { path = "../tumult-otel" }
+
 [lints]
 workspace = true
