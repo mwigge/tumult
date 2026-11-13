@@ -6,8 +6,8 @@ use clap::Parser;
 
 use cli::{
     AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GateFailOn,
-    GraphFormat, McpAction, McpTransport, OutputFormat, RollbackStrategy, StoreAction,
-    TopologyAction,
+    GraphFormat, McpAction, McpTransport, OutputFormat, PerfFailOnArg, RollbackStrategy,
+    StoreAction, TopologyAction,
 };
 
 mod cli;
@@ -495,6 +495,38 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             .await?;
             if !ok {
                 anyhow::bail!("gate did not pass for target {target}");
+            }
+        }
+        Commands::Perf {
+            target,
+            probe,
+            quantile,
+            min_samples,
+            margin_pct,
+            env,
+            daemon_url,
+            fail_on,
+            json,
+        } => {
+            let fail_on = match fail_on {
+                PerfFailOnArg::Regressed => commands::PerfFailOn::Regressed,
+                PerfFailOnArg::Inconclusive => commands::PerfFailOn::Inconclusive,
+                PerfFailOnArg::Never => commands::PerfFailOn::Never,
+            };
+            let ok = commands::cmd_perf(&commands::PerfArgs {
+                target: target.clone(),
+                probe,
+                quantile: quantile.map(|q| q.as_str().to_string()),
+                min_samples,
+                margin_pct,
+                env,
+                daemon_url,
+                fail_on,
+                json,
+            })
+            .await?;
+            if !ok {
+                anyhow::bail!("performance verdict did not pass for target {target}");
             }
         }
         Commands::Tui {
