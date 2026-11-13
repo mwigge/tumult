@@ -535,14 +535,26 @@ async fn topology_builds_service_and_target_graph() {
     assert_eq!(svc["type"], "service");
     assert_eq!(svc["runs"], 4);
     assert_eq!(svc["errors"], 0);
-    let tgt = nodes.iter().find(|n| n["id"] == "tgt:postgres-1").unwrap();
+    // Targets are the systems the naming contract names, under the id the
+    // Star Map uses; the retired per-span target attribute is not read.
+    let tgt = nodes
+        .iter()
+        .find(|n| n["id"] == "sys:demo/database")
+        .unwrap();
     assert_eq!(tgt["type"], "target");
+    assert_eq!(tgt["name"], "database");
     assert_eq!(tgt["runs"], 2);
+    assert!(
+        nodes
+            .iter()
+            .all(|n| !n["id"].as_str().unwrap().starts_with("tgt:")),
+        "{nodes:?}"
+    );
 
     let edges = body["edges"].as_array().unwrap();
-    // Service → target calls from the action spans' target attribute.
+    // Service → target edges from the spans that name the system.
     assert!(edges.iter().any(|e| e["from_id"] == "svc:tumult"
-        && e["to_id"] == "tgt:postgres-1"
+        && e["to_id"] == "sys:demo/database"
         && e["weight"] == 2));
     // Intra-service parent→child hops with differing span names survive as
     // a self-loop (root experiment span → action span).

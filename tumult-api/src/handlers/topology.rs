@@ -1,4 +1,8 @@
-//! `GET /api/topology` — service/target call graph.
+//! `GET /api/topology` — service/target call graph. A compatibility view:
+//! the Star Map (`GET /api/starmap`) is the full graph, and targets here
+//! carry the ids it uses (`sys:<environment>/<system>`, or
+//! `cmp:<environment>/<system>/<component>` when the resource names a
+//! component).
 
 use crate::error::ApiError;
 use axum::extract::{Query, State};
@@ -20,8 +24,21 @@ pub(crate) struct TopologyParams {
     range: Option<String>,
 }
 
-/// tumult tags spans with the system under test under this attribute.
-const TARGET_ATTR: &str = "span_attrs['resilience.target.name']";
+/// The component a resource declares inside its target system.
+const COMPONENT: &str = "NULLIF(resource_attrs['resilience.target.component'], '')";
+/// Spans that name a target system: the naming contract's promoted column.
+const HAS_TARGET: &str = "target_system IS NOT NULL AND target_system <> ''";
+
+/// SQL for a target's Star Map id: the component when one is declared,
+/// else the system, both under the environment (`-` when there is none).
+fn target_id_sql() -> String {
+    let env = "COALESCE(NULLIF(target_environment, ''), '-')";
+    format!(
+        "CASE WHEN {COMPONENT} IS NOT NULL \
+         THEN 'cmp:' || {env} || '/' || target_system || '/' || {COMPONENT} \
+         ELSE 'sys:' || {env} || '/' || target_system END"
+    )
+}
 
 pub(crate) async fn topology(
     State(state): State<ApiState>,
@@ -50,17 +67,19 @@ pub(crate) async fn topology(
         let query = |sql: &str| reader.query_json_rows(sql).map_err(|e| e.to_string());
         // Nodes: one per service and one per tumult target, with health
         // aggregates over their spans.
+        let target_id = target_id_sql();
         let mut nodes = query(&format!(
-            "SELECT service_name AS name, 'service' AS type, COUNT(*) AS runs, \
-             COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
+            "SELECT 'svc:' || service_name AS id, service_name AS name, 'service' AS type, \
+             COUNT(*) AS runs, COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
              AVG(duration_ns) AS avg_duration_ns \
-             FROM spans WHERE service_name <> ''{window} GROUP BY 1"
+             FROM spans WHERE service_name <> ''{window} GROUP BY 1, 2"
         ))?;
         nodes.extend(query(&format!(
-            "SELECT {TARGET_ATTR} AS name, 'target' AS type, COUNT(*) AS runs, \
+            "SELECT {target_id} AS id, COALESCE({COMPONENT}, target_system) AS name, \
+             'target' AS type, COUNT(*) AS runs, \
              COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
              AVG(duration_ns) AS avg_duration_ns \
-             FROM spans WHERE {TARGET_ATTR} IS NOT NULL{window} GROUP BY 1"
+             FROM spans WHERE {HAS_TARGET}{window} GROUP BY 1, 2"
         ))?);
 
         // Edges: parent→child service hops (a differing span name keeps
@@ -74,9 +93,9 @@ pub(crate) async fn topology(
              GROUP BY 1, 2"
         ))?;
         edges.extend(query(&format!(
-            "SELECT 'svc:' || service_name AS from_id, \
-             'tgt:' || {TARGET_ATTR} AS to_id, COUNT(*) AS weight \
-             FROM spans WHERE {TARGET_ATTR} IS NOT NULL{window} GROUP BY 1, 2"
+            "SELECT 'svc:' || service_name AS from_id, {target_id} AS to_id, \
+             COUNT(*) AS weight \
+             FROM spans WHERE {HAS_TARGET} AND service_name <> ''{window} GROUP BY 1, 2"
         ))?);
 
         // Busiest first, capped at 100 nodes; edges to trimmed nodes drop.
@@ -86,11 +105,11 @@ pub(crate) async fn topology(
         let nodes: Vec<Value> = nodes
             .into_iter()
             .filter_map(|n| {
+                let id = n.get("id").and_then(Value::as_str)?;
                 let name = n.get("name").and_then(Value::as_str)?;
                 let kind = n.get("type").and_then(Value::as_str)?;
-                let prefix = if kind == "service" { "svc" } else { "tgt" };
                 Some(json!({
-                    "id": format!("{prefix}:{name}"),
+                    "id": id,
                     "name": name,
                     "type": kind,
                     "runs": n.get("runs").cloned().unwrap_or(Value::Null),
