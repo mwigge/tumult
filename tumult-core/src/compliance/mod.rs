@@ -8,6 +8,7 @@
 
 mod citations;
 mod dates;
+mod dora_refs;
 mod evidence;
 mod framework;
 mod signals;
@@ -16,6 +17,7 @@ pub use citations::{
     Citation, CITATIONS, CITATION_MAX_AGE_MONTHS, EVIDENCE_DISCLAIMER, REGISTRY_VERSION,
 };
 pub use dates::{current_year_month, months_since_verified, parse_year_month, stale_citations};
+pub use dora_refs::{dora_paragraph_count, dora_ref_exists, parse_dora_ref, DoraRef};
 pub use evidence::{EvidenceStrength, EvidenceType};
 pub use framework::ComplianceFramework;
 pub use signals::{compliance_verdict, ComplianceSignals, DEFAULT_MTTR_TARGET_S};

@@ -361,7 +361,7 @@ fn findings_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
             entered_by: "alice".into(),
             attestation: "I attest this record reflects the exercise.".into(),
             renewal_due_ns: None,
-            framework_refs: vec!["DORA Art. 24(7)".into(), "ISO 27001 A.5.29".into()],
+            framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.29".into()],
         })
         .unwrap();
     writer.submit_manual(&id, None, "alice").unwrap();
