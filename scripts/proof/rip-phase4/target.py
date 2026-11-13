@@ -15,8 +15,8 @@ health endpoint left out of tracing.
 With PROOF_TELEMETRY_URL (the daemon's base URL) and
 PROOF_SERVICE_VERSION set, the service reports its own telemetry: a
 server span for the requests it serves, at most one every 200 ms, as
-service "checkout" in environment "demo". A build nobody calls is
-therefore silent until the load starts.
+service "checkout" in environment PROOF_SERVICE_ENV ("demo" when unset).
+A build nobody calls is therefore silent until the load starts.
 """
 import itertools
 import os
@@ -36,6 +36,7 @@ COUNTER = itertools.count(1)
 NEVER = threading.Event()
 TELEMETRY_URL = os.environ.get("PROOF_TELEMETRY_URL", "")
 VERSION = os.environ.get("PROOF_SERVICE_VERSION", "")
+ENVIRONMENT = os.environ.get("PROOF_SERVICE_ENV", "demo")
 SPAN_EVERY_S = 0.2
 SERVED = threading.Event()
 
@@ -47,7 +48,7 @@ def report_spans():
         SERVED.clear()
         request = urllib.request.Request(
             TELEMETRY_URL + "/v1/traces",
-            data=encode("checkout", VERSION, "demo"),
+            data=encode("checkout", VERSION, ENVIRONMENT),
             headers={"content-type": "application/x-protobuf"},
         )
         try:
