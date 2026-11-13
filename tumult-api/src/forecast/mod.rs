@@ -518,8 +518,9 @@ mod tests {
         assert!((1..=sidecar).contains(&SIDECAR_SLOTS), "{SIDECAR_SLOTS}");
     }
 
-    /// Every `tracing` event in `source`, from the macro to its `);`.
-    fn tracing_events(source: &str) -> Vec<&str> {
+    /// Every `tracing` event in `source` as its level and its text, from
+    /// the macro to its `);`.
+    fn tracing_events(source: &str) -> Vec<(&str, &str)> {
         let marker = concat!("tracing", "::");
         source
             .match_indices(marker)
@@ -530,9 +531,57 @@ mod tests {
                 if !["warn", "error", "info", "debug", "trace"].contains(&name) {
                     return None;
                 }
-                rest.find(");").map(|end| &rest[..end])
+                rest.find(");").map(|end| (name, &rest[..end]))
             })
             .collect()
+    }
+
+    /// What is wrong with one log event, if anything. An event is about
+    /// an error when it is logged at that level or names either error
+    /// field, and then it carries both; any other event needs neither.
+    fn event_fault(level: &str, event: &str) -> Option<&'static str> {
+        if event.contains(" error = ") {
+            return Some("a bare error field");
+        }
+        let message = event.contains("error.message = ");
+        let kind = event.contains("error.type = ");
+        let about_an_error = level == "error" || message || kind;
+        if about_an_error && !message {
+            return Some("no error.message");
+        }
+        if about_an_error && !kind {
+            return Some("no error.type");
+        }
+        let text = event.rsplit('"').nth(1).unwrap_or_default();
+        text.contains('{').then_some("an interpolated message")
+    }
+
+    #[test]
+    fn an_event_without_an_error_needs_no_error_fields() {
+        let plain = "info!(\n    forecast.model = model,\n    \"forecast served\"\n";
+        assert_eq!(event_fault("info", plain), None);
+        assert_eq!(event_fault("debug", "debug!(\"circuit closed\""), None);
+        assert_eq!(
+            event_fault("warn", "warn!(slots = 4, \"sidecar busy\""),
+            None
+        );
+    }
+
+    #[test]
+    fn an_event_about_an_error_names_its_type_and_message() {
+        let whole = "warn!(error.type = \"x\", error.message = %e, \"lookup failed\"";
+        assert_eq!(event_fault("warn", whole), None);
+        let untyped = "warn!(error.message = %e, \"lookup failed\"";
+        assert_eq!(event_fault("warn", untyped), Some("no error.type"));
+        let silent = "warn!(error.type = \"x\", \"lookup failed\"";
+        assert_eq!(event_fault("warn", silent), Some("no error.message"));
+        // The error level is about an error whatever its fields say.
+        let bare = "error!(run = %id, \"forecast failed\"";
+        assert_eq!(event_fault("error", bare), Some("no error.message"));
+        let loose = "warn!(run = %id, error = %e, \"lookup failed\"";
+        assert_eq!(event_fault("warn", loose), Some("a bare error field"));
+        let inline = "info!(\"served {model}\"";
+        assert_eq!(event_fault("info", inline), Some("an interpolated message"));
     }
 
     /// Logs are structured: what varies is a field, named the way the
@@ -547,17 +596,13 @@ mod tests {
         let mut seen = 0;
         for path in sources {
             let source = std::fs::read_to_string(&path).unwrap();
-            for event in tracing_events(&source) {
+            for (level, event) in tracing_events(&source) {
                 let forecast_event = path.contains("/forecast/") || event.contains("FORECAST");
                 if !forecast_event {
                     continue;
                 }
                 seen += 1;
-                assert!(event.contains("error.message = "), "{path}: {event}");
-                assert!(event.contains("error.type = "), "{path}: {event}");
-                assert!(!event.contains(" error = "), "{path}: {event}");
-                let message = event.rsplit('"').nth(1).unwrap_or_default();
-                assert!(!message.contains('{'), "{path}: interpolated: {event}");
+                assert_eq!(event_fault(level, event), None, "{path}: {event}");
             }
         }
         assert!(seen >= 4, "only {seen} forecast events were found");
