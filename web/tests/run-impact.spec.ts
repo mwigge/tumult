@@ -87,6 +87,7 @@ const impact = {
     as_of_ms: 0,
     stable_steps: 3,
     recovery_time_s: 10 as number | null,
+    recovery_status: 'recovered',
     unrecovered_probes: 0,
     evaluated_probes: 1,
     impact_peak: 4.2 as number | null,
@@ -227,6 +228,7 @@ test('a run that never settled says so and has no recovery mark', async ({ page 
     const unsettled = {
         ...impact,
         recovery_time_s: null,
+        recovery_status: 'unrecovered',
         unrecovered_probes: 1,
         probes: [
             {
@@ -262,6 +264,7 @@ test('one probe that never recovered makes the headline not recovered', async ({
     const body = {
         ...impact,
         recovery_time_s: null,
+        recovery_status: 'unrecovered',
         unrecovered_probes: 1,
         evaluated_probes: 2,
         probes: [probe, stuck],
@@ -329,6 +332,7 @@ test('a run with no probe watched after the fault has an undetermined recovery',
     const body = {
         ...impact,
         recovery_time_s: null,
+        recovery_status: 'undetermined',
         unrecovered_probes: 0,
         undetermined_probes: 1,
         evaluated_probes: 1,
@@ -351,6 +355,7 @@ test('an unrecovered probe outranks an undetermined one in the headline', async 
     const body = {
         ...impact,
         recovery_time_s: null,
+        recovery_status: 'unrecovered',
         unrecovered_probes: 1,
         undetermined_probes: 1,
         evaluated_probes: 2,
@@ -362,6 +367,44 @@ test('an unrecovered probe outranks an undetermined one in the headline', async 
     await expect(page.getByTestId('impact-unrecovered')).toContainText('1 of 2 probes');
     await expect(page.getByTestId('impact-undetermined')).toContainText('1 of 2 probes');
     await expect(page.getByTestId('impact-probe-latency')).toContainText('recovery not recovered');
+});
+
+// No probe could be evaluated: there is no finding about recovery at all,
+// which is neither "not recovered" nor "undetermined".
+test('a run with no evaluable probe has a recovery that is not measurable', async ({ page }) => {
+    const body = {
+        ...impact,
+        recovery_time_s: null,
+        recovery_status: 'not_measurable',
+        unrecovered_probes: 0,
+        undetermined_probes: 0,
+        evaluated_probes: 0,
+        impact_peak: null,
+        provenance: null,
+        probes: [{ probe: 'error-rate', error: 'no during-phase samples' }],
+    };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const summary = page.getByTestId('impact-summary');
+    await expect(summary).toContainText('recovery not measurable');
+    await expect(summary).not.toContainText('not recovered');
+    await expect(summary).not.toContainText('undetermined');
+    await expect(page.getByTestId('impact-not-measurable')).toContainText(
+        'none of the 1 probe could be evaluated',
+    );
+    await expect(page.getByTestId('impact-unrecovered')).toHaveCount(0);
+    await expect(page.getByTestId('impact-undetermined')).toHaveCount(0);
+    await expect(page.getByTestId('impact')).toContainText('no during-phase samples');
+});
+
+// The headline is what the daemon says it is, not what the counts suggest.
+test('the headline follows the recovery status the daemon reports', async ({ page }) => {
+    const body = { ...impact, recovery_time_s: null, recovery_status: 'undetermined' };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const summary = page.getByTestId('impact-summary');
+    await expect(summary).toContainText('recovery undetermined');
+    await expect(summary).not.toContainText('not recovered');
 });
 
 test('a fallback names its reason next to the model', async ({ page }) => {

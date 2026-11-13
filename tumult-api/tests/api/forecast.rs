@@ -615,6 +615,93 @@ async fn seed_cut_off_probe(srv: &TestServer, experiment_id: &str, name: &str, p
     .await;
 }
 
+/// One probe sampled once a second at the given levels, 100 ± 2 style
+/// jitter added.
+async fn seed_probe(srv: &TestServer, experiment_id: &str, name: &str, plan: &[(&str, f64, i64)]) {
+    let exp = experiment_id.to_string();
+    let name = name.to_string();
+    let base = now_ns() - 600 * NS;
+    let plan: Vec<(String, f64, i64)> = plan
+        .iter()
+        .map(|(phase, level, count)| ((*phase).to_string(), *level, *count))
+        .collect();
+    exec_write(srv, move |w| {
+        let mut rows = Vec::new();
+        let mut i = 0_i64;
+        for (phase, level, count) in &plan {
+            for _ in 0..*count {
+                let jitter = f64::from(i32::try_from(i % 5).unwrap_or(0)) - 2.0;
+                rows.push(format!(
+                    "('{exp}', '{name}', '{phase}', {}, {}, true)",
+                    base + i * NS,
+                    level + jitter
+                ));
+                i += 1;
+            }
+        }
+        w.execute(
+            &format!(
+                "INSERT INTO probe_samples (experiment_id, probe_name, phase, ts_ns, value, ok) \
+                 VALUES {}",
+                rows.join(", ")
+            ),
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await;
+}
+
+/// A run whose only probe was never sampled during a fault has nothing to
+/// evaluate. That is its own state: not "not recovered", which is a
+/// finding, and not "undetermined", which is about probes that were
+/// evaluated.
+#[tokio::test]
+async fn a_run_with_no_evaluable_probe_is_not_measurable() {
+    let srv = spawn_server().await;
+    seed_bare_run(&srv, "run-idle", "exp-idle").await;
+    seed_probe(&srv, "exp-idle", "idle", &[("before", 100.0, 30)]).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-idle/impact").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["recovery_status"], "not_measurable", "{body}");
+    assert_eq!(body["evaluated_probes"], 0);
+    assert_eq!(body["unrecovered_probes"], 0);
+    assert_eq!(body["undetermined_probes"], 0);
+    assert!(body["recovery_time_s"].is_null());
+    assert!(body["impact_peak"].is_null());
+    let probe = &body["probes"][0];
+    assert_eq!(probe["error"], "no during-phase samples", "{probe}");
+}
+
+/// Still outside the band at the first sample after the fault and back at
+/// the second, where the samples stop: on its way back, not unrecovered.
+/// The same probe last seen outside is.
+#[tokio::test]
+async fn a_short_post_phase_is_judged_by_where_it_ends() {
+    let srv = spawn_server().await;
+    seed_bare_run(&srv, "run-short", "exp-short").await;
+    let fault = [("before", 100.0, 40), ("during", 300.0, 20)];
+    let returning = [&fault[..], &[("post", 300.0, 1), ("post", 100.0, 1)]].concat();
+    seed_probe(&srv, "exp-short", "returning", &returning).await;
+    let relapsed = [&fault[..], &[("post", 100.0, 1), ("post", 300.0, 1)]].concat();
+    seed_probe(&srv, "exp-short", "relapsed", &relapsed).await;
+    let (status, body) = get(&srv.base, "/api/runs/run-short/impact").await;
+    assert_eq!(status, 200, "{body}");
+    let probes = body["probes"].as_array().unwrap();
+    let by_name = |name: &str| &probes.iter().find(|p| p["probe"] == name).unwrap()["recovery"];
+    let returning = by_name("returning");
+    assert_eq!(returning["outside_after_fault"], 1, "{returning}");
+    assert_eq!(returning["ended_inside"], true, "{returning}");
+    assert_eq!(returning["status"], "undetermined", "{returning}");
+    let relapsed = by_name("relapsed");
+    assert_eq!(relapsed["ended_inside"], false, "{relapsed}");
+    assert_eq!(relapsed["status"], "unrecovered", "{relapsed}");
+    assert_eq!(body["recovery_status"], "unrecovered", "{body}");
+    assert_eq!(body["unrecovered_probes"], 1);
+    assert_eq!(body["undetermined_probes"], 1);
+}
+
 /// A probe that was only sampled before and during the fault, and one
 /// seen twice afterwards, were not watched long enough to be called
 /// unrecovered. They are counted apart and leave the headline alone.
@@ -647,6 +734,8 @@ async fn a_probe_without_enough_post_samples_is_undetermined_not_unrecovered() {
         "the headline is the probe that was watched"
     );
     assert!(body["recovery_time_s"].is_number());
+    assert_eq!(body["recovery_status"], "recovered");
+    assert!(cut["ended_inside"].is_null(), "{cut}");
 }
 
 /// A run where no probe was watched after the fault has no recovery time,
@@ -662,6 +751,7 @@ async fn a_run_with_only_undetermined_probes_has_no_recovery_time() {
     assert_eq!(body["unrecovered_probes"], 0);
     assert_eq!(body["undetermined_probes"], 1);
     assert_eq!(body["evaluated_probes"], 1);
+    assert_eq!(body["recovery_status"], "undetermined");
     assert!(body["impact_peak"].as_f64().unwrap() > 1.0, "{body}");
 }
 

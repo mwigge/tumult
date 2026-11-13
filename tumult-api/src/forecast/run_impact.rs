@@ -128,6 +128,7 @@ fn recovery_json(series: &RegularSeries, impact: &Impact, first: usize) -> Value
         "outside_during_fault": recovery.outside_during_fault,
         "outside_after_fault": recovery.outside_after_fault,
         "observed_after_fault": recovery.observed_after_fault,
+        "ended_inside": recovery.ended_inside,
     })
 }
 
@@ -223,7 +224,37 @@ struct Headline {
     degenerate_band: bool,
 }
 
+/// What the run's recovery time means, said outright so that no consumer
+/// has to work it out from the counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum RunRecovery {
+    /// Every probe that was watched long enough settled.
+    Recovered,
+    /// At least one evaluated probe never settled.
+    Unrecovered,
+    /// Probes were evaluated, none recovered and none is unrecovered.
+    Undetermined,
+    /// No probe could be evaluated at all.
+    NotMeasurable,
+}
+
 impl Headline {
+    /// Which of the four the run is. `recovery_time_s` is `None` for three
+    /// of them, and they are not the same finding.
+    fn status(&self) -> RunRecovery {
+        if self.evaluated == 0 {
+            return RunRecovery::NotMeasurable;
+        }
+        if self.unrecovered > 0 {
+            return RunRecovery::Unrecovered;
+        }
+        if self.slowest_recovery_s.is_some() {
+            return RunRecovery::Recovered;
+        }
+        RunRecovery::Undetermined
+    }
+
     fn add(&mut self, probe: &ProbeImpact) {
         self.evaluated += 1;
         match probe.verdict {
@@ -326,6 +357,7 @@ pub(crate) async fn run_impact(
         "as_of_ms": as_of_ns / MS_NS,
         "stable_steps": STABLE_STEPS,
         "recovery_time_s": headline.recovery_time_s(),
+        "recovery_status": headline.status(),
         "unrecovered_probes": headline.unrecovered,
         "undetermined_probes": headline.undetermined,
         "evaluated_probes": headline.evaluated,
@@ -419,6 +451,27 @@ mod tests {
         assert_eq!(headline.worst_peak, Some(9.0), "its peak still counts");
         headline.add(&probe(None, None));
         assert_eq!(headline.recovery_time_s(), None);
+    }
+
+    /// The four things a run's recovery can be, each from its own counts.
+    #[test]
+    fn the_headline_names_its_recovery_state() {
+        let unwatched = ProbeImpact {
+            verdict: Verdict::Undetermined,
+            ..probe(None, Some(9.0))
+        };
+        let mut headline = Headline::default();
+        assert_eq!(headline.status(), RunRecovery::NotMeasurable);
+        headline.add(&unwatched);
+        assert_eq!(headline.status(), RunRecovery::Undetermined);
+        headline.add(&probe(Some(4.0), None));
+        assert_eq!(headline.status(), RunRecovery::Recovered);
+        headline.add(&probe(None, None));
+        assert_eq!(headline.status(), RunRecovery::Unrecovered);
+        assert_eq!(
+            serde_json::to_value(RunRecovery::NotMeasurable).unwrap(),
+            json!("not_measurable")
+        );
     }
 
     #[test]

@@ -134,13 +134,22 @@ back because most of its probes are. `unrecovered_probes` says how many
 those are, out of `evaluated_probes`. An `undetermined` probe is no
 evidence either way. It is counted in `undetermined_probes`, does not turn
 the run-level figure to `null` and adds no time to it; its peak still
-counts towards `impact_peak`. When no probe recovered and none is
-unrecovered, the run-level `recovery_time_s` is `null` with
-`unrecovered_probes` at 0, and the Impact panel reads "recovery
-undetermined" instead of "not recovered". The panel names the number of
-undetermined probes in its own note, apart from the unrecovered ones. A
-probe that could not be evaluated (listed with an `error`) counts in none
-of the three.
+counts towards `impact_peak`. A probe that could not be evaluated (listed
+with an `error`) counts in none of the three.
+
+A `null` run-level `recovery_time_s` therefore has three meanings, and the
+answer names the one that applies in `recovery_status`; the Impact panel
+prints that state and does not work it out from the counts:
+
+| `recovery_status` | When | `recovery_time_s` | The panel reads |
+|---|---|---|---|
+| `recovered` | No evaluated probe is unrecovered and at least one recovered. | The slowest probe's time. | "recovery 12 s" |
+| `unrecovered` | At least one evaluated probe is `unrecovered`. | `null` | "recovery not recovered", with the number of such probes |
+| `undetermined` | Probes were evaluated; none recovered and none is unrecovered. | `null` | "recovery undetermined", with the number of undetermined probes |
+| `not_measurable` | No probe could be evaluated (`evaluated_probes` is 0): every probe is listed with an `error`, such as a probe with no samples during the fault. | `null` | "recovery not measurable", with the number of probes that could not be evaluated |
+
+`not_measurable` is no finding about the system: nothing was compared, so
+the run is neither back nor not back. `impact_peak` is `null` with it.
 
 ### Which samples the counterfactual comes from
 
@@ -225,7 +234,7 @@ row is served, with the `fallback_reason` of the moment.
 ### `GET /api/runs/{id}/impact`
 
 Returns one entry per probe with the series, the fault window, the impact
-summary, recovery and provenance, plus the run-level `recovery_time_s`,
+summary, recovery and provenance, plus the run-level `recovery_time_s`, `recovery_status`,
 `unrecovered_probes`, `undetermined_probes`, `evaluated_probes`, `impact_peak` and
 `degenerate_band`. Instants are given in nanoseconds and
 in milliseconds (`fault.start_ms`, `recovery.recovered_at_ms`, `as_of_ms`).

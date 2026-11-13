@@ -82,10 +82,18 @@
         return seconds(p.recovery?.recovery_time_s);
     }
 
-    // No time, and no probe that was seen to stay out: nothing was watched.
+    // The daemon says which of the four states the run is in; a missing
+    // time alone would not tell three of them apart.
     function runRecovery(r: RunImpact): string {
-        const blind = r.recovery_time_s == null && !r.unrecovered_probes && r.undetermined_probes;
-        return blind ? UNDETERMINED : seconds(r.recovery_time_s);
+        if (r.recovery_status === 'not_measurable') return 'not measurable';
+        if (r.recovery_status === 'undetermined') return UNDETERMINED;
+        if (r.recovery_status === 'unrecovered') return seconds(null);
+        return seconds(r.recovery_time_s);
+    }
+
+    function notMeasurable(r: RunImpact): string {
+        const n = r.probes.length;
+        return `none of the ${n} ${n === 1 ? 'probe' : 'probes'} could be evaluated, so there is no recovery to report`;
     }
 
     function undetermined(r: RunImpact): string {
@@ -152,6 +160,11 @@
                 </span>
             {/if}
             <span>recovery <strong>{runRecovery(impact)}</strong></span>
+            {#if impact.recovery_status === 'not_measurable'}
+                <span class="unknown" data-testid="impact-not-measurable">
+                    {notMeasurable(impact)}
+                </span>
+            {/if}
             {#if impact.unrecovered_probes}
                 <span class="warn" data-testid="impact-unrecovered">
                     {unrecovered(impact)}

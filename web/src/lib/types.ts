@@ -1046,6 +1046,8 @@ export interface ProbeImpact {
         outside_after_fault: number;
         /** Observed samples after the fault end. */
         observed_after_fault?: number;
+        /** Whether the last of them was inside the band; null when none. */
+        ended_inside?: boolean | null;
     };
     forecast?: {
         context_points: number;
@@ -1066,6 +1068,12 @@ export interface RunImpact {
      * recovered, or when none was watched long enough to be seen recovering.
      */
     recovery_time_s: number | null;
+    /**
+     * What `recovery_time_s` means: `recovered` (a time), `unrecovered` (a
+     * probe never settled), `undetermined` (no probe was watched long enough
+     * to say) or `not_measurable` (no probe could be evaluated at all).
+     */
+    recovery_status: 'recovered' | 'unrecovered' | 'undetermined' | 'not_measurable';
     /** Evaluated probes that never settled back inside their band. */
     unrecovered_probes?: number;
     /** Evaluated probes not sampled long enough after the fault to say. */
