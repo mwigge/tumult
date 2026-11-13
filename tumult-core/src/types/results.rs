@@ -210,10 +210,16 @@ pub struct LoadExecution {
     /// Windows that ran to their end and reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_windows: Option<u32>,
-    /// Completed windows in which no request was answered (a blackout).
+    /// Windows in which no request was answered (a blackout): the
+    /// completed ones, and those counted in `lost_to_unanswered`.
     /// Recorded, never a deviation by itself.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub unanswered_windows: u32,
+    /// Windows that never ran because the unanswered window before them
+    /// was still waiting for its requests to time out when their slot
+    /// came. Part of the blackout, not a truncation of the plan.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lost_to_unanswered: u32,
     /// The load was ended by a halt or an interrupt, not by the plan or
     /// the method running out.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -241,12 +247,15 @@ impl LoadExecution {
         *self == Self::default()
     }
 
-    /// Fewer windows completed than the plan called for. `false` for a
-    /// tool that does not count windows.
+    /// Fewer windows are accounted for — completed, or lost to a blackout
+    /// — than the plan called for. `false` for a tool that does not count
+    /// windows.
     #[must_use]
     pub fn truncated(&self) -> bool {
         match (self.planned_windows, self.completed_windows) {
-            (Some(planned), Some(completed)) => completed < planned,
+            (Some(planned), Some(completed)) => {
+                completed.saturating_add(self.lost_to_unanswered) < planned
+            }
             _ => false,
         }
     }
@@ -545,6 +554,7 @@ mod tests {
             planned_windows: Some(60),
             completed_windows: Some(35),
             unanswered_windows: 2,
+            lost_to_unanswered: 1,
             aborted: true,
             reasons: vec!["25 of 60 windows were skipped".into()],
         };

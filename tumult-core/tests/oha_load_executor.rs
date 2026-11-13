@@ -168,8 +168,8 @@ fn flat_config_is_one_window_and_one_sample() {
     assert_eq!(result.execution.completed_windows, Some(1));
     assert!(!result.execution.aborted);
     assert!(result.execution.reasons.is_empty());
-    // A one-second window waits two seconds for a slow answer, not thirty.
-    assert_eq!(recorded(&dir, "timeouts"), vec!["2s"]);
+    // A one-second window gives up on an answer before its slot is over.
+    assert_eq!(recorded(&dir, "timeouts"), vec!["750ms"]);
 }
 
 #[test]
@@ -196,46 +196,73 @@ fn the_request_timeout_follows_the_window_up_to_thirty_seconds() {
     );
 }
 
-#[test]
-fn a_stretched_window_shortens_or_skips_the_next_to_stay_on_the_plan_clock() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    let dir = tempfile::tempdir().expect("tempdir");
-    // Every window takes 1.3 s whatever its `-z`: a slow tail on a
-    // one-second window.
-    let stretched = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 1.3", 1);
-    install_fake_oha(&dir, &stretched);
+/// What oha 1.16 prints against a target that never answers (`-w -t`),
+/// after outliving its one-second slot by half a second while its last
+/// requests time out.
+fn fake_blacked_out() -> String {
+    "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\nsleep 1.5\ncat <<'JSON'\n\
+     {\"summary\":{\"successRate\":0.0,\"total\":1.5,\"slowest\":null,\"requestsPerSec\":2.6},\
+     \"latencyPercentiles\":{\"p50\":null,\"p95\":null,\"p99\":null},\
+     \"statusCodeDistribution\":{},\"errorDistribution\":{\"timeout\":4}}\nJSON\nexit 0\n"
+        .to_string()
+}
 
+/// Run a four-window soak of one-second windows to the end of its plan.
+/// The stop comes three seconds after the plan's last slot has closed, so
+/// a loaded machine cannot turn the wait into windows left unstarted.
+fn run_soak_to_its_end(config: &LoadConfig) -> tumult_core::types::LoadResult {
     let executor = OhaLoadExecutor::default();
-    let handle = executor.start(&soak(4.0)).expect("starts");
-    // Window 1 runs 0–1.3 s. Window 2 is 0.3 s late, so it runs for the
-    // 0.7 s left of its slot (and ends at 2.6 s). Window 3's slot (2–3 s)
-    // has only 0.4 s left: skipped. Window 4 starts on time at 3 s.
-    std::thread::sleep(Duration::from_millis(3200));
-    wait_for_calls(&dir, 3);
-    let result = executor.stop(handle).expect("stops");
+    let handle = executor.start(config).expect("starts");
+    std::thread::sleep(Duration::from_secs(7));
+    executor.stop(handle).expect("stops")
+}
 
-    let lengths = recorded(&dir, "lengths");
-    assert_eq!(lengths.len(), 3, "{lengths:?}");
-    assert_eq!(lengths[0], "1s");
-    assert_eq!(lengths[2], "1s", "the plan is back on its clock");
-    let shortened: f64 = lengths[1]
-        .strip_suffix("ms")
-        .unwrap_or_else(|| panic!("window 2 should be shortened, got {}", lengths[1]))
-        .parse()
-        .expect("milliseconds");
-    assert!(
-        (500.0..=720.0).contains(&shortened),
-        "window 2 ran {shortened} ms"
-    );
+#[test]
+fn a_blacked_out_soak_of_one_second_windows_is_recorded_not_truncated() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    std::env::remove_var("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, &fake_blacked_out());
+
+    // Every started window ends half a second into the next one's slot,
+    // so the plan clock shortens or drops the windows behind it. Which
+    // of the two depends on scheduling; neither is a truncation.
+    let result = run_soak_to_its_end(&soak(4.0));
 
     assert_eq!(result.execution.planned_windows, Some(4));
-    assert_eq!(result.execution.completed_windows, Some(3));
     assert!(
-        !result.thresholds_met,
-        "a skipped window truncates the plan"
+        !result.execution.truncated(),
+        "{:?}",
+        result.execution.reasons
     );
-    let reasons = result.execution.reasons.join("; ");
-    assert!(reasons.contains("1 of 4 windows skipped"), "{reasons}");
+    assert_eq!(result.execution.unanswered_windows, 4);
+    assert!(result.samples.is_empty());
+    assert!((result.error_rate - 1.0).abs() < 1e-9);
+    assert!(
+        result.thresholds_met,
+        "no threshold declared: {:?}",
+        result.execution.reasons
+    );
+}
+
+#[test]
+fn a_blacked_out_soak_misses_a_declared_threshold() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    std::env::remove_var("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, &fake_blacked_out());
+
+    let mut bounded = soak(4.0);
+    bounded.thresholds.insert("error_rate".into(), 0.5);
+    let result = run_soak_to_its_end(&bounded);
+
+    assert!(!result.thresholds_met);
+    assert!(
+        !result.execution.truncated(),
+        "the miss is the threshold's, not a truncation: {:?}",
+        result.execution.reasons
+    );
+    assert_eq!(result.execution.unanswered_windows, 4);
 }
 
 #[test]

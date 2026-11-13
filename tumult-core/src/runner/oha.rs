@@ -16,10 +16,12 @@
 //! window's time is up is waited for and measured rather than dropped, and
 //! with `-t`, so a request that never answers is counted as a timeout
 //! error. A window may therefore outlast its slot by up to the request
-//! timeout. That timeout is the window's planned length, never below
-//! [`MIN_REQUEST_TIMEOUT`] nor above [`DEFAULT_REQUEST_TIMEOUT`], unless
-//! `TUMULT_OHA_REQUEST_TIMEOUT_S` sets it. Each sample carries the length
-//! the window really ran, not the planned one.
+//! timeout. That timeout is the window's planned length, never above
+//! [`DEFAULT_REQUEST_TIMEOUT`]; a window shorter than [`SHORT_WINDOW`]
+//! gives up after [`SHORT_WINDOW_TIMEOUT_SHARE`] of its length, so one
+//! hung request cannot by itself cost the next window its slot.
+//! `TUMULT_OHA_REQUEST_TIMEOUT_S` overrides both. Each sample carries the
+//! length the window really ran, not the planned one.
 //!
 //! # The plan clock
 //!
@@ -38,7 +40,11 @@
 //! ran to their end ([`LoadExecution`]). A plan that fell short — a window
 //! skipped, failed, or never started — never meets its thresholds, and the
 //! reasons say why. A window in which nothing was answered is counted and
-//! recorded; it fails the run only through a declared threshold.
+//! recorded; it fails the run only through a declared threshold. The same
+//! holds for a slot lost behind such a window: while a blacked-out window
+//! waits for its requests to time out, the windows whose slots it runs
+//! into are part of the blackout (`unanswered_windows`,
+//! `lost_to_unanswered`), not a truncation of the plan.
 //!
 //! # Ending a run
 //!
@@ -68,9 +74,17 @@ pub const DEFAULT_WINDOW_GRACE: Duration = Duration::from_secs(10);
 /// The longest oha waits for one answer before counting the request as a
 /// timeout error, unless `TUMULT_OHA_REQUEST_TIMEOUT_S` says otherwise.
 pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// The shortest default request timeout: a one-second window still gives
-/// a slow answer this long.
-pub const MIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
+/// A window shorter than this is a short window: its default request
+/// timeout is a share of its length rather than the whole of it.
+pub const SHORT_WINDOW: Duration = Duration::from_secs(2);
+/// The share of a short window's length its requests may take before
+/// they count as timed out; the rest is slack for the window to end and
+/// report inside its own slot.
+pub const SHORT_WINDOW_TIMEOUT_SHARE: f64 = 0.75;
+/// The shortest timeout oha can be given.
+const MIN_REQUEST_TIMEOUT: Duration = Duration::from_millis(1);
+/// The longest a single window may be asked to run.
+const MAX_WINDOW_S: f64 = 86_400.0;
 /// How long an aborted window gets to print its partial summary before
 /// its process group is killed.
 pub const ABORT_SUMMARY_WAIT: Duration = Duration::from_secs(1);
@@ -150,18 +164,34 @@ fn request_timeout_from(text: &str) -> Result<Duration, String> {
 }
 
 /// The request timeout of a window planned for `window_s` seconds when
-/// none is configured: the window's own length, at least
-/// [`MIN_REQUEST_TIMEOUT`] and at most [`DEFAULT_REQUEST_TIMEOUT`]. A
-/// window so waits for a slow answer no longer than it ran, which bounds
-/// how long a normal stop can keep a fault injected.
+/// none is configured: the window's own length, at most
+/// [`DEFAULT_REQUEST_TIMEOUT`], so a window waits for a slow answer no
+/// longer than it ran — which bounds how long a normal stop can keep a
+/// fault injected. A window shorter than [`SHORT_WINDOW`] gives up after
+/// [`SHORT_WINDOW_TIMEOUT_SHARE`] of its length: with the whole length a
+/// request sent late in a one-second window would hold the window open
+/// for most of the next one's slot.
 #[must_use]
 pub fn default_request_timeout(window_s: f64) -> Duration {
-    let floor = MIN_REQUEST_TIMEOUT.as_secs_f64();
-    let ceiling = DEFAULT_REQUEST_TIMEOUT.as_secs_f64();
     if !window_s.is_finite() {
         return DEFAULT_REQUEST_TIMEOUT;
     }
-    Duration::from_secs_f64(window_s.clamp(floor, ceiling))
+    if window_s >= SHORT_WINDOW.as_secs_f64() {
+        return Duration::from_secs_f64(window_s.min(DEFAULT_REQUEST_TIMEOUT.as_secs_f64()));
+    }
+    let capped = window_s.max(0.0) * SHORT_WINDOW_TIMEOUT_SHARE;
+    Duration::from_secs_f64(capped).max(MIN_REQUEST_TIMEOUT)
+}
+
+/// A window length oha and the clock can express: at least a millisecond,
+/// at most [`MAX_WINDOW_S`]. A length that is not a number counts as the
+/// shortest, so a broken plan fails its window instead of the worker.
+fn window_length_s(length_s: f64) -> f64 {
+    const SHORTEST_S: f64 = 0.001;
+    if length_s.is_nan() {
+        return SHORTEST_S;
+    }
+    length_s.clamp(SHORTEST_S, MAX_WINDOW_S)
 }
 
 /// How one window ended.
@@ -190,7 +220,18 @@ struct WindowOutcome {
 struct PlanRun {
     planned: usize,
     outcomes: Vec<WindowOutcome>,
+    /// Skipped behind a window that answered and ran over.
     overrun: usize,
+    /// Skipped behind a window in which nothing answered: the slot went
+    /// to that window's wait for its requests to time out.
+    lost_to_unanswered: usize,
+}
+
+impl WindowEnd {
+    /// The window ran to its end and nothing in it was answered.
+    fn unanswered(&self) -> bool {
+        matches!(self, Self::Completed(summary) if summary.latency.is_none())
+    }
 }
 
 /// The two ways a run is told to end, shared with the worker thread.
@@ -419,6 +460,119 @@ fn slot_for(elapsed_s: f64, window: &load_profile::Window) -> Slot {
     }
 }
 
+/// The plan clock: how far into the run it is, and how to wait on it.
+/// Production reads the wall clock; tests drive a scripted one, so the
+/// schedule is checked without racing the machine.
+trait PlanClock {
+    /// Seconds since the run began.
+    fn elapsed_s(&self) -> f64;
+    fn sleep(&self, wait: Duration);
+}
+
+/// The wall clock, started with the run.
+struct WallClock(Instant);
+
+impl PlanClock for WallClock {
+    fn elapsed_s(&self) -> f64 {
+        self.0.elapsed().as_secs_f64()
+    }
+
+    fn sleep(&self, wait: Duration) {
+        std::thread::sleep(wait);
+    }
+}
+
+/// What the schedule needs from whoever runs the windows.
+trait WindowHost {
+    /// Whether the run was told to end. The first window ignores a normal
+    /// stop, so a load that was stopped at once still leaves evidence.
+    fn ended(&self, first: bool) -> bool;
+
+    /// Run one window for `length_s` and say how it ended.
+    fn run_window(&self, window: &load_profile::Window, length_s: f64) -> WindowEnd;
+}
+
+/// Run the plan's windows on the plan clock until the plan is exhausted
+/// or the run is told to end.
+fn drive(
+    windows: &[load_profile::Window],
+    clock: &dyn PlanClock,
+    host: &dyn WindowHost,
+) -> PlanRun {
+    let mut run = PlanRun {
+        planned: windows.len(),
+        outcomes: Vec::with_capacity(windows.len()),
+        ..PlanRun::default()
+    };
+    // Whether the last window that ran answered nothing: a slot lost
+    // behind it is part of the same blackout.
+    let mut behind_unanswered = false;
+    for (i, window) in windows.iter().enumerate() {
+        let Some(slot) = await_slot(clock, host, window, i == 0) else {
+            break;
+        };
+        let Slot::Run { length_s, .. } = slot else {
+            skip(&mut run, i + 1, behind_unanswered);
+            continue;
+        };
+        let end = host.run_window(window, length_s);
+        behind_unanswered = end.unanswered();
+        run.outcomes.push(WindowOutcome {
+            ts_ns: super::epoch_nanos_now(),
+            vus: window.vus,
+            end,
+        });
+    }
+    run
+}
+
+/// Count window `number`, whose slot was mostly gone when its turn came.
+fn skip(run: &mut PlanRun, number: usize, behind_unanswered: bool) {
+    if behind_unanswered {
+        run.lost_to_unanswered += 1;
+        tracing::warn!(
+            window = number,
+            planned = run.planned,
+            "oha window not run: the unanswered window before it was still waiting for its \
+             requests to time out"
+        );
+        return;
+    }
+    run.overrun += 1;
+    tracing::warn!(
+        window = number,
+        planned = run.planned,
+        "oha window skipped: the windows before it overran its slot"
+    );
+}
+
+/// Wait for `window`'s slot to open and say how it runs; `None` when the
+/// run was told to end first.
+fn await_slot(
+    clock: &dyn PlanClock,
+    host: &dyn WindowHost,
+    window: &load_profile::Window,
+    first: bool,
+) -> Option<Slot> {
+    loop {
+        if host.ended(first) {
+            return None;
+        }
+        let slot = if first {
+            Slot::Run {
+                wait: Duration::ZERO,
+                length_s: window.duration_s,
+            }
+        } else {
+            slot_for(clock.elapsed_s(), window)
+        };
+        match slot {
+            Slot::Run { wait, .. } if !wait.is_zero() => clock.sleep(wait.min(POLL_INTERVAL)),
+            ready => return Some(ready),
+        }
+    }
+}
+
 /// What every window of one run shares.
 struct WindowRunner {
     binary: String,
@@ -430,39 +584,13 @@ struct WindowRunner {
 }
 
 impl WindowRunner {
-    /// Run the plan's windows on the plan clock until the plan is
-    /// exhausted or the run is told to end.
+    /// Run the plan's windows against the wall clock.
     fn run(&self, windows: &[load_profile::Window]) -> PlanRun {
-        let clock = Instant::now();
-        let mut run = PlanRun {
-            planned: windows.len(),
-            outcomes: Vec::with_capacity(windows.len()),
-            overrun: 0,
-        };
-        for (i, window) in windows.iter().enumerate() {
-            let Some(slot) = self.await_slot(clock, window, i == 0) else {
-                break;
-            };
-            let Slot::Run { length_s, .. } = slot else {
-                run.overrun += 1;
-                tracing::warn!(
-                    window = i + 1,
-                    planned = run.planned,
-                    "oha window skipped: the windows before it overran its slot"
-                );
-                continue;
-            };
-            run.outcomes.push(WindowOutcome {
-                ts_ns: super::epoch_nanos_now(),
-                vus: window.vus,
-                end: self.run_window(window, length_s),
-            });
-        }
-        run
+        drive(windows, &WallClock(Instant::now()), self)
     }
+}
 
-    /// Whether the run was told to end. The first window ignores a normal
-    /// stop, so a load that was stopped at once still leaves evidence.
+impl WindowHost for WindowRunner {
     fn ended(&self, first: bool) -> bool {
         if self.control.abort.load(Ordering::SeqCst) {
             return true;
@@ -470,38 +598,10 @@ impl WindowRunner {
         !first && self.control.stop.load(Ordering::SeqCst)
     }
 
-    /// Wait for `window`'s slot to open and say how it runs; `None` when
-    /// the run was told to end first.
-    fn await_slot(
-        &self,
-        clock: Instant,
-        window: &load_profile::Window,
-        first: bool,
-    ) -> Option<Slot> {
-        loop {
-            if self.ended(first) {
-                return None;
-            }
-            let slot = if first {
-                Slot::Run {
-                    wait: Duration::ZERO,
-                    length_s: window.duration_s,
-                }
-            } else {
-                slot_for(clock.elapsed().as_secs_f64(), window)
-            };
-            match slot {
-                Slot::Run { wait, .. } if !wait.is_zero() => {
-                    std::thread::sleep(wait.min(POLL_INTERVAL));
-                }
-                ready => return Some(ready),
-            }
-        }
-    }
-
     /// Spawn one window's process for `length_s` and wait for it, bounded
     /// by that length plus the request timeout plus grace.
     fn run_window(&self, window: &load_profile::Window, length_s: f64) -> WindowEnd {
+        let length_s = window_length_s(length_s);
         let request_timeout = self
             .request_timeout
             .unwrap_or_else(|| default_request_timeout(window.duration_s));
@@ -534,10 +634,8 @@ impl WindowRunner {
             Ok(child) => child,
             Err(e) => return WindowEnd::Failed(format!("failed to start oha: {e}")),
         };
-        let deadline = Instant::now()
-            + Duration::from_secs_f64(length_s.max(0.0))
-            + request_timeout
-            + self.grace;
+        let deadline =
+            Instant::now() + Duration::from_secs_f64(length_s) + request_timeout + self.grace;
         match wait_bounded(child, deadline, &self.control.abort) {
             Waited::Exited(output) => match summary_of(&output, window.vus) {
                 Ok(summary) => WindowEnd::Completed(summary),
@@ -970,15 +1068,20 @@ fn window_count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-/// How the plan was carried out, with the reasons it fell short.
-fn execution(
-    folded: &Folded,
+/// The counts of a plan run that are not in the folded windows.
+#[derive(Debug, Clone, Copy)]
+struct PlanCounts {
     planned: usize,
     started: usize,
     overrun: usize,
-    abort_requested: bool,
-) -> LoadExecution {
-    let not_started = planned.saturating_sub(started + overrun);
+    lost_to_unanswered: usize,
+}
+
+/// How the plan was carried out, with the reasons it fell short.
+fn execution(folded: &Folded, plan: PlanCounts, abort_requested: bool) -> LoadExecution {
+    let planned = plan.planned;
+    let accounted = plan.started + plan.overrun + plan.lost_to_unanswered;
+    let not_started = planned.saturating_sub(accounted);
     // An abort that arrived after the plan had run out cut nothing.
     let aborted = abort_requested && (folded.cut || not_started > 0);
     let completed = folded.completed;
@@ -994,9 +1097,10 @@ fn execution(
             folded.failures.len()
         ));
     }
-    if overrun > 0 {
+    if plan.overrun > 0 {
         reasons.push(format!(
-            "{overrun} of {planned} windows skipped: the windows before them overran their slot"
+            "{} of {planned} windows skipped: the windows before them overran their slot",
+            plan.overrun
         ));
     }
     if !aborted && not_started > 0 {
@@ -1011,7 +1115,8 @@ fn execution(
     LoadExecution {
         planned_windows: Some(window_count(planned)),
         completed_windows: Some(window_count(completed)),
-        unanswered_windows: window_count(folded.unanswered),
+        unanswered_windows: window_count(folded.unanswered + plan.lost_to_unanswered),
+        lost_to_unanswered: window_count(plan.lost_to_unanswered),
         aborted,
         reasons,
     }
@@ -1050,15 +1155,14 @@ fn aggregate(
     plan: PlanRun,
     thresholds: &std::collections::HashMap<String, f64>,
 ) -> LoadResult {
-    let started = plan.outcomes.len();
+    let counts = PlanCounts {
+        planned: plan.planned,
+        started: plan.outcomes.len(),
+        overrun: plan.overrun,
+        lost_to_unanswered: plan.lost_to_unanswered,
+    };
     let folded = fold(plan.outcomes);
-    let execution = execution(
-        &folded,
-        plan.planned,
-        started,
-        plan.overrun,
-        run.abort_requested,
-    );
+    let execution = execution(&folded, counts, run.abort_requested);
     log_shortfall(&execution);
     #[allow(clippy::cast_precision_loss)]
     let elapsed_s = (run.ended_at_ns - run.started_at_ns) as f64 / 1_000_000_000.0;
@@ -1297,14 +1401,23 @@ mod tests {
 
     #[test]
     fn the_default_request_timeout_follows_the_window_within_bounds() {
-        // A short window still gives a slow answer two seconds …
-        assert_eq!(default_request_timeout(1.0), Duration::from_secs(2));
-        assert_eq!(default_request_timeout(0.2), Duration::from_secs(2));
-        // … a middling one waits as long as it ran …
+        // A window of two seconds or more waits as long as it ran …
+        assert_eq!(default_request_timeout(2.0), Duration::from_secs(2));
         assert_eq!(default_request_timeout(10.0), Duration::from_secs(10));
         // … and a long one never more than the ceiling.
         assert_eq!(default_request_timeout(600.0), DEFAULT_REQUEST_TIMEOUT);
         assert_eq!(default_request_timeout(f64::NAN), DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    #[test]
+    fn a_short_window_gives_up_on_a_request_before_its_slot_is_over() {
+        // A one-second window (the soak shape) must not wait two seconds
+        // for an answer: that alone would cost the next window its slot.
+        assert_eq!(default_request_timeout(1.0), Duration::from_millis(750));
+        assert_eq!(default_request_timeout(0.2), Duration::from_millis(150));
+        // Never so short that oha cannot express it.
+        assert_eq!(default_request_timeout(0.0), Duration::from_millis(1));
+        assert_eq!(default_request_timeout(-3.0), Duration::from_millis(1));
     }
 
     fn slot(offset_s: f64, duration_s: f64) -> load_profile::Window {
@@ -1357,6 +1470,211 @@ mod tests {
         assert_eq!(slot_for(30.0, &slot(10.0, 5.0)), Slot::Skip);
     }
 
+    /// A clock that moves only when the schedule sleeps or a scripted
+    /// window runs, so the schedule is checked without racing the machine.
+    struct ScriptedClock(std::cell::Cell<f64>);
+
+    impl PlanClock for ScriptedClock {
+        fn elapsed_s(&self) -> f64 {
+            self.0.get()
+        }
+
+        fn sleep(&self, wait: Duration) {
+            self.0.set(self.0.get() + wait.as_secs_f64());
+        }
+    }
+
+    /// How long a scripted window takes beyond the length it was given,
+    /// and whether anything answered in it.
+    #[derive(Clone, Copy)]
+    struct Scripted {
+        overrun_s: f64,
+        answered: bool,
+    }
+
+    /// Windows that take scripted time: the listed ones in order, then
+    /// `rest` for every further window.
+    struct ScriptedHost<'a> {
+        clock: &'a ScriptedClock,
+        script: std::cell::RefCell<std::collections::VecDeque<Scripted>>,
+        rest: Scripted,
+        lengths: std::cell::RefCell<Vec<f64>>,
+    }
+
+    impl WindowHost for ScriptedHost<'_> {
+        fn ended(&self, _first: bool) -> bool {
+            false
+        }
+
+        fn run_window(&self, _window: &load_profile::Window, length_s: f64) -> WindowEnd {
+            self.lengths.borrow_mut().push(length_s);
+            let next = self.script.borrow_mut().pop_front().unwrap_or(self.rest);
+            let took_s = length_s + next.overrun_s;
+            self.clock.sleep(Duration::from_secs_f64(took_s));
+            if next.answered {
+                return WindowEnd::Completed(summary(100, 0.1, took_s));
+            }
+            WindowEnd::Completed(OhaSummary {
+                requests: 100,
+                errors: 100,
+                answered: 0,
+                elapsed_s: took_s,
+                throughput_rps: 0.0,
+                latency: None,
+            })
+        }
+    }
+
+    const ON_TIME: Scripted = Scripted {
+        overrun_s: 0.0,
+        answered: true,
+    };
+
+    /// Drive `n` one-second windows (the soak shape) through `script`,
+    /// then `rest`, and return the plan run with the lengths each started
+    /// window was given.
+    fn drive_soak(n: u32, script: &[Scripted], rest: Scripted) -> (PlanRun, Vec<f64>) {
+        let windows: Vec<load_profile::Window> = (0..n)
+            .map(|i| load_profile::Window {
+                offset_s: f64::from(i),
+                duration_s: 1.0,
+                vus: 20,
+            })
+            .collect();
+        let clock = ScriptedClock(std::cell::Cell::new(0.0));
+        let host = ScriptedHost {
+            clock: &clock,
+            script: std::cell::RefCell::new(script.iter().copied().collect()),
+            rest,
+            lengths: std::cell::RefCell::new(Vec::new()),
+        };
+        let run = drive(&windows, &clock, &host);
+        let lengths = host.lengths.into_inner();
+        (run, lengths)
+    }
+
+    #[test]
+    fn a_stretched_window_shortens_or_skips_the_next_to_stay_on_the_plan_clock() {
+        // Every answered window runs 0.3 s over. Window 1 ends at 1.3 s,
+        // so window 2 runs the 0.7 s left of its slot and ends at 2.3 s.
+        // Window 3 is 0.3 s late and runs 0.7 s, to 3.3 s. Window 4 the
+        // same. Then a slow tail of 0.9 s: window 5's slot is gone.
+        let over = Scripted {
+            overrun_s: 0.3,
+            answered: true,
+        };
+        let slow = Scripted {
+            overrun_s: 0.9,
+            answered: true,
+        };
+        let (plan, lengths) = drive_soak(6, &[over, over, over, slow], ON_TIME);
+        assert_eq!(lengths.len(), 5, "{lengths:?}");
+        assert!((lengths[0] - 1.0).abs() < 1e-6, "{lengths:?}");
+        for shortened in &lengths[1..4] {
+            assert!((shortened - 0.7).abs() < 1e-6, "{lengths:?}");
+        }
+        // Window 4 ended at 3.3 + 0.7 + 0.9 = 4.9 s: window 5 is skipped
+        // and window 6 starts on time, the plan back on its clock.
+        assert!((lengths[4] - 1.0).abs() < 1e-6, "{lengths:?}");
+        assert_eq!(plan.overrun, 1);
+
+        let result = aggregate(&run(6_000_000_000), plan, &thresholds(&[]));
+        assert_eq!(result.execution.planned_windows, Some(6));
+        assert_eq!(result.execution.completed_windows, Some(5));
+        assert!(result.execution.truncated());
+        assert!(
+            !result.thresholds_met,
+            "a window skipped behind an answered one truncates the plan"
+        );
+        let reasons = result.execution.reasons.join("; ");
+        assert!(reasons.contains("1 of 6 windows skipped"), "{reasons}");
+    }
+
+    #[test]
+    fn a_slot_lost_behind_an_unanswered_window_is_a_blackout_not_a_truncation() {
+        // Window 1 answers nothing and waits 0.75 s for its last requests
+        // to time out: window 2's slot has 0.25 s left and is not run.
+        let silent = Scripted {
+            overrun_s: 0.75,
+            answered: false,
+        };
+        let (plan, lengths) = drive_soak(4, &[silent], ON_TIME);
+        assert_eq!(lengths.len(), 3, "{lengths:?}");
+
+        let result = aggregate(&run(4_000_000_000), plan, &thresholds(&[]));
+        assert_eq!(result.execution.planned_windows, Some(4));
+        assert!(
+            !result.execution.truncated(),
+            "{:?}",
+            result.execution.reasons
+        );
+        // The silent window and the slot it consumed.
+        assert_eq!(result.execution.unanswered_windows, 2);
+        assert_eq!(result.samples.len(), 2);
+        assert!(
+            result.thresholds_met,
+            "no threshold was declared, so the blackout is evidence, not a verdict"
+        );
+    }
+
+    #[test]
+    fn a_blacked_out_soak_deviates_only_through_a_declared_threshold() {
+        // 24 one-second windows against a target that answers nothing:
+        // each started window waits 0.75 s past its end for the timeouts.
+        let silent = Scripted {
+            overrun_s: 0.75,
+            answered: false,
+        };
+        let blackout = || drive_soak(24, &[], silent).0;
+
+        let result = aggregate(&run(24_000_000_000), blackout(), &thresholds(&[]));
+        assert_eq!(result.execution.planned_windows, Some(24));
+        assert!(
+            !result.execution.truncated(),
+            "{:?}",
+            result.execution.reasons
+        );
+        assert_eq!(result.execution.unanswered_windows, 24);
+        assert!(result.samples.is_empty());
+        assert!((result.error_rate - 1.0).abs() < 1e-9);
+        assert!(result.thresholds_met, "{:?}", result.execution.reasons);
+
+        let bound = thresholds(&[("error_rate", 0.5)]);
+        let result = aggregate(&run(24_000_000_000), blackout(), &bound);
+        assert!(!result.thresholds_met);
+        assert!(!result.execution.truncated());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_non_finite_window_length_fails_the_window_instead_of_panicking() {
+        let runner = WindowRunner {
+            binary: "true".into(),
+            url: "http://127.0.0.1:1/".into(),
+            request_timeout: None,
+            grace: Duration::from_secs(5),
+            control: Arc::new(Control::default()),
+        };
+        for length_s in [f64::INFINITY, f64::NAN, f64::NEG_INFINITY, -1.0] {
+            let window = load_profile::Window {
+                offset_s: 0.0,
+                duration_s: length_s,
+                vus: 1,
+            };
+            // `true` prints no summary: the window fails, the thread lives.
+            let end = runner.run_window(&window, length_s);
+            assert!(matches!(end, WindowEnd::Failed(_)), "{length_s}: {end:?}");
+        }
+    }
+
+    #[test]
+    fn a_window_length_is_clamped_to_what_oha_and_the_clock_can_express() {
+        assert!((window_length_s(5.0) - 5.0).abs() < 1e-12);
+        assert!((window_length_s(f64::NAN) - 0.001).abs() < 1e-12);
+        assert!((window_length_s(-2.0) - 0.001).abs() < 1e-12);
+        assert!((window_length_s(f64::INFINITY) - MAX_WINDOW_S).abs() < 1e-12);
+    }
+
     fn run(ended_at_ns: i64) -> RunShape {
         RunShape {
             started_at_ns: 0,
@@ -1383,7 +1701,7 @@ mod tests {
         PlanRun {
             planned: outcomes.len(),
             outcomes,
-            overrun: 0,
+            ..PlanRun::default()
         }
     }
 
@@ -1512,6 +1830,7 @@ mod tests {
             planned: 60,
             outcomes,
             overrun: 0,
+            lost_to_unanswered: 0,
         };
         let result = aggregate(&run(20), truncated, &thresholds(&[]));
         assert_eq!(result.execution.planned_windows, Some(60));
@@ -1532,6 +1851,7 @@ mod tests {
             planned: 4,
             outcomes: vec![window(1, 100, 0.1), window(2, 100, 0.1)],
             overrun: 2,
+            lost_to_unanswered: 0,
         };
         let result = aggregate(&run(20), skipped, &thresholds(&[]));
         assert_eq!(result.execution.completed_windows, Some(2));
@@ -1629,6 +1949,7 @@ mod tests {
             planned: 3,
             outcomes: vec![],
             overrun: 0,
+            lost_to_unanswered: 0,
         };
         let result = aggregate(&aborted_run(), nothing, &thresholds(&[]));
         assert!(result.execution.aborted);
@@ -1643,6 +1964,7 @@ mod tests {
             planned: 5,
             outcomes,
             overrun: 0,
+            lost_to_unanswered: 0,
         };
         let result = aggregate(&aborted_run(), aborted, &thresholds(&[]));
         assert!(result.execution.aborted);

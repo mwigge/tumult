@@ -178,6 +178,10 @@ pub(super) fn result_attributes(result: &LoadResult) -> Vec<KeyValue> {
             "resilience.load.unanswered_windows",
             i64::from(execution.unanswered_windows),
         ));
+        attributes.push(KeyValue::new(
+            "resilience.load.lost_to_unanswered",
+            i64::from(execution.lost_to_unanswered),
+        ));
     }
     if !execution.reasons.is_empty() {
         attributes.push(KeyValue::new(
