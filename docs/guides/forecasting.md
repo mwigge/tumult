@@ -84,7 +84,7 @@ Each probe's entry carries a `reference`:
 | `reference` | Meaning |
 |---|---|
 | `baseline` | The run has samples before the fault. They are the context; the forecast runs forward across the fault and post phases. |
-| `post_backcast` | The run has no pre-fault samples (the runner samples the during and post phases). The post-phase samples, reversed, are the context; the forecast runs backwards across the fault window. Post samples still recovering right after the fault (the run before the first sample inside the 10–90 % range of the later half of the post phase, at most the earlier half) are left out of the context, so the backcast does not extend the recovery slope across the fault window. The post phase is compared with the 10–90 % range of the remaining, settled samples. |
+| `post_backcast` | The run has no pre-fault samples (the runner samples the during and post phases). The post-phase samples, reversed, are the context; the forecast runs backwards across the fault window. Post samples still recovering right after the fault (the run before the first sample inside the 10–90 % range of the later half of the post phase, at most the earlier half) are left out of the context, so the backcast does not extend the recovery slope across the fault window. A later sample far outside the settled range (more than three widths of the 10–90 % range of the later half) is a gap in the context for the same reason: one stray spike next to the fault must not bend the backcast. It is still drawn and still counted against the band. The post phase is compared with the 10–90 % range of the remaining, settled samples. |
 
 The backcast assumes the system ended the run in its normal state. If it
 did not — the post phase is still degraded — the counterfactual is too

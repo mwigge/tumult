@@ -17,7 +17,9 @@
 //! band. Post samples still recovering right after the fault are left out
 //! of both the context and that band, or the backcast would extend the
 //! recovery slope across the fault window and the band would count the
-//! recovery as normal. [`plan`] picks the reference from the fault window; every
+//! recovery as normal. A later post sample far outside the settled range (a
+//! stray spike) stays an observation but is a gap in the context, so a
+//! single outlier next to the fault cannot bend the backcast. [`plan`] picks the reference from the fault window; every
 //! [`Impact`] says which one it used.
 //!
 //! # Limits worth knowing
@@ -304,12 +306,9 @@ pub fn plan(values: &[f64], fault: FaultWindow) -> Result<Plan, ForecastError> {
             "no samples before or after the fault to forecast from".into(),
         ));
     }
-    let skipped = unsettled_head(&values[fault.end..]);
-    let context: Vec<f64> = values[fault.end + skipped..]
-        .iter()
-        .rev()
-        .copied()
-        .collect();
+    let post = &values[fault.end..];
+    let skipped = unsettled_head(post);
+    let context = backcast_context(post, skipped);
     Ok(Plan {
         reference: Reference::PostBackcast,
         fault,
@@ -339,6 +338,41 @@ fn unsettled_head(post: &[f64]) -> usize {
         .iter()
         .position(|v| *v >= lower && *v <= upper)
         .unwrap_or(half)
+}
+
+/// How far outside the settled 10-90 range a post sample may lie and still
+/// be context, in widths of that range.
+const FENCE_WIDTHS: f64 = 3.0;
+
+/// The backcast's context: the post samples after the skipped head,
+/// reversed, with strays turned into gaps. One spike next to the fault
+/// would otherwise be the last thing the provider sees, and a trend fitted
+/// through it runs straight across the fault window.
+fn backcast_context(post: &[f64], skipped: usize) -> Vec<f64> {
+    let kept = post[skipped..].iter().rev().copied();
+    let Some((lower, upper)) = fence(post) else {
+        return kept.collect();
+    };
+    kept.map(|v| if v < lower || v > upper { f64::NAN } else { v })
+        .collect()
+}
+
+/// The range a settled post sample is expected in: the 10-90 range of the
+/// later half of the phase, [`FENCE_WIDTHS`] of its width to each side (the
+/// width is at least the band floor, so a flat phase still has a fence).
+/// `None` when the phase is too short to judge.
+fn fence(post: &[f64]) -> Option<(f64, f64)> {
+    if post.len() < MIN_POST_FOR_SKIP {
+        return None;
+    }
+    let settled = &post[post.len() / 2..];
+    let lower = stats::quantile(settled, 0.1);
+    let upper = stats::quantile(settled, 0.9);
+    let width = (upper - lower).max(2.0 * band::floor(settled));
+    if !width.is_finite() {
+        return None;
+    }
+    Some((lower - FENCE_WIDTHS * width, upper + FENCE_WIDTHS * width))
 }
 
 fn indicator(context_len: usize, total_len: usize) -> Covariates {
@@ -586,6 +620,52 @@ mod tests {
         assert_eq!(impact.summary.samples_post, 10);
         assert_eq!(impact.recovery.recovered_at, Some(5));
         assert_eq!(impact.recovery.steps_after_fault, Some(2));
+    }
+
+    /// The samples of a live run: the probe recovers over two samples, then
+    /// one stray spike follows on an otherwise settled post phase.
+    fn run_with_a_stray_spike() -> Vec<f64> {
+        let mut values = vec![53.0, 304.0, 308.0, 306.0];
+        values.extend([167.0, 154.0, 54.0, 587.0, f64::NAN, 55.0, 54.0, 58.0]);
+        values.extend([53.0, 53.0, 53.0, 53.0, 53.0, 55.0, 53.0, 53.0]);
+        values.extend([53.0, 53.0, 54.0, 59.0]);
+        values
+    }
+
+    #[test]
+    fn backcast_context_leaves_out_a_stray_spike_after_the_tail() {
+        let values = run_with_a_stray_spike();
+        let p = plan(&values, FaultWindow { start: 0, end: 4 }).unwrap();
+        assert_eq!(
+            p.horizon, 6,
+            "the fault window and the two recovering samples"
+        );
+        assert_eq!(p.context.len(), 18);
+        // Nearest the fault: 54, then the spike as a gap, then the real gap.
+        assert!((p.context[17] - 54.0).abs() < 1e-12);
+        assert!(p.context[16].is_nan(), "the spike is not context");
+        assert!(p.context[15].is_nan());
+        assert!(p.context.iter().all(|v| v.is_nan() || *v < 60.0));
+        assert_eq!(p.context.iter().filter(|v| v.is_nan()).count(), 2);
+    }
+
+    #[test]
+    fn a_stray_spike_does_not_bend_the_backcast() {
+        let values = run_with_a_stray_spike();
+        let fault = FaultWindow { start: 0, end: 4 };
+        let impact = counterfactual(&HoltWinters::new(), &values, fault, 3).unwrap();
+        let top = impact
+            .samples
+            .iter()
+            .take(4)
+            .map(|s| s.median)
+            .fold(f64::MIN, f64::max);
+        assert!(top < 100.0, "the counterfactual follows the spike: {top}");
+        assert!(impact.summary.during_peak > 1.0, "{:?}", impact.summary);
+        assert!(impact.summary.during_outside_ratio >= 0.75);
+        // The spike is still observed and still counted against the band.
+        assert!((impact.samples[7].observed - 587.0).abs() < 1e-12);
+        assert!(impact.samples[7].impact > 1.0);
     }
 
     #[test]
