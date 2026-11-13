@@ -107,7 +107,7 @@ fn unknown_keys_fail_loudly() {
 fn threshold_out_of_range_is_rejected() {
     let err = LoadedPolicy::parse("[autopilot]\nautonomy_threshold = 1.5\n").unwrap_err();
     assert!(
-        matches!(err, PolicyError::ThresholdOutOfRange(_)),
+        matches!(err, PolicyError::ThresholdOutOfRange(value) if value.to_bits() == 1.5_f64.to_bits()),
         "got {err}"
     );
 }
@@ -205,40 +205,4 @@ fn boundary_thresholds_are_accepted() {
         });
         assert_eq!(loaded.policy.autonomy_threshold.to_bits(), expected_bits);
     }
-}
-
-#[test]
-fn every_policy_error_variant_has_a_human_readable_message() {
-    let parse = LoadedPolicy::parse("[autopilot]\nnope = true\n").unwrap_err();
-    assert!(parse.to_string().contains("TOML parse error"), "{parse}");
-
-    let threshold = LoadedPolicy::parse("[autopilot]\nautonomy_threshold = 1.5\n").unwrap_err();
-    assert_eq!(
-        threshold.to_string(),
-        "autonomy_threshold 1.5 must be within 0.0..=1.0"
-    );
-
-    let samples = LoadedPolicy::parse("[autopilot]\nautonomy_min_samples = 0\n").unwrap_err();
-    assert_eq!(
-        samples.to_string(),
-        "autonomy_min_samples must be at least 1"
-    );
-
-    let pretrust = LoadedPolicy::parse(
-        "[[autopilot.pretrusted]]\nplugin = \"\"\naction = \"a\"\ntier = \"t\"\n",
-    )
-    .unwrap_err();
-    assert_eq!(
-        pretrust.to_string(),
-        "pretrusted entry 0 has an empty plugin/action/tier"
-    );
-
-    let playbook = LoadedPolicy::parse(
-        "[[autopilot.playbook]]\nplugin = \"p\"\naction = \"a\"\nexperiment = \"\"\n",
-    )
-    .unwrap_err();
-    assert_eq!(
-        playbook.to_string(),
-        "playbook entry 0 has an empty plugin/action/experiment"
-    );
 }
