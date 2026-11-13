@@ -6,6 +6,8 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
+    import { coverageLabels } from '#lib/coverage.js';
+    import { esc } from '#lib/starmap/style.js';
     import type {
         ConformanceReport,
         MeResponse,
@@ -106,18 +108,18 @@
     const heatmapOption: EChartsCoreOption | null = $derived.by(() => {
         if (!report) return null;
         const kinds = report.coverage.kinds;
-        const targets = report.coverage.targets.map((c) => c.target);
+        const targets = coverageLabels(report.coverage.targets);
         const data = report.coverage.targets.flatMap((c, y) =>
             c.cells.map((cell) => [kinds.indexOf(cell.kind), y, STATUS_VALUE[cell.status] ?? 0]),
         );
         return {
-            grid: { left: 110, right: 16, top: 10, bottom: 40 },
+            grid: { left: 150, right: 16, top: 10, bottom: 40 },
             tooltip: {
                 ...t.tooltip,
                 formatter: (p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
                     const status = ['missing', 'stale', 'covered'][v] ?? '';
-                    return `<b>${targets[y]}</b> · ${kinds[x]}<br/>${status}`;
+                    return `<b>${esc(targets[y])}</b> · ${esc(kinds[x])}<br/>${status}`;
                 },
             },
             xAxis: { type: 'category', data: kinds, axisLabel: { color: t.text } },
