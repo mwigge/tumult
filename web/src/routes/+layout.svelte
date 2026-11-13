@@ -43,6 +43,7 @@
     }[] = [
         { href: '/', label: 'Overview', icon: '◧' },
         { href: '/posture', label: 'Posture', icon: '◎' },
+        { href: '/performance', label: 'Performance', icon: '◭' },
         { href: '/scores', label: 'Scores', icon: '▦' },
         { href: '/experiments', label: 'Experiments', icon: '⚗' },
         { href: '/runs', label: 'Runs', icon: '▶' },
