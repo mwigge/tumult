@@ -76,6 +76,9 @@ pub enum EngineError {
     /// A `dr` experiment declares no recovery time objective.
     #[error("kind = dr requires rto_target_s (the recovery time objective the failover is measured against)")]
     DrRequiresRto,
+    /// The load profile cannot be turned into a plan (see `reason`).
+    #[error("load profile is invalid: {reason}")]
+    LoadProfileInvalid { reason: String },
     /// The experiment template references variables that were never defined.
     #[error("experiment template references undefined variables: {names}")]
     UndefinedVars { names: String },

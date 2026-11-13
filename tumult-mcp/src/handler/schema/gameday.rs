@@ -38,7 +38,7 @@ pub struct GameDayAnalyzeTool {
 /// Fails if `<name>.gameday.toon` already exists.
 #[macros::mcp_tool(
     name = "tumult_gameday_create",
-    description = "Create a .gameday.toon campaign file (<name>.gameday.toon in the workspace root) from experiment paths, with optional shared load config (load_tool k6 or jmeter, load_script, load_vus) and compliance framework mapping. Fails if the file already exists.",
+    description = "Create a .gameday.toon campaign file (<name>.gameday.toon in the workspace root) from experiment paths, with optional shared load config (load_tool k6, oha or jmeter, load_script, load_vus) and compliance framework mapping. Fails if the file already exists.",
     destructive_hint = false,
     read_only_hint = false,
     idempotent_hint = false,

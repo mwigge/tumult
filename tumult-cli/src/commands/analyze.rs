@@ -666,6 +666,7 @@ mod tests {
                 error_rate: 0.01,
                 total_requests: 3000,
                 thresholds_met: true,
+                samples: vec![],
             }),
             analysis: None,
             regulatory: None,

@@ -162,13 +162,48 @@ pub struct BaselineConfig {
 
 // ── Load Config ────────────────────────────────────────────────
 
+/// Shape of the traffic a load generator produces over `duration_s`. Every
+/// profile is turned into the same tool-agnostic plan of stages (see
+/// `runner::load_profile`), which each load adapter renders in its own
+/// vocabulary; a profile therefore requires `duration_s`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LoadProfile {
+    /// Linear ramp from `start_vus` up to `vus` over `ramp_up_s`, then hold
+    /// `vus` for the rest of the duration.
+    Ramp {
+        /// Virtual users at the start of the ramp.
+        start_vus: u32,
+        /// Seconds the ramp takes to reach `vus`.
+        ramp_up_s: f64,
+    },
+    /// Steady `vus`, a sudden jump to `peak_vus` after `after_s` held for
+    /// `hold_s`, then back to `vus` for the remainder.
+    Spike {
+        /// Virtual users during the spike.
+        peak_vus: u32,
+        /// Seconds of steady load before the spike.
+        after_s: f64,
+        /// Seconds the spike is held.
+        hold_s: f64,
+    },
+    /// Constant `vus` for the whole (long) duration, with the tool's
+    /// summary sampled every `sample_interval_s` so the run streams a time
+    /// series instead of one end-of-run summary.
+    Soak {
+        /// Seconds between streamed samples.
+        sample_interval_s: f64,
+    },
+}
+
 /// Load test configuration: a load generator run alongside the experiment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoadConfig {
     /// Load tool to run.
     pub tool: LoadTool,
-    /// Path to the load script executed by the tool.
+    /// Path to the load script executed by the tool. For `oha`, which
+    /// takes no script, this is the URL to hit.
     pub script: PathBuf,
     /// Virtual users (passed to the tool when set).
     pub vus: Option<u32>,
@@ -177,6 +212,9 @@ pub struct LoadConfig {
     /// Tool-specific metric thresholds (metric name → bound).
     #[serde(default)]
     pub thresholds: HashMap<String, f64>,
+    /// Traffic shape; `None` is a flat `vus` for `duration_s`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<LoadProfile>,
 }
 
 // ── Regulatory Mapping ─────────────────────────────────────────
@@ -511,6 +549,7 @@ mod tests {
                 ("http_req_duration_p95".into(), 500.0),
                 ("http_req_failed_rate".into(), 0.01),
             ]),
+            profile: None,
         };
         let decoded: LoadConfig = toon_round_trip(&config);
         assert_eq!(decoded, config);
@@ -658,6 +697,56 @@ mod tests {
         assert!(
             toon_format::decode_default::<Experiment>("title: t\ntarget:\n  name: x\n").is_err()
         );
+    }
+
+    #[test]
+    fn load_profiles_parse_and_round_trip() {
+        let ramp = "title: t\nload:\n  tool: k6\n  script: load.js\n  vus: 50\n  duration_s: 120\n  profile:\n    type: ramp\n    start_vus: 5\n    ramp_up_s: 30\n";
+        let exp: Experiment = toon_format::decode_default(ramp).expect("parse ramp");
+        let load = exp.load.as_ref().expect("load");
+        assert_eq!(
+            load.profile,
+            Some(LoadProfile::Ramp {
+                start_vus: 5,
+                ramp_up_s: 30.0
+            })
+        );
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let spike = "title: t\nload:\n  tool: oha\n  script: http://localhost:8080/health\n  vus: 10\n  duration_s: 60\n  profile:\n    type: spike\n    peak_vus: 200\n    after_s: 20\n    hold_s: 10\n";
+        let exp: Experiment = toon_format::decode_default(spike).expect("parse spike");
+        let load = exp.load.as_ref().expect("load");
+        assert_eq!(load.tool, LoadTool::Oha);
+        assert!(matches!(
+            load.profile,
+            Some(LoadProfile::Spike { peak_vus: 200, .. })
+        ));
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let soak = "title: t\nload:\n  tool: oha\n  script: http://localhost:8080/\n  vus: 20\n  duration_s: 3600\n  profile:\n    type: soak\n    sample_interval_s: 10\n";
+        let exp: Experiment = toon_format::decode_default(soak).expect("parse soak");
+        assert!(matches!(
+            exp.load.as_ref().and_then(|l| l.profile.as_ref()),
+            Some(LoadProfile::Soak { .. })
+        ));
+    }
+
+    #[test]
+    fn load_without_profile_still_parses_and_omits_the_field() {
+        let toon = "title: t\nload:\n  tool: k6\n  script: load.js\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        assert_eq!(exp.load.as_ref().and_then(|l| l.profile.clone()), None);
+        let encoded = toon_format::encode_default(&exp).expect("encode");
+        assert!(!encoded.contains("profile"), "{encoded}");
+    }
+
+    #[test]
+    fn unknown_load_profile_field_or_type_is_rejected() {
+        let bogus_field = "title: t\nload:\n  tool: k6\n  script: load.js\n  duration_s: 60\n  profile:\n    type: ramp\n    start_vus: 1\n    ramp_up_s: 5\n    bogus: 1\n";
+        assert!(toon_format::decode_default::<Experiment>(bogus_field).is_err());
+        let bogus_type =
+            "title: t\nload:\n  tool: k6\n  script: load.js\n  profile:\n    type: burst\n";
+        assert!(toon_format::decode_default::<Experiment>(bogus_type).is_err());
     }
 
     #[test]

@@ -133,7 +133,7 @@ pub(crate) enum Commands {
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
-        /// Path to load test script (k6 `.js`)
+        /// Path to load test script (k6 `.js`), or the URL to hit for oha
         #[arg(long)]
         load_script: Option<PathBuf>,
         /// Number of virtual users for load test

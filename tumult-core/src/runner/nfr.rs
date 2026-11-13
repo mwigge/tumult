@@ -259,6 +259,7 @@ mod tests {
             error_rate: 0.02,
             total_requests: 1200,
             thresholds_met: true,
+            samples: vec![],
         }
     }
 

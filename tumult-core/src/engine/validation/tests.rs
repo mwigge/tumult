@@ -477,3 +477,102 @@ fn validate_rejects_bad_recovery_targets_and_dr_without_rto() {
         Err(EngineError::DrRequiresRto)
     ));
 }
+
+fn with_load(
+    profile: Option<LoadProfile>,
+    vus: Option<u32>,
+    duration_s: Option<f64>,
+) -> Experiment {
+    with_method(Experiment {
+        load: Some(LoadConfig {
+            tool: LoadTool::K6,
+            script: "load.js".into(),
+            vus,
+            duration_s,
+            thresholds: HashMap::new(),
+            profile,
+        }),
+        ..Default::default()
+    })
+}
+
+fn load_error(exp: &Experiment) -> String {
+    match validate_experiment(exp) {
+        Err(EngineError::LoadProfileInvalid { reason }) => reason,
+        other => panic!("expected LoadProfileInvalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn validate_accepts_well_formed_load_profiles() {
+    let ramp = LoadProfile::Ramp {
+        start_vus: 1,
+        ramp_up_s: 30.0,
+    };
+    assert!(validate_experiment(&with_load(Some(ramp), Some(50), Some(120.0))).is_ok());
+    let spike = LoadProfile::Spike {
+        peak_vus: 200,
+        after_s: 20.0,
+        hold_s: 10.0,
+    };
+    assert!(validate_experiment(&with_load(Some(spike), Some(10), Some(60.0))).is_ok());
+    let soak = LoadProfile::Soak {
+        sample_interval_s: 10.0,
+    };
+    assert!(validate_experiment(&with_load(Some(soak), None, Some(3600.0))).is_ok());
+    // No profile: a flat load needs no duration.
+    assert!(validate_experiment(&with_load(None, None, None)).is_ok());
+}
+
+#[test]
+fn validate_rejects_a_profile_without_duration() {
+    let soak = LoadProfile::Soak {
+        sample_interval_s: 10.0,
+    };
+    assert!(load_error(&with_load(Some(soak), None, None)).contains("duration_s"));
+}
+
+#[test]
+fn validate_rejects_ramp_that_does_not_fit() {
+    let too_long = LoadProfile::Ramp {
+        start_vus: 1,
+        ramp_up_s: 200.0,
+    };
+    assert!(load_error(&with_load(Some(too_long), Some(50), Some(120.0))).contains("ramp_up_s"));
+    let backwards = LoadProfile::Ramp {
+        start_vus: 60,
+        ramp_up_s: 10.0,
+    };
+    assert!(load_error(&with_load(Some(backwards), Some(50), Some(120.0))).contains("start_vus"));
+    let nan = LoadProfile::Ramp {
+        start_vus: 1,
+        ramp_up_s: f64::NAN,
+    };
+    assert!(load_error(&with_load(Some(nan), Some(50), Some(120.0))).contains("finite"));
+}
+
+#[test]
+fn validate_rejects_spike_that_does_not_fit_or_does_not_rise() {
+    let overflow = LoadProfile::Spike {
+        peak_vus: 200,
+        after_s: 55.0,
+        hold_s: 10.0,
+    };
+    assert!(
+        load_error(&with_load(Some(overflow), Some(10), Some(60.0))).contains("after_s + hold_s")
+    );
+    let flat = LoadProfile::Spike {
+        peak_vus: 10,
+        after_s: 5.0,
+        hold_s: 10.0,
+    };
+    assert!(load_error(&with_load(Some(flat), Some(10), Some(60.0))).contains("peak_vus"));
+}
+
+#[test]
+fn validate_rejects_soak_interval_longer_than_the_run() {
+    let soak = LoadProfile::Soak {
+        sample_interval_s: 100.0,
+    };
+    assert!(load_error(&with_load(Some(soak), None, Some(60.0))).contains("sample_interval_s"));
+}
