@@ -968,7 +968,7 @@ export interface ConformanceReport {
 
 /** Which model produced a forecast; `fallback_reason` is set when the
     sidecar was configured but the built-in provider answered instead. It is
-    a code (`unreachable`, `timeout`, `bad_response`, `rejected`,
+    a code (`unreachable`, `timeout`, `bad_response`, `rejected`, `busy`,
     `circuit_open`); the detail is in the daemon's log. */
 export interface ForecastProvenance {
     model: string;

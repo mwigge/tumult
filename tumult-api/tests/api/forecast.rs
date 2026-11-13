@@ -896,8 +896,29 @@ async fn a_rejected_request_falls_back_without_opening_the_circuit() {
     }
 }
 
+/// A throttled request costs that request its model forecast and no
+/// other: the reason is `busy`, and the next request is sent as well.
+#[tokio::test]
+async fn a_throttled_request_falls_back_without_opening_the_circuit() {
+    let (url, sidecar) = spawn_fake_sidecar().await;
+    sidecar.status.store(429, Ordering::SeqCst);
+    let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(600)).await;
+    seed_run_with_samples(&srv, "run-busy", "exp-busy").await;
+    for expected_hits in 1..=2 {
+        let (status, body) = get(&srv.base, "/api/runs/run-busy/impact").await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["provenance"]["model"], "holt-winters");
+        assert_eq!(body["provenance"]["fallback_reason"], "busy");
+        assert_eq!(sidecar.hits.load(Ordering::SeqCst), expected_hits);
+    }
+    sidecar.status.store(0, Ordering::SeqCst);
+    sidecar.healthy.store(true, Ordering::SeqCst);
+    let (_, body) = get(&srv.base, "/api/runs/run-busy/impact").await;
+    assert_eq!(body["provenance"]["model"], "timestral", "{body}");
+}
+
 /// A status that every request would get (a wrong URL, a proxy asking for
-/// credentials, a throttle, a full sidecar) opens the circuit: one request
+/// credentials, a sidecar that is down) opens the circuit: one request
 /// pays for finding out, the rest fall back at once.
 #[tokio::test]
 async fn a_status_that_is_not_about_the_request_opens_the_circuit() {
@@ -905,7 +926,6 @@ async fn a_status_that_is_not_about_the_request_opens_the_circuit() {
         (404, "bad_response"),
         (401, "bad_response"),
         (403, "bad_response"),
-        (429, "bad_response"),
         (503, "bad_response"),
         (408, "timeout"),
     ] {

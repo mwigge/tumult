@@ -237,8 +237,9 @@ error), which stays out of the API response.
 |---|---|
 | `unreachable` | No connection to the sidecar |
 | `timeout` | No answer in time |
-| `bad_response` | A status that is not about this one request (5xx, and 401, 403, 404, 429 or any other 4xx not listed under `rejected`), or a body the daemon cannot use: not JSON, the wrong shape, other quantile levels than requested, values that are not finite |
+| `bad_response` | A status that is not about this one request (5xx, and 401, 403, 404 or any other 4xx not listed under `rejected` or `busy`), or a body the daemon cannot use: not JSON, the wrong shape, other quantile levels than requested, values that are not finite |
 | `rejected` | The sidecar answered 400, 413 or 422: it will not take this request. Also a request larger than the sidecar accepts, which is never sent |
+| `busy` | The sidecar had no slot for this request: it answered 503 with `Retry-After`, or 429. Also a request that arrived while the daemon already had four calls to the sidecar under way, which is not sent |
 | `circuit_open` | The sidecar is being skipped after a failure (below) |
 
 The sidecar gets 3 seconds to accept a connection and 15 seconds per
@@ -258,18 +259,32 @@ fallback. Success closes the circuit, another failure starts a new
 cool-down. An answer that arrives late, from a call made before the circuit
 last opened, cannot close it.
 
-`rejected` is the one code that does not open the circuit. It means the
-sidecar turned down that one request with 400, 413 or 422 (a context it
-will not take), so only that request falls back. A request too large to
-send is turned down before the breaker is asked at all. If the rejected
-request was the half-open probe, the circuit neither closes nor starts a
-new cool-down: the next request is the probe.
+Two codes do not open the circuit. `rejected` means the sidecar turned
+down that one request with 400, 413 or 422 (a context it will not take),
+so only that request falls back. A request too large to send is turned
+down before the breaker is asked at all. `busy` means the sidecar is
+working and has no slot to spare: it answered 503 with a `Retry-After`
+header, which is what `tumult-forecastd` sends when every slot is taken,
+or 429. Skipping a working sidecar for the cool-down would turn one full
+moment into thirty seconds without the model, so only that request falls
+back and the next one is sent. If a rejected or busy request was the
+half-open probe, the circuit neither closes nor starts a new cool-down:
+the next request is the probe.
+
+The daemon also keeps the sidecar from getting full in the first place. It
+has at most four calls to the sidecar under way at once, the sidecar's
+default `FORECASTD_MAX_CONCURRENT`. A request that arrives while all four
+are taken gets the Holt-Winters fallback at once with `fallback_reason:
+busy`; it is not queued and not sent. Lowering `FORECASTD_MAX_CONCURRENT`
+below four, or pointing several daemons at one sidecar, brings the
+sidecar's own 503 back, and that is handled the same way.
 
 Every other status opens the circuit, 4xx included. 404, 401 and 403 mean
-the URL is wrong or something in front of the sidecar wants credentials;
-429 and 503 mean it is throttling or full; 408 is reported as `timeout`.
-Each of them would meet every request alike, so one request finds out and
-the rest fall back at once instead of each paying for the round trip.
+the URL is wrong or something in front of the sidecar wants credentials; a
+5xx, a 503 without `Retry-After` included, means it is failing; 408 is
+reported as `timeout`. Each of them would meet every request alike, so one
+request finds out and the rest fall back at once instead of each paying
+for the round trip.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -345,8 +360,9 @@ Requests in hand are bounded. A request takes one of
 with its answer; when every slot is taken the next request gets `503` at
 once instead of queueing behind the model. A body that takes more than 30
 seconds to arrive is a `408`, so a stalled upload cannot hold a slot. The
-daemon treats `503` as `bad_response` and `408` as `timeout`: both open the
-circuit, and the requests of the cool-down are answered by Holt-Winters.
+daemon treats that `503` (it carries `retry-after`) as `busy`: the one
+request is answered by Holt-Winters and the circuit stays closed. A `408`
+is a `timeout` and opens the circuit.
 
 ### Logs
 

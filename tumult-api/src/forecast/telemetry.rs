@@ -5,7 +5,7 @@
 //!   `sidecar`, `built_in`, `fallback` or `error`.
 //! - `forecast.sidecar_call` — one `POST /forecast` to the sidecar, a child
 //!   of the above. `outcome` is `ok` or the coarse failure code
-//!   (`unreachable`, `timeout`, `bad_response`, `rejected`).
+//!   (`unreachable`, `timeout`, `bad_response`, `rejected`, `busy`).
 //!
 //! ## Counters
 //! - `tumult.forecast.fallbacks` — the built-in provider stepped in for a

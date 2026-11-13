@@ -49,6 +49,7 @@
         timeout: 'sidecar timed out',
         bad_response: 'sidecar answer not usable',
         rejected: 'sidecar refused the request',
+        busy: 'sidecar busy',
         circuit_open: 'sidecar circuit open',
     };
 

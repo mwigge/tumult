@@ -208,6 +208,8 @@ pub struct ApiState {
     forecast_client: Option<Arc<forecast::client::TimestralClient>>,
     /// Skips a failing sidecar for a cool-down (`TUMULTD_FORECAST_COOLDOWN_S`).
     forecast_breaker: Arc<forecast::breaker::Breaker>,
+    /// One permit per call to the sidecar that may be under way.
+    forecast_slots: Arc<tokio::sync::Semaphore>,
 }
 
 impl ApiState {
@@ -238,6 +240,7 @@ impl ApiState {
             manifests_dir: None,
             forecast_client: None,
             forecast_breaker: Arc::default(),
+            forecast_slots: Arc::new(tokio::sync::Semaphore::new(forecast::SIDECAR_SLOTS)),
         }
     }
 
@@ -276,6 +279,11 @@ impl ApiState {
     #[must_use]
     pub fn forecast_url(&self) -> Option<&str> {
         self.forecast_client.as_deref().map(|c| c.base())
+    }
+
+    /// The slots for calls to the forecasting sidecar.
+    pub(crate) fn forecast_slots(&self) -> &tokio::sync::Semaphore {
+        &self.forecast_slots
     }
 
     /// The forecasting sidecar's client, when configured.

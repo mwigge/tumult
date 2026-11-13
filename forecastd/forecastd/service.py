@@ -50,8 +50,8 @@ class Gate:
     A request takes a slot before its body is read and gives it back when
     it has been answered, so ``limit`` bounds the bodies held in memory and
     the forecasts running or waiting for the model. A request that finds
-    no slot is not queued: it is answered 503 at once, which the daemon
-    counts against its circuit and answers from its fallback."""
+    no slot is not queued: it is answered 503 with ``retry-after`` at once,
+    which the daemon answers from its fallback without opening its circuit."""
 
     def __init__(self, limit: int = DEFAULT_MAX_CONCURRENT) -> None:
         if limit < 1:

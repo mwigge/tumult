@@ -8,15 +8,18 @@
 //! the built-in Holt-Winters provider, and the response's `provenance`
 //! says which one it was. When the built-in provider stepped in for a
 //! configured sidecar, `fallback_reason` is one coarse code:
-//! `unreachable`, `timeout`, `bad_response`, `rejected` or
+//! `unreachable`, `timeout`, `bad_response`, `rejected`, `busy` or
 //! `circuit_open`. What exactly went wrong is in the daemon's log only.
 //!
 //! A failing sidecar opens a circuit breaker ([`breaker`]) so the requests
 //! that follow skip it and get the fallback at once until a cool-down has
-//! passed. `rejected` is the one code that does not: it is a request the
-//! sidecar turned down with 400, 413 or 422, or one too large to send.
-//! Every other status (401, 403, 404, 408, 429 and 5xx included) would
-//! meet every request alike and opens the circuit.
+//! passed. Two codes do not: `rejected` is a request the sidecar turned
+//! down with 400, 413 or 422, or one too large to send, and `busy` is a
+//! sidecar with no slot to spare (429, or 503 with `Retry-After`) or a
+//! daemon that already has [`SIDECAR_SLOTS`] calls under way. Both cost
+//! the one request its model forecast and nothing else. Every other
+//! status (401, 403, 404, 408 and 5xx included) would meet every request
+//! alike and opens the circuit.
 //! Whoever made it, a band narrower than the series can resolve
 //! is widened to [`tumult_forecast::band::floor`] and flagged
 //! `degenerate_band`. Spans and counters are described in [`telemetry`].
@@ -46,6 +49,9 @@ const MS_NS: i64 = 1_000_000;
 const BUILT_IN_MODEL: &str = "holt-winters";
 /// `fallback_reason` while the sidecar is being skipped.
 const CIRCUIT_OPEN: &str = "circuit_open";
+/// Calls to the sidecar under way at once, at most: its own default
+/// (`DEFAULT_MAX_CONCURRENT` in `forecastd/forecastd/service.py`).
+pub const SIDECAR_SLOTS: usize = 4;
 
 /// A forecast plus where it came from.
 pub(crate) struct Produced {
@@ -70,7 +76,9 @@ fn log_sidecar_failure(error: &client::SidecarError) {
 ///
 /// A request the sidecar would never be sent is turned down before the
 /// breaker is asked: it says nothing about the sidecar and must not take
-/// the half-open probe.
+/// the half-open probe. The same goes for a request that arrives while
+/// [`SIDECAR_SLOTS`] calls are under way: the sidecar would answer it 503,
+/// so it gets the fallback (`busy`) without the round trip.
 async fn ask_sidecar(
     state: &ApiState,
     client: &client::TimestralClient,
@@ -81,6 +89,11 @@ async fn ask_sidecar(
         log_sidecar_failure(&e);
         return Err(e.kind.code());
     }
+    // The slot comes first: a request that finds none must not take the
+    // half-open probe with it.
+    let Ok(_slot) = state.forecast_slots().try_acquire() else {
+        return Err(client::FailureKind::Busy.code());
+    };
     let breaker = state.forecast_breaker();
     let Some(permit) = breaker.admit(Instant::now()) else {
         return Err(CIRCUIT_OPEN);
@@ -342,6 +355,167 @@ mod tests {
         let later = Instant::now();
         assert!(breaker.admit(later).is_some(), "the next request probes");
         assert!(breaker.admit(later).is_none(), "and it is the only one");
+    }
+
+    /// A stand-in sidecar: counts the calls it gets and answers each with
+    /// whatever `answer` makes.
+    async fn sidecar<F>(answer: F) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>)
+    where
+        F: Fn() -> axum::response::Response + Clone + Send + Sync + 'static,
+    {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/forecast",
+            axum::routing::post(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                let response = answer();
+                async move { response }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{addr}"), calls)
+    }
+
+    fn busy_answer(status: u16, retry_after: bool) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        let status = axum::http::StatusCode::from_u16(status).unwrap();
+        if !retry_after {
+            return (status, "slow down").into_response();
+        }
+        (status, [(axum::http::header::RETRY_AFTER, "1")], "busy").into_response()
+    }
+
+    /// The sidecar's own "every slot is taken" (503 with `Retry-After`)
+    /// and a throttle (429) cost the one request its model forecast. The
+    /// circuit stays closed: the next request is sent to the sidecar too.
+    #[tokio::test]
+    async fn a_busy_sidecar_is_a_fallback_for_one_request_and_keeps_the_circuit_closed() {
+        use std::sync::atomic::Ordering;
+        let cooldown = std::time::Duration::from_secs(600);
+        for (status, retry_after) in [(503, true), (429, false)] {
+            let (url, calls) = sidecar(move || busy_answer(status, retry_after)).await;
+            let state = state_with_sidecar(&url, cooldown);
+            assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("busy"));
+            assert!(
+                !state.forecast_breaker().is_open(Instant::now()),
+                "{status}"
+            );
+            assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("busy"));
+            assert_eq!(calls.load(Ordering::SeqCst), 2, "{status}: both were sent");
+        }
+    }
+
+    /// A 503 that does not say when to come back is an outage.
+    #[tokio::test]
+    async fn a_503_without_retry_after_opens_the_circuit() {
+        use std::sync::atomic::Ordering;
+        let (url, calls) = sidecar(|| busy_answer(503, false)).await;
+        let state = state_with_sidecar(&url, std::time::Duration::from_secs(600));
+        assert_eq!(
+            ask(&state, &[1.0, 2.0], 4).await.err(),
+            Some("bad_response")
+        );
+        assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some(CIRCUIT_OPEN));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// A busy answer to the half-open probe proves the sidecar is alive
+    /// but not that it can forecast: the next request probes again.
+    #[tokio::test]
+    async fn a_busy_probe_hands_the_probe_on() {
+        let (url, _calls) = sidecar(|| busy_answer(503, true)).await;
+        let state = state_with_sidecar(&url, std::time::Duration::from_secs(600));
+        let breaker = state.forecast_breaker();
+        let start = Instant::now();
+        let earlier = start.checked_sub(std::time::Duration::from_secs(601));
+        let opened = earlier.expect("the clock is more than ten minutes old");
+        breaker.record_failure(breaker.admit(opened).unwrap(), opened);
+        assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("busy"));
+        let later = Instant::now();
+        assert!(breaker.admit(later).is_some(), "the next request probes");
+        assert!(breaker.admit(later).is_none(), "and it is the only one");
+    }
+
+    const GOOD: &str = r#"{"levels":[0.1,0.5,0.9],"context_points":12,
+        "quantiles":[[[1.0,2.0,3.0]]],
+        "model":{"model":"timestral","model_id":"m","version":"1","weights_hash":"abc"}}"#;
+
+    /// The daemon never has more calls under way than the sidecar has
+    /// slots: one more gets the fallback at once, without a network call
+    /// that could only be answered 503, and a finished call frees its slot.
+    #[tokio::test]
+    async fn calls_beyond_the_sidecar_slots_fall_back_without_a_call() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::Ordering;
+        let (arrived_tx, mut arrived) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let (release, _) = tokio::sync::broadcast::channel::<()>(1);
+        let held = release.clone();
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/forecast",
+            axum::routing::post(move || {
+                let mut released = held.subscribe();
+                seen.fetch_add(1, Ordering::SeqCst);
+                let arrived = arrived_tx.clone();
+                async move {
+                    arrived.send(()).unwrap();
+                    released.recv().await.unwrap();
+                    GOOD.into_response()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let state = state_with_sidecar(
+            &format!("http://{addr}"),
+            std::time::Duration::from_secs(600),
+        );
+
+        let mut under_way = tokio::task::JoinSet::new();
+        for _ in 0..SIDECAR_SLOTS {
+            let state = state.clone();
+            under_way.spawn(async move { ask(&state, &[1.0, 2.0], 1).await.map(|_| ()) });
+        }
+        for _ in 0..SIDECAR_SLOTS {
+            arrived.recv().await.unwrap();
+        }
+        assert_eq!(ask(&state, &[1.0, 2.0], 1).await.err(), Some("busy"));
+        assert_eq!(calls.load(Ordering::SeqCst), SIDECAR_SLOTS, "not sent");
+        assert!(!state.forecast_breaker().is_open(Instant::now()));
+
+        release.send(()).unwrap();
+        while let Some(done) = under_way.join_next().await {
+            assert_eq!(done.unwrap(), Ok(()));
+        }
+        let (again, sent) = tokio::join!(ask(&state, &[1.0, 2.0], 1), async {
+            arrived.recv().await.unwrap();
+            release.send(()).unwrap();
+        });
+        let () = sent;
+        assert!(again.is_ok(), "a finished call gives its slot back");
+        assert_eq!(calls.load(Ordering::SeqCst), SIDECAR_SLOTS + 1);
+    }
+
+    /// More daemon-side slots than the sidecar has would only produce 503s.
+    #[test]
+    fn the_daemon_has_no_more_slots_than_the_sidecar() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../forecastd/forecastd/service.py"
+        );
+        let source = std::fs::read_to_string(path).unwrap();
+        let line = source
+            .lines()
+            .find(|l| l.starts_with("DEFAULT_MAX_CONCURRENT = "))
+            .expect("the sidecar's default slot count");
+        let sidecar: usize = line.split('=').nth(1).unwrap().trim().parse().unwrap();
+        assert!((1..=sidecar).contains(&SIDECAR_SLOTS), "{SIDECAR_SLOTS}");
     }
 
     /// Every `tracing` event in `source`, from the macro to its `);`.

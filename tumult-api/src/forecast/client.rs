@@ -38,22 +38,30 @@ pub enum FailureKind {
     /// The sidecar did not answer in time, or said so itself (408).
     Timeout,
     /// A status that is not about this one request (5xx, and 401, 403,
-    /// 404, 429 or any other 4xx: a wrong URL, a proxy, a throttle), a
-    /// redirect, an oversized body or an answer that is not the forecast
-    /// that was asked for.
+    /// 404 or any other 4xx: a wrong URL, a proxy), a redirect, an
+    /// oversized body or an answer that is not the forecast that was asked
+    /// for.
     BadResponse,
     /// The sidecar is alive and turned this one request down (400, 413 or
     /// 422), or the request exceeds what it accepts.
     Rejected,
+    /// The sidecar is alive and has no slot for this request right now
+    /// (429, or 503 with `Retry-After`), or the daemon already has as many
+    /// calls under way as the sidecar takes.
+    Busy,
 }
 
 /// What a non-2xx status says. Only the statuses the sidecar gives a
-/// request it will not take are a rejection; anything else would be
-/// answered to every request alike, so it counts against the sidecar.
-fn status_kind(status: reqwest::StatusCode) -> FailureKind {
-    match status.as_u16() {
-        400 | 413 | 422 => FailureKind::Rejected,
-        408 => FailureKind::Timeout,
+/// request it will not take are a rejection, and only a throttle (429) or
+/// a 503 that says when to come back (`retry_after`, which is how the
+/// sidecar answers when every slot is taken) is a sidecar that is merely
+/// busy. Anything else would be answered to every request alike, so it
+/// counts against the sidecar.
+fn status_kind(status: reqwest::StatusCode, retry_after: bool) -> FailureKind {
+    match (status.as_u16(), retry_after) {
+        (400 | 413 | 422, _) => FailureKind::Rejected,
+        (408, _) => FailureKind::Timeout,
+        (429, _) | (503, true) => FailureKind::Busy,
         _ => FailureKind::BadResponse,
     }
 }
@@ -67,14 +75,17 @@ impl FailureKind {
             Self::Timeout => "timeout",
             Self::BadResponse => "bad_response",
             Self::Rejected => "rejected",
+            Self::Busy => "busy",
         }
     }
 
     /// Whether the sidecar itself is at fault and should be skipped for a
-    /// while. A rejected request says nothing against the sidecar.
+    /// while. A rejected request says nothing against the sidecar, and a
+    /// busy one is working: skipping it for the cool-down would turn one
+    /// full moment into thirty seconds without the model.
     #[must_use]
     pub fn trips_breaker(self) -> bool {
-        self != Self::Rejected
+        !matches!(self, Self::Rejected | Self::Busy)
     }
 }
 
@@ -372,11 +383,12 @@ impl TimestralClient {
             .await
             .map_err(|e| SidecarError::transport("sidecar request failed", &e))?;
         let status = resp.status();
+        let retry_after = resp.headers().contains_key(reqwest::header::RETRY_AFTER);
         let body = read_capped(resp, MAX_RESPONSE_BYTES).await?;
         if !status.is_success() {
             let excerpt: String = body.chars().take(200).collect();
             return Err(SidecarError::new(
-                status_kind(status),
+                status_kind(status, retry_after),
                 format!("sidecar answered {status}: {excerpt}"),
             ));
         }
@@ -546,15 +558,47 @@ mod tests {
     }
 
     async fn answer_with(status: u16) -> SidecarError {
+        answer(status, None).await
+    }
+
+    async fn answer(status: u16, retry_after: Option<&'static str>) -> SidecarError {
         let status = StatusCode::from_u16(status).unwrap();
         let app = axum::Router::new().route(
             "/forecast",
-            post(move || async move { (status, "context too short") }),
+            post(move || async move {
+                let mut response = (status, "context too short").into_response();
+                if let Some(seconds) = retry_after {
+                    let value = header::HeaderValue::from_static(seconds);
+                    response.headers_mut().insert(header::RETRY_AFTER, value);
+                }
+                response
+            }),
         );
         let base = serve(app).await;
         ask(&TimestralClient::new(&base).unwrap())
             .await
             .unwrap_err()
+    }
+
+    /// A sidecar that says "not now" is working: every slot is taken, or
+    /// something in front of it is throttling. That is this request's
+    /// problem, not a reason to skip the sidecar for the cool-down.
+    #[tokio::test]
+    async fn a_full_or_throttling_sidecar_is_busy_and_does_not_trip() {
+        for (status, retry_after) in [(503, Some("1")), (429, None), (429, Some("5"))] {
+            let err = answer(status, retry_after).await;
+            assert_eq!(err.kind, FailureKind::Busy, "{status} {retry_after:?}");
+            assert!(!err.kind.trips_breaker(), "{status}");
+            assert_eq!(err.kind.code(), "busy");
+        }
+    }
+
+    /// Without `Retry-After` a 503 is an outage, not a full house.
+    #[tokio::test]
+    async fn a_503_without_retry_after_is_the_sidecars_fault() {
+        let err = answer(503, None).await;
+        assert_eq!(err.kind, FailureKind::BadResponse);
+        assert!(err.kind.trips_breaker());
     }
 
     /// Only a status that is about this one request is a rejection.
@@ -569,11 +613,11 @@ mod tests {
     }
 
     /// A wrong URL (404), a sidecar behind something that wants
-    /// credentials (401, 403), one that is throttling (429) or full (503)
-    /// would answer every request the same way: all of them trip.
+    /// credentials (401, 403) or one that is failing (5xx) would answer
+    /// every request the same way: all of them trip.
     #[tokio::test]
     async fn every_other_status_is_the_sidecars_fault() {
-        for status in [401, 403, 404, 405, 429, 500, 502, 503] {
+        for status in [401, 403, 404, 405, 500, 502, 503, 504] {
             let err = answer_with(status).await;
             assert_eq!(err.kind, FailureKind::BadResponse, "{status}");
             assert!(err.kind.trips_breaker(), "{status}");
