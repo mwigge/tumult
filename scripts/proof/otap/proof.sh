@@ -41,13 +41,13 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[1] start tumultd on a fresh lake (ingest token required on gRPC)"
-RUST_LOG=info "$BIN/tumultd" serve >"$WORK/tumultd.log" 2>&1 &
+RUST_LOG=info,tumult_ingest::otap=debug "$BIN/tumultd" serve >"$WORK/tumultd.log" 2>&1 &
 DPID=$!
 for _ in $(seq 1 60); do curl -fs "$URL/healthz" >/dev/null 2>&1 && break; sleep 0.5; done
 curl -fs "$URL/healthz" >/dev/null || { cat "$WORK/tumultd.log"; fail "daemon did not come up"; }
 pass "daemon healthy"
 
-echo "[2] start the Collector: otlp receiver -> otelarrow exporter -> tumultd (downgrade to OTLP disabled)"
+echo "[2] start the Collector: otlp receiver -> otelarrow exporter (default zstd gRPC compression) -> tumultd, no OTLP downgrade"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$CONTAINER" \
   --network host \
@@ -114,8 +114,10 @@ for _ in $(seq 1 60); do
 done
 [[ -s "$WORK/trace.json" ]] || { docker logs "$CONTAINER" 2>&1 | tail -20; tail -20 "$WORK/tumultd.log"; fail "trace never arrived"; }
 grep -q 'OTAP stream opened' "$WORK/tumultd.log" || fail "daemon log shows no OTel-Arrow stream (did the exporter downgrade?)"
+grep -q "zstdarrow gRPC encoding accepted" "$WORK/tumultd.log" || fail "exporter did not use its default zstdarrow gRPC compression"
 docker logs "$CONTAINER" >"$WORK/collector.log" 2>&1
 grep -qi 'downgrad' "$WORK/collector.log" && fail "collector downgraded to OTLP"
+grep -q 'arrow is not supported\|zstdarrow' "$WORK/collector.log" && fail "daemon refused the exporter's default gRPC compression (zstdarrow)"
 py "sp=d['spans']; assert len(sp)==3, sp
 root=[x for x in sp if x['span_name']=='resilience.experiment'][0]
 assert root['experiment_id']=='$EXP' and root['experiment_name']=='otap-proof', root
@@ -129,7 +131,7 @@ assert act['span_attrs']['targets']=='[\"pg-0\",\"7\"]', act['span_attrs']
 get=[x for x in sp if x['span_name']=='GET /checkout'][0]
 assert get['span_kind']=='Server' and get['span_attrs']['http.response.status_code']=='200', get
 print('     spans', [(x['span_name'], x['status_code']) for x in sp])" <"$WORK/trace.json"
-pass "3 spans decoded from OTel-Arrow: ids, kinds, status, events, unpromoted attrs"
+pass "3 spans decoded from OTel-Arrow (zstdarrow gRPC compression accepted): ids, kinds, status, events, unpromoted attrs"
 
 echo "[5] promoted columns from the resource: target system/technology/environment on the experiment"
 curl -fs "$URL/api/experiments" >"$WORK/experiments.json"

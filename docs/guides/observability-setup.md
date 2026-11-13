@@ -141,7 +141,6 @@ exporters:
       insecure: true            # or the daemon's TLS certificate
     headers:
       authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
-    compression: none           # see limits below
     arrow:
       disable_downgrade: true   # fail loudly instead of falling back to OTLP
       num_streams: 2
@@ -150,14 +149,19 @@ exporters:
 
 **Limits.**
 
-- gRPC-level compression must be `none`: the exporter registers Go-only
-  `zstdarrowN` encodings for it that the daemon cannot negotiate. The
-  Arrow IPC payloads stay zstd-compressed (`arrow.payload_compression`,
-  default `zstd`), which is where the saving is.
-- Span links, metric exemplars and multivariate metric batches are not
-  decoded (no lake column reads them; a multivariate batch is refused in
-  its status). Summary and exponential-histogram data points are counted
-  and rejected exactly as on the OTLP path.
+- gRPC compression: the exporter default works. It compresses each message
+  with zstd and announces it as `grpc-encoding: zstdarrow<level>` (level 1
+  to 9, default `zstdarrow5`); the daemon accepts those names as zstd, plus
+  plain `zstd`, `gzip` and `none`. Any other encoding is refused with
+  `UNIMPLEMENTED` naming it. The Arrow IPC payloads are zstd-compressed too
+  (`arrow.payload_compression`, default `zstd`).
+- Span links and metric exemplars are not stored, exactly as on the OTLP
+  path (no lake column holds them).
+- A multivariate metric batch is refused in its own `BatchStatus`
+  (`INVALID_ARGUMENT`, carrying the batch id and `MULTIVARIATE_METRICS` in
+  the message); the stream stays open and univariate batches keep landing.
+  Summary and exponential-histogram data points are counted and rejected
+  exactly as on the OTLP path.
 - Span events arrive sorted by name from the exporter and are restored to
   time order; attribute maps arrive sorted by key.
 - Per-batch `headers` (hpack metadata) are ignored; authenticate with the

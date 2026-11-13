@@ -15,12 +15,10 @@ exporters:
     endpoint: 127.0.0.1:${env:PROOF_GRPC_PORT}
     tls:
       insecure: true
+    # No `compression` key: the exporter default (zstd, sent as
+    # grpc-encoding zstdarrow5) is what the daemon must accept.
     headers:
       authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
-    # gRPC-level compression stays off: the exporter uses Go-only
-    # "zstdarrowN" encodings for it. The Arrow IPC payloads are still
-    # zstd-compressed (arrow.payload_compression defaults to zstd).
-    compression: none
     arrow:
       disable_downgrade: true
       num_streams: 1
