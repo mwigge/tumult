@@ -40,7 +40,7 @@ use tracing_subscriber::EnvFilter;
 use bridge::LogBridgeSlot;
 
 pub use bridge::AttachError;
-pub use error::{err, error_type, ErrorChain};
+pub use error::{err, err_sources, error_type, ErrorChain, SourceChain};
 pub use fields::{bounded, TypedFields, MAX_FIELD_BYTES};
 pub use filter::{default_directives, is_exporter_internal};
 pub use format::{EventFormatter, LogFormat, LogResource};

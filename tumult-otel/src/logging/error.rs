@@ -27,6 +27,37 @@ impl<E: fmt::Display + ?Sized> fmt::Display for ErrorChain<'_, E> {
     }
 }
 
+/// Formats a `std::error::Error` for the `error.message` field, following
+/// its `source()` chain.
+///
+/// Use this instead of [`err`] for errors whose `Display` names only the
+/// outermost failure (`tonic::transport::Error` prints `transport error` and
+/// keeps the reason in its source). A cause whose text the message already
+/// contains is not repeated.
+#[must_use]
+pub fn err_sources<E: std::error::Error + ?Sized>(error: &E) -> SourceChain<'_, E> {
+    SourceChain(error)
+}
+
+/// The value returned by [`err_sources`].
+pub struct SourceChain<'a, E: ?Sized>(&'a E);
+
+impl<E: std::error::Error + ?Sized> fmt::Display for SourceChain<'_, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut rendered = self.0.to_string();
+        let mut source = self.0.source();
+        while let Some(cause) = source {
+            let cause_text = cause.to_string();
+            if !rendered.contains(&cause_text) {
+                rendered.push_str(": ");
+                rendered.push_str(&cause_text);
+            }
+            source = cause.source();
+        }
+        f.write_str(&rendered)
+    }
+}
+
 /// The value for the `error.type` field: the error's type name without its
 /// module path and generic arguments (`ExporterBuildError`, `Error`).
 ///
@@ -49,7 +80,7 @@ fn short_type_name(full: &'static str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{err, error_type, short_type_name};
+    use super::{err, err_sources, error_type, short_type_name};
 
     #[derive(Debug, thiserror::Error)]
     #[error("outer")]
@@ -91,5 +122,35 @@ mod tests {
         assert_eq!(short_type_name("a::b::Name"), "Name");
         assert_eq!(short_type_name("a::Wrapper<c::d::Arg>"), "Wrapper");
         assert_eq!(short_type_name("Plain"), "Plain");
+    }
+
+    /// A wrapper whose own text already repeats its cause.
+    #[derive(Debug, thiserror::Error)]
+    #[error("read config: {0}")]
+    struct Repeating(#[source] std::io::Error);
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("start server")]
+    struct Nested(#[source] Outer);
+
+    #[test]
+    fn err_sources_appends_every_cause_the_text_omits() {
+        let error = Nested(Outer(std::io::Error::other("address in use")));
+        assert_eq!(
+            err_sources(&error).to_string(),
+            "start server: outer: address in use"
+        );
+    }
+
+    #[test]
+    fn err_sources_does_not_repeat_a_cause_already_in_the_text() {
+        let error = Repeating(std::io::Error::other("disk full"));
+        assert_eq!(err_sources(&error).to_string(), "read config: disk full");
+    }
+
+    #[test]
+    fn err_sources_is_plain_display_without_a_cause() {
+        let error = std::io::Error::other("disk full");
+        assert_eq!(err_sources(&error).to_string(), "disk full");
     }
 }
