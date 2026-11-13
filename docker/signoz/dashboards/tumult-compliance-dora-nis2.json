@@ -318,7 +318,7 @@
       "yAxisUnit": "ns"
     },
     {
-      "description": "Total distinct plugins exercised — breadth of ICT component resilience testing (NIS2 Art.25)",
+      "description": "Total distinct plugins exercised — breadth of ICT component resilience testing (DORA Art. 25)",
       "id": "stat-dora-coverage",
       "panelTypes": "value",
       "query": {
