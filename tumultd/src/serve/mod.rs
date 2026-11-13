@@ -151,10 +151,24 @@ pub(crate) async fn serve() -> Result<()> {
         tls.as_ref().map(|t| t.grpc_identity.clone()),
     )
     .context("invalid TLS identity for the gRPC server (KRONIKA_TLS_CERT/KRONIKA_TLS_KEY)")?;
+    // Connections are admitted under `KRONIKA_GRPC_MAX_CONNECTIONS` and
+    // `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER`; unary OTLP exports and
+    // OTel-Arrow streams share them.
+    let grpc_limits = tumult_ingest::listener::ConnectionLimits::from_env();
     let grpc_server = tokio::spawn(async move {
-        let result = grpc_router
-            .serve_with_shutdown(grpc_addr, shutdown_signal("grpc"))
-            .await;
+        let result = async {
+            let listener = tokio::net::TcpListener::bind(grpc_addr)
+                .await
+                .with_context(|| format!("bind gRPC listener {grpc_addr}"))?;
+            grpc_router
+                .serve_with_incoming_shutdown(
+                    tumult_ingest::listener::incoming(listener, grpc_limits),
+                    shutdown_signal("grpc"),
+                )
+                .await?;
+            anyhow::Ok(())
+        }
+        .await;
         tracing::info!("gRPC server future completed: {result:?}");
         result
     });
