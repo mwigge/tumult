@@ -48,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- The coverage radar on `/posture` draws: the radar chart was not registered with ECharts, so the panel stayed empty.
 - No value from the lake can run script in a chart tooltip. Every tooltip of the web UI (posture, scores, traces, star map, DORA) is built by one helper that escapes each value (`web/src/lib/tooltip.ts`), and a test fails the build when a tooltip formatter is written without it or markup is put together by hand.
 - An `ict.entity.id` set on a span is bounded, flagged and counted like one set on the resource; a long malformed one was stored whole before.
 - A malformed `ict.entity.id` can no longer run script in the DORA heatmap tooltip: chart tooltips escape every value from the lake. Such an id is stored cut to 63 characters (ending in `~`), never becomes a function or node of the score, and `GET /api/otel/conformance` bounds the list to 64 characters per id and 500 rows, with `truncated` flags.

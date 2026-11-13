@@ -269,6 +269,23 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     });
     expect(cells).toEqual({ count: 14, rows: ['database (demo)', 'database (staging)'] });
 
+    // The radar draws one value per discipline on one axis each.
+    const radar = await page.evaluate(() => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const opt = w.__tumultCharts?.['coverage-radar'] as
+            | {
+                  series?: { type?: string; data?: { value?: number[] }[] }[];
+                  radar?: { indicator?: unknown[] }[];
+              }
+            | undefined;
+        return {
+            type: opt?.series?.[0]?.type,
+            values: opt?.series?.[0]?.data?.[0]?.value?.length ?? -1,
+            axes: opt?.radar?.[0]?.indicator?.length ?? -1,
+        };
+    });
+    expect(radar).toEqual({ type: 'radar', values: 7, axes: 7 });
+
     // The NFR heatmap has one cell per verdict; the trend carries the sparkline.
     const charts = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };

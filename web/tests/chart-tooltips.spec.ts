@@ -152,7 +152,7 @@ test('scores: a unit with markup in its path and band is text in the treemap too
     await expectShownAsText(page, tip, 'coverage 1/2');
 });
 
-test('posture: targets, disciplines and objectives with markup are text in both heatmaps', async ({
+test('posture: targets, disciplines and objectives with markup are text in every tooltip', async ({
     page,
 }) => {
     const coverage = {
@@ -195,6 +195,9 @@ test('posture: targets, disciplines and objectives with markup are text in both 
     const covered = await showTip(page, 'coverage', { seriesIndex: 0, cell: [0, 0] });
     await expectShownAsText(page, covered, `${EVIL} · ${EVIL}`);
     await expectShownAsText(page, covered, 'stale');
+    // The radar has ECharts' own tooltip, which names each discipline.
+    const radar = await showTip(page, 'coverage-radar', { seriesIndex: 0, dataIndex: 0 });
+    await expectShownAsText(page, radar);
     const objective = await showTip(page, 'nfr', { seriesIndex: 0, cell: [0, 0] });
     await expectShownAsText(page, objective, `${EVIL} · ${EVIL} (${EVIL})`);
     await expectShownAsText(page, objective, `${EVIL} · observed 180 vs 250 · margin 70`);
