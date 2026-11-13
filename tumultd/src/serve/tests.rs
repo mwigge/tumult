@@ -318,3 +318,38 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
     std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
     std::env::remove_var("KRONIKA_LAKE_INTERVAL");
 }
+
+#[test]
+fn plaintext_network_listeners_are_reported_with_address_and_port() {
+    let mut config = config_with_tls(None, None);
+    config.otlp_http_addr = "0.0.0.0:4318".parse().unwrap();
+    config.otlp_grpc_addr = "192.0.2.7:4317".parse().unwrap();
+
+    let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+        super::tls::warn_if_plaintext_on_network(&config, false);
+    });
+
+    let http = logs.named("daemon.tls.http_plaintext");
+    assert_eq!(http.len(), 1, "{}", logs.raw);
+    assert_eq!(http[0]["level"], "WARN");
+    assert_eq!(http[0]["server.address"], "0.0.0.0");
+    assert_eq!(http[0]["server.port"], 4318);
+    let grpc = logs.named("daemon.tls.grpc_plaintext");
+    assert_eq!(grpc.len(), 1, "{}", logs.raw);
+    assert_eq!(grpc[0]["server.address"], "192.0.2.7");
+    assert_eq!(grpc[0]["server.port"], 4317);
+}
+
+#[test]
+fn tls_or_loopback_listeners_raise_no_plaintext_warning() {
+    let mut exposed = config_with_tls(None, None);
+    exposed.otlp_http_addr = "0.0.0.0:4318".parse().unwrap();
+    let loopback = config_with_tls(None, None);
+
+    let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+        super::tls::warn_if_plaintext_on_network(&exposed, true);
+        super::tls::warn_if_plaintext_on_network(&loopback, false);
+    });
+
+    assert!(logs.events.is_empty(), "{}", logs.raw);
+}

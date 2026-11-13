@@ -29,7 +29,11 @@ async fn shutdown_signal(name: &'static str) {
             _ = sigterm.recv() => {},
             _ = tokio::signal::ctrl_c() => {},
         }
-        tracing::info!(server = name, "shutdown signal received");
+        tracing::info!(
+            name: "daemon.shutdown.signal",
+            { resilience.task.name = name },
+            "shutdown signal received"
+        );
     }
     #[cfg(not(unix))]
     {
@@ -56,13 +60,7 @@ pub(crate) async fn serve() -> Result<()> {
     // a bad cert/key fails startup here with a clear message.
     let tls = load_tls(&config).await?;
     warn_if_plaintext_on_network(&config, tls.is_some());
-    tracing::info!(
-        db = %config.db_path.display(),
-        grpc = %config.otlp_grpc_addr,
-        http = %config.otlp_http_addr,
-        tls = tls.is_some(),
-        "starting tumultd"
-    );
+    crate::events::starting(&config, tls.is_some());
 
     // With gRPC TLS enabled, the daemon's own exporter cannot speak TLS back
     // to it (the opentelemetry-otlp client here is built without TLS), so it
@@ -99,6 +97,7 @@ pub(crate) async fn serve() -> Result<()> {
     });
     let otel_config = tumult_otel::config::TelemetryConfig {
         enabled: true,
+        service_name: crate::events::service_name(),
         otlp_endpoint: Some(loopback),
         otlp_headers: loopback_headers,
         ..tumult_otel::config::TelemetryConfig::from_env()
@@ -128,10 +127,15 @@ pub(crate) async fn serve() -> Result<()> {
     match tumult_ingest::runs::reconcile_orphans(&ingest, &config.db_path, &run_factory).await {
         Ok(0) => {}
         Ok(count) => tracing::warn!(
+            name: "runs.orphans.reconciled",
             count,
             "reconciled orphaned runs from a previous process lifetime"
         ),
-        Err(e) => tracing::error!(error = %e, "orphan reconciliation failed"),
+        Err(e) => tracing::error!(
+            name: "runs.orphans.reconcile_failed",
+            { error.message = %e },
+            "orphan reconciliation failed"
+        ),
     }
 
     let run_queue = tumult_ingest::RunQueue::spawn(
@@ -155,7 +159,7 @@ pub(crate) async fn serve() -> Result<()> {
         let result = grpc_router
             .serve_with_shutdown(grpc_addr, shutdown_signal("grpc"))
             .await;
-        tracing::info!("gRPC server future completed: {result:?}");
+        crate::events::server_stopped("grpc", &result);
         result
     });
 
@@ -172,7 +176,7 @@ pub(crate) async fn serve() -> Result<()> {
                     shutdown_signal("grpc-loopback"),
                 )
                 .await;
-            tracing::info!("internal gRPC loopback server future completed: {result:?}");
+            crate::events::server_stopped("grpc-loopback", &result);
             result
         })
     });
@@ -289,7 +293,7 @@ pub(crate) async fn serve() -> Result<()> {
                     .handle(handle)
                     .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
                     .await;
-                tracing::info!("HTTPS server future completed: {result:?}");
+                crate::events::server_stopped("https", &result);
                 result
             }
             None => {
@@ -302,7 +306,7 @@ pub(crate) async fn serve() -> Result<()> {
                 )
                 .with_graceful_shutdown(shutdown_signal("http"))
                 .await;
-                tracing::info!("HTTP server future completed: {result:?}");
+                crate::events::server_stopped("http", &result);
                 result
             }
         };
@@ -322,7 +326,7 @@ pub(crate) async fn serve() -> Result<()> {
             .context("internal gRPC loopback server")?;
     }
 
-    tracing::info!("servers stopped; draining ingest writer");
+    tracing::info!(name: "daemon.ingest.draining", "servers stopped; draining ingest writer");
     // Both servers are down; their channel clones (moved into the tasks)
     // are dropped. Order matters from here: signal the background tasks
     // that hold an `IngestWriter` clone, wait for them to finish so those
@@ -347,6 +351,6 @@ pub(crate) async fn serve() -> Result<()> {
     run_queue.shutdown();
     drop(run_queue);
     writer_task.await.context("ingest writer task")?;
-    tracing::info!("tumultd stopped cleanly");
+    tracing::info!(name: "daemon.stopped", "tumultd stopped cleanly");
     Ok(())
 }

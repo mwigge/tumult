@@ -53,15 +53,18 @@
 //! * `tumultd create-admin` — create the first admin user (daemon stopped).
 
 mod admin;
+mod events;
 mod lake_jobs;
 mod ops;
 mod reports;
 mod serve;
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use tumult_otel::logging::{self, LogOptions};
 
 #[derive(Parser)]
 #[command(
@@ -109,16 +112,27 @@ enum Command {
     },
 }
 
+/// Every subcommand logs through the shared structured pipeline: JSON on
+/// stderr unless a terminal or `TUMULT_LOG_FORMAT` says otherwise. stdout
+/// carries only command output (reports, the one-time admin password).
 #[tokio::main]
-async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "tumultd=info,tumult_ingest=info".into()),
-        )
-        .init();
-
+async fn main() -> ExitCode {
     let cli = Cli::parse();
+    let service_name = events::service_name();
+    if let Err(error) = logging::init(LogOptions::new(service_name.as_str())) {
+        logging::report_init_failure(&service_name, &error);
+        return ExitCode::FAILURE;
+    }
+    // A returned error would be printed unstructured by the runtime; log it
+    // as an event instead.
+    if let Err(error) = run(cli).await {
+        logging::log_fatal(&error);
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+async fn run(cli: Cli) -> Result<()> {
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::serve().await,
         Command::Import { file, label } => admin::import(file, label),

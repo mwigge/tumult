@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use tumult_ingest::{Config, ManualImporter};
 use tumult_lake::{Store, TokenRow, UserRow};
 
+#[allow(clippy::print_stdout)] // the import summary is this subcommand's output, not a log event
 pub(crate) fn import(file: PathBuf, label: Option<String>) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     let store = Store::open(&config.db_path)
@@ -50,7 +51,9 @@ fn insert_user(
 }
 
 /// `tumultd create-admin`: generate a one-time password and create the admin
-/// user. The password is printed to stdout exactly once and never logged.
+/// user. The password is printed to stdout exactly once and never logged:
+/// do not turn these prints into log events, which are exported and retained.
+#[allow(clippy::print_stdout)] // the one-time password must reach the operator and never the logs
 pub(crate) fn create_admin(username: &str, db: Option<PathBuf>) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     let db_path = db.unwrap_or(config.db_path);
@@ -121,10 +124,18 @@ pub(crate) fn enforce_bind_guard(
 
     if users_exist {
         if bootstrap_password.is_some() {
-            tracing::info!("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD ignored: users already exist");
+            tracing::info!(
+                name: "auth.bootstrap.password.ignored",
+                { config.key = "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD", reason = "users_exist" },
+                "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD ignored: users already exist"
+            );
         }
         if bootstrap_token.is_some() {
-            tracing::info!("KRONIKA_BOOTSTRAP_TOKEN ignored: users already exist");
+            tracing::info!(
+                name: "auth.bootstrap.token.ignored",
+                { config.key = "KRONIKA_BOOTSTRAP_TOKEN", reason = "users_exist" },
+                "KRONIKA_BOOTSTRAP_TOKEN ignored: users already exist"
+            );
         }
         return Ok(());
     }
@@ -148,6 +159,8 @@ pub(crate) fn enforce_bind_guard(
         }
         let admin = insert_user(writer, "admin", &password, "admin", false)?;
         tracing::warn!(
+            name: "auth.bootstrap.admin.created",
+            { user.name = admin.username.as_str() },
             "created bootstrap admin from KRONIKA_BOOTSTRAP_ADMIN_PASSWORD — this is a \
              demo/dev bootstrap path and must never be used in production"
         );
@@ -163,6 +176,8 @@ pub(crate) fn enforce_bind_guard(
                 expires_at_ns: None,
             })?;
             tracing::warn!(
+                name: "auth.bootstrap.token.provisioned",
+                { user.name = admin.username.as_str() },
                 "provisioned bootstrap API token for the bootstrap admin (demo/dev path)"
             );
         }
@@ -171,6 +186,8 @@ pub(crate) fn enforce_bind_guard(
 
     if bootstrap_token.is_some() {
         tracing::warn!(
+            name: "auth.bootstrap.token.ignored",
+            { config.key = "KRONIKA_BOOTSTRAP_TOKEN", reason = "no_bootstrap_admin" },
             "KRONIKA_BOOTSTRAP_TOKEN ignored: no bootstrap admin was created \
              (set KRONIKA_BOOTSTRAP_ADMIN_PASSWORD too)"
         );
@@ -185,6 +202,7 @@ pub(crate) fn enforce_bind_guard(
         );
     }
     tracing::warn!(
+        name: "auth.disabled.loopback",
         "no users exist: the API is running unauthenticated on loopback (dev mode); \
          run `tumultd create-admin` to enable authentication"
     );
@@ -509,5 +527,48 @@ mod tests {
             .query_json_rows("SELECT count(*) AS c FROM tokens")
             .unwrap();
         assert_eq!(tokens[0]["c"].as_u64(), Some(0));
+    }
+
+    // -- log events --------------------------------------------------------------
+
+    #[test]
+    fn bootstrap_events_name_the_admin_and_never_carry_a_secret() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var(
+            "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
+            "s3cret-bootstrap-password",
+        );
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_0123456789abcdefghij");
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
+        let logs = capture.snapshot();
+        clear_bootstrap_env();
+
+        let created = logs.named("auth.bootstrap.admin.created");
+        assert_eq!(created.len(), 1, "{}", logs.raw);
+        assert_eq!(created[0]["level"], "WARN");
+        assert_eq!(created[0]["user.name"], "admin");
+        assert_eq!(logs.named("auth.bootstrap.token.provisioned").len(), 1);
+        assert!(!logs.raw.contains("s3cret-bootstrap-password"));
+        assert!(!logs.raw.contains("kro_0123456789abcdefghij"));
+    }
+
+    #[test]
+    fn ignored_bootstrap_settings_are_reported_by_key_with_a_reason() {
+        let _guard = env_lock();
+        let (_dir, store, writer) = temp_store();
+        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_0123456789abcdefghij");
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        enforce_bind_guard(&writer, &store, &config("127.0.0.1:4318")).unwrap();
+        let logs = capture.snapshot();
+        clear_bootstrap_env();
+
+        let ignored = logs.named("auth.bootstrap.token.ignored");
+        assert_eq!(ignored.len(), 1, "{}", logs.raw);
+        assert_eq!(ignored[0]["config.key"], "KRONIKA_BOOTSTRAP_TOKEN");
+        assert_eq!(ignored[0]["reason"], "no_bootstrap_admin");
+        assert_eq!(logs.named("auth.disabled.loopback").len(), 1);
+        assert!(!logs.raw.contains("kro_0123456789abcdefghij"));
     }
 }

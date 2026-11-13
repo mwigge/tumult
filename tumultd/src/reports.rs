@@ -9,7 +9,9 @@ use axum::routing::get;
 use axum::Router;
 use tumult_ingest::Config;
 use tumult_lake::Store;
+use tumult_otel::logging::err;
 
+#[allow(clippy::print_stdout)] // the rendered report is this subcommand's output, not a log event
 pub(crate) fn report(metric: String, out: Option<PathBuf>) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     match render_metric_report(&config.db_path, &config.metrics_dir, &metric)? {
@@ -17,7 +19,11 @@ pub(crate) fn report(metric: String, out: Option<PathBuf>) -> Result<()> {
             Some(path) => {
                 std::fs::write(&path, &html)
                     .with_context(|| format!("write report to {}", path.display()))?;
-                eprintln!("wrote {}", path.display());
+                tracing::info!(
+                    name: "report.file.written",
+                    { file.path = %path.display() },
+                    "report written"
+                );
             }
             None => print!("{html}"),
         },
@@ -136,12 +142,17 @@ pub(crate) fn report_interval_from_env() -> Option<std::time::Duration> {
     }
     match parse_interval(raw) {
         Some(d) => {
-            tracing::info!(interval = ?d, "automatic reporting enabled");
+            tracing::info!(
+                name: "report.schedule.enabled",
+                { interval_s = d.as_secs() },
+                "automatic reporting enabled"
+            );
             Some(d)
         }
         None => {
             tracing::warn!(
-                value = raw,
+                name: "report.interval.invalid",
+                { config.key = "KRONIKA_REPORT_INTERVAL", config.value = raw },
                 "invalid KRONIKA_REPORT_INTERVAL (want e.g. 30m or 1h); automatic reporting disabled"
             );
             None
@@ -217,9 +228,17 @@ pub(crate) fn spawn_report_scheduler(
             );
             match write_digest(&db, &mdir, &rdir, interval, llm).await {
                 Ok(path) => {
-                    tracing::info!(path = %path.display(), "scheduled digest written")
+                    tracing::info!(
+                        name: "report.digest.written",
+                        { file.path = %path.display() },
+                        "scheduled digest written"
+                    )
                 }
-                Err(e) => tracing::warn!(error = %format!("{e:#}"), "scheduled digest failed"),
+                Err(e) => tracing::warn!(
+                    name: "report.digest.failed",
+                    { error.message = %err(&e) },
+                    "scheduled digest failed"
+                ),
             }
         }
     });
