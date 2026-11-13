@@ -6,5 +6,6 @@ pub mod logs;
 pub mod metrics;
 pub mod overview;
 pub mod reports;
+pub mod risks;
 pub mod topology;
 pub mod traces;

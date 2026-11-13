@@ -7930,6 +7930,7 @@ dependencies = [
  "tumult-lake",
  "tumult-metrics",
  "tumult-report",
+ "tumult-risk",
  "uuid",
 ]
 

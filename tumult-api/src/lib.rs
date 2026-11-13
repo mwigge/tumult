@@ -82,6 +82,13 @@
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
 //! * `GET /api/gate/{target}?min_score=&max_age_days=&env=` — CI gate: the
 //!   target's score as a `pass|warn|fail` verdict with reasons and evidence.
+//! * `GET /api/risks?env=` — the passive risk scan: ranked findings
+//!   (discipline gaps, stale evidence, breached objectives, untested
+//!   dependencies, workload manifests) with the coverage matrix;
+//!   `POST /api/risks/{id}/suppress {reason, expires_in_days?}` accepts a
+//!   finding for a while (hash-chained, Operator);
+//!   `GET /api/posture?env=` — the continuous posture score next to the
+//!   risk summary and the top findings.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -166,6 +173,8 @@ pub struct ApiState {
     autopilot_policy: Option<Arc<tumult_autopilot::LoadedPolicy>>,
     /// Whether the API is served over TLS: session cookies get `; Secure`.
     secure_cookies: bool,
+    /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
+    manifests_dir: Option<Arc<PathBuf>>,
 }
 
 impl ApiState {
@@ -193,7 +202,21 @@ impl ApiState {
             runs,
             autopilot_policy,
             secure_cookies,
+            manifests_dir: None,
         }
+    }
+
+    /// Point the passive risk scanner at a directory of Kubernetes manifests.
+    #[must_use]
+    pub fn with_manifests_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.manifests_dir = dir.map(Arc::new);
+        self
+    }
+
+    /// The manifests directory the risk scanner reads, when configured.
+    #[must_use]
+    pub fn manifests_dir(&self) -> Option<&PathBuf> {
+        self.manifests_dir.as_deref()
     }
 
     /// Daemon constructor: reports live in `<db dir>/reports`, LLM configured
@@ -241,6 +264,7 @@ impl ApiState {
                 }
             }
         });
+        let manifests_dir = std::env::var_os("KRONIKA_MANIFESTS_DIR").map(PathBuf::from);
         Self::new(
             db_path,
             metrics_dir,
@@ -252,6 +276,7 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
         )
+        .with_manifests_dir(manifests_dir)
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.
@@ -306,6 +331,9 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/ask", post(ask::ask))
         .route("/api/scores/tree", get(scores_tree))
         .route("/api/gate/{target}", get(handlers::gate::gate))
+        .route("/api/risks", get(handlers::risks::risks))
+        .route("/api/risks/{id}/suppress", post(handlers::risks::suppress))
+        .route("/api/posture", get(handlers::risks::posture))
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

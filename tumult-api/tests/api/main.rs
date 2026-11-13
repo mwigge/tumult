@@ -16,6 +16,7 @@ mod gate;
 mod manual;
 mod query;
 mod reports;
+mod risks;
 mod runs;
 mod schedules;
 mod scopes;
