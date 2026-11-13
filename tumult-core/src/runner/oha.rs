@@ -66,7 +66,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{load_profile, LoadExecutor, LoadHandle};
-use crate::types::{LoadConfig, LoadExecution, LoadResult, LoadSample, LoadTool};
+use crate::types::{
+    bounded_log_text, LoadConfig, LoadExecution, LoadResult, LoadSample, LoadTool, RequestCounts,
+};
 
 /// Slack added to a window's length plus the request timeout before its
 /// process is killed.
@@ -261,7 +263,7 @@ impl Drop for OhaHandle {
         self.control.abort.store(true, Ordering::SeqCst);
         if let Some(worker) = self.worker.take() {
             if worker.join().is_err() {
-                tracing::error!("oha worker thread panicked");
+                tracing::error!(tool = "oha", "load.worker.panicked");
             }
         }
     }
@@ -283,7 +285,11 @@ pub struct OhaLatency {
 /// `answered` the requests that got any HTTP answer, and `throughput_rps`
 /// the one over the other. `latency` is `None` when no request was
 /// answered.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `latency` is what oha measured, over answered requests only. What a
+/// caller saw is [`OhaSummary::censored_latency`], which counts a request
+/// that timed out as taking at least the timeout.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct OhaSummary {
     pub requests: u64,
     pub errors: u64,
@@ -291,9 +297,58 @@ pub struct OhaSummary {
     pub elapsed_s: f64,
     pub throughput_rps: f64,
     pub latency: Option<OhaLatency>,
+    /// What became of every request.
+    pub counts: RequestCounts,
+    /// Every percentile oha printed, as (percent, milliseconds) in
+    /// rising order.
+    pub ladder: Vec<(f64, f64)>,
+    /// The slowest answer, in milliseconds.
+    pub slowest_ms: Option<f64>,
+    /// The `-t` the window ran with; `None` for a summary read without
+    /// its window.
+    pub request_timeout: Option<Duration>,
 }
 
 impl OhaSummary {
+    /// The percentiles over the requests that were answered or timed
+    /// out, a timed-out one right-censored at `timeout`: a percentile
+    /// that falls among them reads the timeout. One that falls among the
+    /// answers reads the nearest percentile oha printed at or above it
+    /// (then the slowest answer), so it is never understated. `None`
+    /// when nothing was answered.
+    #[must_use]
+    pub fn censored_latency(&self, timeout: Duration) -> Option<OhaLatency> {
+        let printed = self.latency.as_ref()?;
+        if self.counts.timed_out == 0 {
+            return Some(printed.clone());
+        }
+        let timeout_ms = timeout.as_secs_f64() * 1000.0;
+        Some(OhaLatency {
+            p50_ms: self.censored_percentile(50.0, timeout_ms),
+            p95_ms: self.censored_percentile(95.0, timeout_ms),
+            p99_ms: self.censored_percentile(99.0, timeout_ms),
+        })
+    }
+
+    /// The `percent`-th percentile over answers and timeouts together.
+    fn censored_percentile(&self, percent: f64, timeout_ms: f64) -> f64 {
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        let (answered, timed_out) = (self.answered as f64, self.counts.timed_out as f64);
+        // Nearest rank among all of them; the answers come first.
+        let rank = (percent / 100.0 * (answered + timed_out) - 1e-9).ceil();
+        if rank > answered {
+            return timeout_ms;
+        }
+        let among_answers = rank / answered * 100.0;
+        self.ladder
+            .iter()
+            .find(|(printed, _)| *printed >= among_answers - 1e-9)
+            .map(|(_, ms)| *ms)
+            .or(self.slowest_ms)
+            .unwrap_or(timeout_ms)
+    }
+
     /// `errors / requests`, zero when nothing was sent.
     #[must_use]
     pub fn error_rate(&self) -> f64 {
@@ -366,6 +421,44 @@ fn latency(v: &serde_json::Value, answered: u64) -> Result<Option<OhaLatency>, S
     }))
 }
 
+/// The count of `tally` a status code belongs to.
+fn status_class<'a>(tally: &'a mut RequestCounts, code: &str) -> &'a mut u64 {
+    match code.parse::<u16>() {
+        Ok(200..=399) => &mut tally.ok,
+        Ok(400..=499) => &mut tally.http_4xx,
+        Ok(500..=599) => &mut tally.http_5xx,
+        _ => &mut tally.http_other,
+    }
+}
+
+/// Whether an `errorDistribution` key is oha giving up on a request at
+/// its `-t` timeout (it prints `timeout`; older builds a sentence).
+fn is_timeout(reason: &str) -> bool {
+    let reason = reason.to_ascii_lowercase();
+    reason.contains("timeout") || reason.contains("timed out")
+}
+
+/// Every percentile oha printed as (percent, milliseconds), rising.
+/// Entries that are not `p<number>: <number>` are left out: the three
+/// the adapter needs are checked by [`latency`].
+fn ladder(v: &serde_json::Value) -> Vec<(f64, f64)> {
+    let Some(printed) = v
+        .get("latencyPercentiles")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return Vec::new();
+    };
+    let mut ladder: Vec<(f64, f64)> = printed
+        .iter()
+        .filter_map(|(name, seconds)| {
+            let percent: f64 = name.strip_prefix('p')?.parse().ok()?;
+            Some((percent, seconds.as_f64()? * 1000.0))
+        })
+        .collect();
+    ladder.sort_by(|a, b| a.0.total_cmp(&b.0));
+    ladder
+}
+
 /// Parse oha's JSON output (`oha --output-format json`) for a window run
 /// on `connections` connections. Every field the adapter needs must be
 /// present; a missing or malformed one is an error rather than a silent
@@ -383,22 +476,23 @@ fn latency(v: &serde_json::Value, answered: u64) -> Result<Option<OhaLatency>, S
 pub fn parse_oha_summary(text: &str, connections: u32) -> Result<OhaSummary, String> {
     let v: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("oha output is not JSON: {e}"))?;
-    let mut answered = 0;
-    let mut errors = 0;
+    let mut tally = RequestCounts::default();
     for (code, count) in counts(&v, "statusCodeDistribution")? {
-        answered += count;
-        if !code.parse::<u16>().is_ok_and(|c| (200..400).contains(&c)) {
-            errors += count;
+        *status_class(&mut tally, &code) += count;
+    }
+    for (reason, count) in counts(&v, "errorDistribution")? {
+        if reason == DEADLINE_ABORT {
+            tally.transport += count.saturating_sub(u64::from(connections));
+        } else if is_timeout(&reason) {
+            tally.timed_out += count;
+        } else {
+            tally.transport += count;
         }
     }
-    let mut transport = 0;
-    for (reason, count) in counts(&v, "errorDistribution")? {
-        transport += if reason == DEADLINE_ABORT {
-            count.saturating_sub(u64::from(connections))
-        } else {
-            count
-        };
-    }
+    let answered = tally.answered();
+    let transport = tally.timed_out + tally.transport;
+    let errors = answered - tally.ok;
+    tally.sent = answered + transport;
     let elapsed_s = number(&v, &["summary", "total"])?;
     // Request counts are far below 2^53.
     #[allow(clippy::cast_precision_loss)]
@@ -414,6 +508,14 @@ pub fn parse_oha_summary(text: &str, connections: u32) -> Result<OhaSummary, Str
         elapsed_s,
         throughput_rps,
         latency: latency(&v, answered)?,
+        counts: tally,
+        ladder: ladder(&v),
+        slowest_ms: v
+            .get("summary")
+            .and_then(|s| s.get("slowest"))
+            .and_then(serde_json::Value::as_f64)
+            .map(|s| s * 1000.0),
+        request_timeout: None,
     })
 }
 
@@ -530,20 +632,18 @@ fn drive(
 fn skip(run: &mut PlanRun, number: usize, behind_unanswered: bool) {
     if behind_unanswered {
         run.lost_to_unanswered += 1;
-        tracing::warn!(
-            window = number,
-            planned = run.planned,
-            "oha window not run: the unanswered window before it was still waiting for its \
-             requests to time out"
-        );
+        log_skipped(number, run.planned, "behind_unanswered");
         return;
     }
     run.overrun += 1;
-    tracing::warn!(
-        window = number,
-        planned = run.planned,
-        "oha window skipped: the windows before it overran its slot"
-    );
+    log_skipped(number, run.planned, "overrun");
+}
+
+/// A window was not run. `reason` is `behind_unanswered` (the unanswered
+/// window before it was still waiting for its requests to time out) or
+/// `overrun` (the windows before it ran over its slot).
+fn log_skipped(window: usize, planned: usize, reason: &'static str) {
+    tracing::warn!(tool = "oha", window, planned, reason, "load.window.skipped");
 }
 
 /// Wait for `window`'s slot to open and say how it runs; `None` when the
@@ -638,10 +738,18 @@ impl WindowHost for WindowRunner {
             Instant::now() + Duration::from_secs_f64(length_s) + request_timeout + self.grace;
         match wait_bounded(child, deadline, &self.control.abort) {
             Waited::Exited(output) => match summary_of(&output, window.vus) {
-                Ok(summary) => WindowEnd::Completed(summary),
+                Ok(summary) => WindowEnd::Completed(OhaSummary {
+                    request_timeout: Some(request_timeout),
+                    ..summary
+                }),
                 Err(e) => WindowEnd::Failed(e),
             },
-            Waited::Cut(output) => WindowEnd::Aborted(partial_summary(output, window.vus)),
+            Waited::Cut(output) => WindowEnd::Aborted(partial_summary(output, window.vus).map(
+                |summary| OhaSummary {
+                    request_timeout: Some(request_timeout),
+                    ..summary
+                },
+            )),
             Waited::Failed(e) => WindowEnd::Failed(e),
         }
     }
@@ -667,7 +775,11 @@ fn partial_summary(output: Option<std::process::Output>, connections: u32) -> Op
     match summary_of(&output?, connections) {
         Ok(summary) => Some(summary),
         Err(e) => {
-            tracing::debug!(error = %e, "aborted oha window left no partial summary");
+            tracing::debug!(
+                tool = "oha",
+                error.message = %bounded_log_text(&e),
+                "load.window.no_partial_summary"
+            );
             None
         }
     }
@@ -770,7 +882,11 @@ fn cut_short(
                 return None;
             }
             Err(e) => {
-                tracing::warn!(error = %e, "waiting for an aborted oha window failed; killed");
+                tracing::warn!(
+                    tool = "oha",
+                    error.message = %bounded_log_text(&e.to_string()),
+                    "load.window.abort_wait_failed"
+                );
                 kill_tree(child);
                 return None;
             }
@@ -779,7 +895,11 @@ fn cut_short(
     match collect(child, stdout, stderr) {
         Ok(output) => Some(output),
         Err(e) => {
-            tracing::warn!(error = %e, "an aborted oha window could not be read");
+            tracing::warn!(
+                tool = "oha",
+                error.message = %bounded_log_text(&e),
+                "load.window.abort_unreadable"
+            );
             None
         }
     }
@@ -955,7 +1075,8 @@ impl LoadExecutor for OhaLoadExecutor {
             peak_vus = plan.peak_vus(),
             total_s = plan.total_duration_s(),
             request_timeout_s = request_timeout.map(|t| t.as_secs_f64()),
-            "oha load plan started"
+            tool = "oha",
+            "load.started"
         );
         Ok(LoadHandle {
             inner: Box::new(OhaHandle {
@@ -1005,6 +1126,8 @@ struct Folded {
     failures: Vec<String>,
     /// A window was cut by an abort.
     cut: bool,
+    /// What became of every request, sampled window or not.
+    counts: RequestCounts,
 }
 
 impl Folded {
@@ -1015,7 +1138,14 @@ impl Folded {
         self.errors += summary.errors;
         self.time_s += summary.elapsed_s;
         self.answered += summary.answered;
-        let Some(latency) = summary.latency.as_ref() else {
+        self.counts.add(&summary.counts);
+        // What a caller saw: a request that timed out took at least the
+        // timeout. A summary read without its window has only oha's view.
+        let seen = match summary.request_timeout {
+            Some(timeout) => summary.censored_latency(timeout),
+            None => summary.latency.clone(),
+        };
+        let Some(latency) = seen else {
             return false;
         };
         self.samples.push(LoadSample {
@@ -1028,6 +1158,10 @@ impl Folded {
             latency_p99_ms: latency.p99_ms,
             error_rate: summary.error_rate(),
             requests: summary.requests,
+            counts: Some(summary.counts),
+            request_timeout_ms: summary
+                .request_timeout
+                .map(|timeout| timeout.as_secs_f64() * 1000.0),
         });
         true
     }
@@ -1042,14 +1176,20 @@ fn fold(outcomes: Vec<WindowOutcome>) -> Folded {
                 if !folded.add(outcome.ts_ns, outcome.vus, &summary) {
                     folded.unanswered += 1;
                     tracing::warn!(
+                        tool = "oha",
                         requests = summary.requests,
                         vus = outcome.vus,
-                        "oha window answered no request"
+                        "load.window.unanswered"
                     );
                 }
             }
             WindowEnd::Failed(e) => {
-                tracing::warn!(error = %e, vus = outcome.vus, "oha window failed");
+                tracing::warn!(
+                    tool = "oha",
+                    error.message = %bounded_log_text(&e),
+                    vus = outcome.vus,
+                    "load.window.failed"
+                );
                 folded.failures.push(e);
             }
             WindowEnd::Aborted(partial) => {
@@ -1119,6 +1259,14 @@ fn execution(folded: &Folded, plan: PlanCounts, abort_requested: bool) -> LoadEx
         lost_to_unanswered: window_count(plan.lost_to_unanswered),
         aborted,
         reasons,
+        requests: Some(folded.counts),
+        censored_windows: window_count(
+            folded
+                .samples
+                .iter()
+                .filter(|sample| sample.censored())
+                .count(),
+        ),
     }
 }
 
@@ -1129,7 +1277,8 @@ fn log_shortfall(execution: &LoadExecution) {
         tracing::warn!(
             planned_windows = execution.planned_windows,
             completed_windows = execution.completed_windows,
-            "oha load aborted"
+            tool = "oha",
+            "load.aborted"
         );
     }
     if execution.truncated() {
@@ -1137,7 +1286,8 @@ fn log_shortfall(execution: &LoadExecution) {
             planned_windows = execution.planned_windows,
             completed_windows = execution.completed_windows,
             reasons = ?execution.reasons,
-            "oha load plan truncated; thresholds reported unmet"
+            tool = "oha",
+            "load.truncated"
         );
     }
 }
@@ -1196,7 +1346,7 @@ fn aggregate(
         0.0
     };
     if folded.requests == 0 {
-        tracing::warn!("oha: no request was sent; thresholds reported unmet");
+        tracing::warn!(tool = "oha", "load.no_requests");
     }
     let ran_as_planned = folded.requests > 0 && !execution.truncated() && !execution.aborted;
     let result = LoadResult {
@@ -1243,14 +1393,20 @@ fn thresholds_hold(
             "throughput_rps" => result.throughput_rps >= *bound,
             other => {
                 tracing::warn!(
-                    metric = other,
-                    "oha: unknown threshold metric; treated as unmet"
+                    tool = "oha",
+                    metric = %bounded_log_text(other),
+                    "load.threshold.unknown_metric"
                 );
                 false
             }
         };
         if !ok {
-            tracing::warn!(metric, bound, "oha: threshold not met");
+            tracing::warn!(
+                tool = "oha",
+                metric = %bounded_log_text(metric),
+                bound,
+                "load.threshold.unmet"
+            );
             held = false;
         }
     }
@@ -1376,6 +1532,7 @@ mod tests {
             elapsed_s: 1.0,
             throughput_rps: 0.0,
             latency: None,
+            ..OhaSummary::default()
         };
         assert!((s.error_rate()).abs() < f64::EPSILON);
     }
@@ -1521,6 +1678,7 @@ mod tests {
                 elapsed_s: took_s,
                 throughput_rps: 0.0,
                 latency: None,
+                ..OhaSummary::default()
             })
         }
     }
@@ -1720,7 +1878,213 @@ mod tests {
                 p95_ms: p95_s * 1000.0,
                 p99_ms: 30.0,
             }),
+            counts: RequestCounts {
+                sent: requests,
+                ok: requests,
+                ..RequestCounts::default()
+            },
+            ..OhaSummary::default()
         }
+    }
+
+    /// 100 requests on 4 connections with a 2 s timeout: 60 answered in
+    /// 20 ms or so, 40 never.
+    const PARTLY_HANGING: &str = r#"{"summary":{"total":5.0,"slowest":0.031},
+        "latencyPercentiles":{"p10":0.018,"p25":0.019,"p50":0.02,"p75":0.021,"p90":0.022,
+            "p95":0.024,"p99":0.03,"p99.9":0.031,"p99.99":0.031},
+        "statusCodeDistribution":{"200":55,"302":1,"404":2,"503":1,"999":1},
+        "errorDistribution":{"timeout":40,"connection refused":3,"aborted due to deadline":5}}"#;
+
+    #[test]
+    fn requests_are_counted_by_what_became_of_them() {
+        let s = parse_oha_summary(PARTLY_HANGING, 4).expect("parse");
+        assert_eq!(
+            s.counts,
+            RequestCounts {
+                // 60 answers, 40 timeouts, 3 refused, 1 abort beyond the
+                // four connections.
+                sent: 104,
+                ok: 56,
+                timed_out: 40,
+                transport: 4,
+                http_4xx: 2,
+                http_5xx: 1,
+                http_other: 1,
+                unclassified: 0,
+            }
+        );
+        assert_eq!(s.counts.sent, s.requests);
+        assert_eq!(s.counts.failed(), s.errors);
+        assert_eq!(s.ladder.len(), 9);
+        assert_eq!(s.ladder[0], (10.0, 18.0));
+        assert_eq!(s.slowest_ms, Some(31.0));
+    }
+
+    #[test]
+    fn a_percentile_among_the_timed_out_requests_reads_the_timeout() {
+        let s = parse_oha_summary(PARTLY_HANGING, 4).expect("parse");
+        // What oha printed looks healthy: it only knows the answers.
+        assert!((s.latency.as_ref().expect("answers").p99_ms - 30.0).abs() < 1e-9);
+        let seen = s
+            .censored_latency(Duration::from_secs(2))
+            .expect("something answered");
+        // 60 answers and 40 timeouts: the median is the 50th of 100, the
+        // 83.3rd percent of the answers, read at the p90 oha printed.
+        assert!((seen.p50_ms - 22.0).abs() < 1e-9, "{seen:?}");
+        // The p95 and p99 are requests that never answered.
+        assert!((seen.p95_ms - 2000.0).abs() < 1e-9, "{seen:?}");
+        assert!((seen.p99_ms - 2000.0).abs() < 1e-9, "{seen:?}");
+    }
+
+    #[test]
+    fn without_timeouts_the_percentiles_are_the_ones_oha_printed() {
+        let s = parse_oha_summary(OHA_JSON, 4).expect("parse");
+        let seen = s.censored_latency(Duration::from_secs(2));
+        assert_eq!(seen, s.latency);
+        assert!(seen.is_some());
+    }
+
+    #[test]
+    fn a_percentile_past_what_oha_printed_reads_the_slowest_answer_or_the_timeout() {
+        // 99 answers and one timeout: the p99 is the 99th of 100, the
+        // last answer, beyond the p99.99 oha prints.
+        let text = r#"{"summary":{"total":1.0,"slowest":0.5},
+            "latencyPercentiles":{"p50":0.02,"p95":0.03,"p99":0.04,"p99.99":0.4},
+            "statusCodeDistribution":{"200":99},"errorDistribution":{"timeout":1}}"#;
+        let s = parse_oha_summary(text, 4).expect("parse");
+        let seen = s.censored_latency(Duration::from_secs(2)).expect("answers");
+        assert!((seen.p99_ms - 500.0).abs() < 1e-9, "{seen:?}");
+        assert!((seen.p95_ms - 40.0).abs() < 1e-9, "{seen:?}");
+        // No slowest figure: the timeout is the only safe bound.
+        let s = parse_oha_summary(&text.replace(r#","slowest":0.5"#, ""), 4).expect("parse");
+        let seen = s.censored_latency(Duration::from_secs(2)).expect("answers");
+        assert!((seen.p99_ms - 2000.0).abs() < 1e-9, "{seen:?}");
+    }
+
+    #[test]
+    fn a_skipped_window_is_one_named_event_with_its_reason_as_a_field() {
+        use crate::runner::tests::log_capture::logged;
+
+        let events = logged(|| {
+            let mut run = PlanRun {
+                planned: 6,
+                ..PlanRun::default()
+            };
+            skip(&mut run, 3, true);
+            skip(&mut run, 4, false);
+        });
+
+        assert_eq!(events.len(), 2, "{events:?}");
+        for event in &events {
+            assert_eq!(event.event, "load.window.skipped");
+            assert_eq!(event.field("tool"), Some("oha"));
+            assert_eq!(event.field("planned"), Some("6"));
+        }
+        assert_eq!(events[0].field("window"), Some("3"));
+        assert_eq!(events[0].field("reason"), Some("behind_unanswered"));
+        assert_eq!(events[1].field("window"), Some("4"));
+        assert_eq!(events[1].field("reason"), Some("overrun"));
+    }
+
+    #[test]
+    fn a_failed_window_is_a_named_event_with_its_error_bounded() {
+        use crate::runner::tests::log_capture::logged;
+
+        let hostile = format!("oha said\nlevel=INFO forged\u{1b}[0m {}", "x".repeat(2000));
+        let events = logged(|| {
+            let folded = fold(vec![WindowOutcome {
+                ts_ns: 1,
+                vus: 4,
+                end: WindowEnd::Failed(hostile.clone()),
+            }]);
+            assert_eq!(
+                folded.failures,
+                vec![hostile.clone()],
+                "the result keeps it whole"
+            );
+        });
+
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].event, "load.window.failed");
+        assert_eq!(events[0].field("tool"), Some("oha"));
+        let error = events[0].field("error.message").expect("error.message");
+        assert!(
+            error.len() <= crate::types::MAX_LOG_VALUE_LEN,
+            "{}",
+            error.len()
+        );
+        assert!(!error.chars().any(char::is_control), "{error:?}");
+        assert!(error.starts_with("oha said level=INFO forged"), "{error:?}");
+    }
+
+    #[test]
+    fn a_window_that_answered_nothing_is_a_named_event() {
+        use crate::runner::tests::log_capture::logged;
+
+        let dark = parse_oha_summary(
+            r#"{"summary":{"total":2.0},"latencyPercentiles":{"p50":null},
+               "statusCodeDistribution":{},"errorDistribution":{"timeout":8}}"#,
+            4,
+        )
+        .expect("parse");
+        let events = logged(|| {
+            fold(vec![WindowOutcome {
+                ts_ns: 1,
+                vus: 4,
+                end: WindowEnd::Completed(dark),
+            }]);
+        });
+
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].event, "load.window.unanswered");
+        assert_eq!(events[0].field("tool"), Some("oha"));
+        assert_eq!(events[0].field("requests"), Some("8"));
+    }
+
+    #[test]
+    fn the_run_carries_request_counts_and_marks_censored_windows() {
+        let hanging = |ts_ns: i64| {
+            let mut s = parse_oha_summary(PARTLY_HANGING, 4).expect("parse");
+            s.request_timeout = Some(Duration::from_secs(2));
+            WindowOutcome {
+                ts_ns,
+                vus: 4,
+                end: WindowEnd::Completed(s),
+            }
+        };
+        let mut dark = parse_oha_summary(
+            r#"{"summary":{"total":2.0},"latencyPercentiles":{"p50":null},
+               "statusCodeDistribution":{},"errorDistribution":{"timeout":8}}"#,
+            4,
+        )
+        .expect("parse");
+        dark.request_timeout = Some(Duration::from_secs(2));
+        let outcomes = vec![
+            window(1, 100, 0.1),
+            hanging(2),
+            WindowOutcome {
+                ts_ns: 3,
+                vus: 4,
+                end: WindowEnd::Completed(dark),
+            },
+        ];
+        let result = aggregate(&run(20), plan(outcomes), &thresholds(&[]));
+        assert_eq!(result.samples.len(), 2, "the dark window leaves no sample");
+        let healthy = &result.samples[0];
+        assert_eq!(healthy.counts.map(|c| (c.sent, c.ok)), Some((100, 100)));
+        assert!(!healthy.censored());
+        let partly = &result.samples[1];
+        assert_eq!(partly.request_timeout_ms, Some(2000.0));
+        assert_eq!(partly.counts.map(|c| c.timed_out), Some(40));
+        assert!((partly.latency_p95_ms - 2000.0).abs() < 1e-9, "{partly:?}");
+        assert!(partly.censors(partly.latency_p95_ms));
+        assert!(!partly.censors(partly.latency_p50_ms));
+        assert!(partly.censored());
+        assert_eq!(result.execution.censored_windows, 1);
+        // The run's counts take in the window that left no sample.
+        let all = result.execution.requests.expect("oha says");
+        assert_eq!((all.sent, all.ok, all.timed_out), (212, 156, 48));
+        assert_eq!(all.sent, result.total_requests);
     }
 
     fn window(ts_ns: i64, requests: u64, p95_s: f64) -> WindowOutcome {
@@ -1743,6 +2107,7 @@ mod tests {
                 elapsed_s: 10.0,
                 throughput_rps: 0.0,
                 latency: None,
+                ..OhaSummary::default()
             }),
         }
     }
