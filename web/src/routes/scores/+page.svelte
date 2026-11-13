@@ -188,7 +188,12 @@
             {#if tree.children.length === 0}
                 <div class="state">No org structure on record — configure org.yaml.</div>
             {:else if treemapOption}
-                <EChart option={treemapOption} height={420} onclick={onTreemapClick} />
+                <EChart
+                    option={treemapOption}
+                    height={420}
+                    onclick={onTreemapClick}
+                    label="Scores of {tree.name} as a treemap"
+                />
             {/if}
         </div>
     {:else}

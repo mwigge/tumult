@@ -111,7 +111,13 @@ not being renamed.
    (spans grouped into traces, duration percentiles, per-trace detail),
    `/api/metrics/catalog` + `/api/metrics/query` (raw sums/gauges/histograms
    with optional attribute grouping; histogram p95 interpolated in Rust) and
-   `/api/topology` (service/target call graph), `/api/perf/{target}`
+   `/api/starmap` (organisation, entities, systems, services, workloads
+   and definitions as one graph, assembled per request and cached for
+   30 s per parameter set and scopes in a bounded cache that every write
+   the map shows clears), `/api/topology` (compatibility
+   view of its service/system call graph, ids `svc:` and
+   `sys:<environment>/<system>`, `7d` unless `range` says otherwise),
+   `/api/perf/{target}`
    (performance regression verdict between a target's latest two
    `service.version`s, bootstrap interval, appended to `perf_verdicts`),
    and `/api/gate/{target}`

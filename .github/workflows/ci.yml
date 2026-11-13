@@ -42,6 +42,7 @@ jobs:
       # checkout has no .svelte-kit, so bare svelte-check fails.
       - run: npx svelte-kit sync
       - run: npx svelte-check --tsconfig ./tsconfig.json
+      - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
@@ -190,3 +191,5 @@ jobs:
       - run: bash -n scripts/smoke-daemon-image.sh
       - run: python3 scripts/test-smoke-daemon-image.py
       - run: python3 scripts/test-smoke-daemon-binary.py
+      - run: bash -n scripts/demo-check.sh
+      - run: python3 scripts/test-starmap-check.py

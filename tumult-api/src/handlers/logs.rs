@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    attr_wheres, bucket_expr, env_scope_where, parse_interval, sql_contains, sql_ieq, sql_string,
-    w, windows, with_reader,
+    attr_wheres, bucket_expr, env_scope_where, invalid_range, parse_interval, sql_contains,
+    sql_ieq, sql_string, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -55,7 +55,7 @@ fn log_wheres(
 ) -> Result<Vec<String>, String> {
     let range = range.unwrap_or("24h");
     let Some((cur, _)) = windows(range) else {
-        return Err(format!("invalid range {range:?}; expected 24h|7d|14d"));
+        return Err(invalid_range(range));
     };
     let mut wheres = vec![w(cur.0, cur.1)];
     if let Some(env) = env_scope_where("se.target_environment", scopes) {

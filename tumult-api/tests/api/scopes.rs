@@ -235,6 +235,51 @@ fn evidence(env: &str) -> Value {
     json!({"experiment_name":"scope evidence", "exercise_type":"gameday", "executed_at_ns": now_ns(), "hypothesis":"healthy", "method":"manual test", "outcome_status":"passed", "target_environment":env, "attestation":"I attest this test happened"})
 }
 
+/// Manual evidence named `name` in `env`.
+fn named_evidence(name: &str, env: &str) -> Value {
+    let mut record = evidence(env);
+    record["experiment_name"] = json!(name);
+    record
+}
+
+#[tokio::test]
+async fn a_name_filter_keeps_manual_records_inside_the_scope() {
+    let srv = spawn_server().await;
+    let admin = add_scoped_token(&srv, "name-admin", "admin", &[]).await;
+    let scoped = add_scoped_token(&srv, "name-scoped", "approver", &["staging"]).await;
+    // The name carries both quotes: it is a value, never SQL.
+    let name = r#"it's a "drill""#;
+    for env in ["prod", "staging"] {
+        let record = named_evidence(name, env);
+        let (status, made) = post_auth(&srv.base, "/api/manual/experiments", &admin, record).await;
+        assert_eq!(status, 201, "{made}");
+    }
+    let path = "/api/experiments?name=it%27s%20a%20%22drill%22";
+
+    let (status, all) = get_auth(&srv.base, path, &admin).await;
+    assert_eq!(status, 200, "{all}");
+    let rows = all["experiments"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "both records carry the name: {all}");
+    assert!(rows.iter().all(|row| row["name"] == name));
+
+    let (status, own) = get_auth(&srv.base, path, &scoped).await;
+    assert_eq!(status, 200, "{own}");
+    let rows = own["experiments"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "production evidence leaked by name: {own}");
+    assert_eq!(rows[0]["target_environment"], "staging");
+    assert_eq!(rows[0]["origin"], "manual");
+
+    // A quote that closes nothing: no row and no error.
+    let (status, none) = get_auth(
+        &srv.base,
+        "/api/experiments?name=%27%20OR%20%271%27=%271",
+        &admin,
+    )
+    .await;
+    assert_eq!(status, 200, "{none}");
+    assert_eq!(none["experiments"].as_array().unwrap().len(), 0);
+}
+
 #[tokio::test]
 async fn manual_scopes_cover_lists_and_every_mutation() {
     let srv = spawn_server().await;
