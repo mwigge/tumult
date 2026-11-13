@@ -146,7 +146,10 @@ fn error_rate_computed_correctly() {
 #[test]
 fn empty_probes_returns_error() {
     let result = derive_baseline(&[], &config_mean_stddev());
-    assert!(result.is_err());
+    assert!(
+        matches!(result, Err(AcquisitionError::NoProbes)),
+        "{result:?}"
+    );
 }
 
 #[test]
@@ -159,7 +162,10 @@ fn empty_values_returns_error() {
         sampled_at: vec![],
     }];
     let result = derive_baseline(&samples, &config_mean_stddev());
-    assert!(result.is_err());
+    assert!(
+        matches!(&result, Err(AcquisitionError::NoSamplesAfterWarmup { name }) if name == "empty"),
+        "{result:?}"
+    );
 }
 
 #[test]
@@ -176,37 +182,74 @@ fn high_variance_detects_anomaly() {
     assert!(result.anomaly_reason.is_some());
 }
 
-/// Verify that the CV passed to the anomaly telemetry event matches what
-/// `check_baseline_anomaly` computes — i.e., it is not recomputed from
-/// scratch via a second `stddev/mean` call (BAS-MED-1).
+/// The anomaly event must carry the CV `check_baseline_anomaly` computed for
+/// the anomalous probe, and the span must describe the acquisition
+/// (BAS-MED-1: the CV is reused, not recomputed over pooled samples).
 #[test]
-fn anomaly_cv_is_not_recomputed() {
+fn anomaly_event_carries_the_cv_of_the_anomalous_probe() {
     use crate::anomaly::check_baseline_anomaly;
+    use opentelemetry::trace::Status;
+    use opentelemetry::{KeyValue, Value};
+    use tumult_test_utils::{attribute, capture_spans};
 
-    let values = vec![1.0, 100.0, 2.0, 99.0, 3.0, 98.0, 1.0, 200.0];
-    // The CV stored on AnomalyCheck is the authoritative value.
-    let anomaly_check = check_baseline_anomaly(&values, 5);
-    assert!(anomaly_check.anomaly_detected);
-    // CV must be nonzero for high-variance data.
-    assert!(
-        anomaly_check.coefficient_of_variation > 0.0,
-        "expected nonzero CV, got {}",
-        anomaly_check.coefficient_of_variation
+    let unstable = vec![1.0, 100.0, 2.0, 99.0, 3.0, 98.0, 1.0, 200.0];
+    let expected_cv = check_baseline_anomaly(&unstable, 5).coefficient_of_variation;
+    let samples = vec![
+        stable_samples("steady"),
+        ProbeSamples {
+            name: "unstable".into(),
+            values: unstable,
+            errors: 0,
+            total_attempts: 8,
+            sampled_at: vec![],
+        },
+    ];
+
+    let (result, spans) = capture_spans(|| derive_baseline(&samples, &config_mean_stddev()));
+    let result = result.unwrap();
+
+    assert_eq!(spans.len(), 1);
+    let span = &spans[0];
+    assert_eq!(span.name, "baseline.acquire");
+    assert_eq!(
+        span.attributes,
+        [
+            KeyValue::new("baseline.probe_count", 2_i64),
+            KeyValue::new("baseline.tolerance_method", "mean_stddev"),
+        ]
     );
-    // derive_baseline must succeed without recomputing CV.
-    let samples = vec![ProbeSamples {
-        name: "unstable2".into(),
-        values,
-        errors: 0,
-        total_attempts: 8,
-        sampled_at: vec![],
-    }];
-    let result = derive_baseline(&samples, &config_mean_stddev()).unwrap();
-    assert!(result.anomaly_detected);
+    // Mean 63, sample standard deviation 73.36: CV 1.16.
+    let reason = "probe 'unstable': high variance: coefficient of variation 1.16 exceeds 0.50";
+    assert_eq!(span.status, Status::error(reason));
+
+    let events = &span.events.events;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].name, "anomaly.detected");
+    assert_eq!(
+        events[0].attributes,
+        [
+            KeyValue::new("baseline.anomaly.reason", reason),
+            KeyValue::new("baseline.anomaly.cv", expected_cv),
+        ]
+    );
+    // The headline bounds on the event are those of the returned result.
+    assert_eq!(events[1].name, "tolerance.derived");
+    assert_eq!(
+        attribute(&events[1].attributes, "baseline.tolerance.lower"),
+        Some(&Value::F64(result.tolerance_lower))
+    );
+    assert_eq!(
+        attribute(&events[1].attributes, "baseline.tolerance.upper"),
+        Some(&Value::F64(result.tolerance_upper))
+    );
+    assert_eq!(
+        attribute(&events[1].attributes, "baseline.samples_total"),
+        Some(&Value::I64(18))
+    );
 }
 
 #[test]
-fn iqr_method_works() {
+fn iqr_method_derives_quartile_bounds() {
     let samples = vec![stable_samples("latency")];
     let config = AcquisitionConfig {
         method: Method::Iqr,
@@ -214,13 +257,13 @@ fn iqr_method_works() {
     };
     let result = derive_baseline(&samples, &config).unwrap();
     assert!(!result.anomaly_detected);
-    // IQR bounds should be wider than data range for stable data
-    assert!(result.tolerance_lower < 97.0);
-    assert!(result.tolerance_upper > 103.0);
+    // Q1 = 99, Q3 = 101, IQR = 2: bounds are 99 - 3 and 101 + 3.
+    assert!((result.tolerance_lower - 96.0).abs() < 1e-9, "{result:?}");
+    assert!((result.tolerance_upper - 104.0).abs() < 1e-9, "{result:?}");
 }
 
 #[test]
-fn percentile_method_works() {
+fn percentile_method_derives_scaled_upper_bound() {
     let samples = vec![stable_samples("latency")];
     let config = AcquisitionConfig {
         method: Method::Percentile {
@@ -232,7 +275,8 @@ fn percentile_method_works() {
     let result = derive_baseline(&samples, &config).unwrap();
     assert!(!result.anomaly_detected);
     assert!(result.tolerance_lower.abs() < f64::EPSILON);
-    assert!(result.tolerance_upper > 100.0);
+    // p95 = 102.55 (rank 8.55 between 102 and 103), times 1.2.
+    assert!((result.tolerance_upper - 123.06).abs() < 1e-9, "{result:?}");
 }
 
 #[test]
