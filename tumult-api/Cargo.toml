@@ -19,6 +19,7 @@ tumult-report.workspace = true
 tumult-compliance.workspace = true
 tumult-ingest.workspace = true
 tumult-risk = { path = "../tumult-risk" }
+tumult-forecast = { path = "../tumult-forecast" }
 tumult-graph = { path = "../tumult-graph" }
 sha2.workspace = true
 uuid.workspace = true
@@ -26,9 +27,12 @@ axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+reqwest.workspace = true
 tracing.workspace = true
+opentelemetry.workspace = true
 
 [dev-dependencies]
-reqwest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 async-trait.workspace = true
+opentelemetry_sdk = { workspace = true, features = ["testing"] }

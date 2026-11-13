@@ -1,0 +1,13 @@
+[package]
+name = "tumult-forecast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Probabilistic forecasting for resilience telemetry: the ForecastProvider trait, a built-in Holt-Winters provider, the series resampler and the counterfactual impact, recovery time and steady-state computations"
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true
