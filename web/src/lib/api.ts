@@ -72,7 +72,7 @@ function redirectOnUnauthorized(resp: Response, path: string): void {
     }
 }
 
-/** The query string shared by the perf read and the perf store. */
+/** The query string of the perf read. */
 function perfQuery(params: { probe?: string; quantile?: string; env?: string }): string {
     const q = new URLSearchParams();
     if (params.probe) q.set('probe', params.probe);
@@ -189,21 +189,6 @@ export const api = {
             env?: string;
         } = {},
     ) => get<PerfVerdict>(`/api/perf/${encodeURIComponent(target)}${perfQuery(params)}`),
-
-    /** Compute the verdict and append it to the stored history (operator). */
-    storePerfVerdict: (
-        target: string,
-        params: {
-            probe?: string;
-            quantile?: 'p50' | 'p95' | 'p99';
-            env?: string;
-        } = {},
-    ) =>
-        send<PerfVerdict>(
-            'POST',
-            `/api/perf/${encodeURIComponent(target)}/verdicts${perfQuery(params)}`,
-            undefined,
-        ),
 
     reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),
 

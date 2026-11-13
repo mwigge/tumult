@@ -276,9 +276,11 @@ export interface PerfSide {
 }
 
 /**
- * `GET /api/perf/{target}`: the regression verdict between the latest two
- * versions. `POST /api/perf/{target}/verdicts` answers the same shape with
- * `stored: true`.
+ * `GET /api/perf/{target}`: the regression verdict between the target's
+ * candidate and baseline versions (`versions_seen` is in that order; `live`
+ * marks a version still reporting). Storing is `POST
+ * /api/perf/{target}/verdicts`, which the pipeline does through `tumult perf
+ * --store`; the console only reads.
  */
 export interface PerfVerdict {
     target: string;
@@ -299,7 +301,12 @@ export interface PerfVerdict {
         seed: number;
         min_samples: number;
     };
-    versions_seen: { version: string; first_seen_ns: number; last_seen_ns: number }[];
+    versions_seen: {
+        version: string;
+        first_seen_ns: number;
+        last_seen_ns: number;
+        live: boolean;
+    }[];
     stored: boolean;
     history: Record<string, unknown>[];
     as_of_ns: number;

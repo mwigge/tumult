@@ -123,6 +123,7 @@ fn load_journal(id: &str, started: i64, p95: f64, windows: usize) -> tumult_core
         total_requests: 100 * windows as u64,
         thresholds_met: true,
         samples,
+        execution: tumult_core::types::LoadExecution::default(),
     });
     journal
 }
@@ -169,10 +170,17 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
     let (_, body) = get(&srv.base, "/api/perf/checkout").await;
     assert_eq!(body["history"].as_array().unwrap().len(), 0, "{body}");
 
-    // The read has no storing variant any more: the old flag is ignored.
-    let (status, body) = get(&srv.base, "/api/perf/checkout?store=true").await;
-    assert_eq!(status, 200, "{body}");
-    assert_eq!(body["stored"], false);
+    // The read has no storing variant: the old flag is refused, with the
+    // route that does store, rather than silently ignored.
+    for flag in ["store=true", "store=false", "store"] {
+        let (status, body) = get(&srv.base, &format!("/api/perf/checkout?{flag}")).await;
+        assert_eq!(status, 400, "{flag}: {body}");
+        let error = body["error"].as_str().unwrap();
+        assert!(
+            error.contains("POST /api/perf/checkout/verdicts"),
+            "{error}"
+        );
+    }
     let (_, body) = get(&srv.base, "/api/perf/checkout").await;
     assert_eq!(body["history"].as_array().unwrap().len(), 0, "{body}");
 
@@ -193,6 +201,7 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
     assert!(comparison["ci_high"].as_f64().unwrap() >= comparison["ci_low"].as_f64().unwrap());
     assert_eq!(comparison["confidence"], 0.95);
     assert_eq!(body["stored"], true);
+    assert_eq!(body["duplicate"], false);
     assert_eq!(body["history"].as_array().unwrap().len(), 0);
     assert_eq!(body["versions_seen"].as_array().unwrap().len(), 2);
     assert!(body["reasons"][0]
@@ -210,6 +219,23 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
     assert_eq!(history[0]["verdict"], "regressed");
     assert_eq!(history[0]["candidate_version"], "1.5.0");
     assert_eq!(again["comparison"]["ci_low"], body["comparison"]["ci_low"]);
+
+    // A retry of the POST (the client timed out, the daemon had stored)
+    // answers 200 and appends nothing.
+    let (status, retry) = post(&srv.base, "/api/perf/checkout/verdicts").await;
+    assert_eq!(status, 200, "{retry}");
+    assert_eq!(retry["stored"], true);
+    assert_eq!(retry["duplicate"], true);
+    assert_eq!(retry["history"].as_array().unwrap().len(), 1, "{retry}");
+    let (_, after) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(after["history"].as_array().unwrap().len(), 1, "{after}");
+    // Another question about the same evidence is another row.
+    let (status, p50) = post(&srv.base, "/api/perf/checkout/verdicts?quantile=p50").await;
+    assert_eq!(status, 201, "{p50}");
+    let (status, scoped) = post(&srv.base, "/api/perf/checkout/verdicts?env=demo").await;
+    assert_eq!(status, 201, "{scoped}");
+    let (_, after) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(after["history"].as_array().unwrap().len(), 3, "{after}");
 }
 
 #[tokio::test]
@@ -358,10 +384,9 @@ async fn perf_store_needs_operator_and_history_is_environment_scoped() {
     )
     .await;
     assert_eq!(status, 403, "{body}");
-    // The old storing read stores nothing for anyone.
+    // The old storing read stores nothing for anyone: it is refused.
     let (status, body) = get_auth(&srv.base, "/api/perf/checkout?store=true", &viewer).await;
-    assert_eq!(status, 200, "{body}");
-    assert_eq!(body["stored"], false);
+    assert_eq!(status, 400, "{body}");
 
     let operator = add_scoped_token(&srv, "perf-operator", "operator", &["demo"]).await;
     let (status, body) = post_auth(
@@ -387,4 +412,191 @@ async fn perf_store_needs_operator_and_history_is_environment_scoped() {
     let wide = add_scoped_token(&srv, "perf-wide", "viewer", &["demo", "prod"]).await;
     let (_, body) = get_auth(&srv.base, "/api/perf/checkout", &wide).await;
     assert_eq!(body["history"].as_array().unwrap().len(), 1, "{body}");
+}
+
+/// `service_span` in another environment.
+fn span_in(env: &str, id: &str, version: &str, ts: i64) -> SpanRow {
+    SpanRow {
+        target_environment: Some(env.into()),
+        ..service_span(id, version, ts)
+    }
+}
+
+/// Spans of `version` every ten seconds over `[from, to]`, in `env`.
+fn stream(env: &str, version: &str, from: i64, to: i64) -> Vec<SpanRow> {
+    (0..)
+        .map(|i| from + i * 10 * NS)
+        .take_while(|ts| *ts <= to)
+        .map(|ts| span_in(env, &format!("{env}-{version}-{ts}"), version, ts))
+        .collect()
+}
+
+/// Insert spans and one 40-window journal per `(run id, start, p95)`.
+async fn seed(srv: &TestServer, spans: Vec<SpanRow>, runs: Vec<(&'static str, i64, f64)>) {
+    exec_write(srv, move |writer| {
+        writer.insert_spans(&spans).map_err(|e| e.to_string())?;
+        for (id, started, p95) in &runs {
+            writer
+                .ingest_journal(&load_journal(id, *started, *p95, 40), None)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await;
+}
+
+fn runs_of(side: &serde_json::Value) -> Vec<String> {
+    side["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.as_str().unwrap().to_string())
+        .collect()
+}
+
+/// 1.0.0 is busy in prod while 1.1.0 is tried in demo. An unscoped read
+/// must give the demo runs to the version demo ran, however often prod
+/// spoke in between, and must not let prod's chatter pick the candidate.
+#[tokio::test]
+async fn perf_attributes_a_run_from_the_spans_of_its_own_environment() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let mut spans = stream("prod", "1.0.0", now - 4000 * NS, now - NS);
+    spans.extend(stream("demo", "1.0.0", now - 3000 * NS, now - 2000 * NS));
+    // Demo's 1.1.0 is quiet around its run: prod spoke last before it.
+    spans.push(span_in("demo", "new-1", "1.1.0", now - 1500 * NS));
+    spans.push(span_in("demo", "new-2", "1.1.0", now - 400 * NS));
+    spans.push(root_span("demo-old", now - 2800 * NS));
+    spans.push(root_span("demo-new", now - 1000 * NS));
+    spans.push(SpanRow {
+        target_environment: Some("prod".into()),
+        ..root_span("prod-run", now - 700 * NS)
+    });
+    seed(
+        &srv,
+        spans,
+        vec![
+            ("demo-old", now - 2800 * NS, 100.0),
+            ("demo-new", now - 1000 * NS, 150.0),
+            ("prod-run", now - 700 * NS, 100.0),
+        ],
+    )
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["candidate"]["version"], "1.1.0", "{body}");
+    assert_eq!(runs_of(&body["candidate"]), vec!["demo-new"]);
+    assert_eq!(body["baseline"]["version"], "1.0.0");
+    assert_eq!(runs_of(&body["baseline"]), vec!["demo-old", "prod-run"]);
+    assert_eq!(body["candidate"]["samples"], 40);
+    assert_eq!(body["baseline"]["samples"], 80);
+    assert_eq!(body["verdict"], "regressed", "{body}");
+    let live: Vec<bool> = body["versions_seen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["live"].as_bool().unwrap())
+        .collect();
+    assert_eq!(live, vec![true, true], "{body}");
+
+    // Each environment on its own: demo compares its two versions, prod
+    // has one.
+    let (_, demo) = get(&srv.base, "/api/perf/checkout?env=demo").await;
+    assert_eq!(runs_of(&demo["candidate"]), vec!["demo-new"]);
+    assert_eq!(runs_of(&demo["baseline"]), vec!["demo-old"]);
+    let (_, prod) = get(&srv.base, "/api/perf/checkout?env=prod").await;
+    assert_eq!(prod["candidate"]["version"], "1.0.0");
+    assert_eq!(runs_of(&prod["candidate"]), vec!["prod-run"]);
+    assert!(prod["baseline"].is_null(), "{prod}");
+}
+
+/// A canary: both versions report from one environment, span by span. A
+/// run belongs to the version that served most of it, an even split to
+/// the version deployed latest, and neither answer depends on who spoke
+/// last.
+#[tokio::test]
+async fn perf_resolves_versions_interleaved_within_one_environment() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let mut spans = stream("demo", "1.0.0", now - 3000 * NS, now - 10 * NS);
+    spans.extend(stream("demo", "1.1.0", now - 1495 * NS, now - 5 * NS));
+    // Each ten seconds of a window hold one span of either version; the
+    // extra ones give one run to the old version and one to the new.
+    for i in 0..20 {
+        let old = now - 1000 * NS + i * NS + NS / 2;
+        spans.push(span_in("demo", &format!("x-old-{i}"), "1.0.0", old));
+        let new = now - 600 * NS + i * NS + NS / 2;
+        spans.push(span_in("demo", &format!("x-new-{i}"), "1.1.0", new));
+    }
+    spans.push(root_span("before-the-canary", now - 2500 * NS));
+    spans.push(root_span("mostly-old", now - 1000 * NS));
+    spans.push(root_span("mostly-new", now - 600 * NS));
+    // Six spans each inside [−300 s, −241 s].
+    spans.push(SpanRow {
+        duration_ns: 59 * NS,
+        ..root_span("even", now - 300 * NS)
+    });
+    seed(
+        &srv,
+        spans,
+        vec![
+            ("before-the-canary", now - 2500 * NS, 100.0),
+            ("mostly-old", now - 1000 * NS, 100.0),
+            ("mostly-new", now - 600 * NS, 150.0),
+            ("even", now - 300 * NS, 150.0),
+        ],
+    )
+    .await;
+
+    let (status, first) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{first}");
+    assert_eq!(first["candidate"]["version"], "1.1.0", "{first}");
+    assert_eq!(runs_of(&first["candidate"]), vec!["mostly-new", "even"]);
+    assert_eq!(first["baseline"]["version"], "1.0.0");
+    assert_eq!(
+        runs_of(&first["baseline"]),
+        vec!["before-the-canary", "mostly-old"]
+    );
+    assert_eq!(first["verdict"], "regressed", "{first}");
+
+    // Now the old version speaks last: nothing about the answer moves.
+    exec_write(&srv, move |writer| {
+        writer
+            .insert_spans(&[span_in("demo", "old-last", "1.0.0", now - NS)])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (_, second) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(second["candidate"], first["candidate"], "{second}");
+    assert_eq!(second["baseline"], first["baseline"], "{second}");
+    assert_eq!(second["comparison"], first["comparison"]);
+}
+
+/// The candidate build got no traffic until the load began, so its first
+/// span is later than the run's start, where the old build spoke last.
+#[tokio::test]
+async fn perf_gives_a_run_to_a_candidate_that_was_idle_until_the_load() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let mut spans = stream("demo", "1.0.0", now - 3000 * NS, now - 2000 * NS);
+    spans.extend(stream("demo", "1.1.0", now - 990 * NS, now - 945 * NS));
+    spans.push(root_span("old", now - 2500 * NS));
+    spans.push(root_span("new", now - 1000 * NS));
+    seed(
+        &srv,
+        spans,
+        vec![
+            ("old", now - 2500 * NS, 100.0),
+            ("new", now - 1000 * NS, 150.0),
+        ],
+    )
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["candidate"]["version"], "1.1.0");
+    assert_eq!(runs_of(&body["candidate"]), vec!["new"], "{body}");
+    assert_eq!(runs_of(&body["baseline"]), vec!["old"], "{body}");
+    assert_eq!(body["verdict"], "regressed", "{body}");
 }

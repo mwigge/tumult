@@ -98,6 +98,84 @@ impl Writer {
     }
 }
 
+/// Whether the latest stored row for the comparison `row` names — same
+/// target, probe, versions, quantile and environments — holds the same
+/// evidence: sample counts, percentiles, difference, interval, level,
+/// margin and verdict. NULLs compare equal to NULLs.
+const SAME_AS_LATEST: &str = "
+SELECT count(*) FROM (
+    SELECT * FROM perf_verdicts
+    WHERE target = ? AND probe = ? AND baseline_version = ?
+      AND candidate_version = ? AND quantile = ?
+      AND CAST(envs AS VARCHAR) IS NOT DISTINCT FROM ?
+    ORDER BY computed_at_ns DESC LIMIT 1
+) AS latest
+WHERE latest.baseline_n = ? AND latest.candidate_n = ?
+  AND latest.baseline_p50 IS NOT DISTINCT FROM ?
+  AND latest.baseline_p95 IS NOT DISTINCT FROM ?
+  AND latest.baseline_p99 IS NOT DISTINCT FROM ?
+  AND latest.candidate_p50 IS NOT DISTINCT FROM ?
+  AND latest.candidate_p95 IS NOT DISTINCT FROM ?
+  AND latest.candidate_p99 IS NOT DISTINCT FROM ?
+  AND latest.delta IS NOT DISTINCT FROM ?
+  AND latest.ci_low IS NOT DISTINCT FROM ?
+  AND latest.ci_high IS NOT DISTINCT FROM ?
+  AND latest.confidence = ? AND latest.margin = ? AND latest.verdict = ?";
+
+impl Writer {
+    /// Append `row` unless the latest stored row for the same comparison
+    /// already holds the same evidence, so that a repeated request — a
+    /// retry after a client timeout — leaves one row. `Ok(true)` when a
+    /// row was appended. A verdict that changed and later changed back is
+    /// appended again: only the latest row is compared.
+    ///
+    /// # Errors
+    /// Returns an error if the lookup or the insert fails.
+    pub fn append_perf_verdict(&self, row: &PerfVerdictRow) -> Result<bool, StoreError> {
+        if self.latest_perf_verdict_matches(row)? {
+            return Ok(false);
+        }
+        self.insert_perf_verdict(row)?;
+        Ok(true)
+    }
+
+    fn latest_perf_verdict_matches(&self, row: &PerfVerdictRow) -> Result<bool, StoreError> {
+        let envs = row
+            .envs
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| StoreError::Internal(format!("perf verdict envs: {e}")))?;
+        let same: i64 = self.conn.query_row(
+            SAME_AS_LATEST,
+            params![
+                row.target,
+                row.probe,
+                row.baseline_version,
+                row.candidate_version,
+                row.quantile,
+                envs,
+                row.baseline_n,
+                row.candidate_n,
+                row.baseline_p50,
+                row.baseline_p95,
+                row.baseline_p99,
+                row.candidate_p50,
+                row.candidate_p95,
+                row.candidate_p99,
+                row.delta,
+                row.ci_low,
+                row.ci_high,
+                row.confidence,
+                row.margin,
+                row.verdict,
+            ],
+            |r| r.get(0),
+        )?;
+        Ok(same > 0)
+    }
+}
+
 impl Reader {
     /// The stored verdicts for `target`, newest first, at most `limit`
     /// rows, as JSON objects with the column names of `perf_verdicts`
@@ -296,6 +374,58 @@ INSERT INTO perf_verdicts VALUES (
 
         assert_eq!(reader.perf_verdicts("checkout", &[], 1).unwrap().len(), 1);
         assert!(reader.perf_verdicts("other", &[], 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn appending_the_same_verdict_twice_keeps_one_row() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let count = || {
+            let reader = store.read_only().unwrap();
+            reader.perf_verdicts("checkout", &[], 50).unwrap().len()
+        };
+        let demo = |verdict: &str, at: i64| PerfVerdictRow {
+            envs: Some(vec!["demo".into()]),
+            ..row(verdict, at)
+        };
+        assert!(writer.append_perf_verdict(&demo("regressed", 10)).unwrap());
+        // The retry: same comparison, same evidence, a later clock.
+        assert!(!writer.append_perf_verdict(&demo("regressed", 20)).unwrap());
+        assert_eq!(count(), 1);
+
+        // Another environment list, quantile or probe is another comparison.
+        assert!(writer.append_perf_verdict(&row("regressed", 30)).unwrap());
+        assert!(!writer.append_perf_verdict(&row("regressed", 31)).unwrap());
+        let p99 = PerfVerdictRow {
+            quantile: "p99".into(),
+            ..demo("regressed", 40)
+        };
+        assert!(writer.append_perf_verdict(&p99).unwrap());
+        let other_probe = PerfVerdictRow {
+            probe: "health".into(),
+            ..demo("regressed", 50)
+        };
+        assert!(writer.append_perf_verdict(&other_probe).unwrap());
+        assert_eq!(count(), 4);
+
+        // New evidence appends; going back to the earlier evidence does
+        // too, because only the latest row is compared.
+        let more = PerfVerdictRow {
+            candidate_n: 200,
+            ..demo("regressed", 60)
+        };
+        assert!(writer.append_perf_verdict(&more).unwrap());
+        assert!(!writer.append_perf_verdict(&more).unwrap());
+        assert!(writer.append_perf_verdict(&demo("regressed", 70)).unwrap());
+        let missing = PerfVerdictRow {
+            ci_low: None,
+            ci_high: None,
+            ..demo("inconclusive", 80)
+        };
+        assert!(writer.append_perf_verdict(&missing).unwrap());
+        assert!(!writer.append_perf_verdict(&missing).unwrap());
+        assert_eq!(count(), 7);
     }
 
     #[test]

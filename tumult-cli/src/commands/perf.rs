@@ -66,6 +66,8 @@ pub struct PerfResponse {
     pub ci: Option<(f64, f64)>,
     pub margin: Option<f64>,
     pub stored: bool,
+    /// The daemon already held this verdict and appended nothing.
+    pub duplicate: bool,
 }
 
 fn side(v: &Value, quantile: &str) -> Option<PerfSide> {
@@ -125,6 +127,7 @@ impl PerfResponse {
             },
             margin: num("margin"),
             stored: v.get("stored").and_then(Value::as_bool).unwrap_or(false),
+            duplicate: v.get("duplicate").and_then(Value::as_bool).unwrap_or(false),
             quantile,
         })
     }
@@ -186,7 +189,11 @@ pub fn render(resp: &PerfResponse) -> String {
     for reason in &resp.reasons {
         out.push_str(&format!("  - {reason}\n"));
     }
-    if resp.stored {
+    if resp.stored && resp.duplicate {
+        out.push_str(
+            "  verdict stored in perf_verdicts (already there with the same evidence; nothing appended)\n",
+        );
+    } else if resp.stored {
         out.push_str("  verdict stored in perf_verdicts\n");
     }
     out
@@ -345,6 +352,28 @@ mod tests {
         assert!(text.contains("delta +50.0 ms (+50.0%), CI [31.0, 70.0], margin ±5.0"));
         assert!(text.contains("- p95 difference"));
         assert!(text.contains("verdict stored"));
+    }
+
+    #[test]
+    fn a_verdict_the_daemon_already_held_counts_as_stored_and_says_so() {
+        let mut v = answer();
+        v["duplicate"] = true.into();
+        let resp = PerfResponse::from_value(&v).unwrap();
+        assert!(resp.stored && resp.duplicate);
+        let asking = PerfArgs {
+            store: true,
+            ..args()
+        };
+        assert!(ensure_stored(&asking, &resp).is_ok());
+        let text = render(&resp);
+        assert!(
+            text.contains("verdict stored in perf_verdicts (already there"),
+            "{text}"
+        );
+        assert!(text.contains("nothing appended"), "{text}");
+        let first = PerfResponse::from_value(&answer()).unwrap();
+        assert!(!first.duplicate);
+        assert!(!render(&first).contains("already there"));
     }
 
     #[test]
