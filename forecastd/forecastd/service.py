@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from . import __version__
+from .logs import error_fields, event
 from .model import ForecastModel
 
 log = logging.getLogger("forecastd")
@@ -101,14 +102,24 @@ def _run_model(
 ) -> np.ndarray:
     """Run the model. A ``ValueError`` is the model turning this request
     down (a shape or length it does not support), so it is the caller's
-    error, not a fault of the service."""
+    error, not a fault of the service. What the model said goes to the log,
+    cut to size; the caller is told only that it refused, since the text is
+    third-party and may name paths on this host."""
     try:
         quantiles = model.forecast(context, horizon, past, known)
     except BadRequest:
         raise
     except ValueError as error:
-        log.warning("the model refused a request: %s", error)
-        raise BadRequest(f"the model refused the request: {error}") from error
+        event(
+            log,
+            logging.WARNING,
+            "model.refused",
+            "the model refused a request",
+            horizon=horizon,
+            context_steps=int(context.shape[1]),
+            **error_fields(error),
+        )
+        raise BadRequest("the model refused the request") from error
     if quantiles.shape != (context.shape[0], horizon, len(model.levels)):
         raise RuntimeError(f"model returned quantiles shaped {quantiles.shape}")
     return quantiles

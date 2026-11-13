@@ -8,7 +8,11 @@ import logging
 import os
 import sys
 
+from . import logs
+from .logs import event
 from .model import load_model_from_env
+
+log = logging.getLogger("forecastd")
 
 
 def parse_bind(bind: str) -> tuple[str, int]:
@@ -18,38 +22,61 @@ def parse_bind(bind: str) -> tuple[str, int]:
     return host, int(port)
 
 
-def main() -> int:
-    logging.basicConfig(
-        level=os.environ.get("FORECASTD_LOG_LEVEL", "INFO").upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
-    log = logging.getLogger("forecastd")
+def configure_logs() -> None:
+    """Set the log format from the environment. A setting that is not
+    understood falls back to the defaults before it is raised, so the
+    refusal itself is a structured line."""
     try:
+        logs.configure(os.environ)
+    except ValueError:
+        logs.configure({})
+        raise
+
+
+def serve_stdlib(model: object, host: str, port: int) -> None:
+    from .server import serve
+
+    event(
+        log,
+        logging.INFO,
+        "server.stdlib",
+        "fastapi or uvicorn is not installed; serving with the stdlib server",
+        host=host,
+        port=port,
+    )
+    server = serve(model, host, port)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+def main() -> int:
+    try:
+        configure_logs()
         host, port = parse_bind(os.environ.get("FORECASTD_BIND", "0.0.0.0:8700"))
         model = load_model_from_env()
     except Exception:  # noqa: BLE001 - reported, and the process does not start
         # A bad setting, weights that are not the pinned ones, a model that
         # will not load: none of them may leave a half-working service up.
-        log.exception("forecastd cannot start")
+        event(log, logging.ERROR, "startup.failed", "forecastd cannot start", exc_info=True)
         return 1
-    log.info("loaded model %s", model.info.as_dict())
+    event(log, logging.INFO, "model.loaded", "model loaded", **model.info.as_dict())
     try:
         import uvicorn
 
         from .asgi import create_app
     except ImportError:
-        from .server import serve
-
-        log.info("fastapi/uvicorn not installed; serving with the stdlib server on %s:%d", host, port)
-        server = serve(model, host, port)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            server.server_close()
+        serve_stdlib(model, host, port)
         return 0
-    uvicorn.run(create_app(model), host=host, port=port, log_level="info")
+    # ``log_config=None`` leaves uvicorn's loggers to ``logs.configure``;
+    # requests are logged by the application, in the same shape.
+    level = logging.getLevelName(logs.log_level(os.environ)).lower()
+    uvicorn.run(
+        create_app(model), host=host, port=port, log_level=level, log_config=None, access_log=False
+    )
     return 0
 
 

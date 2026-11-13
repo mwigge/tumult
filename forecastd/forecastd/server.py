@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from . import service
+from .logs import event
 from .model import ForecastModel
 from .service import BadRequest, handle_forecast, handle_healthz
 
@@ -30,13 +31,43 @@ def _content_length(header: str | None) -> int | None:
     return int(header)
 
 
+def _host(address: Any) -> str:
+    """The host of a socket address, whatever family it is."""
+    if isinstance(address, tuple) and address:
+        return str(address[0])
+    return str(address)
+
+
 def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "tumult-forecastd"
         timeout = REQUEST_TIMEOUT_S
 
+        def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+            del size
+            event(
+                log,
+                logging.INFO,
+                "http.access",
+                "request served",
+                client=_host(self.client_address),
+                method=self.command,
+                path=getattr(self, "path", None),
+                status=int(code) if isinstance(code, int) else str(code),
+            )
+
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-            log.info("%s " + format, self.address_string(), *args)
+            # What ``http.server`` itself has to say (a request line it
+            # could not parse, a timeout). Its template stays a field.
+            event(
+                log,
+                logging.INFO,
+                "http.message",
+                "http server message",
+                client=_host(self.client_address),
+                template=format,
+                values=[str(arg) for arg in args],
+            )
 
         def _send(self, status: HTTPStatus, body: dict[str, Any]) -> None:
             data = json.dumps(body).encode()
@@ -71,7 +102,14 @@ def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
             try:
                 raw = self.rfile.read(length)
             except TimeoutError:
-                log.warning("%s sent no body within %d s", self.address_string(), REQUEST_TIMEOUT_S)
+                event(
+                    log,
+                    logging.WARNING,
+                    "http.body_timeout",
+                    "the request body did not arrive in time",
+                    client=_host(self.client_address),
+                    timeout_s=REQUEST_TIMEOUT_S,
+                )
                 self.close_connection = True
                 return
             try:
@@ -84,14 +122,30 @@ def make_handler(model: ForecastModel) -> type[BaseHTTPRequestHandler]:
             except BadRequest as error:
                 self._send(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             except Exception:  # noqa: BLE001 - the model is third-party code
-                log.exception("forecast failed")
+                event(log, logging.ERROR, "forecast.failed", "forecast failed", exc_info=True)
                 self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "forecast failed"})
 
     return Handler
 
 
-def serve(model: ForecastModel, host: str, port: int) -> ThreadingHTTPServer:
+class Server(ThreadingHTTPServer):
+    """The threaded server, with a handler that fails logged as an event
+    (``socketserver`` would print the traceback)."""
+
+    daemon_threads = True
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        del request
+        event(
+            log,
+            logging.ERROR,
+            "http.handler_failed",
+            "a request handler failed",
+            exc_info=True,
+            client=_host(client_address),
+        )
+
+
+def serve(model: ForecastModel, host: str, port: int) -> Server:
     """Bind and return the server; the caller runs ``serve_forever``."""
-    server = ThreadingHTTPServer((host, port), make_handler(model))
-    server.daemon_threads = True
-    return server
+    return Server((host, port), make_handler(model))

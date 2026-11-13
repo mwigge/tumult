@@ -207,7 +207,8 @@ class HandleForecastTests(unittest.TestCase):
         # Not a server fault: the daemon must not open its circuit for it.
         with self.assertRaises(BadRequest) as raised:
             handle_forecast({"context": [1.0, 2.0, 3.0], "horizon": 2}, RefusingModel())
-        self.assertIn("prediction_length", str(raised.exception))
+        # What the model said is logged, not sent back.
+        self.assertEqual(str(raised.exception), "the model refused the request")
 
     def test_healthz_reports_the_model(self) -> None:
         body = handle_healthz(self.model)
@@ -387,9 +388,13 @@ class MainTests(unittest.TestCase):
             {"FORECASTD_MODEL": "timestral", "FORECASTD_WEIGHTS_SHA256": "nope"},
             {"FORECASTD_MODEL": "stub", "FORECASTD_BIND": "8700"},
         ):
+            # The process-wide log setup is left alone here: ``test_logs``
+            # runs the real thing in a process of its own.
             with self.subTest(env=env), mock.patch.dict(os.environ, env, clear=True):
-                with self.assertLogs("forecastd", level="ERROR"):
-                    self.assertEqual(main(), 1)
+                with mock.patch("forecastd.logs.configure"):
+                    with self.assertLogs("forecastd", level="ERROR") as seen:
+                        self.assertEqual(main(), 1)
+                self.assertEqual([record.event for record in seen.records], ["startup.failed"])
 
 
 if __name__ == "__main__":

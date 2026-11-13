@@ -158,6 +158,30 @@ stop_sidecar() {
 }
 sidecar_is_down() { ! curl -s -o /dev/null --max-time 1 "$SIDECAR/healthz"; }
 
+# structured_log <file> <event...>: every line of a forecastd log (stdout
+# and stderr together) is one JSON object with the six agreed keys, and
+# each named event is among them. Prints the number of lines.
+structured_log() {
+    python3 -I -c '
+import json, sys
+keys = {"timestamp", "level", "logger", "event", "message", "fields"}
+seen = set()
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+assert lines, "the log is empty"
+for number, line in enumerate(lines, 1):
+    try:
+        entry = json.loads(line)
+    except ValueError:
+        sys.exit("line %d is not JSON: %r" % (number, line[:200]))
+    if not (isinstance(entry, dict) and set(entry) == keys and isinstance(entry["fields"], dict)):
+        sys.exit("line %d is not a log entry: %r" % (number, line[:200]))
+    seen.add(entry["event"])
+missing = [name for name in sys.argv[2:] if name not in seen]
+if missing:
+    sys.exit("no %s event among %s" % (" or ".join(missing), sorted(seen)))
+print(len(lines))' "$@"
+}
+
 # The provider named by a response's provenance.
 model_of() { py 'print(d.get("provenance", (d.get("probes") or [{}])[0].get("provenance", {})).get("model"))'; }
 impact_model_is() { [[ "$(curl -fs "$URL/api/runs/$RUN_ID/impact" | model_of)" == "$1" ]]; }
@@ -305,7 +329,8 @@ if [[ "$MODEL_KIND" == timestral ]]; then
     grep -q "WeightsMismatch" "$WORK/forecastd-wrong.log" || fail "the refusal does not name the mismatch"
     grep -q "$PINNED_SHA256" "$WORK/forecastd-wrong.log" || fail "the refusal does not show the digest it found"
     port_is_free "$WRONG_PORT" || fail "the refusing forecastd left a listener behind"
-    pass "exit status 1 with WeightsMismatch before any socket was opened"
+    LINES=$(structured_log "$WORK/forecastd-wrong.log" startup.failed) || fail "the refusal is not a structured log: $LINES"
+    pass "exit status 1 with WeightsMismatch before any socket was opened, said in $LINES JSON log line(s)"
 fi
 
 echo "[7] restart tumultd with the sidecar configured: provenance names the model and its weights"
@@ -363,6 +388,8 @@ poll 60 "the daemon to return to the sidecar" impact_model_is "$EXPECT_MODEL"
 curl -fs "$URL/api/runs/$RUN_ID/impact" >"$WORK/impact-back.json"
 py 'v=d["probes"][0]["provenance"]; assert v["model"]=="'"$EXPECT_MODEL"'" and v["weights_hash"]=="'"$WEIGHTS"'" and v.get("fallback_reason") is None, v' <"$WORK/impact-back.json"
 pass "provenance is $EXPECT_MODEL again, no fallback reason"
+LINES=$(structured_log "$WORK/forecastd.log" model.loaded http.access) || fail "forecastd's log is not structured: $LINES"
+pass "all $LINES lines forecastd wrote (two starts, stdout and stderr) are JSON log entries"
 
 echo "[10] the forecasts table holds both providers' rows with their provenance"
 stop_daemon

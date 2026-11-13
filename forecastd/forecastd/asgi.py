@@ -14,10 +14,41 @@ import logging
 from typing import Any
 
 from . import service
+from .logs import event
 from .model import ForecastModel, load_model_from_env
 from .service import BadRequest, handle_forecast, handle_healthz
 
 log = logging.getLogger("forecastd")
+
+
+class AccessLog:
+    """ASGI middleware: one ``http.access`` event per response, in the
+    shape the stdlib server logs it. uvicorn's own access log is off."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def logged(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                client = scope.get("client")
+                event(
+                    log,
+                    logging.INFO,
+                    "http.access",
+                    "request served",
+                    client=client[0] if client else None,
+                    method=scope.get("method"),
+                    path=scope.get("path"),
+                    status=message["status"],
+                )
+            await send(message)
+
+        await self.app(scope, receive, logged)
 
 
 class _Refused(Exception):
@@ -74,6 +105,7 @@ def create_app(model: ForecastModel | None = None) -> Any:
 
     loaded = model or load_model_from_env()
     app = FastAPI(title="tumult-forecastd", docs_url=None, redoc_url=None)
+    app.add_middleware(AccessLog)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
@@ -89,7 +121,7 @@ def create_app(model: ForecastModel | None = None) -> Any:
         except _Refused as refused:
             raise HTTPException(status_code=refused.status, detail=refused.detail) from refused
         except Exception as error:  # noqa: BLE001 - the model is third-party code
-            log.exception("forecast failed")
+            event(log, logging.ERROR, "forecast.failed", "forecast failed", exc_info=True)
             raise HTTPException(status_code=500, detail="forecast failed") from error
 
     return app

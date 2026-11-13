@@ -150,6 +150,37 @@ class AsgiTests(unittest.TestCase):
         request = json.dumps({"context": [1.0, 2.0, 3.0], "horizon": 1}).encode()
         status, body = call(create_app(RefusingModel()), "POST", "/forecast", request)
         self.assertEqual(status, 400, body)
+        self.assertEqual(body["detail"], "the model refused the request")
+
+    def test_a_request_is_one_access_event(self) -> None:
+        with self.assertLogs("forecastd", level="INFO") as seen:
+            status, _ = call(self.app, "GET", "/healthz")
+            refused, _ = call(self.app, "POST", "/forecast", b"not json")
+        self.assertEqual((status, refused), (200, 400))
+        self.assertEqual([record.event for record in seen.records], ["http.access"] * 2)
+        first, second = (record.fields for record in seen.records)
+        self.assertEqual(first, {"client": "127.0.0.1", "method": "GET", "path": "/healthz", "status": 200})
+        self.assertEqual(second["status"], 400)
+        self.assertEqual(second["path"], "/forecast")
+        for record in seen.records:
+            self.assertEqual(record.getMessage(), "request served")
+            self.assertEqual(record.args, ())
+
+    def test_a_model_that_crashes_is_500_and_one_event(self) -> None:
+        from forecastd.asgi import create_app
+
+        class Crashing(StubModel):
+            def forecast(self, context, horizon, past_covariates, known_covariates):
+                raise RuntimeError("tensor /weights/x\nwent wrong")
+
+        request = json.dumps({"context": [1.0, 2.0, 3.0], "horizon": 1}).encode()
+        with self.assertLogs("forecastd", level="ERROR") as seen:
+            status, body = call(create_app(Crashing()), "POST", "/forecast", request)
+        self.assertEqual(status, 500, body)
+        self.assertEqual(body, {"detail": "forecast failed"})
+        (record,) = seen.records
+        self.assertEqual(record.event, "forecast.failed")
+        self.assertEqual(record.getMessage(), "forecast failed")
 
 
 if __name__ == "__main__":
