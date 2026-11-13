@@ -177,12 +177,16 @@ struct ProbeImpact {
 /// caller reports it next to the probes that worked.
 async fn probe_impact(
     state: &ApiState,
+    run_id: &str,
     name: &str,
     samples: &ProbeSamples,
 ) -> Result<ProbeImpact, String> {
     let (series, fault) = probe_series(samples).ok_or("no during-phase samples")?;
     let plan = impact::plan(&series.values, fault).map_err(|e| e.to_string())?;
-    let produced = produce(state, &plan.context, plan.horizon, Some(&plan.covariates))
+    // What a busy sidecar's `Retry-After` is remembered against.
+    let held_as = format!("impact\u{1f}{run_id}\u{1f}{name}");
+    let covariates = Some(&plan.covariates);
+    let produced = produce(state, &held_as, &plan.context, plan.horizon, covariates)
         .await
         .map_err(|e| e.to_string())?;
     let forecast = produced.forecast;
@@ -337,7 +341,7 @@ pub(crate) async fn run_impact(
     let mut probes = Vec::new();
     let mut headline = Headline::default();
     for (name, samples) in group_samples(&rows) {
-        match probe_impact(&state, &name, &samples).await {
+        match probe_impact(&state, &id, &name, &samples).await {
             Ok(probe) => {
                 headline.add(&probe);
                 probes.push(probe.json);

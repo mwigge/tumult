@@ -252,6 +252,13 @@ impl ApiState {
         self
     }
 
+    /// Replace the forecasting sidecar's circuit breaker.
+    #[cfg(test)]
+    pub(crate) fn with_forecast_breaker(mut self, breaker: forecast::breaker::Breaker) -> Self {
+        self.forecast_breaker = Arc::new(breaker);
+        self
+    }
+
     /// The forecasting sidecar's circuit breaker.
     #[must_use]
     pub fn forecast_breaker(&self) -> &forecast::breaker::Breaker {

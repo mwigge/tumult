@@ -353,7 +353,7 @@ async fn fresh(
         )));
     }
     let fitted = fitted_horizon(asked.horizon);
-    let produced = produce(state, &series.values, fitted, None)
+    let produced = produce(state, key, &series.values, fitted, None)
         .await
         .map_err(|e| internal(e.to_string()))?;
     let row = row_from_forecast(key, series, &produced.forecast, now_ns());

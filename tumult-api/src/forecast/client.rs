@@ -66,6 +66,14 @@ fn status_kind(status: reqwest::StatusCode, retry_after: bool) -> FailureKind {
     }
 }
 
+/// `Retry-After` as a number of whole seconds. The date form is not
+/// read: the sidecar sends seconds, and a date would need the two clocks
+/// to agree.
+fn retry_after_seconds(value: &reqwest::header::HeaderValue) -> Option<Duration> {
+    let seconds = value.to_str().ok()?.trim().parse::<u64>().ok()?;
+    Some(Duration::from_secs(seconds))
+}
+
 impl FailureKind {
     /// The coarse code reported as `fallback_reason`.
     #[must_use]
@@ -95,6 +103,9 @@ pub struct SidecarError {
     pub kind: FailureKind,
     /// What went wrong, for the log only.
     pub detail: String,
+    /// How long a busy sidecar asked to be left alone: `Retry-After` in
+    /// whole seconds. `None` when it gave no such number.
+    pub retry_after: Option<Duration>,
 }
 
 impl SidecarError {
@@ -102,6 +113,7 @@ impl SidecarError {
         Self {
             kind,
             detail: detail.into(),
+            retry_after: None,
         }
     }
 
@@ -383,14 +395,17 @@ impl TimestralClient {
             .await
             .map_err(|e| SidecarError::transport("sidecar request failed", &e))?;
         let status = resp.status();
-        let retry_after = resp.headers().contains_key(reqwest::header::RETRY_AFTER);
+        let retry_after = resp.headers().get(reqwest::header::RETRY_AFTER).cloned();
         let body = read_capped(resp, MAX_RESPONSE_BYTES).await?;
         if !status.is_success() {
             let excerpt: String = body.chars().take(200).collect();
-            return Err(SidecarError::new(
-                status_kind(status, retry_after),
-                format!("sidecar answered {status}: {excerpt}"),
-            ));
+            let kind = status_kind(status, retry_after.is_some());
+            let mut error =
+                SidecarError::new(kind, format!("sidecar answered {status}: {excerpt}"));
+            if kind == FailureKind::Busy {
+                error.retry_after = retry_after.as_ref().and_then(retry_after_seconds);
+            }
+            return Err(error);
         }
         parse_response(&body, horizon, levels)
             .map_err(|e| SidecarError::new(FailureKind::BadResponse, e.to_string()))
@@ -591,6 +606,29 @@ mod tests {
             assert!(!err.kind.trips_breaker(), "{status}");
             assert_eq!(err.kind.code(), "busy");
         }
+    }
+
+    /// A busy answer carries the sidecar's hint in whole seconds. A date,
+    /// or anything else that is not a number of seconds, still makes a
+    /// 503 a busy one but is no hint.
+    #[tokio::test]
+    async fn a_busy_answer_carries_the_retry_after_seconds() {
+        let secs = |n| Some(Duration::from_secs(n));
+        assert_eq!(answer(503, Some("7")).await.retry_after, secs(7));
+        assert_eq!(answer(429, Some(" 120 ")).await.retry_after, secs(120));
+        assert_eq!(answer(429, None).await.retry_after, None);
+        let dated = answer(503, Some("Wed, 21 Oct 2026 07:28:00 GMT")).await;
+        assert_eq!(dated.kind, FailureKind::Busy);
+        assert_eq!(dated.retry_after, None);
+        assert_eq!(answer(503, Some("-3")).await.retry_after, None);
+    }
+
+    /// Only a busy answer has a hint: a 500 that names one is an outage.
+    #[tokio::test]
+    async fn a_failure_that_is_not_busy_has_no_hint() {
+        let err = answer(500, Some("7")).await;
+        assert_eq!(err.kind, FailureKind::BadResponse);
+        assert_eq!(err.retry_after, None);
     }
 
     /// Without `Retry-After` a 503 is an outage, not a full house.

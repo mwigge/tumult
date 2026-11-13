@@ -31,6 +31,7 @@ tracing.workspace = true
 opentelemetry.workspace = true
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 async-trait.workspace = true
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

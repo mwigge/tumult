@@ -305,11 +305,32 @@ back and the next one is sent. If a rejected or busy request was the
 half-open probe, the circuit neither closes nor starts a new cool-down:
 the next request is the probe.
 
+Busy every time is not a working sidecar, though. The daemon counts the
+busy answers since the sidecar last answered with a forecast. The eighth
+in a row opens the circuit for a cool-down like any failure, and so does a
+busy answer that comes more than a cool-down after the first of the run,
+which is what catches a sidecar that is asked too seldom to reach eight.
+One forecast from the sidecar starts the count again. A busy half-open
+probe is still handed on, and counts: probes that are busy every time end
+in a cool-down. With the breaker disabled (`0`) nothing is counted.
+
+A busy answer's `Retry-After`, in whole seconds, is taken as a hint for
+the series that was asked for. Until it has passed, at most 30 seconds
+whatever the header says, a request for that series gets the fallback
+with `fallback_reason: busy` and is not sent; other series are sent as
+before. A `Retry-After` given as a date is not read as a hint. The daemon
+remembers at most 1,024 such series at a time.
+
 The daemon also keeps the sidecar from getting full in the first place. It
 has at most four calls to the sidecar under way at once, the sidecar's
 default `FORECASTD_MAX_CONCURRENT`. A request that arrives while all four
 are taken gets the Holt-Winters fallback at once with `fallback_reason:
-busy`; it is not queued and not sent. Lowering `FORECASTD_MAX_CONCURRENT`
+busy`; it is not queued and not sent, and it does not count towards the
+eight above. Its `forecast.produce` span carries
+`forecast.sidecar.slots_exhausted: true`, and the daemon logs "every
+forecast sidecar slot is taken" at most once in ten seconds, with the
+number of requests since the last such line in `forecast.suppressed`.
+Lowering `FORECASTD_MAX_CONCURRENT`
 below four, or pointing several daemons at one sidecar, brings the
 sidecar's own 503 back, and that is handled the same way.
 

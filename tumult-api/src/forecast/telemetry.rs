@@ -3,6 +3,8 @@
 //! ## Spans
 //! - `forecast.produce` — one forecast, whoever made it. `outcome` is
 //!   `sidecar`, `built_in`, `fallback` or `error`.
+//!   `forecast.sidecar.slots_exhausted` is `true` when the request was
+//!   not sent because the daemon had every sidecar slot in use.
 //! - `forecast.sidecar_call` — one `POST /forecast` to the sidecar, a child
 //!   of the above. `outcome` is `ok` or the coarse failure code
 //!   (`unreachable`, `timeout`, `bad_response`, `rejected`, `busy`).
@@ -29,6 +31,8 @@ const SCOPE: &str = "tumult-api";
 
 pub(crate) const PRODUCE: &str = "forecast.produce";
 pub(crate) const SIDECAR_CALL: &str = "forecast.sidecar_call";
+/// Set on `forecast.produce` when the request found every slot taken.
+pub(crate) const SLOTS_EXHAUSTED: &str = "forecast.sidecar.slots_exhausted";
 const FALLBACKS: &str = "tumult.forecast.fallbacks";
 const BREAKER_TRANSITIONS: &str = "tumult.forecast.breaker.transitions";
 const CACHE_LOOKUPS: &str = "tumult.forecast.cache.lookups";
@@ -39,7 +43,7 @@ pub(crate) struct Timed {
 }
 
 impl Timed {
-    fn start_in<T>(tracer: &T, name: &'static str, parent: &Context) -> Self
+    pub(crate) fn start_in<T>(tracer: &T, name: &'static str, parent: &Context) -> Self
     where
         T: Tracer,
         T::Span: Send + Sync + 'static,
@@ -58,6 +62,11 @@ impl Timed {
     /// A span under this one.
     pub(crate) fn child(&self, name: &'static str) -> Self {
         Self::start_in(&global::tracer(SCOPE), name, &self.cx)
+    }
+
+    /// Mark the span with a true attribute named `key`.
+    pub(crate) fn flag(&self, key: &'static str) {
+        self.cx.span().set_attribute(KeyValue::new(key, true));
     }
 
     /// Record how it went and end the span.

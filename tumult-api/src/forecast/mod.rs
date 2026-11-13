@@ -17,7 +17,12 @@
 //! down with 400, 413 or 422, or one too large to send, and `busy` is a
 //! sidecar with no slot to spare (429, or 503 with `Retry-After`) or a
 //! daemon that already has [`SIDECAR_SLOTS`] calls under way. Both cost
-//! the one request its model forecast and nothing else. Every other
+//! the one request its model forecast and nothing else, with one
+//! exception: a sidecar that is busy every time
+//! ([`breaker::DEFAULT_BUSY_LIMIT`] answers in a row, or for longer than
+//! the cool-down) opens the circuit after all. A busy answer's
+//! `Retry-After` keeps that series from the sidecar for as long,
+//! [`breaker::RETRY_AFTER_CAP`] at most. Every other
 //! status (401, 403, 404, 408 and 5xx included) would meet every request
 //! alike and opens the circuit.
 //! Whoever made it, a band narrower than the series can resolve
@@ -29,8 +34,6 @@ pub mod client;
 mod metric;
 mod run_impact;
 mod telemetry;
-
-use std::time::Instant;
 
 use serde_json::{json, Value};
 use tumult_forecast::resample::RegularSeries;
@@ -71,6 +74,21 @@ fn log_sidecar_failure(error: &client::SidecarError) {
     );
 }
 
+/// Every slot is taken: say so on the request's span, and in the log at
+/// most once per [`breaker::SLOT_EVENT_EVERY`]. Requests come in bursts,
+/// and a line for each would bury the log exactly when it is needed.
+fn note_slots_exhausted(breaker: &breaker::Breaker, parent: &telemetry::Timed) {
+    parent.flag(telemetry::SLOTS_EXHAUSTED);
+    let Some(suppressed) = breaker.slots_exhausted(breaker.now()) else {
+        return;
+    };
+    tracing::warn!(
+        forecast.sidecar.slots = SIDECAR_SLOTS,
+        forecast.suppressed = suppressed,
+        "every forecast sidecar slot is taken; using the built-in provider"
+    );
+}
+
 /// Ask the sidecar unless its circuit is open; the error is the coarse
 /// reason the built-in provider has to step in.
 ///
@@ -78,24 +96,33 @@ fn log_sidecar_failure(error: &client::SidecarError) {
 /// breaker is asked: it says nothing about the sidecar and must not take
 /// the half-open probe. The same goes for a request that arrives while
 /// [`SIDECAR_SLOTS`] calls are under way: the sidecar would answer it 503,
-/// so it gets the fallback (`busy`) without the round trip.
+/// so it gets the fallback (`busy`) without the round trip. And for a
+/// request for `series` while the sidecar's last `Retry-After` for that
+/// series has not passed.
 async fn ask_sidecar(
     state: &ApiState,
     client: &client::TimestralClient,
     parent: &telemetry::Timed,
+    series: &str,
     request: &ForecastRequest<'_>,
 ) -> Result<Forecast, &'static str> {
     if let Err(e) = client::check_limits(request.context.len(), request.horizon) {
         log_sidecar_failure(&e);
         return Err(e.kind.code());
     }
-    // The slot comes first: a request that finds none must not take the
+    let breaker = state.forecast_breaker();
+    // The sidecar asked this series to wait; sending it again before then
+    // would be answered the same way. Like the slot below, this comes
+    // before the breaker: a request that is not sent must not take the
     // half-open probe with it.
+    if breaker.held_back(series, breaker.now()) {
+        return Err(client::FailureKind::Busy.code());
+    }
     let Ok(_slot) = state.forecast_slots().try_acquire() else {
+        note_slots_exhausted(breaker, parent);
         return Err(client::FailureKind::Busy.code());
     };
-    let breaker = state.forecast_breaker();
-    let Some(permit) = breaker.admit(Instant::now()) else {
+    let Some(permit) = breaker.admit(breaker.now()) else {
         return Err(CIRCUIT_OPEN);
     };
     let span = parent.child(telemetry::SIDECAR_CALL);
@@ -118,10 +145,13 @@ async fn ask_sidecar(
             let code = e.kind.code();
             span.finish(code);
             log_sidecar_failure(&e);
-            if e.kind.trips_breaker() {
-                breaker.record_failure(permit, Instant::now());
-            } else {
-                breaker.record_rejection(permit, Instant::now());
+            let now = breaker.now();
+            match e.kind {
+                client::FailureKind::Busy => {
+                    breaker.record_busy(permit, now, series, e.retry_after);
+                }
+                kind if kind.trips_breaker() => breaker.record_failure(permit, now),
+                _ => breaker.record_rejection(permit, now),
             }
             Err(code)
         }
@@ -148,6 +178,7 @@ async fn built_in(request: &ForecastRequest<'_>) -> Result<Forecast, ForecastErr
 /// Ask the configured provider, falling back to Holt-Winters.
 pub(crate) async fn produce(
     state: &ApiState,
+    series: &str,
     context: &[f64],
     horizon: usize,
     covariates: Option<&Covariates>,
@@ -161,7 +192,7 @@ pub(crate) async fn produce(
     };
     let mut fallback_reason = None;
     if let Some(client) = state.forecast_client() {
-        match ask_sidecar(state, client, &span, &request).await {
+        match ask_sidecar(state, client, &span, series, &request).await {
             Ok(forecast) => {
                 span.finish("sidecar");
                 return Ok(Produced {
@@ -198,10 +229,8 @@ pub(crate) async fn produce(
 /// Looking does not start a half-open probe.
 fn sidecar_skip_reason(state: &ApiState) -> Option<&'static str> {
     state.forecast_client()?;
-    state
-        .forecast_breaker()
-        .is_open(Instant::now())
-        .then_some(CIRCUIT_OPEN)
+    let breaker = state.forecast_breaker();
+    breaker.is_open(breaker.now()).then_some(CIRCUIT_OPEN)
 }
 
 fn number(v: f64) -> Value {
@@ -253,6 +282,7 @@ fn chart_series(series: &RegularSeries, forecast: &Forecast, offset: usize) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn chart_series_pads_context_and_horizon() {
@@ -298,6 +328,44 @@ mod tests {
         .unwrap()
     }
 
+    /// A sidecar state whose breaker reads a clock the test moves: the
+    /// returned function puts it forward by so many seconds.
+    fn state_with_clock(url: &str, cooldown: std::time::Duration) -> (ApiState, impl Fn(u64)) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let start = Instant::now();
+        let ahead = std::sync::Arc::new(AtomicU64::new(0));
+        let read = ahead.clone();
+        let clock = breaker::Clock::new(move || {
+            start + std::time::Duration::from_secs(read.load(Ordering::SeqCst))
+        });
+        let state = state_with_sidecar(url, cooldown)
+            .with_forecast_breaker(breaker::Breaker::new(cooldown).with_clock(clock));
+        (state, move |seconds| {
+            ahead.fetch_add(seconds, Ordering::SeqCst);
+        })
+    }
+
+    async fn ask_under(
+        state: &ApiState,
+        span: &telemetry::Timed,
+        series: &str,
+    ) -> Result<Forecast, &'static str> {
+        let request = ForecastRequest {
+            context: &[1.0, 2.0],
+            horizon: 4,
+            levels: &DEFAULT_LEVELS,
+            covariates: None,
+        };
+        let client = state.forecast_client().unwrap();
+        ask_sidecar(state, client, span, series, &request).await
+    }
+
+    /// Ask for series `series` with a short context.
+    async fn ask_for(state: &ApiState, series: &str) -> Result<Forecast, &'static str> {
+        let span = telemetry::Timed::start(telemetry::PRODUCE);
+        ask_under(state, &span, series).await
+    }
+
     async fn ask(
         state: &ApiState,
         context: &[f64],
@@ -311,7 +379,7 @@ mod tests {
             covariates: None,
         };
         let client = state.forecast_client().unwrap();
-        ask_sidecar(state, client, &span, &request).await
+        ask_sidecar(state, client, &span, "s", &request).await
     }
 
     /// A request the sidecar would never be sent says nothing about the
@@ -399,14 +467,202 @@ mod tests {
         for (status, retry_after) in [(503, true), (429, false)] {
             let (url, calls) = sidecar(move || busy_answer(status, retry_after)).await;
             let state = state_with_sidecar(&url, cooldown);
-            assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("busy"));
+            assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
             assert!(
                 !state.forecast_breaker().is_open(Instant::now()),
                 "{status}"
             );
-            assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("busy"));
+            assert_eq!(ask_for(&state, "b").await.err(), Some("busy"));
             assert_eq!(calls.load(Ordering::SeqCst), 2, "{status}: both were sent");
         }
+    }
+
+    /// Busy once is a full moment; busy every time is a sidecar that does
+    /// no work. The eighth busy answer in a row opens the circuit, and
+    /// the requests after it are not sent.
+    #[tokio::test]
+    async fn a_sidecar_that_is_busy_every_time_opens_the_circuit() {
+        use std::sync::atomic::Ordering;
+        let (url, calls) = sidecar(|| busy_answer(429, false)).await;
+        let (state, advance) = state_with_clock(&url, std::time::Duration::from_secs(600));
+        for nth in 1..=breaker::DEFAULT_BUSY_LIMIT {
+            assert_eq!(ask_for(&state, "s").await.err(), Some("busy"), "{nth}");
+        }
+        assert_eq!(ask_for(&state, "s").await.err(), Some(CIRCUIT_OPEN));
+        assert_eq!(ask_for(&state, "other").await.err(), Some(CIRCUIT_OPEN));
+        assert_eq!(calls.load(Ordering::SeqCst), 8, "the ninth was not sent");
+        advance(600);
+        assert_eq!(ask_for(&state, "s").await.err(), Some("busy"), "the probe");
+        assert_eq!(calls.load(Ordering::SeqCst), 9);
+    }
+
+    /// Few requests never reach eight in a row: busy answers that span
+    /// more than the cool-down open the circuit as well.
+    #[tokio::test]
+    async fn a_sidecar_busy_for_longer_than_the_cooldown_opens_the_circuit() {
+        use std::sync::atomic::Ordering;
+        let (url, calls) = sidecar(|| busy_answer(429, false)).await;
+        let (state, advance) = state_with_clock(&url, std::time::Duration::from_secs(30));
+        assert_eq!(ask_for(&state, "s").await.err(), Some("busy"));
+        advance(31);
+        assert_eq!(ask_for(&state, "s").await.err(), Some("busy"));
+        assert_eq!(ask_for(&state, "s").await.err(), Some(CIRCUIT_OPEN));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    /// The sidecar said when to come back. Until then the same series is
+    /// answered by the fallback without a call; another series is sent.
+    #[tokio::test]
+    async fn retry_after_keeps_that_series_from_the_sidecar_until_it_has_passed() {
+        use std::sync::atomic::Ordering;
+        let (url, calls) = sidecar(|| busy_answer(503, true)).await;
+        let (state, advance) = state_with_clock(&url, std::time::Duration::from_secs(600));
+        let sent = || calls.load(Ordering::SeqCst);
+        assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
+        assert_eq!(sent(), 1);
+        assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
+        assert_eq!(sent(), 1, "a was asked to wait a second and was sent");
+        assert_eq!(ask_for(&state, "b").await.err(), Some("busy"));
+        assert_eq!(sent(), 2, "b was not asked to wait");
+        advance(1);
+        assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
+        assert_eq!(sent(), 3, "the second has passed");
+        let breaker = state.forecast_breaker();
+        assert!(!breaker.is_open(breaker.now()), "three busy answers");
+    }
+
+    /// A series that is waiting out its hint does not take the half-open
+    /// probe with it.
+    #[tokio::test]
+    async fn a_series_that_is_held_back_leaves_the_probe_alone() {
+        use std::sync::atomic::Ordering;
+        let (url, calls) = sidecar(|| busy_answer(503, true)).await;
+        let (state, advance) = state_with_clock(&url, std::time::Duration::from_secs(600));
+        assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
+        let breaker = state.forecast_breaker();
+        let failed = breaker.now();
+        breaker.record_failure(breaker.admit(failed).unwrap(), failed);
+        advance(600);
+        // The hint is long past; put a fresh one on `a` through the probe.
+        assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
+        assert_eq!(ask_for(&state, "a").await.err(), Some("busy"));
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "one before, one probe");
+        let now = breaker.now();
+        assert!(breaker.admit(now).is_some(), "the probe is still to be had");
+    }
+
+    /// Every event logged on this thread while it is the default
+    /// subscriber, as `name=value` fields.
+    #[derive(Clone, Default)]
+    struct Events(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+    struct Fields<'a>(&'a mut String);
+
+    impl tracing::field::Visit for Fields<'_> {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            use std::fmt::Write;
+            let _ = write!(self.0, "{}={value:?} ", field.name());
+        }
+    }
+
+    impl tracing::Subscriber for Events {
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+        fn event(&self, event: &tracing::Event<'_>) {
+            let mut line = String::new();
+            event.record(&mut Fields(&mut line));
+            self.0.lock().unwrap().push(line);
+        }
+        fn enter(&self, _: &tracing::span::Id) {}
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    impl Events {
+        fn about_slots(&self) -> Vec<String> {
+            let seen = self.0.lock().unwrap();
+            let slots = seen
+                .iter()
+                .filter(|e| e.contains("forecast.sidecar.slots="));
+            slots.cloned().collect()
+        }
+    }
+
+    /// A request that finds every slot taken says so on its span, and in
+    /// the log at most once per interval: a burst is one event that
+    /// counts the requests it stands for, not one line each.
+    #[tokio::test]
+    async fn a_request_that_finds_no_slot_is_flagged_and_logged_once_per_interval() {
+        use opentelemetry::trace::TracerProvider;
+        use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+        let (state, advance) =
+            state_with_clock("http://127.0.0.1:1", std::time::Duration::from_secs(600));
+        let slots = u32::try_from(SIDECAR_SLOTS).unwrap();
+        let _taken = state.forecast_slots().acquire_many(slots).await.unwrap();
+        let exporter = InMemorySpanExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        let tracer = provider.tracer("test");
+        let events = Events::default();
+        let _logged = tracing::subscriber::set_default(events.clone());
+
+        let span =
+            telemetry::Timed::start_in(&tracer, telemetry::PRODUCE, &opentelemetry::Context::new());
+        for _ in 0..3 {
+            assert_eq!(ask_under(&state, &span, "s").await.err(), Some("busy"));
+        }
+        span.finish("fallback");
+        assert_eq!(events.about_slots().len(), 1, "{:?}", events.about_slots());
+        advance(breaker::SLOT_EVENT_EVERY.as_secs());
+        assert_eq!(ask_for(&state, "s").await.err(), Some("busy"));
+        let logged = events.about_slots();
+        assert_eq!(logged.len(), 2, "{logged:?}");
+        assert!(
+            logged[0].contains("forecast.sidecar.slots=4 "),
+            "{logged:?}"
+        );
+        assert!(logged[0].contains("forecast.suppressed=0 "), "{logged:?}");
+        assert!(logged[1].contains("forecast.suppressed=2 "), "{logged:?}");
+
+        let spans = exporter.get_finished_spans().unwrap();
+        let flagged = spans[0]
+            .attributes
+            .iter()
+            .any(|kv| kv.key.as_str() == telemetry::SLOTS_EXHAUSTED && kv.value.as_str() == "true");
+        assert!(flagged, "{:?}", spans[0].attributes);
+    }
+
+    /// A request that got a slot carries no such flag.
+    #[tokio::test]
+    async fn a_request_that_got_a_slot_is_not_flagged() {
+        use opentelemetry::trace::TracerProvider;
+        use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+        let (url, _calls) = sidecar(|| busy_answer(429, false)).await;
+        let state = state_with_sidecar(&url, std::time::Duration::from_secs(600));
+        let exporter = InMemorySpanExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        let span = telemetry::Timed::start_in(
+            &provider.tracer("test"),
+            telemetry::PRODUCE,
+            &opentelemetry::Context::new(),
+        );
+        assert_eq!(ask_under(&state, &span, "s").await.err(), Some("busy"));
+        span.finish("fallback");
+        let spans = exporter.get_finished_spans().unwrap();
+        let produce = spans.iter().find(|s| s.name == telemetry::PRODUCE).unwrap();
+        let flagged = produce
+            .attributes
+            .iter()
+            .any(|kv| kv.key.as_str() == telemetry::SLOTS_EXHAUSTED);
+        assert!(!flagged, "{:?}", produce.attributes);
     }
 
     /// A 503 that does not say when to come back is an outage.
@@ -428,14 +684,13 @@ mod tests {
     #[tokio::test]
     async fn a_busy_probe_hands_the_probe_on() {
         let (url, _calls) = sidecar(|| busy_answer(503, true)).await;
-        let state = state_with_sidecar(&url, std::time::Duration::from_secs(600));
+        let (state, advance) = state_with_clock(&url, std::time::Duration::from_secs(600));
         let breaker = state.forecast_breaker();
-        let start = Instant::now();
-        let earlier = start.checked_sub(std::time::Duration::from_secs(601));
-        let opened = earlier.expect("the clock is more than ten minutes old");
+        let opened = breaker.now();
         breaker.record_failure(breaker.admit(opened).unwrap(), opened);
+        advance(601);
         assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("busy"));
-        let later = Instant::now();
+        let later = breaker.now();
         assert!(breaker.admit(later).is_some(), "the next request probes");
         assert!(breaker.admit(later).is_none(), "and it is the only one");
     }
@@ -485,7 +740,15 @@ mod tests {
         for _ in 0..SIDECAR_SLOTS {
             arrived.recv().await.unwrap();
         }
-        assert_eq!(ask(&state, &[1.0, 2.0], 1).await.err(), Some("busy"));
+        // Without the slots the fifth call is sent and held like the other
+        // four. The clock is paused so that the bound costs no time: it
+        // runs out only if the call is waiting on the sidecar.
+        tokio::time::pause();
+        let bound = std::time::Duration::from_secs(1);
+        let fifth = tokio::time::timeout(bound, ask(&state, &[1.0, 2.0], 1)).await;
+        tokio::time::resume();
+        let fifth = fifth.expect("the fifth call was sent and waits on the sidecar");
+        assert_eq!(fifth.err(), Some("busy"));
         assert_eq!(calls.load(Ordering::SeqCst), SIDECAR_SLOTS, "not sent");
         assert!(!state.forecast_breaker().is_open(Instant::now()));
 
