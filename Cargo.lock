@@ -8390,6 +8390,7 @@ dependencies = [
  "tracing",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
  "zeroize",
 ]
 
