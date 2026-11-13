@@ -3,7 +3,10 @@
 //! Anything a client chooses (schema ids, field names, error text built
 //! from them) is bounded and stripped of control characters by [`clean`]
 //! before it is logged or sent back, so a peer can neither forge log lines
-//! nor make one request write megabytes of log. Warnings a peer can trigger
+//! nor make one request write megabytes of log. Cleaned text is logged as
+//! a string field, which the log format puts in quotes; [`clean`] escapes
+//! the quote, so the text cannot end its value and add `key=value` pairs
+//! of its own to the line. Warnings a peer can trigger
 //! at will go through a [`LogLimiter`], which lets a burst through and
 //! counts the rest.
 
@@ -29,20 +32,20 @@ pub(crate) const WARN_WINDOW: Duration = Duration::from_secs(10);
 fn reshapes_a_line(c: char) -> bool {
     matches!(
         c,
-        '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}'
-            | '\u{2066}'..='\u{2069}' | '\u{feff}'
+        '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{061c}'
+            | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}'
     )
 }
 
 /// `text` made safe to log or to send in a status: at most
 /// [`MAX_TEXT_BYTES`] bytes, control characters (line breaks, escape
-/// sequences) and backslashes escaped.
+/// sequences), quotes and backslashes escaped.
 pub(crate) fn clean(text: &str) -> String {
     let mut out = String::with_capacity(text.len().min(MAX_TEXT_BYTES));
     let mut piece = String::new();
     for c in text.chars() {
         piece.clear();
-        if c == '\\' || c.is_control() || reshapes_a_line(c) {
+        if matches!(c, '\\' | '"') || c.is_control() || reshapes_a_line(c) {
             piece.extend(c.escape_default());
         } else {
             piece.push(c);
@@ -213,6 +216,9 @@ mod tests {
         assert_eq!(clean("ls\u{2028}ps\u{2029}"), "ls\\u{2028}ps\\u{2029}");
         assert_eq!(clean("rtl\u{202e}x"), "rtl\\u{202e}x");
         assert_eq!(clean("c1\u{85}"), "c1\\u{85}");
+        assert_eq!(clean("alm\u{61c}x"), "alm\\u{61c}x");
+        // A quote would end the quoted value the text is logged as.
+        assert_eq!(clean("id\" level=\"ERROR"), "id\\\" level=\\\"ERROR");
         assert_eq!(clean(""), "");
     }
 

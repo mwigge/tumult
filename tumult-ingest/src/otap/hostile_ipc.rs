@@ -1062,6 +1062,22 @@ fn schema_id_in_an_error_cannot_forge_a_log_line() {
     assert!(err.to_string().contains("evil\\nINFO"), "{err}");
 }
 
+/// The schema id stands in quotes, and a quote inside it is escaped: what
+/// follows the id cannot pass for the rest of the message.
+#[test]
+fn schema_id_in_an_error_is_quoted() {
+    let mut payload = payload(Ty::Spans, schema_message(&ids_schema()));
+    payload.schema_id = "a\" carries no record batch, schema \"b".into();
+    let err = StreamConsumer::default()
+        .consume(records(vec![payload]))
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "SPANS payload for schema \"a\\\" carries no record batch, schema \\\"b\" \
+         carries no record batch"
+    );
+}
+
 #[test]
 fn column_type_mismatch_does_not_repeat_peer_text() {
     let zone: Arc<str> = format!("UTC\nWARN forged {}", "z".repeat(100_000)).into();

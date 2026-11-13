@@ -1232,6 +1232,77 @@ async fn rejected_batch_warnings_are_rate_limited() {
     );
 }
 
+/// `line` without its quoted values: what a reader of `key=value` pairs
+/// takes for the keys and the bare values.
+fn outside_quotes(line: &str) -> String {
+    let (mut out, mut quoted, mut escaped) = (String::new(), false, false);
+    for c in line.chars() {
+        match (quoted, escaped, c) {
+            (true, true, _) => escaped = false,
+            (true, false, '\\') => escaped = true,
+            (_, false, '"') => quoted = !quoted,
+            (false, ..) => out.push(c),
+            (true, ..) => {}
+        }
+    }
+    out
+}
+
+#[test]
+fn text_inside_a_quoted_value_is_not_outside_it() {
+    let line = r#"WARN a=1 error="x \" b=2 \\" c=3 note="d=4" e=5"#;
+    assert_eq!(outside_quotes(line), "WARN a=1 error= c=3 note= e=5");
+}
+
+/// A schema id (or anything else a peer chooses) is logged inside one
+/// quoted value: it cannot add `key=value` pairs to the line.
+#[tokio::test]
+async fn peer_text_in_a_warning_cannot_forge_fields() {
+    let schema = arrow::datatypes::Schema::new(vec![arrow::datatypes::Field::new(
+        "id",
+        arrow::datatypes::DataType::UInt16,
+        true,
+    )]);
+    let forgeries = [
+        "x suppressed=99 signal=forged",
+        "x\" suppressed=99 signal=\"forged",
+        "x\\\" suppressed=99 signal=forged",
+    ];
+    for schema_id in forgeries {
+        let records = BatchArrowRecords {
+            batch_id: 7,
+            arrow_payloads: vec![ArrowPayload {
+                schema_id: schema_id.into(),
+                r#type: super::proto::ArrowPayloadType::Spans as i32,
+                record: super::craft::schema_message(&schema),
+            }],
+            headers: Vec::new(),
+        };
+        let (logs, _guard) = crate::test_logs::capture();
+        let mut out = respond(
+            tokio_stream::iter(vec![Ok(records)]),
+            context(super::OtapLimits::default(), no_rows),
+            None,
+        );
+        let refused = out.next().await.unwrap().unwrap();
+        assert_eq!(refused.status_code, StatusCode::InvalidArgument as i32);
+        while out.next().await.is_some() {}
+        let text = logs.text();
+        let line = text
+            .lines()
+            .find(|line| line.contains("OTAP batch undecodable"))
+            .unwrap_or_else(|| panic!("no warning: {text}"));
+        assert!(line.contains("signal=\"traces\""), "{line}");
+        assert!(line.contains("error=\"SPANS payload for schema"), "{line}");
+        let bare = outside_quotes(line);
+        assert!(
+            !bare.contains("forged") && !bare.contains("suppressed=99"),
+            "{schema_id:?} reached the fields: {line}"
+        );
+        assert!(bare.contains("suppressed=0"), "{line}");
+    }
+}
+
 #[tokio::test]
 async fn acks_nobody_reads_end_the_stream() {
     let limits = super::OtapLimits {

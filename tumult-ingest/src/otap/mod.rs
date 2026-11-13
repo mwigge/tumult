@@ -78,7 +78,9 @@ pub enum OtapError {
     #[error("unknown OTAP payload type {0}")]
     UnknownPayloadType(i32),
 
-    #[error("{payload} payload for schema {schema_id} carries no record batch")]
+    /// `schema_id` is cleaned ([`crate::log_guard::clean`]) by whoever
+    /// builds this, quotes included: the id cannot leave its own quotes.
+    #[error("{payload} payload for schema \"{schema_id}\" carries no record batch")]
     EmptyPayload {
         payload: &'static str,
         schema_id: String,

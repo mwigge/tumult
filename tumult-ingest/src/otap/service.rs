@@ -469,15 +469,24 @@ async fn handle_batch(
         // Out of time: the same batch would run out again.
         Decoded::Rejected(e @ OtapError::Deadline { .. }) => {
             if let Some(suppressed) = context.guards.rejected.allow() {
-                tracing::warn!(signal, batch_id, error = %e, suppressed,
-                    "OTAP batch over its deadline, closing the stream");
+                let error = log_guard::clean_display(&e);
+                tracing::warn!(
+                    signal,
+                    batch_id,
+                    error,
+                    suppressed,
+                    "OTAP batch over its deadline, closing the stream"
+                );
             }
             let refused = ack(StatusCode::InvalidArgument, e.to_string());
             return (None, Outcome::AckThenClose(refused, closing(&e)));
         }
         Decoded::Rejected(e) => {
             if let Some(suppressed) = context.guards.rejected.allow() {
-                tracing::warn!(signal, batch_id, error = %e, suppressed, "OTAP batch rejected");
+                // A string field is logged in quotes: what the peer put
+                // in the error cannot pass for a field of the line.
+                let error = log_guard::clean_display(&e);
+                tracing::warn!(signal, batch_id, error, suppressed, "OTAP batch rejected");
             }
             let outcome = Outcome::Reject(ack(StatusCode::InvalidArgument, e.to_string()));
             return (Some(consumer), outcome);
@@ -486,8 +495,15 @@ async fn handle_batch(
             if let Some(suppressed) = context.guards.rejected.allow() {
                 // Arrow's own error text may repeat what the peer sent.
                 let cause = std::error::Error::source(&e).map(|c| log_guard::clean_display(&c));
-                tracing::warn!(signal, batch_id, error = %e, cause, suppressed,
-                    "OTAP batch undecodable, closing the stream");
+                let error = log_guard::clean_display(&e);
+                tracing::warn!(
+                    signal,
+                    batch_id,
+                    error,
+                    cause,
+                    suppressed,
+                    "OTAP batch undecodable, closing the stream"
+                );
             }
             // A limit all streams share may have room again later: that one
             // is worth a retry. Everything else is the batch's own fault.

@@ -199,7 +199,7 @@ impl Table {
             };
             let failed = |reason: String| OtapError::Column {
                 table: name,
-                column: format!("{prefix}{}", field.name()),
+                column: log_guard::clean(&format!("{prefix}{}", field.name())),
                 reason,
             };
             budget.charge_bytes(expanded_bytes(column, value_type).map_err(failed)?)?;
@@ -584,6 +584,28 @@ mod tests {
             vec![Some(1), Some(2), Some(3), Some(4)]
         );
         assert_eq!(t.ids("missing").unwrap(), vec![None; 4]);
+    }
+
+    #[test]
+    fn a_field_name_in_an_error_is_cleaned() {
+        let name = "evil\nWARN forged\" level=\"ERROR";
+        let items =
+            arrow::array::ListArray::from_iter_primitive::<arrow::datatypes::UInt8Type, _, _>([
+                Some([Some(1u8)]),
+            ]);
+        let keys = UInt8Array::from_iter_values([0]);
+        let column: ArrayRef = Arc::new(DictionaryArray::new(keys, Arc::new(items)));
+        let schema = Schema::new(vec![Field::new(name, column.data_type().clone(), true)]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![column]).unwrap();
+        let Err(err) = Table::new("T", &batch, &budget()) else {
+            panic!("a dictionary of lists is not supported");
+        };
+        assert!(
+            matches!(&err, OtapError::Column { column, .. }
+                if column == "evil\\nWARN forged\\\" level=\\\"ERROR"),
+            "{err}"
+        );
+        assert!(!err.to_string().chars().any(char::is_control), "{err:?}");
     }
 
     #[test]
