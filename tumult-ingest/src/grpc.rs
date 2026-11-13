@@ -25,11 +25,34 @@ use opentelemetry_proto::tonic::collector::trace::v1::trace_service_server::{
 use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
+use std::time::Duration;
 use tonic::transport::server::Router;
 use tonic::transport::{Identity, ServerTlsConfig};
+
 use tonic::{Request, Response, Status};
 
 use crate::writer::{Batch, IngestWriter};
+
+/// HTTP/2 streams one connection may have open at once. A collector uses a
+/// handful (one Arrow stream per signal and exporter worker, plus unary OTLP
+/// calls); the cap stops one peer from opening streams without bound.
+pub const MAX_CONCURRENT_STREAMS_PER_CONNECTION: u32 = 64;
+
+/// Requests one connection may have in flight at once; further ones wait
+/// (back-pressure) instead of piling up work.
+pub const MAX_CONCURRENT_REQUESTS_PER_CONNECTION: usize = 64;
+
+/// How often an HTTP/2 keepalive ping is sent on a connection.
+pub const HTTP2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// How long a keepalive ping may go unanswered before the connection is
+/// dropped, so a vanished peer does not hold its streams (and their slots in
+/// [`crate::otap::OtapLimits::max_streams`]) forever.
+pub const HTTP2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// TCP keepalive on accepted sockets, for peers that died before HTTP/2 was
+/// established.
+pub const TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 
 /// Build the tonic gRPC router for the three OTLP collector services,
 /// unauthenticated.
@@ -53,12 +76,23 @@ pub fn router_with_token_tls(
     identity: Option<Identity>,
 ) -> Result<Router, tonic::transport::Error> {
     let token = ingest_token.map(std::sync::Arc::new);
-    let builder = tonic::transport::Server::builder();
+    let builder = tonic::transport::Server::builder()
+        .max_concurrent_streams(MAX_CONCURRENT_STREAMS_PER_CONNECTION)
+        .concurrency_limit_per_connection(MAX_CONCURRENT_REQUESTS_PER_CONNECTION)
+        .http2_keepalive_interval(Some(HTTP2_KEEPALIVE_INTERVAL))
+        .http2_keepalive_timeout(Some(HTTP2_KEEPALIVE_TIMEOUT))
+        .tcp_keepalive(Some(TCP_KEEPALIVE));
     let mut builder = match identity {
         Some(identity) => builder.tls_config(ServerTlsConfig::new().identity(identity))?,
         None => builder,
     };
-    let otap = crate::otap::service::OtapGrpc::new(ingest.clone(), token.clone());
+    // Arrow stream limits (rows, attributes, decoded bytes, message size,
+    // open streams, idle time) come from the environment, see `OtapLimits`.
+    let otap = crate::otap::service::OtapGrpc::with_limits(
+        ingest.clone(),
+        token.clone(),
+        crate::otap::OtapLimits::from_env(),
+    );
     Ok(builder
         .add_service(TraceServiceServer::new(OtlpGrpc {
             ingest: ingest.clone(),
@@ -80,7 +114,8 @@ pub fn router_with_token_tls(
 
 /// Bearer-token check for one incoming call: `None` token accepts
 /// everything; otherwise the `authorization` metadata must be exactly
-/// `Bearer <token>` (constant-time compare).
+/// `Bearer <token>` (constant-time compare). A rejection is logged at WARN,
+/// saying only whether a credential was presented, never what it was.
 pub(crate) fn authorize<T>(
     ingest_token: Option<&std::sync::Arc<String>>,
     request: &Request<T>,
@@ -95,7 +130,13 @@ pub(crate) fn authorize<T>(
         .and_then(|v| v.to_str().ok());
     match presented {
         Some(v) if tumult_auth::constant_time_eq(v, &expected) => Ok(()),
-        _ => Err(Status::unauthenticated("missing or invalid bearer token")),
+        _ => {
+            tracing::warn!(
+                presented = presented.is_some(),
+                "ingest bearer token rejected"
+            );
+            Err(Status::unauthenticated("missing or invalid bearer token"))
+        }
     }
 }
 
@@ -208,6 +249,44 @@ mod tests {
             .insert("authorization", MetadataValue::from_static("kro_secret"));
         let err = authorize(token("kro_secret").as_ref(), &no_scheme).unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    }
+
+    #[test]
+    fn rejected_tokens_are_logged_at_warn_without_their_contents() {
+        let (logs, _guard) = crate::test_logs::capture();
+        let mut wrong = Request::new(());
+        wrong.metadata_mut().insert(
+            "authorization",
+            MetadataValue::from_static("Bearer kro_other"),
+        );
+        authorize(token("kro_secret").as_ref(), &wrong).unwrap_err();
+        authorize(token("kro_secret").as_ref(), &Request::new(())).unwrap_err();
+        let text = logs.text();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2, "{text}");
+        assert!(
+            lines[0].contains("WARN") && lines[0].contains("presented=true"),
+            "{text}"
+        );
+        assert!(
+            lines[1].contains("WARN") && lines[1].contains("presented=false"),
+            "{text}"
+        );
+        assert!(text.contains("ingest bearer token rejected"), "{text}");
+        assert!(
+            !text.contains("kro_other") && !text.contains("kro_secret"),
+            "{text}"
+        );
+
+        // An accepted call logs nothing.
+        let (logs, _guard) = crate::test_logs::capture();
+        let mut right = Request::new(());
+        right.metadata_mut().insert(
+            "authorization",
+            MetadataValue::from_static("Bearer kro_secret"),
+        );
+        authorize(token("kro_secret").as_ref(), &right).unwrap();
+        assert_eq!(logs.text(), "");
     }
 
     fn test_ingest() -> (tempfile::TempDir, tumult_lake::Store, IngestWriter) {

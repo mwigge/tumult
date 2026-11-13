@@ -2,12 +2,14 @@
 //! columns, their ids and attribute tables, and the row id used by child
 //! tables.
 
+use std::collections::HashMap;
+
 use arrow::array::RecordBatch;
 use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use super::arrays::Table;
-use super::attrs::{attributes, AttrMap};
+use super::attrs::Attrs;
 use super::decode::OtapBatch;
 use super::proto::ArrowPayloadType;
 use super::OtapError;
@@ -15,18 +17,31 @@ use super::OtapError;
 /// A root table with its resource/scope context resolved.
 pub(super) struct Root {
     pub table: Table,
-    /// Delta-decoded row ids (`None` where the row has no children).
+    /// Delta-decoded row ids (`None` where the row has no children). An id
+    /// names one row only.
     pub ids: Vec<Option<u32>>,
     resource: Option<Table>,
     scope: Option<Table>,
     resource_ids: Vec<Option<u32>>,
     scope_ids: Vec<Option<u32>>,
-    resource_attrs: AttrMap,
-    scope_attrs: AttrMap,
+    resource_attrs: Attrs,
+    scope_attrs: Attrs,
 }
 
-/// Which (resource, scope) group a row belongs to.
-pub(super) type GroupKey = (Option<u32>, Option<u32>);
+/// The ids of a `resource`/`scope` struct column, `None` where the struct
+/// itself is null.
+fn struct_ids(table: Option<&Table>, len: usize) -> Result<Vec<Option<u32>>, OtapError> {
+    let Some(t) = table else {
+        return Ok(vec![None; len]);
+    };
+    let mut ids = t.ids("id")?;
+    for (i, id) in ids.iter_mut().enumerate() {
+        if !t.is_valid(i) {
+            *id = None;
+        }
+    }
+    Ok(ids)
+}
 
 impl Root {
     pub fn new(
@@ -34,18 +49,12 @@ impl Root {
         root: &RecordBatch,
         batch: &OtapBatch,
     ) -> Result<Self, OtapError> {
-        let table = Table::new(name, root)?;
-        let ids = table.ids("id")?;
+        let table = Table::new(name, root, batch.budget())?;
+        let ids = table.unique_ids("id")?;
         let resource = table.struct_table("resource")?;
         let scope = table.struct_table("scope")?;
-        let resource_ids = match &resource {
-            Some(r) => r.ids("id")?,
-            None => vec![None; table.len()],
-        };
-        let scope_ids = match &scope {
-            Some(s) => s.ids("id")?,
-            None => vec![None; table.len()],
-        };
+        let resource_ids = struct_ids(resource.as_ref(), table.len())?;
+        let scope_ids = struct_ids(scope.as_ref(), table.len())?;
         Ok(Self {
             table,
             ids,
@@ -53,11 +62,12 @@ impl Root {
             scope,
             resource_ids,
             scope_ids,
-            resource_attrs: attributes(
-                batch.get(ArrowPayloadType::ResourceAttrs),
+            resource_attrs: Attrs::decode(
+                batch,
+                ArrowPayloadType::ResourceAttrs,
                 "RESOURCE_ATTRS",
             )?,
-            scope_attrs: attributes(batch.get(ArrowPayloadType::ScopeAttrs), "SCOPE_ATTRS")?,
+            scope_attrs: Attrs::decode(batch, ArrowPayloadType::ScopeAttrs, "SCOPE_ATTRS")?,
         })
     }
 
@@ -65,19 +75,22 @@ impl Root {
         self.table.len()
     }
 
-    pub fn group_key(&self, i: usize) -> GroupKey {
-        (self.resource_ids[i], self.scope_ids[i])
+    pub fn resource_id(&self, i: usize) -> Option<u32> {
+        self.resource_ids[i]
     }
 
-    /// The OTLP resource of row `i` (`None` when the struct is null).
-    pub fn resource(&self, i: usize) -> Result<Option<Resource>, OtapError> {
+    pub fn scope_id(&self, i: usize) -> Option<u32> {
+        self.scope_ids[i]
+    }
+
+    /// The OTLP resource of row `i` (`None` when the struct is null). Called
+    /// once per resource id ([`Groups`]), so the attributes move out.
+    pub fn resource(&mut self, i: usize) -> Result<Option<Resource>, OtapError> {
         let Some(r) = self.resource.as_ref().filter(|r| r.is_valid(i)) else {
             return Ok(None);
         };
         Ok(Some(Resource {
-            attributes: self.resource_ids[i]
-                .and_then(|id| self.resource_attrs.get(&id).cloned())
-                .unwrap_or_default(),
+            attributes: self.resource_attrs.take(self.resource_ids[i]),
             dropped_attributes_count: r.u32_at("dropped_attributes_count", i)?.unwrap_or(0),
             ..Default::default()
         }))
@@ -91,17 +104,17 @@ impl Root {
         }
     }
 
-    /// The OTLP instrumentation scope of row `i` (`None` when null).
-    pub fn scope(&self, i: usize) -> Result<Option<InstrumentationScope>, OtapError> {
+    /// The OTLP instrumentation scope of row `i` (`None` when null). A scope
+    /// id may appear under several resources; every copy of its attributes
+    /// after the first counts against the batch's attribute limit.
+    pub fn scope(&mut self, i: usize) -> Result<Option<InstrumentationScope>, OtapError> {
         let Some(s) = self.scope.as_ref().filter(|s| s.is_valid(i)) else {
             return Ok(None);
         };
         Ok(Some(InstrumentationScope {
             name: s.string_at("name", i)?,
             version: s.string_at("version", i)?,
-            attributes: self.scope_ids[i]
-                .and_then(|id| self.scope_attrs.get(&id).cloned())
-                .unwrap_or_default(),
+            attributes: self.scope_attrs.share(self.scope_ids[i])?,
             dropped_attributes_count: s.u32_at("dropped_attributes_count", i)?.unwrap_or(0),
         }))
     }
@@ -110,18 +123,42 @@ impl Root {
     pub fn scope_schema_url(&self, i: usize) -> Result<String, OtapError> {
         self.table.string_at("schema_url", i)
     }
+
+    /// Fail when resource or scope attributes are left that no row named.
+    pub fn finish(self) -> Result<(), OtapError> {
+        self.resource_attrs.finish()?;
+        self.scope_attrs.finish()
+    }
 }
 
-/// Walk a root table in row order, yielding `(row, new_resource, new_scope)`:
-/// consecutive rows with the same (resource id, scope id) share one
-/// resource and one scope group, as the producer sorts them.
-pub(super) fn groups(root: &Root) -> impl Iterator<Item = (usize, bool, bool)> + '_ {
-    let mut current: Option<GroupKey> = None;
-    (0..root.len()).map(move |i| {
-        let key = root.group_key(i);
-        let new_resource = current.is_none_or(|(r, _)| r != key.0);
-        let new_scope = new_resource || current.is_none_or(|(_, s)| s != key.1);
-        current = Some(key);
-        (i, new_resource, new_scope)
-    })
+/// Where each row of a root table goes in the OTLP request: one resource
+/// group per resource id and, within it, one scope group per scope id, in
+/// order of first appearance. Rows need not arrive sorted, and a resource
+/// whose rows are interleaved with another's still gets a single group.
+#[derive(Default)]
+pub(super) struct Groups {
+    resources: HashMap<Option<u32>, usize>,
+    scopes: HashMap<(usize, Option<u32>), usize>,
+}
+
+impl Groups {
+    /// The index of the resource group for `id`, and whether the caller must
+    /// create it (as the group at index `next`).
+    pub fn resource(&mut self, id: Option<u32>, next: usize) -> (usize, bool) {
+        slot(self.resources.entry(id), next)
+    }
+
+    /// The index of the scope group for `id` under resource group
+    /// `resource`, and whether the caller must create it.
+    pub fn scope(&mut self, resource: usize, id: Option<u32>, next: usize) -> (usize, bool) {
+        slot(self.scopes.entry((resource, id)), next)
+    }
+}
+
+fn slot<K>(entry: std::collections::hash_map::Entry<'_, K, usize>, next: usize) -> (usize, bool) {
+    use std::collections::hash_map::Entry;
+    match entry {
+        Entry::Occupied(found) => (*found.get(), false),
+        Entry::Vacant(vacant) => (*vacant.insert(next), true),
+    }
 }

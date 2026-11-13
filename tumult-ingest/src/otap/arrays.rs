@@ -2,17 +2,27 @@
 //!
 //! Dictionary-encoded columns are materialised up front (the producer
 //! chooses dictionary encoding per column and per batch), so every accessor
-//! sees plain arrays. Id columns honour the `encoding` field metadata: absent
-//! or `delta` means cumulative-sum decoding, `plain` means values as sent.
+//! sees plain arrays. A dictionary lets a few bytes on the wire stand for
+//! many rows, so the expanded size is charged to the batch's byte budget
+//! before the expansion. Id columns honour the `encoding` field metadata:
+//! absent or `delta` means cumulative-sum decoding, `plain` means values as
+//! sent.
 
-use arrow::array::{Array, ArrayRef, AsArray, RecordBatch};
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use arrow::array::{Array, ArrayRef, AsArray, OffsetSizeTrait, RecordBatch};
 use arrow::buffer::NullBuffer;
 use arrow::datatypes::{
     ArrowPrimitiveType, DataType, DurationNanosecondType, FieldRef, Fields, Float64Type, Int32Type,
     Int64Type, TimeUnit, TimestampNanosecondType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
 };
 
+use super::limits::Budget;
 use super::OtapError;
+
+/// Name of the column linking a child row to its parent.
+const PARENT_ID: &str = "parent_id";
 
 /// Field metadata key naming the column's id encoding.
 const ENCODING: &str = "encoding";
@@ -28,6 +38,7 @@ pub(super) struct Table {
     columns: Vec<ArrayRef>,
     len: usize,
     validity: Option<NullBuffer>,
+    budget: Arc<Budget>,
 }
 
 /// An id column before delta decoding.
@@ -56,17 +67,74 @@ impl IdColumn {
             })
             .collect()
     }
+
+    /// The id `delta` after `previous`, wrapping at the column's width.
+    pub fn after(&self, previous: u32, delta: u32) -> u32 {
+        previous.wrapping_add(delta) & self.mask
+    }
 }
 
-fn materialise(array: &ArrayRef) -> Result<ArrayRef, arrow::error::ArrowError> {
-    match array.data_type() {
-        DataType::Dictionary(_, value_type) => arrow::compute::cast(array, value_type),
-        _ => Ok(array.clone()),
+/// Bytes a dictionary array occupies once every row holds its own value.
+fn expanded_bytes(array: &ArrayRef, value_type: &DataType) -> Result<usize, String> {
+    let dictionary = array.as_any_dictionary();
+    let values = dictionary.values();
+    if values.is_empty() {
+        return Ok(0);
+    }
+    let fixed = |width: usize| Ok(array.len().saturating_mul(width));
+    let keys = || dictionary.normalized_keys();
+    match value_type {
+        DataType::Utf8 => Ok(referenced(
+            &keys(),
+            values.as_string::<i32>().value_offsets(),
+        )),
+        DataType::LargeUtf8 => Ok(referenced(
+            &keys(),
+            values.as_string::<i64>().value_offsets(),
+        )),
+        DataType::Binary => Ok(referenced(
+            &keys(),
+            values.as_binary::<i32>().value_offsets(),
+        )),
+        DataType::LargeBinary => Ok(referenced(
+            &keys(),
+            values.as_binary::<i64>().value_offsets(),
+        )),
+        DataType::FixedSizeBinary(width) => fixed(usize::try_from(*width).unwrap_or(0)),
+        DataType::Boolean => fixed(1),
+        other => match other.primitive_width() {
+            Some(width) => fixed(width),
+            None => Err(format!("unsupported dictionary value type {other}")),
+        },
+    }
+}
+
+/// Total length of the variable-size values the keys refer to.
+fn referenced<O: OffsetSizeTrait>(keys: &[usize], offsets: &[O]) -> usize {
+    keys.iter()
+        .map(|&key| match (offsets.get(key), offsets.get(key + 1)) {
+            (Some(start), Some(end)) => (*end - *start).as_usize(),
+            _ => 0,
+        })
+        .fold(0, usize::saturating_add)
+}
+
+/// The error for `count` rows of `table` whose parent row is not in the
+/// batch. Children are never dropped silently: an orphan fails the batch.
+pub(super) fn orphans(table: &'static str, count: usize) -> OtapError {
+    OtapError::Column {
+        table,
+        column: PARENT_ID.into(),
+        reason: format!("{count} row(s) have no parent row"),
     }
 }
 
 impl Table {
-    pub fn new(name: &'static str, batch: &RecordBatch) -> Result<Self, OtapError> {
+    pub fn new(
+        name: &'static str,
+        batch: &RecordBatch,
+        budget: &Arc<Budget>,
+    ) -> Result<Self, OtapError> {
         Self::build(
             name,
             String::new(),
@@ -74,6 +142,7 @@ impl Table {
             batch.columns(),
             batch.num_rows(),
             None,
+            budget.clone(),
         )
     }
 
@@ -84,14 +153,24 @@ impl Table {
         source: &[ArrayRef],
         len: usize,
         validity: Option<NullBuffer>,
+        budget: Arc<Budget>,
     ) -> Result<Self, OtapError> {
         let mut columns = Vec::with_capacity(source.len());
         for (field, column) in fields.iter().zip(source) {
-            columns.push(materialise(column).map_err(|e| OtapError::Column {
+            let DataType::Dictionary(_, value_type) = column.data_type() else {
+                columns.push(column.clone());
+                continue;
+            };
+            let failed = |reason: String| OtapError::Column {
                 table: name,
                 column: format!("{prefix}{}", field.name()),
-                reason: format!("cannot materialise dictionary: {e}"),
-            })?);
+                reason,
+            };
+            budget.charge_bytes(expanded_bytes(column, value_type).map_err(failed)?)?;
+            columns.push(
+                arrow::compute::cast(column, value_type)
+                    .map_err(|e| failed(format!("cannot materialise dictionary: {e}")))?,
+            );
         }
         Ok(Self {
             name,
@@ -100,11 +179,16 @@ impl Table {
             columns,
             len,
             validity,
+            budget,
         })
     }
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn budget(&self) -> &Arc<Budget> {
+        &self.budget
     }
 
     /// Row validity of a struct-derived table (always valid for a root table).
@@ -147,6 +231,7 @@ impl Table {
             strukt.columns(),
             strukt.len(),
             strukt.nulls().cloned(),
+            self.budget.clone(),
         )
         .map(Some)
     }
@@ -296,9 +381,7 @@ impl Table {
             DataType::LargeList(_) => col.as_list::<i64>().value(i),
             other => return Err(self.mismatch(name, "list", other)),
         };
-        materialise(&values)
-            .map(Some)
-            .map_err(|e| self.err(name, e.to_string()))
+        Ok(Some(values))
     }
 
     pub fn u64_list_at(&self, name: &str, i: usize) -> Result<Vec<u64>, OtapError> {
@@ -351,6 +434,33 @@ impl Table {
             .id_column(name)?
             .map_or_else(|| vec![None; self.len], |c| c.decoded()))
     }
+
+    /// [`Self::ids`] for a column other tables join on: an id may name one
+    /// row only.
+    pub fn unique_ids(&self, name: &str) -> Result<Vec<Option<u32>>, OtapError> {
+        let ids = self.ids(name)?;
+        let mut seen = HashSet::with_capacity(ids.len());
+        match ids.iter().flatten().find(|id| !seen.insert(**id)) {
+            Some(id) => Err(self.err(name, format!("duplicate id {id}"))),
+            None => Ok(ids),
+        }
+    }
+
+    /// The `parent_id` column every child table must carry.
+    pub fn parents(&self) -> Result<IdColumn, OtapError> {
+        self.id_column(PARENT_ID)?
+            .ok_or_else(|| self.err(PARENT_ID, "column is required".into()))
+    }
+
+    /// The error for `count` rows whose parent row is not in the batch.
+    pub fn orphans(&self, count: usize) -> OtapError {
+        orphans(self.name, count)
+    }
+
+    /// An error about one row's value in `column`.
+    pub fn row_error(&self, column: &str, row: usize, reason: &str) -> OtapError {
+        self.err(column, format!("row {row}: {reason}"))
+    }
 }
 
 #[cfg(test)]
@@ -359,7 +469,10 @@ mod tests {
     use arrow::array::{StringArray, UInt16Array, UInt32Array};
     use arrow::datatypes::{Field, Schema};
     use std::collections::HashMap;
-    use std::sync::Arc;
+
+    fn budget() -> Arc<Budget> {
+        Arc::new(Budget::new(crate::otap::limits::OtapLimits::default()))
+    }
 
     fn id_field(name: &str, data_type: DataType, encoding: Option<&str>) -> Field {
         let mut field = Field::new(name, data_type, true);
@@ -385,7 +498,7 @@ mod tests {
             ],
         )
         .unwrap();
-        let t = Table::new("T", &batch).unwrap();
+        let t = Table::new("T", &batch, &budget()).unwrap();
         assert_eq!(t.ids("id").unwrap(), vec![Some(3), None, Some(5), Some(5)]);
         assert_eq!(
             t.ids("plain").unwrap(),
@@ -408,7 +521,7 @@ mod tests {
         .unwrap();
         let schema = Schema::new(vec![Field::new("name", dict.data_type().clone(), true)]);
         let batch = RecordBatch::try_new(Arc::new(schema), vec![dict]).unwrap();
-        let t = Table::new("T", &batch).unwrap();
+        let t = Table::new("T", &batch, &budget()).unwrap();
         assert_eq!(t.str_at("name", 2).unwrap(), Some("a"));
         assert_eq!(t.string_at("absent", 0).unwrap(), "");
     }
@@ -421,7 +534,7 @@ mod tests {
             vec![Arc::new(StringArray::from(vec!["x"]))],
         )
         .unwrap();
-        let t = Table::new("SPANS", &batch).unwrap();
+        let t = Table::new("SPANS", &batch, &budget()).unwrap();
         let err = t.i32_at("kind", 0).unwrap_err().to_string();
         assert!(
             err.contains("SPANS.kind") && err.contains("expected int32"),

@@ -121,6 +121,12 @@ jobs:
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
       - run: cargo nextest run --all-features
+      # The checked-in OTel-Arrow gRPC code must be what arrow_service.proto
+      # generates (the only step that needs protoc).
+      - name: OTel-Arrow generated code is in sync with its proto
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler
+          cargo test -p tumult-ingest --test otap_proto_drift -- --ignored
 
   doc:
     name: Documentation

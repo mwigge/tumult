@@ -3,6 +3,8 @@
 //!
 //! Span links (`SPAN_LINKS`, `SPAN_LINK_ATTRS`) are not decoded: no lake
 //! column reads them, and the OTLP path drops them in the same place.
+//! Attribute and event rows whose parent row is not in the batch fail the
+//! batch.
 
 use std::collections::HashMap;
 
@@ -10,29 +12,34 @@ use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::tonic::trace::v1::span::Event;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span, Status};
 
-use super::arrays::Table;
-use super::attrs::{attributes, AttrMap};
-use super::common::{groups, Root};
+use super::arrays::{orphans, Table};
+use super::attrs::Attrs;
+use super::common::{Groups, Root};
 use super::decode::OtapBatch;
 use super::proto::ArrowPayloadType;
 use super::OtapError;
+
+const SPAN_EVENTS: &str = "SPAN_EVENTS";
 
 /// Decode one OTAP traces batch into the OTLP request the gRPC/HTTP paths
 /// receive.
 ///
 /// # Errors
-/// Any missing root table, malformed column or unknown value type.
+/// Any missing root table, malformed column, unknown value type, duplicate
+/// id, child row without a parent row, or exceeded limit.
 pub fn to_trace_request(batch: &OtapBatch) -> Result<ExportTraceServiceRequest, OtapError> {
     let spans_rb = batch
         .get(ArrowPayloadType::Spans)
         .ok_or(OtapError::MissingTable("SPANS"))?;
-    let root = Root::new("SPANS", spans_rb, batch)?;
+    let mut root = Root::new("SPANS", spans_rb, batch)?;
     let status = root.table.struct_table("status")?;
-    let span_attrs = attributes(batch.get(ArrowPayloadType::SpanAttrs), "SPAN_ATTRS")?;
+    let mut span_attrs = Attrs::decode(batch, ArrowPayloadType::SpanAttrs, "SPAN_ATTRS")?;
     let mut events = span_events(batch)?;
 
     let mut out = ExportTraceServiceRequest::default();
-    for (i, new_resource, new_scope) in groups(&root) {
+    let mut groups = Groups::default();
+    for i in 0..root.len() {
+        let (r, new_resource) = groups.resource(root.resource_id(i), out.resource_spans.len());
         if new_resource {
             out.resource_spans.push(ResourceSpans {
                 resource: root.resource(i)?,
@@ -40,9 +47,8 @@ pub fn to_trace_request(batch: &OtapBatch) -> Result<ExportTraceServiceRequest, 
                 schema_url: root.resource_schema_url(i)?,
             });
         }
-        let Some(rs) = out.resource_spans.last_mut() else {
-            continue;
-        };
+        let rs = &mut out.resource_spans[r];
+        let (s, new_scope) = groups.scope(r, root.scope_id(i), rs.scope_spans.len());
         if new_scope {
             rs.scope_spans.push(ScopeSpans {
                 scope: root.scope(i)?,
@@ -50,11 +56,15 @@ pub fn to_trace_request(batch: &OtapBatch) -> Result<ExportTraceServiceRequest, 
                 schema_url: root.scope_schema_url(i)?,
             });
         }
-        let span = span_at(&root, status.as_ref(), i, &span_attrs, &mut events)?;
-        if let Some(ss) = rs.scope_spans.last_mut() {
-            ss.spans.push(span);
-        }
+        let span = span_at(&root, status.as_ref(), i, &mut span_attrs, &mut events)?;
+        rs.scope_spans[s].spans.push(span);
     }
+    let left: usize = events.values().map(Vec::len).sum();
+    if left > 0 {
+        return Err(orphans(SPAN_EVENTS, left));
+    }
+    span_attrs.finish()?;
+    root.finish()?;
     Ok(out)
 }
 
@@ -62,7 +72,7 @@ fn span_at(
     root: &Root,
     status: Option<&Table>,
     i: usize,
-    span_attrs: &AttrMap,
+    span_attrs: &mut Attrs,
     events: &mut HashMap<u32, Vec<Event>>,
 ) -> Result<Span, OtapError> {
     let t = &root.table;
@@ -85,9 +95,7 @@ fn span_at(
         kind: t.i32_at("kind", i)?.unwrap_or(0),
         start_time_unix_nano: start,
         end_time_unix_nano: start.saturating_add(t.duration_at("duration_time_unix_nano", i)?),
-        attributes: id
-            .and_then(|id| span_attrs.get(&id).cloned())
-            .unwrap_or_default(),
+        attributes: span_attrs.take(id),
         dropped_attributes_count: t.u32_at("dropped_attributes_count", i)?.unwrap_or(0),
         events: id.and_then(|id| events.remove(&id)).unwrap_or_default(),
         dropped_events_count: t.u32_at("dropped_events_count", i)?.unwrap_or(0),
@@ -99,44 +107,41 @@ fn span_at(
 
 /// `SPAN_EVENTS` rows keyed by span id. The carrier sorts events by name,
 /// so each span's list is restored to time order (what the SDK emitted).
+/// Whenever the name repeats the previous row's, `parent_id` is a delta from
+/// the previous parent.
 fn span_events(batch: &OtapBatch) -> Result<HashMap<u32, Vec<Event>>, OtapError> {
     let mut out: HashMap<u32, Vec<Event>> = HashMap::new();
+    let mut event_attrs =
+        Attrs::decode(batch, ArrowPayloadType::SpanEventAttrs, "SPAN_EVENT_ATTRS")?;
     let Some(rb) = batch.get(ArrowPayloadType::SpanEvents) else {
+        event_attrs.finish()?;
         return Ok(out);
     };
-    let t = Table::new("SPAN_EVENTS", rb)?;
-    let event_ids = t.ids("id")?;
-    let parents = t.id_column("parent_id")?.ok_or_else(|| OtapError::Column {
-        table: "SPAN_EVENTS",
-        column: "parent_id".into(),
-        reason: "column is required".into(),
-    })?;
-    let event_attrs = attributes(
-        batch.get(ArrowPayloadType::SpanEventAttrs),
-        "SPAN_EVENT_ATTRS",
-    )?;
+    let t = Table::new(SPAN_EVENTS, rb, batch.budget())?;
+    let event_ids = t.unique_ids("id")?;
+    let parents = t.parents()?;
+    let missing = parents.values.iter().filter(|p| p.is_none()).count();
+    if missing > 0 {
+        return Err(t.orphans(missing));
+    }
     let mut previous: Option<(String, u32)> = None;
-    for (i, (raw, event_id)) in parents.values.iter().zip(&event_ids).enumerate() {
-        let Some(raw) = *raw else {
-            continue;
-        };
+    for (i, (raw, event_id)) in parents.values.iter().flatten().zip(&event_ids).enumerate() {
         let name = t.string_at("name", i)?;
         let parent = match &previous {
             Some((prev_name, prev_parent)) if parents.encoded && *prev_name == name => {
-                prev_parent.wrapping_add(raw)
+                parents.after(*prev_parent, *raw)
             }
-            _ => raw,
+            _ => *raw,
         };
         previous = Some((name.clone(), parent));
         out.entry(parent).or_default().push(Event {
             time_unix_nano: t.timestamp_at("time_unix_nano", i)?,
             name,
-            attributes: event_id
-                .and_then(|id| event_attrs.get(&id).cloned())
-                .unwrap_or_default(),
+            attributes: event_attrs.take(*event_id),
             dropped_attributes_count: t.u32_at("dropped_attributes_count", i)?.unwrap_or(0),
         });
     }
+    event_attrs.finish()?;
     for list in out.values_mut() {
         list.sort_by_key(|e| e.time_unix_nano);
     }

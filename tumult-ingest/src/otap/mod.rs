@@ -25,32 +25,43 @@
 //! * string columns may be dictionary-encoded and payload buffers may be
 //!   zstd-compressed at the IPC level.
 //!
-//! Each gRPC stream keeps one IPC reader per `schema_id`: the first payload
-//! for a schema carries the Arrow schema message, later payloads only record
+//! Each gRPC stream keeps one IPC reader per payload type: the first payload
+//! for a `schema_id` carries the Arrow schema message, later payloads only record
 //! batches (and dictionary deltas).
+//!
+//! Everything a payload declares (row counts, body lengths, decompressed
+//! sizes, ids) is checked against [`limits::OtapLimits`] before memory is
+//! committed to it; see [`decode`] and the `hostile` tests. A batch that
+//! cannot be decoded ends its stream: the IPC state after it is unknown.
 
 mod arrays;
 mod attrs;
 mod common;
 mod decode;
+pub mod limits;
 mod logs;
 mod metrics;
+// Generator output, kept byte for byte (tests/otap_proto_drift.rs).
+#[rustfmt::skip]
 pub mod proto;
 pub mod service;
 mod traces;
 
+#[cfg(test)]
+mod hostile;
 #[cfg(test)]
 mod test_encoder;
 #[cfg(test)]
 mod tests;
 
 pub use decode::{OtapBatch, StreamConsumer};
+pub use limits::OtapLimits;
 pub use logs::to_logs_request;
 pub use metrics::to_metrics_request;
 pub use traces::to_trace_request;
 
 /// Why an OTAP batch could not be turned into OTLP. Reported to the exporter
-/// in the batch's `BatchStatus`; the stream stays open.
+/// in the batch's `BatchStatus`.
 #[derive(Debug, thiserror::Error)]
 pub enum OtapError {
     #[error("unknown OTAP payload type {0}")]
@@ -62,7 +73,9 @@ pub enum OtapError {
         schema_id: String,
     },
 
-    #[error("arrow IPC decode failed for {payload}: {source}")]
+    /// The arrow error stays out of the message (it goes to the exporter);
+    /// the server log carries it through `source`.
+    #[error("arrow IPC decode failed for {payload}")]
     Ipc {
         payload: &'static str,
         #[source]
@@ -81,4 +94,28 @@ pub enum OtapError {
 
     #[error("unsupported OTAP payload {0}")]
     Unsupported(&'static str),
+
+    #[error("{what} exceeds the limit of {limit}")]
+    Limit { what: &'static str, limit: usize },
+
+    #[error("malformed {payload} payload: {reason}")]
+    Malformed {
+        payload: &'static str,
+        reason: String,
+    },
+
+    #[error("batch carries more than one {0} payload")]
+    DuplicatePayload(&'static str),
+
+    #[error("an earlier batch on this stream failed to decode")]
+    Poisoned,
+}
+
+impl OtapError {
+    /// Whether a configured limit, rather than malformed data, refused the
+    /// batch.
+    #[must_use]
+    pub fn is_limit(&self) -> bool {
+        matches!(self, Self::Limit { .. })
+    }
 }

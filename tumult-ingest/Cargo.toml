@@ -33,5 +33,17 @@ thiserror.workspace = true
 tracing.workspace = true
 dirs-next.workspace = true
 
+[features]
+# Compiles the generated OTel-Arrow gRPC clients. The daemon only serves, so
+# production builds leave them out; tests and the proof probe use them.
+otap-client = []
+
 [dev-dependencies]
+# Regenerates src/otap/proto.rs in tests/otap_proto_drift.rs.
+tonic-prost-build.workspace = true
 tempfile.workspace = true
+tracing-subscriber.workspace = true
+
+[[example]]
+name = "otap_probe"
+required-features = ["otap-client"]

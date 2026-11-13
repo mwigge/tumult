@@ -5,7 +5,8 @@
 //! Summary and exponential-histogram points are counted but left empty: the
 //! OTLP conversion rejects those kinds anyway, and this keeps the rejected
 //! count identical across carriers. Exemplars are dropped (no lake column).
-//! `MULTIVARIATE_METRICS` batches are refused.
+//! `MULTIVARIATE_METRICS` batches are refused, and so are data points whose
+//! metric row is not in the batch or is of another kind.
 
 use std::collections::HashMap;
 
@@ -16,12 +17,18 @@ use opentelemetry_proto::tonic::metrics::v1::{
     Summary, SummaryDataPoint,
 };
 
-use super::arrays::Table;
-use super::attrs::{attributes, AttrMap};
-use super::common::{groups, Root};
+use super::arrays::{orphans, Table};
+use super::attrs::Attrs;
+use super::common::{Groups, Root};
 use super::decode::OtapBatch;
 use super::proto::ArrowPayloadType;
 use super::OtapError;
+
+const PARENT_ID: &str = "parent_id";
+const NUMBER_DATA_POINTS: &str = "NUMBER_DATA_POINTS";
+const HISTOGRAM_DATA_POINTS: &str = "HISTOGRAM_DATA_POINTS";
+const SUMMARY_DATA_POINTS: &str = "SUMMARY_DATA_POINTS";
+const EXP_HISTOGRAM_DATA_POINTS: &str = "EXP_HISTOGRAM_DATA_POINTS";
 
 /// Codes of the `metric_type` column.
 mod metric_type {
@@ -45,11 +52,13 @@ pub fn to_metrics_request(batch: &OtapBatch) -> Result<ExportMetricsServiceReque
     let metrics_rb = batch
         .get(ArrowPayloadType::UnivariateMetrics)
         .ok_or(OtapError::MissingTable("UNIVARIATE_METRICS"))?;
-    let root = Root::new("UNIVARIATE_METRICS", metrics_rb, batch)?;
+    let mut root = Root::new("UNIVARIATE_METRICS", metrics_rb, batch)?;
     let mut points = DataPoints::decode(batch)?;
 
     let mut out = ExportMetricsServiceRequest::default();
-    for (i, new_resource, new_scope) in groups(&root) {
+    let mut groups = Groups::default();
+    for i in 0..root.len() {
+        let (r, new_resource) = groups.resource(root.resource_id(i), out.resource_metrics.len());
         if new_resource {
             out.resource_metrics.push(ResourceMetrics {
                 resource: root.resource(i)?,
@@ -57,9 +66,8 @@ pub fn to_metrics_request(batch: &OtapBatch) -> Result<ExportMetricsServiceReque
                 schema_url: root.resource_schema_url(i)?,
             });
         }
-        let Some(rm) = out.resource_metrics.last_mut() else {
-            continue;
-        };
+        let rm = &mut out.resource_metrics[r];
+        let (s, new_scope) = groups.scope(r, root.scope_id(i), rm.scope_metrics.len());
         if new_scope {
             rm.scope_metrics.push(ScopeMetrics {
                 scope: root.scope(i)?,
@@ -68,10 +76,10 @@ pub fn to_metrics_request(batch: &OtapBatch) -> Result<ExportMetricsServiceReque
             });
         }
         let metric = metric_at(&root, i, &mut points)?;
-        if let Some(sm) = rm.scope_metrics.last_mut() {
-            sm.metrics.push(metric);
-        }
+        rm.scope_metrics[s].metrics.push(metric);
     }
+    points.finish()?;
+    root.finish()?;
     Ok(out)
 }
 
@@ -93,22 +101,15 @@ fn metric_at(root: &Root, i: usize, points: &mut DataPoints) -> Result<Metric, O
             aggregation_temporality: t.i32_at("aggregation_temporality", i)?.unwrap_or(0),
         })),
         metric_type::EXP_HISTOGRAM => Some(Data::ExponentialHistogram(ExponentialHistogram {
-            data_points: vec![
-                ExponentialHistogramDataPoint::default();
-                points.count(&points.exp_histograms, id)
-            ],
+            data_points: vec![ExponentialHistogramDataPoint::default(); points.exp_histograms(id)],
             aggregation_temporality: t.i32_at("aggregation_temporality", i)?.unwrap_or(0),
         })),
         metric_type::SUMMARY => Some(Data::Summary(Summary {
-            data_points: vec![SummaryDataPoint::default(); points.count(&points.summaries, id)],
+            data_points: vec![SummaryDataPoint::default(); points.summaries(id)],
         })),
         0 => None,
         other => {
-            return Err(OtapError::Column {
-                table: "UNIVARIATE_METRICS",
-                column: "metric_type".into(),
-                reason: format!("row {i}: unknown metric type {other}"),
-            })
+            return Err(t.row_error("metric_type", i, &format!("unknown metric type {other}")))
         }
     };
     Ok(Metric {
@@ -120,7 +121,8 @@ fn metric_at(root: &Root, i: usize, points: &mut DataPoints) -> Result<Metric, O
     })
 }
 
-/// Data point tables keyed by metric id.
+/// Data point tables keyed by metric id. Every entry is removed by the
+/// metric that owns it; what is left at the end has no parent.
 #[derive(Default)]
 struct DataPoints {
     numbers: HashMap<u32, Vec<NumberDataPoint>>,
@@ -129,28 +131,64 @@ struct DataPoints {
     exp_histograms: HashMap<u32, usize>,
 }
 
+/// A data point table with its metric ids and row ids.
+struct Points {
+    table: Table,
+    parents: Vec<u32>,
+    ids: Vec<Option<u32>>,
+}
+
+impl Points {
+    fn decode(
+        batch: &OtapBatch,
+        payload: ArrowPayloadType,
+        name: &'static str,
+    ) -> Result<Option<Self>, OtapError> {
+        let Some(rb) = batch.get(payload) else {
+            return Ok(None);
+        };
+        let table = Table::new(name, rb, batch.budget())?;
+        let parents: Vec<u32> = table.ids(PARENT_ID)?.into_iter().flatten().collect();
+        if parents.len() < table.len() {
+            return Err(table.orphans(table.len() - parents.len()));
+        }
+        let ids = table.unique_ids("id")?;
+        Ok(Some(Self {
+            table,
+            parents,
+            ids,
+        }))
+    }
+}
+
 impl DataPoints {
     fn decode(batch: &OtapBatch) -> Result<Self, OtapError> {
         let mut out = Self::default();
-        if let Some(rb) = batch.get(ArrowPayloadType::NumberDataPoints) {
-            let t = Table::new("NUMBER_DATA_POINTS", rb)?;
-            let attrs = attributes(
-                batch.get(ArrowPayloadType::NumberDpAttrs),
-                "NUMBER_DP_ATTRS",
-            )?;
-            let ids = t.ids("id")?;
-            for (i, parent) in t.ids("parent_id")?.into_iter().enumerate() {
-                let Some(parent) = parent else { continue };
+        let mut attrs = Attrs::decode(batch, ArrowPayloadType::NumberDpAttrs, "NUMBER_DP_ATTRS")?;
+        if let Some(points) = Points::decode(
+            batch,
+            ArrowPayloadType::NumberDataPoints,
+            NUMBER_DATA_POINTS,
+        )? {
+            let t = &points.table;
+            for (i, parent) in points.parents.iter().enumerate() {
                 let value = match (t.i64_at("int_value", i)?, t.f64_at("double_value", i)?) {
-                    (Some(v), _) => Some(number_data_point::Value::AsInt(v)),
+                    (Some(_), Some(_)) => {
+                        return Err(t.row_error(
+                            "int_value",
+                            i,
+                            "both int_value and double_value are set",
+                        ))
+                    }
+                    (Some(v), None) => Some(number_data_point::Value::AsInt(v)),
                     (None, Some(v)) => Some(number_data_point::Value::AsDouble(v)),
                     (None, None) => None,
                 };
                 out.numbers
-                    .entry(parent)
+                    .entry(*parent)
                     .or_default()
                     .push(NumberDataPoint {
-                        attributes: attrs_of(&attrs, ids[i]),
+                        attributes: attrs.take(points.ids[i]),
                         start_time_unix_nano: t.timestamp_at("start_time_unix_nano", i)?,
                         time_unix_nano: t.timestamp_at("time_unix_nano", i)?,
                         exemplars: Vec::new(),
@@ -159,20 +197,24 @@ impl DataPoints {
                     });
             }
         }
-        if let Some(rb) = batch.get(ArrowPayloadType::HistogramDataPoints) {
-            let t = Table::new("HISTOGRAM_DATA_POINTS", rb)?;
-            let attrs = attributes(
-                batch.get(ArrowPayloadType::HistogramDpAttrs),
-                "HISTOGRAM_DP_ATTRS",
-            )?;
-            let ids = t.ids("id")?;
-            for (i, parent) in t.ids("parent_id")?.into_iter().enumerate() {
-                let Some(parent) = parent else { continue };
+        attrs.finish()?;
+        let mut attrs = Attrs::decode(
+            batch,
+            ArrowPayloadType::HistogramDpAttrs,
+            "HISTOGRAM_DP_ATTRS",
+        )?;
+        if let Some(points) = Points::decode(
+            batch,
+            ArrowPayloadType::HistogramDataPoints,
+            HISTOGRAM_DATA_POINTS,
+        )? {
+            let t = &points.table;
+            for (i, parent) in points.parents.iter().enumerate() {
                 out.histograms
-                    .entry(parent)
+                    .entry(*parent)
                     .or_default()
                     .push(HistogramDataPoint {
-                        attributes: attrs_of(&attrs, ids[i]),
+                        attributes: attrs.take(points.ids[i]),
                         start_time_unix_nano: t.timestamp_at("start_time_unix_nano", i)?,
                         time_unix_nano: t.timestamp_at("time_unix_nano", i)?,
                         count: t.u64_at("count", i)?.unwrap_or(0),
@@ -186,15 +228,16 @@ impl DataPoints {
                     });
             }
         }
+        attrs.finish()?;
         out.summaries = count_by_parent(
             batch,
             ArrowPayloadType::SummaryDataPoints,
-            "SUMMARY_DATA_POINTS",
+            SUMMARY_DATA_POINTS,
         )?;
         out.exp_histograms = count_by_parent(
             batch,
             ArrowPayloadType::ExpHistogramDataPoints,
-            "EXP_HISTOGRAM_DATA_POINTS",
+            EXP_HISTOGRAM_DATA_POINTS,
         )?;
         Ok(out)
     }
@@ -209,17 +252,37 @@ impl DataPoints {
             .unwrap_or_default()
     }
 
-    fn count(&self, counts: &HashMap<u32, usize>, id: Option<u32>) -> usize {
-        id.and_then(|id| counts.get(&id).copied()).unwrap_or(0)
+    fn summaries(&mut self, id: Option<u32>) -> usize {
+        id.and_then(|id| self.summaries.remove(&id)).unwrap_or(0)
     }
-}
 
-fn attrs_of(
-    attrs: &AttrMap,
-    id: Option<u32>,
-) -> Vec<opentelemetry_proto::tonic::common::v1::KeyValue> {
-    id.and_then(|id| attrs.get(&id).cloned())
-        .unwrap_or_default()
+    fn exp_histograms(&mut self, id: Option<u32>) -> usize {
+        id.and_then(|id| self.exp_histograms.remove(&id))
+            .unwrap_or(0)
+    }
+
+    /// Fail when data points are left that no metric of their kind owns.
+    fn finish(self) -> Result<(), OtapError> {
+        let left = [
+            (
+                NUMBER_DATA_POINTS,
+                self.numbers.values().map(Vec::len).sum::<usize>(),
+            ),
+            (
+                HISTOGRAM_DATA_POINTS,
+                self.histograms.values().map(Vec::len).sum(),
+            ),
+            (SUMMARY_DATA_POINTS, self.summaries.values().sum()),
+            (
+                EXP_HISTOGRAM_DATA_POINTS,
+                self.exp_histograms.values().sum(),
+            ),
+        ];
+        match left.into_iter().find(|(_, count)| *count > 0) {
+            Some((table, count)) => Err(orphans(table, count)),
+            None => Ok(()),
+        }
+    }
 }
 
 fn count_by_parent(
@@ -228,9 +291,8 @@ fn count_by_parent(
     name: &'static str,
 ) -> Result<HashMap<u32, usize>, OtapError> {
     let mut counts = HashMap::new();
-    if let Some(rb) = batch.get(payload) {
-        let t = Table::new(name, rb)?;
-        for parent in t.ids("parent_id")?.into_iter().flatten() {
+    if let Some(points) = Points::decode(batch, payload, name)? {
+        for parent in points.parents {
             *counts.entry(parent).or_insert(0) += 1;
         }
     }
