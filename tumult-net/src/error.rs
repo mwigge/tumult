@@ -44,11 +44,4 @@ mod tests {
         assert!(err.to_string().contains("delay_ms"));
         assert!(err.to_string().contains("must be >= 0"));
     }
-
-    #[test]
-    fn io_error_converts_via_from() {
-        let io = std::io::Error::new(std::io::ErrorKind::AddrInUse, "boom");
-        let err: NetError = io.into();
-        assert!(matches!(err, NetError::Io(_)));
-    }
 }

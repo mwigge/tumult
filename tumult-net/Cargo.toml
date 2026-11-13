@@ -31,3 +31,5 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
 
+[dev-dependencies]
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

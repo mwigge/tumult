@@ -178,7 +178,11 @@ mod tests {
 
     #[tokio::test]
     async fn stop_proxy_without_running_proxy_is_idempotent() {
-        let args = NativeArgs::from([("listen".into(), serde_json::json!("127.0.0.1:59997"))]);
+        // Kernel-assigned, so the pidfile keyed on it belongs to this run.
+        let listen = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .expect("bind an ephemeral port");
+        let args = NativeArgs::from([("listen".into(), serde_json::json!(listen.to_string()))]);
         let output = NetExecutor.execute("stop_proxy", &args).await.unwrap();
         assert!(output.contains("no chaos proxy running"));
     }
