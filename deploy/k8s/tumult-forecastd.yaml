@@ -9,9 +9,12 @@
 # The image bundles no model weights (they carry Mistral's modified MIT
 # licence). Fetch them yourself, load them into the `tumult-forecastd-weights`
 # volume (a snapshot directory as written by `huggingface-cli download
-# mistralai/Timestral-5M --local-dir ...`), and the pod starts with no
-# egress. /healthz then reports the SHA-256 of the mounted files, which the
-# daemon repeats as `provenance.weights_hash` in every forecast.
+# mistralai/Timestral-5M --revision bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f
+# --local-dir ...`), and the pod starts with no egress. The service hashes
+# config.json and model.safetensors before loading them and refuses to start
+# unless the digest is FORECASTD_WEIGHTS_SHA256 below; /healthz reports that
+# digest, which the daemon repeats as `provenance.weights_hash` in every
+# forecast.
 #
 # The service has no authentication of its own: keep it ClusterIP and
 # restrict it to the tumultd pod with the NetworkPolicy below.
@@ -48,6 +51,12 @@ spec:
             # on your own series before switching.
             - { name: FORECASTD_MODEL_SIZE, value: "5M" }
             - { name: FORECASTD_WEIGHTS_PATH, value: /weights }
+            # The tested weights: the hub commit they were published at and
+            # the SHA-256 the mounted files must have. Change both together.
+            - name: FORECASTD_MODEL_REVISION
+              value: bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f
+            - name: FORECASTD_WEIGHTS_SHA256
+              value: 4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a
             # Torch threads; keep it at or below the CPU limit.
             - { name: FORECASTD_THREADS, value: "2" }
             # Never reach for the hub when the weights are mounted.

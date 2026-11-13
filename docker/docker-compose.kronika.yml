@@ -228,26 +228,37 @@ services:
     # The image bundles no weights: mount a local snapshot at /weights
     # (FORECASTD_WEIGHTS_DIR on the host) for offline use, or leave the
     # default and let the first start download them into the hf-cache volume.
-    # The profile runs the real model. Pin the weights with
-    # FORECASTD_MODEL_REVISION (a hub commit) so every start loads the same
-    # files. FORECASTD_MODEL=stub is the offline mode: a linear stand-in with
-    # no weights, which names itself `stub` in every forecast's provenance.
+    # The profile runs the real model, pinned: the hub revision and the
+    # SHA-256 of the weight files below are the tested ones, and the service
+    # refuses to start on any other bytes. Change both together, and only
+    # after checking where the new files came from.
+    # FORECASTD_MODEL=stub is the offline mode: a linear stand-in with no
+    # weights, which names itself `stub` in every forecast's provenance.
     profiles: ["forecast"]
     build:
       context: ../forecastd
-    image: tumult-forecastd:latest
+    image: tumult-forecastd:0.1.0
     container_name: tumult-kronika-forecastd
     environment:
       FORECASTD_BIND: 0.0.0.0:8700
       FORECASTD_MODEL: ${FORECASTD_MODEL:-timestral}
       FORECASTD_MODEL_SIZE: ${FORECASTD_MODEL_SIZE:-5M}
-      FORECASTD_MODEL_REVISION: ${FORECASTD_MODEL_REVISION:-}
+      FORECASTD_MODEL_REVISION: ${FORECASTD_MODEL_REVISION:-bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f}
+      FORECASTD_WEIGHTS_SHA256: ${FORECASTD_WEIGHTS_SHA256:-4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a}
       FORECASTD_WEIGHTS_PATH: ${FORECASTD_WEIGHTS_PATH:-}
       FORECASTD_THREADS: ${FORECASTD_THREADS:-4}
       HF_HOME: /cache/hf
     volumes:
       - tumult-kronika-hf-cache:/cache/hf
       # - ${FORECASTD_WEIGHTS_DIR}:/weights:ro   # with FORECASTD_WEIGHTS_PATH=/weights
+    # Nothing is written outside the hub cache volume and /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8700/healthz', timeout=3)"]
       interval: 5s
