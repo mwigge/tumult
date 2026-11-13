@@ -251,8 +251,9 @@ impl Caps {
 
 /// At most `limit` rows of `sql`, in a stable order so that a capped
 /// read returns the same rows every time. `source` names what is read,
-/// as `table.kind`, in the log and in the error; the statement itself
-/// is in neither.
+/// as `table.kind`, in the log and in the error. The statement is never
+/// logged as such; the store's own message for a failed read
+/// (`error.message`) may quote the part of it that failed.
 fn capped_rows(
     reader: &Reader,
     source: &str,
@@ -260,8 +261,11 @@ fn capped_rows(
     limit: usize,
 ) -> Result<Capped<Value>, String> {
     let probe = limit.saturating_add(1);
-    let mut found = rows(reader, &format!("{sql} ORDER BY ALL LIMIT {probe}"))
-        .map_err(|error| format!("star map source {source}: {error}"))?;
+    let mut found =
+        rows(reader, &format!("{sql} ORDER BY ALL LIMIT {probe}")).map_err(|error| {
+            tracing::warn!(source, error.message = %error, "star map source read failed");
+            format!("star map source {source}: {error}")
+        })?;
     let cut = found.len() > limit;
     if cut {
         tracing::warn!(
@@ -1087,12 +1091,24 @@ mod tests {
     fn a_failed_source_read_names_the_source() {
         let (_dir, store) = graph_lake();
         let reader = store.read_only().expect("reader");
-        let failed = capped_rows(&reader, "graph_edges.nothing", "SELECT nothing FROM", 1);
+        let recorder = Arc::new(Recorder::default());
+        let failed = tracing::subscriber::with_default(Arc::clone(&recorder), || {
+            capped_rows(&reader, "graph_edges.nothing", "SELECT nothing FROM", 1)
+        });
         let message = failed.expect_err("the statement is not SQL");
         assert!(
             message.starts_with("star map source graph_edges.nothing: "),
             "{message}"
         );
+
+        let events = recorder.events.lock().expect("recorder");
+        let [(level, fields)] = events.as_slice() else {
+            panic!("one event, not {}", events.len());
+        };
+        assert_eq!(level, "WARN");
+        assert_eq!(fields["source"], "\"graph_edges.nothing\"");
+        assert!(!fields["error.message"].is_empty());
+        assert!(!fields.contains_key("sql"), "{fields:?}");
     }
 
     #[test]
