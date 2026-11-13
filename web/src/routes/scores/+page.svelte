@@ -160,8 +160,15 @@
 <div class="page-head">
     <h1>Scores</h1>
     <div class="views" role="group" aria-label="score view">
-        <button class:on={view === 'org'} onclick={() => setView('org')}>Org scores</button>
-        <button class:on={view === 'dora'} onclick={() => setView('dora')}>DORA and maturity</button
+        <button
+            class:on={view === 'org'}
+            aria-pressed={view === 'org'}
+            onclick={() => setView('org')}>Org scores</button
+        >
+        <button
+            class:on={view === 'dora'}
+            aria-pressed={view === 'dora'}
+            onclick={() => setView('dora')}>DORA and maturity</button
         >
     </div>
     {#if view === 'org'}

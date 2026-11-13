@@ -148,6 +148,13 @@ code,
     font-size: 11px;
     margin-top: 2px;
 }
+/* The list scrolls when it is taller than the window, so what follows it
+   in the sidebar (theme, session) stays inside the window. */
+.nav {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
 .nav a {
     display: flex;
     gap: 9px;

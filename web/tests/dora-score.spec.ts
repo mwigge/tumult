@@ -25,6 +25,22 @@ const header = {
         { lei: '529900T8BM49AURSDO55', name: 'Demo Firm', profile: 'simplified' },
         { lei: '506700GE1G29325QX363', name: 'Demo Bank', profile: 'full' },
     ],
+    profile_overridden: false,
+    registered_profile: 'simplified',
+    scoped: false,
+    scope_note: null,
+    feeds: [
+        { name: 'register', declared: true, connected: true, reason: null },
+        {
+            name: 'incidents',
+            declared: true,
+            connected: false,
+            reason: 'declared in the org file, no incident record ingested',
+        },
+    ],
+    params: { source: 'defaults', fallback: false, reason: null, overridden: [] },
+    register_state: 'ok',
+    register_reason: null,
 };
 
 const cell = (
@@ -84,7 +100,87 @@ const expectation = (
     days_until_operating: days,
     evidence: { id: `ev-${id}`, source: 'run' },
     reason: null,
+    scope_basis: art === '24' ? 'house' : 'regulation',
+    window_days: art === '24' ? null : 365,
 });
+
+/** `GET /api/dora/24`: the rows of one article with the evidence behind them. */
+const article24 = {
+    ...header,
+    disclaimer: 'Evidence, not a compliance verdict.',
+    article: '24',
+    title: 'General requirements for testing',
+    entity: null,
+    coverage: 0.55,
+    unknown: 0.2,
+    na_rows: 0,
+    requirements: [
+        {
+            id: 'dora.art24.1',
+            cite: 'Art. 24(1)',
+            title: 'Requirement dora.art24.1',
+            weight: 2,
+            evidence: 'tested',
+            window_days: null,
+            scope: 'critical_or_important',
+            scope_basis: 'house',
+            strength: 'tested',
+            coverage: 0.55,
+            state: 'known',
+            status: 'designed',
+            expected: 'operating',
+            gap: 2,
+            reason: null,
+            entities: [
+                {
+                    entity_id: 'cif-0001',
+                    tier: 'critical',
+                    state: 'known',
+                    v: 0.55,
+                    age_days: 12,
+                    outcome: 'passed',
+                    evidence_id: 'ev-dora.art24.1',
+                    source: 'run',
+                    status: 'designed',
+                    streak_days: 3,
+                    days_until_operating: null,
+                    reason: null,
+                    evidence: [
+                        {
+                            evidence_id: 'ev-dora.art24.1',
+                            source: 'run',
+                            kind: 'dr',
+                            exercise_type: null,
+                            experiment: 'payments-api restore',
+                            at_ns: 1_793_000_000_000_000_000,
+                            age_days: 12,
+                            outcome: 'passed',
+                            phi: 0.9,
+                            o: 1,
+                            s: 0.6,
+                            v: 0.55,
+                        },
+                    ],
+                },
+                {
+                    entity_id: 'cif-0002',
+                    tier: 'important',
+                    state: 'no_events',
+                    v: null,
+                    age_days: null,
+                    outcome: null,
+                    evidence_id: null,
+                    source: null,
+                    status: 'no_events',
+                    streak_days: 0,
+                    days_until_operating: null,
+                    reason: 'no test in the window',
+                    evidence: [],
+                },
+            ],
+        },
+    ],
+};
 
 const dora = (lei: string | null) => ({
     ...header,
@@ -216,7 +312,7 @@ const maturity = {
     flat_level: 2,
     flat_index: 3.71,
     target: 3,
-    headline: 'level 2 of target 3 (simplified)',
+    headline: 'level 2 of target 3 (simplified), 25 % unknown',
     gate_level: 2,
     capped: true,
     cap: {
@@ -243,10 +339,48 @@ const maturity = {
         { level: 5, passed: false, failing: ['learning loop (L) below 80'] },
     ],
     unknown_share: 0.25,
+    flat_unknown_share: 0.4,
     history: [
-        { quarter: '2026-Q2', as_of_ns: 1, level: 1, index: 2.1 },
-        { quarter: '2026-Q3', as_of_ns: 2, level: 2, index: 3.2 },
-        { quarter: '2026-Q4', as_of_ns: 3, level: 2, index: 3.6 },
+        {
+            quarter: '2026-Q1',
+            state: 'no_data',
+            as_of: null,
+            as_of_ns: null,
+            level: null,
+            index: null,
+            unknown_share: null,
+            reason: null,
+        },
+        {
+            quarter: '2026-Q2',
+            state: 'stored',
+            as_of: '2026-06-30',
+            as_of_ns: 1,
+            level: 1,
+            index: 2.1,
+            unknown_share: 0.5,
+            reason: null,
+        },
+        {
+            quarter: '2026-Q3',
+            state: 'no_data',
+            as_of: null,
+            as_of_ns: null,
+            level: null,
+            index: null,
+            unknown_share: null,
+            reason: null,
+        },
+        {
+            quarter: '2026-Q4',
+            state: 'today',
+            as_of: '2026-11-13',
+            as_of_ns: 3,
+            level: 2,
+            index: 3.6,
+            unknown_share: 0.25,
+            reason: null,
+        },
     ],
     rollup: node('org:', 'organisation', null, 1, 2.9, { cap: capped, unknown_share: 0.2 }),
     rollup_headline: 'level 1, capped by svc:ledger-archive',
@@ -286,14 +420,22 @@ const tree = {
     sparkline: [],
 };
 
-async function mockApi(page: Page, requested: string[] = []) {
+/** Fields laid over the mocked documents of one test. */
+interface Overrides {
+    dora?: Record<string, unknown>;
+    maturity?: Record<string, unknown>;
+}
+
+async function mockApi(page: Page, requested: string[] = [], over: Overrides = {}) {
     await page.route('**/api/**', async (route) => {
         const url = new URL(route.request().url());
         requested.push(url.pathname + url.search);
         let body: unknown = {};
         if (url.pathname === '/api/me') body = me;
-        else if (url.pathname === '/api/dora') body = dora(url.searchParams.get('lei'));
-        else if (url.pathname === '/api/maturity') body = maturity;
+        else if (url.pathname === '/api/dora')
+            body = { ...dora(url.searchParams.get('lei')), ...over.dora };
+        else if (url.pathname === '/api/dora/24') body = article24;
+        else if (url.pathname === '/api/maturity') body = { ...maturity, ...over.maturity };
         else if (url.pathname === '/api/scores/tree') body = tree;
         await route.fulfill({
             status: 200,
@@ -402,10 +544,231 @@ test('the expectation table is sorted by gap, weight and criticality', async ({ 
     await expect(rows.nth(1)).toContainText('dora.art16.1.c');
     await expect(rows.nth(2)).toContainText('42');
     await expect(rows.nth(2)).toContainText('2026-09-21');
-    await expect(rows.nth(0).getByRole('link', { name: 'ev-dora.art24.1' })).toHaveAttribute(
-        'href',
-        /\/api\/dora\/24/,
+});
+
+test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }) => {
+    const requested: string[] = [];
+    await mockApi(page, requested);
+    await page.goto('/scores?view=dora');
+    const table = page.getByTestId('dora-expectations');
+    // Nothing in the view links to an API document.
+    await expect(page.locator('[data-testid="dora-view"] a[href^="/api/"]')).toHaveCount(0);
+    await table.getByRole('button', { name: 'ev-dora.art24.1' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Evidence behind Art. 24(1)' });
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText('Requirement dora.art24.1');
+    await expect(drawer).toContainText('payments-api restore');
+    await expect(drawer).toContainText('passed');
+    await expect(drawer).toContainText('2026-10-26');
+    // A function with no evidence says why instead of showing nothing.
+    await expect(drawer).toContainText('no test in the window');
+    expect(requested.some((r) => r.startsWith('/api/dora/24') && r.includes('lei=5299'))).toBe(
+        true,
     );
+    await drawer.getByRole('button', { name: 'Close' }).click();
+    await expect(drawer).toHaveCount(0);
+});
+
+test('a row scoped by the house and not by the regulation says so', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    const rows = page.getByTestId('dora-expectations').locator('tbody tr');
+    await expect(rows.nth(0)).toContainText('Art. 24(1)');
+    await expect(rows.nth(0).getByTestId('house-scope')).toHaveText('house scope');
+    await expect(rows.nth(1).getByTestId('house-scope')).toHaveCount(0);
+});
+
+/** The tooltip ECharts draws for the heatmap. */
+const tooltip = (page: Page) => page.locator('.dora-tooltip');
+
+test('a label with markup is shown as text in the heatmap tooltip', async ({ page }) => {
+    const evil = '<img src=x onerror="window.__xss = 1">';
+    const base = dora(null);
+    await mockApi(page, [], {
+        dora: { rows: base.rows.map((r) => ({ ...r, label: evil })) },
+    });
+    await page.goto('/scores?view=dora');
+    await expect.poll(async () => (await heatmapMarks(page)).length).toBe(6);
+    const box = await page.locator('[data-chart="dora-heatmap"] canvas').boundingBox();
+    if (!box) throw new Error('the heatmap has no canvas');
+    // The plot fills the right part of the canvas: sweep it until a cell answers.
+    for (const fx of [0.9, 0.7, 0.8]) {
+        await page.mouse.move(box.x + box.width * fx, box.y + box.height * 0.5);
+        await page.mouse.move(box.x + box.width * fx + 2, box.y + box.height * 0.5 + 2);
+        if ((await tooltip(page).count()) > 0) break;
+    }
+    await expect(tooltip(page)).toBeVisible();
+    await expect(tooltip(page)).toContainText(evil);
+    await expect(tooltip(page).locator('img')).toHaveCount(0);
+    await expect(page.locator('[data-chart="dora-heatmap"] img')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as Window & { __xss?: number }).__xss)).toBe(
+        undefined,
+    );
+});
+
+test('the unknown share is part of the headline and of the maturity heading', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    await expect(page.getByTestId('dora-header').locator('.headline')).toHaveText(
+        'level 2 of target 3 (simplified), 25 % unknown',
+    );
+    const panel = page.getByTestId('dora-maturity');
+    await expect(panel.getByRole('heading', { level: 2 })).toContainText('25 % unknown');
+    // The pillars alone rest on a different share, and both are named.
+    await expect(panel).toContainText('pillars alone: unknown 40 %');
+});
+
+test('overridden parameters, a fallback and the register state are on the page', async ({
+    page,
+}) => {
+    await mockApi(page, [], {
+        dora: {
+            params: {
+                source: 'org_file',
+                fallback: false,
+                reason: null,
+                overridden: [{ key: 'operating_days', value: 30, default: 180 }],
+            },
+            register_state: 'stale',
+            register_reason: 'the org file changed and is not written to the lake yet',
+        },
+    });
+    await page.goto('/scores?view=dora');
+    const params = page.getByTestId('score-params');
+    await expect(params).toContainText('operating_days');
+    await expect(params).toContainText('30');
+    await expect(params).toContainText('default 180');
+    await expect(page.getByTestId('register-state')).toContainText('stale');
+    await expect(page.getByTestId('register-state')).toContainText('not written to the lake yet');
+    // A feed that is declared and has sent nothing is listed as such.
+    const feeds = page.getByTestId('score-feeds');
+    await expect(feeds).toContainText('incidents');
+    await expect(feeds).toContainText('no incident record ingested');
+});
+
+test('a refused score section is named with the reason', async ({ page }) => {
+    await mockApi(page, [], {
+        dora: {
+            params: {
+                source: 'defaults',
+                fallback: true,
+                reason: 'score.band_good must be within 0 and 1, got 7',
+                overridden: [],
+            },
+            register_state: 'invalid',
+            register_reason: 'score.band_good must be within 0 and 1, got 7',
+        },
+    });
+    await page.goto('/scores?view=dora');
+    const params = page.getByTestId('score-params');
+    await expect(params).toContainText('defaults in force');
+    await expect(params).toContainText('score.band_good must be within 0 and 1, got 7');
+    await expect(page.getByTestId('register-state')).toContainText('invalid');
+});
+
+test('default parameters and a register in step are stated plainly', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    await expect(page.getByTestId('score-params')).toContainText('house defaults');
+    await expect(page.getByTestId('register-state')).toContainText('ok');
+    await expect(page.getByTestId('profile-override')).toHaveCount(0);
+    await expect(page.getByTestId('scope-note')).toHaveCount(0);
+});
+
+test('a profile override and a partial view are announced above the numbers', async ({ page }) => {
+    const partial = {
+        profile: 'full',
+        profile_label: 'full',
+        profile_overridden: true,
+        registered_profile: 'simplified',
+        scoped: true,
+        scope_note: 'Partial view: only the functions in your environments are listed.',
+    };
+    await mockApi(page, [], { dora: partial, maturity: partial });
+    await page.goto('/scores?view=dora');
+    const banner = page.getByTestId('profile-override');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute('role', 'status');
+    await expect(banner).toContainText('full');
+    await expect(banner).toContainText('registered profile is simplified');
+    await expect(page.getByTestId('scope-note')).toContainText('Partial view');
+});
+
+test('a quarter with no stored day is drawn as a gap and named', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    const series = () =>
+        page.evaluate(() => {
+            const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+            const opt = w.__tumultCharts?.['dora-history'] as
+                | { xAxis?: { data?: string[] }[]; series?: { data?: (number | null)[] }[] }
+                | undefined;
+            return {
+                quarters: opt?.xAxis?.[0]?.data ?? [],
+                levels: opt?.series?.[0]?.data ?? [],
+                index: opt?.series?.[1]?.data ?? [],
+            };
+        });
+    await expect.poll(series).toEqual({
+        quarters: ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'],
+        levels: [null, 1, null, 2],
+        index: [null, 2.1, null, 3.6],
+    });
+    const rows = page.getByTestId('dora-history').locator('tbody tr');
+    await expect(rows).toHaveCount(4);
+    await expect(rows.nth(0)).toContainText('no data');
+    await expect(rows.nth(1)).toContainText('stored 2026-06-30');
+    await expect(rows.nth(1)).toContainText('unknown 50 %');
+    await expect(rows.nth(3)).toContainText('today');
+});
+
+test('the toggles say which view is on and every chart has a name', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    await expect(page.getByTestId('dora-view')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'DORA and maturity' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+    );
+    await expect(page.getByRole('button', { name: 'Org scores' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+    );
+    const coverage = page.getByRole('button', { name: 'Coverage', exact: true });
+    const status = page.getByRole('button', { name: 'Evidence status' });
+    await expect(coverage).toHaveAttribute('aria-pressed', 'true');
+    await expect(status).toHaveAttribute('aria-pressed', 'false');
+    await status.click();
+    await expect(coverage).toHaveAttribute('aria-pressed', 'false');
+    await expect(status).toHaveAttribute('aria-pressed', 'true');
+    for (const id of ['dora-heatmap', 'dora-gauge', 'dora-components', 'dora-history']) {
+        const chart = page.locator(`[data-chart="${id}"]`);
+        await expect(chart).toHaveAttribute('role', 'img');
+        await expect(chart).toHaveAttribute('aria-label', /\S/);
+    }
+});
+
+test('the heatmap has a complete table alternative', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    const table = page.getByRole('table', { name: 'Articles by function, as a table' });
+    await page.getByText('Show the heatmap as a table').click();
+    await expect(table).toBeVisible();
+    await expect(table.locator('thead th')).toHaveText([
+        'Function',
+        'Art. 16',
+        'Art. 19',
+        'Art. 24',
+    ]);
+    const rows = table.locator('tbody tr');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator('th')).toHaveText('Payments');
+    // Every cell of the heatmap, with the same words the tooltip uses.
+    await expect(rows.nth(0).locator('td').nth(0)).toContainText('coverage 82 %');
+    await expect(rows.nth(0).locator('td').nth(0)).toContainText('unknown 25 %');
+    await expect(rows.nth(0).locator('td').nth(0)).toContainText('operating');
+    await expect(rows.nth(0).locator('td').nth(1)).toContainText('no source connected');
+    await expect(rows.nth(1).locator('td').nth(2)).toContainText('no events in window');
 });
 
 test('maturity shows weighted components, gates and a greyed index when capped', async ({
@@ -506,8 +869,7 @@ test('charts follow the light theme', async ({ page }) => {
             return opt?.series?.[0]?.data?.[0]?.itemStyle?.color;
         });
     await expect.poll(pointer).toBe('#5eb1ef');
-    // The sidebar foot sits below the fold of this long page.
-    await page.getByRole('button', { name: /dark/ }).dispatchEvent('click');
+    await page.getByRole('button', { name: /dark/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect.poll(pointer).toBe('#1f6fb2');
 });

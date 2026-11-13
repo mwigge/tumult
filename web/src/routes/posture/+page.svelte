@@ -424,7 +424,9 @@
                     </span>
                 {:else}
                     <span class="badge fail">
-                        {conformance.malformed_entity_ids.length} malformed ict.entity.id
+                        {conformance.malformed_entity_ids
+                            .length}{conformance.malformed_entity_ids_truncated ? '+' : ''} malformed
+                        ict.entity.id
                     </span>
                     <span class="muted">
                         stored as received; fix them at the sender (expected
@@ -433,7 +435,8 @@
                     <ul>
                         {#each conformance.malformed_entity_ids as bad (bad.service + bad.entity_id)}
                             <li>
-                                <span class="mono">{bad.entity_id}</span> from
+                                <span class="mono">{bad.entity_id}{bad.truncated ? '…' : ''}</span>
+                                from
                                 <span class="mono">{bad.service}</span>, {bad.spans} spans:
                                 {bad.reason}
                             </li>

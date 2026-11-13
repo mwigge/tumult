@@ -11,6 +11,8 @@
         COMPONENTS,
         STATUS_NAMES,
         capText,
+        cellLines,
+        cellOf,
         componentsOption,
         coverageText,
         durationText,
@@ -18,12 +20,15 @@
         heatmapHeight,
         heatmapOption,
         historyOption,
+        historyStateText,
         nodeTree,
         pct,
         unknownLabel,
     } from '#lib/dora.js';
     import type { HeatmapMode } from '#lib/dora.js';
-    import type { DoraReport, MaturityReport } from '#lib/types.js';
+    import type { DoraExpectation, DoraReport, MaturityReport } from '#lib/types.js';
+    import DoraEvidence from './DoraEvidence.svelte';
+    import DoraNotices from './DoraNotices.svelte';
     import EChart from './EChart.svelte';
     import ScoreNumber from './ScoreNumber.svelte';
 
@@ -33,6 +38,8 @@
     let maturity = $state<MaturityReport | null>(null);
     let error = $state<string | null>(null);
     let mode = $state<HeatmapMode>('coverage');
+    /** The row whose evidence the drawer shows. */
+    let opened = $state<DoraExpectation | null>(null);
 
     let theme = $state<ChartTheme>(chartTheme());
     onMount(() => {
@@ -51,6 +58,7 @@
         const selected = lei;
         let cancelled = false;
         error = null;
+        opened = null;
         Promise.all([api.dora(selected), api.maturity(selected, 'node')])
             .then(([d, m]) => {
                 if (cancelled) return;
@@ -135,6 +143,7 @@
                     report.as_of_ns,
                 )}.
             </div>
+            <DoraNotices doc={report} />
         </section>
 
         <div class="tiles">
@@ -174,11 +183,15 @@
             <div class="panel-head">
                 <h2>Articles × {report.by === 'org' ? 'org units' : 'functions'}</h2>
                 <div class="toggle" role="group" aria-label="heatmap value">
-                    <button class:on={mode === 'coverage'} onclick={() => (mode = 'coverage')}
-                        >Coverage</button
+                    <button
+                        class:on={mode === 'coverage'}
+                        aria-pressed={mode === 'coverage'}
+                        onclick={() => (mode = 'coverage')}>Coverage</button
                     >
-                    <button class:on={mode === 'status'} onclick={() => (mode = 'status')}
-                        >Evidence status</button
+                    <button
+                        class:on={mode === 'status'}
+                        aria-pressed={mode === 'status'}
+                        onclick={() => (mode = 'status')}>Evidence status</button
                     >
                 </div>
             </div>
@@ -192,7 +205,44 @@
                     option={heatmap}
                     height={heatmapHeight(report.rows.length)}
                     id="dora-heatmap"
+                    label="Heatmap of {mode === 'coverage'
+                        ? 'coverage'
+                        : 'evidence status'} per article and {report.by === 'org'
+                        ? 'org unit'
+                        : 'function'}. The same values follow as a table."
                 />
+                <details class="alt">
+                    <summary>Show the heatmap as a table</summary>
+                    <table class="data" aria-label="Articles by function, as a table">
+                        <thead>
+                            <tr>
+                                <th scope="col">{report.by === 'org' ? 'Org unit' : 'Function'}</th>
+                                {#each report.articles as a (a.article)}
+                                    <th scope="col">Art. {a.article}</th>
+                                {/each}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each report.rows as row (row.entity_id)}
+                                <tr>
+                                    <th scope="row">{row.label}</th>
+                                    {#each report.articles as a (a.article)}
+                                        {@const cell = cellOf(report, a.article, row.entity_id)}
+                                        <td>
+                                            {#if cell}
+                                                {#each cellLines(cell) as line (line)}
+                                                    <div>{line}</div>
+                                                {/each}
+                                            {:else}
+                                                not applicable
+                                            {/if}
+                                        </td>
+                                    {/each}
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </details>
             {/if}
             <div class="legend">
                 {#if mode === 'coverage'}
@@ -249,6 +299,14 @@
                                 <td>
                                     <span class="mono">{e.cite}</span>
                                     {e.title}
+                                    {#if e.scope_basis === 'house'}
+                                        <span
+                                            class="badge neutral"
+                                            data-testid="house-scope"
+                                            title="The regulation does not limit this row to these functions; the house does."
+                                            >house scope</span
+                                        >
+                                    {/if}
                                     <div class="dim mono">{e.id}</div>
                                     {#if e.reason}<div class="dim">{e.reason}</div>{/if}
                                 </td>
@@ -268,13 +326,11 @@
                                 <td class="mono">{e.days_until_operating ?? '–'}</td>
                                 <td>
                                     {#if e.evidence}
-                                        <a
-                                            href="/api/dora/{e.article}"
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            title="{e.evidence
-                                                .source} evidence behind Art. {e.article}"
-                                            >{e.evidence.id}</a
+                                        <button
+                                            class="link mono"
+                                            aria-haspopup="dialog"
+                                            title="{e.evidence.source} evidence behind {e.cite}"
+                                            onclick={() => (opened = e)}>{e.evidence.id}</button
                                         >
                                     {:else}–{/if}
                                 </td>
@@ -290,14 +346,34 @@
             <h2>Maturity — {maturity.headline}</h2>
             <div class="maturity">
                 <div class="gauge">
-                    {#if gauge}<EChart option={gauge} height={210} id="dora-gauge" />{/if}
+                    {#if gauge}
+                        <EChart
+                            option={gauge}
+                            height={210}
+                            id="dora-gauge"
+                            label="Gauge: maturity index {maturity.index.toFixed(
+                                2,
+                            )} on the internal 1 to 5 scale, {maturity.headline}"
+                        />
+                    {/if}
                     <div class="dim center">
                         index on the internal 1–5 scale · {unknownLabel(maturity.unknown_share)}
+                    </div>
+                    <div class="dim center">
+                        pillars alone: {unknownLabel(maturity.flat_unknown_share)}
                     </div>
                 </div>
                 <div class="bars">
                     {#if components}
-                        <EChart option={components} height={210} id="dora-components" />
+                        <EChart
+                            option={components}
+                            height={210}
+                            id="dora-components"
+                            label="Bars: {COMPONENTS.map(
+                                (c) =>
+                                    `${c.label} ${maturity?.components[c.key]?.toFixed(1) ?? 'unknown'}`,
+                            ).join(', ')}"
+                        />
                     {/if}
                     <ul class="reasons">
                         {#each COMPONENTS as c (c.key)}
@@ -310,10 +386,44 @@
                 </div>
             </div>
             <div class="maturity">
-                <div class="history">
+                <div class="history" data-testid="dora-history">
                     {#if history && maturity.history.length > 0}
-                        <EChart option={history} height={170} id="dora-history" />
-                        <div class="dim center">level and index per quarter</div>
+                        <EChart
+                            option={history}
+                            height={170}
+                            id="dora-history"
+                            label="Line chart of level and index per quarter. The same values follow as a table."
+                        />
+                        <div class="dim center">
+                            level and index per quarter, from the days the daily snapshot stored
+                        </div>
+                        <table class="data">
+                            <thead>
+                                <tr><th>Quarter</th><th>From</th><th>Level</th><th>Index</th></tr>
+                            </thead>
+                            <tbody>
+                                {#each maturity.history as h (h.quarter)}
+                                    <tr>
+                                        <td class="mono">{h.quarter}</td>
+                                        <td>
+                                            {historyStateText(h)}
+                                            {#if h.reason}<div class="dim">{h.reason}</div>{/if}
+                                        </td>
+                                        <td class="mono">{h.level ?? '–'}</td>
+                                        {#if h.index === null}
+                                            <td class="mono">–</td>
+                                        {:else}
+                                            <td data-figure>
+                                                <span class="mono">{h.index.toFixed(2)}</span>
+                                                <span class="unk"
+                                                    >{unknownLabel(h.unknown_share ?? 1)}</span
+                                                >
+                                            </td>
+                                        {/if}
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
                     {/if}
                 </div>
                 <table class="data gates">
@@ -463,6 +573,9 @@
             </div>
         </section>
     </div>
+    {#if opened}
+        <DoraEvidence row={opened} lei={report.lei ?? ''} onclose={() => (opened = null)} />
+    {/if}
 {/if}
 
 <style>
@@ -551,6 +664,26 @@
         color: var(--text);
         background: var(--bg-hover);
         border-color: var(--accent);
+    }
+    .link {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--accent);
+        font-size: inherit;
+        cursor: pointer;
+        text-align: left;
+    }
+    .link:hover {
+        text-decoration: underline;
+    }
+    .alt {
+        margin: 4px 0 10px;
+        font-size: 12.5px;
+    }
+    .alt summary {
+        cursor: pointer;
+        color: var(--text-dim);
     }
     .legend {
         display: flex;

@@ -3,10 +3,11 @@
 // options can be asserted through `window.__tumultCharts`.
 
 import type { ChartTheme, EChartsCoreOption } from './echarts';
-import { chartTokens } from './echarts';
+import { chartTokens, escapeHtml } from './echarts';
 import type {
     DoraCell,
     DoraReport,
+    MaturityHistoryPoint,
     MaturityComponent,
     MaturityNode,
     MaturityReport,
@@ -99,8 +100,9 @@ const STATE_TEXT: Record<string, string> = {
     no_events: 'no events in window',
 };
 
-function cellTooltip(cell: DoraCell & { row: string }): string {
-    const lines = [`<b>Art. ${cell.article}</b> · ${cell.row}`];
+/** What a cell says in words: the tooltip and the table read the same. */
+export function cellLines(cell: DoraCell): string[] {
+    const lines: string[] = [];
     if (cell.state === 'known') {
         lines.push(`coverage ${coverageText(cell.coverage)} (${unknownLabel(cell.unknown)})`);
         lines.push(`evidence status ${cell.status} (${cell.status_rank} of 3)`);
@@ -108,8 +110,18 @@ function cellTooltip(cell: DoraCell & { row: string }): string {
         lines.push(STATE_TEXT[cell.state] ?? cell.state);
     }
     if (cell.gaps > 0) lines.push(`${cell.gaps} requirement${cell.gaps === 1 ? '' : 's'} short`);
-    return lines.join('<br/>');
+    return lines;
 }
+
+/** Markup of the heatmap tooltip. Every value in it is escaped. */
+function cellTooltip(cell: DoraCell & { row: string }): string {
+    const head = `<b>Art. ${escapeHtml(cell.article)}</b> · ${escapeHtml(cell.row)}`;
+    return [head, ...cellLines(cell).map(escapeHtml)].join('<br/>');
+}
+
+/** The cell of an article and a row, when that article applies to it. */
+export const cellOf = (report: DoraReport, article: string, entityId: string) =>
+    report.cells.find((c) => c.article === article && c.entity_id === entityId) ?? null;
 
 interface RenderApi {
     value: (dim: number) => number;
@@ -142,6 +154,7 @@ export function heatmapOption(
     return {
         tooltip: {
             ...t.tooltip,
+            className: 'dora-tooltip',
             formatter: (p: { data?: DoraCell & { row: string } }) =>
                 p.data ? cellTooltip(p.data) : '',
         },
@@ -327,6 +340,13 @@ export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCore
             },
         ],
     };
+}
+
+/** How a quarter of the history reads in the table next to the chart. */
+export function historyStateText(point: MaturityHistoryPoint): string {
+    if (point.state === 'stored') return `stored ${point.as_of ?? ''}`.trim();
+    if (point.state === 'today') return 'today';
+    return 'no data';
 }
 
 /** How a node's level reads: with the nodes that cap it, when one does. */

@@ -13,6 +13,7 @@
         height = 260,
         onclick,
         id,
+        label,
     }: {
         option: EChartsCoreOption;
         height?: number;
@@ -20,6 +21,8 @@
         // traces scatter and the experiment overlays to navigate on click.
         onclick?: (params: { componentType?: string; data?: unknown }) => void;
         id?: string;
+        /** What the chart shows, for a reader who cannot see the canvas. */
+        label?: string;
     } = $props();
 
     let el: HTMLDivElement;
@@ -72,4 +75,10 @@
     });
 </script>
 
-<div bind:this={el} data-chart={id} style="height: {height}px; width: 100%;"></div>
+<div
+    bind:this={el}
+    data-chart={id}
+    role={label ? 'img' : undefined}
+    aria-label={label}
+    style="height: {height}px; width: 100%;"
+></div>

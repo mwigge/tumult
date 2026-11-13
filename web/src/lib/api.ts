@@ -31,6 +31,7 @@ import type {
     MetricQueryResult,
     Overview,
     ConformanceReport,
+    DoraArticleReport,
     DoraReport,
     MaturityReport,
     PostureResponse,
@@ -168,6 +169,11 @@ export const api = {
 
     dora: (lei = '', by: 'entity' | 'org' = 'entity') =>
         get<DoraReport>(`/api/dora?by=${by}${lei ? `&lei=${encodeURIComponent(lei)}` : ''}`),
+
+    doraArticle: (article: string, lei = '') =>
+        get<DoraArticleReport>(
+            `/api/dora/${encodeURIComponent(article)}${lei ? `?lei=${encodeURIComponent(lei)}` : ''}`,
+        ),
 
     maturity: (lei = '', by: 'node' | 'entity' | 'org' = 'node') =>
         get<MaturityReport>(

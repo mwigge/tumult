@@ -974,11 +974,17 @@ export interface ConformanceReport {
     entity_id_pattern: string;
     /** Ids that do not match it, exactly as the service sent them. */
     malformed_entity_ids: MalformedEntityId[];
+    /** Whether more ids than `malformed_entity_ids_limit` were found. */
+    malformed_entity_ids_truncated?: boolean;
+    malformed_entity_ids_limit?: number;
 }
 
 export interface MalformedEntityId {
     service: string;
+    /** As received, cut to 64 characters. */
     entity_id: string;
+    /** Whether the id received was longer than what is shown. */
+    truncated?: boolean;
     spans: number;
     last_seen_ns: number | null;
     flagged_at_ingest: boolean;
@@ -1006,6 +1012,80 @@ export interface ScoreHeader {
     profile_flags: string[];
     legal_entities: LegalEntityRef[];
     disclaimer?: string;
+    /** The request scored another profile than the registered one. */
+    profile_overridden: boolean;
+    registered_profile: string | null;
+    /** The caller sees part of the environments only. */
+    scoped: boolean;
+    scope_note: string | null;
+    feeds: ScoreFeed[];
+    params: ScoreParams;
+    register_state: RegisterState;
+    register_reason: string | null;
+}
+
+/** A feed the score reads, with what the org file declares of it. */
+export interface ScoreFeed {
+    name: string;
+    declared: boolean;
+    connected: boolean;
+    reason: string | null;
+}
+
+/** The house parameters a document was scored with. */
+export interface ScoreParams {
+    source: 'defaults' | 'org_file';
+    /** The `score:` section was refused and the defaults are in force. */
+    fallback: boolean;
+    reason: string | null;
+    overridden: { key: string; value: unknown; default: unknown }[];
+}
+
+/** Where the function register of the org file stands in the lake. */
+export type RegisterState = 'none' | 'ok' | 'stale' | 'invalid';
+
+/** One function's cell of a requirement row, in `GET /api/dora/{article}`. */
+export interface DoraEvidenceRow {
+    evidence_id: string;
+    source: string;
+    kind: string | null;
+    exercise_type: string | null;
+    experiment: string | null;
+    at_ns: number;
+    age_days: number;
+    outcome: string;
+    v: number;
+}
+
+export interface DoraRequirementCell {
+    entity_id: string;
+    tier: string;
+    state: CellState;
+    status: EvidenceStatus;
+    streak_days: number;
+    days_until_operating: number | null;
+    reason: string | null;
+    evidence?: DoraEvidenceRow[];
+}
+
+export interface DoraRequirement {
+    id: string;
+    cite: string;
+    title: string;
+    window_days: number | null;
+    scope: string;
+    scope_basis: 'regulation' | 'house';
+    status: EvidenceStatus;
+    expected: string;
+    reason: string | null;
+    entities: DoraRequirementCell[];
+}
+
+/** `GET /api/dora/{article}` */
+export interface DoraArticleReport extends ScoreHeader {
+    article: string;
+    title: string;
+    requirements: DoraRequirement[];
 }
 
 export type CellState = 'known' | 'unknown' | 'no_events';
@@ -1076,6 +1156,9 @@ export interface DoraExpectation {
     days_until_operating: number | null;
     evidence: { id: string; source: string } | null;
     reason: string | null;
+    /** `house`: the regulation does not restrict the row this way, the house does. */
+    scope_basis: 'regulation' | 'house';
+    window_days: number | null;
 }
 
 export interface DoraReadiness {
@@ -1143,6 +1226,18 @@ export interface MaturityNode {
     note: string | null;
 }
 
+/** A quarter of the history: a stored day, today, or nothing stored. */
+export interface MaturityHistoryPoint {
+    quarter: string;
+    state: 'stored' | 'today' | 'no_data';
+    as_of: string | null;
+    as_of_ns: number | null;
+    level: number | null;
+    index: number | null;
+    unknown_share: number | null;
+    reason: string | null;
+}
+
 /** `GET /api/maturity` */
 export interface MaturityReport extends ScoreHeader {
     scale: { internal: boolean; source: string; levels: string[] };
@@ -1169,8 +1264,11 @@ export interface MaturityReport extends ScoreHeader {
     component_states: Record<MaturityComponent, PillarState>;
     weights: Record<MaturityComponent, number>;
     gates: { level: number; passed: boolean; failing: string[] }[];
+    /** Unknown share of the rolled-up index, the one shown. */
     unknown_share: number;
-    history: { quarter: string; as_of_ns: number; level: number; index: number }[];
+    /** Unknown share of the pillars alone. */
+    flat_unknown_share: number;
+    history: MaturityHistoryPoint[];
     rollup: MaturityNode | null;
     rollup_headline: string | null;
     by: 'node' | 'entity' | 'org' | null;
