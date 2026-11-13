@@ -4,8 +4,13 @@ server span from a service, the way the service's own SDK would export it.
 The daemon's OTLP/HTTP endpoint takes protobuf, so the message is encoded
 here by hand (standard library only) and posted with curl.
 
-    otlp_span.py <service.name> <service.version> <environment> | \
+    otlp_span.py <service.name> <service.version> <environment> [<attribute>] | \
         curl --data-binary @- -H 'content-type: application/x-protobuf' $URL/v1/traces
+
+The environment goes on the resource under <attribute> (default
+resilience.target.environment; deployment.environment.name and
+deployment.environment are the other two the daemon reads). An
+environment of "-" leaves the resource untagged.
 """
 import os
 import struct
@@ -44,14 +49,17 @@ def key_value(key, value):
 
 def main():
     service, version, environment = sys.argv[1:4]
+    attribute = sys.argv[4] if len(sys.argv) > 4 else "resilience.target.environment"
+    attributes = [
+        ("service.name", service),
+        ("service.version", version),
+        ("resilience.target.system", service),
+    ]
+    if environment != "-":
+        attributes.append((attribute, environment))
     resource = b"".join(
         field_bytes(1, key_value(k, v))  # Resource.attributes
-        for k, v in (
-            ("service.name", service),
-            ("service.version", version),
-            ("resilience.target.system", service),
-            ("resilience.target.environment", environment),
-        )
+        for k, v in attributes
     )
     now = time.time_ns()
     span = (
