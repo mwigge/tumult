@@ -46,6 +46,8 @@ function node(id: string, kind: string, label: string, parent: string | null, ov
         dora: null,
         maturity: null,
         conflict: false,
+        flags: [],
+        rollup: null,
         declared: false,
         children: 0,
         members: null,
@@ -62,6 +64,18 @@ const nodes = [
     node('ent:cif-0003', 'entity', 'cif-0003', 'org:platform/data-team'),
     node('ent:cif-0001', 'entity', 'cif-0001', 'org:platform/runtime-team'),
     node('ent:cif-0005', 'entity', 'cif-0005', 'org:(unassigned)'),
+    node('ent:CIF-9', 'entity', 'CIF-9', 'org:platform/data-team', {
+        flags: ['malformed_id', 'owner_conflict'],
+        rollup: {
+            systems: 6,
+            untested_systems: 5,
+            stale_systems: 0,
+            failed: 2,
+            risks_open: 3,
+            risks_suppressed: 1,
+            gaps: 5,
+        },
+    }),
     node('sys:demo/message-queue', 'system', 'message-queue', 'ent:cif-0003', {
         evidence: {
             runs: 3,
@@ -106,7 +120,7 @@ const nodes = [
         'message-queue',
         'sys:demo/message-queue',
     ),
-    node('def:queue-dependency-loss', 'def', 'queue-dependency-loss', null, { env: null }),
+    node('def:name/queue-dependency-loss', 'def', 'queue-dependency-loss', null, { env: null }),
 ];
 
 const edge = (from: string, rel: string, to: string, source = 'declared') => ({
@@ -127,14 +141,22 @@ const edges = [
     edge('sys:demo/api-worker', 'implements', 'ent:cif-0001'),
     edge('sys:demo/session-cache', 'implements', 'ent:cif-0005'),
     edge('sys:demo/message-queue', 'runs_on', 'wl:demo/statefulset/message-queue'),
-    edge('sys:demo/message-queue', 'tested_by', 'def:queue-dependency-loss', 'evidence'),
+    edge('sys:demo/message-queue', 'tested_by', 'def:name/queue-dependency-loss', 'evidence'),
 ];
 
-const starmap = (query: URLSearchParams) => ({
+const UNKNOWN = 'sys:demo/nope';
+
+function starmap(query: URLSearchParams) {
+    const found = query.get('focus') !== UNKNOWN;
+    return { ...whole(query), nodes: found ? nodes : [], edges: found ? edges : [] };
+}
+
+const whole = (query: URLSearchParams) => ({
     as_of_ns: NOW_NS,
     range: query.get('range') ?? '7d',
     env: query.get('env'),
     focus: query.get('focus'),
+    focus_found: query.get('focus') ? query.get('focus') !== UNKNOWN : null,
     depth: query.get('focus') ? Number(query.get('depth') ?? 2) : null,
     disclaimer: 'Evidence toward a requirement, not a statement of compliance.',
     sources: {
@@ -152,10 +174,9 @@ const starmap = (query: URLSearchParams) => ({
         clustered: 0,
         risks_open: 1,
         risks_suppressed: 1,
+        risks_unplaced: 2,
         gaps: 1,
     },
-    nodes,
-    edges,
     clusters: [],
 });
 
@@ -183,10 +204,18 @@ interface Item {
 }
 
 interface Mirror {
-    series: { data: Item[]; links: unknown[]; label: { color: string } }[];
+    series: { data: Item[]; links: unknown[]; label: { color: string }; zoom?: number }[];
 }
 
-async function mock(page: Page, seen: URL[]) {
+/** What a test run installs so charts mirror their option; absent in production. */
+async function installChartHook(page: Page) {
+    await page.addInitScript(() => {
+        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
+    });
+}
+
+async function mock(page: Page, seen: URL[], hook = true) {
+    if (hook) await installChartHook(page);
     await page.route('**/api/**', async (route) => {
         const url = new URL(route.request().url());
         seen.push(url);
@@ -196,10 +225,11 @@ async function mock(page: Page, seen: URL[]) {
         else if (path === '/api/starmap') body = starmap(url.searchParams);
         else if (path === '/api/experiments')
             body = {
-                count: 2,
+                count: 3,
                 experiments: [
                     run('run-1', 'queue-dependency-loss', 'deviated'),
                     run('run-2', 'message-queue-kill', 'completed'),
+                    run('run-3', 'queue-dependency-loss-twice', 'completed'),
                 ],
             };
         else if (path === '/api/manual/experiments') body = { records: [] };
@@ -274,6 +304,7 @@ const mirror = (page: Page) =>
             })),
             links: series.links.length,
             labelColor: series.label.color,
+            zoom: series.zoom ?? 1,
         };
     });
 
@@ -308,6 +339,7 @@ test('the star map draws every node with its evidence state', async ({ page }) =
     await expect(page.getByTestId('starmap-legend')).toContainText('1 open');
     await expect(page.getByTestId('starmap-legend')).toContainText('1 suppressed');
     await expect(page.getByTestId('starmap-legend')).toContainText('1 gap');
+    await expect(page.getByTestId('starmap-legend')).toContainText('2 risks not on the map');
 
     const request = seen.find((u) => u.pathname === '/api/starmap');
     expect(request?.searchParams.get('range')).toBe('7d');
@@ -321,9 +353,7 @@ test('the star map follows the theme', async ({ page }) => {
     const toggle = page.locator('button.theme');
     for (let i = 0; i < 3; i += 1) {
         if ((await page.locator('html').getAttribute('data-theme')) === 'light') break;
-        // The sidebar is taller than the test viewport, so the button is
-        // clicked by event rather than by pointer.
-        await toggle.dispatchEvent('click');
+        await toggle.click();
     }
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect.poll(async () => (await mirror(page))?.labelColor).toBe('#5b6772');
@@ -346,10 +376,9 @@ test('lens, selection and focus round-trip through the URL', async ({ page }) =>
     const drawer = page.getByTestId('starmap-drawer');
     await expect(drawer).toContainText('message-queue');
     await expect(drawer).toContainText('queue-dependency-loss');
-    await expect(drawer.getByRole('link', { name: 'queue-dependency-loss' })).toHaveAttribute(
-        'href',
-        '/experiments/run-1',
-    );
+    await expect(
+        drawer.getByRole('link', { name: 'queue-dependency-loss', exact: true }),
+    ).toHaveAttribute('href', '/experiments/run-1');
     await expect(drawer).toContainText('Latest chaos run failed');
     const runs = seen.find((u) => u.pathname === '/api/experiments');
     expect(runs?.searchParams.get('target')).toBe('message-queue');
@@ -396,4 +425,118 @@ test('/topology redirects to the star map and keeps the range', async ({ page })
     await expect(page).toHaveURL(/\/starmap\?range=14d$/);
     await expect(page.getByRole('heading', { name: 'Star Map' })).toBeVisible();
     await expect(page.getByRole('link', { name: /Star Map/ })).toBeVisible();
+});
+
+test('the sidebar keeps the theme button in view on a short window', async ({ page }) => {
+    await mock(page, []);
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await page.goto('/starmap');
+    const toggle = page.locator('button.theme');
+    await expect(toggle).toBeInViewport({ ratio: 1 });
+    // The navigation scrolls on its own, so its last entry can still be reached.
+    const last = page.locator('nav.nav a').last();
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).toBeInViewport({ ratio: 1 });
+    await expect(toggle).toBeInViewport({ ratio: 1 });
+});
+
+test('the map can be read and driven from the keyboard', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap');
+    await drawn(page);
+
+    // The canvas is described for assistive technology ...
+    await expect(page.locator('[data-chart="starmap"]')).toHaveAttribute(
+        'aria-label',
+        /Star map of 14 nodes and 10 edges/,
+    );
+
+    // ... and every node is a button in a list next to it.
+    const list = page.getByRole('region', { name: 'nodes' });
+    await expect(list.getByRole('button')).toHaveCount(nodes.length);
+    const filter = list.getByRole('searchbox', { name: 'Filter nodes' });
+    await filter.focus();
+    await page.keyboard.type('message-queue');
+    await expect(list.getByRole('button')).toHaveCount(2);
+
+    await page.keyboard.press('Tab');
+    const first = list.getByRole('button').first();
+    await expect(first).toBeFocused();
+    await expect(first).toContainText('message-queue');
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/sel=sys%3Ademo%2Fmessage-queue/);
+    await expect(first).toHaveAttribute('aria-pressed', 'true');
+
+    // Opening the drawer moves the focus into it; Escape closes it and
+    // hands the focus back to the button that opened it.
+    const drawer = page.getByTestId('starmap-drawer');
+    await expect(drawer.getByRole('heading', { name: 'message-queue' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+    await expect(page).not.toHaveURL(/sel=/);
+    await expect(first).toBeFocused();
+});
+
+test('the drawer shows only the runs of the selected definition', async ({ page }) => {
+    const seen: URL[] = [];
+    await mock(page, seen);
+    await page.goto('/starmap?range=30d&sel=def%3Aname%2Fqueue-dependency-loss');
+    const drawer = page.getByTestId('starmap-drawer');
+    await expect(drawer.getByRole('link', { name: 'queue-dependency-loss' })).toHaveCount(1);
+    await expect(drawer).not.toContainText('queue-dependency-loss-twice');
+    await expect(drawer).not.toContainText('message-queue-kill');
+    // The run list covers the same thirty days as the map.
+    await expect(drawer).toContainText('Runs, last 30d');
+    const runs = seen.find((u) => u.pathname === '/api/experiments');
+    expect(runs?.searchParams.get('range')).toBe('30d');
+    expect(runs?.searchParams.get('q')).toBe('queue-dependency-loss');
+});
+
+test('the drawer explains flags and what an entity hides', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap?sel=ent%3ACIF-9');
+    const drawer = page.getByTestId('starmap-drawer');
+    await expect(drawer).toContainText('the entity id does not follow the agreed form');
+    await expect(drawer).toContainText('telemetry and org.yaml name different owners');
+    await expect(drawer).toContainText('5 of 6 systems untested');
+    await expect(drawer).toContainText('5 gaps, 2 failed runs, 3 open risks, 1 suppressed');
+});
+
+test('a focus that is not on the map says so', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap?focus=sys%3Ademo%2Fnope');
+    await expect(page.getByText('sys:demo/nope is unknown or out of scope.')).toBeVisible();
+    await page.getByRole('button', { name: 'Clear focus' }).click();
+    await drawn(page);
+});
+
+test('changing the focus resets zoom and centre', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
+    await drawn(page);
+    const box = await page.locator('[data-chart="starmap"]').boundingBox();
+    if (!box) throw new Error('the chart has no box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -600);
+    await expect.poll(async () => (await mirror(page))?.zoom ?? 1).toBeGreaterThan(1);
+
+    // A lens change keeps what the user did to the view ...
+    await page.getByRole('button', { name: 'risk', exact: true }).click();
+    await expect(page).toHaveURL(/lens=risk/);
+    expect((await drawn(page)).zoom).toBeGreaterThan(1);
+
+    // ... a new focus is a new map and starts from the whole of it.
+    await page.getByTestId('starmap-drawer').getByRole('button', { name: 'Focus here' }).click();
+    await expect(page).toHaveURL(/focus=sys%3Ademo%2Fmessage-queue/);
+    await expect.poll(async () => (await mirror(page))?.zoom).toBe(1);
+});
+
+test('charts are not mirrored unless a test asked for it', async ({ page }) => {
+    await mock(page, [], false);
+    await page.goto('/starmap');
+    await expect(page.getByTestId('starmap-legend')).toBeVisible();
+    const hook = await page.evaluate(
+        () => typeof (window as Window & { __tumultCharts?: unknown }).__tumultCharts,
+    );
+    expect(hook).toBe('undefined');
 });

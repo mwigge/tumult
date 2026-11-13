@@ -3,8 +3,10 @@
     // at the centre out to workloads, with the evidence, risk and
     // conformance lenses over the same nodes. Positions come from the pure
     // `layoutStar`, so the map looks the same on every load. Range,
-    // environment, lens, selection and focus live in the URL.
-    import { onMount } from 'svelte';
+    // environment, lens, selection and focus live in the URL. The canvas
+    // cannot be reached from the keyboard, so the same nodes are also a
+    // list of buttons below it.
+    import { onMount, tick } from 'svelte';
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import { api } from '#lib/api.js';
@@ -16,18 +18,22 @@
     import type { ChartTheme, EChartsCoreOption } from '#lib/echarts.js';
     import { layoutStar } from '#lib/starmap/layout.js';
     import type { Point } from '#lib/starmap/layout.js';
+    import { listNodes } from '#lib/starmap/list.js';
+    import { RANGES } from '#lib/ranges.js';
     import {
         KINDS,
         LENSES,
         edgeTooltipHtml,
+        labelText,
         toItem,
         toLink,
         tooltipHtml,
     } from '#lib/starmap/style.js';
     import type { Lens, StarItem, StarLink, StyleContext } from '#lib/starmap/style.js';
 
-    const RANGES = ['24h', '7d', '14d', '30d'];
     const CLUSTER = 'cluster:';
+    /** Most buttons the node list renders at once; the filter narrows it. */
+    const LISTED = 200;
 
     const param = (key: string) => page.url.searchParams.get(key) ?? '';
     const range = $derived(param('range') || '7d');
@@ -46,6 +52,9 @@
     let theme: ChartTheme = $state(chartTheme());
     // Label level of detail: 0 below zoom 1, 1 from zoom 1, 2 from zoom 2.
     let detail = $state(1);
+    let filter = $state('');
+    let listEl: HTMLElement | undefined = $state();
+    let filterEl: HTMLInputElement | undefined = $state();
 
     onMount(() => {
         const retheme = () => (theme = chartTheme());
@@ -102,7 +111,7 @@
             if (value) params.set(key, value);
             else params.delete(key);
         }
-        goto(`?${params}`, { replace: true, reset: false });
+        return goto(`?${params}`, { replace: true, reset: false });
     }
 
     const selected: StarNode | null = $derived(map?.nodes.find((n) => n.id === sel) ?? null);
@@ -130,11 +139,16 @@
     const option: EChartsCoreOption = $derived.by(() => {
         if (!map || map.nodes.length === 0) return {};
         const t = context.tokens;
+        const described =
+            `Star map of ${plural(map.counts.nodes, 'node')} and ` +
+            `${plural(map.counts.edges, 'edge')}: ${map.counts.risks_open} open risks, ` +
+            `${plural(map.counts.gaps, 'gap')}. The node list below the map has every node.`;
         const data: StarItem[] = [];
         for (const n of map.nodes) data.push(toItem(n, positions.get(n.id) ?? [0, 0], context));
         const links: StarLink[] = [];
         for (const e of map.edges) links.push(toLink(e, context));
         return {
+            aria: { enabled: true, label: { enabled: true, description: described } },
             tooltip: { ...t.tooltip, confine: true, formatter: tip },
             series: [
                 {
@@ -162,7 +176,10 @@
                         position: 'right',
                         color: t.text,
                         fontSize: 11,
-                        formatter: (p: { data?: { raw?: StarNode } }) => p.data?.raw?.label ?? '',
+                        formatter: (p: { data?: { raw?: StarNode } }) => {
+                            const raw = p.data?.raw;
+                            return raw ? labelText(raw) : '';
+                        },
                     },
                     labelLayout: { hideOverlap: true },
                     categories: KINDS.map((k) => ({ name: k })),
@@ -188,14 +205,27 @@
     /** A cluster stands for the nodes below its home; focusing there expands it. */
     const focusId = (id: string) => (id.startsWith(CLUSTER) ? id.slice(CLUSTER.length) : id);
 
-    function onNode(params: NodeEvent) {
-        const n = nodeOf(params);
-        if (!n) return;
+    /** Select a node; a cluster has nothing of its own to show, so it expands. */
+    function pick(n: StarNode) {
         if (n.kind === 'cluster') {
             setParams({ focus: focusId(n.id), sel: null });
             return;
         }
         setParams({ sel: n.id });
+    }
+
+    function onNode(params: NodeEvent) {
+        const n = nodeOf(params);
+        if (n) pick(n);
+    }
+
+    /** Close the drawer and hand the focus back to the node's button. */
+    async function closeDrawer() {
+        const id = sel;
+        await setParams({ sel: null });
+        await tick();
+        const opener = listEl?.querySelector<HTMLElement>(`[data-node="${CSS.escape(id)}"]`);
+        (opener ?? filterEl)?.focus();
     }
 
     function onNodeTwice(params: NodeEvent) {
@@ -208,7 +238,13 @@
         if (next !== detail) detail = next;
     }
 
-    const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+    function plural(n: number, word: string) {
+        return `${n} ${word}${n === 1 ? '' : 's'}`;
+    }
+
+    const matching = $derived(listNodes(map?.nodes ?? [], filter));
+    const listed = $derived(matching.slice(0, LISTED));
+    const kindOf = (n: StarNode) => (n.kind === 'org' && n.org_kind ? n.org_kind : n.kind);
 
     const unavailable = $derived(
         Object.entries(map?.sources ?? {})
@@ -262,9 +298,13 @@
             <div class="skeleton" style="height: 640px"></div>
         {:else if map.nodes.length === 0}
             <div class="state">
-                {focus
-                    ? 'Nothing is visible around this node.'
-                    : 'Nothing was seen in this window.'}
+                {#if map.focus_found === false}
+                    <span class="mono">{focus}</span> is unknown or out of scope.
+                {:else if focus}
+                    Nothing is visible around this node.
+                {:else}
+                    Nothing was seen in this window.
+                {/if}
             </div>
         {:else}
             <EChart
@@ -272,6 +312,7 @@
                 {option}
                 height={640}
                 merge
+                viewKey={focus}
                 onclick={onNode}
                 ondblclick={onNodeTwice}
                 onroam={onRoam}
@@ -279,6 +320,9 @@
             <p class="sub legend" data-testid="starmap-legend">
                 risks: {map.counts.risks_open} open, {map.counts.risks_suppressed} suppressed ·
                 {plural(map.counts.gaps, 'gap')}
+                {#if map.counts.risks_unplaced > 0}
+                    · {plural(map.counts.risks_unplaced, 'risk')} not on the map
+                {/if}
                 {#if map.counts.clustered > 0}
                     · {plural(map.counts.clustered, 'node')} collapsed into clusters
                 {/if}
@@ -289,19 +333,51 @@
             <p class="sub">
                 shape is the kind of node · a dashed hollow node has no evidence, a thin amber dash
                 is stale evidence · a dimmed node has only suppressed risks · click a node for its
-                evidence, double-click to focus on it
+                evidence, double-click to focus on it · the node list below does the same from the
+                keyboard
             </p>
             {#if unavailable.length > 0}
                 <p class="sub">Not available yet: {unavailable.join(', ')}.</p>
             {/if}
             <p class="sub">{map.disclaimer}</p>
+            <section class="nodes" aria-label="nodes" bind:this={listEl}>
+                <div class="nodes-head">
+                    <h2>Nodes</h2>
+                    <input
+                        type="search"
+                        aria-label="Filter nodes"
+                        placeholder="filter by name, id or kind"
+                        bind:value={filter}
+                        bind:this={filterEl}
+                    />
+                    <span class="sub" aria-live="polite">
+                        {listed.length} of {matching.length}
+                        {#if matching.length > listed.length}· filter to see the rest{/if}
+                    </span>
+                </div>
+                <ul>
+                    {#each listed as n (n.id)}
+                        <li>
+                            <button
+                                data-node={n.id}
+                                aria-pressed={n.id === sel}
+                                title={n.id}
+                                onclick={() => pick(n)}
+                            >
+                                <span class="kind">{kindOf(n)}</span>
+                                {n.label}
+                            </button>
+                        </li>
+                    {/each}
+                </ul>
+            </section>
         {/if}
     </div>
     {#if selected}
         <StarDrawer
             node={selected}
             {range}
-            onclose={() => setParams({ sel: null })}
+            onclose={closeDrawer}
             onfocus={(id) => setParams({ focus: focusId(id) })}
         />
     {/if}
@@ -353,5 +429,50 @@
     }
     .mono {
         font-family: var(--mono);
+    }
+    .nodes {
+        margin-top: 14px;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+    }
+    .nodes-head {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .nodes-head h2 {
+        font-size: 12.5px;
+    }
+    .nodes-head .sub {
+        margin: 0;
+    }
+    .nodes ul {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    .nodes button {
+        background: var(--bg-panel);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 12px;
+        padding: 3px 8px;
+    }
+    .nodes button[aria-pressed='true'] {
+        border-color: var(--accent);
+        background: var(--bg-hover);
+    }
+    .nodes .kind {
+        color: var(--text-dim);
+        font-size: 11px;
+        margin-right: 4px;
     }
 </style>

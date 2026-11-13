@@ -2,7 +2,8 @@
     // Evidence drawer of the Star Map: what is known about the selected
     // node. The map response only carries counts; the rows are loaded here,
     // lazily, from the endpoints the other pages already use. Each section
-    // loads and fails on its own.
+    // loads and fails on its own. Opening the drawer moves the focus to its
+    // heading; Escape closes it and the page hands the focus back.
     import { api, fmtAgo, fmtDuration, statusClass } from '#lib/api.js';
     import type {
         ExperimentRow,
@@ -12,6 +13,8 @@
         Risk,
         StarNode,
     } from '#lib/types.js';
+    import { runsOfDefinition } from '#lib/starmap/list.js';
+    import { flagText, rollupLines } from '#lib/starmap/style.js';
 
     let {
         node,
@@ -37,8 +40,21 @@
     let manual: Section<ManualExperiment[]> = $state(empty());
     let risks: Section<Risk[]> = $state(empty());
 
-    // The run list answers for 24h, 7d and 14d; a 30-day map shows 14 days.
-    const runRange = $derived(range === '30d' ? '14d' : range);
+    let heading: HTMLElement | undefined = $state();
+    const nodeId = $derived(node.id);
+    const rollup = $derived(rollupLines(node));
+
+    $effect(() => {
+        // Each newly selected node announces itself; a reload of the same one does not.
+        void nodeId;
+        heading?.focus();
+    });
+
+    function onKey(event: KeyboardEvent) {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        event.preventDefault();
+        onclose();
+    }
     const isSystem = $derived(node.kind === 'system');
     const hasRuns = $derived(node.kind === 'system' || node.kind === 'def');
     const disciplines = $derived(Object.entries(node.evidence.by_discipline));
@@ -64,7 +80,9 @@
         risks = empty();
         if (kind === 'def') {
             load(
-                api.experiments({ q: target, range: runRange }).then((r) => r.experiments),
+                api
+                    .experiments({ q: target, range })
+                    .then((r) => runsOfDefinition(r.experiments, target)),
                 live,
                 (s) => (runs = s),
             );
@@ -72,7 +90,7 @@
         if (kind === 'system') {
             load(
                 api
-                    .experiments({ target, range: runRange })
+                    .experiments({ target, range })
                     .then((r) => r.experiments.filter((x) => sameEnv(x.target_environment))),
                 live,
                 (s) => (runs = s),
@@ -124,10 +142,12 @@
     const day = (ns: number) => new Date(ns / 1_000_000).toISOString().slice(0, 10);
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <aside class="drawer" data-testid="starmap-drawer" aria-label="evidence">
     <header>
         <div>
-            <div class="title">{node.label}</div>
+            <h2 class="title" tabindex="-1" bind:this={heading}>{node.label}</h2>
             <div class="sub mono">{node.id}</div>
         </div>
         <button class="close" onclick={onclose} aria-label="Close">×</button>
@@ -175,6 +195,12 @@
         {#if node.conflict}
             <p class="note">This service reports more than one entity id.</p>
         {/if}
+        {#each node.flags as flag (flag)}
+            <p class="note flag">Check: {flagText(flag)}.</p>
+        {/each}
+        {#each rollup as line (line)}
+            <p class="note">{line}</p>
+        {/each}
         {#if node.declared}
             <p class="note">Known from a declaration only; not seen in telemetry.</p>
         {/if}
@@ -190,7 +216,7 @@
         <div class="actions">
             <button onclick={() => onfocus(node.id)}>Focus here</button>
             {#if node.kind === 'service'}
-                <a href="/traces?service={encodeURIComponent(node.label)}&range={runRange}">
+                <a href="/traces?service={encodeURIComponent(node.label)}&range={range}">
                     Traces
                 </a>
             {/if}
@@ -218,7 +244,7 @@
 
     {#if hasRuns}
         <section>
-            <h3>Runs, last {runRange}</h3>
+            <h3>Runs, last {range}</h3>
             {#if runs.error}
                 <div class="state error">Failed to load runs: {runs.error}</div>
             {:else if runs.rows === null}
@@ -360,6 +386,13 @@
         font-size: 14px;
         font-weight: 600;
         word-break: break-all;
+    }
+    .title:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+    .flag {
+        color: var(--warn);
     }
     .sub {
         color: var(--text-dim);

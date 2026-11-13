@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { chartTokens, PALETTE } from '../echarts.js';
 import type { StarEdge, StarNode } from '../types.js';
-import { KINDS, esc, labelShown, toItem, toLink, tooltipHtml } from './style.js';
+import {
+    KINDS,
+    esc,
+    flagText,
+    labelShown,
+    labelText,
+    rollupLines,
+    toItem,
+    toLink,
+    tooltipHtml,
+} from './style.js';
 import type { StyleContext } from './style.js';
 
 const DAY_NS = 86_400_000_000_000;
@@ -36,6 +46,8 @@ function node(over: Partial<StarNode> = {}): StarNode {
         dora: null,
         maturity: null,
         conflict: false,
+        flags: [],
+        rollup: null,
         declared: false,
         children: 0,
         members: null,
@@ -319,5 +331,63 @@ describe('tooltipHtml', () => {
         );
         expect(html).toContain('2 open');
         expect(html).toContain('1 suppressed');
+    });
+});
+
+describe('labelText', () => {
+    const RICH = /\{[a-zA-Z0-9_]+\|[^}]*\}/;
+
+    it('leaves an ordinary label alone', () => {
+        expect(labelText(node())).toBe('message-queue');
+    });
+
+    it('keeps a label from being read as ECharts rich text', () => {
+        const text = labelText(node({ label: 'pay{a|ments} {b}' }));
+        expect(text).not.toMatch(RICH);
+        expect(text.replace(/\u200b/g, '')).toBe('pay{a|ments} {b}');
+    });
+});
+
+describe('flags and roll-ups', () => {
+    const rollup = {
+        systems: 6,
+        untested_systems: 5,
+        stale_systems: 0,
+        failed: 2,
+        risks_open: 3,
+        risks_suppressed: 1,
+        gaps: 5,
+    };
+
+    it('has a sentence for every flag and passes an unknown one through', () => {
+        expect(flagText('malformed_id')).toContain('agreed form');
+        expect(flagText('multiple_owners')).toContain('more than one owner');
+        expect(flagText('owner_conflict')).toContain('org.yaml');
+        expect(flagText('later_flag')).toBe('later_flag');
+    });
+
+    it('says how many systems an entity hides behind its best one', () => {
+        expect(rollupLines(node({ kind: 'entity', rollup }))).toEqual([
+            '5 of 6 systems untested',
+            'below: 5 gaps, 2 failed runs, 3 open risks, 1 suppressed',
+        ]);
+        expect(rollupLines(node({ kind: 'entity', rollup: null }))).toEqual([]);
+    });
+
+    it('mentions stale systems only when there are some', () => {
+        const lines = rollupLines(
+            node({ rollup: { ...rollup, untested_systems: 0, stale_systems: 2 } }),
+        );
+        expect(lines[0]).toBe('0 of 6 systems untested, 2 stale');
+    });
+
+    it('puts flags and the roll-up in the tooltip, escaped', () => {
+        const html = tooltipHtml(
+            node({ kind: 'entity', flags: ['malformed_id', '<b>'], rollup }),
+            ctx(),
+        );
+        expect(html).toContain('agreed form');
+        expect(html).toContain('&lt;b&gt;');
+        expect(html).toContain('5 of 6 systems untested');
     });
 });

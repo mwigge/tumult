@@ -193,26 +193,6 @@ export interface MetricQueryResult {
     series: MetricSeries[];
 }
 
-export interface TopologyNode {
-    id: string;
-    name: string;
-    type: 'service' | 'target';
-    runs: number;
-    errors: number;
-    avg_duration_ns: number | null;
-}
-
-export interface TopologyEdge {
-    from_id: string;
-    to_id: string;
-    weight: number;
-}
-
-export interface Topology {
-    nodes: TopologyNode[];
-    edges: TopologyEdge[];
-}
-
 export type StarKind =
     | 'org'
     | 'entity'
@@ -282,9 +262,23 @@ export interface StarNode {
     dora: unknown;
     maturity: unknown;
     conflict: boolean;
+    /** `malformed_id`, `multiple_owners`, `owner_conflict`; sorted. */
+    flags: string[];
+    /** Counted below an entity or an org unit; null on every other kind. */
+    rollup: StarRollup | null;
     declared: boolean;
     children: number;
     members: number | null;
+}
+
+export interface StarRollup {
+    systems: number;
+    untested_systems: number;
+    stale_systems: number;
+    failed: number;
+    risks_open: number;
+    risks_suppressed: number;
+    gaps: number;
 }
 
 export interface StarEdge {
@@ -305,15 +299,19 @@ export interface StarCluster {
     worst: { gap: StarGap | null; risk: string | null };
 }
 
+export type StarSource = 'ok' | 'unavailable';
+
 /** `GET /api/starmap` */
 export interface StarMap {
     as_of_ns: number;
     range: string;
     env: string | null;
     focus: string | null;
+    /** Whether `focus` named a node the caller may see; null without a focus. */
+    focus_found: boolean | null;
     depth: number | null;
     disclaimer: string;
-    sources: { slo: string; dora: string; maturity: string; conformance: string; graph: string };
+    sources: Record<'slo' | 'dora' | 'maturity' | 'conformance' | 'graph', StarSource>;
     maturity: unknown;
     counts: {
         nodes: number;
@@ -322,6 +320,8 @@ export interface StarMap {
         clustered: number;
         risks_open: number;
         risks_suppressed: number;
+        /** Risks that belong to no node on the map. */
+        risks_unplaced: number;
         gaps: number;
     };
     nodes: StarNode[];

@@ -152,6 +152,15 @@ export interface StarLink {
     raw: StarEdge;
 }
 
+/**
+ * The label drawn next to a node. ECharts reads `{name|text}` in a label
+ * as rich text; a zero-width space after every opening brace keeps a
+ * name with braces in it literal without changing what is seen.
+ */
+export function labelText(n: StarNode): string {
+    return n.label.replace(/\{/g, '{\u200b');
+}
+
 export function labelShown(kind: StarKind, zoom: number): boolean {
     return zoom >= (LABEL_FROM[kind] ?? 0);
 }
@@ -321,11 +330,41 @@ function headLine(n: StarNode): string {
     return `<b>${esc(n.label)}</b> (${esc(kind)}${env})`;
 }
 
+const FLAG_TEXT: Record<string, string> = {
+    malformed_id: 'the entity id does not follow the agreed form',
+    multiple_owners: 'telemetry reports more than one owner',
+    owner_conflict: 'telemetry and org.yaml name different owners',
+};
+
+/** What a flag on a node means, in words; an unknown flag is shown as is. */
+export function flagText(flag: string): string {
+    return FLAG_TEXT[flag] ?? flag;
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * What hangs below an entity or an org unit. An entity is a gap only when
+ * every system below it is, so the first line says how many it hides.
+ */
+export function rollupLines(n: StarNode): string[] {
+    const r = n.rollup;
+    if (!r) return [];
+    const stale = r.stale_systems > 0 ? `, ${r.stale_systems} stale` : '';
+    return [
+        `${r.untested_systems} of ${count(r.systems, 'system')} untested${stale}`,
+        `below: ${count(r.gaps, 'gap')}, ${count(r.failed, 'failed run')}, ` +
+            `${count(r.risks_open, 'open risk')}, ${r.risks_suppressed} suppressed`,
+    ];
+}
+
 function detailLines(n: StarNode): string[] {
     const lines: string[] = [];
     if (n.tier) lines.push(`tier: ${esc(n.tier)}`);
     if (n.posture) lines.push(`posture: ${n.posture.score.toFixed(1)} (${esc(n.posture.band)})`);
     if (n.conflict) lines.push('reports more than one entity id');
+    for (const flag of n.flags) lines.push(esc(flagText(flag)));
+    lines.push(...rollupLines(n));
     if (n.declared) lines.push('declared only, not seen in telemetry');
     if (n.members !== null) lines.push(`${n.members} nodes collapsed; click to expand`);
     return lines;

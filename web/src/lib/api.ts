@@ -51,7 +51,6 @@ import type {
     PerfVerdict,
     ScoreTree,
     Timeseries,
-    Topology,
     TraceDetail,
     TraceDurations,
     TraceRow,
@@ -251,8 +250,6 @@ export const api = {
         ).toString();
         return get<MetricQueryResult>(`/api/metrics/query${qs ? `?${qs}` : ''}`);
     },
-
-    topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
 
     starmap: (params: Record<string, string>) => {
         const qs = new URLSearchParams(

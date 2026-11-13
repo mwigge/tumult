@@ -10,6 +10,7 @@ import {
     TreemapChart,
 } from 'echarts/charts';
 import {
+    AriaComponent,
     CalendarComponent,
     DataZoomComponent,
     GridComponent,
@@ -37,6 +38,7 @@ echarts.use([
     LegendComponent,
     MarkAreaComponent,
     MarkLineComponent,
+    AriaComponent,
     CanvasRenderer,
 ]);
 
