@@ -46,6 +46,7 @@ import type {
     ScaffoldResponse,
     Schedule,
     Scorecard,
+    StarMap,
     GateVerdict,
     PerfVerdict,
     ScoreTree,
@@ -236,6 +237,13 @@ export const api = {
     },
 
     topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
+
+    starmap: (params: Record<string, string>) => {
+        const qs = new URLSearchParams(
+            Object.entries(params).filter(([, v]) => v !== ''),
+        ).toString();
+        return get<StarMap>(`/api/starmap${qs ? `?${qs}` : ''}`);
+    },
 
     ask: async (question: string): Promise<AskResponse> => {
         // Deliberately not routed through send(): a non-ok response whose body

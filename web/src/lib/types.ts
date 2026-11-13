@@ -213,6 +213,122 @@ export interface Topology {
     edges: TopologyEdge[];
 }
 
+export type StarKind =
+    | 'org'
+    | 'entity'
+    | 'system'
+    | 'component'
+    | 'service'
+    | 'workload'
+    | 'ext'
+    | 'def'
+    | 'run'
+    | 'slo'
+    | 'article'
+    | 'gap'
+    | 'cluster';
+
+export type StarRel =
+    | 'owns'
+    | 'implements'
+    | 'calls'
+    | 'runs_on'
+    | 'depends_on'
+    | 'tested_by'
+    | 'broke'
+    | 'covers'
+    | 'measures';
+
+export type StarGap = 'stale' | 'missing';
+
+export interface StarEvidence {
+    runs: number;
+    failed: number;
+    manual: number;
+    last_run_ns: number | null;
+    /** Discipline to `covered`, `stale` or `missing`. */
+    by_discipline: Record<string, string>;
+}
+
+export interface StarRisks {
+    open: number;
+    suppressed: number;
+    worst: string | null;
+    suppression_expires_ns: number | null;
+    suppressed_by: string | null;
+    suppression_reason: string | null;
+    recommended: string[];
+}
+
+export interface StarNode {
+    id: string;
+    kind: StarKind;
+    label: string;
+    /** Spine parent used by the layout. */
+    parent: string | null;
+    env: string | null;
+    tier: string | null;
+    org_kind: string | null;
+    criticality_weight: number;
+    conformance: string | null;
+    last_seen_ns: number | null;
+    posture: { score: number; band: string } | null;
+    evidence: StarEvidence;
+    gap: StarGap | null;
+    risks: StarRisks;
+    /** Reserved for the SLO, DORA and maturity sources; null until they exist. */
+    slo: unknown;
+    slo_count: number;
+    dora: unknown;
+    maturity: unknown;
+    conflict: boolean;
+    declared: boolean;
+    children: number;
+    members: number | null;
+}
+
+export interface StarEdge {
+    id: string;
+    from: string;
+    to: string;
+    rel: StarRel;
+    source: 'telemetry' | 'observed' | 'evidence' | 'declared';
+    weight?: number;
+    errors?: number;
+    avg_duration_ns?: number;
+}
+
+export interface StarCluster {
+    id: string;
+    label: string;
+    members: number;
+    worst: { gap: StarGap | null; risk: string | null };
+}
+
+/** `GET /api/starmap` */
+export interface StarMap {
+    as_of_ns: number;
+    range: string;
+    env: string | null;
+    focus: string | null;
+    depth: number | null;
+    disclaimer: string;
+    sources: { slo: string; dora: string; maturity: string; conformance: string; graph: string };
+    maturity: unknown;
+    counts: {
+        nodes: number;
+        edges: number;
+        pruned: number;
+        clustered: number;
+        risks_open: number;
+        risks_suppressed: number;
+        gaps: number;
+    };
+    nodes: StarNode[];
+    edges: StarEdge[];
+    clusters: StarCluster[];
+}
+
 // ---------------------------------------------------------------------------
 // v2: resilience scoring + compliance reports
 
