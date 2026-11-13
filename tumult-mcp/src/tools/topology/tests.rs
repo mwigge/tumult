@@ -100,7 +100,8 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
 
 /// Point script-plugin discovery at a temp catalog with one action so
 /// recommendations have a non-empty catalog regardless of the host machine.
-fn with_plugin_catalog(dir: &std::path::Path) {
+/// Discovery stays pinned there for as long as the returned guard lives.
+fn with_plugin_catalog(dir: &std::path::Path) -> crate::tools::test_support::PluginPathGuard {
     let plugin_dir = dir.join("catalog").join("test-topology-plugin");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     let manifest = tumult_plugin::manifest::ScriptPluginManifest {
@@ -116,7 +117,7 @@ fn with_plugin_catalog(dir: &std::path::Path) {
     };
     let toon = toon_format::encode_default(&manifest).unwrap();
     std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
-    std::env::set_var("TUMULT_PLUGIN_PATH", dir.join("catalog"));
+    crate::tools::test_support::plugin_path_guard(&dir.join("catalog"))
 }
 
 #[test]
@@ -223,7 +224,7 @@ fn recommend_returns_ranked_explained_recommendations() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = seed_broken_store(dir.path());
     topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
-    with_plugin_catalog(dir.path());
+    let _plugins = with_plugin_catalog(dir.path());
 
     let report = recommend_injection(db.to_str().unwrap(), Some("dora"), Some(3)).unwrap();
     let recs = report.structured["recommendations"].as_array().unwrap();

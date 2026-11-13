@@ -458,7 +458,7 @@ mod tests {
         };
         let toon = toon_format::encode_default(&manifest).unwrap();
         std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
-        std::env::set_var("TUMULT_PLUGIN_PATH", dir.path().join("catalog"));
+        let _plugins = crate::tools::test_support::plugin_path_guard(&dir.path().join("catalog"));
 
         // A completed run that exercised exactly one of the two actions.
         let journal = tumult_core::types::Journal {

@@ -131,7 +131,7 @@ The Digital Operational Resilience Act (EU 2022/2554) entered into force on 17 J
 
 - **Article 24**: Establish an ICT resilience testing programme
 - **Article 25**: Execute scenario-based tests including performance and end-to-end testing
-- **Article 26**: Carry out threat-led penetration testing (TLPT) for systemically important entities
+- **Article 26**: Carry out threat-led penetration testing (TLPT) where the competent authority has identified the entity under Art. 26(8)
 - **Article 11**: Test response and recovery procedures with measured recovery times
 
 A GameDay maps directly to these requirements:
