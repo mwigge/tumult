@@ -2,6 +2,7 @@
 """Hermetic checks of scripts/starmap-check.py against a fake daemon, and of
 the Star Map part of scripts/demo-check.sh against a fake `docker`."""
 
+import fcntl
 import json
 import os
 import re
@@ -273,6 +274,14 @@ class Checkout:
         docker.chmod(0o755)
         self.record = Path(directory) / "docker-calls"
         self.record.write_text("")
+        # Where demo-check.sh keeps its lock: never the host's own /tmp.
+        self.tmp = Path(directory) / "tmp"
+        self.tmp.mkdir()
+        self.lock = self.tmp / f"{PROJECT}.lock"
+
+    def replace_checker(self, body):
+        """Stand a script that only does `body` in for starmap-check.py."""
+        (self.root / "scripts" / SCRIPT.name).write_text(body)
 
     def env(self, **over):
         env = {
@@ -284,6 +293,7 @@ class Checkout:
         env["PATH"] = f"{self.bin}{os.pathsep}{env['PATH']}"
         env["FAKE_DOCKER_RECORD"] = str(self.record)
         env["STARMAP_WAIT"] = "0"
+        env["TMPDIR"] = str(self.tmp)
         return {**env, **over}
 
     def start(self, **over):
@@ -357,6 +367,132 @@ class DemoCheckStarMapTests(unittest.TestCase):
             calls = checkout.calls()
         self.assertEqual(process.returncode, 143, output)
         self.assertEqual([verb(c) for c in calls], ["down", "up", "down"], output)
+
+    def test_two_checks_at_once_take_turns(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            port = daemon.url.rsplit(":", 1)[1]
+            both = [
+                checkout.start(KRONIKA_HOST_HTTP_PORT=port, FAKE_UP_SECONDS="1")
+                for _ in range(2)
+            ]
+            outputs = [process.communicate(timeout=120)[0] for process in both]
+            calls = checkout.calls()
+        for process, output in zip(both, outputs):
+            self.assertEqual(process.returncode, 0, output)
+            self.assertNotIn("FAIL", output)
+        # Neither removed the stack the other was using.
+        self.assertEqual(
+            [verb(c) for c in calls],
+            ["down", "up", "run", "down"] * 2,
+            "\n".join(outputs),
+        )
+        self.assertEqual(
+            sum("waiting for another demo check" in o for o in outputs), 1, outputs
+        )
+
+    def test_a_check_that_cannot_have_its_turn_touches_nothing(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            port = daemon.url.rsplit(":", 1)[1]
+            with open(checkout.lock, "w") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                process = checkout.start(
+                    KRONIKA_HOST_HTTP_PORT=port, STARMAP_LOCK_WAIT="0"
+                )
+                output, _ = process.communicate(timeout=120)
+            calls = checkout.calls()
+        self.assertEqual(process.returncode, 1, output)
+        self.assertEqual(calls, [], "the other check's stack is left alone")
+        self.assertIn("another demo check still holds", output)
+        self.assertIn(str(checkout.lock), output)
+
+    def test_a_check_interrupted_while_it_waits_ends_at_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Checkout(directory)
+            with open(checkout.lock, "w") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                process = checkout.start(STARMAP_LOCK_WAIT="60")
+                waiting = process.stdout.readline()
+                while waiting and "waiting for another demo check" not in waiting:
+                    waiting = process.stdout.readline()
+                self.assertTrue(waiting, "the check never said it was waiting")
+                asked = time.monotonic()
+                process.send_signal(signal.SIGTERM)
+                output, _ = process.communicate(timeout=30)
+                took = time.monotonic() - asked
+            calls = checkout.calls()
+        self.assertEqual(process.returncode, 143, output)
+        self.assertLess(took, 10, "it did not wait out the lock")
+        self.assertEqual(calls, [], "the other check's stack is left alone")
+
+    def test_a_lock_file_that_cannot_be_opened_is_one_clear_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Checkout(directory)
+            nowhere = str(checkout.tmp / "not there")
+            process = checkout.start(TMPDIR=nowhere)
+            output, _ = process.communicate(timeout=120)
+            calls = checkout.calls()
+        self.assertEqual(process.returncode, 1, output)
+        self.assertEqual(calls, [])
+        self.assertIn("cannot open the lock file", output)
+        self.assertIn("1 check(s) failed", output)
+
+    def test_a_lock_file_nobody_holds_is_no_obstacle(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.lock.write_text("")
+            port = daemon.url.rsplit(":", 1)[1]
+            process = checkout.start(KRONIKA_HOST_HTTP_PORT=port, STARMAP_LOCK_WAIT="0")
+            output, _ = process.communicate(timeout=120)
+        self.assertEqual(process.returncode, 0, output)
+        self.assertNotIn("waiting", output)
+
+    def test_without_docker_there_is_one_clear_message(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Checkout(directory)
+            process = checkout.start(COMPOSE_KRONIKA="no-such-docker compose -f x")
+            output, _ = process.communicate(timeout=120)
+            calls = checkout.calls()
+        self.assertEqual(process.returncode, 1, output)
+        self.assertEqual(calls, [])
+        told = [line for line in output.splitlines() if "no-such-docker" in line]
+        self.assertEqual(len(told), 1, output)
+        self.assertIn("is not installed or not on PATH", told[0])
+        self.assertIn("STARMAP_URL", told[0])
+        self.assertNotIn("WARN", output)
+        self.assertNotIn("did not come up", output)
+
+    def test_a_running_daemon_is_checked_without_docker(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            process = checkout.start(
+                COMPOSE_KRONIKA="no-such-docker compose -f x", STARMAP_URL=daemon.url
+            )
+            output, _ = process.communicate(timeout=120)
+        self.assertEqual(process.returncode, 0, output)
+
+    def test_a_check_that_prints_nothing_is_a_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Checkout(directory)
+            checkout.replace_checker("")
+            process = checkout.start(STARMAP_URL="http://127.0.0.1:1")
+            output, _ = process.communicate(timeout=120)
+        self.assertEqual(process.returncode, 1, output)
+        self.assertIn("the check printed nothing", output)
+        self.assertIn("1 check(s) failed", output)
+
+    def test_a_failed_line_fails_the_check_whatever_the_exit_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Checkout(directory)
+            checkout.replace_checker(
+                'print("ok   star map: one")\nprint("FAIL star map: two")\n'
+            )
+            process = checkout.start(STARMAP_URL="http://127.0.0.1:1")
+            output, _ = process.communicate(timeout=120)
+        self.assertEqual(process.returncode, 1, output)
+        self.assertIn("star map: two", output)
+        self.assertIn("1 check(s) failed", output)
 
 
 if __name__ == "__main__":

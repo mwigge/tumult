@@ -21,11 +21,16 @@
 # volume with throwaway credentials and on host ports 24317/24318, so a
 # Krönika demo that is already up is left alone. It runs the seed, checks the
 # map (suppressing one risk to show a suppressed one) and removes the project
-# again, also when it is interrupted; the image stays as a build cache. To
-# check a daemon that is already running, set STARMAP_URL (and STARMAP_TOKEN
-# when it asks for one): nothing is started, removed or written then, so the
-# suppressed-risk line is skipped unless a risk is suppressed already.
-# --starmap-only runs just this part.
+# again, also when it is interrupted; the image stays as a build cache.
+# The project, its names and its ports are the same for every run, so one
+# check at a time has the stack: a second one waits for the first (up to
+# STARMAP_LOCK_WAIT seconds, 900 by default) on a lock file,
+# ${TMPDIR:-/tmp}/tumult-demo-check-kronika.lock, and touches nothing if it
+# cannot have its turn. To check a daemon that is already running, set
+# STARMAP_URL (and STARMAP_TOKEN when it asks for one): nothing is started,
+# removed or written then, so the suppressed-risk line is skipped unless a
+# risk is suppressed already. --starmap-only runs just this part, and with
+# STARMAP_URL it is the one use of this script that does not need Docker.
 #
 # Assumes the demo stack is already `up` (the Makefile brings it up first).
 # Runs each experiment inside the tumult-mcp container via `tumult run`, the
@@ -63,6 +68,10 @@ if [[ -n "${COMPOSE_KRONIKA:-}" ]]; then
 fi
 KRONIKA_COMPOSE+=(-p "$KRONIKA_PROJECT")
 KRONIKA_STARTED=0
+KRONIKA_LOCK="${TMPDIR:-/tmp}/${KRONIKA_PROJECT}.lock"
+KRONIKA_LOCKED=0
+KRONIKA_WAITER=""
+STARMAP_LOCK_WAIT="${STARMAP_LOCK_WAIT:-900}"
 STARMAP_URL="${STARMAP_URL:-}"
 STARMAP_WAIT="${STARMAP_WAIT:-90}"
 STARMAP_ONLY=0
@@ -95,6 +104,22 @@ info() { printf "  ----  %s\n" "$1"; }
 
 FAILURES=0
 record_fail() { FAILURES=$((FAILURES + 1)); }
+
+# ── Docker ────────────────────────────────────────────────────────
+# Everything here drives the demo through Docker, except a Star Map check
+# of a daemon that is already running. Say so once, before anything runs,
+# instead of once per step that cannot find the command.
+require_docker() {
+  [[ $STARMAP_ONLY -eq 1 && -n "$STARMAP_URL" ]] && return 0
+  local -a tools=("${KRONIKA_COMPOSE[0]}")
+  [[ $STARMAP_ONLY -eq 1 ]] || tools+=(docker "${COMPOSE%% *}")
+  local tool
+  for tool in "${tools[@]}"; do
+    command -v "$tool" >/dev/null 2>&1 && continue
+    fail "'${tool}' is not installed or not on PATH: this check runs the demo through Docker. Without Docker, only a Krönika daemon that is already running can be checked: STARMAP_URL=http://host:port $0 --starmap-only"
+    return 1
+  done
+}
 
 # ── Health wait ───────────────────────────────────────────────────
 container_health() {
@@ -185,11 +210,71 @@ kronika_down() {
   fi
 }
 
-# Remove the check stack once, however the script ends.
+# Take the lock file on descriptor 9 if nobody holds it, waiting up to
+# $1 seconds. The lock is on the open file, so it lasts until this script
+# closes the descriptor or ends, however it ends: there is no stale lock
+# to clear. python3 (needed for the check anyway) is used because flock(1)
+# is not on every system this script runs on. It waits in the background
+# so that an interrupt ends this script at once, not after the wait; the
+# waiter gives up as soon as this script is gone.
+kronika_try_lock() {
+  python3 -c '
+import fcntl, os, signal, sys, time
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+deadline = time.monotonic() + float(sys.argv[1])
+while os.getppid() == int(sys.argv[2]):
+    try:
+        fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sys.exit(0)
+    except OSError:
+        if time.monotonic() >= deadline:
+            sys.exit(1)
+        time.sleep(0.2)
+sys.exit(1)
+' "$1" "$$" >/dev/null 2>&1 &
+  KRONIKA_WAITER=$!
+  local got=0
+  wait "$KRONIKA_WAITER" || got=$?
+  KRONIKA_WAITER=""
+  return $got
+}
+
+# One check at a time owns the check stack: without this a second run
+# would remove the stack the first one is still using.
+kronika_lock() {
+  if ! exec 9>>"$KRONIKA_LOCK"; then
+    fail "star map — cannot open the lock file ${KRONIKA_LOCK}"
+    return 1
+  fi
+  if ! kronika_try_lock 0; then
+    info "star map — waiting for another demo check to finish (up to ${STARMAP_LOCK_WAIT}s)"
+    if ! kronika_try_lock "$STARMAP_LOCK_WAIT"; then
+      exec 9>&-
+      fail "star map — another demo check still holds ${KRONIKA_LOCK}; its stack was left alone"
+      return 1
+    fi
+  fi
+  KRONIKA_LOCKED=1
+}
+
+kronika_unlock() {
+  [[ $KRONIKA_LOCKED -eq 1 ]] || return 0
+  KRONIKA_LOCKED=0
+  exec 9>&-
+}
+
+# Remove the check stack once, however the script ends, and let the next
+# check have its turn.
 kronika_cleanup() {
-  [[ $KRONIKA_STARTED -eq 1 ]] || return 0
-  KRONIKA_STARTED=0
-  kronika_down
+  if [[ -n "$KRONIKA_WAITER" ]]; then
+    kill "$KRONIKA_WAITER" 2>/dev/null || true
+    KRONIKA_WAITER=""
+  fi
+  if [[ $KRONIKA_STARTED -eq 1 ]]; then
+    KRONIKA_STARTED=0
+    kronika_down
+  fi
+  kronika_unlock
 }
 
 # What the compose file reads. Container names and the image tag are global
@@ -211,12 +296,13 @@ kronika_env() {
 # stack is removed on every way out, an interrupt included.
 kronika_up() {
   kronika_env
-  local log; log="$(mktemp)"
-  kronika_down
-  KRONIKA_STARTED=1
   trap kronika_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
+  kronika_lock || return 1
+  local log; log="$(mktemp)"
+  kronika_down
+  KRONIKA_STARTED=1
   if ! "${KRONIKA_COMPOSE[@]}" up -d --build --wait tumultd >"$log" 2>&1; then
     fail "star map — the Krönika daemon did not come up"
     tail -12 "$log" | sed 's/^/        /'
@@ -242,16 +328,17 @@ kronika_up() {
 }
 
 # Print each line of the check as a PASS, a FAIL or a skipped line of this
-# script.
+# script. Fails if any line is not an `ok` or a `skip`.
 report_starmap() {
-  local line
+  local line failed=0
   while IFS= read -r line; do
     case "$line" in
       "ok  "*) pass "${line#ok  }" ;;
       "skip "*) warn "${line#skip }" ;;
-      *)       fail "${line#FAIL }" ;;
+      *)       fail "${line#FAIL }"; failed=1 ;;
     esac
   done
+  return $failed
 }
 
 # The check writes (it suppresses a risk) only to the stack this script
@@ -267,8 +354,13 @@ assert_starmap() {
     fi
   fi
   out="$(STARMAP_TOKEN="${STARMAP_TOKEN:-}" python3 "${REPO_ROOT}/scripts/starmap-check.py" \
-    "$STARMAP_URL" --wait "$STARMAP_WAIT" "${write[@]}" 2>&1)" || rc=1
-  report_starmap <<<"$out"
+    "$STARMAP_URL" --wait "$STARMAP_WAIT" ${write[@]+"${write[@]}"} 2>&1)" || rc=1
+  if [[ -z "$out" ]]; then
+    fail "star map — the check printed nothing"
+    rc=1
+  elif ! report_starmap <<<"$out"; then
+    rc=1
+  fi
   kronika_cleanup
   return $rc
 }
@@ -290,6 +382,11 @@ finish() {
 echo "=================================================================="
 echo " Tumult demo check — mode: ${MODE}"
 echo "=================================================================="
+
+if ! require_docker; then
+  [[ "$MODE" == "populate" ]] && exit 0
+  exit 1
+fi
 
 if [[ $STARMAP_ONLY -eq 1 ]]; then
   echo ""
