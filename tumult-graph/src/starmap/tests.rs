@@ -1319,13 +1319,62 @@ fn an_owner_the_caller_did_not_resolve_is_no_owner() {
 }
 
 #[test]
-fn entity_ids_are_kept_as_reported_and_malformed_ones_are_flagged() {
+fn entity_ids_that_differ_only_by_case_are_one_node() {
+    let rows = |first: &str, second: &str| StarInputs {
+        org_units: org(),
+        entity_owners: owners(&[
+            ("CIF-0042", "platform/data/data-team"),
+            ("cif-0042", "platform/data/data-team"),
+        ]),
+        services: vec![svc_ent("a", first), svc_ent("b", second)],
+        workloads: vec![workload("c", &[("ict.entity.id", "Cif-0042")])],
+        ..StarInputs::default()
+    };
+    let map = build(&rows("CIF-0042", "cif-0042"));
+    let entities: Vec<&str> = ids(&map)
+        .into_iter()
+        .filter(|id| id.starts_with("ent:"))
+        .collect();
+    assert_eq!(entities, ["ent:cif-0042"]);
+    let entity = node(&map, "ent:cif-0042");
+    assert_eq!(entity.label, "cif-0042", "the agreed form is the one shown");
+    assert_eq!(
+        entity.flags,
+        [Flag::MalformedId],
+        "some reporter does not use the agreed form"
+    );
+    assert_eq!(
+        entity.parent.as_deref(),
+        Some("org:platform/data/data-team")
+    );
+    for service in ["svc:a", "svc:b"] {
+        assert!(edge(&map, service, StarRel::Implements, "ent:cif-0042").is_some());
+    }
+
+    // Row order changes nothing.
+    let swapped = build(&rows("cif-0042", "CIF-0042"));
+    assert_eq!(
+        serde_json::to_value(&swapped).expect("serialise"),
+        serde_json::to_value(&map).expect("serialise")
+    );
+
+    // With no agreed spelling among them, the first in byte order shows.
+    let shouting = build(&StarInputs {
+        org_units: org(),
+        services: vec![svc_ent("a", "Cif-0042"), svc_ent("b", "CIF-0042")],
+        ..StarInputs::default()
+    });
+    assert_eq!(node(&shouting, "ent:cif-0042").label, "CIF-0042");
+}
+
+#[test]
+fn entity_ids_are_shown_as_reported_and_malformed_ones_are_flagged() {
     let long = format!("cif-{}", "0".repeat(60));
     let inputs = StarInputs {
         org_units: org(),
         services: vec![
             svc_ent("a", "CIF-0042"),
-            svc_ent("b", "cif-0042"),
+            svc_ent("b", "cif-0043"),
             svc_ent("c", "cif"),
             svc_ent("d", &long),
             svc_ent("e", "9if-1"),
@@ -1337,18 +1386,19 @@ fn entity_ids_are_kept_as_reported_and_malformed_ones_are_flagged() {
     let map = build(&inputs);
 
     let flagged = |id: &str| node(&map, id).flags.contains(&Flag::MalformedId);
-    assert!(flagged("ent:CIF-0042"), "upper case is not the id form");
-    assert_eq!(node(&map, "ent:CIF-0042").label, "CIF-0042");
-    assert!(!flagged("ent:cif-0042"));
+    assert!(flagged("ent:cif-0042"), "upper case is not the id form");
+    assert_eq!(node(&map, "ent:cif-0042").label, "CIF-0042");
+    assert!(!has_node(&map, "ent:CIF-0042"), "the node id is lower case");
+    assert!(!flagged("ent:cif-0043"));
     assert!(flagged("ent:cif"), "one segment");
     assert!(flagged(&format!("ent:{long}")), "64 characters");
     assert!(flagged("ent:9if-1"), "starts with a digit");
     assert!(flagged("ent:cif--1"), "empty segment");
     assert!(!flagged("ent:cif-00a-b2"));
-    let json = serde_json::to_value(node(&map, "ent:CIF-0042")).expect("serialise");
+    let json = serde_json::to_value(node(&map, "ent:cif-0042")).expect("serialise");
     assert_eq!(json["flags"], serde_json::json!(["malformed_id"]));
     assert_eq!(
-        serde_json::to_value(node(&map, "ent:cif-0042")).expect("serialise")["flags"],
+        serde_json::to_value(node(&map, "ent:cif-0043")).expect("serialise")["flags"],
         serde_json::json!([])
     );
 }

@@ -34,8 +34,9 @@ impl Builder<'_> {
             .filter(|id| self.graph.has(id))
     }
 
-    /// The unit `org.yaml` assigns an entity to. The key is the entity id
-    /// as reported, which is the node's label.
+    /// The unit `org.yaml` assigns an entity to. The key is the node's
+    /// label: one of the spellings the id was reported in, all of which
+    /// the caller resolved with the same case-blind matcher.
     fn declared_owner(&self, entity: &str) -> Option<String> {
         let key = &self.graph.nodes.get(entity)?.label;
         self.unit_at(self.inputs.entity_owners.get(key))

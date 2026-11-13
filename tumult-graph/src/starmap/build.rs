@@ -260,9 +260,12 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// The entity node for an id as reported. The id is opaque: it is
-    /// trimmed and otherwise kept as it is, and one that does not have
-    /// the agreed form is flagged, not rewritten.
+    /// The entity node for an id as reported. Ids compare without
+    /// regard to case, as the `org.yaml` matcher compares them, so
+    /// spellings that differ only by case are one node: its id carries
+    /// the lower-case form, its label a reported spelling
+    /// ([`ids::shown_entity`]). A spelling that does not have the agreed
+    /// form flags the node; nothing else about the id is rewritten.
     fn ensure_entity(
         &mut self,
         raw: &str,
@@ -271,8 +274,9 @@ impl<'a> Builder<'a> {
         declared: bool,
     ) -> String {
         let key = raw.trim();
-        let id = format!("ent:{}", ids::seg(key));
+        let id = format!("ent:{}", ids::seg(&key.to_lowercase()));
         let node = self.graph.ensure(&id, StarKind::Entity, key, declared);
+        node.label = ids::shown_entity(&node.label, key).to_string();
         if !ids::well_formed_entity(key) {
             flag(node, Flag::MalformedId);
         }

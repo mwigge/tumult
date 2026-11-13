@@ -29,11 +29,14 @@ are written `%25`, `%2F` and `%7C`, so a name can never be mistaken for
 structure. A system without an environment gets `-` in its place (an
 environment that is literally called `-` is written `%2D`).
 
-Entity ids are shown exactly as telemetry reports them and are never
-rewritten: `CIF-0042` and `cif-0042` are two nodes. The agreed form is
-lower-case segments joined by `-`, starting with a letter, at most 63
-characters (`cif-0042`); an entity whose id does not have it carries the
-flag `malformed_id` and is still shown.
+Entity ids compare without regard to case, the way `org.yaml` patterns
+match them: `CIF-0042` and `cif-0042` are one node, `ent:cif-0042`. The
+node id carries the lower-case form and the label a spelling that was
+reported: the agreed one when anybody reports it, else the first in byte
+order. The agreed form is lower-case segments joined by `-`, starting
+with a letter, at most 63 characters (`cif-0042`); an entity that any
+reporter spells otherwise carries the flag `malformed_id` and is still
+shown. Nothing else about an id is rewritten.
 
 A workload joins the map without telemetry when its manifest carries the
 naming contract as labels (`resilience.target.system`,
@@ -75,7 +78,7 @@ be taken at face value:
 |---|---|
 | `multiple_owners` | telemetry reports more than one `ict.entity.owner` for it |
 | `owner_conflict` | telemetry names an owner other than the one `org.yaml` assigns |
-| `malformed_id` | the id does not have the agreed form |
+| `malformed_id` | the id, in at least one reported spelling, does not have the agreed form |
 
 ## Gaps and roll-ups
 

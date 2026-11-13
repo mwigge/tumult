@@ -204,16 +204,18 @@ async fn starmap_builds_the_spine_from_resource_attributes() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["range"], "7d");
 
-    // An entity id is shown as reported, never rewritten; one that does
-    // not have the agreed form is flagged. The owner comes from telemetry.
-    assert!(node(&body, "ent:cif-0042").is_none(), "no silent lowercase");
-    let entity = node(&body, "ent:CIF-0042").expect("entity node");
+    // Entity ids compare without regard to case, so the node id is the
+    // lower-case form; the label is the id as reported, and one that
+    // does not have the agreed form is flagged. The owner comes from
+    // telemetry.
+    assert!(node(&body, "ent:CIF-0042").is_none(), "one node per id");
+    let entity = node(&body, "ent:cif-0042").expect("entity node");
     assert_eq!(entity["kind"], "entity");
     assert_eq!(entity["label"], "CIF-0042");
     assert_eq!(entity["flags"], json!(["malformed_id"]));
     assert_eq!(entity["tier"], "critical");
     assert_eq!(entity["parent"], "org:data/db-team");
-    let owns = edge(&body, "org:data/db-team|owns|ent:CIF-0042").expect("owns edge");
+    let owns = edge(&body, "org:data/db-team|owns|ent:cif-0042").expect("owns edge");
     assert_eq!(owns["source"], "telemetry");
     assert_eq!(node(&body, "ent:cif-0043").unwrap()["flags"], json!([]));
     assert_eq!(entity["rollup"]["systems"], 1);
@@ -223,15 +225,15 @@ async fn starmap_builds_the_spine_from_resource_attributes() {
     let system = node(&body, "sys:demo/shop").expect("system node");
     assert_eq!(system["kind"], "system");
     assert_eq!(system["env"], "demo");
-    assert_eq!(system["parent"], "ent:CIF-0042");
+    assert_eq!(system["parent"], "ent:cif-0042");
     assert_eq!(system["gap"], "missing", "nothing ever tested it");
     let component = node(&body, "cmp:demo/shop/api").expect("component node");
     assert_eq!(component["parent"], "sys:demo/shop");
     let service = node(&body, "svc:checkout").expect("service node");
     assert_eq!(service["parent"], "cmp:demo/shop/api");
     assert_eq!(service["conformance"], "spine");
-    assert!(edge(&body, "svc:checkout|implements|ent:CIF-0042").is_some());
-    assert!(edge(&body, "ent:CIF-0042|implements|sys:demo/shop").is_some());
+    assert!(edge(&body, "svc:checkout|implements|ent:cif-0042").is_some());
+    assert!(edge(&body, "ent:cif-0042|implements|sys:demo/shop").is_some());
 
     // Observed calls keep their traffic numbers.
     let calls = edge(&body, "svc:checkout|calls|svc:ledger").expect("calls edge");
@@ -515,7 +517,8 @@ async fn org_patterns_assign_entities_whatever_their_case() {
     assert_eq!(ledger["flags"], json!([]));
 
     // Telemetry still wins, and the disagreement is flagged.
-    let shop = node(&body, "ent:CIF-0042").expect("entity node");
+    let shop = node(&body, "ent:cif-0042").expect("entity node");
+    assert_eq!(shop["label"], "CIF-0042");
     assert_eq!(shop["parent"], "org:data/db-team", "{shop}");
     assert_eq!(shop["flags"], json!(["malformed_id", "owner_conflict"]));
 }

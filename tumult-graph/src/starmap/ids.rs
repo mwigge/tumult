@@ -46,9 +46,32 @@ pub(super) fn well_formed_entity(id: &str) -> bool {
     id.len() <= 63 && segments.len() > 1 && starts_with_letter && segments.into_iter().all(alnum)
 }
 
+/// Of two spellings of one entity id, the one a node shows: the agreed
+/// form when either has it, else the first in byte order, so the answer
+/// never depends on which row was read first.
+pub(super) fn shown_entity<'s>(held: &'s str, other: &'s str) -> &'s str {
+    match (well_formed_entity(held), well_formed_entity(other)) {
+        (true, false) => held,
+        (false, true) => other,
+        _ => held.min(other),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{env_seg, path, seg, well_formed_entity};
+    use super::{env_seg, path, seg, shown_entity, well_formed_entity};
+
+    #[test]
+    fn the_shown_spelling_does_not_depend_on_order() {
+        for (a, b, shown) in [
+            ("CIF-0042", "cif-0042", "cif-0042"),
+            ("Cif-0042", "CIF-0042", "CIF-0042"),
+            ("cif-0042", "cif-0042", "cif-0042"),
+        ] {
+            assert_eq!(shown_entity(a, b), shown);
+            assert_eq!(shown_entity(b, a), shown);
+        }
+    }
 
     #[test]
     fn segments_never_carry_a_separator() {
