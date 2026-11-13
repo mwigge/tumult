@@ -392,6 +392,8 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "flatbuffers",
+ "lz4_flex 0.13.1",
+ "zstd",
 ]
 
 [[package]]
@@ -7642,6 +7644,7 @@ dependencies = [
  "axum",
  "base64",
  "bytes",
+ "flate2",
  "h2",
  "http",
  "http-body",
@@ -7660,6 +7663,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "zstd",
 ]
 
 [[package]]
@@ -8128,7 +8132,9 @@ dependencies = [
 name = "tumult-ingest"
 version = "0.7.0"
 dependencies = [
+ "arrow",
  "axum",
+ "ciborium",
  "csv",
  "dirs-next",
  "hmac 0.12.1",
@@ -8143,6 +8149,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tonic",
+ "tonic-prost",
  "tracing",
  "tumult-auth",
  "tumult-autopilot",
