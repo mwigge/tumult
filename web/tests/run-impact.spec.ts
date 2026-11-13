@@ -35,60 +35,67 @@ const provenance = {
     model: 'holt-winters',
     version: '2.22.0',
     weights_hash: 'none',
-    fallback_reason: null,
+    fallback_reason: null as string | null,
+};
+
+// The nanosecond fields are strings here on purpose: the panel must read the
+// millisecond ones, which a double holds exactly.
+const probe = {
+    probe: 'p95-latency',
+    reference: 'post_backcast',
+    step_ns: 5_000_000_000,
+    degenerate_band: false,
+    fault: { start_ns: 'unused', end_ns: 'unused', start_ms: ts[0], end_ms: ts[3] },
+    series: {
+        ts,
+        observed: [40, 52, 47, 14, 11, 10, 10, 11],
+        median: [10, 10, 10, 10, 10, 10, 10, 10],
+        bands: [
+            {
+                level: 0.8,
+                lower: [8, 8, 8, 9, 9, 9, 9, 9],
+                upper: [12, 12, 12, 11, 11, 11, 11, 11],
+            },
+        ],
+    },
+    impact: {
+        per_sample: [15, 21, 18.5, 4, 1, 0, 0, 1] as (number | null)[],
+        during_mean: 3.9 as number | null,
+        during_peak: 4.2 as number | null,
+        during_peak_ts_ms: ts[1] as number | null,
+        during_outside_ratio: 1 as number | null,
+        post_mean: 0.4 as number | null,
+        samples_during: 3,
+        samples_post: 5,
+    },
+    recovery: {
+        recovered_at_ns: 'unused' as string | null,
+        recovered_at_ms: ts[5] as number | null,
+        recovery_time_s: 10 as number | null,
+        stable_steps: 3,
+        outside_during_fault: 3,
+        outside_after_fault: 1,
+    },
+    forecast: { context_points: 5, insufficient_history: true, degenerate_band: false },
+    provenance,
 };
 
 const impact = {
     run_id: 'run-1',
     experiment_id: 'exp-1',
     as_of_ns: 1,
+    as_of_ms: 0,
     stable_steps: 3,
-    recovery_time_s: 10,
-    impact_peak: 4.2,
+    recovery_time_s: 10 as number | null,
+    impact_peak: 4.2 as number | null,
+    degenerate_band: false,
     provenance,
-    probes: [
-        {
-            probe: 'p95-latency',
-            reference: 'post_backcast',
-            step_ns: 5_000_000_000,
-            fault: { start_ns: ts[0] * 1e6, end_ns: ts[3] * 1e6 },
-            series: {
-                ts,
-                observed: [40, 52, 47, 14, 11, 10, 10, 11],
-                median: [10, 10, 10, 10, 10, 10, 10, 10],
-                bands: [
-                    {
-                        level: 0.8,
-                        lower: [8, 8, 8, 9, 9, 9, 9, 9],
-                        upper: [12, 12, 12, 11, 11, 11, 11, 11],
-                    },
-                ],
-            },
-            impact: {
-                per_sample: [15, 21, 18.5, 4, 1, 0, 0, 1],
-                during_mean: 3.9,
-                during_peak: 4.2,
-                during_peak_ts_ms: ts[1],
-                during_outside_ratio: 1,
-                post_mean: 0.4,
-                samples_during: 3,
-                samples_post: 5,
-            },
-            recovery: {
-                recovered_at_ns: ts[5] * 1e6,
-                recovery_time_s: 10,
-                stable_steps: 3,
-                outside_during_fault: 3,
-                outside_after_fault: 1,
-            },
-            forecast: { context_points: 5, insufficient_history: true },
-            provenance,
-        },
-        { probe: 'error-rate', error: 'no during-phase samples' },
-    ],
+    probes: [probe, { probe: 'error-rate', error: 'no during-phase samples' }] as unknown[],
 };
 
-async function mockApi(page: import('@playwright/test').Page, withImpact: boolean) {
+type Answer = { status: number; body: unknown; delayMs?: number };
+
+async function mockApi(page: import('@playwright/test').Page, answer: Answer) {
     await page.route('**/api/**', async (route) => {
         const path = new URL(route.request().url()).pathname;
         let body: unknown = {};
@@ -96,11 +103,9 @@ async function mockApi(page: import('@playwright/test').Page, withImpact: boolea
         if (path === '/api/me') body = me;
         else if (path === '/api/runs/run-1') body = run;
         else if (path === '/api/runs/run-1/impact') {
-            if (withImpact) body = impact;
-            else {
-                status = 404;
-                body = { error: 'run has no probe samples' };
-            }
+            if (answer.delayMs) await new Promise((done) => setTimeout(done, answer.delayMs));
+            status = answer.status;
+            body = answer.body;
         } else if (path === '/api/experiments/exp-1')
             body = { experiment: null, spans: [], logs: [], metrics: [] };
         else if (path.endsWith('/dry-run')) body = { valid: false, errors: [] };
@@ -112,23 +117,7 @@ async function mockApi(page: import('@playwright/test').Page, withImpact: boolea
     });
 }
 
-test('run page shows the counterfactual impact with band, fault window and provenance', async ({
-    page,
-}) => {
-    await mockApi(page, true);
-    await page.goto('/runs/run-1');
-
-    const panel = page.getByTestId('impact');
-    await expect(panel).toContainText('p95-latency');
-    await expect(page.getByTestId('impact-summary')).toContainText('4.2×');
-    await expect(page.getByTestId('impact-summary')).toContainText('10 s');
-    await expect(page.getByTestId('impact-provenance')).toContainText('holt-winters');
-    await expect(page.getByTestId('impact-provenance')).toContainText('weights none');
-    await expect(panel).toContainText('backcast from the post-fault samples');
-    await expect(panel).toContainText('short history (5 points)');
-    // A probe that could not be compared says why instead of drawing a chart.
-    await expect(panel).toContainText('no during-phase samples');
-
+async function chartOption(page: import('@playwright/test').Page) {
     await expect
         .poll(() =>
             page.evaluate(() => {
@@ -137,7 +126,7 @@ test('run page shows the counterfactual impact with band, fault window and prove
             }),
         )
         .toBe(true);
-    const chart = await page.evaluate(() => {
+    return page.evaluate(() => {
         type Series = {
             name?: string;
             data?: [number, number | null][];
@@ -159,9 +148,37 @@ test('run page shows the counterfactual impact with band, fault window and prove
             marks: observed?.markLine?.data?.map((m) => [m.name, m.xAxis]),
         };
     });
+}
+
+test('run page shows the counterfactual impact with band, fault window and provenance', async ({
+    page,
+}) => {
+    await mockApi(page, { status: 200, body: impact });
+    await page.goto('/runs/run-1');
+
+    const panel = page.getByTestId('impact');
+    await expect(panel).toContainText('p95-latency');
+    await expect(page.getByTestId('impact-summary')).toContainText('4.2×');
+    await expect(page.getByTestId('impact-summary')).toContainText('10 s');
+    await expect(page.getByTestId('impact-provenance')).toContainText('holt-winters');
+    await expect(page.getByTestId('impact-provenance')).toContainText('weights none');
+    await expect(page.getByTestId('impact-provenance')).not.toContainText('fallback');
+    await expect(panel).toContainText('backcast from the post-fault samples');
+    await expect(panel).toContainText('short history (5 points)');
+    await expect(page.getByTestId('impact-degenerate')).toHaveCount(0);
+    await expect(page.getByTestId('impact-error')).toHaveCount(0);
+    // A probe that could not be compared says why instead of drawing a chart.
+    await expect(panel).toContainText('no during-phase samples');
+    // The chart is a canvas: its name is what assistive technology gets.
+    await expect(
+        panel.getByRole('img', { name: /p95-latency.*observed.*counterfactual/ }),
+    ).toBeVisible();
+
+    const chart = await chartOption(page);
     expect(chart.observed).toEqual([40, 52, 47, 14, 11, 10, 10, 11]);
     expect(chart.median).toEqual([10, 10, 10, 10, 10, 10, 10, 10]);
     expect(chart.bandWidth).toEqual([4, 4, 4, 2, 2, 2, 2, 2]);
+    // Read from the millisecond fields; the nanosecond ones are not numbers here.
     expect(chart.fault).toEqual(['fault', ts[0], ts[3]]);
     expect(chart.marks).toEqual([
         ['peak', ts[1]],
@@ -170,7 +187,117 @@ test('run page shows the counterfactual impact with band, fault window and prove
 });
 
 test('run without probe samples shows a note instead of a chart', async ({ page }) => {
-    await mockApi(page, false);
+    await mockApi(page, { status: 404, body: { error: 'run has no probe samples' } });
     await page.goto('/runs/run-1');
-    await expect(page.getByTestId('impact')).toContainText('No probe samples to compare');
+    const panel = page.getByTestId('impact');
+    await expect(panel).toContainText('No probe samples to compare');
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+});
+
+for (const failure of [
+    { status: 500, error: 'lake query failed' },
+    { status: 403, error: 'forbidden' },
+]) {
+    test(`a ${failure.status} from the impact endpoint is an error, not "no data"`, async ({
+        page,
+    }) => {
+        await mockApi(page, { status: failure.status, body: { error: failure.error } });
+        await page.goto('/runs/run-1');
+        const panel = page.getByTestId('impact');
+        const alert = panel.getByRole('alert');
+        await expect(alert).toContainText('could not be loaded');
+        await expect(alert).toContainText(failure.error);
+        await expect(panel).not.toContainText('No probe samples to compare');
+    });
+}
+
+test('the panel announces that it is loading', async ({ page }) => {
+    await mockApi(page, { status: 200, body: impact, delayMs: 1_500 });
+    await page.goto('/runs/run-1');
+    const loading = page.getByTestId('impact').getByRole('status');
+    await expect(loading).toHaveAttribute('aria-busy', 'true');
+    await expect(loading).toHaveAccessibleName(/loading/i);
+    await expect(page.getByTestId('impact-summary')).toContainText('4.2×');
+    await expect(loading).toHaveCount(0);
+});
+
+test('a run that never settled says so and has no recovery mark', async ({ page }) => {
+    const unsettled = {
+        ...impact,
+        recovery_time_s: null,
+        probes: [
+            {
+                ...probe,
+                recovery: {
+                    ...probe.recovery,
+                    recovered_at_ns: null,
+                    recovered_at_ms: null,
+                    recovery_time_s: null,
+                },
+            },
+        ],
+    };
+    await mockApi(page, { status: 200, body: unsettled });
+    await page.goto('/runs/run-1');
+    await expect(page.getByTestId('impact-summary')).toContainText('recovery not recovered');
+    await expect(page.getByTestId('impact')).toContainText('recovery not recovered');
+    const chart = await chartOption(page);
+    expect(chart.marks).toEqual([['peak', ts[1]]]);
+});
+
+test('a fallback names its reason next to the model', async ({ page }) => {
+    const fallen = { ...provenance, fallback_reason: 'circuit_open' };
+    const body = { ...impact, provenance: fallen, probes: [{ ...probe, provenance: fallen }] };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const line = page.getByTestId('impact-provenance');
+    await expect(line).toContainText('holt-winters');
+    await expect(page.getByTestId('impact-fallback')).toContainText('circuit open');
+
+    // A code this build does not know is shown as it is.
+    const odd = { ...provenance, fallback_reason: 'quota_exhausted' };
+    await page.unroute('**/api/**');
+    await mockApi(page, { status: 200, body: { ...impact, provenance: odd } });
+    await page.reload();
+    await expect(page.getByTestId('impact-fallback')).toContainText('quota_exhausted');
+});
+
+test('a flat reference is flagged and a missing peak is not shown as a number', async ({
+    page,
+}) => {
+    const flat = {
+        ...impact,
+        impact_peak: null,
+        degenerate_band: true,
+        probes: [
+            {
+                ...probe,
+                degenerate_band: true,
+                impact: { ...probe.impact, during_peak: null, during_peak_ts_ms: null },
+                forecast: {
+                    context_points: 40,
+                    insufficient_history: false,
+                    degenerate_band: true,
+                },
+            },
+        ],
+    };
+    await mockApi(page, { status: 200, body: flat });
+    await page.goto('/runs/run-1');
+    const summary = page.getByTestId('impact-summary');
+    await expect(summary).toContainText('peak impact not measurable');
+    await expect(summary).not.toContainText('×');
+    await expect(page.getByTestId('impact-degenerate').first()).toContainText('no width');
+    await expect(page.getByTestId('impact-degenerate')).toHaveCount(2);
+    const chart = await chartOption(page);
+    expect(chart.marks).toEqual([['recovered', ts[5]]]);
+});
+
+test('a baseline reference is described as a forecast from before the fault', async ({ page }) => {
+    const body = { ...impact, probes: [{ ...probe, reference: 'baseline' }] };
+    await mockApi(page, { status: 200, body });
+    await page.goto('/runs/run-1');
+    const panel = page.getByTestId('impact');
+    await expect(panel).toContainText('forecast from the pre-fault samples');
+    await expect(panel).not.toContainText('backcast');
 });

@@ -967,7 +967,9 @@ export interface ConformanceReport {
 }
 
 /** Which model produced a forecast; `fallback_reason` is set when the
-    sidecar was configured but the built-in provider answered instead. */
+    sidecar was configured but the built-in provider answered instead. It is
+    a code (`unreachable`, `timeout`, `bad_response`, `rejected`,
+    `circuit_open`); the detail is in the daemon's log. */
 export interface ForecastProvenance {
     model: string;
     version: string;
@@ -995,12 +997,17 @@ export interface ForecastResponse {
     step_ns: number;
     from_ns: number;
     to_ns: number;
+    /** Epoch ms; use these in the browser, where a double cannot hold ns. */
+    from_ms: number;
+    to_ms: number;
     series: ForecastSeries;
     forecast: {
         levels: number[];
         quantiles: (number | null)[][];
         context_points: number;
         insufficient_history: boolean;
+        /** The band had no width and was floored. */
+        degenerate_band: boolean;
     };
     provenance: ForecastProvenance;
     cached: boolean;
@@ -1013,7 +1020,11 @@ export interface ProbeImpact {
     error?: string;
     reference?: 'baseline' | 'post_backcast';
     step_ns?: number;
-    fault?: { start_ns: number; end_ns: number };
+    /** The reference band had no width (a flat or exactly periodic series)
+        and was floored: the multiples below are lower bounds on a guess. */
+    degenerate_band?: boolean;
+    /** Epoch ms. The API also sends `*_ns`, which a double cannot hold. */
+    fault?: { start_ms: number; end_ms: number };
     series?: ForecastSeries;
     impact?: {
         per_sample: (number | null)[];
@@ -1026,13 +1037,17 @@ export interface ProbeImpact {
         samples_post: number;
     };
     recovery?: {
-        recovered_at_ns: number | null;
+        recovered_at_ms: number | null;
         recovery_time_s: number | null;
         stable_steps: number;
         outside_during_fault: number;
         outside_after_fault: number;
     };
-    forecast?: { context_points: number; insufficient_history: boolean };
+    forecast?: {
+        context_points: number;
+        insufficient_history: boolean;
+        degenerate_band: boolean;
+    };
     provenance?: ForecastProvenance;
 }
 
@@ -1040,10 +1055,12 @@ export interface ProbeImpact {
 export interface RunImpact {
     run_id: string;
     experiment_id: string;
-    as_of_ns: number;
+    as_of_ms: number;
     stable_steps: number;
     recovery_time_s: number | null;
     impact_peak: number | null;
+    /** True when any probe's reference band was degenerate. */
+    degenerate_band: boolean;
     provenance: ForecastProvenance | null;
     probes: ProbeImpact[];
 }

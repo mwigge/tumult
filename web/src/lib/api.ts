@@ -84,12 +84,24 @@ function perfQuery(params: { probe?: string; quantile?: string; env?: string }):
     return qs ? `?${qs}` : '';
 }
 
+/** A request the API answered with an error status. `status` lets a caller
+    tell "nothing there" (404) from "not allowed" (403) and "it broke" (5xx). */
+export class ApiError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+    }
+}
+
 async function get<T>(path: string): Promise<T> {
     const resp = await fetch(path);
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
         redirectOnUnauthorized(resp, path);
-        throw new Error(body.error ?? `HTTP ${resp.status}`);
+        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
     }
     return body as T;
 }
@@ -103,7 +115,7 @@ async function send<T>(method: string, path: string, payload: unknown): Promise<
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
         redirectOnUnauthorized(resp, path);
-        throw new Error(body.error ?? `HTTP ${resp.status}`);
+        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
     }
     return body as T;
 }

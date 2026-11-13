@@ -13,9 +13,13 @@
         height = 260,
         onclick,
         id,
+        label,
     }: {
         option: EChartsCoreOption;
         height?: number;
+        // What the chart shows, for assistive technology: the canvas itself
+        // says nothing. With a label the host is exposed as an image.
+        label?: string;
         // ECharts 'click' event params (seriesType-specific shape) — used by the
         // traces scatter and the experiment overlays to navigate on click.
         onclick?: (params: { componentType?: string; data?: unknown }) => void;
@@ -72,4 +76,10 @@
     });
 </script>
 
-<div bind:this={el} data-chart={id} style="height: {height}px; width: 100%;"></div>
+<div
+    bind:this={el}
+    data-chart={id}
+    role={label ? 'img' : undefined}
+    aria-label={label}
+    style="height: {height}px; width: 100%;"
+></div>
