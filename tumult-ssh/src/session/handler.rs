@@ -33,9 +33,9 @@ impl client::Handler for ClientHandler {
         match self.policy {
             HostKeyPolicy::AcceptAny => {
                 tracing::warn!(
-                    host = %self.host,
-                    port = self.port,
-                    "accepting unverified host key (host_key_policy is AcceptAny)"
+                    name: "ssh.host_key.unverified",
+                    { server.address = %self.host, server.port = self.port },
+                    "accepting unverified host key, host_key_policy is AcceptAny"
                 );
                 Ok(true)
             }
@@ -359,5 +359,59 @@ mod tests {
         let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
         assert!(result.is_ok(), "AcceptAny should accept");
         assert!(result.unwrap(), "should return true when accepting");
+    }
+
+    #[test]
+    fn accepting_an_unverified_host_key_is_a_named_warning() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut handler = ClientHandler {
+            host: "db-1.internal".to_string(),
+            port: 2222,
+            known_hosts_path: dir.path().join("known_hosts"),
+            policy: HostKeyPolicy::AcceptAny,
+        };
+        let key = parse_key(TEST_KEY_1);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            rt.block_on(client::Handler::check_server_key(&mut handler, &key))
+                .unwrap();
+        });
+
+        let event = &logs.named("ssh.host_key.unverified")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["server.address"], "db-1.internal");
+        assert_eq!(event["server.port"], 2222);
+        assert!(event.get("host").is_none(), "legacy field: {event}");
+    }
+
+    #[test]
+    fn trusting_a_host_key_on_first_use_is_a_named_event() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut handler = ClientHandler {
+            host: "db-1.internal".to_string(),
+            port: 22,
+            known_hosts_path: dir.path().join("known_hosts"),
+            policy: HostKeyPolicy::TrustOnFirstUse,
+        };
+        let key = parse_key(TEST_KEY_1);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            rt.block_on(client::Handler::check_server_key(&mut handler, &key))
+                .unwrap();
+        });
+
+        let event = &logs.named("ssh.host_key.trusted_on_first_use")[0];
+        assert_eq!(event["level"], "INFO");
+        assert_eq!(event["server.address"], "db-1.internal");
+        assert_eq!(event["server.port"], 22);
+        assert_eq!(event["ssh.host_key.fingerprint"], key_fingerprint(&key));
     }
 }
