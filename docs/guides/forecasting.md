@@ -65,7 +65,7 @@ Each probe's entry carries a `reference`:
 | `reference` | Meaning |
 |---|---|
 | `baseline` | The run has samples before the fault. They are the context; the forecast runs forward across the fault and post phases. |
-| `post_backcast` | The run has no pre-fault samples (the runner samples the during and post phases). The post-phase samples, reversed, are the context; the forecast runs backwards across the fault window. The post phase is compared with its own 10–90 % range. |
+| `post_backcast` | The run has no pre-fault samples (the runner samples the during and post phases). The post-phase samples, reversed, are the context; the forecast runs backwards across the fault window. Post samples still recovering right after the fault (the run before the first sample inside the 10–90 % range of the later half of the post phase, at most the earlier half) are left out of the context, so the backcast does not extend the recovery slope across the fault window. The post phase is compared with the 10–90 % range of the remaining, settled samples. |
 
 The backcast assumes the system ended the run in its normal state. If it
 did not — the post phase is still degraded — the counterfactual is too
@@ -95,6 +95,12 @@ series, model, step and horizon. A cached row is reused while the context
 window still ends at the same step, so repeated calls within one step do
 not recompute. The cache row stores the provenance, so a cached answer
 still says which model and which weights produced it.
+
+Each provider has its own rows. While the sidecar is in use only a
+sidecar row is a hit, so a Holt-Winters row written before the sidecar was
+configured (or during an outage) never answers in its place. While the
+sidecar is being skipped (see the circuit breaker below) the Holt-Winters
+row is served, with the `fallback_reason` of the moment.
 
 ### `GET /api/runs/{id}/impact`
 
@@ -126,7 +132,29 @@ Probe samples use their own sampling interval as the step.
 | set, sidecar unreachable or erroring | Built-in Holt-Winters | `holt-winters`, with `provenance.fallback_reason` saying why |
 
 A fallback is never silent: `fallback_reason` carries the error, and the
-daemon logs a warning. The sidecar gets 15 seconds per request.
+daemon logs a warning. The sidecar gets 3 seconds to accept a connection
+and 15 seconds per request.
+
+### The circuit breaker
+
+A sidecar that is down would otherwise cost every request its timeout.
+After a failure that is the sidecar's own fault — it cannot be reached, it
+times out, it answers 5xx or a body the daemon cannot read — the daemon
+skips it for a cool-down and answers from Holt-Winters at once. The
+`fallback_reason` then reads
+`sidecar circuit open, retry in N s: <the error that opened it>`. The first
+request after the cool-down tries the sidecar again: success closes the
+circuit, another failure starts a new cool-down.
+
+A 4xx answer does not open the circuit. It means the sidecar turned down
+that one request (a context it will not take), so only that request falls
+back.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TUMULTD_FORECAST_COOLDOWN_S` | `30` | Seconds a failing sidecar is skipped. `0` disables the breaker: every request tries the sidecar. An unreadable value logs a warning and uses the default |
+
+The state lives in the daemon's memory: a restart closes the circuit.
 
 **Built-in Holt-Winters.** Additive level and trend, plus an additive
 season when the autocorrelation shows one and the context holds at least
@@ -138,8 +166,12 @@ lead time. `provenance.weights_hash` is `none`.
 **Timestral sidecar.** A zero-shot probabilistic model that forecasts 21
 quantiles per step and takes covariates. For run impact the daemon passes
 the fault indicator as a covariate, set to zero across the horizon, which
-asks the model for the no-fault path. `provenance.version` and
-`provenance.weights_hash` come from the sidecar's response.
+asks the model for the no-fault path. The provenance comes from the
+sidecar's response: `provenance.version` reads
+`<model id>@<weights revision> (timestral <package version>)`, for example
+`mistralai/Timestral-5M@bdd20cfc… (timestral 1.0.0)`, and
+`provenance.weights_hash` is the SHA-256 of the weight files it loaded. The
+model does not sample: the same input gives the same forecast.
 
 Start with the built-in provider. Move to the sidecar when you have series
 with structure Holt-Winters cannot follow (several seasonalities, regime
@@ -155,10 +187,12 @@ authentication of its own: keep it on a private network next to the daemon.
 | Variable | Default | Meaning |
 |---|---|---|
 | `FORECASTD_BIND` | `0.0.0.0:8700` | Listen address |
-| `FORECASTD_MODEL` | `timestral` | `timestral`, or `stub` (a deterministic linear model with no weights, for smoke tests) |
+| `FORECASTD_MODEL` | `timestral` | `timestral` is the real model. `stub` is the **offline mode**: a linear stand-in with no torch and no weights, for unit tests and for checking the wiring on a host that cannot fetch the model. It names itself `stub` in every response, so a forecast can never pass for a Timestral one |
 | `FORECASTD_MODEL_SIZE` | `5M` | `5M`, `28M`, `123M` or `209M` |
 | `FORECASTD_MODEL_ID` | `mistralai/Timestral-<size>` | Hub repository when not loading from a path |
+| `FORECASTD_MODEL_REVISION` | the repository's head | Hub commit to load. Pin it so every start loads the same weights |
 | `FORECASTD_WEIGHTS_PATH` | unset | Local snapshot directory |
+| `FORECASTD_THREADS` | `4` (fewer on a smaller host) | PyTorch CPU threads |
 
 Docker Compose (the demo stack; the sidecar sits behind the `forecast`
 profile and does not start with a plain `up`):
@@ -173,9 +207,86 @@ weights volume claim and a NetworkPolicy that admits only the `tumultd`
 pod), then set `TUMULTD_FORECAST_URL=http://tumult-forecastd:8700` on the
 `tumultd` Deployment.
 
-The 5M model answers in tens of milliseconds on a couple of CPU cores. The
-larger sizes have not been evaluated on Tumult series; measure before you
-switch.
+### Installing without Docker
+
+The sidecar runs from a virtualenv. Timestral is not on PyPI; install the
+release the service is tested against (`timestral` 1.0.0, Apache-2.0) from
+its repository by commit. On a host without a GPU take PyTorch from the CPU
+wheel index first, or pip pulls the CUDA build, several gigabytes larger.
+
+```sh
+python3 -m venv /srv/forecastd/venv
+. /srv/forecastd/venv/bin/activate
+pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.4'
+pip install 'timestral @ git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff'
+pip install './forecastd[serve]'
+HF_HOME=/srv/forecastd/hf FORECASTD_BIND=127.0.0.1:8700 python -m forecastd
+```
+
+Tested here with Python 3.14.8, `torch` 2.15.0+cpu, `timestral` 1.0.0 at
+commit `a534bdbd244d`, `numpy` 2.5.4, `safetensors` 0.8.0 and
+`huggingface_hub` 2.4.0. The virtualenv takes about 1.1 GB, nearly all of it
+PyTorch.
+
+### The weights cache
+
+On first start the sidecar downloads the weights into the Hugging Face
+cache under `HF_HOME` (default `~/.cache/huggingface`) and reuses them
+afterwards. Put `HF_HOME` on a disk with room and keep it across restarts:
+the compose profile uses a named volume. `mistralai/Timestral-5M` is two
+files, `config.json` and a 20.8 MB `model.safetensors`. The revision tested
+here is `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f`; set
+`FORECASTD_MODEL_REVISION` to it to load exactly those files. `/healthz`
+reports the revision and the SHA-256 of what was loaded.
+
+### CPU latency and memory
+
+Measured on a 24-core x86-64 host without a GPU, `mistralai/Timestral-5M`,
+four PyTorch threads, while the host was busy with unrelated builds (load
+average near 30). Times are for one forecast inside the sidecar, median of
+ten (three for the longest context); the HTTP hop and the daemon add a few
+milliseconds.
+
+| Context steps | Horizon | Median |
+|---|---|---|
+| 60 | 20 | 38 ms |
+| 512 | 24 | 25 ms |
+| 1,440 | 24 | 42 ms |
+| 4,096 | 96 | 105 ms |
+| 32,768 | 24 | 508 ms |
+
+Loading the model takes about two seconds. The process holds about 300 MB
+resident after loading and peaked at 335 MB across those runs, so a 1 GB
+limit leaves room; the larger sizes need more and have not been measured.
+
+`FORECASTD_THREADS` matters on a shared host. With PyTorch's default (half
+the cores, twelve here) the same 512-step forecast took 1.2 s under that
+load, fifty times slower than with four threads, because the threads fight
+the other work for cores. The 5M model gains nothing past four. Forecasts
+are served one at a time.
+
+The larger sizes have not been evaluated on Tumult series; measure before
+you switch.
+
+### Verifying the model path
+
+The sidecar's unit tests run without PyTorch on the stub. The tests in
+`forecastd/tests/test_timestral.py` load the real weights and check the
+output shape, the ordering of the quantiles, determinism, gaps, covariates,
+the horizon and context limits and the CPU latency; they skip only when
+`torch` or `timestral` is not installed.
+
+```sh
+cd forecastd
+HF_HOME=/srv/forecastd/hf /srv/forecastd/venv/bin/python -m unittest discover -s tests -t . -v
+```
+
+`scripts/proof/rip-phase3-forecast/proof.sh` is the end-to-end check: it
+starts the daemon on a fresh lake, launches a run, starts the sidecar with
+the real model, asserts that forecast and impact provenance name the model
+and its weights revision, kills the sidecar, asserts the circuit-breaker
+fallback and brings it back. Run it after changing the model, its version
+or the weights.
 
 ## Weights and air-gapped hosts
 
@@ -193,10 +304,11 @@ hub on first start. For an air-gapped host:
 3. Mount it read-only and set `FORECASTD_WEIGHTS_PATH` to the mount point.
    Set `HF_HUB_OFFLINE=1` so nothing tries the network.
 
-With a weights path, `/healthz` reports the SHA-256 over the snapshot
-files, and the daemon repeats it as `provenance.weights_hash`. Record that
-hash when you approve a snapshot; a different hash later means different
-weights. Without a path the hash reads `unverified`.
+`/healthz` reports the SHA-256 over the snapshot files it loaded, from a
+mounted path or from the hub cache alike, and the daemon repeats it as
+`provenance.weights_hash`. Record that hash when you approve a snapshot; a
+different hash later means different weights. A snapshot from the hub also
+carries its commit as `revision`; a plain directory reads `local`.
 
 Without the sidecar the daemon needs nothing: the built-in provider works
 with no egress.
