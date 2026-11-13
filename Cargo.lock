@@ -7929,6 +7929,7 @@ dependencies = [
  "tumult-intelligence",
  "tumult-lake",
  "tumult-metrics",
+ "tumult-perf",
  "tumult-report",
  "uuid",
 ]

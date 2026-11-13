@@ -14,6 +14,7 @@ mod events;
 mod gamedays;
 mod gate;
 mod manual;
+mod perf;
 mod query;
 mod reports;
 mod runs;

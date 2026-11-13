@@ -264,6 +264,43 @@ export interface GateVerdict {
     };
 }
 
+/** One side of `GET /api/perf/{target}`: a `service.version` and its samples. */
+export interface PerfSide {
+    version: string;
+    runs: string[];
+    samples: number;
+    dropped: number;
+    p50: number | null;
+    p95: number | null;
+    p99: number | null;
+}
+
+/** `GET /api/perf/{target}`: the regression verdict between the latest two versions. */
+export interface PerfVerdict {
+    target: string;
+    probe: string;
+    verdict: 'improved' | 'unchanged' | 'regressed' | 'inconclusive';
+    reasons: string[];
+    baseline: PerfSide | null;
+    candidate: PerfSide;
+    comparison: {
+        quantile: 'p50' | 'p95' | 'p99';
+        delta: number | null;
+        delta_pct: number | null;
+        ci_low: number | null;
+        ci_high: number | null;
+        confidence: number;
+        margin: number;
+        iterations: number;
+        seed: number;
+        min_samples: number;
+    };
+    versions_seen: { version: string; first_seen_ns: number; last_seen_ns: number }[];
+    stored: boolean;
+    history: Record<string, unknown>[];
+    as_of_ns: number;
+}
+
 export type ReportTemplate = 'executive-digest' | 'game-day' | 'evidence-pack';
 
 export interface ReportMetaV2 {

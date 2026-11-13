@@ -5,6 +5,7 @@ pub mod gate;
 pub mod logs;
 pub mod metrics;
 pub mod overview;
+pub mod perf;
 pub mod reports;
 pub mod topology;
 pub mod traces;

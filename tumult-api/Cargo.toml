@@ -11,6 +11,7 @@ toon-format.workspace = true
 tumult-auth = { path = "../tumult-auth" }
 tumult-authoring = { path = "../tumult-authoring" }
 tumult-autopilot = { path = "../tumult-autopilot" }
+tumult-perf = { path = "../tumult-perf" }
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
 tumult-intelligence.workspace = true
