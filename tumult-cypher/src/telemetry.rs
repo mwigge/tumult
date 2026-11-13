@@ -66,12 +66,47 @@ pub(crate) fn record_query_error(error: &str) {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use opentelemetry::trace::Status;
+    use tumult_test_utils::capture_spans;
+
     use super::*;
 
     #[test]
-    fn query_span_lifecycle_does_not_panic() {
-        let _g = begin_query(10, 20, 500);
-        record_query_result(7, false, std::time::Duration::from_millis(3));
-        record_query_error("boom");
+    fn query_span_carries_snapshot_size_and_result() {
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_query(10, 20, 500);
+            record_query_result(7, true, Duration::from_millis(3));
+        });
+
+        assert_eq!(spans.len(), 1);
+        let span = &spans[0];
+        assert_eq!(span.name, "cypher.query");
+        assert_eq!(span.span_kind, SpanKind::Internal);
+        assert_eq!(
+            span.attributes,
+            [
+                KeyValue::new("cypher.snapshot.nodes", 10_i64),
+                KeyValue::new("cypher.snapshot.edges", 20_i64),
+                KeyValue::new("cypher.row_cap", 500_i64),
+                KeyValue::new("cypher.result.rows", 7_i64),
+                KeyValue::new("cypher.result.truncated", true),
+                KeyValue::new("cypher.duration_ms", 3.0),
+            ]
+        );
+        assert_eq!(span.status, Status::Unset);
+    }
+
+    #[test]
+    fn failed_query_marks_the_span_as_an_error_without_result_attributes() {
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_query(1, 0, 50);
+            record_query_error("parse error at 1:7");
+        });
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].status, Status::error("parse error at 1:7"));
+        assert_eq!(spans[0].attributes.len(), 3);
     }
 }
