@@ -177,7 +177,7 @@
 
 <div class="panel">
     {#if volume && volume.rows.length > 0}
-        <EChart option={volumeOption} height={180} />
+        <EChart option={volumeOption} height={180} label="Log volume by severity" />
     {:else if rows}
         <div class="state">No log volume in this window.</div>
     {:else}

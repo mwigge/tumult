@@ -46,11 +46,11 @@ import type {
     ScaffoldResponse,
     Schedule,
     Scorecard,
+    StarMap,
     GateVerdict,
     PerfVerdict,
     ScoreTree,
     Timeseries,
-    Topology,
     TraceDetail,
     TraceDurations,
     TraceRow,
@@ -251,7 +251,12 @@ export const api = {
         return get<MetricQueryResult>(`/api/metrics/query${qs ? `?${qs}` : ''}`);
     },
 
-    topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
+    starmap: (params: Record<string, string>) => {
+        const qs = new URLSearchParams(
+            Object.entries(params).filter(([, v]) => v !== ''),
+        ).toString();
+        return get<StarMap>(`/api/starmap${qs ? `?${qs}` : ''}`);
+    },
 
     ask: async (question: string): Promise<AskResponse> => {
         // Deliberately not routed through send(): a non-ok response whose body

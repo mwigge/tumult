@@ -68,6 +68,7 @@ pub mod recommend;
 pub mod render;
 mod service;
 pub mod sql;
+pub mod starmap;
 pub mod topology;
 
 pub use compliance::{compliance_article_id, compliance_article_nodes, resolve_citation};

@@ -65,10 +65,16 @@ pub async fn import_journal(
 
     let result = slot.lock().unwrap_or_else(|e| e.into_inner()).take();
     match result {
-        Some(Ok(ingested)) => Ok(Json(json!({
-            "ingested": ingested,
-            "experiment_id": experiment_id,
-        }))),
+        Some(Ok(ingested)) => {
+            if ingested {
+                // The run is new evidence on the Star Map.
+                state.starmap_cache.clear();
+            }
+            Ok(Json(json!({
+                "ingested": ingested,
+                "experiment_id": experiment_id,
+            })))
+        }
         Some(Err(e)) => Err(internal(e.to_string())),
         None => Err(internal("journal import did not run".into())),
     }

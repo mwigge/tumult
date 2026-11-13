@@ -305,20 +305,59 @@ fn never_run(inputs: &Inputs, out: &mut Vec<Risk>) {
     }
 }
 
+/// The label a manifest uses to say which environment it deploys to.
+const ENVIRONMENT_LABEL: &str = "resilience.target.environment";
+
 /// The target a workload stands for: its name, or its `app` /
-/// `app.kubernetes.io/name` label, when either names a known target.
+/// `app.kubernetes.io/name` label, when either names a known target. One
+/// name can be a target in several environments: the workload's
+/// environment label picks among them, and without a match the first
+/// target of that name stands in.
 fn workload_target<'a>(w: &Workload, inputs: &'a Inputs) -> Option<&'a TargetEvidence> {
     let candidates = [
         Some(w.name.as_str()),
         w.labels.get("app").map(String::as_str),
         w.labels.get("app.kubernetes.io/name").map(String::as_str),
     ];
-    inputs.targets.iter().find(|t| {
+    let named = |t: &&TargetEvidence| {
         candidates
             .iter()
             .flatten()
             .any(|c| c.eq_ignore_ascii_case(&t.target))
-    })
+    };
+    let environment = w.labels.get(ENVIRONMENT_LABEL).map(String::as_str);
+    let same_environment = inputs
+        .targets
+        .iter()
+        .filter(named)
+        .find(|t| environment.is_some() && t.environment.as_deref() == environment);
+    same_environment.or_else(|| inputs.targets.iter().find(named))
+}
+
+/// Rank points a target's criticality adds to every finding against it.
+fn criticality_bonus(t: &TargetEvidence) -> u32 {
+    match t
+        .criticality
+        .as_deref()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("critical") => 8,
+        Some("high") => 5,
+        Some("medium") => 2,
+        _ => 0,
+    }
+}
+
+/// The target a finding is filed against: the same name in the same
+/// environment, so a critical production system does not lift the findings
+/// of its namesake elsewhere.
+fn target_of<'a>(r: &Risk, inputs: &'a Inputs) -> Option<&'a TargetEvidence> {
+    let name = r.target.as_deref()?;
+    inputs
+        .targets
+        .iter()
+        .find(|t| t.target == name && t.environment == r.environment)
 }
 
 fn workload_rules(inputs: &Inputs, out: &mut Vec<Risk>) {
@@ -426,23 +465,7 @@ pub fn evaluate(inputs: &Inputs) -> Vec<Risk> {
     workload_rules(inputs, &mut out);
     // Target criticality lifts every finding against that target.
     for r in &mut out {
-        let bonus = r
-            .target
-            .as_deref()
-            .and_then(|name| inputs.targets.iter().find(|t| t.target == name))
-            .map_or(0, |t| {
-                match t
-                    .criticality
-                    .as_deref()
-                    .map(str::to_ascii_lowercase)
-                    .as_deref()
-                {
-                    Some("critical") => 8,
-                    Some("high") => 5,
-                    Some("medium") => 2,
-                    _ => 0,
-                }
-            });
+        let bonus = target_of(r, inputs).map_or(0, criticality_bonus);
         r.rank = (r.rank + bonus).min(100);
     }
     out
@@ -491,6 +514,48 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert!(a.starts_with("r_") && a.len() == 18, "{a}");
+    }
+
+    #[test]
+    fn criticality_bonus_follows_the_environment() {
+        let mut demo = target("pay", None, vec![]);
+        demo.environment = Some("demo".into());
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![target("pay", Some("critical"), vec![]), demo],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        let rank = |env: &str| {
+            risks
+                .iter()
+                .find(|r| r.subject == "chaos" && r.environment.as_deref() == Some(env))
+                .map(|r| r.rank)
+        };
+        let base = Severity::High.base_rank();
+        assert_eq!(rank("prod"), Some(base + 8));
+        assert_eq!(rank("demo"), Some(base), "demo is not critical");
+    }
+
+    #[test]
+    fn workload_links_to_the_target_in_its_labelled_environment() {
+        let mut demo = target("api", None, vec![evidence("chaos", 1)]);
+        demo.environment = Some("demo".into());
+        let mut labelled = workload("api", "Deployment", Some(1), vec![]);
+        labelled.labels.insert(
+            "resilience.target.environment".to_string(),
+            "prod".to_string(),
+        );
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![demo, target("api", None, vec![evidence("chaos", 1)])],
+            workloads: vec![labelled],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        let single = risks.iter().find(|r| r.rule == "single_replica").unwrap();
+        assert_eq!(single.target.as_deref(), Some("api"));
+        assert_eq!(single.environment.as_deref(), Some("prod"));
     }
 
     #[test]

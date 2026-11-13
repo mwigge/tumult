@@ -26,23 +26,24 @@ const risk = (id: string, rank: number, severity: string, title: string, rule: s
     suppression: null,
 });
 
+const KINDS = ['chaos', 'load', 'performance', 'robustness', 'dr', 'security', 'nfr'];
+
+// The same target tested in two environments is two rows.
+const coverageRow = (environment: string, covered: string | null) => ({
+    target: 'database',
+    environment,
+    criticality: null,
+    cells: KINDS.map((kind) => ({
+        kind,
+        status: kind === covered ? 'covered' : 'missing',
+        runs: kind === covered ? 2 : 0,
+        last_run_ns: kind === covered ? 1 : null,
+    })),
+});
+
 const coverage = {
-    kinds: ['chaos', 'load', 'performance', 'robustness', 'dr', 'security', 'nfr'],
-    targets: [
-        {
-            target: 'database',
-            environment: 'demo',
-            criticality: null,
-            cells: ['chaos', 'load', 'performance', 'robustness', 'dr', 'security', 'nfr'].map(
-                (kind) => ({
-                    kind,
-                    status: kind === 'chaos' ? 'covered' : 'missing',
-                    runs: kind === 'chaos' ? 2 : 0,
-                    last_run_ns: kind === 'chaos' ? 1 : null,
-                }),
-            ),
-        },
-    ],
+    kinds: KINDS,
+    targets: [coverageRow('demo', 'chaos'), coverageRow('staging', null)],
     portfolio: ['chaos', 'load', 'performance', 'robustness', 'dr', 'security', 'nfr'].map(
         (kind) => ({
             kind,
@@ -59,6 +60,13 @@ const risks = [
     risk('r_2', 60, 'high', 'No disaster recovery evidence', 'discipline_gap'),
     risk('r_3', 20, 'low', 'Definition never ran', 'never_run_definition'),
 ];
+
+test.beforeEach(async ({ page }) => {
+    // Charts mirror their option only where a test installed the registry.
+    await page.addInitScript(() => {
+        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
+    });
+});
 
 test('posture opens with ranked risks, coverage gaps and the score', async ({ page }) => {
     const posted: unknown[] = [];
@@ -233,13 +241,22 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     await expect(page.getByTestId('posture')).toContainText('62.5');
     await expect(page.getByTestId('posture')).toContainText('fair');
 
+    // Every chart is an image with a name a screen reader can say.
+    const named = page.locator('[data-chart]');
+    expect(await named.count()).toBeGreaterThanOrEqual(3);
+    for (const chart of await named.all()) {
+        await expect(chart).toHaveAttribute('role', 'img');
+        await expect(chart).toHaveAttribute('aria-label', /\S/);
+    }
+
     // The heatmap carries one cell per target × discipline.
     const cells = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };
-        const opt = w.__tumultCharts?.coverage as { series?: { data?: unknown[] }[] } | undefined;
-        return opt?.series?.[0]?.data?.length ?? -1;
+        const opt = w.__tumultCharts?.coverage as
+            { series?: { data?: unknown[] }[]; yAxis?: { data?: string[] }[] } | undefined;
+        return { count: opt?.series?.[0]?.data?.length ?? -1, rows: opt?.yAxis?.[0]?.data };
     });
-    expect(cells).toBe(7);
+    expect(cells).toEqual({ count: 14, rows: ['database (demo)', 'database (staging)'] });
 
     // The NFR heatmap has one cell per verdict; the trend carries the sparkline.
     const charts = await page.evaluate(() => {
