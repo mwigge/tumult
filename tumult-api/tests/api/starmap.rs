@@ -117,6 +117,60 @@ async fn seed_services(srv: &TestServer) {
     .await;
 }
 
+/// The root span of one completed run against `system` in `env`.
+fn run_span(id: &str, experiment: &str, system: &str, env: &str) -> SpanRow {
+    SpanRow {
+        ts_ns: now_ns() - 900 * NS,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}-root"),
+        parent_span_id: None,
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: 5 * NS,
+        status_code: "Unset".into(),
+        status_message: String::new(),
+        service_name: "tumult".into(),
+        service_version: Some("2.22.0".into()),
+        experiment_id: Some(id.into()),
+        experiment_name: Some(experiment.into()),
+        outcome_status: Some("Completed".into()),
+        fault_type: None,
+        fault_subtype: None,
+        fault_severity: None,
+        blast_radius: None,
+        target_system: Some(system.into()),
+        target_technology: Some("http".into()),
+        target_environment: Some(env.into()),
+        plugin_name: None,
+        hypothesis_met: None,
+        recovery_time_s: None,
+        span_attrs: vec![],
+        resource_attrs: vec![],
+        events: "[]".into(),
+    }
+}
+
+/// `shared` is one system name in two environments: a chaos run in demo
+/// and a disaster-recovery run in prod.
+async fn seed_shared_system(srv: &TestServer) {
+    let rows = vec![
+        run_span("shared-demo", "shared-chaos", "shared", "demo"),
+        run_span("shared-prod", "shared-dr", "shared", "prod"),
+    ];
+    exec_write(srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())?;
+        w.execute(
+            "INSERT INTO experiments (experiment_id, title, status, started_at_ns, \
+             ended_at_ns, duration_ms, method_step_count, rollback_count, test_kind) \
+             VALUES ('shared-prod', 'shared-dr', 'completed', 1, 2, 1, 1, 0, 'dr')",
+            (),
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .await;
+}
+
 fn node<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
     body["nodes"]
         .as_array()
@@ -370,4 +424,49 @@ async fn scoped_principal_never_sees_another_environment() {
     .await;
     assert!(node(&around, "svc:checkout").is_some());
     assert_eq!(leaked(&around), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn one_system_name_in_two_environments_keeps_its_own_coverage() {
+    let srv = spawn_server().await;
+    seed_shared_system(&srv).await;
+    let (status, body) = get(&srv.base, "/api/starmap").await;
+    assert_eq!(status, 200, "{body}");
+    let demo = node(&body, "sys:demo/shared").expect("demo system");
+    let prod = node(&body, "sys:prod/shared").expect("prod system");
+    let discipline = |n: &Value, kind: &str| n["evidence"]["by_discipline"][kind].clone();
+    assert_eq!(discipline(demo, "chaos"), "covered", "{demo}");
+    assert_eq!(discipline(demo, "dr"), "missing", "{demo}");
+    assert_eq!(discipline(prod, "dr"), "covered", "{prod}");
+    assert_eq!(discipline(prod, "chaos"), "missing", "{prod}");
+    assert!(demo["gap"].is_null() && prod["gap"].is_null());
+    assert_eq!(demo["evidence"]["runs"], 1);
+    assert_eq!(prod["evidence"]["runs"], 1);
+    for (system, own, other) in [
+        ("sys:demo/shared", "shared-chaos", "shared-dr"),
+        ("sys:prod/shared", "shared-dr", "shared-chaos"),
+    ] {
+        let tested = |name: &str| edge(&body, &format!("{system}|tested_by|def:{name}"));
+        assert!(tested(own).is_some(), "{system} is tested by {own}");
+        assert!(tested(other).is_none(), "{system} was never run by {other}");
+    }
+
+    // The risk scan and the posture keep one row per environment too.
+    let envs_of = |rows: &Value| -> Vec<String> {
+        let mut envs: Vec<String> = rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|t| t["target"] == "shared")
+            .map(|t| t["environment"].as_str().unwrap().to_string())
+            .collect();
+        envs.sort();
+        envs
+    };
+    let (_, risks) = get(&srv.base, "/api/risks").await;
+    assert_eq!(envs_of(&risks["coverage"]["targets"]), ["demo", "prod"]);
+    let (_, posture) = get(&srv.base, "/api/posture").await;
+    assert_eq!(envs_of(&posture["posture"]["targets"]), ["demo", "prod"]);
+    let (_, scoped) = get(&srv.base, "/api/posture?env=prod").await;
+    assert_eq!(envs_of(&scoped["posture"]["targets"]), ["prod"]);
 }
