@@ -754,23 +754,17 @@ impl<'a> MatrixRow<'a> {
     /// State of the row over a scope.
     #[must_use]
     pub fn state(&self, scope: Option<usize>) -> RowState {
-        let mut any = false;
-        let mut unknown = false;
-        for cell in self.scoped(scope) {
-            any = true;
-            match cell.cell.state {
-                CellState::Scored => return RowState::Known,
-                CellState::Unknown => unknown = true,
-                CellState::NoEvents => {}
-            }
-        }
-        if !any {
-            return RowState::Na;
-        }
-        if unknown {
-            return RowState::Unknown;
-        }
-        RowState::NoEvents
+        state_of(self.scoped(scope))
+    }
+
+    /// Cells of a set of functions (an org unit).
+    pub fn among<'s>(
+        &'s self,
+        functions: &'s [usize],
+    ) -> impl Iterator<Item = &'s MatrixCell<'a>> + 's {
+        self.cells
+            .iter()
+            .filter(move |c| functions.contains(&c.function))
     }
 
     /// Why the row is unknown, from its first unknown cell.
@@ -780,6 +774,43 @@ impl<'a> MatrixRow<'a> {
             .find(|c| c.cell.state == CellState::Unknown)
             .and_then(|c| c.cell.reason.as_deref())
     }
+}
+
+/// State of a row over some of its cells: known as soon as one is scored,
+/// else unknown when one is, else without events; `na` without a cell.
+fn state_of<'c, 'a: 'c>(cells: impl Iterator<Item = &'c MatrixCell<'a>>) -> RowState {
+    let mut any = false;
+    let mut unknown = false;
+    for cell in cells {
+        any = true;
+        match cell.cell.state {
+            CellState::Scored => return RowState::Known,
+            CellState::Unknown => unknown = true,
+            CellState::NoEvents => {}
+        }
+    }
+    if !any {
+        return RowState::Na;
+    }
+    if unknown {
+        return RowState::Unknown;
+    }
+    RowState::NoEvents
+}
+
+/// The state a set of row states reads as: the most informative one.
+#[must_use]
+pub fn strongest(states: impl Iterator<Item = RowState>) -> RowState {
+    let mut best = RowState::Na;
+    for state in states {
+        best = match (best, state) {
+            (_, RowState::Known) | (RowState::Known, _) => return RowState::Known,
+            (_, RowState::Unknown) | (RowState::Unknown, _) => RowState::Unknown,
+            (_, RowState::NoEvents) | (RowState::NoEvents, _) => RowState::NoEvents,
+            (RowState::Na, RowState::Na) => RowState::Na,
+        };
+    }
+    best
 }
 
 /// The scored matrix of one legal entity: every applicable row against
@@ -851,6 +882,27 @@ impl<'a> Matrix<'a> {
     #[must_use]
     pub fn article(&self, article: &str, scope: Option<usize>) -> Ratio {
         ratio(&self.ratio_rows(Some(article), scope))
+    }
+
+    /// `cov(A)`, `unknown(A)` and the state of one article over a set of
+    /// functions: an org unit, one function, or all of them.
+    #[must_use]
+    pub fn article_over(&self, article: &str, functions: &[usize]) -> (Ratio, RowState) {
+        let rows: Vec<RatioRow> = self
+            .rows
+            .iter()
+            .filter(|row| row.req.article == article)
+            .map(|row| RatioRow {
+                weight: f64::from(row.req.weight),
+                state: state_of(row.among(functions)),
+                cells: row
+                    .among(functions)
+                    .filter(|c| c.cell.state == CellState::Scored)
+                    .map(|c| (self.weight(c.function), c.cell.v))
+                    .collect(),
+            })
+            .collect();
+        (ratio(&rows), strongest(rows.iter().map(|r| r.state)))
     }
 
     /// Portfolio coverage: the mean of the article coverages weighted by
@@ -1289,5 +1341,46 @@ mod tests {
         let a = Matrix::build(&inputs, &params);
         let b = Matrix::build(&reversed, &params);
         assert_eq!(a.portfolio(None), b.portfolio(None));
+    }
+
+    #[test]
+    fn an_article_over_a_set_of_functions_matches_the_single_scopes() {
+        let inputs = super::super::worked::bank_a();
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&inputs, &params);
+        let all: Vec<usize> = (0..inputs.functions.len()).collect();
+        for (article, _) in ARTICLES {
+            let (whole, _) = matrix.article_over(article, &all);
+            assert_eq!(whole, matrix.article(article, None), "article {article}");
+            let (one, _) = matrix.article_over(article, &[2]);
+            assert_eq!(one, matrix.article(article, Some(2)), "article {article}");
+        }
+    }
+
+    #[test]
+    fn an_article_state_is_the_most_informative_of_its_rows() {
+        let inputs = super::super::worked::firm_b();
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&inputs, &params);
+        // The incident feed is connected and empty.
+        let (ratio, state) = matrix.article_over("19", &[0]);
+        assert_eq!(state, RowState::NoEvents);
+        assert_eq!(ratio.coverage, None);
+        assert_eq!(ratio.unknown, 0.0);
+        // Arts. 5-15 do not apply under the simplified framework.
+        assert_eq!(matrix.article_over("9", &[0]).1, RowState::Na);
+        // No function at all.
+        assert_eq!(matrix.article_over("24", &[]).1, RowState::Na);
+
+        let mut blind = inputs.clone();
+        blind.incidents = super::super::model::IncidentFeed::NotConnected;
+        let matrix = Matrix::build(&blind, &params);
+        let (ratio, state) = matrix.article_over("19", &[0]);
+        assert_eq!(state, RowState::Unknown);
+        assert_eq!(ratio.unknown, 1.0);
+        assert_eq!(
+            strongest([RowState::Na, RowState::NoEvents, RowState::Unknown].into_iter()),
+            RowState::Unknown
+        );
     }
 }

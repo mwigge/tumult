@@ -105,8 +105,8 @@ pub struct RequirementStatusRow {
     pub status: String,
     /// The evidence value `v` behind the status, when one exists.
     pub value: Option<f64>,
-    /// `snapshot` (computed on the day) or `backfill` (reconstructed from
-    /// the dated evidence timeline).
+    /// `snapshot`: computed on the day it describes. Only those rows are
+    /// read back as score inputs.
     pub source: String,
 }
 

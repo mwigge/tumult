@@ -18,8 +18,9 @@
 //!   it does not declare is not connected, and every row that needs it is
 //!   unknown.
 //! - **Snapshots**: rows of `requirement_status_daily` stored on the day
-//!   (`snapshot`). Reconstructed rows (`backfill`) are a materialised view
-//!   of the dated evidence timeline and are never read back as inputs.
+//!   they describe. A day without a stored row is recomputed from the
+//!   dated evidence. A caller scoped to some environments gets no stored
+//!   rows at all: they were computed over every environment.
 //!
 //! Without a registered function the loader stands in one unregistered
 //! function per `ict.entity.id` seen in telemetry, so an unregistered
@@ -43,8 +44,6 @@ use crate::scoring::{and_env, env_in};
 
 /// Source of a status row computed on its own day.
 pub const SNAPSHOT_SOURCE: &str = "snapshot";
-/// Source of a status row reconstructed from the evidence timeline.
-pub const BACKFILL_SOURCE: &str = "backfill";
 /// Days of stored snapshots that count as "two quarters" of posture
 /// history for the level-5 gate.
 pub const TWO_QUARTERS_DAYS: i64 = 182;
@@ -726,7 +725,11 @@ pub fn load(
         foreign: Mapper::new(foreign_ids, &register.services),
     };
     loader.scheduled(&mut functions)?;
-    let (snapshots, stored_since) = loader.snapshots()?;
+    let (snapshots, stored_since) = if request.envs.is_empty() {
+        loader.snapshots()?
+    } else {
+        (Snapshots::new(), None)
+    };
     let mut evidence = loader.runs(&run_rows);
     evidence.extend(loader.manual()?);
     let (slos, incidents) = feeds(&entity);
@@ -1099,7 +1102,7 @@ functions:
             .upsert_requirement_status(
                 &[
                     row(today - 1, SNAPSHOT_SOURCE, 0.9),
-                    row(today - 2, BACKFILL_SOURCE, 0.1),
+                    row(today - 2, "imported", 0.1),
                     row(today - TWO_QUARTERS_DAYS, SNAPSHOT_SOURCE, 0.8),
                 ],
                 NOW,
@@ -1110,6 +1113,17 @@ functions:
         let days: Vec<i64> = loaded.inputs.snapshots[&key].keys().copied().collect();
         assert_eq!(days, [today - TWO_QUARTERS_DAYS, today - 1]);
         assert!(loaded.inputs.facts.posture_delta_two_quarters);
+
+        // Stored rows cover every environment: a scoped caller gets none.
+        let scope = ["prod".to_string()];
+        let scoped = super::load(
+            &store.read_only().unwrap(),
+            request(&scope),
+            &HouseParams::default(),
+        )
+        .unwrap();
+        assert!(scoped.inputs.snapshots.is_empty());
+        assert!(!scoped.inputs.facts.posture_delta_two_quarters);
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub mod maturity;
 pub mod model;
 pub mod params;
 pub mod register;
+pub mod report;
 pub mod rollup;
 pub mod status;
 #[cfg(test)]
