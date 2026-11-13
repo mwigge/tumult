@@ -441,7 +441,12 @@ pub async fn spawn_server() -> TestServer {
 
 /// The test server with another organisation file.
 pub async fn spawn_server_with_org(org_yaml: &str) -> TestServer {
-    spawn(Arc::new(|_env| Arc::new(SlowNoopExecutor)), org_yaml, |state| state).await
+    spawn(
+        Arc::new(|_env| Arc::new(SlowNoopExecutor)),
+        org_yaml,
+        |state| state,
+    )
+    .await
 }
 
 /// A server whose forecasting endpoints use the sidecar at `url`, skipping
