@@ -898,3 +898,85 @@ export interface SuppressionRow extends RiskSuppression {
     prev_hash: string | null;
     new_hash: string;
 }
+
+/** Which model produced a forecast; `fallback_reason` is set when the
+    sidecar was configured but the built-in provider answered instead. */
+export interface ForecastProvenance {
+    model: string;
+    version: string;
+    weights_hash: string;
+    fallback_reason: string | null;
+}
+
+/** Chart-ready series shared by the forecast and impact endpoints. */
+export interface ForecastSeries {
+    /** Epoch ms. */
+    ts: number[];
+    observed: (number | null)[];
+    median: (number | null)[];
+    bands: { level: number; lower: (number | null)[]; upper: (number | null)[] }[];
+}
+
+/** `GET /api/forecast` */
+export interface ForecastResponse {
+    metric: string;
+    description: string | null;
+    target: string | null;
+    env: string[] | null;
+    range: string;
+    horizon: number;
+    step_ns: number;
+    from_ns: number;
+    to_ns: number;
+    series: ForecastSeries;
+    forecast: {
+        levels: number[];
+        quantiles: (number | null)[][];
+        context_points: number;
+        insufficient_history: boolean;
+    };
+    provenance: ForecastProvenance;
+    cached: boolean;
+}
+
+/** One probe's counterfactual in `GET /api/runs/{id}/impact`. A probe that
+    could not be compared carries only `probe` and `error`. */
+export interface ProbeImpact {
+    probe: string;
+    error?: string;
+    reference?: 'baseline' | 'post_backcast';
+    step_ns?: number;
+    fault?: { start_ns: number; end_ns: number };
+    series?: ForecastSeries;
+    impact?: {
+        per_sample: (number | null)[];
+        during_mean: number | null;
+        during_peak: number | null;
+        during_peak_ts_ms: number | null;
+        during_outside_ratio: number | null;
+        post_mean: number | null;
+        samples_during: number;
+        samples_post: number;
+    };
+    recovery?: {
+        recovered_at_ns: number | null;
+        recovery_time_s: number | null;
+        stable_steps: number;
+        outside_during_fault: number;
+        outside_after_fault: number;
+    };
+    forecast?: { context_points: number; insufficient_history: boolean };
+    provenance?: ForecastProvenance;
+}
+
+/** `GET /api/runs/{id}/impact` */
+export interface RunImpact {
+    run_id: string;
+    experiment_id: string;
+    as_of_ns: number;
+    stable_steps: number;
+    recovery_time_s: number | null;
+    impact_peak: number | null;
+    provenance: ForecastProvenance | null;
+    probes: ProbeImpact[];
+}

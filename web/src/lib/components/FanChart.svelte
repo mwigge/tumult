@@ -1,7 +1,8 @@
 <script lang="ts">
     // Forecast fan chart: observed line, forecast median and stacked
     // quantile bands (the transparent-lower-series trick), with optional
-    // fault windows (markArea) and objective thresholds (markLine). Bands
+    // fault windows (markArea), objective thresholds (horizontal markLine)
+    // and moment marks (vertical markLine, e.g. peak and recovery). Bands
     // are drawn widest first so narrower ones sit on top.
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
@@ -25,6 +26,7 @@
         series,
         windows = [],
         thresholds = [],
+        marks = [],
         unit = '',
         height = 260,
         id,
@@ -32,6 +34,7 @@
         series: FanSeries;
         windows?: { from: number; to: number; label?: string; color?: string }[];
         thresholds?: { value: number; label?: string }[];
+        marks?: { at: number; label?: string }[];
         unit?: string;
         height?: number;
         id?: string;
@@ -97,13 +100,23 @@
                       }
                     : undefined,
             markLine:
-                thresholds.length > 0
+                thresholds.length + marks.length > 0
                     ? {
                           silent: true,
                           symbol: 'none',
                           lineStyle: { color: t.fail, type: 'dashed' },
                           label: { formatter: (p: { name?: string }) => p.name ?? '' },
-                          data: thresholds.map((th) => ({ name: th.label ?? '', yAxis: th.value })),
+                          data: [
+                              ...thresholds.map((th) => ({
+                                  name: th.label ?? '',
+                                  yAxis: th.value,
+                              })),
+                              ...marks.map((m) => ({
+                                  name: m.label ?? '',
+                                  xAxis: m.at,
+                                  lineStyle: { color: t.accent, type: 'dotted' },
+                              })),
+                          ],
                       }
                     : undefined,
         };

@@ -19,6 +19,7 @@ import type {
     GameDayEntry,
     ExperimentRow,
     ExperimentWindow,
+    ForecastResponse,
     LogEntry,
     LoginResponse,
     LogVolume,
@@ -40,6 +41,7 @@ import type {
     ReportTemplate,
     RunDetail,
     RunEvent,
+    RunImpact,
     RunRow,
     ScaffoldRequest,
     ScaffoldResponse,
@@ -312,6 +314,21 @@ export const api = {
     },
 
     run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+
+    // Counterfactual impact of a run; rejects (404) when it has no samples.
+    runImpact: (id: string) => get<RunImpact>(`/api/runs/${encodeURIComponent(id)}/impact`),
+
+    forecast: (
+        metric: string,
+        opts: { target?: string; env?: string; range?: string; horizon?: number } = {},
+    ) => {
+        const qs = new URLSearchParams({ metric });
+        if (opts.target) qs.set('target', opts.target);
+        if (opts.env) qs.set('env', opts.env);
+        if (opts.range) qs.set('range', opts.range);
+        if (opts.horizon) qs.set('horizon', String(opts.horizon));
+        return get<ForecastResponse>(`/api/forecast?${qs}`);
+    },
 
     stopRun: (id: string) =>
         send<{ run_id: string; stop: string }>(
