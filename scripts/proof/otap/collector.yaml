@@ -1,0 +1,39 @@
+# OpenTelemetry Collector (contrib) used by scripts/proof/otap/proof.sh:
+# OTLP/HTTP in from curl, OTel-Arrow out to tumultd, no fallback to OTLP.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:${env:PROOF_COLLECTOR_PORT}
+
+processors:
+  batch:
+    timeout: 200ms
+
+exporters:
+  otelarrow/tumultd:
+    endpoint: 127.0.0.1:${env:PROOF_GRPC_PORT}
+    tls:
+      insecure: true
+    headers:
+      authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
+    # gRPC-level compression stays off: the exporter uses Go-only
+    # "zstdarrowN" encodings for it. The Arrow IPC payloads are still
+    # zstd-compressed (arrow.payload_compression defaults to zstd).
+    compression: none
+    arrow:
+      disable_downgrade: true
+      num_streams: 1
+      max_stream_lifetime: 30s
+    retry_on_failure:
+      enabled: false
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otelarrow/tumultd]
