@@ -443,42 +443,11 @@ fn write_text_span(writer: &mut Writer<'_>, span: &SpanRecord) -> fmt::Result {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use std::io;
-    use std::sync::{Arc, Mutex};
-
     use chrono::{DateTime, TimeZone, Utc};
-    use tracing_subscriber::fmt::MakeWriter;
 
     use super::{EventFormatter, LogFormat, LogResource};
 
-    /// An in-memory log sink shared between the subscriber and the test.
-    #[derive(Clone, Default)]
-    pub(crate) struct Capture(Arc<Mutex<Vec<u8>>>);
-
-    impl Capture {
-        pub(crate) fn text(&self) -> String {
-            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
-        }
-    }
-
-    impl io::Write for Capture {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'a> MakeWriter<'a> for Capture {
-        type Writer = Capture;
-
-        fn make_writer(&'a self) -> Self::Writer {
-            self.clone()
-        }
-    }
+    pub(crate) use crate::logging::testing::Sink as Capture;
 
     pub(crate) fn fixed_clock() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap()

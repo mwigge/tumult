@@ -25,8 +25,9 @@ mod filter;
 mod format;
 mod sanitize;
 mod selection;
+pub mod testing;
 
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::sync::OnceLock;
 
 use opentelemetry_sdk::logs::SdkLoggerProvider;
@@ -157,6 +158,47 @@ pub fn init(options: LogOptions) -> Result<(), InitError> {
     std::panic::set_hook(Box::new(panic_hook));
     report_rejected_settings(choice.rejected.as_deref(), rejected_filter.as_deref());
     Ok(())
+}
+
+/// Reports that [`init`] failed.
+///
+/// With no subscriber there is nothing to log through, so this writes one
+/// JSON line — shaped like every other log line — straight to stderr.
+pub fn report_init_failure(service_name: &str, error: &InitError) {
+    let line = init_failure_line(service_name, error, chrono::Utc::now());
+    // A failed write means stderr itself is gone: there is nowhere left to
+    // report anything to.
+    let _ = writeln!(std::io::stderr().lock(), "{line}");
+}
+
+fn init_failure_line(
+    service_name: &str,
+    error: &InitError,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
+    serde_json::json!({
+        "timestamp": now.to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
+        "level": "ERROR",
+        "target": module_path!(),
+        "event.name": "logging.init.failed",
+        "message": "logging could not be initialised",
+        "service.name": service_name,
+        "service.version": SERVICE_VERSION,
+        "error.type": error_type(error),
+        "error.message": error.to_string(),
+    })
+    .to_string()
+}
+
+/// Logs the error that is about to end the process as a `process.fatal`
+/// error event. Binaries call this instead of letting `main` return the
+/// error, which would print it unstructured.
+pub fn log_fatal<E: std::fmt::Display + ?Sized>(error: &E) {
+    tracing::error!(
+        name: "process.fatal",
+        { error.message = %err(error) },
+        "exiting because of an unrecoverable error"
+    );
 }
 
 /// Whether [`init`] has installed the subscriber in this process.
@@ -292,44 +334,6 @@ fn log_panic_event(message: &str, location: Option<(&str, u32)>) {
         },
         "process panicked"
     );
-}
-
-/// Helpers for tests elsewhere in the crate that assert on log output.
-#[cfg(test)]
-pub(crate) mod test_support {
-    use serde_json::Value;
-    use tracing::Level;
-
-    use super::format::test_support::{formatter, Capture};
-    use super::{filter, LogFormat, Pipeline};
-
-    /// What `emit` logged through the production pipeline at `level`.
-    pub(crate) struct Captured {
-        /// The raw bytes written, as text.
-        pub(crate) raw: String,
-        /// Each line parsed as JSON.
-        pub(crate) events: Vec<Value>,
-    }
-
-    /// Runs `emit` under the production subscriber (JSON format, default
-    /// filter at `level`) writing to memory instead of stderr.
-    pub(crate) fn capture_json(level: Level, emit: impl FnOnce()) -> Captured {
-        let capture = Capture::default();
-        let pipeline = Pipeline {
-            formatter: formatter(LogFormat::Json),
-            filter: filter::env_filter(None, level).0,
-            writer: capture.clone(),
-            ansi: false,
-        };
-        let (subscriber, _slot) = pipeline.build();
-        tracing::subscriber::with_default(subscriber, emit);
-        let raw = capture.text();
-        let events = raw
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("every line is JSON"))
-            .collect();
-        Captured { raw, events }
-    }
 }
 
 #[cfg(test)]
@@ -529,5 +533,47 @@ mod tests {
         let (subscriber, _slot) = pipeline(&capture).build();
         tracing::subscriber::with_default(subscriber, || report_rejected_settings(None, None));
         assert!(capture.text().is_empty());
+    }
+
+    #[test]
+    fn init_failure_is_one_json_line_shaped_like_a_log_event() {
+        let now = super::format::test_support::fixed_clock();
+        let error = super::InitError::Install("a global subscriber\nis already set".into());
+        let line = super::init_failure_line("tumultd", &error, now);
+        assert!(!line.contains('\n'), "{line}");
+        let event: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(event["timestamp"], "2026-01-01T00:00:00.000000Z");
+        assert_eq!(event["level"], "ERROR");
+        assert_eq!(event["target"], "tumult_otel::logging");
+        assert_eq!(event["event.name"], "logging.init.failed");
+        assert_eq!(event["message"], "logging could not be initialised");
+        assert_eq!(event["service.name"], "tumultd");
+        assert_eq!(event["error.type"], "InitError");
+        assert!(event["error.message"]
+            .as_str()
+            .unwrap()
+            .contains("a global subscriber\nis already set"));
+    }
+
+    #[test]
+    fn fatal_error_is_logged_with_its_whole_cause_chain() {
+        struct Chained;
+        impl std::fmt::Display for Chained {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(if f.alternate() {
+                    "open store: locked"
+                } else {
+                    "open store"
+                })
+            }
+        }
+        let capture = Capture::default();
+        let (subscriber, _slot) = pipeline(&capture).build();
+        tracing::subscriber::with_default(subscriber, || super::log_fatal(&Chained));
+        let lines = json_lines(&capture);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["level"], "ERROR");
+        assert_eq!(lines[0]["event.name"], "process.fatal");
+        assert_eq!(lines[0]["error.message"], "open store: locked");
     }
 }

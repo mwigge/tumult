@@ -633,7 +633,7 @@ mod tests {
 
     // ── Credential hygiene and structured events ─────────────────────────
 
-    use crate::logging::test_support::capture_json;
+    use crate::logging::testing::capture_json;
     use opentelemetry::Key;
     use tracing::Level;
 
