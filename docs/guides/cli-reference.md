@@ -620,8 +620,8 @@ Ask the daemon for a target's performance regression verdict (`GET /api/perf/{ta
 
 ```bash
 export TUMULT_DAEMON_URL=http://tumultd.internal:4318
-export TUMULT_DAEMON_TOKEN=kro_...   # viewer role is enough
-tumult perf checkout --quantile p95 --margin-pct 5 --env staging
+export TUMULT_DAEMON_TOKEN=kro_...   # viewer reads; --store needs operator
+tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 ```
 
 | Flag | Description |
@@ -631,11 +631,12 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging
 | `--min-samples <n>` | Fewer samples on either side is inconclusive (daemon default 20) |
 | `--margin-pct <n>` | Noise margin as a percentage of the baseline quantile (daemon default 5) |
 | `--env <name>` | Restrict the compared runs to one environment (403 outside a scoped token's environments) |
+| `--store` | Append the verdict to the daemon's `perf_verdicts` history (operator role); without it the command only reads |
 | `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
 | `--fail-on regressed\|inconclusive\|never` | Which verdicts exit non-zero (default `regressed`) |
 | `--json` | Print the daemon's JSON answer |
 
-Verdicts: `improved`, `unchanged`, `regressed`, `inconclusive` (too few samples, one version only, or an interval too wide to tell). Every computed verdict is appended to the lake's `perf_verdicts` table. See the [Performance Regression guide](performance-regression.md) for the rules.
+Verdicts: `improved`, `unchanged`, `regressed`, `inconclusive` (too few samples, one version only, an interval too wide to tell, or a significant shift whose size against the margin is unresolved). With `--store` the verdict is appended to the lake's `perf_verdicts` table. See the [Performance Regression guide](performance-regression.md) for the rules.
 
 ## tumult tui
 

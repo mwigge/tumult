@@ -108,15 +108,23 @@ tumult run experiment-with-load.toon
 | `TUMULT_OHA_BINARY` | oha | oha binary path |
 
 oha needs no script: `load.script` is the URL. The adapter runs
-`oha --no-tui -j -c <vus> -z <window> <url>` per window and reads the JSON
-summary (`summary.successRate`, `summary.requestsPerSec`,
-`latencyPercentiles.p50/p95/p99`, `statusCodeDistribution`,
-`errorDistribution`). Percentiles of the whole run are request-weighted means
+`oha --no-tui --output-format json -c <vus> -z <window> <url>` per window
+(oha 1.x; older releases that only know `-j` are not supported) and reads the JSON
+summary (`summary.requestsPerSec`, `latencyPercentiles.p50/p95/p99`,
+`statusCodeDistribution`, `errorDistribution`). The error rate is
+(transport errors + answers outside 2xx/3xx) / requests — oha's own
+`successRate` only knows about transport errors, so a run of 503s would
+otherwise look clean. Requests oha files under `aborted due to deadline`
+(the ones still in flight when the window ends) are not counted at all. Percentiles of the whole run are request-weighted means
 of the window percentiles, since oha does not expose raw latencies; the
 windows themselves are kept exactly. `thresholds` are checked by the adapter
 against the aggregate (see the experiment format), because oha has no
 threshold language of its own. On `stop`, windows not yet started are
-skipped and the in-flight one gets ten seconds to finish before it is killed.
+skipped and the in-flight one is given its remaining time plus a grace
+period before its process group is killed. A run with no completed window
+never meets its thresholds, and a run cut before any window completed is an
+error rather than an empty success — so keep the method at least as long as
+`load.duration_s`.
 
 ```bash
 tumult run examples/checkout-spike-oha.toon

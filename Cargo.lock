@@ -8072,6 +8072,7 @@ version = "2.22.0"
 dependencies = [
  "chrono",
  "indexmap",
+ "libc",
  "opentelemetry",
  "opentelemetry_sdk",
  "regex-lite",

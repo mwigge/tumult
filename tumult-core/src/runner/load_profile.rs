@@ -159,8 +159,11 @@ pub fn windows(plan: &LoadPlan) -> Vec<Window> {
     let mut offset_s = 0.0;
     let mut level = plan.start_vus;
     for stage in &plan.stages {
+        // A non-positive or non-finite interval would never advance the
+        // loop; fall back to one window per stage.
         let width = plan
             .sample_interval_s
+            .filter(|w| w.is_finite() && *w > 0.0)
             .unwrap_or(stage.duration_s)
             .min(stage.duration_s);
         let mut elapsed = 0.0;
@@ -342,6 +345,17 @@ mod tests {
         assert_eq!(w.len(), 6);
         assert!(w.iter().skip(4).all(|x| x.vus == 40));
         assert!(approx(w[5].offset_s, 50.0));
+    }
+
+    #[test]
+    fn windows_fall_back_to_one_per_stage_on_a_bad_interval() {
+        let mut p = plan(&config(None, Some(3), Some(30.0)));
+        for bad in [0.0, -5.0, f64::NAN] {
+            p.sample_interval_s = Some(bad);
+            let w = windows(&p);
+            assert_eq!(w.len(), 1, "interval {bad}");
+            assert!(approx(w[0].duration_s, 30.0));
+        }
     }
 
     #[test]

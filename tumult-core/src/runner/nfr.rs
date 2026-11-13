@@ -129,12 +129,15 @@ pub(crate) fn verdict_for(o: &NfrObjective, observed: Option<f64>) -> NfrVerdict
 pub(crate) fn resolve(metric: &str, m: &Measurements<'_>) -> Option<f64> {
     if let Some(rest) = metric.strip_prefix("load.") {
         let l = m.load?;
+        // A run that sent no request measured no latency and no error
+        // rate; its zeroes are absence of evidence, not a fast service.
+        let measured = |value: f64| (l.total_requests > 0).then_some(value);
         return match rest {
             "throughput_rps" => Some(l.throughput_rps),
-            "latency_p50_ms" => Some(l.latency_p50_ms),
-            "latency_p95_ms" => Some(l.latency_p95_ms),
-            "latency_p99_ms" => Some(l.latency_p99_ms),
-            "error_rate" => Some(l.error_rate),
+            "latency_p50_ms" => measured(l.latency_p50_ms),
+            "latency_p95_ms" => measured(l.latency_p95_ms),
+            "latency_p99_ms" => measured(l.latency_p99_ms),
+            "error_rate" => measured(l.error_rate),
             // u64 → f64: request counts are far below 2^53.
             #[allow(clippy::cast_precision_loss)]
             "total_requests" => Some(l.total_requests as f64),
@@ -315,6 +318,30 @@ mod tests {
         };
         assert_eq!(resolve("load.latency_p95_ms", &m), Some(180.0));
         assert_eq!(resolve("load.total_requests", &m), Some(1200.0));
+        // A load run that sent nothing has no latency or error evidence:
+        // its zeroes must not satisfy an upper bound.
+        let idle = LoadResult {
+            total_requests: 0,
+            throughput_rps: 0.0,
+            latency_p50_ms: 0.0,
+            latency_p95_ms: 0.0,
+            latency_p99_ms: 0.0,
+            error_rate: 0.0,
+            thresholds_met: false,
+            ..load()
+        };
+        let no_requests = Measurements {
+            during: None,
+            post: Some(&post),
+            load: Some(&idle),
+            samples: &samples,
+        };
+        assert_eq!(resolve("load.latency_p50_ms", &no_requests), None);
+        assert_eq!(resolve("load.latency_p95_ms", &no_requests), None);
+        assert_eq!(resolve("load.latency_p99_ms", &no_requests), None);
+        assert_eq!(resolve("load.error_rate", &no_requests), None);
+        assert_eq!(resolve("load.throughput_rps", &no_requests), Some(0.0));
+        assert_eq!(resolve("load.total_requests", &no_requests), Some(0.0));
         assert_eq!(resolve("recovery.mttr_s", &m), Some(3.5));
         assert_eq!(resolve("recovery.time_s", &m), Some(4.0));
         assert_eq!(resolve("during.error_rate", &m), Some(0.25));

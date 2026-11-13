@@ -30,6 +30,9 @@ pub struct PerfArgs {
     pub min_samples: Option<u32>,
     pub margin_pct: Option<f64>,
     pub env: Option<String>,
+    /// Ask the daemon to append the verdict to `perf_verdicts` (operator
+    /// role); without it the command only reads.
+    pub store: bool,
     pub daemon_url: Option<String>,
     pub fail_on: PerfFailOn,
     pub json: bool,
@@ -185,6 +188,33 @@ pub fn render(resp: &PerfResponse) -> String {
     out
 }
 
+/// The query string for the daemon: only what the caller set, so the
+/// daemon's defaults apply to the rest. `store` is sent only when asked
+/// for — the request is a pure read otherwise. Pure.
+#[must_use]
+pub fn query_params(args: &PerfArgs) -> Vec<(&'static str, String)> {
+    let mut query = Vec::new();
+    if let Some(p) = &args.probe {
+        query.push(("probe", p.clone()));
+    }
+    if let Some(q) = &args.quantile {
+        query.push(("quantile", q.clone()));
+    }
+    if let Some(m) = args.min_samples {
+        query.push(("min_samples", m.to_string()));
+    }
+    if let Some(m) = args.margin_pct {
+        query.push(("margin_pct", m.to_string()));
+    }
+    if let Some(env) = &args.env {
+        query.push(("env", env.clone()));
+    }
+    if args.store {
+        query.push(("store", "true".to_string()));
+    }
+    query
+}
+
 /// Query the daemon and print the verdict. Returns `Ok(true)` when the
 /// verdict passes under `fail_on`; the caller turns `false` into a
 /// non-zero exit.
@@ -205,22 +235,7 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
         base.trim_end_matches('/'),
         super::gate::encode_segment(&args.target)
     );
-    let mut query: Vec<(&str, String)> = Vec::new();
-    if let Some(p) = &args.probe {
-        query.push(("probe", p.clone()));
-    }
-    if let Some(q) = &args.quantile {
-        query.push(("quantile", q.clone()));
-    }
-    if let Some(m) = args.min_samples {
-        query.push(("min_samples", m.to_string()));
-    }
-    if let Some(m) = args.margin_pct {
-        query.push(("margin_pct", m.to_string()));
-    }
-    if let Some(env) = &args.env {
-        query.push(("env", env.clone()));
-    }
+    let query = query_params(args);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -324,19 +339,47 @@ mod tests {
         assert!(PerfResponse::from_value(&v).is_err());
     }
 
-    #[tokio::test]
-    async fn cmd_perf_requires_a_daemon_url() {
-        std::env::remove_var("TUMULT_DAEMON_URL");
-        let args = PerfArgs {
+    fn args() -> PerfArgs {
+        PerfArgs {
             target: "checkout".into(),
             probe: None,
             quantile: None,
             min_samples: None,
             margin_pct: None,
             env: None,
+            store: false,
             daemon_url: None,
             fail_on: PerfFailOn::Regressed,
             json: false,
+        }
+    }
+
+    #[test]
+    fn query_is_a_pure_read_unless_store_is_asked_for() {
+        assert!(query_params(&args()).is_empty());
+        let stored = PerfArgs {
+            store: true,
+            env: Some("demo".into()),
+            quantile: Some("p99".into()),
+            ..args()
+        };
+        assert_eq!(
+            query_params(&stored),
+            vec![
+                ("quantile", "p99".to_string()),
+                ("env", "demo".to_string()),
+                ("store", "true".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn cmd_perf_requires_a_daemon_url() {
+        // An explicit empty URL is rejected before the environment is
+        // consulted, so the test does not touch process-wide state.
+        let args = PerfArgs {
+            daemon_url: Some(String::new()),
+            ..args()
         };
         let err = cmd_perf(&args).await.unwrap_err();
         assert!(err.to_string().contains("no daemon URL"), "{err}");

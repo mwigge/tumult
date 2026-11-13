@@ -400,6 +400,10 @@ pub(crate) enum Commands {
         /// Restrict the compared runs to one environment
         #[arg(long)]
         env: Option<String>,
+        /// Append the verdict to the daemon's `perf_verdicts` history
+        /// (needs the operator role); the default only reads
+        #[arg(long)]
+        store: bool,
         /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
         #[arg(long)]
         daemon_url: Option<String>,

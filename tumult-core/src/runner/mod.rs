@@ -146,7 +146,7 @@ pub trait LoadExecutor: Send + Sync {
 pub fn load_executor_for(tool: &LoadTool) -> Result<std::sync::Arc<dyn LoadExecutor>, String> {
     match tool {
         LoadTool::K6 => Ok(std::sync::Arc::new(k6::K6LoadExecutor)),
-        LoadTool::Oha => Ok(std::sync::Arc::new(oha::OhaLoadExecutor)),
+        LoadTool::Oha => Ok(std::sync::Arc::new(oha::OhaLoadExecutor::default())),
         LoadTool::Jmeter => Err("no load adapter for jmeter; supported tools: k6, oha".into()),
     }
 }
