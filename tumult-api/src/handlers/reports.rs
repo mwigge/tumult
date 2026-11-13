@@ -13,7 +13,8 @@ use serde_json::{json, Value};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    internal, now_ns, parse_range, scope_scorecard, scoped_experiment_names, windows, with_reader,
+    internal, invalid_range, now_ns, parse_range, scope_scorecard, scoped_experiment_names,
+    windows, with_reader,
 };
 use crate::ApiState;
 
@@ -208,7 +209,7 @@ pub(crate) struct ScoresQuery {
     range: Option<String>,
 }
 
-/// `GET /api/scores?range=24h|7d|14d` — resilience scorecard as of now,
+/// `GET /api/scores?range=24h|7d|14d|30d` — resilience scorecard as of now,
 /// with the portfolio delta against the previous equal window. Scoped
 /// principals get the card of their own environments only (rollups
 /// recomputed over the visible experiments).
@@ -221,7 +222,7 @@ pub(crate) async fn scores(
     let Some(((from, to), _)) = windows(range) else {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "range must be one of 24h|7d|14d"})),
+            Json(json!({"error": invalid_range(range)})),
         )
             .into_response()
             .into());
@@ -253,7 +254,7 @@ pub(crate) struct TreeParams {
     range: Option<String>,
 }
 
-/// `GET /api/scores/tree?node=<path>&range=24h|7d|14d` — org rollup for one
+/// `GET /api/scores/tree?node=<path>&range=24h|7d|14d|30d` — org rollup for one
 /// node: criticality-weighted score recomputed from all leaves in its
 /// subtree, coverage, a period sparkline, and one level of child rollups.
 pub(crate) async fn scores_tree(
@@ -271,10 +272,11 @@ pub(crate) async fn scores_tree(
             .into_response()
             .into());
     }
-    let Some(secs) = parse_range(params.range.as_deref().unwrap_or("7d")) else {
+    let range = params.range.as_deref().unwrap_or("7d");
+    let Some(secs) = parse_range(range) else {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "range must be one of 24h|7d|14d"})),
+            Json(json!({"error": invalid_range(range)})),
         )
             .into_response()
             .into());
@@ -382,7 +384,7 @@ pub(crate) async fn generate_report_v2(
         None => 7 * 86_400 * 1_000_000_000i64,
         Some(p) => match parse_range(p) {
             Some(secs) => secs * 1_000_000_000,
-            None => return Err(bad("period must be one of 24h|7d|14d".into())),
+            None => return Err(bad("period must be one of 24h|7d|14d|30d".into())),
         },
     };
     if kind == tumult_compliance::TemplateKind::GameDay

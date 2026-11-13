@@ -3,12 +3,24 @@
 # links manifest findings to the evidence. Deliberately uneven: api-worker
 # and config-service carry the classic gaps; batch-worker and
 # message-queue are the well-configured counterparts.
+#
+# The `resilience.target.*` and `ict.entity.id` labels follow the naming
+# contract, so the Star Map can place each workload under its system and
+# ICT entity without telemetry. session-cache is well configured but has no
+# experiment and no team in org.yaml: the map shows it as an unassigned
+# gap. cdn-edge belongs to the system the seeded manual record covers.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-worker
   namespace: demo
-  labels: {app: api-worker, tier: compute}
+  labels:
+    app: api-worker
+    tier: compute
+    resilience.target.system: api-worker
+    resilience.target.component: api
+    resilience.target.environment: demo
+    ict.entity.id: cif-0001
 spec:
   replicas: 1
   template:
@@ -24,7 +36,13 @@ kind: Deployment
 metadata:
   name: config-service
   namespace: demo
-  labels: {app: config-service, tier: data}
+  labels:
+    app: config-service
+    tier: data
+    resilience.target.system: config-service
+    resilience.target.component: config
+    resilience.target.environment: demo
+    ict.entity.id: cif-0002
 spec:
   replicas: 2
   template:
@@ -41,7 +59,13 @@ kind: Deployment
 metadata:
   name: batch-worker
   namespace: demo
-  labels: {app: batch-worker, tier: compute}
+  labels:
+    app: batch-worker
+    tier: compute
+    resilience.target.system: batch-worker
+    resilience.target.component: worker
+    resilience.target.environment: demo
+    ict.entity.id: cif-0003
 spec:
   replicas: 3
   template:
@@ -68,7 +92,13 @@ kind: StatefulSet
 metadata:
   name: message-queue
   namespace: demo
-  labels: {app: message-queue, tier: data}
+  labels:
+    app: message-queue
+    tier: data
+    resilience.target.system: message-queue
+    resilience.target.component: broker
+    resilience.target.environment: demo
+    ict.entity.id: cif-0004
 spec:
   replicas: 3
   template:
@@ -89,3 +119,69 @@ metadata:
 spec:
   minAvailable: 2
   selector: {matchLabels: {app: message-queue}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-cache
+  namespace: demo
+  labels:
+    app: session-cache
+    tier: data
+    resilience.target.system: session-cache
+    resilience.target.component: cache
+    resilience.target.environment: demo
+    ict.entity.id: cif-0005
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels: {app: session-cache, tier: data}
+    spec:
+      containers:
+        - name: cache
+          image: demo/session-cache:latest
+          resources: {limits: {cpu: "500m", memory: 512Mi}}
+          readinessProbe: {tcpSocket: {port: 6379}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: session-cache
+  namespace: demo
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: session-cache}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdn-edge
+  namespace: edge
+  labels:
+    app: cdn-edge
+    tier: edge
+    resilience.target.system: cdn
+    resilience.target.component: edge
+    resilience.target.environment: production
+    ict.entity.id: cif-0006
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels: {app: cdn-edge, tier: edge}
+    spec:
+      containers:
+        - name: edge
+          image: demo/cdn-edge:latest
+          resources: {limits: {cpu: "1", memory: 512Mi}}
+          readinessProbe: {httpGet: {path: /ready, port: 8080}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cdn-edge
+  namespace: edge
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: cdn-edge}}

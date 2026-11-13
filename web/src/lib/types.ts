@@ -193,24 +193,142 @@ export interface MetricQueryResult {
     series: MetricSeries[];
 }
 
-export interface TopologyNode {
-    id: string;
-    name: string;
-    type: 'service' | 'target';
+export type StarKind =
+    | 'org'
+    | 'entity'
+    | 'system'
+    | 'component'
+    | 'service'
+    | 'workload'
+    | 'ext'
+    | 'def'
+    | 'run'
+    | 'slo'
+    | 'article'
+    | 'gap'
+    | 'cluster';
+
+export type StarRel =
+    | 'owns'
+    | 'implements'
+    | 'calls'
+    | 'runs_on'
+    | 'depends_on'
+    | 'tested_by'
+    | 'broke'
+    | 'covers'
+    | 'measures';
+
+export type StarGap = 'stale' | 'missing';
+
+export interface StarEvidence {
     runs: number;
-    errors: number;
-    avg_duration_ns: number | null;
+    failed: number;
+    manual: number;
+    last_run_ns: number | null;
+    /** Discipline to `covered`, `stale` or `missing`. */
+    by_discipline: Record<string, string>;
 }
 
-export interface TopologyEdge {
-    from_id: string;
-    to_id: string;
-    weight: number;
+export interface StarRisks {
+    open: number;
+    suppressed: number;
+    worst: string | null;
+    suppression_expires_ns: number | null;
+    suppressed_by: string | null;
+    suppression_reason: string | null;
+    recommended: string[];
 }
 
-export interface Topology {
-    nodes: TopologyNode[];
-    edges: TopologyEdge[];
+export interface StarNode {
+    id: string;
+    kind: StarKind;
+    label: string;
+    /** Spine parent used by the layout. */
+    parent: string | null;
+    env: string | null;
+    tier: string | null;
+    org_kind: string | null;
+    criticality_weight: number;
+    conformance: string | null;
+    last_seen_ns: number | null;
+    posture: { score: number; band: string } | null;
+    evidence: StarEvidence;
+    gap: StarGap | null;
+    risks: StarRisks;
+    /** Reserved for the SLO, DORA and maturity sources; null until they exist. */
+    slo: unknown;
+    slo_count: number;
+    dora: unknown;
+    maturity: unknown;
+    conflict: boolean;
+    /** `malformed_id`, `multiple_owners`, `owner_conflict`; sorted. */
+    flags: string[];
+    /** Counted below an entity or an org unit; null on every other kind. */
+    rollup: StarRollup | null;
+    declared: boolean;
+    children: number;
+    members: number | null;
+}
+
+export interface StarRollup {
+    systems: number;
+    untested_systems: number;
+    stale_systems: number;
+    failed: number;
+    risks_open: number;
+    risks_suppressed: number;
+    gaps: number;
+}
+
+export interface StarEdge {
+    id: string;
+    from: string;
+    to: string;
+    rel: StarRel;
+    source: 'telemetry' | 'observed' | 'evidence' | 'declared';
+    weight?: number;
+    errors?: number;
+    avg_duration_ns?: number;
+}
+
+export interface StarCluster {
+    id: string;
+    label: string;
+    members: number;
+    worst: { gap: StarGap | null; risk: string | null };
+}
+
+export type StarSource = 'ok' | 'unavailable';
+
+/** `GET /api/starmap` */
+export interface StarMap {
+    as_of_ns: number;
+    range: string;
+    env: string | null;
+    focus: string | null;
+    /** Whether `focus` named a node the caller may see; null without a focus. */
+    focus_found: boolean | null;
+    depth: number | null;
+    disclaimer: string;
+    /** A source table was longer than its row limit; the map is incomplete. */
+    truncated: boolean;
+    sources: Record<'slo' | 'dora' | 'maturity' | 'conformance' | 'graph', StarSource>;
+    maturity: unknown;
+    counts: {
+        nodes: number;
+        edges: number;
+        pruned: number;
+        clustered: number;
+        risks_open: number;
+        risks_suppressed: number;
+        /** Risks that belong to no node on the map. */
+        risks_unplaced: number;
+        gaps: number;
+    };
+    nodes: StarNode[];
+    edges: StarEdge[];
+    clusters: StarCluster[];
 }
 
 // ---------------------------------------------------------------------------

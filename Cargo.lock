@@ -7930,6 +7930,7 @@ dependencies = [
  "tumult-autopilot",
  "tumult-compliance",
  "tumult-core",
+ "tumult-graph",
  "tumult-ingest",
  "tumult-intelligence",
  "tumult-lake",

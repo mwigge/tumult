@@ -28,6 +28,7 @@
         unit = '',
         height = 260,
         id,
+        label,
     }: {
         series: FanSeries;
         windows?: { from: number; to: number; label?: string; color?: string }[];
@@ -35,6 +36,8 @@
         unit?: string;
         height?: number;
         id?: string;
+        /** Accessible name of the chart. */
+        label?: string;
     } = $props();
 
     const t = chartTokens();
@@ -129,4 +132,4 @@
     });
 </script>
 
-<EChart {option} {height} {id} />
+<EChart {option} {height} {id} {label} />

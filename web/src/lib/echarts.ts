@@ -77,7 +77,15 @@ const LIGHT = {
 } as const;
 
 // Series palette (Okabe-Ito, colour-blind safe); status hues stay reserved.
-const PALETTE = ['#5eb1ef', '#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00', '#F0E442'];
+export const PALETTE = [
+    '#5eb1ef',
+    '#E69F00',
+    '#009E73',
+    '#CC79A7',
+    '#56B4E9',
+    '#D55E00',
+    '#F0E442',
+];
 
 function themeSpec(t: typeof DARK | typeof LIGHT) {
     const axis = {

@@ -9,7 +9,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::auth::Principal;
-use crate::sql_util::{and_pred, attr_kv, env_trace_exists, sql_string, w, windows, with_reader};
+use crate::sql_util::{
+    and_pred, attr_kv, env_trace_exists, invalid_range, sql_string, w, windows, with_reader,
+};
 use crate::ApiState;
 
 // ---------------------------------------------------------------------------
@@ -66,7 +68,7 @@ pub(crate) async fn traces(
     let mut span_wheres = Vec::new();
     if let Some(range) = &params.range {
         let Some((cur, _)) = windows(range) else {
-            return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+            return Err(bad(invalid_range(range)));
         };
         span_wheres.push(w(cur.0, cur.1));
     }
@@ -180,7 +182,7 @@ pub(crate) async fn trace_durations(
     }
     if let Some(range) = &params.range {
         let Some((cur, _)) = windows(range) else {
-            return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+            return Err(bad(invalid_range(range)));
         };
         span_where.push_str(&format!(" AND {}", w(cur.0, cur.1)));
     }

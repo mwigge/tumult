@@ -22,14 +22,48 @@ pub(crate) fn now_ns() -> i64 {
         .map_or(0, |d| d.as_nanos() as i64)
 }
 
-/// `24h` / `7d` / `14d` → seconds.
+/// Every `range` the API accepts with its length in seconds. One table
+/// for every endpoint, so a page never offers a window its neighbour
+/// refuses.
+pub(crate) const RANGES: [(&str, i64); 4] = [
+    ("24h", 86_400),
+    ("7d", 7 * 86_400),
+    ("14d", 14 * 86_400),
+    ("30d", 30 * 86_400),
+];
+
+/// A [`RANGES`] token → seconds.
 pub(crate) fn parse_range(range: &str) -> Option<i64> {
-    match range {
-        "24h" => Some(86_400),
-        "7d" => Some(7 * 86_400),
-        "14d" => Some(14 * 86_400),
-        _ => None,
-    }
+    RANGES
+        .iter()
+        .find(|(token, _)| *token == range)
+        .map(|(_, seconds)| *seconds)
+}
+
+/// The one message for a `range` outside [`RANGES`].
+pub(crate) fn invalid_range(range: &str) -> String {
+    let accepted: Vec<&str> = RANGES.iter().map(|(token, _)| *token).collect();
+    format!("invalid range {range:?}; expected {}", accepted.join("|"))
+}
+
+/// How far before a window a parent span may start and still be joined to
+/// a child inside it. Bounds the parent side of the span self-joins.
+pub(crate) const PARENT_LOOKBACK_NS: i64 = 3_600 * 1_000_000_000;
+
+/// SQL for one Star Map id segment of `expr`: `%`, `/` and `|` are
+/// percent-encoded, as `tumult_graph::starmap` encodes them.
+pub(crate) fn id_segment_sql(expr: &str) -> String {
+    format!("replace(replace(replace({expr}, '%', '%25'), '/', '%2F'), '|', '%7C')")
+}
+
+/// SQL for the environment segment of a Star Map id: `-` when `expr` is
+/// missing, so an environment literally named `-` is encoded.
+pub(crate) fn env_segment_sql(expr: &str) -> String {
+    format!(
+        "CASE WHEN {expr} IS NULL OR {expr} = '' THEN '-' WHEN {expr} = '-' THEN '%2D' \
+         ELSE {} END",
+        id_segment_sql(expr)
+    )
 }
 
 /// `5m` / `1h` / `1d` → seconds.
