@@ -436,7 +436,29 @@ pub async fn spawn_server() -> TestServer {
     spawn_server_with_factory(Arc::new(|_env| Arc::new(SlowNoopExecutor))).await
 }
 
+/// A server whose forecasting endpoints use the sidecar at `url`, skipping
+/// it for `cooldown` after a failure.
+pub async fn spawn_server_with_forecast_sidecar(
+    url: &str,
+    cooldown: std::time::Duration,
+) -> TestServer {
+    let url = url.to_string();
+    spawn_server_tuned(Arc::new(|_env| Arc::new(SlowNoopExecutor)), move |state| {
+        state
+            .with_forecast_url(Some(url))
+            .with_forecast_cooldown(cooldown)
+    })
+    .await
+}
+
 async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory) -> TestServer {
+    spawn_server_tuned(factory, |state| state).await
+}
+
+async fn spawn_server_tuned(
+    factory: tumult_ingest::runs::ExecutorFactory,
+    tune: impl FnOnce(tumult_api::ApiState) -> tumult_api::ApiState,
+) -> TestServer {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("k.duckdb");
     let reports_dir = tmp.path().join("reports");
@@ -507,6 +529,7 @@ async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory
         None,
         false,
     );
+    let state = tune(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

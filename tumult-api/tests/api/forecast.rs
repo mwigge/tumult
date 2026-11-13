@@ -1,7 +1,13 @@
 //! `GET /api/forecast` and `GET /api/runs/{id}/impact` over the seeded
 //! store: the built-in provider answers (no sidecar is configured), every
 //! response names its model, metric forecasts are cached, and the impact
-//! endpoint 404s for runs without probe samples.
+//! endpoint 404s for runs without probe samples. With a sidecar
+//! configured, its answer carries its own provenance, and a failing one
+//! opens the circuit so later requests fall back without calling it.
+
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -252,4 +258,167 @@ async fn impact_respects_run_scopes() {
     let (status, body): (u16, Value) =
         get_auth(&srv.base, "/api/runs/run-scoped-impact/impact", &token).await;
     assert_eq!(status, 404, "a run outside the scopes is invisible: {body}");
+}
+
+/// A stand-in sidecar: counts `POST /forecast` calls and answers 500 until
+/// it is marked healthy, then a flat three-level forecast.
+#[derive(Clone, Default)]
+struct FakeSidecar {
+    hits: Arc<AtomicUsize>,
+    healthy: Arc<AtomicBool>,
+    reject: Arc<AtomicBool>,
+}
+
+async fn fake_forecast(
+    axum::extract::State(sidecar): axum::extract::State<FakeSidecar>,
+    axum::Json(request): axum::Json<Value>,
+) -> (axum::http::StatusCode, axum::Json<Value>) {
+    sidecar.hits.fetch_add(1, Ordering::SeqCst);
+    if sidecar.reject.load(Ordering::SeqCst) {
+        return (
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            axum::Json(serde_json::json!({"error": "context too short"})),
+        );
+    }
+    if !sidecar.healthy.load(Ordering::SeqCst) {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": "model not loaded"})),
+        );
+    }
+    let horizon = request["horizon"].as_u64().unwrap_or(1);
+    let steps: Vec<Value> = (0..horizon)
+        .map(|_| serde_json::json!([90.0, 100.0, 110.0]))
+        .collect();
+    let body = serde_json::json!({
+        "levels": [0.1, 0.5, 0.9],
+        "context_points": request["context"].as_array().map_or(0, Vec::len),
+        "quantiles": [steps],
+        "model": {"model": "timestral", "model_id": "mistralai/Timestral-5M",
+                  "version": "1.0.0", "revision": "rev1", "weights_hash": "feed"},
+    });
+    (axum::http::StatusCode::OK, axum::Json(body))
+}
+
+async fn spawn_fake_sidecar() -> (String, FakeSidecar) {
+    let sidecar = FakeSidecar::default();
+    let app = axum::Router::new()
+        .route("/forecast", axum::routing::post(fake_forecast))
+        .with_state(sidecar.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}"), sidecar)
+}
+
+#[tokio::test]
+async fn a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown() {
+    let (url, sidecar) = spawn_fake_sidecar().await;
+    let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_millis(400)).await;
+    seed_run_with_samples(&srv, "run-breaker", "exp-breaker").await;
+
+    let (status, first) = get(&srv.base, "/api/runs/run-breaker/impact").await;
+    assert_eq!(status, 200, "{first}");
+    assert_eq!(first["provenance"]["model"], "holt-winters");
+    let reason = first["provenance"]["fallback_reason"].as_str().unwrap();
+    assert!(reason.contains("500"), "{reason}");
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
+
+    // The circuit is open: the fallback answers without calling the sidecar.
+    let (status, second) = get(&srv.base, "/api/runs/run-breaker/impact").await;
+    assert_eq!(status, 200, "{second}");
+    assert_eq!(second["provenance"]["model"], "holt-winters");
+    let reason = second["provenance"]["fallback_reason"].as_str().unwrap();
+    assert!(reason.contains("circuit open"), "{reason}");
+    assert!(reason.contains("500"), "the first error is kept: {reason}");
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
+
+    // Once the cool-down has passed the sidecar is tried again.
+    sidecar.healthy.store(true, Ordering::SeqCst);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let recovered = loop {
+        let (_, body) = get(&srv.base, "/api/runs/run-breaker/impact").await;
+        if body["provenance"]["model"] == "timestral" {
+            break body;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never retried: {body}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert!(recovered["provenance"]["fallback_reason"].is_null());
+    assert_eq!(
+        recovered["provenance"]["version"],
+        "mistralai/Timestral-5M@rev1 (timestral 1.0.0)"
+    );
+    assert_eq!(recovered["provenance"]["weights_hash"], "feed");
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn forecast_caches_per_provider_and_serves_the_fallback_while_the_circuit_is_open() {
+    let (url, sidecar) = spawn_fake_sidecar().await;
+    sidecar.healthy.store(true, Ordering::SeqCst);
+    let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(600)).await;
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=4";
+
+    let (status, live) = get(&srv.base, path).await;
+    assert_eq!(status, 200, "{live}");
+    assert_eq!(live["provenance"]["model"], "timestral");
+    assert_eq!(live["cached"], false);
+    let (_, again) = get(&srv.base, path).await;
+    assert_eq!(again["cached"], true, "the sidecar's row is a hit: {again}");
+    assert_eq!(again["provenance"]["model"], "timestral");
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 1);
+
+    // A new horizon misses the cache; the sidecar now fails.
+    sidecar.healthy.store(false, Ordering::SeqCst);
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=5";
+    let (status, down) = get(&srv.base, path).await;
+    assert_eq!(status, 200, "{down}");
+    assert_eq!(down["provenance"]["model"], "holt-winters");
+    assert_eq!(down["cached"], false);
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
+
+    let (_, open) = get(&srv.base, path).await;
+    assert_eq!(open["provenance"]["model"], "holt-winters");
+    assert_eq!(open["cached"], true, "the fallback row is served: {open}");
+    let reason = open["provenance"]["fallback_reason"].as_str().unwrap();
+    assert!(reason.contains("circuit open"), "{reason}");
+    assert_eq!(sidecar.hits.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_rejected_request_falls_back_without_opening_the_circuit() {
+    let (url, sidecar) = spawn_fake_sidecar().await;
+    sidecar.reject.store(true, Ordering::SeqCst);
+    let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(600)).await;
+    seed_run_with_samples(&srv, "run-rejected", "exp-rejected").await;
+
+    for expected_hits in 1..=2 {
+        let (status, body) = get(&srv.base, "/api/runs/run-rejected/impact").await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["provenance"]["model"], "holt-winters");
+        let reason = body["provenance"]["fallback_reason"].as_str().unwrap();
+        assert!(reason.contains("422"), "{reason}");
+        assert_eq!(sidecar.hits.load(Ordering::SeqCst), expected_hits);
+    }
+}
+
+#[tokio::test]
+async fn an_unreachable_sidecar_costs_one_attempt_per_cooldown() {
+    // Nothing listens on port 1: the connection is refused.
+    let srv =
+        spawn_server_with_forecast_sidecar("http://127.0.0.1:1", Duration::from_secs(600)).await;
+    seed_run_with_samples(&srv, "run-refused", "exp-refused").await;
+    let (_, first) = get(&srv.base, "/api/runs/run-refused/impact").await;
+    let reason = first["provenance"]["fallback_reason"].as_str().unwrap();
+    assert!(reason.contains("sidecar unreachable"), "{reason}");
+    let started = std::time::Instant::now();
+    let (status, second) = get(&srv.base, "/api/runs/run-refused/impact").await;
+    assert_eq!(status, 200, "{second}");
+    let reason = second["provenance"]["fallback_reason"].as_str().unwrap();
+    assert!(reason.contains("circuit open"), "{reason}");
+    assert!(started.elapsed() < Duration::from_secs(2));
 }

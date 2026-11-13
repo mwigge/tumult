@@ -202,6 +202,8 @@ pub struct ApiState {
     /// The Timestral forecasting sidecar (`TUMULTD_FORECAST_URL`); `None`
     /// means the built-in Holt-Winters provider.
     forecast_url: Option<Arc<String>>,
+    /// Skips a failing sidecar for a cool-down (`TUMULTD_FORECAST_COOLDOWN_S`).
+    forecast_breaker: Arc<forecast::breaker::Breaker>,
 }
 
 impl ApiState {
@@ -231,7 +233,22 @@ impl ApiState {
             secure_cookies,
             manifests_dir: None,
             forecast_url: None,
+            forecast_breaker: Arc::default(),
         }
+    }
+
+    /// How long a failing forecasting sidecar is skipped before it is
+    /// tried again; zero disables the circuit breaker.
+    #[must_use]
+    pub fn with_forecast_cooldown(mut self, cooldown: std::time::Duration) -> Self {
+        self.forecast_breaker = Arc::new(forecast::breaker::Breaker::new(cooldown));
+        self
+    }
+
+    /// The forecasting sidecar's circuit breaker.
+    #[must_use]
+    pub fn forecast_breaker(&self) -> &forecast::breaker::Breaker {
+        &self.forecast_breaker
     }
 
     /// Point the forecasting endpoints at a `tumult-forecastd` sidecar.
@@ -310,6 +327,12 @@ impl ApiState {
         });
         let manifests_dir = std::env::var_os("KRONIKA_MANIFESTS_DIR").map(PathBuf::from);
         let forecast_url = std::env::var("TUMULTD_FORECAST_URL").ok();
+        let cooldown_raw = std::env::var("TUMULTD_FORECAST_COOLDOWN_S").ok();
+        let forecast_cooldown = forecast::breaker::parse_cooldown(cooldown_raw.as_deref())
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "invalid TUMULTD_FORECAST_COOLDOWN_S; using the default");
+                forecast::breaker::DEFAULT_COOLDOWN
+            });
         Self::new(
             db_path,
             metrics_dir,
@@ -323,6 +346,7 @@ impl ApiState {
         )
         .with_manifests_dir(manifests_dir)
         .with_forecast_url(forecast_url)
+        .with_forecast_cooldown(forecast_cooldown)
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.

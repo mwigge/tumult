@@ -9,6 +9,33 @@ use serde::{Deserialize, Serialize};
 use tumult_forecast::{Covariates, Forecast, ForecastError, Provenance, MIN_HISTORY};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Why the sidecar did not produce a forecast.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SidecarError {
+    /// What went wrong, for the response's `fallback_reason`.
+    pub message: String,
+    /// `true` when the sidecar itself is at fault (unreachable, timed out,
+    /// 5xx, unreadable answer) and should be skipped for a while; `false`
+    /// when it turned this one request down (4xx).
+    pub unavailable: bool,
+}
+
+impl SidecarError {
+    fn unavailable(message: String) -> Self {
+        Self {
+            message,
+            unavailable: true,
+        }
+    }
+}
+
+impl std::fmt::Display for SidecarError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
 
 #[derive(Serialize)]
 struct Request<'a> {
@@ -28,7 +55,21 @@ struct ModelInfo {
     #[serde(default)]
     version: String,
     #[serde(default)]
+    revision: String,
+    #[serde(default)]
     weights_hash: String,
+}
+
+/// `model_id@revision (model version)` when the sidecar names a weights
+/// revision, `model_id@version` otherwise.
+fn version_label(info: &ModelInfo) -> String {
+    if info.revision.is_empty() {
+        return format!("{}@{}", info.model_id, info.version);
+    }
+    format!(
+        "{}@{} ({} {})",
+        info.model_id, info.revision, info.model, info.version
+    )
 }
 
 #[derive(Deserialize)]
@@ -84,8 +125,8 @@ pub(crate) fn parse_response(body: &str, horizon: usize) -> Result<Forecast, For
         context_points: resp.context_points,
         insufficient_history: resp.context_points < MIN_HISTORY,
         provenance: Provenance {
+            version: version_label(&resp.model),
             model: resp.model.model,
-            version: format!("{}@{}", resp.model.model_id, resp.model.version),
             weights_hash: resp.model.weights_hash,
         },
     })
@@ -106,6 +147,7 @@ impl TimestralClient {
             base: base.trim_end_matches('/').to_string(),
             http: reqwest::Client::builder()
                 .timeout(TIMEOUT)
+                .connect_timeout(CONNECT_TIMEOUT)
                 .build()
                 .unwrap_or_default(),
         }
@@ -114,15 +156,16 @@ impl TimestralClient {
     /// `POST /forecast` for one variate.
     ///
     /// # Errors
-    /// [`ForecastError::Provider`] when the sidecar is unreachable, answers
-    /// a non-2xx status or a body the client cannot read.
+    /// [`SidecarError`] when the sidecar is unreachable, answers a non-2xx
+    /// status or a body the client cannot read; `unavailable` tells a
+    /// broken sidecar from one that rejected this request.
     pub async fn forecast(
         &self,
         context: &[f64],
         horizon: usize,
         levels: &[f64],
         covariates: Option<&Covariates>,
-    ) -> Result<Forecast, ForecastError> {
+    ) -> Result<Forecast, SidecarError> {
         let request = Request {
             context: nullable(context),
             horizon,
@@ -136,19 +179,22 @@ impl TimestralClient {
             .json(&request)
             .send()
             .await
-            .map_err(|e| ForecastError::Provider(format!("sidecar unreachable: {e}")))?;
+            .map_err(|e| SidecarError::unavailable(format!("sidecar unreachable: {e}")))?;
         let status = resp.status();
         let body = resp
             .text()
             .await
-            .map_err(|e| ForecastError::Provider(format!("sidecar body unreadable: {e}")))?;
+            .map_err(|e| SidecarError::unavailable(format!("sidecar body unreadable: {e}")))?;
         if !status.is_success() {
-            return Err(ForecastError::Provider(format!(
-                "sidecar answered {status}: {}",
-                body.chars().take(200).collect::<String>()
-            )));
+            return Err(SidecarError {
+                message: format!(
+                    "sidecar answered {status}: {}",
+                    body.chars().take(200).collect::<String>()
+                ),
+                unavailable: !status.is_client_error(),
+            });
         }
-        parse_response(&body, horizon)
+        parse_response(&body, horizon).map_err(|e| SidecarError::unavailable(e.to_string()))
     }
 }
 
@@ -171,6 +217,28 @@ mod tests {
         assert_eq!(f.provenance.model, "timestral");
         assert_eq!(f.provenance.version, "mistralai/Timestral-5M@0.1");
         assert_eq!(f.provenance.weights_hash, "abc");
+    }
+
+    #[test]
+    fn a_weights_revision_is_part_of_the_version() {
+        let body = r#"{"levels":[0.5],"context_points":12,"quantiles":[[[1.0]]],
+            "model":{"model":"timestral","model_id":"mistralai/Timestral-5M",
+            "version":"1.0.0","revision":"0123abcd","weights_hash":"abc"}}"#;
+        let f = parse_response(body, 1).unwrap();
+        assert_eq!(
+            f.provenance.version,
+            "mistralai/Timestral-5M@0123abcd (timestral 1.0.0)"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_sidecar_is_unavailable() {
+        let err = TimestralClient::new("http://127.0.0.1:1/")
+            .forecast(&[1.0, 2.0], 1, &[0.5], None)
+            .await
+            .unwrap_err();
+        assert!(err.unavailable, "{err}");
+        assert!(err.to_string().contains("sidecar unreachable"), "{err}");
     }
 
     #[test]
@@ -211,15 +279,5 @@ mod tests {
         assert!(json.contains("[1.0,null]"));
         assert!(!json.contains("past_covariates"));
         assert!(json.contains("\"known_covariates\":[[0.0,0.0,0.0]]"));
-    }
-
-    #[tokio::test]
-    async fn unreachable_sidecar_is_a_provider_error() {
-        let client = TimestralClient::new("http://127.0.0.1:1/");
-        let err = client
-            .forecast(&[1.0, 2.0], 1, &[0.5], None)
-            .await
-            .unwrap_err();
-        assert!(matches!(err, ForecastError::Provider(ref m) if m.contains("unreachable")));
     }
 }

@@ -6,13 +6,18 @@
 //! paths. The provider is the Timestral sidecar when `TUMULTD_FORECAST_URL`
 //! is set and answers; otherwise — unset, unreachable, or a bad answer —
 //! the built-in Holt-Winters provider, and the response's `provenance`
-//! says which one it was and why. Metric forecasts are cached in the
-//! lake's `forecasts` table with that provenance, keyed by series, model,
-//! step and horizon, and reused while the context window has not moved.
+//! says which one it was and why. A failing sidecar opens a circuit
+//! breaker ([`breaker`]) so the requests that follow skip it and get the
+//! fallback at once until a cool-down has passed. Metric forecasts are
+//! cached in the lake's `forecasts` table with that provenance, keyed by
+//! series, model, step and horizon, and reused while the context window
+//! has not moved.
 
+pub mod breaker;
 pub mod client;
 
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use axum::extract::{Path, Query, State};
 use axum::{Extension, Json};
@@ -24,7 +29,7 @@ use tumult_forecast::{
     Covariates, Forecast, ForecastError, ForecastProvider, ForecastRequest, HoltWinters,
     DEFAULT_LEVELS,
 };
-use tumult_lake::ForecastRow;
+use tumult_lake::{ForecastRow, ModelFilter};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, not_found, ApiError};
@@ -59,6 +64,37 @@ pub(crate) struct Produced {
     pub fallback_reason: Option<String>,
 }
 
+/// Ask the sidecar unless its circuit is open; the error is the reason
+/// the built-in provider has to step in.
+async fn ask_sidecar(
+    state: &ApiState,
+    url: &str,
+    context: &[f64],
+    horizon: usize,
+    covariates: Option<&Covariates>,
+) -> Result<Forecast, String> {
+    let breaker = state.forecast_breaker();
+    if let Some(reason) = breaker.open_reason(Instant::now()) {
+        return Err(reason);
+    }
+    let answer = client::TimestralClient::new(url)
+        .forecast(context, horizon, &DEFAULT_LEVELS, covariates)
+        .await;
+    match answer {
+        Ok(forecast) => {
+            breaker.record_success();
+            Ok(forecast)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, unavailable = e.unavailable, "forecast sidecar failed; using the built-in provider");
+            if e.unavailable {
+                breaker.record_failure(Instant::now(), &e.message);
+            }
+            Err(e.message)
+        }
+    }
+}
+
 /// Ask the configured provider, falling back to Holt-Winters.
 pub(crate) async fn produce(
     state: &ApiState,
@@ -68,20 +104,14 @@ pub(crate) async fn produce(
 ) -> Result<Produced, ForecastError> {
     let mut fallback_reason = None;
     if let Some(url) = state.forecast_url() {
-        match client::TimestralClient::new(url)
-            .forecast(context, horizon, &DEFAULT_LEVELS, covariates)
-            .await
-        {
+        match ask_sidecar(state, url, context, horizon, covariates).await {
             Ok(forecast) => {
                 return Ok(Produced {
                     forecast,
                     fallback_reason: None,
                 })
             }
-            Err(e) => {
-                tracing::warn!(error = %e, "forecast sidecar failed; using the built-in provider");
-                fallback_reason = Some(e.to_string());
-            }
+            Err(reason) => fallback_reason = Some(reason),
         }
     }
     let forecast = HoltWinters::new().forecast(&ForecastRequest {
@@ -96,12 +126,21 @@ pub(crate) async fn produce(
     })
 }
 
-/// The model a cached row must carry to count as a hit for this state.
-fn preferred_model(state: &ApiState) -> &'static str {
-    if state.forecast_url().is_some() {
-        "timestral"
+const BUILT_IN_MODEL: &str = "holt-winters";
+
+/// Why the configured sidecar is being skipped right now, if it is.
+fn sidecar_skip_reason(state: &ApiState) -> Option<String> {
+    state.forecast_url()?;
+    state.forecast_breaker().open_reason(Instant::now())
+}
+
+/// The rows a cache lookup accepts: the sidecar's (it names its own
+/// model) while it is in use, the built-in provider's otherwise.
+fn cache_filter(sidecar_in_use: bool) -> ModelFilter<'static> {
+    if sidecar_in_use {
+        ModelFilter::IsNot(BUILT_IN_MODEL)
     } else {
-        "holt-winters"
+        ModelFilter::Is(BUILT_IN_MODEL)
     }
 }
 
@@ -290,7 +329,8 @@ pub(crate) async fn forecast(
         envs.join(",")
     );
     let description = def.description.clone();
-    let model = preferred_model(&state);
+    let skip_reason = sidecar_skip_reason(&state);
+    let model = cache_filter(state.forecast_url().is_some() && skip_reason.is_none());
     let key2 = key.clone();
     let horizon_i64 = i64::try_from(horizon).unwrap_or_default();
     let (series, cached) = with_reader(&state.db_path, move |reader| {
@@ -313,7 +353,7 @@ pub(crate) async fn forecast(
     .await?;
 
     let (forecast, fallback_reason, from_cache) = match cached {
-        Some(row) => (forecast_from_row(&row), None, true),
+        Some(row) => (forecast_from_row(&row), skip_reason, true),
         None => {
             if series.values.iter().all(|v| v.is_nan()) {
                 return Err(not_found(format!(
