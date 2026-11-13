@@ -10,6 +10,7 @@ mod citations;
 mod dates;
 mod evidence;
 mod framework;
+mod ids;
 mod requirements;
 mod signals;
 
@@ -19,6 +20,10 @@ pub use citations::{
 pub use dates::{current_year_month, months_since_verified, parse_year_month, stale_citations};
 pub use evidence::{EvidenceStrength, EvidenceType};
 pub use framework::ComplianceFramework;
+pub use ids::{
+    check_entity_id, entity_id_is_valid, lei_is_valid, EntityIdError, ENTITY_ID_ATTR,
+    ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN,
+};
 pub use requirements::{
     applicable, article_title, requirement, EntityFlags, EntityProfile, EvidenceClass, Feed,
     FlagRule, FunctionScope, MicroRule, Profile, ProfileSet, Requirement, Selector, ARTICLES,
