@@ -87,6 +87,10 @@
 //!   dependencies, workload manifests) with the coverage matrix;
 //!   `POST /api/risks/{id}/suppress {reason, expires_in_days?}` accepts a
 //!   finding for a while (hash-chained, Operator);
+//!   `POST /api/risks/{id}/recommend` turns a finding into a registered
+//!   experiment (scaffolded from the fault catalog, or the experiment the
+//!   finding is about) and an autopilot candidate with a `risk` trigger,
+//!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
@@ -333,6 +337,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/gate/{target}", get(handlers::gate::gate))
         .route("/api/risks", get(handlers::risks::risks))
         .route("/api/risks/{id}/suppress", post(handlers::risks::suppress))
+        .route(
+            "/api/risks/{id}/recommend",
+            post(handlers::recommend::recommend),
+        )
         .route("/api/posture", get(handlers::risks::posture))
         .route(
             "/api/manual/experiments",

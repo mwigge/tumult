@@ -198,3 +198,116 @@ async fn risks_respect_scopes_and_roles() {
     assert_eq!(status, 201, "{body}");
     assert_eq!(body["actor"], "risk-operator");
 }
+
+/// The scaffolder discovers plugins through the standard search paths, so
+/// the recommend tests point `TUMULT_PLUGIN_PATH` at the workspace's real
+/// `plugins/` directory (every catalog action lives there).
+fn point_discovery_at_workspace_plugins() {
+    let plugins = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../plugins")
+        .canonicalize()
+        .expect("workspace plugins directory");
+    std::env::set_var("TUMULT_PLUGIN_PATH", plugins);
+}
+
+fn risk_id(report: &Value, rule: &str, kind: Option<&str>) -> String {
+    report["risks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["rule"] == rule && kind.is_none_or(|k| r["recommended_kind"] == k))
+        .unwrap_or_else(|| panic!("no {rule} risk in {report}"))["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+/// A discipline gap becomes a registered, scaffolded experiment carrying
+/// the discipline and the target, plus an autopilot candidate with a
+/// `risk` trigger. Asking again dedupes on the content hash.
+#[tokio::test]
+async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
+    point_discovery_at_workspace_plugins();
+    let srv = spawn_server().await;
+    let (_, report) = get(&srv.base, "/api/risks").await;
+    let id = risk_id(&report, "discipline_gap", Some("dr"));
+    let (status, body) = post(&srv.base, &format!("/api/risks/{id}/recommend"), json!({})).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["risk_id"], id);
+    assert_eq!(body["recommendation"]["type"], "scaffold");
+    assert_eq!(body["recommendation"]["kind"], "dr");
+    assert_eq!(body["recommendation"]["target"], "database");
+    let exp = &body["experiment"];
+    assert!(
+        exp["registry_id"].as_str().is_some_and(|s| !s.is_empty()),
+        "{body}"
+    );
+    assert_eq!(exp["registered"], true);
+    let toon = exp["toon"].as_str().unwrap();
+    assert!(
+        toon.contains("kind: dr") && toon.contains("system: database"),
+        "{toon}"
+    );
+    let cand = &body["candidate"];
+    assert_eq!(cand["trigger"]["type"], "risk");
+    assert_eq!(cand["trigger"]["risk_id"], id);
+    assert_eq!(cand["playbook_experiment"], exp["name"]);
+    assert_eq!(cand["plugin"], "tumult-containers");
+    assert_eq!(cand["action"], "stop-container");
+    assert!(body["validator"]["enactable"].is_boolean(), "{body}");
+    // No autopilot policy on the test server: validated, not gated.
+    assert!(body["decision"].is_null(), "{body}");
+
+    let (_, registry) = get(&srv.base, "/api/registry").await;
+    let listed = registry["definitions"]
+        .as_array()
+        .or_else(|| registry.as_array())
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        listed.iter().any(|d| d["id"] == exp["registry_id"]),
+        "{registry}"
+    );
+    let (status, again) = post(&srv.base, &format!("/api/risks/{id}/recommend"), json!({})).await;
+    assert_eq!(status, 201, "{again}");
+    assert_eq!(again["experiment"]["registry_id"], exp["registry_id"]);
+    assert_eq!(
+        again["experiment"]["registered"], false,
+        "dedup by content hash"
+    );
+}
+
+/// A failed-run finding asks for a rerun of an experiment that was never
+/// registered (404); viewers are refused (403); unknown ids are 404. The
+/// 422 for disciplines with no automated fault (security) is covered by
+/// the handler's unit tests; the seed has no critical target to raise it.
+#[tokio::test]
+async fn recommend_refuses_what_it_cannot_automate() {
+    point_discovery_at_workspace_plugins();
+    let srv = spawn_server().await;
+    let (_, report) = get(&srv.base, "/api/risks").await;
+    let failed = risk_id(&report, "latest_run_failed", None);
+    let (status, body) = post(
+        &srv.base,
+        &format!("/api/risks/{failed}/recommend"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 404, "{body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("cache-stampede"),
+        "{body}"
+    );
+    let (status, _) = post(&srv.base, "/api/risks/r_nope/recommend", json!({})).await;
+    assert_eq!(status, 404);
+    let viewer = add_scoped_token(&srv, "rec-viewer", "viewer", &["demo"]).await;
+    let dr = risk_id(&report, "discipline_gap", Some("dr"));
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/risks/{dr}/recommend"),
+        &viewer,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+}

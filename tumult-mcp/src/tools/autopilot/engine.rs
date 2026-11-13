@@ -512,6 +512,7 @@ pub(super) fn persist_decision(
             Trigger::BrokenControl { .. } => "broken_control".into(),
             Trigger::Manual => "manual".into(),
             Trigger::ChangeEvent { .. } => "change_event".into(),
+            Trigger::Risk { .. } => "risk".into(),
         },
         service_id: c.service_id.clone(),
         tier: c.tier.clone(),
