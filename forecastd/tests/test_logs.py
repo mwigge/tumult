@@ -161,6 +161,52 @@ class JsonFormatterTests(unittest.TestCase):
         self.assertIn("Traceback", fields["error.stack"])
         self.assertLessEqual(len(fields["error.stack"]), logs.MAX_STACK + len(logs.TRUNCATED))
 
+    def test_a_broken_str_does_not_lose_the_line(self) -> None:
+        class Mute(Exception):
+            def __str__(self) -> str:
+                raise RuntimeError("no words")
+
+        class Key:
+            def __str__(self) -> str:
+                raise RuntimeError("no words")
+
+        logger, stream = capture(JsonFormatter())
+        try:
+            raise Mute
+        except Mute as error:
+            event(logger, logging.ERROR, "forecast.failed", "failed", exc_info=True, cause=error)
+        event(logger, logging.INFO, "e", "m", table={Key(): 1})
+        logger.info(Key())
+        failed, keyed, plain = (json.loads(line) for line in lines(stream))
+        mute = "<Mute: str failed with RuntimeError>"
+        self.assertEqual(failed["event"], "forecast.failed")
+        self.assertEqual(failed["fields"]["error.type"], "Mute")
+        self.assertEqual(failed["fields"]["error.message"], mute)
+        self.assertEqual(failed["fields"]["cause"], mute)
+        self.assertEqual(list(keyed["fields"]["table"]), ["<Key: str failed with RuntimeError>"])
+        self.assertEqual(plain["message"], "<Key: str failed with RuntimeError>")
+
+    def test_a_record_that_cannot_be_formatted_leaves_a_fallback_line(self) -> None:
+        class Broken(dict):
+            def items(self):
+                raise RuntimeError("no items")
+
+        logger, stream = capture(JsonFormatter())
+        event(logger, logging.WARNING, "forecast.busy", "turned away", detail=Broken())
+        (line,) = lines(stream)
+        entry = json.loads(line)
+        self.assertEqual(set(entry), REQUIRED)
+        self.assertRegex(entry["timestamp"], TIMESTAMP)
+        self.assertEqual((entry["level"], entry["logger"]), ("WARNING", "forecastd.test"))
+        self.assertEqual(entry["event"], logs.UNFORMATTABLE)
+        self.assertEqual(entry["fields"], {"event": "forecast.busy", "error.type": "RuntimeError"})
+
+        logger, stream = capture(TextFormatter())
+        event(logger, logging.WARNING, "forecast.busy", "turned away", detail=Broken())
+        (line,) = lines(stream)
+        self.assertIn(f" WARNING forecastd.test {logs.UNFORMATTABLE} ", line)
+        self.assertIn('event="forecast.busy"', line)
+
     def test_a_field_named_like_a_record_attribute_is_kept(self) -> None:
         logger, stream = capture(JsonFormatter())
         event(logger, logging.INFO, "e", "m", name="n", args="a", message="x", path="/forecast")
@@ -207,6 +253,7 @@ class ConfigureTests(unittest.TestCase):
     def setUp(self) -> None:
         root = logging.getLogger()
         saved = (root.handlers[:], root.level, sys.excepthook, threading.excepthook)
+        raising = logging.raiseExceptions
         uvicorn = {
             name: (logging.getLogger(name).handlers[:], logging.getLogger(name).propagate)
             for name in logs.UVICORN_LOGGERS
@@ -215,6 +262,7 @@ class ConfigureTests(unittest.TestCase):
         def restore() -> None:
             root.handlers[:], root.level, sys.excepthook, threading.excepthook = saved
             logging.captureWarnings(False)
+            logging.raiseExceptions = raising
             for name, (handlers, propagate) in uvicorn.items():
                 logging.getLogger(name).handlers[:] = handlers
                 logging.getLogger(name).propagate = propagate
@@ -274,6 +322,16 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(entries[0]["fields"]["error.type"], "RuntimeError")
         self.assertEqual(entries[0]["fields"]["error.message"], "thread\ndied")
         self.assertEqual(entries[1]["fields"]["error.type"], "KeyError")
+
+    def test_a_closed_stderr_does_not_fail_the_caller(self) -> None:
+        # A line that cannot be written is lost; the request that logged it
+        # is not, and ``logging`` does not try to complain on the same
+        # closed stream.
+        logs.configure({})
+        self.stream.close()
+        event(logging.getLogger("forecastd"), logging.INFO, "model.loaded", "model loaded")
+        logging.getLogger("uvicorn.error").warning("Started server process [%d]", 7)
+        self.assertFalse(logging.raiseExceptions)
 
     def test_a_bad_setting_changes_nothing(self) -> None:
         before = logging.getLogger().handlers[:]
