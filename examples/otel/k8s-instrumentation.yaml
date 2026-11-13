@@ -65,7 +65,7 @@ spec:
                 resilience.target.component=shop/checkout,
                 resilience.target.tier=backend,
                 resilience.target.criticality=high,
-                ict.entity.id=CF-0042,
+                ict.entity.id=cif-0042,
                 ict.entity.tier=critical,
                 ict.entity.owner=team-checkout
           resources:
