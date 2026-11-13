@@ -70,6 +70,12 @@ services:
       # TUMULT_PLUGIN_PATH. The image ships plugins and Docker CLI, but this
       # demo does not mount a host Docker socket or grant target credentials.
       TUMULT_PLUGIN_PATH: /opt/tumult/plugins
+      # Forecast provider for /api/forecast and /api/runs/{id}/impact. Empty
+      # (the default) = the built-in Holt-Winters provider. To use the
+      # Timestral sidecar below, start with the `forecast` profile:
+      #   TUMULTD_FORECAST_URL=http://forecastd:8700 \
+      #     docker compose -f docker/docker-compose.kronika.yml --profile forecast up
+      TUMULTD_FORECAST_URL: ${TUMULTD_FORECAST_URL:-}
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
@@ -208,5 +214,36 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  forecastd:
+    # Optional Timestral forecasting sidecar (see ../forecastd/README.md).
+    # Not started by a plain `up`; enable with `--profile forecast` and set
+    # TUMULTD_FORECAST_URL=http://forecastd:8700 for the tumultd service.
+    # The image bundles no weights: mount a local snapshot at /weights
+    # (FORECASTD_WEIGHTS_DIR on the host) for offline use, or leave the
+    # default and let the first start download them into the hf-cache volume.
+    # FORECASTD_MODEL=stub serves a deterministic model with no weights at
+    # all, for smoke runs.
+    profiles: ["forecast"]
+    build:
+      context: ../forecastd
+    image: tumult-forecastd:latest
+    container_name: tumult-kronika-forecastd
+    environment:
+      FORECASTD_BIND: 0.0.0.0:8700
+      FORECASTD_MODEL: ${FORECASTD_MODEL:-timestral}
+      FORECASTD_MODEL_SIZE: ${FORECASTD_MODEL_SIZE:-5M}
+      FORECASTD_WEIGHTS_PATH: ${FORECASTD_WEIGHTS_PATH:-}
+      HF_HOME: /cache/hf
+    volumes:
+      - tumult-kronika-hf-cache:/cache/hf
+      # - ${FORECASTD_WEIGHTS_DIR}:/weights:ro   # with FORECASTD_WEIGHTS_PATH=/weights
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8700/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    restart: unless-stopped
+
 volumes:
   tumult-kronika-data:
+  tumult-kronika-hf-cache:

@@ -1,0 +1,119 @@
+# Optional Timestral forecasting sidecar for the Tumult daemon
+# (forecastd/README.md, docs/guides/forecasting.md).
+#
+# tumultd forecasts without it (built-in Holt-Winters provider). To use this
+# service, apply the manifest and add to the tumultd Deployment:
+#
+#   - { name: TUMULTD_FORECAST_URL, value: "http://tumult-forecastd:8700" }
+#
+# The image bundles no model weights (they carry Mistral's modified MIT
+# licence). Fetch them yourself, load them into the `tumult-forecastd-weights`
+# volume (a snapshot directory as written by `huggingface-cli download
+# mistralai/Timestral-5M --local-dir ...`), and the pod starts with no
+# egress. /healthz then reports the SHA-256 of the mounted files, which the
+# daemon repeats as `provenance.weights_hash` in every forecast.
+#
+# The service has no authentication of its own: keep it ClusterIP and
+# restrict it to the tumultd pod with the NetworkPolicy below.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tumult-forecastd
+  labels: { app: tumult-forecastd }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tumult-forecastd }
+  template:
+    metadata:
+      labels: { app: tumult-forecastd }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: forecastd
+          # Build from forecastd/Dockerfile and push to your registry.
+          image: ghcr.io/mwigge/tumult-forecastd:2.22.0
+          ports:
+            - { name: http, containerPort: 8700 }
+          env:
+            - { name: FORECASTD_BIND, value: "0.0.0.0:8700" }
+            - { name: FORECASTD_MODEL, value: "timestral" }
+            # 5M runs on CPU in tens of milliseconds; evaluate a larger size
+            # on your own series before switching.
+            - { name: FORECASTD_MODEL_SIZE, value: "5M" }
+            - { name: FORECASTD_WEIGHTS_PATH, value: /weights }
+            # Never reach for the hub when the weights are mounted.
+            - { name: HF_HUB_OFFLINE, value: "1" }
+            - { name: HF_HOME, value: /tmp/hf }
+          # The model is loaded before the socket opens, so a slow first
+          # start is covered by the startup probe.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "2", memory: "2Gi" }
+          volumeMounts:
+            - { name: weights, mountPath: /weights, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: weights
+          persistentVolumeClaim: { claimName: tumult-forecastd-weights }
+        - name: tmp
+          emptyDir: { sizeLimit: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tumult-forecastd
+  labels: { app: tumult-forecastd }
+spec:
+  type: ClusterIP
+  selector: { app: tumult-forecastd }
+  ports:
+    - { name: http, port: 8700, targetPort: http }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tumult-forecastd-weights
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { storage: 2Gi }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tumult-forecastd
+spec:
+  podSelector:
+    matchLabels: { app: tumult-forecastd }
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: tumultd }
+      ports:
+        - { protocol: TCP, port: 8700 }
+  egress: [] # weights are mounted; the sidecar needs no network
