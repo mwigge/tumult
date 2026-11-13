@@ -82,7 +82,7 @@ pub enum Pillar {
     Value(f64),
     /// Not observable; counts as 0 in the index and fails a gate.
     Unknown(String),
-    /// Left out of the index; passes the gates of levels 2 and 3.
+    /// Left out of the index; never passes a gate.
     Excluded(Excluded),
 }
 
@@ -117,13 +117,12 @@ impl Pillar {
         }
     }
 
-    /// Whether the pillar reaches a threshold. An excluded pillar passes
-    /// unless the gate demands a value; an unknown one never does.
-    fn reaches(&self, threshold: f64, value_required: bool) -> bool {
+    /// Whether the pillar reaches a threshold. Only a value can: an
+    /// unknown or excluded pillar never opens a gate.
+    fn reaches(&self, threshold: f64) -> bool {
         match self {
             Self::Value(v) => *v + 1e-9 >= threshold,
-            Self::Unknown(_) => false,
-            Self::Excluded(_) => !value_required,
+            Self::Unknown(_) | Self::Excluded(_) => false,
         }
     }
 }
@@ -599,8 +598,8 @@ impl Gate<'_, '_> {
         ));
     }
 
-    fn pillar(&mut self, name: &str, pillar: &Pillar, threshold: f64, value_required: bool) {
-        if pillar.reaches(threshold, value_required) {
+    fn pillar(&mut self, name: &str, pillar: &Pillar, threshold: f64) {
+        if pillar.reaches(threshold) {
             return;
         }
         let shown = match pillar {
@@ -794,36 +793,36 @@ impl Gate<'_, '_> {
             2 => {
                 self.registered();
                 self.share(1, g.l2_c1);
-                self.pillar("test coverage (T)", &p.coverage, g.l2_coverage, false);
+                self.pillar("test coverage (T)", &p.coverage, g.l2_coverage);
             }
             3 => {
                 self.share(1, g.l3_c1);
                 self.share(2, g.l3_c2);
-                self.pillar("test coverage (T)", &p.coverage, g.l3_coverage, false);
+                self.pillar("test coverage (T)", &p.coverage, g.l3_coverage);
                 if full {
-                    self.pillar("SLO attainment (S)", &p.slo, g.l3_slo, false);
+                    self.pillar("SLO attainment (S)", &p.slo, g.l3_slo);
                     self.slo_history();
                 }
-                self.pillar("recovery (R)", &p.recovery, g.l3_recovery, false);
+                self.pillar("recovery (R)", &p.recovery, g.l3_recovery);
                 self.gating_rows();
                 self.unknown_share();
             }
             4 => {
                 self.share(3, g.l4_c3);
-                self.pillar("test coverage (T)", &p.coverage, g.l4_coverage, false);
-                self.pillar("SLO attainment (S)", &p.slo, g.l4_slo, true);
-                self.pillar("recovery (R)", &p.recovery, g.l4_recovery, false);
-                self.pillar("loop closure (L)", &p.loop_, g.l4_loop, true);
+                self.pillar("test coverage (T)", &p.coverage, g.l4_coverage);
+                self.pillar("SLO attainment (S)", &p.slo, g.l4_slo);
+                self.pillar("recovery (R)", &p.recovery, g.l4_recovery);
+                self.pillar("loop closure (L)", &p.loop_, g.l4_loop);
                 self.no_gap(CORE_WEIGHT_MIN);
                 self.fact(facts.alert_rules_exported, "alert rules not exported");
                 self.management_report();
             }
             _ => {
                 self.share(4, g.l5_c4);
-                self.pillar("test coverage (T)", &p.coverage, g.l5_coverage, false);
-                self.pillar("SLO attainment (S)", &p.slo, g.l5_slo, true);
-                self.pillar("recovery (R)", &p.recovery, g.l5_recovery, false);
-                self.pillar("loop closure (L)", &p.loop_, g.l5_loop, true);
+                self.pillar("test coverage (T)", &p.coverage, g.l5_coverage);
+                self.pillar("SLO attainment (S)", &p.slo, g.l5_slo);
+                self.pillar("recovery (R)", &p.recovery, g.l5_recovery);
+                self.pillar("loop closure (L)", &p.loop_, g.l5_loop);
                 self.no_gap(0);
                 self.fact(
                     facts.forecasts_with_provenance,
@@ -1208,6 +1207,19 @@ mod tests {
         assert_eq!(m.pillars.loop_.state(), "unknown");
         assert_eq!(m.pillars.coverage, Pillar::Excluded(Excluded::OutOfScope));
         assert_eq!(m.index, 1.0);
+    }
+
+    #[test]
+    fn an_excluded_pillar_never_passes_a_gate() {
+        for why in [
+            Excluded::NoEvents,
+            Excluded::NotDeclared,
+            Excluded::OutOfScope,
+        ] {
+            assert!(!Pillar::Excluded(why).reaches(0.0), "{why:?}");
+        }
+        assert!(!Pillar::Unknown("x".into()).reaches(0.0));
+        assert!(Pillar::Value(50.0).reaches(50.0));
     }
 
     #[test]

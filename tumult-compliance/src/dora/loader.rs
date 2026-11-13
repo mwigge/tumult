@@ -13,10 +13,12 @@
 //!   conformance level its telemetry reached inside the conformance
 //!   window. A service glob of the register that matches nothing becomes a
 //!   silent service: declared, never seen, and scored at the floor.
-//! - **Feeds**: the lake has no SLO or incident tables. A feed the legal
-//!   entity declares as connected is read as connected and empty; a feed
-//!   it does not declare is not connected, and every row that needs it is
-//!   unknown.
+//! - **Feeds**: a feed counts only through records of it stored in the
+//!   lake. The lake has no ingest path for incidents, SLOs, the register
+//!   of information, alert rules or forecasts, so every feed is not
+//!   connected, every row that needs one is unknown, and no gate fact
+//!   that depends on one holds. Listing a feed in the register is a
+//!   declaration: it is reported ([`FeedState`]) and never scored.
 //! - **Snapshots**: rows of `requirement_status_daily` stored on the day
 //!   they describe. A day without a stored row is recomputed from the
 //!   dated evidence. A caller scoped to some environments gets no stored
@@ -38,7 +40,7 @@ use super::model::{
     Service, SloFeed, Snapshots, Source, Tier, Workload, DAY_NS,
 };
 use super::params::HouseParams;
-use super::register::{MAP_ENTITY, MAP_SERVICE};
+use super::register::{FEED_NAMES, MAP_ENTITY, MAP_SERVICE};
 use crate::org::glob_match;
 use crate::scoring::{and_env, env_in};
 
@@ -53,11 +55,9 @@ pub const DEFAULT_RUN_KIND: &str = "chaos";
 /// registered none.
 pub const UNREGISTERED_NAME: &str = "(no legal entity registered)";
 
-const FEED_INCIDENT: &str = "incident";
-const FEED_SLO: &str = "slo";
-const FEED_REGISTER: &str = "register";
-const FEED_ALERT_RULES: &str = "alert_rules";
-const FEED_FORECAST: &str = "forecast";
+/// Why a feed is not connected: nothing of it is stored in the lake.
+pub const FEED_NO_INGEST: &str =
+    "the lake has no ingest path for this feed, so no record of it is stored";
 
 /// Why the inputs could not be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +109,36 @@ pub struct Loaded {
     pub entities: Vec<IctLegalEntity>,
     /// Active register rows of the entity, one per licensed activity.
     pub register: Vec<IctFunction>,
+    /// Every feed the score knows, with what the lake holds of it.
+    pub feeds: Vec<FeedState>,
     pub inputs: Inputs,
+}
+
+/// One evidence feed as the score reads it. `declared` is what the
+/// register says; `connected` is what the lake holds, and only that is
+/// scored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedState {
+    pub name: &'static str,
+    pub declared: bool,
+    pub connected: bool,
+    /// Why the feed is not connected.
+    pub reason: Option<&'static str>,
+}
+
+/// The state of every feed for `entity`. No feed has an ingest path, so
+/// none is connected whatever the register declares.
+#[must_use]
+pub fn feed_states(entity: &IctLegalEntity) -> Vec<FeedState> {
+    FEED_NAMES
+        .iter()
+        .map(|name| FeedState {
+            name,
+            declared: entity.feeds.iter().any(|feed| feed == name),
+            connected: false,
+            reason: Some(FEED_NO_INGEST),
+        })
+        .collect()
 }
 
 fn text(row: &Value, key: &str) -> Option<String> {
@@ -415,14 +444,6 @@ fn schedules_sql(envs: &[String]) -> String {
     )
 }
 
-fn reconciled_sql(lei: &str) -> String {
-    format!(
-        "SELECT MAX(updated_at_ns) AS at_ns FROM ict_functions \
-         WHERE active AND lei = {}",
-        quoted(lei)
-    )
-}
-
 /// Conformance level 0–4: the highest level whose keys, and those of
 /// every level below it, were on every span of the window.
 fn conformance_level(row: &Value, levels: usize) -> u8 {
@@ -611,29 +632,20 @@ impl Loader<'_> {
         Ok(())
     }
 
-    fn facts(
-        &self,
-        entity: &IctLegalEntity,
-        stored_since: Option<i64>,
-    ) -> Result<Facts, LoadError> {
+    /// Facts the gates read, each from what the lake holds. Alert
+    /// rules, forecasts and the register of information have no ingest
+    /// path, so their facts never hold.
+    fn facts(&self, stored_since: Option<i64>) -> Result<Facts, LoadError> {
         let request = &self.request;
-        let has = |feed: &str| entity.feeds.iter().any(|f| f == feed);
         let edges = self.query(&topology_sql(request.as_of_ns, request.envs, self.params))?;
-        let reconciled = if has(FEED_REGISTER) {
-            self.query(&reconciled_sql(&entity.lei))?
-                .first()
-                .and_then(|row| int(row, "at_ns"))
-        } else {
-            None
-        };
         let today = day_of(request.as_of_ns);
         Ok(Facts {
-            alert_rules_exported: has(FEED_ALERT_RULES),
-            forecasts_with_provenance: has(FEED_FORECAST),
+            alert_rules_exported: false,
+            forecasts_with_provenance: false,
             posture_delta_two_quarters: stored_since
                 .is_some_and(|first| today - first >= TWO_QUARTERS_DAYS),
-            register_connected: has(FEED_REGISTER),
-            register_reconciled_ns: reconciled,
+            register_connected: false,
+            register_reconciled_ns: None,
             topology_observed: edges
                 .first()
                 .and_then(|row| int(row, "edges"))
@@ -664,24 +676,6 @@ impl Loader<'_> {
         }
         Ok((snapshots, first))
     }
-}
-
-fn feeds(entity: &IctLegalEntity) -> (SloFeed, IncidentFeed) {
-    let has = |feed: &str| entity.feeds.iter().any(|f| f == feed);
-    let slos = if has(FEED_SLO) {
-        SloFeed::Connected {
-            slos: Vec::new(),
-            history_days: 0,
-        }
-    } else {
-        SloFeed::NotConnected
-    };
-    let incidents = if has(FEED_INCIDENT) {
-        IncidentFeed::Connected(Vec::new())
-    } else {
-        IncidentFeed::NotConnected
-    };
-    (slos, incidents)
 }
 
 /// Read the inputs of one legal entity.
@@ -732,19 +726,19 @@ pub fn load(
     };
     let mut evidence = loader.runs(&run_rows);
     evidence.extend(loader.manual()?);
-    let (slos, incidents) = feeds(&entity);
     let inputs = Inputs {
         functions,
         evidence,
         services: loader.services(&service_rows),
         workloads: request.workloads.to_vec(),
-        slos,
-        incidents,
-        facts: loader.facts(&entity, stored_since)?,
+        slos: SloFeed::NotConnected,
+        incidents: IncidentFeed::NotConnected,
+        facts: loader.facts(stored_since)?,
         snapshots,
         ..Inputs::empty(request.as_of_ns, profile)
     };
     Ok(Loaded {
+        feeds: feed_states(&entity),
         entity,
         entities: register.legal_entities,
         register: rows,
@@ -1061,16 +1055,39 @@ functions:
     }
 
     #[test]
-    fn declared_feeds_are_connected_and_empty_and_the_rest_unknown() {
-        let (_dir, store) = store_with(ORG);
+    fn a_declared_feed_with_no_ingested_record_stays_not_connected() {
+        let org = ORG.replace(
+            "feeds: [incident, register]",
+            "feeds: [incident, slo, register, alert_rules, forecast]",
+        );
+        let (_dir, store) = store_with(&org);
         let loaded = loaded(&store, request(&[]));
-        assert_eq!(loaded.inputs.incidents, IncidentFeed::Connected(Vec::new()));
+        assert_eq!(loaded.inputs.incidents, IncidentFeed::NotConnected);
         assert_eq!(loaded.inputs.slos, SloFeed::NotConnected);
         let facts = &loaded.inputs.facts;
-        assert!(facts.register_connected);
-        assert_eq!(facts.register_reconciled_ns, Some(NOW - DAY_NS));
-        assert!(!facts.alert_rules_exported && !facts.topology_observed);
-        assert!(!facts.posture_delta_two_quarters);
+        assert!(!facts.register_connected);
+        assert_eq!(facts.register_reconciled_ns, None);
+        assert!(!facts.alert_rules_exported && !facts.forecasts_with_provenance);
+        assert!(!facts.topology_observed && !facts.posture_delta_two_quarters);
+        let declared: Vec<(&str, bool, bool)> = loaded
+            .feeds
+            .iter()
+            .map(|feed| (feed.name, feed.declared, feed.connected))
+            .collect();
+        assert_eq!(
+            declared,
+            [
+                ("incident", true, false),
+                ("slo", true, false),
+                ("register", true, false),
+                ("alert_rules", true, false),
+                ("forecast", true, false),
+            ]
+        );
+        assert!(loaded
+            .feeds
+            .iter()
+            .all(|f| f.reason == Some(FEED_NO_INGEST)));
     }
 
     #[test]

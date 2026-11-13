@@ -46,7 +46,7 @@ A declaration is checked as a whole. A duplicate or malformed function id, a LEI
 Three things follow from the register:
 
 - **Profile.** The profile selects the registry rows. Under `simplified` the Arts. 5–15 rows are not applicable and the Art. 16 and 2024/1774 rows apply instead. Art. 26 rows apply only with the `tlpt_designated` flag. `GET /api/dora?profile=full` scores the same lake under another profile without changing the register.
-- **Feeds.** A feed that is not listed is not connected, and the rows that need it are *unknown*. A listed feed with nothing in it gives *no events*.
+- **Feeds.** `feeds` records which evidence feeds the entity says it has. A declaration is never scored. A feed counts only through records of it stored in the lake, and this release ingests none of the five, so every row that needs one is *unknown* and every gate that needs one stays shut, whatever is listed. Each response lists the feeds with `declared`, `connected` and the reason.
 - **Register codes.** Each function gets a code `F1`, `F2`, … for the register of information. A code is stored once and never renumbered, also when functions are removed or reordered.
 
 ### The form of `ict.entity.id`
@@ -71,7 +71,7 @@ Coverage of an article is the mean of `v` over its cells, weighted by row weight
 |---|---|---|
 | `na` | The row does not apply to the profile or to the function's tier | Omitted; the footer counts the rows |
 | `unknown` | The evidence class is not connected, so Krönika can not see either way | Hatched |
-| `no_events` | The feed is connected and nothing happened in the window | A dash, "no events in window" |
+| `no_events` | Records of the feed are stored and none falls in the window. No feed is ingested in this release, so a live lake does not show this state | A dash, "no events in window" |
 
 No number is shown without its unknown share. A coverage of 90 % with an unknown share of 60 % describes less than half of the rows.
 
@@ -201,10 +201,10 @@ Outside the org file: `KRONIKA_ORG_FILE` (where the register is read from), `KRO
 
 ## Limits
 
-- Incident and objective feeds are read as connected and empty when declared; incident and SLO records are not ingested yet. Loop closure and objective attainment therefore read `no events` or `not declared` on a live lake.
+- Incident, SLO, register-of-information, alert-rule and forecast records are not ingested. On a live lake loop closure (L) is `unknown` and counts 0; objective attainment (S) is `unknown` under the full profile and `not declared` under a reduced one; the Art. 28(3) row is `unknown`; and the alert-rule and forecast conditions of levels 4 and 5 do not hold. A pillar that is unknown or left out of the index never passes a gate, so a live lake reaches level 3 at most.
 - The history re-scores the evidence of each quarter end against today's register.
 - The reporting-readiness panel shows register completeness. It does not produce the register of information or an incident report.
 
 ## Proof
 
-`scripts/proof/dora-score/proof.sh` starts a daemon on a fresh lake, posts telemetry and backdated test runs over OTLP, and asserts the behaviour described above: the registry per profile, the register codes across a restart, unknown before the incident feed and no events after it, Existing at 179 days and Operating at 180, the cap by an uninstrumented critical service and its lifting, and the flagged `CF-0042`. The two worked examples of the model (level 4 at index 4.42 under the full profile; level 2 at index 3.60 under the simplified one) are fixture inputs and are asserted by their tests.
+`scripts/proof/dora-score/proof.sh` starts a daemon on a fresh lake, posts telemetry and backdated test runs over OTLP, and asserts the behaviour described above: the registry per profile, the register codes across a restart, Art. 19 unknown and the level unchanged when every feed is declared, Existing at 179 days and Operating at 180, the cap by an uninstrumented critical service and its lifting, and the flagged `CF-0042`. The two worked examples of the model (level 4 at index 4.42 under the full profile; level 2 at index 3.60 under the simplified one) are fixture inputs and are asserted by their tests.

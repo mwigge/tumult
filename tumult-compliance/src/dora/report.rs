@@ -672,7 +672,24 @@ fn header(loaded: &Loaded) -> Map<String, Value> {
         "legal_entities".into(),
         Value::Array(legal_entities(loaded)),
     );
+    map.insert("feeds".into(), Value::Array(feeds(loaded)));
     map
+}
+
+/// Every feed with what the register declares and what the lake holds.
+fn feeds(loaded: &Loaded) -> Vec<Value> {
+    loaded
+        .feeds
+        .iter()
+        .map(|feed| {
+            json!({
+                "name": feed.name,
+                "declared": feed.declared,
+                "connected": feed.connected,
+                "reason": feed.reason,
+            })
+        })
+        .collect()
 }
 
 /// The coverage document of one legal entity.
@@ -1217,10 +1234,25 @@ mod tests {
         };
         Loaded {
             entities: vec![entity.clone()],
+            feeds: super::super::loader::feed_states(&entity),
             entity,
             register: Vec::new(),
             inputs,
         }
+    }
+
+    #[test]
+    fn every_document_lists_the_feeds_with_what_the_lake_holds() {
+        let doc = dora_of(firm_b(), DoraBy::Entity);
+        let feeds = doc["feeds"].as_array().expect("feeds");
+        assert_eq!(feeds.len(), 5);
+        assert_eq!(feeds[0]["name"], "incident");
+        assert_eq!(feeds[0]["declared"], false);
+        assert_eq!(feeds[0]["connected"], false);
+        assert!(feeds[0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("no ingest path"));
     }
 
     fn worked_ns() -> i64 {

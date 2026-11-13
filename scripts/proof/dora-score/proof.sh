@@ -2,7 +2,7 @@
 # DORA coverage and maturity live proof: a fresh daemon with a function
 # register, telemetry posted over OTLP the way services export it, and
 # backdated test runs. The registry profile, the register codes, the
-# unknown / no-events states, the 180-day operating rule, the cap by an
+# unknown state of a declared feed, the 180-day operating rule, the cap by an
 # uninstrumented critical service and its lifting are all read back from
 # the API. The worked examples of the model (level 4 at index 4.42, level 2
 # at index 3.60) are fixture inputs, so they are asserted by running their
@@ -210,24 +210,33 @@ curl -fs "$URL/api/dora" >"$WORK/dora2.json"
 py 'assert sorted(f["entity_id"] for f in d["functions"])==["cif-0001","cif-0002","cif-0003"], "a malformed id must not create a function"' <"$WORK/dora2.json"
 pass "zero malformed ids on the seeded lake; CF-0042 listed under its service, unchanged"
 
-echo "[10] connect the incident feed and restart: Art. 19 reads no events, register codes are stable"
+echo "[10] declare every feed and restart: nothing is ingested, so nothing changes"
+curl -fs "$URL/api/maturity" >"$WORK/maturity-before-feeds.json"
 stop_daemon
-sed 's/FEEDS/[incident]/' "$S/org.yaml" >"$WORK/org.yaml"
+sed 's/FEEDS/[incident, slo, register, alert_rules, forecast]/' "$S/org.yaml" >"$WORK/org.yaml"
 start_daemon
 for _ in $(seq 1 40); do
     curl -fs "$URL/api/dora" >"$WORK/dora3.json"
-    py 'import sys; sys.exit(0 if all(c["state"]=="no_events" for c in d["cells"] if c["article"]=="19") else 1)' <"$WORK/dora3.json" && break
+    py 'import sys; sys.exit(0 if all(f["declared"] for f in d["feeds"]) else 1)' <"$WORK/dora3.json" && break
     sleep 0.5
 done
-py 'cells=[c for c in d["cells"] if c["article"]=="19"]
-assert len(cells)==3 and all(c["state"]=="no_events" and c["coverage"] is None and c["unknown"]==0.0 for c in cells), cells
+py 'assert [f["name"] for f in d["feeds"]]==["incident","slo","register","alert_rules","forecast"], d["feeds"]
+assert all(f["declared"] and not f["connected"] and "no ingest path" in f["reason"] for f in d["feeds"]), d["feeds"]
+cells=[c for c in d["cells"] if c["article"]=="19"]
+assert len(cells)==3 and all(c["state"]=="unknown" and c["coverage"] is None and c["unknown"]==1.0 for c in cells), cells
+assert not [c for c in d["cells"] if c["state"]=="no_events"], "a declared feed must not read as connected"
 fs={f["entity_id"]:f["register_codes"] for f in d["functions"]}
 assert fs=={"cif-0001":["F1"],"cif-0002":["F2"],"cif-0003":["F3"]}, fs' <"$WORK/dora3.json"
-python3 -c "import json; a=json.load(open('$WORK/dora1.json')); b=json.load(open('$WORK/dora3.json')); assert b['portfolio']['unknown']<a['portfolio']['unknown'], (a['portfolio'], b['portfolio'])"
+python3 -c "import json; a=json.load(open('$WORK/dora1.json')); b=json.load(open('$WORK/dora3.json')); assert b['portfolio']['unknown']>=a['portfolio']['unknown'], (a['portfolio'], b['portfolio'])"
 curl -fs "$URL/api/maturity" >"$WORK/maturity2.json"
-py 'assert d["headline"]=="level 2 of target 3 (simplified)", d["headline"]
-assert d["component_states"]["loop"]["state"]=="no_events", d["component_states"]["loop"]' <"$WORK/maturity2.json"
-pass "Art. 19 is 'no events in window' (a dash on the page); F1..F3 unchanged; the level survives the restart"
+py 'assert d["component_states"]["loop"]["state"]=="unknown", d["component_states"]["loop"]
+g={x["level"]:x for x in d["gates"]}
+assert not g[4]["passed"] and any("alert rules not exported" in f for f in g[4]["failing"]), g[4]
+assert not g[5]["passed"] and any("no forecast with provenance" in f for f in g[5]["failing"]), g[5]
+assert any("loop closure (L) is unknown" in f for f in g[4]["failing"]), g[4]' <"$WORK/maturity2.json"
+python3 -c "import json; a=json.load(open('$WORK/maturity-before-feeds.json')); b=json.load(open('$WORK/maturity2.json'))
+for k in ('level','index','flat_level','flat_index','headline','components','component_states'): assert a[k]==b[k], (k, a[k], b[k])"
+pass "five feeds declared, none connected: Art. 19 still unknown, level, index and pillars unchanged, the level 4 and 5 gates stay shut; F1..F3 unchanged"
 
 echo "[11] the score page is served"
 code=$(curl -s -o "$WORK/scores.html" -w '%{http_code}' "$URL/scores?view=dora")

@@ -35,8 +35,8 @@ defaults: {weight: 1.0, stale_days: 30}
 # critical function but nothing in the demo reports under that name: it is
 # deliberately uninstrumented, so the score page shows the level capped by
 # svc:order-archive until telemetry or a test for it arrives. No feed is
-# connected, so incident rows (Art. 19) read "unknown"; add `incident` to
-# `feeds` to see them turn into "no events".
+# ingested, so incident rows (Art. 19) read "unknown". Listing a feed
+# under `feeds` records the declaration and changes no score.
 legal_entities:
   - lei: 529900T8BM49AURSDO55
     name: Demo Firm
