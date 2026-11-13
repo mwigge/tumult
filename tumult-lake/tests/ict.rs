@@ -91,34 +91,65 @@ fn code_of(register: &IctRegister, id: &str, activity: &str) -> String {
         .clone()
 }
 
-#[test]
-fn schema_is_v20_and_skips_the_reserved_v19() {
-    let (_d, store) = fixture();
-    assert_eq!(CURRENT_SCHEMA_VERSION, 20);
-    assert_eq!(store.writer().unwrap().schema_version().unwrap(), 20);
+const V19_TABLES: [&str; 1] = ["forecasts"];
+const V20_TABLES: [&str; 5] = [
+    "ict_legal_entities",
+    "ict_functions",
+    "ict_function_services",
+    "requirement_status_daily",
+    "maturity_daily",
+];
+
+fn tables_present(store: &Store, names: &[&str]) -> Vec<String> {
+    let reader = store.read_only().unwrap();
+    let rows = reader
+        .query_json_rows("SELECT table_name FROM information_schema.tables ORDER BY table_name")
+        .unwrap();
+    rows.iter()
+        .filter_map(|r| r["table_name"].as_str())
+        .filter(|t| names.contains(t))
+        .map(str::to_string)
+        .collect()
 }
 
 #[test]
-fn a_database_already_at_v19_migrates_to_v20() {
+fn a_fresh_lake_is_v20_with_the_forecast_and_the_register_tables() {
+    let (_d, store) = fixture();
+    assert_eq!(CURRENT_SCHEMA_VERSION, 20);
+    assert_eq!(store.writer().unwrap().schema_version().unwrap(), 20);
+    assert_eq!(tables_present(&store, &V19_TABLES).len(), V19_TABLES.len());
+    assert_eq!(tables_present(&store, &V20_TABLES).len(), V20_TABLES.len());
+}
+
+#[test]
+fn a_v19_lake_opens_keeps_its_forecasts_and_gains_the_v20_tables() {
     let d = tempfile::TempDir::new().unwrap();
     let path = d.path().join("kronika.duckdb");
     {
         let store = Store::open(&path).unwrap();
         let writer = store.writer().unwrap();
+        for table in V20_TABLES {
+            writer.execute(&format!("DROP TABLE {table}"), []).unwrap();
+        }
         writer
             .execute(
                 "UPDATE schema_meta SET value = 19 WHERE key = 'version'",
                 [],
             )
             .unwrap();
-        writer
-            .execute("DROP TABLE requirement_status_daily", [])
-            .unwrap();
+        drop(writer);
+        assert!(
+            tables_present(&store, &V20_TABLES).is_empty(),
+            "the seeded lake is v19-shaped"
+        );
+        assert_eq!(tables_present(&store, &V19_TABLES).len(), 1);
     }
     let store = Store::open(&path).unwrap();
     let writer = store.writer().unwrap();
     assert_eq!(writer.schema_version().unwrap(), 20);
     drop(writer);
+    assert_eq!(tables_present(&store, &V19_TABLES).len(), 1);
+    assert_eq!(tables_present(&store, &V20_TABLES).len(), V20_TABLES.len());
     let rows = store
         .read_only()
         .unwrap()

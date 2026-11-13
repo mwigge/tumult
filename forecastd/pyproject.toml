@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tumult-forecastd"
+version = "0.1.0"
+description = "Timestral forecasting sidecar for the Tumult daemon: POST /forecast, GET /healthz"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+# The ASGI stack; without it `python -m forecastd` uses the stdlib server.
+serve = ["fastapi>=0.115", "uvicorn>=0.30"]
+# Timestral pulls in PyTorch (>= 2.4). It is not on PyPI, so it cannot be a
+# resolvable extra here; install the release this service is tested against
+# (timestral 1.0.0, github.com/mistralai/timestral, Apache-2.0) by commit:
+#   pip install 'timestral @ git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff'
+# On a CPU-only host install torch first from the CPU wheel index:
+#   pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.4'
+timestral = ["torch>=2.4", "safetensors>=0.4", "huggingface_hub>=0.24"]
+
+[project.scripts]
+tumult-forecastd = "forecastd.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["forecastd*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

@@ -6,9 +6,10 @@
     // was opened with a `window.__tumultCharts` registry already in place
     // (a Playwright init script), a chart with an `id` mirrors its option
     // there. Nothing is mirrored otherwise. A tooltip is HTML next to the
-    // canvas and is asserted as such: with a `window.__tumultChartTips`
-    // registry in place, a chart with an `id` puts a function there that
-    // shows the tooltip of one of its items, as a pointer over it would.
+    // canvas and is asserted as such: next to its option, under
+    // `<id>#tip`, the chart puts a function that shows the tooltip of one
+    // of its items, as a pointer over it would. That registry is the one
+    // hook a test has.
     //
     // `merge` applies option changes on top of the option in force instead
     // of replacing it, so what the user did to the chart (zoom, pan) stays.
@@ -103,6 +104,7 @@
             .__tumultCharts;
         if (!registry) return;
         registry[id] = chart.getOption();
+        registry[`${id}#tip`] = showTip;
     }
 
     /**
@@ -124,15 +126,6 @@
         chart.dispatchAction({ type: 'showTip', x, y });
     }
 
-    function exposeTips() {
-        if (!id) return;
-        const registry = (
-            window as Window & { __tumultChartTips?: Record<string, (at: TipTarget) => void> }
-        ).__tumultChartTips;
-        if (!registry) return;
-        registry[id] = showTip;
-    }
-
     function init() {
         cancelRoam();
         chart?.dispose();
@@ -143,7 +136,6 @@
         if (ondblclick) chart.on('dblclick', ondblclick);
         chart.on('graphroam', roamed);
         expose();
-        exposeTips();
     }
 
     onMount(() => {

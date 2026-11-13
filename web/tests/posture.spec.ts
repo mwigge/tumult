@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { installChartHooks } from './charts';
+
 // The API is mocked; charts render to canvas, so the coverage heatmap is
 // asserted through the option mirrored at window.__tumultCharts.
 
@@ -63,9 +65,7 @@ const risks = [
 
 test.beforeEach(async ({ page }) => {
     // Charts mirror their option only where a test installed the registry.
-    await page.addInitScript(() => {
-        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
-    });
+    await installChartHooks(page);
 });
 
 test('posture opens with ranked risks, coverage gaps and the score', async ({ page }) => {

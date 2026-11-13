@@ -46,6 +46,8 @@ members = [
     "tumult-risk",
     # Performance-regression verdicts: percentiles, bootstrap CI, verdict (pure logic)
     "tumult-perf",
+    # Probabilistic forecasting: provider trait, Holt-Winters, impact and recovery (pure logic)
+    "tumult-forecast",
     # Imported from kronika but versioned with the workspace (version.workspace = true).
     "tumult-query",
     # Analytics platform (imported from kronika; crates keep their 0.7.x versions)
@@ -177,6 +179,7 @@ tumult-report = { path = "tumult-report" }
 tumult-compliance = { path = "tumult-compliance" }
 tumult-api = { path = "tumult-api" }
 tumult-intelligence = { path = "tumult-intelligence" }
+tumult-forecast = { path = "tumult-forecast" }
 
 # OTLP receive side (tumult-otlp / tumult-ingest)
 opentelemetry-proto = { version = "0.33", features = ["gen-tonic"] }

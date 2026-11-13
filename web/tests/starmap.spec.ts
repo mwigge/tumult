@@ -210,13 +210,6 @@ interface Mirror {
     series: { data: Item[]; links: unknown[]; label: { color: string }; zoom?: number }[];
 }
 
-/** What a test run installs so charts mirror their option; absent in production. */
-async function installChartHook(page: Page) {
-    await page.addInitScript(() => {
-        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
-    });
-}
-
 const runs = [
     run('run-1', 'queue-dependency-loss', 'deviated'),
     run('run-2', 'message-queue-kill', 'completed'),
@@ -232,7 +225,7 @@ function experiments(query: URLSearchParams) {
 }
 
 async function mock(page: Page, seen: URL[], hook = true, over: Record<string, unknown> = {}) {
-    if (hook) await installChartHook(page);
+    if (hook) await installChartHooks(page);
     await page.route('**/api/**', async (route) => {
         const url = new URL(route.request().url());
         seen.push(url);

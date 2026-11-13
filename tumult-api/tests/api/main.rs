@@ -12,6 +12,7 @@ mod common;
 mod dora;
 mod endpoints;
 mod events;
+mod forecast;
 mod gamedays;
 mod gate;
 mod manual;

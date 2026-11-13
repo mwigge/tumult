@@ -19,18 +19,20 @@ export interface TipTarget {
     cell?: [number, number];
 }
 
+// The one registry: the option of a chart under its id, and under
+// `<id>#tip` the function that shows one of its tooltips.
 interface Hooks {
     __tumultCharts?: Record<string, unknown>;
-    __tumultChartTips?: Record<string, (at: TipTarget) => void>;
     __xss?: number;
 }
 
-/** Install what makes charts mirror their option and offer their tooltips. */
+/**
+ * Install what makes charts mirror their option and offer their
+ * tooltips. A chart does neither where no test did this.
+ */
 export async function installChartHooks(page: Page) {
     await page.addInitScript(() => {
-        const w = window as Window & Hooks;
-        w.__tumultCharts = {};
-        w.__tumultChartTips = {};
+        (window as Window & Hooks).__tumultCharts = {};
     });
 }
 
@@ -43,13 +45,16 @@ export async function showTip(page: Page, id: string, at: TipTarget): Promise<Lo
     const drawn = (chart: string) => {
         const w = window as Window & Hooks;
         const option = w.__tumultCharts?.[chart] as { series?: unknown[] } | undefined;
-        return (option?.series?.length ?? 0) > 0 && Boolean(w.__tumultChartTips?.[chart]);
+        return (option?.series?.length ?? 0) > 0 && Boolean(w.__tumultCharts?.[`${chart}#tip`]);
     };
     await expect
         .poll(() => page.evaluate(drawn, id), { message: `chart ${id} is drawn` })
         .toBe(true);
     await page.evaluate(
-        ([chart, target]) => (window as Window & Hooks).__tumultChartTips?.[chart]?.(target),
+        ([chart, target]) => {
+            const show = (window as Window & Hooks).__tumultCharts?.[`${chart}#tip`];
+            (show as (at: typeof target) => void)(target);
+        },
         [id, at] as const,
     );
     const tip = tooltipOf(page, id);

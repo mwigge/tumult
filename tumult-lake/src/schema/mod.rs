@@ -79,13 +79,15 @@
 //! regression verdict between two `service.version`s of a target —
 //! additive and index-free apart from the target lookup index.
 //!
-//! v19 is reserved for the forecast tables, which land separately; this
-//! build does not create them. v20 adds the function register (`ict.rs`):
-//! `ict_legal_entities`, `ict_functions`, `ict_function_services` and the
-//! daily `requirement_status_daily` and `maturity_daily` snapshots —
-//! additive and index-free.
-//! Every statement is `IF NOT EXISTS`, so a database at v18 or at v19
-//! migrates to v20 the same way.
+//! v19 adds `forecasts` (`forecast.rs`): the cache of quantile forecasts
+//! with model provenance (model, version, weights hash, context window),
+//! indexed by series key for the cache lookup and pruned after 30 days.
+//!
+//! v20 adds the function register (`ict.rs`): `ict_legal_entities`,
+//! `ict_functions`, `ict_function_services` and the daily
+//! `requirement_status_daily` and `maturity_daily` snapshots — additive
+//! and index-free. Every statement is `IF NOT EXISTS`, so a database at
+//! v18 or at v19 migrates to v20 the same way.
 //!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
@@ -93,6 +95,7 @@
 
 mod analytics;
 mod auth;
+mod forecast;
 mod ict;
 mod manual;
 mod migrations;
@@ -120,6 +123,7 @@ pub const CREATE_TABLES: &[&str] = &[
     objectives::DDL,
     risk::DDL,
     perf::DDL,
+    forecast::DDL,
     ict::DDL,
 ];
 

@@ -53,6 +53,8 @@ pub mod export;
 #[cfg(feature = "duckdb")]
 mod file_integrity;
 #[cfg(feature = "duckdb")]
+mod forecast;
+#[cfg(feature = "duckdb")]
 mod ict;
 #[cfg(feature = "duckdb")]
 pub mod lake;
@@ -89,6 +91,11 @@ pub use backend::{AnalyticsBackend, StoreStats};
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
 pub use error::StoreError;
+#[cfg(feature = "duckdb")]
+pub use forecast::{
+    ForecastLookup, ForecastRow, ModelFilter, FORECAST_PRUNE_BATCH, FORECAST_RETENTION_NS,
+    FORECAST_ROWS_PER_SERIES,
+};
 #[cfg(feature = "duckdb")]
 pub use ict::{
     is_critical_or_important, IctFunction, IctFunctionService, IctLegalEntity, IctRegister,

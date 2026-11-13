@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { escapeHtml, strong, tip, tipFormatter } from './tooltip';
+import { escapeHtml, strong, swatch, tip, tipFormatter } from './tooltip';
 import type { Tip } from './tooltip';
 
 const EVIL = `<img src=x onerror="a('b')">&`;
@@ -44,6 +44,32 @@ describe('tip', () => {
         expect(tip('a', '', null, undefined, [], ['', null], 'b').html).toBe('a<br/>b');
         expect(tip(0, [1, ' of ', 2]).html).toBe('0<br/>1 of 2');
         expect(tip().html).toBe('');
+    });
+});
+
+describe('swatch', () => {
+    const dot = (color: string) =>
+        `<span style="display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;background-color:${color}"></span>`;
+
+    it('is a dot in a plain colour before the text of its line', () => {
+        expect(tip([swatch('#5470c6'), 'forecast']).html).toBe(`${dot('#5470c6')}forecast`);
+        expect(tip([swatch('rgba(84, 112, 198, 0.5)')]).html).toBe(dot('rgba(84, 112, 198, 0.5)'));
+        expect(tip([swatch('tomato')]).html).toBe(dot('tomato'));
+    });
+
+    it('gives no dot for what is not a plain colour', () => {
+        for (const color of [
+            EVIL,
+            'red"><img src=x>',
+            'red;background:url(//x)',
+            'url(javascript:a)',
+            { type: 'linear' },
+            null,
+            undefined,
+            '',
+        ]) {
+            expect(tip([swatch(color), 'name']).html).toBe('name');
+        }
     });
 });
 

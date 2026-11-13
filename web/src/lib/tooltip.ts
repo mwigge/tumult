@@ -40,12 +40,35 @@ class Tip {
     }
 }
 
-export type { Strong, Tip };
+export type { Strong, Swatch, Tip };
 
 /** A piece of a line: text, or text in bold. */
-export type TipPart = Strong | string | number | null | undefined;
+export type TipPart = Strong | Swatch | string | number | null | undefined;
 /** A line of a tooltip: one piece or several; an empty one is left out. */
 export type TipLine = TipPart | TipPart[];
+
+/** The dot of a series in its colour. Made by [`swatch`]. */
+class Swatch {
+    constructor(readonly color: unknown) {}
+}
+
+/**
+ * The dot ECharts puts before a series name, in `color`. A colour that
+ * is not a plain CSS colour (a gradient object, or text with anything
+ * else in it) gives no dot.
+ */
+export function swatch(color: unknown): Swatch {
+    return new Swatch(color);
+}
+
+// A hex colour, an rgb()/hsl() call of numbers, or a colour name.
+const PLAIN_COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d\s.,%/]+\)|[a-z]+)$/i;
+
+function swatchHtml(dot: Swatch): string {
+    if (typeof dot.color !== 'string' || !PLAIN_COLOR.test(dot.color)) return '';
+    const style = 'display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;';
+    return `<span style="${style}background-color:${escapeHtml(dot.color)}"></span>`;
+}
 
 /** `text` in bold. */
 export function strong(text: unknown): Strong {
@@ -57,6 +80,7 @@ function partHtml(part: TipPart): string {
         const text = escapeHtml(part.text);
         return text === '' ? '' : `<b>${text}</b>`;
     }
+    if (part instanceof Swatch) return swatchHtml(part);
     // Anything else is text, a tip or an object included.
     return escapeHtml(typeof part === 'object' && part !== null ? JSON.stringify(part) : part);
 }

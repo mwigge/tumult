@@ -1415,3 +1415,124 @@ export interface MaturityReport extends ScoreHeader {
     by: 'node' | 'entity' | 'org' | null;
     nodes: MaturityNode[];
 }
+
+/** Which model produced a forecast; `fallback_reason` is set when the
+    sidecar was configured but the built-in provider answered instead. It is
+    a code (`unreachable`, `timeout`, `bad_response`, `rejected`, `busy`,
+    `circuit_open`); the detail is in the daemon's log. */
+export interface ForecastProvenance {
+    model: string;
+    version: string;
+    weights_hash: string;
+    fallback_reason: string | null;
+}
+
+/** Chart-ready series shared by the forecast and impact endpoints. */
+export interface ForecastSeries {
+    /** Epoch ms. */
+    ts: number[];
+    observed: (number | null)[];
+    median: (number | null)[];
+    bands: { level: number; lower: (number | null)[]; upper: (number | null)[] }[];
+}
+
+/** `GET /api/forecast` */
+export interface ForecastResponse {
+    metric: string;
+    description: string | null;
+    target: string | null;
+    env: string[] | null;
+    range: string;
+    horizon: number;
+    step_ns: number;
+    from_ns: number;
+    to_ns: number;
+    /** Epoch ms; use these in the browser, where a double cannot hold ns. */
+    from_ms: number;
+    to_ms: number;
+    series: ForecastSeries;
+    forecast: {
+        levels: number[];
+        quantiles: (number | null)[][];
+        context_points: number;
+        insufficient_history: boolean;
+        /** The band had no width and was floored. */
+        degenerate_band: boolean;
+    };
+    provenance: ForecastProvenance;
+    cached: boolean;
+}
+
+/** One probe's counterfactual in `GET /api/runs/{id}/impact`. A probe that
+    could not be compared carries only `probe` and `error`. */
+export interface ProbeImpact {
+    probe: string;
+    error?: string;
+    reference?: 'baseline' | 'post_backcast';
+    step_ns?: number;
+    /** The reference band had no width (a flat or exactly periodic series)
+        and was floored: the multiples below are lower bounds on a guess. */
+    degenerate_band?: boolean;
+    /** Epoch ms. The API also sends `*_ns`, which a double cannot hold. */
+    fault?: { start_ms: number; end_ms: number };
+    series?: ForecastSeries;
+    impact?: {
+        per_sample: (number | null)[];
+        during_mean: number | null;
+        during_peak: number | null;
+        during_peak_ts_ms: number | null;
+        during_outside_ratio: number | null;
+        post_mean: number | null;
+        samples_during: number;
+        samples_post: number;
+    };
+    recovery?: {
+        recovered_at_ms: number | null;
+        recovery_time_s: number | null;
+        /** `undetermined`: not watched long enough after the fault to say. */
+        status?: 'recovered' | 'unrecovered' | 'undetermined';
+        stable_steps: number;
+        outside_during_fault: number;
+        outside_after_fault: number;
+        /** Observed samples after the fault end. */
+        observed_after_fault?: number;
+        /** Whether the last of them was inside the band; null when none. */
+        ended_inside?: boolean | null;
+    };
+    forecast?: {
+        context_points: number;
+        insufficient_history: boolean;
+        degenerate_band: boolean;
+    };
+    provenance?: ForecastProvenance;
+}
+
+/** `GET /api/runs/{id}/impact` */
+export interface RunImpact {
+    run_id: string;
+    experiment_id: string;
+    as_of_ms: number;
+    stable_steps: number;
+    /**
+     * The slowest probe's recovery; null when any evaluated probe never
+     * recovered, or when none was watched long enough to be seen recovering.
+     */
+    recovery_time_s: number | null;
+    /**
+     * What `recovery_time_s` means: `recovered` (a time), `unrecovered` (a
+     * probe never settled), `undetermined` (no probe was watched long enough
+     * to say) or `not_measurable` (no probe could be evaluated at all).
+     */
+    recovery_status: 'recovered' | 'unrecovered' | 'undetermined' | 'not_measurable';
+    /** Evaluated probes that never settled back inside their band. */
+    unrecovered_probes?: number;
+    /** Evaluated probes not sampled long enough after the fault to say. */
+    undetermined_probes?: number;
+    /** Probes whose impact could be evaluated. */
+    evaluated_probes?: number;
+    impact_peak: number | null;
+    /** True when any probe's reference band was degenerate. */
+    degenerate_band: boolean;
+    provenance: ForecastProvenance | null;
+    probes: ProbeImpact[];
+}
