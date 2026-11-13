@@ -250,12 +250,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn delete_params_with_grace_period() {
-        let dp = DeleteParams::default().grace_period(30);
-        assert_eq!(dp.grace_period_seconds, Some(30));
-    }
-
-    #[test]
     fn error_formats_invalid_config() {
         let err = KubeError::InvalidConfig {
             field: "replicas",

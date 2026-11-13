@@ -299,7 +299,7 @@ struct Case {
     expected: Expected,
 }
 
-async fn run_cases(cases: Vec<Case>) {
+async fn assert_rejected_before_any_api_call(cases: Vec<Case>) {
     install_crypto_provider();
     let _lock = env_lock().await;
     let kubeconfig = write_kubeconfig("http://127.0.0.1:1"); // unreachable; never dialed
@@ -429,7 +429,7 @@ async fn dispatch_validates_action_arguments_before_any_api_call() {
             Expected::Invalid("cpu_workers"),
         ),
     ];
-    run_cases(cases).await;
+    assert_rejected_before_any_api_call(cases).await;
 }
 
 #[tokio::test]
@@ -475,7 +475,7 @@ async fn dispatch_validates_probe_arguments_before_any_api_call() {
             Expected::Missing("phase"),
         ),
     ];
-    run_cases(cases).await;
+    assert_rejected_before_any_api_call(cases).await;
 }
 
 // ── Client-init failure ───────────────────────────────────────

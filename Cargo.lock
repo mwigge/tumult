@@ -8204,6 +8204,7 @@ dependencies = [
  "tumult-graph",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
 ]
 
 [[package]]
