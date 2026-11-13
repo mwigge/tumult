@@ -18,12 +18,12 @@ use serde_json::{json, Map, Value};
 use tumult_core::compliance::{
     article_title, EvidenceClass, ARTICLES, EVIDENCE_DISCLAIMER, REQUIREMENTS_VERSION,
 };
-use tumult_lake::RequirementStatusRow;
+use tumult_lake::{Reader, RequirementStatusRow};
 
 use super::coverage::{CellState, Matrix, MatrixCell, MatrixRow, RowState, Scored};
-use super::loader::{Loaded, SNAPSHOT_SOURCE};
+use super::loader::{self, LoadError, Loaded, Request, SNAPSHOT_SOURCE};
 use super::maturity::{self, Maturity, Pillar, Scope, CONFORMANCE_LABELS};
-use super::model::{day_of, format_day, Function, Source};
+use super::model::{day_of, days_from_civil, end_of_day, format_day, Function, Source, Workload};
 use super::params::{HouseParams, PillarWeights};
 use super::rollup::{self, Kind, NodeScore, ROOT_ID};
 use super::status::{self, RowStatus, Standing, Status, StatusReport};
@@ -33,6 +33,8 @@ pub const SCALE_SOURCE: &str = "Internal house scale. DORA defines no maturity l
      this is not a regulatory rating.";
 /// House names of the five levels.
 pub const SCALE_LEVELS: [&str; 5] = ["Initial", "Repeatable", "Defined", "Measured", "Improving"];
+/// Quarter ends the maturity history looks back over.
+pub const HISTORY_QUARTERS: usize = 4;
 /// Decimal places of a coverage value or share.
 const SHARE_PLACES: i32 = 4;
 /// Decimal places of an index or a pillar value.
@@ -971,6 +973,58 @@ pub fn quarter_label(day: i64) -> String {
     format!("{}-Q{}", &date[..4], (month - 1) / 3 + 1)
 }
 
+/// The last nanosecond of each of the `count` quarters that ended before
+/// `as_of_ns`, oldest first.
+#[must_use]
+pub fn quarter_ends(as_of_ns: i64, count: usize) -> Vec<i64> {
+    let date = format_day(day_of(as_of_ns));
+    let mut year: i64 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(1970);
+    let month: i64 = date.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(1);
+    let mut quarter = (month - 1) / 3;
+    let mut ends = Vec::with_capacity(count);
+    for _ in 0..count {
+        // The first day of the quarter, less one day, ends the one before.
+        let first = days_from_civil(year, quarter * 3 + 1, 1);
+        ends.push(end_of_day(first - 1));
+        if quarter == 0 {
+            year -= 1;
+            quarter = 4;
+        }
+        quarter -= 1;
+    }
+    ends.reverse();
+    ends
+}
+
+/// The maturity of the legal entity at the end of each of the last
+/// [`HISTORY_QUARTERS`] quarters the lake has anything for, then today's.
+///
+/// # Errors
+/// As [`loader::load`].
+pub fn history(
+    reader: &Reader,
+    request: &Request<'_>,
+    params: &HouseParams,
+    today: &Maturity,
+) -> Result<Vec<Value>, LoadError> {
+    let mut points = Vec::new();
+    for as_of_ns in quarter_ends(request.as_of_ns, HISTORY_QUARTERS) {
+        let past = Request {
+            as_of_ns,
+            ..*request
+        };
+        let loaded = loader::load(reader, past, params)?;
+        if loaded.inputs.evidence.is_empty() && loaded.inputs.services.is_empty() {
+            continue;
+        }
+        let matrix = Matrix::build(&loaded.inputs, params);
+        let entity = maturity::assess(&matrix, Scope::Entity);
+        points.push(history_point(as_of_ns, &entity));
+    }
+    points.push(history_point(request.as_of_ns, today));
+    Ok(points)
+}
+
 /// The maturity document. `by` selects the node rows listed under
 /// `nodes`; the root row is always under `rollup`.
 #[must_use]
@@ -1043,6 +1097,38 @@ pub fn snapshot_rows(matrix: &Matrix<'_>) -> Vec<RequirementStatusRow> {
             source: SNAPSHOT_SOURCE.to_string(),
         })
         .collect()
+}
+
+/// Today's status rows of every registered legal entity, over all
+/// environments: what the daily job stores.
+///
+/// # Errors
+/// As [`loader::load`].
+pub fn snapshot_all(
+    reader: &Reader,
+    params: &HouseParams,
+    workloads: &[Workload],
+    as_of_ns: i64,
+) -> Result<Vec<RequirementStatusRow>, LoadError> {
+    let request = Request {
+        envs: &[],
+        lei: None,
+        profile: None,
+        as_of_ns,
+        workloads,
+    };
+    let first = loader::load(reader, request, params)?;
+    let mut rows = snapshot_rows(&Matrix::build(&first.inputs, params));
+    let others = first.entities.iter().filter(|e| e.lei != first.entity.lei);
+    for entity in others {
+        let one = Request {
+            lei: Some(&entity.lei),
+            ..request
+        };
+        let loaded = loader::load(reader, one, params)?;
+        rows.extend(snapshot_rows(&Matrix::build(&loaded.inputs, params)));
+    }
+    Ok(rows)
 }
 
 #[cfg(test)]
@@ -1426,6 +1512,64 @@ mod tests {
         assert_eq!(unknown.value, None);
         let scored = rows.iter().find(|r| r.status == "existing").unwrap();
         assert!(scored.value.unwrap() >= params.existing_threshold);
+    }
+
+    #[test]
+    fn the_daily_snapshot_covers_every_legal_entity_and_is_read_back() {
+        const ORG: &str = "
+legal_entities:
+  - {lei: 529900T8BM49AURSDO55, name: Firm One, profile: simplified}
+  - {lei: 506700GE1G29325QX363, name: Firm Two, profile: full}
+functions:
+  - {id: cif-0001, lei: 529900T8BM49AURSDO55, name: Payments, tier: critical}
+  - {id: cif-0002, lei: 506700GE1G29325QX363, name: Custody, tier: important}
+";
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+        let declared = super::super::register::parse(ORG).unwrap();
+        let now = 1_800_000_000 * 1_000_000_000_i64;
+        let writer = store.writer().unwrap();
+        writer.sync_ict_register(&declared.ict, now).unwrap();
+        let params = HouseParams::default();
+
+        let rows = snapshot_all(&store.read_only().unwrap(), &params, &[], now).unwrap();
+        let functions: BTreeSet<&str> = rows.iter().map(|r| r.function_id.as_str()).collect();
+        assert_eq!(functions, BTreeSet::from(["cif-0001", "cif-0002"]));
+        assert!(rows
+            .iter()
+            .all(|r| r.as_of_day == day_of(now) && r.source == SNAPSHOT_SOURCE));
+        // The simplified firm has no Art. 9 row, the full one does.
+        let has = |function: &str, prefix: &str| {
+            rows.iter()
+                .any(|r| r.function_id == function && r.requirement_id.starts_with(prefix))
+        };
+        assert!(!has("cif-0001", "dora.art9."));
+        assert!(has("cif-0002", "dora.art9."));
+
+        writer.upsert_requirement_status(&rows, now).unwrap();
+        let request = Request {
+            envs: &[],
+            lei: None,
+            profile: None,
+            as_of_ns: now,
+            workloads: &[],
+        };
+        let loaded = loader::load(&store.read_only().unwrap(), request, &params).unwrap();
+        assert!(!loaded.inputs.snapshots.is_empty());
+    }
+
+    #[test]
+    fn quarter_ends_walk_back_over_the_year_boundary() {
+        use super::super::model::parse_day;
+        let as_of = end_of_day(parse_day("2026-05-12").unwrap()) - 5;
+        let days: Vec<String> = quarter_ends(as_of, 3)
+            .into_iter()
+            .map(|ns| format_day(day_of(ns)))
+            .collect();
+        assert_eq!(days, ["2025-09-30", "2025-12-31", "2026-03-31"]);
+        // The last day of a quarter is not yet a finished quarter.
+        let last = end_of_day(parse_day("2026-03-31").unwrap());
+        assert_eq!(format_day(day_of(quarter_ends(last, 1)[0])), "2025-12-31");
     }
 
     #[test]
