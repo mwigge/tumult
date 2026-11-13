@@ -43,12 +43,23 @@ async fn main() -> anyhow::Result<()> {
     // every exit path below (success or early `?` return), preserving the
     // existing exit codes.
     let otel_config = tumult_otel::config::TelemetryConfig::from_env();
-    let _telemetry_guard =
+    let telemetry_guard =
         TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
 
     let cli = Cli::parse();
     // OTel spans are flushed by the TelemetryShutdown guard on all paths.
-    dispatch(cli.command).await
+    let done = dispatch(cli.command).await;
+    // A gate that did not pass exits with the code of its verdict.
+    let Some((code, error)) = done
+        .as_ref()
+        .err()
+        .and_then(|e| Some((commands::exit_code_of(e)?, e)))
+    else {
+        return done;
+    };
+    eprintln!("Error: {error}");
+    drop(telemetry_guard);
+    std::process::exit(code)
 }
 
 /// Dispatch a parsed command to its handler. Split from `main` so the wiring
@@ -508,18 +519,24 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             env,
             baseline,
             candidate,
+            range,
+            include,
             store,
             daemon_url,
             fail_on,
             json,
         } => {
-            let fail_on = match fail_on {
-                PerfFailOnArg::Regressed => commands::PerfFailOn::Regressed,
-                PerfFailOnArg::Inconclusive => commands::PerfFailOn::Inconclusive,
-                PerfFailOnArg::Never => commands::PerfFailOn::Never,
-            };
-            let ok = commands::cmd_perf(&commands::PerfArgs {
-                target: target.clone(),
+            let listed: Vec<_> = fail_on
+                .iter()
+                .map(|one| match one {
+                    PerfFailOnArg::Regressed => commands::PerfFailOn::Regressed,
+                    PerfFailOnArg::Inconclusive => commands::PerfFailOn::Inconclusive,
+                    PerfFailOnArg::Never => commands::PerfFailOn::Never,
+                })
+                .collect();
+            let fail_on = commands::PerfFailOn::of(&listed).map_err(|e| anyhow::anyhow!(e))?;
+            commands::cmd_perf(&commands::PerfArgs {
+                target,
                 probe,
                 quantile: quantile.map(|q| q.as_str().to_string()),
                 min_samples,
@@ -527,15 +544,14 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 env,
                 baseline,
                 candidate,
+                range,
+                include_partial: include.is_some(),
                 store,
                 daemon_url,
                 fail_on,
                 json,
             })
             .await?;
-            if !ok {
-                anyhow::bail!("performance verdict did not pass for target {target}");
-            }
         }
         Commands::Tui {
             store,

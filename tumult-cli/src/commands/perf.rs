@@ -4,6 +4,11 @@
 //! verdict is also appended to the daemon's history
 //! (`POST /api/perf/{target}/verdicts`), and a verdict the daemon did not
 //! store is an error.
+//!
+//! Exit codes: 0 the verdict passes; 1 an error (no daemon, a refusal, a
+//! verdict that was not stored); 2 a usage error; 3 `regressed`; 4
+//! `inconclusive`. By default both `regressed` and `inconclusive` fail:
+//! a release is not passed on evidence that cannot tell.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -13,15 +18,72 @@ const DAEMON_URL_ENV: &str = "TUMULT_DAEMON_URL";
 /// Env var with the daemon API token (`kro_...`).
 const DAEMON_TOKEN_ENV: &str = "TUMULT_DAEMON_TOKEN";
 
+/// The exit code of a `regressed` verdict that fails the gate.
+pub const EXIT_REGRESSED: i32 = 3;
+/// The exit code of an `inconclusive` verdict that fails the gate.
+pub const EXIT_INCONCLUSIVE: i32 = 4;
+
 /// Which verdicts make the command exit non-zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PerfFailOn {
-    /// Exit non-zero on `regressed` only (default).
+    /// Exit non-zero on `regressed` only.
     Regressed,
-    /// Exit non-zero on `regressed` or `inconclusive`.
+    /// Exit non-zero on `regressed` or `inconclusive` (default).
     Inconclusive,
     /// Always exit zero; print the verdict only.
     Never,
+}
+
+impl PerfFailOn {
+    /// The policy for the verdicts `--fail-on` lists: the strictest of
+    /// them. `never` stands alone.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when nothing is listed or `never` is listed with
+    /// another.
+    pub fn of(listed: &[Self]) -> Result<Self, String> {
+        if listed.is_empty() {
+            return Err("--fail-on must name regressed, inconclusive or never".into());
+        }
+        if listed.contains(&Self::Never) {
+            if listed.iter().any(|one| *one != Self::Never) {
+                return Err("--fail-on never cannot be combined with another verdict".into());
+            }
+            return Ok(Self::Never);
+        }
+        if listed.contains(&Self::Inconclusive) {
+            return Ok(Self::Inconclusive);
+        }
+        Ok(Self::Regressed)
+    }
+}
+
+/// The gate did not pass: the verdict is one `--fail-on` fails on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PerfDidNotPass {
+    pub target: String,
+    pub verdict: String,
+    /// What the process exits with.
+    pub code: i32,
+}
+
+impl std::fmt::Display for PerfDidNotPass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "performance verdict for target {} is {}",
+            self.target, self.verdict
+        )
+    }
+}
+
+impl std::error::Error for PerfDidNotPass {}
+
+/// The exit code an error asks for, when it is a gate that did not pass.
+#[must_use]
+pub fn exit_code_of(error: &anyhow::Error) -> Option<i32> {
+    error.downcast_ref::<PerfDidNotPass>().map(|e| e.code)
 }
 
 /// Arguments of `tumult perf`.
@@ -38,6 +100,11 @@ pub struct PerfArgs {
     pub baseline: Option<String>,
     /// The version to judge, instead of the one deployed last.
     pub candidate: Option<String>,
+    /// How far back samples are read (`30d`, `12h`); the daemon's default
+    /// when not given.
+    pub range: Option<String>,
+    /// Count the samples of aborted and truncated runs too.
+    pub include_partial: bool,
     /// Have the daemon append the verdict to `perf_verdicts` (operator
     /// role); without it the command only reads. The command fails when
     /// the verdict was not stored.
@@ -63,6 +130,11 @@ pub struct PerfSide {
     /// Load windows planned, and how many of them nothing answered in.
     pub planned: u64,
     pub unanswered: u64,
+    /// Windows that hold a request given up on at its timeout.
+    pub censored: u64,
+    /// Requests sent, and how many of them were not answered well.
+    pub sent: u64,
+    pub failed: u64,
 }
 
 /// The daemon's answer (`GET /api/perf/{target}`); unknown fields are
@@ -74,8 +146,10 @@ pub struct PerfResponse {
     /// The one environment the answer is for; `None` for telemetry that
     /// names none.
     pub environment: Option<String>,
-    /// `explicit` or `deployment_order`.
+    /// `explicit` or `latest_deployment`.
     pub selection: Option<String>,
+    /// Which rule chose the pair, in the daemon's words.
+    pub selection_rule: Option<String>,
     /// Runs no version could be given.
     pub unattributed: u64,
     pub verdict: String,
@@ -111,6 +185,9 @@ fn side(v: &Value, quantile: &str) -> Option<PerfSide> {
         excluded: count(v, "/partial/excluded"),
         planned: count(v, "/windows/planned"),
         unanswered: count(v, "/windows/unanswered"),
+        censored: count(v, "/windows/censored"),
+        sent: count(v, "/requests/sent"),
+        failed: count(v, "/requests/failed"),
     })
 }
 
@@ -149,6 +226,10 @@ impl PerfResponse {
                 .get("selection")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            selection_rule: v
+                .get("selection_rule")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
             unattributed: count(v, "/unattributed_runs/count"),
             verdict: str_field("verdict")?,
             reasons: v
@@ -177,13 +258,20 @@ impl PerfResponse {
     }
 }
 
-/// Whether a verdict passes under the `fail_on` policy. Pure.
+/// What the command exits with for a verdict under the `fail_on` policy:
+/// `None` when it passes. A verdict this build does not know never
+/// passes. Pure.
 #[must_use]
-pub fn passes(verdict: &str, fail_on: PerfFailOn) -> bool {
-    match fail_on {
-        PerfFailOn::Never => true,
-        PerfFailOn::Regressed => matches!(verdict, "improved" | "unchanged" | "inconclusive"),
-        PerfFailOn::Inconclusive => matches!(verdict, "improved" | "unchanged"),
+pub fn exit_code(verdict: &str, fail_on: PerfFailOn) -> Option<i32> {
+    if fail_on == PerfFailOn::Never {
+        return None;
+    }
+    match verdict {
+        "improved" | "unchanged" => None,
+        "regressed" => Some(EXIT_REGRESSED),
+        "inconclusive" if fail_on == PerfFailOn::Inconclusive => Some(EXIT_INCONCLUSIVE),
+        "inconclusive" => None,
+        _ => Some(1),
     }
 }
 
@@ -194,6 +282,9 @@ fn fmt_opt(v: Option<f64>) -> String {
 /// How the two versions were chosen and where; nothing for a daemon that
 /// does not say.
 fn selection_line(resp: &PerfResponse) -> Option<String> {
+    if let Some(rule) = &resp.selection_rule {
+        return Some(format!("  versions: {rule}\n"));
+    }
     let how = match resp.selection.as_deref()? {
         "explicit" => "named on the request",
         _ => "the two deployed last",
@@ -228,6 +319,20 @@ fn side_lines(role: &str, side: &PerfSide) -> String {
         out.push_str(&format!(
             "      {} of {} load window(s) went unanswered\n",
             side.unanswered, side.planned
+        ));
+    }
+    if side.failed > 0 {
+        #[allow(clippy::cast_precision_loss)]
+        let share = side.failed as f64 / side.sent.max(1) as f64 * 100.0;
+        out.push_str(&format!(
+            "      {} of {} request(s) failed ({share:.1}%)\n",
+            side.failed, side.sent
+        ));
+    }
+    if side.censored > 0 {
+        out.push_str(&format!(
+            "      {} load window(s) hold a request given up on at its timeout\n",
+            side.censored
         ));
     }
     out
@@ -341,19 +446,24 @@ pub fn query_params(args: &PerfArgs) -> Vec<(&'static str, String)> {
     if let Some(candidate) = &args.candidate {
         query.push(("candidate", candidate.clone()));
     }
+    if let Some(range) = &args.range {
+        query.push(("range", range.clone()));
+    }
+    if args.include_partial {
+        query.push(("include", "partial".to_string()));
+    }
     query
 }
 
-/// Query the daemon and print the verdict. Returns `Ok(true)` when the
-/// verdict passes under `fail_on`; the caller turns `false` into a
-/// non-zero exit.
+/// Query the daemon and print the verdict.
 ///
 /// # Errors
 ///
-/// Returns an error when no daemon URL is configured, the daemon is
+/// Returns [`PerfDidNotPass`] when the verdict fails under `fail_on`, and
+/// any other error when no daemon URL is configured, the daemon is
 /// unreachable, it answers with an error status, or `--store` was given
 /// and the verdict was not stored.
-pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
+pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
     let base = args
         .daemon_url
         .clone()
@@ -396,7 +506,15 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<bool> {
     } else {
         print!("{}", render(&parsed));
     }
-    Ok(passes(&parsed.verdict, args.fail_on))
+    let Some(code) = exit_code(&parsed.verdict, args.fail_on) else {
+        return Ok(());
+    };
+    Err(PerfDidNotPass {
+        target: parsed.target,
+        verdict: parsed.verdict,
+        code,
+    }
+    .into())
 }
 
 #[cfg(test)]
@@ -404,16 +522,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fail_on_policy_maps_verdicts_to_exit_outcomes() {
-        assert!(passes("improved", PerfFailOn::Regressed));
-        assert!(passes("unchanged", PerfFailOn::Regressed));
-        assert!(passes("inconclusive", PerfFailOn::Regressed));
-        assert!(!passes("regressed", PerfFailOn::Regressed));
-        assert!(!passes("inconclusive", PerfFailOn::Inconclusive));
-        assert!(!passes("regressed", PerfFailOn::Inconclusive));
-        assert!(passes("unchanged", PerfFailOn::Inconclusive));
-        assert!(passes("regressed", PerfFailOn::Never));
-        assert!(!passes("bogus", PerfFailOn::Regressed));
+    fn a_verdict_that_fails_the_gate_has_an_exit_code_of_its_own() {
+        for policy in [PerfFailOn::Regressed, PerfFailOn::Inconclusive] {
+            assert_eq!(exit_code("improved", policy), None);
+            assert_eq!(exit_code("unchanged", policy), None);
+            assert_eq!(exit_code("regressed", policy), Some(EXIT_REGRESSED));
+            // A verdict this build does not know never passes.
+            assert_eq!(exit_code("bogus", policy), Some(1));
+        }
+        assert_eq!(
+            exit_code("inconclusive", PerfFailOn::Inconclusive),
+            Some(EXIT_INCONCLUSIVE)
+        );
+        assert_eq!(exit_code("inconclusive", PerfFailOn::Regressed), None);
+        for verdict in ["improved", "regressed", "inconclusive", "bogus"] {
+            assert_eq!(exit_code(verdict, PerfFailOn::Never), None);
+        }
+        // Not the code of an error (1) or of a usage error (2).
+        assert_eq!((EXIT_REGRESSED, EXIT_INCONCLUSIVE), (3, 4));
+    }
+
+    #[test]
+    fn the_strictest_of_the_named_verdicts_is_the_policy() {
+        use PerfFailOn::{Inconclusive, Never, Regressed};
+        assert_eq!(PerfFailOn::of(&[Regressed, Inconclusive]), Ok(Inconclusive));
+        assert_eq!(PerfFailOn::of(&[Inconclusive]), Ok(Inconclusive));
+        assert_eq!(PerfFailOn::of(&[Regressed]), Ok(Regressed));
+        assert_eq!(PerfFailOn::of(&[Never]), Ok(Never));
+        let both = PerfFailOn::of(&[Never, Regressed]).unwrap_err();
+        assert!(both.contains("never"), "{both}");
+        assert!(PerfFailOn::of(&[]).is_err());
+    }
+
+    #[test]
+    fn a_failed_gate_is_an_error_that_carries_its_exit_code() {
+        let failed: anyhow::Error = PerfDidNotPass {
+            target: "checkout".into(),
+            verdict: "inconclusive".into(),
+            code: EXIT_INCONCLUSIVE,
+        }
+        .into();
+        assert_eq!(exit_code_of(&failed), Some(EXIT_INCONCLUSIVE));
+        assert_eq!(
+            failed.to_string(),
+            "performance verdict for target checkout is inconclusive"
+        );
+        assert_eq!(exit_code_of(&anyhow::anyhow!("daemon unreachable")), None);
     }
 
     fn answer() -> Value {
@@ -498,11 +652,61 @@ mod tests {
             env: None,
             baseline: None,
             candidate: None,
+            range: None,
+            include_partial: false,
             store: false,
             daemon_url: None,
-            fail_on: PerfFailOn::Regressed,
+            fail_on: PerfFailOn::Inconclusive,
             json: false,
         }
+    }
+
+    #[test]
+    fn the_range_and_partial_runs_go_to_the_daemon_when_asked_for() {
+        let asked = PerfArgs {
+            range: Some("60d".into()),
+            include_partial: true,
+            ..args()
+        };
+        assert_eq!(
+            query_params(&asked),
+            vec![
+                ("range", "60d".to_string()),
+                ("include", "partial".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn render_says_which_rule_chose_the_pair_and_what_became_of_the_requests() {
+        let mut v = evidence();
+        v["selection"] = "latest_deployment".into();
+        v["selection_rule"] =
+            "1.5.0 is the version deployed latest in environment demo, and 1.4.0 the one \
+             deployed before it"
+                .into();
+        v["candidate"]["requests"] = serde_json::json!(
+            {"sent": 12000, "failed": 4800, "failure_share": 0.4, "runs_without_counts": 0});
+        v["candidate"]["windows"]["censored"] = 12.into();
+        v["baseline"]["requests"] = serde_json::json!(
+            {"sent": 12000, "failed": 0, "failure_share": 0.0, "runs_without_counts": 0});
+        let resp = PerfResponse::from_value(&v).unwrap();
+        assert_eq!((resp.candidate.sent, resp.candidate.failed), (12000, 4800));
+        let text = render(&resp);
+        assert!(
+            text.contains("  versions: 1.5.0 is the version deployed latest in environment demo"),
+            "{text}"
+        );
+        assert!(!text.contains("the two deployed last"), "{text}");
+        assert!(
+            text.contains("      4800 of 12000 request(s) failed (40.0%)\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("      12 load window(s) hold a request given up on at its timeout\n"),
+            "{text}"
+        );
+        assert_eq!(text.matches("request(s) failed").count(), 1, "{text}");
     }
 
     #[test]

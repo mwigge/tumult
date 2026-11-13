@@ -191,9 +191,14 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         .transpose()
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    // The version that served the run is asked of the store the run
-    // reports to; a run that reports to none asks nobody.
-    let version_resolver = auto_ingest.then(super::target_version::resolver).flatten();
+    // The version that served the run is asked of the daemon, or of the
+    // local store the run reports to; a run nobody observes says so.
+    let version_resolver = super::target_version::resolver(auto_ingest);
+    if let Some(notice) =
+        super::target_version::unobserved_notice(&experiment, version_resolver.is_some())
+    {
+        eprintln!("{notice}");
+    }
     let run_config = RunConfig {
         version_resolver,
         baseline_mode,

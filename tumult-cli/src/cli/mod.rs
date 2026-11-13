@@ -71,12 +71,18 @@ pub(crate) enum GateFailOn {
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PerfFailOnArg {
-    /// Exit non-zero on a `regressed` verdict only (default)
+    /// Exit 3 on a `regressed` verdict
     Regressed,
-    /// Exit non-zero on `regressed` or `inconclusive`
+    /// Exit 4 on an `inconclusive` verdict, and 3 on a `regressed` one
     Inconclusive,
     /// Always exit zero; print the verdict only
     Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfIncludeArg {
+    /// Count the samples of aborted and truncated runs too
+    Partial,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -423,9 +429,22 @@ pub(crate) enum Commands {
         /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
         #[arg(long)]
         daemon_url: Option<String>,
-        /// Which verdicts make the command exit non-zero
-        #[arg(long, value_enum, default_value_t = PerfFailOnArg::Regressed)]
-        fail_on: PerfFailOnArg,
+        /// How far back samples are read, such as `30d` or `12h` (daemon
+        /// default 30d); the order of the versions does not depend on it
+        #[arg(long)]
+        range: Option<String>,
+        /// Runs left out by default that are to be counted
+        #[arg(long, value_enum)]
+        include: Option<PerfIncludeArg>,
+        /// Which verdicts make the command exit non-zero, comma-separated:
+        /// `regressed` exits 3, `inconclusive` exits 4
+        #[arg(
+            long,
+            value_enum,
+            value_delimiter = ',',
+            default_values_t = [PerfFailOnArg::Regressed, PerfFailOnArg::Inconclusive]
+        )]
+        fail_on: Vec<PerfFailOnArg>,
         /// Print the daemon's JSON answer instead of the summary
         #[arg(long)]
         json: bool,
