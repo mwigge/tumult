@@ -4,8 +4,9 @@
 # backdated test runs. The registry profile, the register codes, the
 # unknown state of a declared feed, the 180-day operating rule over the
 # days the daily job stored, the cap by an uninstrumented critical service
-# and its lifting, the house parameters in force and the reload of the org
-# file are all read back from the API. The worked examples of the model
+# and its lifting, the house parameters in force, the reload of the org
+# file, the parameters held from the last valid file and the day that is
+# not stored under stand-in defaults are all read back from the API. The worked examples of the model
 # (level 4 at index 4.42, level 2 at index 3.60) are fixture inputs, so
 # they are asserted by running their tests. No mocks. Exit non-zero on any
 # failed expectation. Run it three times in a row before a release.
@@ -26,6 +27,10 @@
 # dora_store_status_days, a test-only tool that runs the daemon's own
 # daily job with the clock set to each day, against this proof's private
 # lake. No endpoint does that, and the daemon never fills in a past day.
+# The tool marks its rows with the source `proof`. A daemon leaves such
+# days out; step 5 shows that first, and only then starts the daemon with
+# KRONIKA_SCORE_PROOF_DAYS=1, after which every score response says that
+# proof days are in use.
 set -euo pipefail
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$S/../../.." && pwd)"
@@ -247,11 +252,29 @@ pass "a run 180 days old with no stored day is Existing with a streak of 0"
 stop_daemon
 store_days 180 1 50
 start_daemon
+fresh /api/dora/rts1774 "$WORK/rts-no-opt-in.json"
+py "$RESTORE_ROW"'
+assert got=={"cif-0001":("existing",0,180),"cif-0002":("existing",0,180),"cif-0003":("existing",0,180)}, got
+p=d["proof_days"]
+assert p["enabled"] is False and p["counted"]==0 and p["note"] is None, p
+assert p["ignored"]==179, p' <"$WORK/rts-no-opt-in.json"
+curl -fs "$URL/api/maturity" >"$WORK/maturity-no-opt-in.json"
+py 'assert d["proof_days"]["enabled"] is False and d["proof_days"]["ignored"]==179, d["proof_days"]
+assert all(p["state"]=="no_data" for p in d["history"][:-1]), d["history"]' <"$WORK/maturity-no-opt-in.json"
+pass "179 days stored by the proof tool, daemon without the opt-in: none counts, the streak stays 0, the history has no data"
+stop_daemon
+export KRONIKA_SCORE_PROOF_DAYS=1
+start_daemon
 fresh /api/dora/rts1774 "$WORK/rts1.json"
 py "$RESTORE_ROW"'
 assert got=={"cif-0001":("existing",10,170),"cif-0002":("existing",49,131),"cif-0003":("existing",49,131)}, got
-print("     days 180..1 stored, day 50 missed:", got)' <"$WORK/rts1.json"
-pass "one missed day (50 days ago) breaks the streak: 49 days for Reporting and Onboarding"
+p=d["proof_days"]
+assert p["enabled"] is True and p["counted"]==179 and p["ignored"]==0, p
+assert p["note"].startswith("proof days are in use") and "not evidence of operation" in p["note"], p
+print("     days 180..1 stored, day 50 missed:", got)
+print("     ", p["note"])' <"$WORK/rts1.json"
+grep -q 'proof days are in use' "$WORK/tumultd.log" || fail "the daemon log does not say that proof days are in use"
+pass "with KRONIKA_SCORE_PROOF_DAYS=1 the response and the log say proof days are in use; one missed day (50 days ago) breaks the streak: 49 days for Reporting and Onboarding"
 stop_daemon
 store_days 50 50
 start_daemon
@@ -314,8 +337,10 @@ h=d["history"]; assert len(h)==5 and h[-1]["state"]=="today" and h[-1]["level"]=
 past=h[:-1]
 assert {p["state"] for p in past}=={"stored","no_data"}, [p["state"] for p in past]
 assert past[0]["state"]=="no_data", "a quarter that ended before the first stored day has no data"
+assert d["proof_days"]["enabled"] is True and d["proof_days"]["note"], d["proof_days"]
 for p in past:
     if p["state"]=="stored":
+        assert p["source"]=="proof", "a day of the proof tool is named as one"
         assert isinstance(p["level"], int) and p["index"] is not None and p["as_of"], p
     else:
         assert p["level"] is None and p["index"] is None and p["unknown_share"] is None, p
@@ -367,7 +392,7 @@ python3 -c "import json; a=json.load(open('$WORK/maturity-before-feeds.json')); 
 for k in ('level','index','flat_level','flat_index','headline','components','component_states'): assert a[k]==b[k], (k, a[k], b[k])"
 pass "five feeds declared, none connected: Art. 19 still unknown, level, index and pillars unchanged, the level 4 and 5 gates stay shut; F1..F3 unchanged"
 
-echo "[11] a changed org file is read without a restart; a lowered gate and a refused file are both shown"
+echo "[11] a changed org file is read without a restart; a lowered gate is shown, a refused file leaves the last valid one in force"
 own_daemon
 cp "$WORK/org.yaml" "$WORK/org.valid.yaml"
 printf 'score:\n  operating_days: 30\n' >>"$WORK/org.yaml"
@@ -380,23 +405,43 @@ assert got["cif-0003"][0]=="operating" and got["cif-0002"][0]=="operating" and g
 print("     operating_days 30:", got)' <"$WORK/rts-lowered.json"
 pass "operating_days lowered to 30 in the org file: Onboarding reads Operating, and the response names the override and the default"
 own_daemon
-cp "$WORK/org.valid.yaml" "$WORK/org.yaml"
-printf 'score:\n  band_good: 7\n' >>"$WORK/org.yaml"
-until_true /api/dora/rts1774 "$WORK/rts-refused.json" 'd["params"]["fallback"]'
+printf '  band_good: 7\n' >>"$WORK/org.yaml"
+until_true /api/dora/rts1774 "$WORK/rts-held.json" 'd["params"]["held"]'
 py "$RESTORE_ROW"'
 p=d["params"]
-assert p["source"]=="defaults" and p["fallback"] is True and "band_good" in p["reason"] and p["overridden"]==[], p
+assert p["source"]=="last_valid_org_file" and p["held"] is True and p["fallback"] is False and "band_good" in p["reason"], p
+assert p["overridden"]==[{"key":"operating_days","value":30,"default":180}], "the last valid file stays in force, not the defaults"
 assert d["register_state"]=="invalid" and "band_good" in d["register_reason"], (d["register_state"], d["register_reason"])
-assert got=={"cif-0001":("existing",10,170),"cif-0002":("operating",180,None),"cif-0003":("existing",179,1)}, got' <"$WORK/rts-refused.json"
+s=d["snapshot"]; assert s["skipping"] is False and s["skipped"]==0 and s["reason"] is None, s
+assert got["cif-0003"][0]=="operating" and got["cif-0001"][0]=="existing", got' <"$WORK/rts-held.json"
 curl -fs "$URL/api/dora" >"$WORK/dora-refused.json"
 py 'assert len(d["functions"])==3 and all(f["registered"] for f in d["functions"]), "the register in the lake stays as it was"' <"$WORK/dora-refused.json"
-pass "a refused score section: defaults in force with the reason, register state invalid, the register in the lake untouched"
+pass "a file refused after a valid one: the last valid parameters stay in force (operating_days 30), named as held with the reason; register state invalid, the register in the lake untouched"
 own_daemon
 cp "$WORK/org.valid.yaml" "$WORK/org.yaml"
-until_true /api/dora "$WORK/dora-restored.json" 'd["register_state"]=="ok" and not d["params"]["fallback"] and not d["params"]["overridden"]'
+until_true /api/dora "$WORK/dora-restored.json" 'd["register_state"]=="ok" and not d["params"]["fallback"] and not d["params"]["held"] and not d["params"]["overridden"]'
 pass "the valid org file is back in force without a restart"
 
-echo "[12] the score page is served"
+echo "[12] a daemon that never saw a valid org file scores with defaults, says so, and stores no day"
+stop_daemon
+printf 'score:\n  band_good: 7\n' >>"$WORK/org.yaml"
+start_daemon
+until_true /api/dora/rts1774 "$WORK/rts-refused.json" 'd["snapshot"]["skipped"]>=1'
+py "$RESTORE_ROW"'
+p=d["params"]
+assert p["source"]=="defaults" and p["fallback"] is True and p["held"] is False and "band_good" in p["reason"] and p["overridden"]==[], p
+assert d["register_state"]=="invalid" and "band_good" in d["register_reason"], (d["register_state"], d["register_reason"])
+s=d["snapshot"]
+assert s["skipping"] is True and s["skipped"]>=1, s
+assert s["reason"].startswith("the daily snapshot is not stored while the default parameters stand in") and "band_good" in s["reason"], s
+assert got=={"cif-0001":("existing",10,170),"cif-0002":("operating",180,None),"cif-0003":("existing",179,1)}, got
+print("     ", s["reason"], "| skipped", s["skipped"])' <"$WORK/rts-refused.json"
+grep -q 'status_snapshot_skipped' "$WORK/tumultd.log" || fail "the skipped snapshot is not in the daemon log"
+cp "$WORK/org.valid.yaml" "$WORK/org.yaml"
+until_true /api/dora "$WORK/dora-unblocked.json" 'd["register_state"]=="ok" and not d["params"]["fallback"] and not d["snapshot"]["skipping"]'
+pass "refused from the start: defaults in force with the reason, the daily snapshot skipped, counted and logged; a valid file ends it without a restart"
+
+echo "[13] the score page is served"
 code=$(curl -s -o "$WORK/scores.html" -w '%{http_code}' "$URL/scores?view=dora")
 [[ "$code" == 200 ]] || fail "/scores returned $code"
 grep -q '_app/immutable' "$WORK/scores.html" || fail "/scores is not the SPA shell"
@@ -405,9 +450,11 @@ curl -fs "$URL/scores.html" >"$WORK/scores-static.html"
 cmp -s "$WORK/scores-static.html" "$REPO/web/build/scores.html" || fail "/scores.html differs from the built page"
 grep -rq 'dora-heatmap' "$REPO/web/build/_app/immutable" || fail "the built bundle lacks the DORA view"
 grep -rq 'score-params' "$REPO/web/build/_app/immutable" || fail "the built bundle lacks the parameter block"
+grep -rq 'proof-days' "$REPO/web/build/_app/immutable" || fail "the built bundle lacks the proof-days notice"
+grep -rq 'snapshot-skipping' "$REPO/web/build/_app/immutable" || fail "the built bundle lacks the skipped-snapshot notice"
 pass "/scores served by the daemon with the DORA view in the bundle"
 
-echo "[13] the worked examples of the model (fixture inputs)"
+echo "[14] the worked examples of the model (fixture inputs)"
 (cd "$REPO" && ${PROOF_CARGO:-cargo} test -p tumult-compliance --lib worked_example >"$WORK/worked.out" 2>&1) || { tail -30 "$WORK/worked.out"; fail "worked-example tests failed"; }
 for t in \
     'dora::maturity::tests::worked_example_a_is_level_4_with_index_4_42 ... ok' \
