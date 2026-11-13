@@ -8122,6 +8122,7 @@ dependencies = [
  "tumult-net",
  "tumult-plugin",
  "tumult-ssh",
+ "tumult-test-utils",
  "tumult-windows",
 ]
 
@@ -8182,6 +8183,7 @@ dependencies = [
  "tumult-core",
  "tumult-lake",
  "tumult-plugin",
+ "tumult-test-utils",
 ]
 
 [[package]]
