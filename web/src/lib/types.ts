@@ -935,3 +935,29 @@ export interface SuppressionRow extends RiskSuppression {
     prev_hash: string | null;
     new_hash: string;
 }
+
+// --- OpenTelemetry naming-contract conformance (`/api/otel/conformance`) ---
+
+export interface ConformanceKey {
+    key: string;
+    present: number;
+    required_for: 'target' | 'spine' | 'recommended';
+}
+
+export interface ServiceConformance {
+    service: string;
+    spans: number;
+    last_seen_ns: number | null;
+    level: 'none' | 'target' | 'spine';
+    missing: string[];
+    keys: ConformanceKey[];
+}
+
+/** `GET /api/otel/conformance` */
+export interface ConformanceReport {
+    as_of_ns: number;
+    range: string;
+    contract: { target: string[]; spine: string[]; recommended: string[] };
+    summary: { services: number; spine: number; target: number; none: number };
+    services: ServiceConformance[];
+}

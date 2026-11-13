@@ -30,6 +30,7 @@ import type {
     MetricDefInfo,
     MetricQueryResult,
     Overview,
+    ConformanceReport,
     PostureResponse,
     RiskReport,
     SuppressionRow,
@@ -145,6 +146,11 @@ export const api = {
 
     posture: (env = '') =>
         get<PostureResponse>(`/api/posture${env ? `?env=${encodeURIComponent(env)}` : ''}`),
+
+    otelConformance: (range = '24h', env = '') =>
+        get<ConformanceReport>(
+            `/api/otel/conformance?range=${range}${env ? `&env=${encodeURIComponent(env)}` : ''}`,
+        ),
 
     suppressRisk: (id: string, reason: string, expiresInDays?: number, actor?: string) =>
         send<SuppressionRow>('POST', `/api/risks/${encodeURIComponent(id)}/suppress`, {

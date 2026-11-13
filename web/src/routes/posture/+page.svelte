@@ -6,7 +6,14 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
-    import type { MeResponse, PostureResponse, Risk, RiskReport, ScoreTree } from '#lib/types.js';
+    import type {
+        ConformanceReport,
+        MeResponse,
+        PostureResponse,
+        Risk,
+        RiskReport,
+        ScoreTree,
+    } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
     import FanChart from '#lib/components/FanChart.svelte';
     import type { FanSeries } from '#lib/components/FanChart.svelte';
@@ -14,6 +21,7 @@
     let posture: PostureResponse | null = $state(null);
     let report: RiskReport | null = $state(null);
     let tree: ScoreTree | null = $state(null);
+    let conformance: ConformanceReport | null = $state(null);
     const TREND_RANGE = '14d';
     const TREND_MS = 14 * 86_400_000;
     let error: string | null = $state(null);
@@ -44,6 +52,9 @@
         api.scoreTree('', TREND_RANGE)
             .then((t) => (tree = t))
             .catch(() => (tree = null));
+        api.otelConformance('24h')
+            .then((c) => (conformance = c))
+            .catch(() => (conformance = null));
     }
 
     $effect(() => {
@@ -153,6 +164,7 @@
     });
 
     const pct = (v: number | null) => (v == null ? '–' : `${Math.round(v)}`);
+    const LEVEL_CLASS: Record<string, string> = { spine: 'ok', target: 'warn', none: 'fail' };
 
     // NFR heatmap: targets × objectives, hue = margin (negative = breached).
     const nfrOption: EChartsCoreOption | null = $derived.by(() => {
@@ -366,6 +378,44 @@
         </div>
     {/if}
 
+    {#if conformance && conformance.services.length > 0}
+        <section class="panel below" data-testid="conformance">
+            <h2>Telemetry contract, {conformance.range}</h2>
+            <div class="counts">
+                <span class="badge ok">{conformance.summary.spine} spine</span>
+                <span class="badge warn">{conformance.summary.target} target</span>
+                <span class="badge fail">{conformance.summary.none} none</span>
+                <span class="muted">
+                    services whose every span carried the target, the ICT spine, or neither
+                </span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Spans</th>
+                        <th>Level</th>
+                        <th>Missing</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each conformance.services as svc (svc.service)}
+                        <tr>
+                            <td class="mono">{svc.service}</td>
+                            <td class="mono">{svc.spans}</td>
+                            <td
+                                ><span class="badge {LEVEL_CLASS[svc.level] ?? 'neutral'}"
+                                    >{svc.level}</span
+                                ></td
+                            >
+                            <td class="mono missing">{svc.missing.join(', ') || '–'}</td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
+        </section>
+    {/if}
+
     <section class="panel score" data-testid="posture">
         <h2>Posture score</h2>
         <div class="headline">
@@ -501,6 +551,10 @@
         border-radius: 4px;
         padding: 4px 12px;
         cursor: pointer;
+    }
+    .missing {
+        color: var(--text-dim);
+        font-size: 12px;
     }
     .form-error {
         color: var(--fail);
