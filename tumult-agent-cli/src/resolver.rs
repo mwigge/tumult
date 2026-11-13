@@ -24,14 +24,19 @@ pub fn resolve_binary(env_key: &str, binary_name: &str) -> Option<PathBuf> {
             if is_executable(&explicit) {
                 return Some(explicit);
             }
-            tracing::warn!(
-                env_key,
-                path = %explicit.display(),
-                "env override is not an executable file; falling back to PATH lookup"
-            );
+            override_not_executable(env_key, &explicit);
         }
     }
     search_path(binary_name)
+}
+
+/// The binary override in `env_key` does not name an executable file.
+fn override_not_executable(env_key: &str, path: &Path) {
+    tracing::warn!(
+        name: "agent_cli.binary.override_invalid",
+        { config.key = env_key, file.path = %path.display() },
+        "env override is not an executable file, falling back to PATH lookup"
+    );
 }
 
 /// Return true when `key` is set to a non-empty (non-whitespace) value.
@@ -67,5 +72,25 @@ pub fn is_executable(path: &Path) -> bool {
     #[cfg(not(unix))]
     {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::override_not_executable;
+
+    #[test]
+    fn an_unusable_override_is_a_named_warning_with_the_variable_and_path() {
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::WARN, || {
+            override_not_executable("TUMULT_CLAUDE_BIN", Path::new("/opt/claude/README"));
+        });
+        let event = &logs.named("agent_cli.binary.override_invalid")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["config.key"], "TUMULT_CLAUDE_BIN");
+        assert_eq!(event["file.path"], "/opt/claude/README");
+        assert!(event.get("env_key").is_none(), "legacy field: {event}");
+        assert!(event.get("path").is_none(), "legacy field: {event}");
     }
 }
