@@ -63,7 +63,8 @@ async fn forecast_returns_a_band_with_provenance_and_caches_it() {
         body["to_ns"].as_i64().unwrap() / 1_000_000
     );
 
-    let path = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
+    // Horizon 100 is fitted at another bucket than the 6 above.
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=100";
     let (first, again) = get_in_one_window(&srv, path, path).await;
     assert_eq!(first["cached"], false, "{first}");
     assert_eq!(again["cached"], true, "{again}");
@@ -73,39 +74,143 @@ async fn forecast_returns_a_band_with_provenance_and_caches_it() {
     );
     assert_eq!(again["forecast"]["degenerate_band"], true);
     assert_eq!(again["provenance"]["model"], "holt-winters");
-
-    // A different horizon is a different cache entry.
-    let (_, other) = get(
-        &srv.base,
-        "/api/forecast?metric=experiment_count&range=24h&horizon=3",
-    )
-    .await;
-    assert_eq!(other["cached"], false);
-    assert_eq!(other["forecast"]["quantiles"].as_array().unwrap().len(), 3);
 }
 
-/// Horizons handed out by [`get_in_one_window`], so no two attempts — in
-/// one test or across retries — can find each other's cache entry.
-static NEXT_HORIZON: AtomicUsize = AtomicUsize::new(0);
+/// A forecast is fitted at the smallest horizon bucket that holds the
+/// asked horizon, so the horizons inside one bucket share one cache row
+/// and each is served its own number of steps.
+#[tokio::test]
+async fn horizons_in_one_bucket_share_a_cache_entry() {
+    let srv = spawn_server().await;
+    let short = "/api/forecast?metric=experiment_count&range=24h&horizon=30";
+    let long = "/api/forecast?metric=experiment_count&range=24h&horizon=90";
+    let (a, b) = get_in_one_window(&srv, short, long).await;
+    assert_eq!(a["cached"], false, "{a}");
+    assert_eq!(b["cached"], true, "30 and 90 are one bucket: {b}");
+    assert_eq!(a["horizon"], 30);
+    assert_eq!(b["horizon"], 90);
+    let first = a["forecast"]["quantiles"].as_array().unwrap();
+    let second = b["forecast"]["quantiles"].as_array().unwrap();
+    assert_eq!(first.len(), 30);
+    assert_eq!(second.len(), 90);
+    assert_eq!(first[..], second[..30], "the short one is the head");
+    let observed = 24 * 60;
+    assert_eq!(a["series"]["ts"].as_array().unwrap().len(), observed + 30);
+    assert_eq!(b["series"]["ts"].as_array().unwrap().len(), observed + 90);
+    assert_eq!(
+        forecast_rows(&srv, "horizon = 96"),
+        1,
+        "one row, fitted at the bucket"
+    );
+    assert_eq!(forecast_rows(&srv, "true"), 1);
+
+    // Another bucket is another entry.
+    let longer = "/api/forecast?metric=experiment_count&range=24h&horizon=97";
+    let (_, c) = get_in_one_window(&srv, long, longer).await;
+    assert_eq!(c["cached"], false, "{c}");
+    assert_eq!(c["forecast"]["quantiles"].as_array().unwrap().len(), 97);
+    assert_eq!(forecast_rows(&srv, "horizon = 384"), 1);
+}
+
+/// How many `forecasts` rows match `predicate`.
+fn forecast_rows(srv: &TestServer, predicate: &str) -> u64 {
+    let reader = tumult_lake::Store::at(&srv.db_path).read_only().unwrap();
+    let sql = format!("SELECT count(*) AS c FROM forecasts WHERE {predicate}");
+    reader.query_json_rows(&sql).unwrap()[0]["c"]
+        .as_u64()
+        .unwrap()
+}
+
+/// One series keeps its newest rows only, and a backlog of rows past the
+/// retention shrinks by a batch with every write.
+#[tokio::test]
+async fn the_cache_is_capped_per_series_and_pruned_in_batches() {
+    let srv = spawn_server().await;
+    let (status, body) = get(
+        &srv.base,
+        "/api/forecast?metric=experiment_count&range=24h&horizon=6",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(forecast_rows(&srv, "true"), 1);
+    // 300 rows of another series from long ago, and 200 older rows of
+    // this one on windows of their own.
+    exec_write(&srv, |w| {
+        w.execute(
+            "INSERT INTO forecasts SELECT f.* REPLACE ('expired' AS series_key, \
+             i AS created_at_ns) FROM forecasts f, range(1, 301) r(i)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        w.execute(
+            "INSERT INTO forecasts SELECT f.* REPLACE (f.created_at_ns - i AS created_at_ns, \
+             f.context_end_ns - i AS context_end_ns) FROM forecasts f, range(1, 201) r(i) \
+             WHERE f.series_key <> 'expired'",
+            [],
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .await;
+    assert_eq!(forecast_rows(&srv, "series_key = 'expired'"), 300);
+    assert_eq!(forecast_rows(&srv, "series_key <> 'expired'"), 201);
+
+    // One more write: a horizon in another bucket misses the cache.
+    let (status, body) = get(
+        &srv.base,
+        "/api/forecast?metric=experiment_count&range=24h&horizon=100",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["cached"], false);
+    assert_eq!(
+        forecast_rows(&srv, "series_key <> 'expired'"),
+        tumult_lake::FORECAST_ROWS_PER_SERIES as u64,
+        "the series is at its cap"
+    );
+    assert_eq!(
+        forecast_rows(&srv, "series_key <> 'expired' AND horizon = 384"),
+        1,
+        "the row just written is kept"
+    );
+    assert_eq!(
+        forecast_rows(&srv, "series_key = 'expired'"),
+        300 - tumult_lake::FORECAST_PRUNE_BATCH as u64,
+        "one batch of the backlog went"
+    );
+    assert_eq!(
+        forecast_rows(&srv, "series_key = 'expired' AND created_at_ns <= 256"),
+        0,
+        "oldest first"
+    );
+}
 
 /// Two requests that fall in the same aligned window (the same `to_ns`),
-/// retried when a window boundary passes between them, so a cache
-/// assertion never depends on the wall clock. `{h}` in either path becomes
-/// a horizon no earlier attempt has used: the first response of the pair
-/// is always freshly fitted.
+/// so a cache assertion never depends on the wall clock. When a window
+/// boundary passes between them the pair is asked again in a window
+/// neither has touched, so the first response of the pair is as fresh as
+/// it would have been the first time.
 async fn get_in_one_window(srv: &TestServer, first: &str, second: &str) -> (Value, Value) {
     for _ in 0..5 {
-        let horizon = 10 + NEXT_HORIZON.fetch_add(1, Ordering::SeqCst) % 900;
-        let fill = |path: &str| path.replace("{h}", &horizon.to_string());
-        let (status, a) = get(&srv.base, &fill(first)).await;
+        let (status, a) = get(&srv.base, first).await;
         assert_eq!(status, 200, "{a}");
-        let (status, b) = get(&srv.base, &fill(second)).await;
+        let (status, b) = get(&srv.base, second).await;
         assert_eq!(status, 200, "{b}");
         if a["to_ns"] == b["to_ns"] {
             return (a, b);
         }
+        next_window().await;
     }
     panic!("five window boundaries in a row");
+}
+
+/// Sleep into the next window. Every range the tests ask for moves its
+/// window on the minute.
+async fn next_window() {
+    let minute = 60 * NS;
+    let left = minute - now_ns().rem_euclid(minute);
+    let left = Duration::from_nanos(u64::try_from(left).unwrap_or_default());
+    tokio::time::sleep(left + Duration::from_millis(50)).await;
 }
 
 /// A day and a fortnight share the one-minute tier, so they share the
@@ -114,8 +219,8 @@ async fn get_in_one_window(srv: &TestServer, first: &str, second: &str) -> (Valu
 #[tokio::test]
 async fn a_forecast_is_not_served_for_another_context_range() {
     let srv = spawn_server().await;
-    let day = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
-    let fortnight = "/api/forecast?metric=experiment_count&range=14d&horizon={h}";
+    let day = "/api/forecast?metric=experiment_count&range=24h&horizon=30";
+    let fortnight = "/api/forecast?metric=experiment_count&range=14d&horizon=30";
     let (a, b) = get_in_one_window(&srv, day, fortnight).await;
     assert_eq!(a["step_ns"], b["step_ns"], "same tier");
     assert_eq!(a["horizon"], b["horizon"]);
@@ -145,7 +250,7 @@ async fn a_broken_cache_does_not_fail_the_request() {
             .map_err(|e| e.to_string())
     })
     .await;
-    let path = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=30";
     let (first, again) = get_in_one_window(&srv, path, path).await;
     for body in [first, again] {
         assert_eq!(body["cached"], false, "{body}");
@@ -172,7 +277,7 @@ async fn the_one_second_tier_is_cached_by_the_minute() {
         .map_err(|e| e.to_string())
     })
     .await;
-    let path = "/api/forecast?metric=experiment_count&range=1h&horizon={h}";
+    let path = "/api/forecast?metric=experiment_count&range=1h&horizon=30";
     let (first, again) = get_in_one_window(&srv, path, path).await;
     assert_eq!(first["step_ns"], NS);
     assert_eq!(first["to_ns"].as_i64().unwrap() % (60 * NS), 0, "{first}");
@@ -618,7 +723,7 @@ async fn forecast_caches_per_provider_and_serves_the_fallback_while_the_circuit_
     let (url, sidecar) = spawn_fake_sidecar().await;
     sidecar.healthy.store(true, Ordering::SeqCst);
     let srv = spawn_server_with_forecast_sidecar(&url, Duration::from_secs(600)).await;
-    let path = "/api/forecast?metric=experiment_count&range=24h&horizon={h}";
+    let path = "/api/forecast?metric=experiment_count&range=24h&horizon=30";
 
     let (live, again) = get_in_one_window(&srv, path, path).await;
     assert_eq!(live["provenance"]["model"], "timestral");
@@ -628,7 +733,7 @@ async fn forecast_caches_per_provider_and_serves_the_fallback_while_the_circuit_
     let calls = sidecar.hits.load(Ordering::SeqCst);
     assert!(calls >= 1);
 
-    // A new horizon misses the cache; the sidecar now fails.
+    // A horizon in another bucket misses the cache; the sidecar now fails.
     sidecar.healthy.store(false, Ordering::SeqCst);
     let (status, down) = get(
         &srv.base,

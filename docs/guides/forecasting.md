@@ -126,15 +126,25 @@ cannot hold epoch nanoseconds exactly.
 `404` means the metric is unknown or has no points in the window.
 
 Results are cached in the lake's `forecasts` table (schema v19), keyed by
-series, model, step, horizon and the start of the context window. A cached
+series, model, step, horizon bucket and the context window. A cached
 row is reused while the context window still starts and ends at the same
 steps, so repeated calls within one step do not recompute, and a 14 d view
 is never answered with a forecast fitted on 24 h. In the one-second tier
 the window end moves once a minute, so a dashboard polling a short range
 does not write a row per second. The cache row stores the provenance, so a
-cached answer still says which model and which weights produced it. Rows
-older than 30 days are dropped when a new one is written. A cache write
-that fails is logged and the forecast is returned anyway.
+cached answer still says which model and which weights produced it. A
+cache write that fails is logged and the forecast is returned anyway.
+
+A forecast is fitted at one of four horizons (24, 96, 384 or 1,024 steps:
+the smallest that holds the one asked for) and the response carries the
+first `horizon` steps of it. Horizons 30 and 90 are therefore one fit and
+one row; the `horizon` column of the table holds the fitted length, not
+the asked one.
+
+The table is bounded. Every write keeps only the newest 128 rows of the
+series it wrote (the oldest go first) and deletes up to 256 rows older
+than 30 days, oldest first, so a backlog shrinks with each write instead
+of being paid for by one request.
 
 Each provider has its own rows. While the sidecar is in use only a
 sidecar row is a hit, so a Holt-Winters row written before the sidecar was

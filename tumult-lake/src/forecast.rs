@@ -2,7 +2,9 @@
 //! with the provenance that makes it reproducible. Rows are append-only;
 //! the reader returns the newest row for one series key, model, shape and
 //! context window, so a forecast fitted on one window is never served for
-//! another. Rows older than a retention the caller chooses are pruned.
+//! another. The table is bounded twice over: rows older than a retention
+//! the caller chooses are pruned a batch at a time, and one series key
+//! keeps only its newest rows.
 
 use serde_json::Value;
 
@@ -13,6 +15,16 @@ use crate::{Reader, Writer};
 /// band shown on a recent report, short enough that a dashboard polling
 /// every minute cannot grow the table without bound.
 pub const FORECAST_RETENTION_NS: i64 = 30 * 86_400 * 1_000_000_000;
+
+/// How many rows one series key keeps by default. A chart polling every
+/// minute over a few ranges and horizon buckets stays far below it within
+/// the hour a cached row can still be hit; a client inventing horizons or
+/// ranges for one series cannot push it past this.
+pub const FORECAST_ROWS_PER_SERIES: usize = 128;
+
+/// How many expired rows one write deletes by default: more than one
+/// write adds, so a backlog shrinks, and few enough to stay cheap.
+pub const FORECAST_PRUNE_BATCH: usize = 256;
 
 /// One `forecasts` row. `quantiles[step][level]` lines up with
 /// `quantile_levels`; gaps are `NaN` in memory and `NULL` in the table.
@@ -125,15 +137,34 @@ impl Writer {
         Ok(())
     }
 
-    /// Delete the forecast rows created before `cutoff_ns`; returns how
-    /// many went.
+    /// Delete at most `limit` of the forecast rows created before
+    /// `cutoff_ns`, oldest first; returns how many went. Bounded so one
+    /// write never pays for a backlog: the next write takes the next
+    /// batch.
     ///
     /// # Errors
     /// Returns an error if the delete fails.
-    pub fn prune_forecasts(&self, cutoff_ns: i64) -> Result<usize, StoreError> {
+    pub fn prune_forecasts(&self, cutoff_ns: i64, limit: usize) -> Result<usize, StoreError> {
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
         Ok(self.conn.execute(
-            "DELETE FROM forecasts WHERE created_at_ns < ?",
-            duckdb::params![cutoff_ns],
+            "DELETE FROM forecasts WHERE rowid IN (SELECT rowid FROM forecasts \
+             WHERE created_at_ns < ? ORDER BY created_at_ns, rowid LIMIT ?)",
+            duckdb::params![cutoff_ns, limit],
+        )?)
+    }
+
+    /// Keep only the `keep` newest forecast rows of `series_key`; returns
+    /// how many older ones went.
+    ///
+    /// # Errors
+    /// Returns an error if the delete fails.
+    pub fn cap_forecasts(&self, series_key: &str, keep: usize) -> Result<usize, StoreError> {
+        let keep = i64::try_from(keep).unwrap_or(i64::MAX);
+        Ok(self.conn.execute(
+            "DELETE FROM forecasts WHERE rowid IN (SELECT rowid FROM forecasts \
+             WHERE series_key = ? ORDER BY created_at_ns DESC, rowid DESC \
+             LIMIT 9223372036854775807 OFFSET ?)",
+            duckdb::params![series_key, keep],
         )?)
     }
 }
@@ -379,8 +410,8 @@ mod tests {
                 .insert_forecast(&row(created, "holt-winters"))
                 .unwrap();
         }
-        assert_eq!(writer.prune_forecasts(5).unwrap(), 0);
-        assert_eq!(writer.prune_forecasts(30).unwrap(), 2);
+        assert_eq!(writer.prune_forecasts(5, 100).unwrap(), 0);
+        assert_eq!(writer.prune_forecasts(30, 100).unwrap(), 2);
         let reader = store.read_only().unwrap();
         let left = reader
             .query_json_rows("SELECT count(*) AS c, min(created_at_ns) AS oldest FROM forecasts")
@@ -408,8 +439,74 @@ mod tests {
                 "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'forecasts'",
             )
             .unwrap();
-        assert_eq!(indexes.len(), 1, "{indexes:?}");
-        assert_eq!(indexes[0]["index_name"], "idx_forecasts_series_key");
+        assert_eq!(indexes.len(), 2, "{indexes:?}");
+        let names: Vec<&str> = indexes
+            .iter()
+            .filter_map(|i| i["index_name"].as_str())
+            .collect();
+        assert!(names.contains(&"idx_forecasts_series_key"), "{names:?}");
+        assert!(names.contains(&"idx_forecasts_created_at"), "{names:?}");
+    }
+
+    fn count(store: &Store, predicate: &str) -> u64 {
+        let sql = format!("SELECT count(*) AS c FROM forecasts WHERE {predicate}");
+        let rows = store.read_only().unwrap().query_json_rows(&sql).unwrap();
+        rows[0]["c"].as_u64().unwrap()
+    }
+
+    /// A backlog of expired rows is worked off a batch at a time, oldest
+    /// first, so no single write pays for all of it.
+    #[test]
+    fn a_prune_deletes_at_most_its_limit_oldest_first() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        for created in [50, 10, 40, 20, 30, 60] {
+            writer
+                .insert_forecast(&row(created, "holt-winters"))
+                .unwrap();
+        }
+        assert_eq!(writer.prune_forecasts(55, 2).unwrap(), 2);
+        assert_eq!(count(&store, "created_at_ns IN (10, 20)"), 0);
+        assert_eq!(count(&store, "true"), 4);
+        assert_eq!(writer.prune_forecasts(55, 2).unwrap(), 2);
+        assert_eq!(writer.prune_forecasts(55, 2).unwrap(), 1);
+        assert_eq!(writer.prune_forecasts(55, 2).unwrap(), 0);
+        assert_eq!(count(&store, "created_at_ns = 60"), 1);
+        assert_eq!(count(&store, "true"), 1);
+        assert_eq!(writer.prune_forecasts(100, 0).unwrap(), 0, "no budget");
+    }
+
+    /// One series keeps its newest rows only; another series' rows are
+    /// not counted against it and are left alone.
+    #[test]
+    fn a_cap_evicts_the_oldest_rows_of_one_series_only() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        for created in [30, 10, 50, 20, 40] {
+            writer
+                .insert_forecast(&row(created, "holt-winters"))
+                .unwrap();
+            writer
+                .insert_forecast(&ForecastRow {
+                    series_key: "other".into(),
+                    ..row(created, "holt-winters")
+                })
+                .unwrap();
+        }
+        assert_eq!(writer.cap_forecasts(KEY, 5).unwrap(), 0, "at the cap");
+        assert_eq!(writer.cap_forecasts(KEY, 2).unwrap(), 3);
+        assert_eq!(count(&store, "series_key <> 'other'"), 2);
+        assert_eq!(
+            count(&store, "series_key <> 'other' AND created_at_ns >= 40"),
+            2,
+            "the newest two stay"
+        );
+        assert_eq!(count(&store, "series_key = 'other'"), 5);
+        assert_eq!(writer.cap_forecasts(KEY, 2).unwrap(), 0);
+        assert_eq!(writer.cap_forecasts("x' OR '1'='1", 0).unwrap(), 0);
+        assert_eq!(count(&store, "true"), 7, "a hostile key is only a value");
     }
 
     /// A v18 lake (every table up to `perf_verdicts`, no `forecasts`,

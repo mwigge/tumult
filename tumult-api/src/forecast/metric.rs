@@ -3,11 +3,19 @@
 //!
 //! Forecasts are cached in the lake's `forecasts` table with their
 //! provenance. A row is reused only for the same series (metric, target,
-//! environments), the same provider kind, step and horizon, and exactly
-//! the same context window: a day and a fortnight share a step but not a
-//! forecast. The window end is aligned to the step, and to a minute in
-//! the one-second tier, so a chart that polls adds at most one row a
-//! minute; rows older than [`FORECAST_RETENTION_NS`] go with each write.
+//! environments), the same provider kind, step and horizon bucket, and
+//! exactly the same context window: a day and a fortnight share a step
+//! but not a forecast.
+//!
+//! The table is kept small three ways. A forecast is fitted at the
+//! smallest of [`HORIZON_BUCKETS`] that holds the asked horizon and served
+//! cut to the asked length, so the horizons a client can invent share a
+//! handful of rows. The window end is aligned to the step, and to a
+//! minute in the one-second tier, so a chart that polls adds at most one
+//! row a minute. And each write keeps only the newest
+//! [`FORECAST_ROWS_PER_SERIES`] rows of its series and deletes up to
+//! [`FORECAST_PRUNE_BATCH`] rows older than [`FORECAST_RETENTION_NS`].
+//!
 //! The cache is an optimisation: a failed lookup is a miss and a failed
 //! write is logged, and the forecast is served either way.
 
@@ -17,7 +25,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_forecast::resample::{resample, step_for_window, RegularSeries};
 use tumult_forecast::Forecast;
-use tumult_lake::{ForecastLookup, ForecastRow, ModelFilter, FORECAST_RETENTION_NS};
+use tumult_lake::{
+    ForecastLookup, ForecastRow, ModelFilter, FORECAST_PRUNE_BATCH, FORECAST_RETENTION_NS,
+    FORECAST_ROWS_PER_SERIES,
+};
 use tumult_metrics::MetricDef;
 
 use super::{
@@ -31,6 +42,9 @@ use crate::ApiState;
 
 const DEFAULT_HORIZON: usize = 24;
 const MAX_HORIZON: usize = 1_024;
+/// The horizons a forecast is fitted and cached at. Any asked horizon is
+/// served from the smallest bucket that holds it.
+const HORIZON_BUCKETS: [usize; 4] = [DEFAULT_HORIZON, 96, 384, MAX_HORIZON];
 /// The coarsest the window end moves in the one-second tier.
 const CACHE_ALIGN_NS: i64 = 60 * SECOND_NS;
 
@@ -105,6 +119,20 @@ fn asked(q: ForecastQuery, principal: &Principal) -> Result<Asked, ApiError> {
         secs,
         horizon,
     })
+}
+
+/// The horizon a forecast asked for at `asked` steps is fitted at.
+fn fitted_horizon(asked: usize) -> usize {
+    HORIZON_BUCKETS
+        .into_iter()
+        .find(|bucket| *bucket >= asked)
+        .unwrap_or(MAX_HORIZON)
+}
+
+/// The first `horizon` steps of a forecast fitted at its bucket.
+fn first_steps(mut forecast: Forecast, horizon: usize) -> Forecast {
+    forecast.quantiles.truncate(horizon);
+    forecast
 }
 
 /// The context window on its step.
@@ -252,7 +280,7 @@ async fn load(
             series_key: &cache.key,
             model: cache.model,
             step_ns: series.step_ns,
-            horizon: i64::try_from(cache.horizon).unwrap_or_default(),
+            horizon: i64::try_from(fitted_horizon(cache.horizon)).unwrap_or_default(),
             context_start_ns: series.start_ns,
             context_end_ns: series.end_ns(),
         };
@@ -269,20 +297,29 @@ async fn load(
     .await
 }
 
-/// Cache `row` and drop the rows past their retention. Failing to is
-/// logged, never the request's problem.
+/// Insert `row`, then keep its series at the row cap and delete a batch
+/// of the rows past their retention.
+fn insert_and_trim(writer: &tumult_lake::Writer, row: &ForecastRow) -> Result<(), String> {
+    let cutoff_ns = row.created_at_ns - FORECAST_RETENTION_NS;
+    writer.insert_forecast(row).map_err(|e| e.to_string())?;
+    writer
+        .cap_forecasts(&row.series_key, FORECAST_ROWS_PER_SERIES)
+        .map_err(|e| e.to_string())?;
+    writer
+        .prune_forecasts(cutoff_ns, FORECAST_PRUNE_BATCH)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Cache `row` and trim the table. Failing to is logged, never the
+/// request's problem.
 async fn store(state: &ApiState, row: ForecastRow) {
     let Some(ingest) = state.ingest_handle() else {
         return;
     };
-    let cutoff_ns = row.created_at_ns - FORECAST_RETENTION_NS;
     let written = ingest
         .write(tumult_ingest::Batch::Exec(Box::new(move |writer| {
-            writer.insert_forecast(&row).map_err(|e| e.to_string())?;
-            writer
-                .prune_forecasts(cutoff_ns)
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+            insert_and_trim(writer, &row)
         })))
         .await;
     if let Err(e) = written {
@@ -301,7 +338,8 @@ struct Answer {
     cached: bool,
 }
 
-/// Fit a forecast for `series` and cache it.
+/// Fit a forecast for `series` at the asked horizon's bucket, cache it
+/// whole and answer with the asked number of steps.
 async fn fresh(
     state: &ApiState,
     asked: &Asked,
@@ -314,13 +352,14 @@ async fn fresh(
             asked.metric, asked.range
         )));
     }
-    let produced = produce(state, &series.values, asked.horizon, None)
+    let fitted = fitted_horizon(asked.horizon);
+    let produced = produce(state, &series.values, fitted, None)
         .await
         .map_err(|e| internal(e.to_string()))?;
     let row = row_from_forecast(key, series, &produced.forecast, now_ns());
     store(state, row).await;
     Ok(Answer {
-        forecast: produced.forecast,
+        forecast: first_steps(produced.forecast, asked.horizon),
         fallback_reason: produced.fallback_reason,
         cached: false,
     })
@@ -384,7 +423,7 @@ pub(crate) async fn forecast(
     telemetry::cache_lookup(cached.is_some());
     let answer = match cached {
         Some(row) => Answer {
-            forecast: forecast_from_row(&row),
+            forecast: first_steps(forecast_from_row(&row), asked.horizon),
             fallback_reason: skip_reason,
             cached: true,
         },
@@ -473,6 +512,43 @@ mod tests {
         keys.push(plain);
         let distinct: std::collections::BTreeSet<&String> = keys.iter().collect();
         assert_eq!(distinct.len(), keys.len(), "{keys:?}");
+    }
+
+    #[test]
+    fn a_horizon_is_fitted_at_the_smallest_bucket_that_holds_it() {
+        let expected = [
+            (1, 24),
+            (24, 24),
+            (25, 96),
+            (96, 96),
+            (97, 384),
+            (385, 1_024),
+            (MAX_HORIZON, MAX_HORIZON),
+        ];
+        for (asked, bucket) in expected {
+            assert_eq!(fitted_horizon(asked), bucket, "asked {asked}");
+        }
+        let used: std::collections::BTreeSet<usize> =
+            (1..=MAX_HORIZON).map(fitted_horizon).collect();
+        assert_eq!(used.len(), HORIZON_BUCKETS.len(), "{used:?}");
+        assert!((1..=MAX_HORIZON).all(|h| fitted_horizon(h) >= h));
+    }
+
+    #[test]
+    fn a_bucketed_forecast_is_served_at_the_asked_length() {
+        let values: Vec<f64> = (0..200).map(|i| f64::from(i % 7)).collect();
+        let fitted = tumult_forecast::ForecastProvider::forecast(
+            &tumult_forecast::HoltWinters::new(),
+            &tumult_forecast::ForecastRequest::new(&values, fitted_horizon(6)),
+        )
+        .unwrap();
+        assert_eq!(fitted.horizon(), 24);
+        let served = first_steps(fitted.clone(), 6);
+        assert_eq!(served.horizon(), 6);
+        assert_eq!(served.quantiles[..], fitted.quantiles[..6]);
+        assert_eq!(served.levels, fitted.levels);
+        assert_eq!(served.provenance, fitted.provenance);
+        assert_eq!(first_steps(fitted.clone(), 24), fitted);
     }
 
     #[test]

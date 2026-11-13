@@ -300,12 +300,13 @@ Suppressions carry an optional expiry; the scanner applies the latest active
 row per finding at read time.
 
 v19 adds `forecasts`: the cache behind `/api/forecast`, one row per computed
-forecast keyed by series, model, step and horizon, with the quantile levels
-and the `quantiles[step][level]` matrix as DuckDB lists and the provenance
-(model, version, weights hash) alongside. Forecasting itself is pure
+forecast keyed by series, model, step, horizon bucket and context window, with
+the quantile levels and the `quantiles[step][level]` matrix as DuckDB lists and
+the provenance (model, version, weights hash) alongside. Forecasting itself is pure
 (`tumult-forecast` opens no database): the API handler resamples on a
 read-only reader, asks the provider, and writes the cache row through the
-single-writer channel. Rows are derived data and can be deleted at any time.
+single-writer channel, which also caps the rows per series and prunes expired
+ones a batch at a time. Rows are derived data and can be deleted at any time.
 
 ## Roadmap: external tooling on the lake
 

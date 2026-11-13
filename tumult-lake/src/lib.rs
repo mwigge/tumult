@@ -89,7 +89,10 @@ pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
 pub use error::StoreError;
 #[cfg(feature = "duckdb")]
-pub use forecast::{ForecastLookup, ForecastRow, ModelFilter, FORECAST_RETENTION_NS};
+pub use forecast::{
+    ForecastLookup, ForecastRow, ModelFilter, FORECAST_PRUNE_BATCH, FORECAST_RETENTION_NS,
+    FORECAST_ROWS_PER_SERIES,
+};
 #[cfg(feature = "duckdb")]
 pub use manual::{
     AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,

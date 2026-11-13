@@ -368,8 +368,8 @@ echo "[10] the forecasts table holds both providers' rows with their provenance"
 stop_daemon
 "$BIN/tumult" analyze --query "SELECT model, model_version, weights_hash, horizon, context_points FROM forecasts ORDER BY model, horizon" >"$WORK/forecasts.out" 2>&1 ||
     { cat "$WORK/forecasts.out"; fail "could not read the forecasts table"; }
-grep -q "^holt-winters	.*	none	30	" "$WORK/forecasts.out" || { cat "$WORK/forecasts.out"; fail "no Holt-Winters row for horizon 30"; }
-grep -q "^$EXPECT_MODEL	$MODEL_ID@$REVISION .*	$WEIGHTS	30	" "$WORK/forecasts.out" || { cat "$WORK/forecasts.out"; fail "no $EXPECT_MODEL row for horizon 30"; }
+grep -q "^holt-winters	.*	none	96	" "$WORK/forecasts.out" || { cat "$WORK/forecasts.out"; fail "no Holt-Winters row at the 96-step bucket (asked 30)"; }
+grep -q "^$EXPECT_MODEL	$MODEL_ID@$REVISION .*	$WEIGHTS	96	" "$WORK/forecasts.out" || { cat "$WORK/forecasts.out"; fail "no $EXPECT_MODEL row at the 96-step bucket (asked 30)"; }
 pass "rows for holt-winters and $EXPECT_MODEL, each with version and weights hash"
 
 if [[ "$MODEL_KIND" == stub ]]; then

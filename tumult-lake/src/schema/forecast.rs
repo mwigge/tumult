@@ -4,11 +4,13 @@
 //! row for the same series key and context window supersedes the older
 //! one, and rows past the retention are deleted by the writer.
 //!
-//! Unlike the v5 run tables this one carries an index: every chart view
-//! looks the cache up by series key, and losing the table to a crash costs
-//! nothing but a refit. `degenerate_band` arrived after the first v19
-//! lakes were created, hence the `ADD COLUMN IF NOT EXISTS` next to the
-//! `CREATE`.
+//! Unlike the v5 run tables this one carries indexes: every chart view
+//! looks the cache up by series key, every write prunes the oldest rows by
+//! `created_at_ns`, and losing the table to a crash costs nothing but a
+//! refit. `degenerate_band` and the `created_at_ns` index arrived after
+//! the first v19 lakes were created; both are additive and idempotent
+//! (`ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`), so an
+//! early v19 lake gains them on open without a version of its own.
 
 /// One row per forecast. `quantiles[step][level]` matches
 /// `quantile_levels`; `NULL` elements are gaps the model could not fill.
@@ -25,4 +27,5 @@ CREATE TABLE IF NOT EXISTS forecasts (
 );
 ALTER TABLE forecasts ADD COLUMN IF NOT EXISTS degenerate_band BOOLEAN DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_forecasts_series_key ON forecasts (series_key);
+CREATE INDEX IF NOT EXISTS idx_forecasts_created_at ON forecasts (created_at_ns);
 ";
