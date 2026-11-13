@@ -1,0 +1,93 @@
+title: Zone failover — drain one zone's node and verify the service stays up
+description: Disaster-recovery drill for a multi-zone deployment: cordon and drain the node that carries the zone-a replicas, verify the deployment recovers on the remaining zones inside the recovery objective, then uncordon.
+
+tags[3]: kubernetes, dr, failover
+kind: dr
+target:
+  system: checkout
+  technology: kubernetes
+  environment: staging
+rto_target_s: 120
+nfr[2]:
+  - id: post-availability
+    kind: availability
+    metric: post.availability
+    operator: gte
+    threshold: 0.95
+    criticality: blocking
+  - id: during-availability
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.5
+    criticality: major
+
+steady_state_hypothesis:
+  title: checkout serves from every zone
+  probes[2]:
+    - name: deployment-ready
+      activity_type: probe
+      provider:
+        type: native
+        plugin: tumult-kubernetes
+        function: deployment_is_ready
+        arguments:
+          namespace: shop
+          name: checkout
+      tolerance:
+        type: regex
+        pattern: "true"
+    - name: service-has-endpoints
+      activity_type: probe
+      provider:
+        type: native
+        plugin: tumult-kubernetes
+        function: service_has_endpoints
+        arguments:
+          namespace: shop
+          name: checkout
+      tolerance:
+        type: regex
+        pattern: "true"
+
+method[3]:
+  - name: cordon-zone-a-node
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: cordon_node
+      arguments:
+        name: ${zone_a_node}
+  - name: drain-zone-a-node
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: drain_node
+      arguments:
+        name: ${zone_a_node}
+        grace_period_seconds: 30
+    pause_after_s: 20.0
+  - name: checkout-recovered-elsewhere
+    activity_type: probe
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: deployment_is_ready
+      arguments:
+        namespace: shop
+        name: checkout
+    tolerance:
+      type: regex
+      pattern: "true"
+
+rollbacks[1]:
+  - name: uncordon-zone-a-node
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-kubernetes
+      function: uncordon_node
+      arguments:
+        name: ${zone_a_node}

@@ -2,6 +2,11 @@ title: worker-process kill — disruption detected and removed
 description: Start a background worker, confirm it runs, kill it, and verify the absence is detected (tumult process-kill pattern, procps-free)
 
 tags[2]: process, resilience
+kind: chaos
+target:
+  system: worker
+  technology: process
+  environment: demo
 
 steady_state_hypothesis:
   title: A background worker can be started and is running

@@ -2,6 +2,11 @@ title: api-worker freeze — heartbeat recovers after SIGSTOP injection
 description: A heartbeat worker simulates an API service; SIGSTOP freezes it (latency injection), SIGCONT restores it, and the heartbeat freshness probe confirms recovery
 
 tags[2]: latency, resilience
+kind: chaos
+target:
+  system: api-worker
+  technology: process
+  environment: demo
 
 steady_state_hypothesis:
   title: The API worker heartbeat is fresh (less than 1s old)

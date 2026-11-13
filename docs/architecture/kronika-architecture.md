@@ -107,7 +107,9 @@ not being renamed.
    the span call graph, registered definitions and the Kubernetes
    manifests under `KRONIKA_MANIFESTS_DIR`, with the coverage matrix and
    the continuous posture score; `POST /api/risks/{id}/suppress` accepts a
-   finding for a while). Mutating routes exist but
+   finding for a while; `POST /api/risks/{id}/recommend` turns one into a
+   registered experiment and an autopilot candidate with a `risk`
+   trigger, gated and recorded when a policy is loaded). Mutating routes exist but
    stay read-only in spirit: they ride the single-writer channel (run
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with
