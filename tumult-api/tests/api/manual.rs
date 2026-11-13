@@ -19,7 +19,7 @@ fn manual_body(by: &str) -> Value {
         "duration_s": 3600.0,
         "entered_by": by,
         "attestation": "I attest this record reflects the exercise as executed.",
-        "framework_refs": ["DORA Art. 24(7)"]
+        "framework_refs": ["DORA Art. 24(6)"]
     })
 }
 

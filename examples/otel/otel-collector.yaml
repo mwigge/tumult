@@ -9,7 +9,12 @@
 #                   round, so either vocabulary works end to end.
 #  3. `attributes` — cardinality guard: drops request-scoped identifiers that
 #                   must never become metric dimensions.
-#  4. Export to tumultd over OTLP with the ingest token.
+#  4. Export to tumultd over OTel-Arrow (OTAP) with the ingest token:
+#     columnar, zstd-compressed batches on one long-lived gRPC stream per
+#     signal, decoded straight into the Arrow-native lake. The plain OTLP
+#     exporter below it is the fallback for Collector builds without the
+#     otelarrow exporter (contrib only; 0.157.0 is what this example and
+#     scripts/proof/otap are verified against).
 receivers:
   otlp:
     protocols:
@@ -59,24 +64,42 @@ processors:
   batch:
 
 exporters:
-  otlp/tumultd:
+  otelarrow/tumultd:
     endpoint: ${env:TUMULTD_OTLP_ENDPOINT:-tumultd.host:14317}
     tls:
       insecure: true
     headers:
       authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
+    # gRPC compression stays at the exporter default (zstd, announced as
+    # grpc-encoding "zstdarrow5"); tumultd accepts zstdarrow1-9, zstd, gzip
+    # and none. The Arrow IPC payloads are zstd-compressed as well
+    # (arrow.payload_compression defaults to zstd).
+    arrow:
+      # Fail loudly instead of silently falling back to unary OTLP when the
+      # Arrow stream cannot be established.
+      disable_downgrade: true
+      num_streams: 2
+      max_stream_lifetime: 30s
+  # OTLP fallback: same endpoint and token, unary gRPC. Swap it into the
+  # pipelines below on a Collector without the otelarrow exporter.
+  # otlp/tumultd:
+  #   endpoint: ${env:TUMULTD_OTLP_ENDPOINT:-tumultd.host:14317}
+  #   tls:
+  #     insecure: true
+  #   headers:
+  #     authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, transform, attributes/cardinality, batch]
-      exporters: [otlp/tumultd]
+      exporters: [otelarrow/tumultd]
     metrics:
       receivers: [otlp]
       processors: [resource, transform, batch]
-      exporters: [otlp/tumultd]
+      exporters: [otelarrow/tumultd]
     logs:
       receivers: [otlp]
       processors: [resource, transform, attributes/cardinality, batch]
-      exporters: [otlp/tumultd]
+      exporters: [otelarrow/tumultd]

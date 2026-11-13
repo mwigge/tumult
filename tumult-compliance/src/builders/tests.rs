@@ -22,6 +22,23 @@ fn framework_lists_cover_all_four() {
     }
 }
 
+#[test]
+fn dora_clauses_cite_the_plan_paragraphs_and_leave_out_tlpt() {
+    let dora = FRAMEWORK_CLAUSES
+        .iter()
+        .find(|(name, _)| *name == "dora")
+        .map(|(_, clauses)| *clauses)
+        .expect("dora clause list");
+    assert_eq!(
+        dora,
+        [
+            "Art. 11(3), 11(4), 11(6) — response and recovery plans",
+            "Art. 12(2) — backup, restoration and recovery",
+            "Art. 24–25 — resilience testing programme",
+        ]
+    );
+}
+
 const BASE_NS: i64 = 1_785_000_000_000_000_000;
 const HOUR_NS: i64 = 3_600_000_000_000;
 
@@ -361,7 +378,7 @@ fn findings_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
             entered_by: "alice".into(),
             attestation: "I attest this record reflects the exercise.".into(),
             renewal_due_ns: None,
-            framework_refs: vec!["DORA Art. 24(7)".into(), "ISO 27001 A.5.29".into()],
+            framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.29".into()],
         })
         .unwrap();
     writer.submit_manual(&id, None, "alice").unwrap();

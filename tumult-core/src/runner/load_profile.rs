@@ -12,6 +12,10 @@ use crate::types::{LoadConfig, LoadProfile};
 pub const DEFAULT_VUS: u32 = 10;
 /// Default duration in seconds when the config leaves `duration_s` unset.
 pub const DEFAULT_DURATION_S: f64 = 30.0;
+/// The shortest window a sample interval may ask for. Below this a window
+/// holds too few requests for its percentiles to mean anything, and the
+/// requests in flight at its end dominate what it measured.
+pub const MIN_WINDOW_S: f64 = 1.0;
 
 /// One segment of the plan: `target_vus` reached by the end of
 /// `duration_s`. A `ramp` stage moves linearly from the previous level; a
@@ -149,10 +153,13 @@ pub struct Window {
     pub vus: u32,
 }
 
-/// Slice the plan into fixed windows of at most `sample_interval_s` (or
-/// one window per stage when unset). A ramp stage interpolates the
-/// concurrency at each window's midpoint, so the staircase approximates
-/// the line; a step stage repeats its target.
+/// Slice the plan into fixed windows of `sample_interval_s` (or one window
+/// per stage when unset). The interval is never taken below
+/// [`MIN_WINDOW_S`], and a stage's tail shorter than that joins the window
+/// before it, so only a stage that is itself shorter yields a short
+/// window. A ramp stage interpolates the concurrency at each window's
+/// midpoint, so the staircase approximates the line; a step stage repeats
+/// its target.
 #[must_use]
 pub fn windows(plan: &LoadPlan) -> Vec<Window> {
     let mut out = Vec::new();
@@ -164,11 +171,17 @@ pub fn windows(plan: &LoadPlan) -> Vec<Window> {
         let width = plan
             .sample_interval_s
             .filter(|w| w.is_finite() && *w > 0.0)
-            .unwrap_or(stage.duration_s)
+            .map_or(stage.duration_s, |w| w.max(MIN_WINDOW_S))
             .min(stage.duration_s);
         let mut elapsed = 0.0;
         while elapsed < stage.duration_s {
-            let duration_s = width.min(stage.duration_s - elapsed);
+            let left = stage.duration_s - elapsed;
+            // A tail too short to be its own window joins this one.
+            let duration_s = if left - width < MIN_WINDOW_S {
+                left
+            } else {
+                width
+            };
             let vus = if stage.ramp {
                 interpolate(
                     level,
@@ -356,6 +369,31 @@ mod tests {
             assert_eq!(w.len(), 1, "interval {bad}");
             assert!(approx(w[0].duration_s, 30.0));
         }
+    }
+
+    #[test]
+    fn windows_are_never_shorter_than_the_minimum() {
+        // A half-second interval is widened to one second.
+        let mut p = plan(&config(None, Some(3), Some(4.0)));
+        p.sample_interval_s = Some(0.5);
+        let w = windows(&p);
+        assert_eq!(w.len(), 4);
+        assert!(w.iter().all(|x| approx(x.duration_s, 1.0)), "{w:?}");
+
+        // A tail shorter than the minimum joins the window before it.
+        let mut p = plan(&config(None, Some(3), Some(10.5)));
+        p.sample_interval_s = Some(5.0);
+        let w = windows(&p);
+        assert_eq!(w.len(), 2);
+        assert!(approx(w[1].offset_s, 5.0));
+        assert!(approx(w[1].duration_s, 5.5));
+
+        // A stage that is itself shorter than the minimum stays whole.
+        let mut p = plan(&config(None, Some(3), Some(0.4)));
+        p.sample_interval_s = Some(0.1);
+        let w = windows(&p);
+        assert_eq!(w.len(), 1);
+        assert!(approx(w[0].duration_s, 0.4));
     }
 
     #[test]

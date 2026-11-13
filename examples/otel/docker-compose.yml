@@ -1,14 +1,17 @@
 # An auto-instrumented service feeding the resilience platform through a
-# Collector that enforces the naming contract. Pair it with the Kronika
-# stack (docker/docker-compose.kronika.yml), which publishes OTLP on
-# 127.0.0.1:14317.
+# Collector that enforces the naming contract and exports over OTel-Arrow
+# (the otelarrow exporter, contrib distribution only). Pair it with the
+# Kronika stack (docker/docker-compose.kronika.yml), which publishes OTLP
+# and OTel-Arrow on 127.0.0.1:14317.
 #
 #   KRONIKA_INGEST_TOKEN=... docker compose -f examples/otel/docker-compose.yml up --build
 #   curl -s localhost:18080/checkout
 #   curl -s -H "Authorization: Bearer $KRONIKA_BOOTSTRAP_TOKEN" localhost:14318/api/otel/conformance
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.139.0
+    # contrib, not core: the otelarrow exporter lives in contrib. 0.157.0 is
+    # the version the OTel-Arrow ingest path was verified against.
+    image: otel/opentelemetry-collector-contrib:0.157.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro

@@ -10,6 +10,8 @@
 //!   (`OTEL_EXPORTER_OTLP_ENDPOINT=http://host:4317`, bare host, no path).
 //! * **OTLP/HTTP protobuf** ([`http`]): what smedja's exporter talks
 //!   (`SMEDJA_OTLP_ENDPOINT=http://host:4318`, `/v1/*` paths).
+//! * **OTel-Arrow (OTAP)** ([`otap`]): the Collector's `otelarrow` exporter,
+//!   bidirectional Arrow streams on the same gRPC listener as OTLP/gRPC.
 //! * **Single-writer channel** (`writer`): both servers funnel batches
 //!   through one bounded channel onto the store's single `DuckDB` writer.
 //! * **Manual import** ([`manual`]): CSV and tumult journal JSON files.
@@ -26,6 +28,7 @@ pub mod gamedays;
 pub mod grpc;
 pub mod http;
 pub mod manual;
+pub mod otap;
 pub mod retention;
 pub mod runs;
 pub mod schedules;

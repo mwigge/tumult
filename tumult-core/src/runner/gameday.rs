@@ -33,7 +33,8 @@ impl LoadGuard<'_> {
 impl Drop for LoadGuard<'_> {
     fn drop(&mut self) {
         if let (Some(handle), Some(executor)) = (self.handle.take(), self.executor) {
-            if let Err(e) = executor.stop(handle) {
+            // Reached only on an early exit: nothing is left to measure.
+            if let Err(e) = executor.abort(handle) {
                 tracing::error!(error = %e, "failed to stop gameday load on exit");
             }
         }

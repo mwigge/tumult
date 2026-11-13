@@ -275,7 +275,11 @@ export interface PerfSide {
     p99: number | null;
 }
 
-/** `GET /api/perf/{target}`: the regression verdict between the latest two versions. */
+/**
+ * `GET /api/perf/{target}`: the regression verdict between the latest two
+ * versions. `POST /api/perf/{target}/verdicts` answers the same shape with
+ * `stored: true`.
+ */
 export interface PerfVerdict {
     target: string;
     probe: string;

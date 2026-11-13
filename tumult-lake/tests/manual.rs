@@ -37,7 +37,19 @@ fn draft(by: &str) -> NewManualExperiment {
         entered_by: by.into(),
         attestation: "I attest this record reflects the exercise as executed.".into(),
         renewal_due_ns: Some(190 * DAY),
-        framework_refs: vec!["DORA Art. 24(7)".into()],
+        framework_refs: vec!["DORA Art. 24(6)".into()],
+    }
+}
+
+#[test]
+fn draft_fixture_cites_dora_paragraphs_that_exist() {
+    let refs = draft("alice").framework_refs;
+    assert!(refs.iter().any(|r| r.starts_with("DORA Art.")));
+    for framework_ref in refs.iter().filter(|r| r.starts_with("DORA Art.")) {
+        assert!(
+            tumult_core::compliance::dora_ref_exists(framework_ref),
+            "{framework_ref:?} does not exist in DORA"
+        );
     }
 }
 
@@ -58,7 +70,7 @@ fn create_submit_verify_happy_path() {
     assert_eq!(detail.experiment["reviewed_by"], serde_json::json!("bob"));
     assert_eq!(
         detail.experiment["framework_refs"],
-        serde_json::json!(["DORA Art. 24(7)"])
+        serde_json::json!(["DORA Art. 24(6)"])
     );
     // Audit: create + submit + verify, hash chain intact.
     let actions: Vec<&str> = detail

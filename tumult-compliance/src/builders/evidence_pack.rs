@@ -13,9 +13,9 @@ pub const FRAMEWORK_CLAUSES: &[(&str, &[&str])] = &[
     (
         "dora",
         &[
-            "Art. 11(4) — response and recovery plans",
+            "Art. 11(3), 11(4), 11(6) — response and recovery plans",
             "Art. 12(2) — backup, restoration and recovery",
-            "Art. 24–26 — resilience testing programme",
+            "Art. 24–25 — resilience testing programme",
         ],
     ),
     (

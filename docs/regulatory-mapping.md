@@ -40,23 +40,23 @@ DORA is the most prescriptive framework for resilience testing in financial serv
 | Sound and comprehensive testing programme | Experiment definitions in TOON with steady-state hypothesis, method, rollbacks | `tumult.experiment.title`, `tumult.experiment.id` |
 | Testing covers ICT systems supporting critical functions | Target tagging per system/function | `resilience.target.system`, `resilience.target.criticality` |
 | Testing programme is proportionate to risks | Risk-based experiment selection, estimate confidence levels | `resilience.estimate.confidence`, `resilience.estimate.rationale` |
-| Testing is undertaken by independent parties | Operator identity in journal, separation of roles | `tumult.operator.id`, `tumult.operator.role` |
+| Testing is undertaken by independent parties (Art. 24(4)) | Operator identity in journal, separation of roles | `tumult.operator.id`, `tumult.operator.role` |
+| Testing at least yearly on ICT systems supporting critical or important functions (Art. 24(6); not microenterprises) | Journal timestamps prove execution dates and frequency | `tumult.experiment.started_at`, `resilience.analysis.trend_run_count` |
 
 ### Article 25 — Testing of ICT tools and systems
 
-**Requirement**: The ICT resilience testing programme shall provide for the execution of appropriate tests, including vulnerability assessments and scans, open-source analyses, network security assessments, gap analyses, physical security reviews, questionnaires and scanning software solutions, source code reviews, scenario-based tests, compatibility testing, performance testing, end-to-end testing, and penetration testing.
+**Requirement**: The ICT resilience testing programme shall provide for the execution of appropriate tests, such as vulnerability assessments and scans, open-source analyses, network security assessments, gap analyses, physical security reviews, questionnaires and scanning software solutions, source code reviews, scenario-based tests, compatibility testing, performance testing, end-to-end testing, and penetration testing. The list is illustrative. Art. 25 sets no test frequency; the yearly requirement is Art. 24(6).
 
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
 | Scenario-based tests | Experiment method steps define the fault scenario | `tumult.action.name`, `tumult.probe.name` |
 | Performance testing | Baseline and during-fault metrics with statistical analysis | `resilience.baseline.*`, `resilience.during.*` |
 | End-to-end testing | Multi-target experiments covering full transaction paths | `tumult.target.type`, `tumult.target.id` |
-| Testing at least yearly | Journal timestamps prove execution dates and frequency | `tumult.experiment.started_at`, `resilience.analysis.trend_run_count` |
 | Documented results | TOON journals with full trace linkage | Journal files, OTel traces |
 
 ### Article 26 — Advanced testing (TLPT / TIBER-EU)
 
-**Requirement**: Financial entities identified as systemically important shall carry out threat-led penetration testing (TLPT) at least every 3 years on live production systems, covering critical or important functions, per the TLPT Regulatory Technical Standards and TIBER-EU.
+**Requirement**: Financial entities identified by the competent authority under Art. 26(8), other than Art. 16(1) entities and microenterprises, shall carry out threat-led penetration testing (TLPT) at least every 3 years on live production systems, covering critical or important functions, per the TLPT Regulatory Technical Standards and TIBER-EU.
 
 > **Scope note (indirect mapping):** Tumult experiments are resilience tests, **not** threat-led penetration tests, and do **not** satisfy TLPT. TLPT requires a red team simulating a real adversary. Tumult can *inform* TLPT scenario design and evidence recovery under the kinds of scenarios a red team might trigger — nothing more. Do not represent Tumult runs as TLPT evidence.
 
@@ -74,7 +74,16 @@ DORA is the most prescriptive framework for resilience testing in financial serv
 |-------------|----------------|------------|
 | Recovery time objectives validated | Phase 3 recovery measurement against declared RTO | `resilience.post.recovery_duration_s`, `resilience.post.mttr_s` |
 | Recovery plans tested | Rollback execution and verification in journal | `tumult.rollback.*`, `resilience.post.fully_recovered` |
-| Lessons learned from testing | Phase 0 vs Phase 3 comparison, trend analysis | `resilience.analysis.estimate_accuracy`, `resilience.analysis.trend_direction` |
+| Plans reviewed in light of test results (Art. 11(6)) | Phase 0 vs Phase 3 comparison, trend analysis | `resilience.analysis.estimate_accuracy`, `resilience.analysis.trend_direction` |
+
+### Article 12 — Backup, restoration and recovery
+
+**Requirement**: Backup and restoration belong to Art. 12, not Art. 11. Backup and restoration procedures are tested periodically (Art. 12(2)), and data integrity is checked on recovery (Art. 12(7)).
+
+| Requirement | Tumult Evidence | Attributes |
+|-------------|----------------|------------|
+| Backup and restoration procedures tested periodically (Art. 12(2)) | Dated restore and recovery experiments with measured recovery duration | `resilience.post.recovery_duration_s`, `tumult.experiment.started_at` |
+| Integrity checked on recovery (Art. 12(7)) | Data integrity verification post-fault | `resilience.post.data_integrity_verified`, `resilience.post.data_loss_detected` |
 
 ---
 
@@ -227,7 +236,7 @@ resilience.regulatory.frameworks       = "DORA,NIS2,PCI-DSS"
 resilience.regulatory.articles         = "art24,art25,art21-2c,11.4.2"
 resilience.regulatory.evidence_level   = "formal"        # formal, informal, exploratory
 resilience.regulatory.audit_period     = "2025-Q1"
-resilience.regulatory.retention_days   = 2555            # 7 years for DORA
+resilience.regulatory.retention_days   = 2555            # 7 years (recommended; DORA sets no period)
 ```
 
 ### Filtering journals for audit
@@ -297,7 +306,7 @@ Every piece of evidence traces back to the journal's `trace_id`. An auditor can 
 
 | Framework | Minimum retention | Recommended |
 |-----------|------------------|-------------|
-| DORA | Retention is not set by a single "5-year" article; keep testing records for the period competent authorities may request (commonly cited as ~5 years). **The prior "Art. 28" citation was wrong — Art. 28 governs ICT third-party risk, not record retention.** Confirm the applicable basis with your supervisor. | 7 years |
+| DORA | DORA sets no retention period for testing evidence. Keep testing records for the period your competent authority may request, and confirm the applicable basis with your supervisor. **The prior "Art. 28" citation was wrong — Art. 28 governs ICT third-party risk, not record retention.** | 7 years |
 | NIS2 | Per member state transposition | 5 years |
 | PCI-DSS | 1 year — audit log retention is **Req. 10.5.1** (12 months, 3 months immediately available). *(Prior "Req. 10.7" was wrong: 10.7 covers detecting failures of critical security controls.)* | 3 years |
 | ISO 22301 | Certification cycle (3 years) | 5 years |
@@ -313,9 +322,9 @@ Parquet export enables cost-effective long-term archival. Journals compressed as
 |-----------|------|------|---------|-----------|-----------|-------------------|
 | Scenario-based testing | Art. 25 | Art. 21(2)(f) | -- | OpRes P4 | 8.5 | A.5.30 |
 | Recovery validation | Art. 11 | Art. 21(2)(c) | -- | OpRes P4 | 8.5 | CC7.5 |
-| Testing frequency proof | Art. 24 | Art. 21(2)(f) | 12.10.2 | OpRes P4 | 8.5 | CC7.5 |
-| Data integrity verification | Art. 11 | Art. 21(2)(c) | -- | OpRes P4 | -- | A.5.30 |
-| Trend analysis / learning | Art. 24 | -- | -- | -- | 8.5 | -- |
+| Testing frequency proof | Art. 24(6) | Art. 21(2)(f) | 12.10.2 | OpRes P4 | 8.5 | CC7.5 |
+| Data integrity verification | Art. 12(7) | Art. 21(2)(c) | -- | OpRes P4 | -- | A.5.30 |
+| Trend analysis / learning | Art. 13(4), Art. 6(5) | -- | -- | -- | 8.5 | -- |
 | Incident-response testing | Art. 11 | Art. 21(2)(b) | 12.10.2 | -- | -- | CC7.4 |
 | Threat-led testing (TLPT) — *indirect only* | Art. 26 | -- | -- | -- | -- | -- |
 | Audit trail / evidence | Art. 24 | Art. 21(2)(f) | 10.5.1 | BCBS 239 P6 | 8.5 | CC7.5 |

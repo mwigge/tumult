@@ -1,0 +1,37 @@
+title: RIP phase-4 proof — a ten-minute soak that is interrupted
+description: Six hundred seconds of oha in one-second windows behind a method that never gets there. The proof interrupts the run after the first windows; the load must end at once, the rollback must run, and the windows already measured must be journaled.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout-interrupt
+  technology: http
+  environment: demo
+
+load:
+  tool: oha
+  script: http://127.0.0.1:44380/
+  vus: 2
+  duration_s: 600
+  profile:
+    type: soak
+    sample_interval_s: 1
+
+method[1]:
+  - name: hold-for-ten-minutes
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "true"
+      timeout_s: 5.0
+    pause_after_s: 600.0
+
+rollbacks[1]:
+  - name: mark-the-rollback
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "touch \"$PROOF_ROLLBACK_MARK\""
+      timeout_s: 5.0
