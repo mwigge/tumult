@@ -152,9 +152,13 @@ pub fn criticality_weight(level: &str) -> u32 {
 
 /// Minimal glob: `*` matches any (possibly empty) character sequence;
 /// everything else is literal. Anchored at both ends unless the pattern
-/// starts/ends with `*`.
+/// starts/ends with `*`. The empty pattern is a literal like any other: it
+/// matches only the empty name.
 #[must_use]
 pub fn glob_match(pattern: &str, name: &str) -> bool {
+    if pattern.is_empty() {
+        return name.is_empty();
+    }
     let anchored_start = !pattern.starts_with('*');
     let anchored_end = !pattern.ends_with('*');
     let segments: Vec<&str> = pattern.split('*').filter(|s| !s.is_empty()).collect();
@@ -181,6 +185,20 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
     } else {
         true
     }
+}
+
+/// An assignment glob that is empty or blank claims nothing a reader could
+/// have meant; refuse the file instead of guessing.
+fn reject_empty_globs(spec: &AssignmentSpec) -> Result<(), OrgError> {
+    for (field, globs) in [("targets", &spec.targets), ("entities", &spec.entities)] {
+        if globs.iter().any(|glob| glob.trim().is_empty()) {
+            return Err(OrgError::Invalid(format!(
+                "assignment for team '{}' has an empty {field} pattern",
+                spec.team
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// One experiment presented to the rollup: its name and either a score or a
@@ -326,6 +344,7 @@ impl OrgTree {
             let node = *tree.by_name.get(&spec.team).ok_or_else(|| {
                 OrgError::Invalid(format!("assignment targets unknown team '{}'", spec.team))
             })?;
+            reject_empty_globs(&spec)?;
             tree.assignments.push(Assignment {
                 node,
                 targets: spec.targets,
@@ -413,6 +432,15 @@ impl OrgTree {
             }
         }
         (self.unassigned, self.default_weight)
+    }
+
+    /// The node that owns an experiment: the first assignment with a
+    /// matching `targets` glob, `None` when no assignment claims it (where
+    /// [`OrgTree::assign`] falls back to `(unassigned)`).
+    #[must_use]
+    pub fn owner_of_experiment(&self, experiment_name: &str) -> Option<usize> {
+        let (node, _) = self.assign(experiment_name);
+        (node != self.unassigned).then_some(node)
     }
 
     /// The node that owns an ICT entity: the first assignment with a
@@ -640,6 +668,38 @@ assignments:
         // Assignment to unknown team.
         let bad_team = "nodes: [{name: t}]\nassignments: [{team: ghost, targets: [\"x-*\"]}]";
         assert!(OrgTree::from_yaml(bad_team).is_err());
+    }
+
+    #[test]
+    fn empty_glob_patterns_are_rejected() {
+        let nodes = "nodes: [{name: t}]\nassignments: ";
+        for bad in [
+            "[{team: t, targets: [\"\"]}]",
+            "[{team: t, entities: [\"  \"]}]",
+            "[{team: t, targets: [\"x-*\"], entities: [\"cif-*\", \"\"]}]",
+        ] {
+            let err = OrgTree::from_yaml(&format!("{nodes}{bad}"));
+            let Err(OrgError::Invalid(message)) = err else {
+                panic!("{bad} must be rejected");
+            };
+            assert!(message.contains("empty"), "{message}");
+            assert!(message.contains("'t'"), "{message}");
+        }
+        // The pattern itself never matches by being empty.
+        assert!(!glob_match("", "cif-0042"));
+        assert!(glob_match("", ""));
+    }
+
+    #[test]
+    fn experiment_owner_is_none_when_nothing_claims_it() {
+        let t = tree();
+        let edge_team = t.resolve("platform/edge/edge-team").unwrap();
+        assert_eq!(t.owner_of_experiment("edge-cdn-outage"), Some(edge_team));
+        assert_eq!(t.owner_of_experiment("mystery-exp"), None);
+        assert_eq!(
+            OrgTree::empty().owner_of_experiment("edge-cdn-outage"),
+            None
+        );
     }
 
     #[test]
