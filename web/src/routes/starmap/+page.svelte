@@ -329,6 +329,9 @@
                 {#if map.counts.pruned > 0}
                     · {plural(map.counts.pruned, 'node')} outside the focus
                 {/if}
+                {#if map.truncated}
+                    · incomplete: a source table is longer than its row limit
+                {/if}
             </p>
             <p class="sub">
                 shape is the kind of node · a dashed hollow node has no evidence, a thin amber dash

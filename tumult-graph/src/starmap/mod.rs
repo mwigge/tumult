@@ -82,6 +82,7 @@ pub fn assemble(inputs: &StarInputs, query: &StarQuery) -> StarMap {
         focus_found,
         depth,
         disclaimer: tumult_core::compliance::EVIDENCE_DISCLAIMER,
+        truncated: inputs.truncated,
         sources: Sources {
             slo: SourceState::Unavailable,
             dora: SourceState::Unavailable,

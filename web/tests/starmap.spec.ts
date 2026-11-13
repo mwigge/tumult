@@ -159,6 +159,7 @@ const whole = (query: URLSearchParams) => ({
     focus_found: query.get('focus') ? query.get('focus') !== UNKNOWN : null,
     depth: query.get('focus') ? Number(query.get('depth') ?? 2) : null,
     disclaimer: 'Evidence toward a requirement, not a statement of compliance.',
+    truncated: false,
     sources: {
         slo: 'unavailable',
         dora: 'unavailable',
@@ -214,7 +215,7 @@ async function installChartHook(page: Page) {
     });
 }
 
-async function mock(page: Page, seen: URL[], hook = true) {
+async function mock(page: Page, seen: URL[], hook = true, over: Record<string, unknown> = {}) {
     if (hook) await installChartHook(page);
     await page.route('**/api/**', async (route) => {
         const url = new URL(route.request().url());
@@ -222,7 +223,7 @@ async function mock(page: Page, seen: URL[], hook = true) {
         const path = url.pathname;
         let body: unknown = {};
         if (path === '/api/me') body = me;
-        else if (path === '/api/starmap') body = starmap(url.searchParams);
+        else if (path === '/api/starmap') body = { ...starmap(url.searchParams), ...over };
         else if (path === '/api/experiments')
             body = {
                 count: 3,
@@ -340,6 +341,7 @@ test('the star map draws every node with its evidence state', async ({ page }) =
     await expect(page.getByTestId('starmap-legend')).toContainText('1 suppressed');
     await expect(page.getByTestId('starmap-legend')).toContainText('1 gap');
     await expect(page.getByTestId('starmap-legend')).toContainText('2 risks not on the map');
+    await expect(page.getByTestId('starmap-legend')).not.toContainText('incomplete');
 
     const request = seen.find((u) => u.pathname === '/api/starmap');
     expect(request?.searchParams.get('range')).toBe('7d');
@@ -475,6 +477,15 @@ test('the map can be read and driven from the keyboard', async ({ page }) => {
     await expect(drawer).toHaveCount(0);
     await expect(page).not.toHaveURL(/sel=/);
     await expect(first).toBeFocused();
+});
+
+test('a map built from a capped read says it is incomplete', async ({ page }) => {
+    await mock(page, [], true, { truncated: true });
+    await page.goto('/starmap');
+    await drawn(page);
+    await expect(page.getByTestId('starmap-legend')).toContainText(
+        'incomplete: a source table is longer than its row limit',
+    );
 });
 
 test('the drawer shows only the runs of the selected definition', async ({ page }) => {

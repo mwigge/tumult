@@ -54,6 +54,10 @@ const DEFAULT_RANGE: &str = "7d";
 const INCLUDE_RUNS: &str = "runs";
 /// Namespace a manifest without one deploys to.
 const DEFAULT_NAMESPACE: &str = "default";
+/// Most rows read from one `ChaosGraph` table. Those tables hold the
+/// whole history, not a window, so the read is capped; a map built from
+/// a capped read says `truncated`.
+const GRAPH_ROW_LIMIT: usize = 50_000;
 
 #[derive(Deserialize)]
 pub(crate) struct StarMapParams {
@@ -196,6 +200,22 @@ fn count(row: &Value, key: &str) -> u64 {
 
 fn rows(reader: &Reader, sql: &str) -> Result<Vec<Value>, String> {
     reader.query_json_rows(sql).map_err(|e| e.to_string())
+}
+
+/// Rows with whether more were left unread.
+type Capped<T> = (Vec<T>, bool);
+
+/// At most `limit` rows of `sql`, in a stable order so that a capped
+/// read returns the same rows every time.
+fn capped_rows(reader: &Reader, sql: &str, limit: usize) -> Result<Capped<Value>, String> {
+    let probe = limit.saturating_add(1);
+    let mut found = rows(reader, &format!("{sql} ORDER BY ALL LIMIT {probe}"))?;
+    let cut = found.len() > limit;
+    if cut {
+        tracing::warn!(limit, sql, "star map source read stopped at its row limit");
+    }
+    found.truncate(limit);
+    Ok((found, cut))
 }
 
 /// Q1, the service catalogue: one row per distinct resource-attribute
@@ -500,11 +520,12 @@ fn manual_article(reference: &str) -> Option<String> {
 
 /// Evidence toward compliance articles: `ChaosGraph` edges from
 /// experiments, and the framework references on manual records.
-fn covers(reader: &Reader, window: &Window) -> Result<Vec<CoverRow>, String> {
-    let edges = rows(
+fn covers(reader: &Reader, window: &Window, limit: usize) -> Result<Capped<CoverRow>, String> {
+    let (edges, cut) = capped_rows(
         reader,
         "SELECT DISTINCT src, rel, dst FROM graph_edges \
          WHERE rel IN ('evidences', 'maps_to_compliance')",
+        limit,
     )?;
     let mut out: Vec<CoverRow> = edges
         .iter()
@@ -535,47 +556,57 @@ fn covers(reader: &Reader, window: &Window) -> Result<Vec<CoverRow>, String> {
             evidenced: true,
         })
     }));
-    Ok(out)
+    Ok((out, cut))
 }
 
-fn graph_nodes(reader: &Reader, kind: &str) -> Result<Vec<(String, String)>, String> {
-    let found = rows(
+/// `(id, label)` of the graph nodes of one kind.
+fn graph_nodes(
+    reader: &Reader,
+    kind: &str,
+    limit: usize,
+) -> Result<Capped<(String, String)>, String> {
+    let (found, cut) = capped_rows(
         reader,
         &format!("SELECT id, label FROM graph_nodes WHERE kind = '{kind}'"),
+        limit,
     )?;
-    Ok(found
+    let nodes = found
         .iter()
         .filter_map(|row| {
             let id = text(row, "id")?;
             let label = text(row, "label").unwrap_or_else(|| id.clone());
             Some((id, label))
         })
-        .collect())
+        .collect();
+    Ok((nodes, cut))
 }
 
-fn articles(reader: &Reader) -> Result<Vec<ArticleRow>, String> {
-    let nodes = graph_nodes(reader, "compliance_article")?;
-    Ok(nodes
+fn articles(reader: &Reader, limit: usize) -> Result<Capped<ArticleRow>, String> {
+    let (nodes, cut) = graph_nodes(reader, "compliance_article", limit)?;
+    let rows = nodes
         .into_iter()
         .map(|(id, label)| ArticleRow { id, label })
-        .collect())
+        .collect();
+    Ok((rows, cut))
 }
 
-fn gaps(reader: &Reader) -> Result<Vec<GapRow>, String> {
-    let nodes = graph_nodes(reader, "coverage_gap")?;
-    Ok(nodes
+fn gaps(reader: &Reader, limit: usize) -> Result<Capped<GapRow>, String> {
+    let (nodes, cut) = graph_nodes(reader, "coverage_gap", limit)?;
+    let rows = nodes
         .into_iter()
         .map(|(id, label)| GapRow { id, label })
-        .collect())
+        .collect();
+    Ok((rows, cut))
 }
 
 /// Declared service dependencies from a loaded topology file.
-fn depends(reader: &Reader) -> Result<Vec<DependsRow>, String> {
-    let found = rows(
+fn depends(reader: &Reader, limit: usize) -> Result<Capped<DependsRow>, String> {
+    let (found, cut) = capped_rows(
         reader,
         "SELECT DISTINCT src, dst FROM graph_edges WHERE rel = 'depends_on'",
+        limit,
     )?;
-    Ok(found
+    let edges = found
         .iter()
         .filter_map(|row| {
             Some(DependsRow {
@@ -583,7 +614,8 @@ fn depends(reader: &Reader) -> Result<Vec<DependsRow>, String> {
                 to: text(row, "dst")?.strip_prefix("svc:")?.to_string(),
             })
         })
-        .collect())
+        .collect();
+    Ok((edges, cut))
 }
 
 fn load(
@@ -595,6 +627,10 @@ fn load(
     let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir)?;
     let report = tumult_risk::scan(&risk_inputs);
     let levels = conformance::levels(reader, window.from_ns, &window.envs)?;
+    let (covers, cut_covers) = covers(reader, window, GRAPH_ROW_LIMIT)?;
+    let (articles, cut_articles) = articles(reader, GRAPH_ROW_LIMIT)?;
+    let (depends, cut_depends) = depends(reader, GRAPH_ROW_LIMIT)?;
+    let (gaps, cut_gaps) = gaps(reader, GRAPH_ROW_LIMIT)?;
     let mut inputs = StarInputs {
         as_of_ns: window.to_ns,
         org_units: org_units(org),
@@ -605,10 +641,11 @@ fn load(
         risks: risk_rows(&risk_inputs, &report),
         definitions: definitions(&risk_inputs),
         runs: runs(reader, window)?,
-        covers: covers(reader, window)?,
-        articles: articles(reader)?,
-        depends: depends(reader)?,
-        gaps: gaps(reader)?,
+        covers,
+        articles,
+        depends,
+        gaps,
+        truncated: cut_covers || cut_articles || cut_depends || cut_gaps,
         ..StarInputs::default()
     };
     inputs.entity_owners = owners(org, inputs.entity_ids(), |id| org.assign_entity(id));
@@ -763,6 +800,28 @@ mod tests {
             assert!(failed(Some(broke)), "{broke}");
         }
         assert!(failed(None), "a run with no outcome did not pass");
+    }
+
+    #[test]
+    fn graph_table_reads_are_capped_and_say_so() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).expect("store");
+        let reader = store.read_only().expect("reader");
+        // A new lake carries the compliance registry as graph nodes.
+        let (all, cut) = graph_nodes(&reader, "compliance_article", GRAPH_ROW_LIMIT).expect("read");
+        assert!(all.len() > 3, "{}", all.len());
+        assert!(!cut);
+
+        let (some, cut) = graph_nodes(&reader, "compliance_article", 3).expect("read");
+        assert!(cut, "rows were left out");
+        assert_eq!(some, all[..3], "the same rows first, whatever the cap");
+
+        let (exact, cut) = graph_nodes(&reader, "compliance_article", all.len()).expect("read");
+        assert_eq!(exact.len(), all.len());
+        assert!(!cut, "a table that fits exactly is whole");
+
+        let (edges, cut) = depends(&reader, 3).expect("read");
+        assert!(edges.is_empty() && !cut);
     }
 
     #[test]

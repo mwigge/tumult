@@ -200,6 +200,9 @@ pub struct StarInputs {
     pub articles: Vec<ArticleRow>,
     pub depends: Vec<DependsRow>,
     pub gaps: Vec<GapRow>,
+    /// The caller stopped reading a table at its row limit, so rows
+    /// are missing from the vectors above.
+    pub truncated: bool,
 }
 
 impl StarInputs {

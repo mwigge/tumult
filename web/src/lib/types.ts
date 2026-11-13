@@ -311,6 +311,8 @@ export interface StarMap {
     focus_found: boolean | null;
     depth: number | null;
     disclaimer: string;
+    /** A source table was longer than its row limit; the map is incomplete. */
+    truncated: boolean;
     sources: Record<'slo' | 'dora' | 'maturity' | 'conformance' | 'graph', StarSource>;
     maturity: unknown;
     counts: {

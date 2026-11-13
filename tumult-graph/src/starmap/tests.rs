@@ -1595,6 +1595,24 @@ fn entity_gap_is_best_of_and_the_roll_up_counts_what_it_hides() {
 }
 
 #[test]
+fn a_map_built_from_capped_reads_says_it_is_truncated() {
+    let whole = StarInputs {
+        org_units: org(),
+        services: vec![svc("checkout")],
+        ..StarInputs::default()
+    };
+    assert!(!build(&whole).truncated);
+    let json = serde_json::to_value(build(&whole)).expect("serialise");
+    assert_eq!(json["truncated"], false);
+
+    let capped = StarInputs {
+        truncated: true,
+        ..whole
+    };
+    assert!(build(&capped).truncated);
+}
+
+#[test]
 fn risks_without_a_node_are_counted_as_unplaced() {
     let inputs = StarInputs {
         org_units: org(),

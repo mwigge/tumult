@@ -406,6 +406,9 @@ pub struct StarMap {
     pub focus_found: Option<bool>,
     pub depth: Option<u8>,
     pub disclaimer: &'static str,
+    /// A source table was longer than its row limit: evidence edges,
+    /// articles, gaps or declared dependencies may be missing.
+    pub truncated: bool,
     pub sources: Sources,
     pub maturity: Option<serde_json::Value>,
     pub counts: Counts,
