@@ -74,9 +74,12 @@
 //!    well) is above the baseline's by more than one percentage point,
 //!    and by more than chance (one-sided two-proportion test, z ≥ 1.645),
 //!    is `regressed` (`failure_share`) whatever its latencies: the
-//!    survivors of a build that hangs are fast. Runs whose tool counted
-//!    no requests are named (`failure_data_missing`); the answer does not
-//!    read their silence as zero failures.
+//!    survivors of a build that hangs are fast. The requests of every
+//!    run of a side are counted, those of the runs left out as partial
+//!    too: requests that hang are what makes a plan fall short, and a
+//!    request that failed did fail. Runs whose tool counted no requests
+//!    are named (`failure_data_missing`); the answer does not read their
+//!    silence as zero failures.
 //! 3. Otherwise `tumult_perf::compare_runs` decides on the latencies
 //!    (`latency`, or `insufficient_evidence`): percentiles weigh a window
 //!    by its seconds of load and the interval resamples whole runs. A

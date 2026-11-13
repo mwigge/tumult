@@ -1354,6 +1354,47 @@ async fn perf_calls_a_candidate_that_hangs_part_of_its_requests_regressed() {
     assert_eq!(stored["verdict"], "regressed");
 }
 
+/// Requests that hang make a plan fall short, and a run whose plan fell
+/// short is left out of the latencies. The requests it failed are not
+/// left out with it: a candidate none of whose runs finished its plan
+/// because a third of its requests hung is regressed, not unknown.
+#[tokio::test]
+async fn perf_counts_the_failed_requests_of_runs_whose_plan_fell_short() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let (mut spans, old) = declared_runs("old", "1.0.0", now - 2500 * NS, 100.0);
+    let (roots, new) = declared_runs("new", "1.1.0", now - 1000 * NS, 20.0);
+    spans.extend(roots);
+    let short = || LoadExecution {
+        planned_windows: Some(40),
+        completed_windows: Some(20),
+        ..LoadExecution::default()
+    };
+    let journals = old
+        .into_iter()
+        .map(|run| counted(run, 4000, 4000, 0))
+        .chain(new.into_iter().map(|run| {
+            let run = executed(run, ExperimentStatus::Deviated, short());
+            counted(run, 2000, 1300, 700)
+        }))
+        .collect();
+    seed_journals(&srv, spans, journals).await;
+
+    let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{body}");
+    let candidate = &body["candidate"];
+    assert_eq!(candidate["version"], "1.1.0", "{body}");
+    assert!(runs_of(candidate).is_empty(), "{body}");
+    assert_eq!(candidate["samples"], 0, "{body}");
+    assert_eq!(candidate["partial"]["excluded"], 3, "{body}");
+    assert_eq!(
+        candidate["requests"],
+        json!({"sent": 6000, "failed": 2100, "failure_share": 0.35, "runs_without_counts": 0})
+    );
+    assert_eq!(body["verdict"], "regressed", "{body}");
+    assert_eq!(body["reason"], "failure_share", "{body}");
+}
+
 /// Both builds fail one request in twenty: the failure share says
 /// nothing against the candidate, and the latencies decide.
 #[tokio::test]

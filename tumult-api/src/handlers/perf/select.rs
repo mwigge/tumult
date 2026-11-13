@@ -437,15 +437,16 @@ pub(crate) struct Windows {
     pub censored: u64,
 }
 
-/// The requests of a side's included runs.
+/// The requests of all of a side's runs, those left out of the samples
+/// too: a load cut short measured other latencies than the plan would
+/// have, but a request it failed did fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Requests {
     pub sent: u64,
     /// Sent and not answered well: timed out, refused, or answered with
     /// an error.
     pub failed: u64,
-    /// Included runs whose tool counted no requests; they are in neither
-    /// number.
+    /// Runs whose tool counted no requests; they are in neither number.
     pub runs_without_counts: usize,
 }
 
@@ -587,7 +588,8 @@ fn windows_of(id: &str, samples: &[Sample], side: &mut Side) {
 
 /// The side for `version` in `env`: the runs of that environment that
 /// measured it. A run whose load was aborted or truncated is counted but
-/// its samples, windows and requests stay out, unless `include_partial`.
+/// its samples and windows stay out, unless `include_partial`; its
+/// requests are counted either way.
 pub(crate) fn side(
     version: &str,
     env: &Env,
@@ -607,9 +609,9 @@ pub(crate) fn side(
             continue;
         }
         let d = detail(a, *how, include_partial);
+        side.requests.add(&a.run.execution);
         if d.included {
             add_windows(&mut side.windows, &a.run.execution);
-            side.requests.add(&a.run.execution);
             windows_of(&d.experiment_id, samples, &mut side);
         }
         side.details.push(d);
@@ -1096,14 +1098,11 @@ mod tests {
 
     #[test]
     fn a_side_adds_up_its_requests_and_its_censored_windows() {
-        let mut cut = measured("cut", None, "1.1.0", counted(900, 100));
-        cut.run.execution.aborted = true;
         let runs = [
             measured("a", None, "1.1.0", counted(1000, 900)),
             measured("b", None, "1.1.0", counted(3000, 2700)),
             // A tool that counted nothing: unknown, not zero failures.
             measured("silent", None, "1.1.0", windows(10, 10, 0, 0)),
-            cut,
         ];
         let samples = vec![
             sample("a", 20.0),
@@ -1139,13 +1138,36 @@ mod tests {
                 weight: 0.5
             }
         );
-        // The aborted run's requests come in only when it does.
-        let s = side("1.1.0", &None, &runs, &samples, true);
-        assert_eq!(s.requests.sent, 4900);
-        assert_eq!(s.requests.failed, 1200);
         let none = side("1.1.0", &None, &runs[2..3], &[], false);
         assert_eq!(none.requests.failure_share(), None);
         assert_eq!(none.censored_floor, None);
+    }
+
+    /// Requests that hang make the windows run over and the plan fall
+    /// short. The run's latencies stay out; the requests it failed are
+    /// the evidence it does give.
+    #[test]
+    fn a_run_cut_short_still_counts_its_requests() {
+        let mut short = measured("short", None, "1.1.0", counted(900, 100));
+        short.run.execution.truncated = true;
+        let mut cut = measured("cut", None, "1.1.0", counted(100, 100));
+        cut.run.execution.aborted = true;
+        let runs = [measured("a", None, "1.1.0", counted(1000, 900)), short, cut];
+        let samples = vec![sample("a", 20.0), sample("short", 30.0)];
+        for include_partial in [false, true] {
+            let s = side("1.1.0", &None, &runs, &samples, include_partial);
+            assert_eq!(
+                s.requests,
+                Requests {
+                    sent: 2000,
+                    failed: 900,
+                    runs_without_counts: 0
+                }
+            );
+        }
+        let s = side("1.1.0", &None, &runs, &samples, false);
+        assert_eq!(s.runs(), vec!["a"]);
+        assert_eq!(s.samples, vec![20.0]);
     }
 
     #[test]
