@@ -14,10 +14,13 @@ names the model that produced it.
 | Route | Body | Returns |
 |---|---|---|
 | `POST /forecast` | `{"context": [..] or [[..], ..], "horizon": N, "quantile_levels": [0.1, 0.5, 0.9]?, "past_covariates": [[..]]?, "known_covariates": [[..]]?}` | `{"levels": [..], "quantiles": [[[q per level] per step] per variate], "context_points": n, "model": {"model", "model_id", "size", "version", "revision", "weights_hash"}}` |
-| `GET /healthz` | — | `{"status": "ok", "model", "model_id", "size", "version", "revision", "weights_hash", "levels", "max_context", "max_horizon"}` |
+| `GET /healthz` | — | `{"status": "ok", "model", "model_id", "size", "version", "revision", "weights_hash", "levels", "max_context", "max_horizon", "max_variates", "max_covariates", "max_body_bytes"}` |
 
 `context` is the series contract: regular steps, `null` for gaps, at most
-32,768 steps. Covariate rows are as long as the context (`past_covariates`)
+32,768 steps, 8 series, a horizon of 4,096. Values are JSON numbers or
+`null`; a string, a boolean, `NaN` or an infinity is a `400`, and so is an
+input the model itself refuses. A body over 8 MiB is a `413`. Covariate
+rows (8 at most of each kind) are as long as the context (`past_covariates`)
 or the context plus the horizon (`known_covariates`). Requested quantile
 levels snap to the nearest of Timestral's 21 (0.01, 0.05, 0.10 … 0.90, 0.95,
 0.99); omit `quantile_levels` to get all of them.
@@ -30,15 +33,19 @@ levels snap to the nearest of Timestral's 21 (0.01, 0.05, 0.10 … 0.90, 0.95,
 | `FORECASTD_MODEL` | `timestral` | `timestral` is the real model. `stub` is the offline mode: a deterministic linear stand-in with no torch and no weights, for unit tests and wiring checks. It reports `model: stub`, so its forecasts cannot pass for Timestral's |
 | `FORECASTD_MODEL_SIZE` | `5M` | `5M`, `28M`, `123M`, `209M`. Start with 5M (CPU, tens of ms per forecast); evaluate a larger one on your own series before switching |
 | `FORECASTD_MODEL_ID` | `mistralai/Timestral-<size>` | Hub repository id when not loading from a path |
-| `FORECASTD_MODEL_REVISION` | the repository's head | Hub commit to load; pin it so every start loads the same weights |
+| `FORECASTD_MODEL_REVISION` | `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` for the default model | Hub commit to load. Required for any other size or repository, unless `FORECASTD_WEIGHTS_PATH` is set |
+| `FORECASTD_WEIGHTS_SHA256` | `4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a` for the default model | Digest the weights must have (SHA-256 over `config.json` and `model.safetensors`). Required for any other size or repository |
 | `FORECASTD_WEIGHTS_PATH` | unset | Local snapshot directory. Set it for offline and air-gapped hosts |
 | `FORECASTD_THREADS` | `4` (fewer on a smaller host) | PyTorch CPU threads. The 5M model gains nothing past four, and on a busy host more threads make each forecast slower |
 | `FORECASTD_LOG_LEVEL` | `INFO` | Python log level |
 
-The model is loaded once, before the socket opens. `/healthz` and every
-forecast carry `revision` (the hub commit of the loaded snapshot, `local`
-for a plain directory, `none` for the stub) and `weights_hash` (the SHA-256
-of the loaded files). Forecasts are served one at a time.
+The weights are verified against the pinned digest before the model code
+opens them, and the model is loaded once, before the socket opens. On a
+mismatch, a missing pin or any other load failure the service logs the
+error and exits with status 1. `/healthz` and every forecast carry
+`revision` (the hub commit of the loaded snapshot, `local` for a plain
+directory, `none` for the stub) and `weights_hash` (the SHA-256 of the
+loaded files). Forecasts are computed one at a time, off the event loop.
 
 ## Weights and the licence
 
@@ -55,11 +62,14 @@ huggingface-cli download mistralai/Timestral-5M --local-dir ./weights/Timestral-
 For an air-gapped host, copy that directory across and mount it read-only:
 
 ```sh
-docker run -p 8700:8700 \
+docker run -p 8700:8700 --read-only --tmpfs /tmp --cap-drop ALL \
   -v "$PWD/weights/Timestral-5M:/weights:ro" \
-  -e FORECASTD_WEIGHTS_PATH=/weights \
-  tumult-forecastd
+  -e FORECASTD_WEIGHTS_PATH=/weights -e HF_HUB_OFFLINE=1 \
+  tumult-forecastd:0.1.0
 ```
+
+Only `config.json` and `model.safetensors` are hashed, so the README and
+the bookkeeping a download leaves next to them do not change the digest.
 
 Without `FORECASTD_WEIGHTS_PATH` the container downloads the weights through
 the Hugging Face hub into `HF_HOME` on first start, which needs egress.
@@ -82,6 +92,24 @@ into `HF_HOME` on first start.
 Without `fastapi`/`uvicorn` installed, `python -m forecastd` serves the same
 two routes with the standard-library HTTP server.
 
+## The image and its lock file
+
+`Dockerfile` is a two-stage build on a base image pinned by digest (Python
+3.12). `requirements.in` names the direct dependencies at exact versions;
+`requirements.lock` is generated from it with hashes and installed with
+`--require-hashes`. Timestral is built from its pinned commit against those
+packages, without its own dependency resolution. The final stage carries
+no compiler, `git` or `curl`.
+
+Regenerate the lock inside the base image, so the hashes match its Python:
+
+```sh
+pip install pip-tools
+pip-compile --generate-hashes --allow-unsafe --strip-extras \
+  --extra-index-url https://download.pytorch.org/whl/cpu \
+  --output-file requirements.lock requirements.in
+```
+
 ## Tests
 
 The service tests use the stub model and the standard library only (numpy
@@ -92,9 +120,10 @@ skips when `torch` or `timestral` is not installed:
 cd forecastd && python -m unittest discover -s tests -t . -v
 ```
 
-Run them from the virtualenv above to exercise the real model (shape,
-quantile ordering, determinism, limits, CPU latency). Measured latency and
-memory are in `docs/guides/forecasting.md`.
+Run them from the virtualenv above to exercise the real model (the pinned
+revision and digest, refusal on a mismatch, shape, quantile ordering,
+determinism, limits, CPU latency). CI runs the stub suites, the ASGI app
+included. Measured latency and memory are in `docs/guides/forecasting.md`.
 
 ## Deployment
 
@@ -106,5 +135,7 @@ memory are in `docs/guides/forecasting.md`.
 
 When the sidecar is unset or unreachable the daemon falls back to the
 built-in provider and says so in the response (`provenance.model`,
-`provenance.fallback_reason`). A failing sidecar is skipped for
-`TUMULTD_FORECAST_COOLDOWN_S` seconds (default 30) before it is tried again.
+`provenance.fallback_reason`, a code such as `unreachable` or
+`circuit_open`). A failing sidecar is skipped for
+`TUMULTD_FORECAST_COOLDOWN_S` seconds (default 30) before one request tries
+it again.

@@ -46,9 +46,28 @@ impact = (observed − median) / ((upper − lower) / 2)
 `0` sits on the median, `±1` on the edge of the band, `4` is four half
 widths above it. The summary carries the mean and the peak across the fault
 window, the share of fault-window samples outside the band, and the mean
-after the fault. A step with no observation, or a band with no width (a
-perfectly constant context), has no impact value (`null`) rather than an
-invented one.
+after the fault. A step with no observation has no impact value (`null`)
+rather than an invented one.
+
+### Flat series and the band floor
+
+A probe that only ever reports `200`, `true` or a quantised gauge, and any
+exactly periodic series, leaves no residuals: the empirical band has no
+width, and an impact divided by it would be undefined or, with float noise
+in the width, an absurd `1e15`. Every band therefore has a floor. Its half
+width is never less than the largest of
+
+* 0.1 % of the series scale (the mean absolute value),
+* half the observed resolution (the smallest gap between two distinct
+  values), and
+* `1e-9`.
+
+A band that had to be widened to the floor is flagged: `degenerate_band:
+true` on the forecast, on the probe's impact entry and on the run-level
+summary when any probe has it. The Impact panel prints a note next to the
+numbers. Read such an impact as "the probe left its flat line by this many
+floor widths": the direction and the timing are real, the multiple is in
+units of a floor and not of an observed spread.
 
 ### Recovery time
 
@@ -72,6 +91,13 @@ did not — the post phase is still degraded — the counterfactual is too
 pessimistic and the impact is understated. Check the `outside_after_fault`
 count and the chart before quoting the number.
 
+In a backcast the post phase is judged against the 10–90 % range of its own
+settled samples. By construction about a fifth of perfectly settled samples
+fall outside such a range, so `outside_after_fault` from a backcast is
+biased upwards and is not residual impact. The recovery rule absorbs it
+(three consecutive samples inside); a `baseline` reference has no such
+bias.
+
 ## The endpoints
 
 ### `GET /api/forecast`
@@ -87,14 +113,22 @@ count and the chart before quoting the number.
 The series is resampled onto a regular step chosen from the window (the
 series contract below). The body carries `series` (chart-ready: `ts`,
 `observed`, `median`, `bands`), `forecast` (`levels`, `quantiles[step][level]`,
-`context_points`, `insufficient_history`), `provenance` and `cached`.
+`context_points`, `insufficient_history`, `degenerate_band`), `provenance`
+and `cached`. Times come twice: `from_ns`/`to_ns` and `from_ms`/`to_ms`.
+A browser should read the millisecond ones, because a JavaScript number
+cannot hold epoch nanoseconds exactly.
 `404` means the metric is unknown or has no points in the window.
 
 Results are cached in the lake's `forecasts` table (schema v19), keyed by
-series, model, step and horizon. A cached row is reused while the context
-window still ends at the same step, so repeated calls within one step do
-not recompute. The cache row stores the provenance, so a cached answer
-still says which model and which weights produced it.
+series, model, step, horizon and the start of the context window. A cached
+row is reused while the context window still starts and ends at the same
+steps, so repeated calls within one step do not recompute, and a 14 d view
+is never answered with a forecast fitted on 24 h. In the one-second tier
+the window end moves once a minute, so a dashboard polling a short range
+does not write a row per second. The cache row stores the provenance, so a
+cached answer still says which model and which weights produced it. Rows
+older than 30 days are dropped when a new one is written. A cache write
+that fails is logged and the forecast is returned anyway.
 
 Each provider has its own rows. While the sidecar is in use only a
 sidecar row is a hit, so a Holt-Winters row written before the sidecar was
@@ -105,8 +139,10 @@ row is served, with the `fallback_reason` of the moment.
 ### `GET /api/runs/{id}/impact`
 
 Returns one entry per probe with the series, the fault window, the impact
-summary, recovery and provenance, plus the run-level `recovery_time_s` and
-`impact_peak`. A probe that cannot be compared (no samples during the
+summary, recovery and provenance, plus the run-level `recovery_time_s`,
+`impact_peak` and `degenerate_band`. Instants are given in nanoseconds and
+in milliseconds (`fault.start_ms`, `recovery.recovered_at_ms`, `as_of_ms`).
+A probe that cannot be compared (no samples during the
 fault, or none after it) is listed with an `error` instead of numbers.
 `404` means the run is unknown, outside the caller's environment scopes, or
 has no probe samples. Both endpoints need the Viewer role.
@@ -131,30 +167,54 @@ Probe samples use their own sampling interval as the step.
 | set, sidecar answers | Timestral sidecar | `timestral` |
 | set, sidecar unreachable or erroring | Built-in Holt-Winters | `holt-winters`, with `provenance.fallback_reason` saying why |
 
-A fallback is never silent: `fallback_reason` carries the error, and the
-daemon logs a warning. The sidecar gets 3 seconds to accept a connection
-and 15 seconds per request.
+A fallback is never silent: `fallback_reason` carries a code, and the
+daemon logs a warning with the detail (the address, the status, the parse
+error), which stays out of the API response.
+
+| `fallback_reason` | Meaning |
+|---|---|
+| `unreachable` | No connection to the sidecar |
+| `timeout` | No answer in time |
+| `bad_response` | A 5xx, or a body the daemon cannot use: not JSON, the wrong shape, other quantile levels than requested, values that are not finite |
+| `rejected` | The sidecar answered 4xx: it will not take this request |
+| `circuit_open` | The sidecar is being skipped after a failure (below) |
+
+The sidecar gets 3 seconds to accept a connection and 15 seconds per
+request. The daemon follows no redirects, uses no proxy for this call and
+reads at most 8 MiB of answer. `TUMULTD_FORECAST_URL` must be an `http://`
+or `https://` URL.
 
 ### The circuit breaker
 
 A sidecar that is down would otherwise cost every request its timeout.
 After a failure that is the sidecar's own fault — it cannot be reached, it
 times out, it answers 5xx or a body the daemon cannot read — the daemon
-skips it for a cool-down and answers from Holt-Winters at once. The
-`fallback_reason` then reads
-`sidecar circuit open, retry in N s: <the error that opened it>`. The first
-request after the cool-down tries the sidecar again: success closes the
-circuit, another failure starts a new cool-down.
+skips it for a cool-down and answers from Holt-Winters at once, with
+`fallback_reason: circuit_open`. After the cool-down the circuit is half
+open: one request tries the sidecar while the others keep getting the
+fallback. Success closes the circuit, another failure starts a new
+cool-down. An answer that arrives late, from a call made before the circuit
+last opened, cannot close it.
 
-A 4xx answer does not open the circuit. It means the sidecar turned down
-that one request (a context it will not take), so only that request falls
-back.
+A 4xx answer (`rejected`) does not open the circuit. It means the sidecar
+turned down that one request (a context it will not take), so only that
+request falls back.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `TUMULTD_FORECAST_COOLDOWN_S` | `30` | Seconds a failing sidecar is skipped. `0` disables the breaker: every request tries the sidecar. An unreadable value logs a warning and uses the default |
 
 The state lives in the daemon's memory: a restart closes the circuit.
+
+### Telemetry
+
+Each forecast is a `forecast.produce` span with an `outcome` attribute
+(`sidecar`, `built_in`, `fallback`, `error`); a call to the sidecar is a
+child span `forecast.sidecar_call` whose `outcome` is `ok` or the failure
+code. Three counters follow the same events:
+`tumult.forecast.fallbacks` (by `reason`),
+`tumult.forecast.breaker.transitions` (by `state`: `open`, `half_open`,
+`closed`) and `tumult.forecast.cache.lookups` (by `result`: `hit`, `miss`).
 
 **Built-in Holt-Winters.** Additive level and trend, plus an additive
 season when the autocorrelation shows one and the context holds at least
@@ -166,7 +226,10 @@ lead time. `provenance.weights_hash` is `none`.
 **Timestral sidecar.** A zero-shot probabilistic model that forecasts 21
 quantiles per step and takes covariates. For run impact the daemon passes
 the fault indicator as a covariate, set to zero across the horizon, which
-asks the model for the no-fault path. The provenance comes from the
+asks the model for the no-fault path. In a backcast the context has no
+fault samples either, so the indicator is zero throughout and carries no
+information: the forecast is then the model's reading of the settled
+samples alone. The provenance comes from the
 sidecar's response: `provenance.version` reads
 `<model id>@<weights revision> (timestral <package version>)`, for example
 `mistralai/Timestral-5M@bdd20cfc… (timestral 1.0.0)`, and
@@ -190,9 +253,29 @@ authentication of its own: keep it on a private network next to the daemon.
 | `FORECASTD_MODEL` | `timestral` | `timestral` is the real model. `stub` is the **offline mode**: a linear stand-in with no torch and no weights, for unit tests and for checking the wiring on a host that cannot fetch the model. It names itself `stub` in every response, so a forecast can never pass for a Timestral one |
 | `FORECASTD_MODEL_SIZE` | `5M` | `5M`, `28M`, `123M` or `209M` |
 | `FORECASTD_MODEL_ID` | `mistralai/Timestral-<size>` | Hub repository when not loading from a path |
-| `FORECASTD_MODEL_REVISION` | the repository's head | Hub commit to load. Pin it so every start loads the same weights |
+| `FORECASTD_MODEL_REVISION` | `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` for the default model | Hub commit to load. Required for any other size or repository |
+| `FORECASTD_WEIGHTS_SHA256` | `4178c86d…e6b34a` for the default model | Digest the weights must have. Checked before they are opened; the service does not start on a mismatch. Required for any other size or repository |
 | `FORECASTD_WEIGHTS_PATH` | unset | Local snapshot directory |
 | `FORECASTD_THREADS` | `4` (fewer on a smaller host) | PyTorch CPU threads |
+
+The service takes at most 8 series and 8 covariates per request, 32,768
+context steps, a horizon of 4,096 and a body of 8 MiB (`413` beyond it).
+Values must be JSON numbers or `null` for a gap: a string, a boolean, `NaN`
+or an infinity is a `400`, as is anything else the model refuses. Inference
+runs off the event loop, so `/healthz` answers while a forecast is being
+computed.
+
+### The image
+
+`forecastd/Dockerfile` builds in two stages from a base image pinned by
+digest (Python 3.12). Every Python package comes from
+`forecastd/requirements.lock` with hashes (`pip install --require-hashes`);
+Timestral is built from its pinned commit against those packages. The final
+image has no compiler, no `git` and no `curl`. The Compose service uses the
+tag `tumult-forecastd:0.1.0`, a read-only root filesystem with a tmpfs
+`/tmp`, no capabilities and `no-new-privileges`. To change a dependency
+edit `forecastd/requirements.in` and regenerate the lock inside the base
+image, as the header of that file describes.
 
 Docker Compose (the demo stack; the sidecar sits behind the `forecast`
 profile and does not start with a plain `up`):
@@ -223,10 +306,10 @@ pip install './forecastd[serve]'
 HF_HOME=/srv/forecastd/hf FORECASTD_BIND=127.0.0.1:8700 python -m forecastd
 ```
 
-Tested here with Python 3.14.8, `torch` 2.15.0+cpu, `timestral` 1.0.0 at
-commit `a534bdbd244d`, `numpy` 2.5.4, `safetensors` 0.8.0 and
-`huggingface_hub` 2.4.0. The virtualenv takes about 1.1 GB, nearly all of it
-PyTorch.
+Tested here with Python 3.14.8 in a virtualenv and with Python 3.12.16 in
+the image, both with `torch` 2.15.0+cpu, `timestral` 1.0.0 at commit
+`a534bdbd244d`, `numpy` 2.5.4, `safetensors` 0.8.0 and `huggingface_hub`
+2.4.0. The virtualenv takes about 1.1 GB, nearly all of it PyTorch.
 
 ### The weights cache
 
@@ -234,10 +317,25 @@ On first start the sidecar downloads the weights into the Hugging Face
 cache under `HF_HOME` (default `~/.cache/huggingface`) and reuses them
 afterwards. Put `HF_HOME` on a disk with room and keep it across restarts:
 the compose profile uses a named volume. `mistralai/Timestral-5M` is two
-files, `config.json` and a 20.8 MB `model.safetensors`. The revision tested
-here is `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f`; set
-`FORECASTD_MODEL_REVISION` to it to load exactly those files. `/healthz`
-reports the revision and the SHA-256 of what was loaded.
+files, `config.json` and a 20.8 MB `model.safetensors`.
+
+### The weights pin
+
+The service loads one known set of weights or none. For the default model
+it asks the hub for revision `bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` and
+expects the two files to hash to
+`4178c86d4592ef278d7b8f0313e62aa91e916e32ebef4b0cde3e040c5fe6b34a`
+(SHA-256 over `config.json` and `model.safetensors`, name then content, in
+that order; other files in the directory do not count). The digest is
+checked before the model code opens the files. On a mismatch the service
+logs `WeightsMismatch` with both digests and exits with status 1 without
+opening its socket.
+
+Another size or repository has no built-in pin: set both
+`FORECASTD_MODEL_REVISION` and `FORECASTD_WEIGHTS_SHA256` (the revision is
+not needed with `FORECASTD_WEIGHTS_PATH`), or the service refuses to start.
+The Compose service and the Kubernetes manifest set both values explicitly.
+`/healthz` reports the revision and the SHA-256 of what was loaded.
 
 ### CPU latency and memory
 
@@ -281,12 +379,25 @@ cd forecastd
 HF_HOME=/srv/forecastd/hf /srv/forecastd/venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
+The same suites run in CI on the stub (job `forecastd`), with the serving
+stack at the locked versions.
+
 `scripts/proof/rip-phase3-forecast/proof.sh` is the end-to-end check: it
-starts the daemon on a fresh lake, launches a run, starts the sidecar with
-the real model, asserts that forecast and impact provenance name the model
-and its weights revision, kills the sidecar, asserts the circuit-breaker
-fallback and brings it back. Run it after changing the model, its version
-or the weights.
+starts the daemon on a fresh private lake, launches a run, starts the
+sidecar with the real model, asserts that it serves exactly the pinned
+revision and digest and that a second instance told to expect another
+digest exits with status 1, asserts that forecast and impact provenance
+name the model and its weights, kills the sidecar, asserts the
+circuit-breaker fallback and brings it back. Run it after changing the
+model, its version or the weights.
+
+It takes its paths from the environment: `FORECASTD_VENV` (default
+`$XDG_DATA_HOME/tumult/forecastd-venv`), `HF_HOME`, `PROOF_WORK` and
+`TUMULT_BIN_DIR`. It refuses to start when one of its ports is taken and
+checks that the processes it started are the ones listening before it posts
+anything. Exit status 0 is a pass, 1 a failed expectation, 2 a missing
+model environment. `PROOF_OFFLINE_STUB=1` checks the wiring against the
+stub and always exits 3 with `NOT A PROOF`.
 
 ## Weights and air-gapped hosts
 
@@ -304,11 +415,12 @@ hub on first start. For an air-gapped host:
 3. Mount it read-only and set `FORECASTD_WEIGHTS_PATH` to the mount point.
    Set `HF_HUB_OFFLINE=1` so nothing tries the network.
 
-`/healthz` reports the SHA-256 over the snapshot files it loaded, from a
-mounted path or from the hub cache alike, and the daemon repeats it as
-`provenance.weights_hash`. Record that hash when you approve a snapshot; a
-different hash later means different weights. A snapshot from the hub also
-carries its commit as `revision`; a plain directory reads `local`.
+The mounted directory is verified like a download: its two checkpoint
+files must hash to the pinned digest, whatever else the download left next
+to them. `/healthz` reports that SHA-256, from a mounted path or from the
+hub cache alike, and the daemon repeats it as `provenance.weights_hash`. A
+snapshot from the hub also carries its commit as `revision`; a plain
+directory reads `local`.
 
 Without the sidecar the daemon needs nothing: the built-in provider works
 with no egress.
