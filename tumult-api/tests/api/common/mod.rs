@@ -418,6 +418,9 @@ pub struct TestServer {
     pub pass_log_ts: i64,
     pub db_path: PathBuf,
     pub ingest: tumult_ingest::IngestWriter,
+    /// Milliseconds the Star Map cache's clock runs ahead of the real
+    /// one: a test stores a larger value instead of sleeping.
+    pub starmap_ahead_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// Run one write on the test store through the harness's single-writer
@@ -433,7 +436,12 @@ pub async fn exec_write(
 }
 
 pub async fn spawn_server() -> TestServer {
-    spawn_server_with_factory(Arc::new(|_env| Arc::new(SlowNoopExecutor))).await
+    spawn_server_with_org(ORG_YAML).await
+}
+
+/// The test server with another organisation file.
+pub async fn spawn_server_with_org(org_yaml: &str) -> TestServer {
+    spawn(Arc::new(|_env| Arc::new(SlowNoopExecutor)), org_yaml, |state| state).await
 }
 
 /// A server whose forecasting endpoints use the sidecar at `url`, skipping
@@ -443,7 +451,8 @@ pub async fn spawn_server_with_forecast_sidecar(
     cooldown: std::time::Duration,
 ) -> TestServer {
     let url = url.to_string();
-    spawn_server_tuned(Arc::new(|_env| Arc::new(SlowNoopExecutor)), move |state| {
+    let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(|_env| Arc::new(SlowNoopExecutor));
+    spawn(factory, ORG_YAML, move |state| {
         state
             .with_forecast_url(Some(url))
             .expect("a usable sidecar URL")
@@ -453,11 +462,12 @@ pub async fn spawn_server_with_forecast_sidecar(
 }
 
 async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory) -> TestServer {
-    spawn_server_tuned(factory, |state| state).await
+    spawn(factory, ORG_YAML, |state| state).await
 }
 
-async fn spawn_server_tuned(
+async fn spawn(
     factory: tumult_ingest::runs::ExecutorFactory,
+    org_yaml: &str,
     tune: impl FnOnce(tumult_api::ApiState) -> tumult_api::ApiState,
 ) -> TestServer {
     let tmp = tempfile::TempDir::new().unwrap();
@@ -524,12 +534,18 @@ async fn spawn_server_tuned(
         metrics_dir,
         reports_dir.clone(),
         llm,
-        tumult_compliance::OrgTree::from_yaml(ORG_YAML).unwrap(),
+        tumult_compliance::OrgTree::from_yaml(org_yaml).unwrap(),
         Some(ingest.clone()),
         Some(run_queue),
         None,
         false,
     );
+    let starmap_ahead_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let ahead = Arc::clone(&starmap_ahead_ms);
+    let state = state.with_starmap_clock(Arc::new(move || {
+        let ahead = ahead.load(std::sync::atomic::Ordering::SeqCst);
+        std::time::Instant::now() + std::time::Duration::from_millis(ahead)
+    }));
     let state = tune(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -545,6 +561,7 @@ async fn spawn_server_tuned(
         pass_log_ts,
         db_path,
         ingest,
+        starmap_ahead_ms,
     }
 }
 
@@ -553,6 +570,31 @@ pub async fn get(base: &str, path: &str) -> (u16, Value) {
     let status = resp.status().as_u16();
     let body: Value = resp.json().await.unwrap();
     (status, body)
+}
+
+/// When the Star Map the server answers with was assembled. Two equal
+/// answers came from one cached response.
+pub async fn starmap_as_of(base: &str) -> Value {
+    let (status, body) = get(base, "/api/starmap").await;
+    assert_eq!(status, 200, "{body}");
+    body["as_of_ns"].clone()
+}
+
+/// GET with request headers; returns the status, the response headers and
+/// the raw body (a `304` has none).
+pub async fn get_with(
+    base: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+) -> (u16, reqwest::header::HeaderMap, String) {
+    let mut request = reqwest::Client::new().get(format!("{base}{path}"));
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let resp = request.send().await.unwrap();
+    let status = resp.status().as_u16();
+    let found = resp.headers().clone();
+    (status, found, resp.text().await.unwrap())
 }
 
 /// Create a user directly through the writer channel; returns the user id.

@@ -540,6 +540,7 @@ pub(crate) async fn store(
             "this daemon has no writer; the verdict was not stored",
         ));
     }
+    state.starmap_cache.clear();
     Ok((StatusCode::CREATED, Json(answer_json(&a, true))))
 }
 

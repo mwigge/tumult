@@ -20,6 +20,7 @@ tumult-compliance.workspace = true
 tumult-ingest.workspace = true
 tumult-risk = { path = "../tumult-risk" }
 tumult-forecast = { path = "../tumult-forecast" }
+tumult-graph = { path = "../tumult-graph" }
 sha2.workspace = true
 uuid.workspace = true
 axum.workspace = true

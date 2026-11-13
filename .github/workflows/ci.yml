@@ -42,6 +42,7 @@ jobs:
       # checkout has no .svelte-kit, so bare svelte-check fails.
       - run: npx svelte-kit sync
       - run: npx svelte-check --tsconfig ./tsconfig.json
+      - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
@@ -155,6 +156,10 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - run: python3 scripts/check-docs.py
+      # Regulatory citation wordings that were found wrong (a DORA paragraph
+      # that does not exist, a retention period DORA does not set) must not
+      # come back in docs, seeds or fixtures.
+      - run: python3 scripts/check-citations.py
 
   forecastd:
     name: Forecast sidecar (stub model)
@@ -199,3 +204,5 @@ jobs:
       - run: bash -n scripts/smoke-daemon-image.sh
       - run: python3 scripts/test-smoke-daemon-image.py
       - run: python3 scripts/test-smoke-daemon-binary.py
+      - run: bash -n scripts/demo-check.sh
+      - run: python3 scripts/test-starmap-check.py
