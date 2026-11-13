@@ -124,7 +124,11 @@ impl OhaSummary {
     }
 }
 
-/// Parse oha's JSON output (`oha -j`). Every field the adapter needs must
+/// The `errorDistribution` key oha files the requests under that were still
+/// in flight when the run's `-z` deadline passed.
+const DEADLINE_ABORT: &str = "aborted due to deadline";
+
+/// Parse oha's JSON output (`oha --output-format json`). Every field the adapter needs must
 /// be present; a missing one is an error rather than a silent zero.
 ///
 /// # Errors
@@ -157,10 +161,17 @@ pub fn parse_oha_summary(text: &str) -> Result<OhaSummary, String> {
             errors += count;
         }
     }
+    // Each connection's in-flight request is aborted when `-z` elapses;
+    // that is how a clean run ends, not a failed request.
     let transport: u64 = v
         .get("errorDistribution")
         .and_then(serde_json::Value::as_object)
-        .map(|m| m.values().filter_map(serde_json::Value::as_u64).sum())
+        .map(|m| {
+            m.iter()
+                .filter(|(reason, _)| reason.as_str() != DEADLINE_ABORT)
+                .filter_map(|(_, count)| count.as_u64())
+                .sum()
+        })
         .unwrap_or(0);
     Ok(OhaSummary {
         requests: requests + transport,
@@ -201,7 +212,8 @@ fn run_window(
     }
     let child = cmd
         .arg("--no-tui")
-        .arg("-j")
+        .arg("--output-format")
+        .arg("json")
         .arg("-c")
         .arg(window.vus.to_string())
         .arg("-z")
@@ -578,6 +590,19 @@ mod tests {
         assert!((s.latency_p50_ms - 40.0).abs() < 1e-9);
         assert!((s.latency_p95_ms - 150.0).abs() < 1e-9);
         assert!((s.latency_p99_ms - 190.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn requests_cut_by_the_window_deadline_are_not_errors() {
+        // What oha 1.x prints for a clean run: every connection's last
+        // request is aborted when `-z` elapses.
+        let text = r#"{"summary":{"requestsPerSec":97.1},
+            "latencyPercentiles":{"p50":0.043,"p95":0.044,"p99":0.044},
+            "statusCodeDistribution":{"200":45},
+            "errorDistribution":{"aborted due to deadline":4,"connection refused":2}}"#;
+        let s = parse_oha_summary(text).expect("parse");
+        assert_eq!(s.requests, 47);
+        assert_eq!(s.errors, 2);
     }
 
     #[test]

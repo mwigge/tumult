@@ -59,18 +59,24 @@ fn wait_for_calls(dir: &tempfile::TempDir, n: usize) {
     }
 }
 
-/// A fake oha that prints a JSON summary whose request count is the
-/// concurrency it was asked for, so windows are distinguishable. One of
-/// every twenty answers is a 503, so the error rate is `1/conc`-ish.
+/// A fake oha with the command line of oha 1.x (`--output-format json`;
+/// the old `-j` is rejected, as the real binary does). It prints a JSON
+/// summary whose 200 count is the concurrency it was asked for, so windows
+/// are distinguishable, plus one 503 and the deadline aborts a real run
+/// ends with.
 const FAKE_OHA_JSON: &str = r#"#!/bin/sh
 conc=0
+format=text
 while [ $# -gt 0 ]; do
   if [ "$1" = "-c" ]; then shift; conc="$1"; fi
+  if [ "$1" = "--output-format" ]; then shift; format="$1"; fi
+  if [ "$1" = "-j" ]; then echo "error: unexpected argument '-j' found" >&2; exit 2; fi
   if [ "$1" = "--version" ]; then exit 0; fi
   shift
 done
+if [ "$format" != "json" ]; then echo "text output" ; exit 0; fi
 echo x >> "$(dirname "$0")/calls"
-printf '%s' "{\"summary\":{\"successRate\":1.0,\"total\":1.0,\"slowest\":0.2,\"fastest\":0.01,\"average\":0.05,\"requestsPerSec\":50.0,\"totalData\":1,\"sizePerRequest\":1,\"sizePerSec\":1},\"responseTimeHistogram\":{},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"rps\":{},\"details\":{},\"statusCodeDistribution\":{\"200\":$conc,\"503\":1},\"errorDistribution\":{}}"
+printf '%s' "{\"summary\":{\"successRate\":1.0,\"total\":1.0,\"slowest\":0.2,\"fastest\":0.01,\"average\":0.05,\"requestsPerSec\":50.0,\"totalData\":1,\"sizePerRequest\":1,\"sizePerSec\":1},\"responseTimeHistogram\":{},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"rps\":{},\"details\":{},\"statusCodeDistribution\":{\"200\":$conc,\"503\":1},\"errorDistribution\":{\"aborted due to deadline\":$conc}}"
 exit 0
 "#;
 
