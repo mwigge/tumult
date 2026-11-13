@@ -8304,6 +8304,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tumult-perf"
+version = "2.22.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tumult-plugin"
 version = "2.22.0"
 dependencies = [

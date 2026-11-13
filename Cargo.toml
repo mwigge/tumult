@@ -44,6 +44,8 @@ members = [
     "tumult-autopilot",
     # Passive risk scanning and the continuous posture score (pure logic)
     "tumult-risk",
+    # Performance-regression verdicts: percentiles, bootstrap CI, verdict (pure logic)
+    "tumult-perf",
     # Imported from kronika but versioned with the workspace (version.workspace = true).
     "tumult-query",
     # Analytics platform (imported from kronika; crates keep their 0.7.x versions)
