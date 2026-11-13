@@ -163,7 +163,7 @@ impl Writer {
         Ok(self.conn.execute(
             "DELETE FROM forecasts WHERE rowid IN (SELECT rowid FROM forecasts \
              WHERE series_key = ? ORDER BY created_at_ns DESC, rowid DESC \
-             LIMIT 9223372036854775807 OFFSET ?)",
+             OFFSET ?)",
             duckdb::params![series_key, keep],
         )?)
     }
@@ -428,24 +428,45 @@ mod tests {
         );
     }
 
+    fn forecast_indexes(store: &Store) -> Vec<String> {
+        let sql = "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'forecasts'";
+        let rows = store.read_only().unwrap().query_json_rows(sql).unwrap();
+        rows.iter()
+            .filter_map(|i| i["index_name"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// One index, on the lookup key. DuckDB plans the prune (a range on
+    /// `created_at_ns` under a top-N) as a sequential scan with or
+    /// without an index on that column, so there is none to maintain.
     #[test]
-    fn the_lookup_is_indexed_by_series_key() {
+    fn the_only_index_is_on_the_series_key() {
         let d = tempfile::TempDir::new().unwrap();
         let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
-        let indexes = store
-            .read_only()
-            .unwrap()
-            .query_json_rows(
-                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'forecasts'",
-            )
-            .unwrap();
-        assert_eq!(indexes.len(), 2, "{indexes:?}");
-        let names: Vec<&str> = indexes
-            .iter()
-            .filter_map(|i| i["index_name"].as_str())
-            .collect();
-        assert!(names.contains(&"idx_forecasts_series_key"), "{names:?}");
-        assert!(names.contains(&"idx_forecasts_created_at"), "{names:?}");
+        assert_eq!(forecast_indexes(&store), ["idx_forecasts_series_key"]);
+    }
+
+    /// A lake created while the table still had an index on
+    /// `created_at_ns` loses it on open and keeps its rows.
+    #[test]
+    fn an_index_on_created_at_is_dropped_on_open() {
+        let d = tempfile::TempDir::new().unwrap();
+        let path = d.path().join("kronika.duckdb");
+        {
+            let store = Store::open(&path).unwrap();
+            let writer = store.writer().unwrap();
+            writer.insert_forecast(&row(10, "holt-winters")).unwrap();
+            writer
+                .conn
+                .execute_batch(
+                    "CREATE INDEX idx_forecasts_created_at ON forecasts (created_at_ns);",
+                )
+                .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(forecast_indexes(&store), ["idx_forecasts_series_key"]);
+        assert_eq!(count(&store, "created_at_ns = 10"), 1);
+        assert_eq!(store.writer().unwrap().prune_forecasts(20, 10).unwrap(), 1);
     }
 
     fn count(store: &Store, predicate: &str) -> u64 {
