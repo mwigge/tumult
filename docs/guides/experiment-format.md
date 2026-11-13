@@ -18,6 +18,11 @@ Every experiment has these sections:
 | `title` | Yes | Human-readable experiment name |
 | `description` | No | What this experiment validates |
 | `tags` | No | Classification tags for filtering and analytics |
+| `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`. Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it |
+| `kind` | No | Resilience discipline: `chaos` (default), `load`, `performance`, `robustness`, `dr`, `security`, `nfr`. Drives per-discipline coverage and the `resilience.test.kind` span attribute |
+| `nfr` | No | Non-functional objectives verified against the run's measurements (see [Objectives](#objectives)) |
+| `rto_target_s` | No | Recovery time objective in seconds; required when `kind: dr`. Measured against post-phase MTTR |
+| `rpo_target_s` | No | Recovery point objective in seconds of tolerated data loss; measured only by an `nfr` entry of `kind: rpo` |
 | `configuration` | No | Non-sensitive key-value pairs (inline or from environment variables) — usable in templates and injected into subprocess environments |
 | `secrets` | No | Sensitive values (from environment variables or files) — env-injected, never journaled |
 | `controls` | No | Lifecycle hooks executed at every lifecycle event (before/after experiment, method, activity, hypothesis, rollback) |
@@ -171,6 +176,53 @@ Configuration for statistical baseline acquisition:
 | `method` | `static`, `percentile`, `mean_stddev`, `iqr`, `learned` |
 | `sigma` | Standard deviations for mean_stddev method |
 | `confidence` | Confidence level (0.0-1.0) |
+
+## Objectives
+
+`nfr` declares the non-functional objectives a run is verified against. Every objective gets a verdict in the journal (`objectives.verdicts`) and in the lake (`nfr_verdicts`): `met`, `breached`, or `inconclusive` when the run did not produce the metric. A breached objective with `criticality: blocking` turns a completed run into a deviation.
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `id` | string | Unique within the experiment |
+| `kind` | `latency`, `availability`, `throughput`, `error_rate`, `rto`, `rpo`, `capacity`, `recovery`, `data_integrity` | What the objective constrains |
+| `metric` | string | Measurement to evaluate (table below) |
+| `operator` | `lte`, `gte`, `eq` | Comparison against `threshold` |
+| `threshold` | float | |
+| `window_s` | float | Evaluation window (documentation; the runner evaluates over the phase that produced the metric) |
+| `criticality` | `blocking`, `major` (default), `minor` | How much a breach matters |
+| `description` | string | |
+
+Metrics the runner produces:
+
+| Metric | Source |
+|--------|--------|
+| `load.throughput_rps`, `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.error_rate`, `load.total_requests` | the load result |
+| `recovery.mttr_s`, `recovery.time_s` | the post phase |
+| `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability` | raw probe samples of that phase |
+| `probe.<name>.mean_ms`, `probe.<name>.max_ms`, `probe.<name>.p95_ms`, `probe.<name>.error_rate` | raw during-phase samples of one probe |
+| `fault.duration_s` | the during phase |
+
+`rto_target_s` adds an implicit blocking `rto` objective on `recovery.mttr_s`. `rpo_target_s` is recorded with the run; without an `nfr` entry of `kind: rpo` naming a probe-derived metric it is reported `inconclusive`, never silently met.
+
+```yaml
+kind: dr
+rto_target_s: 900
+rpo_target_s: 60
+nfr[2]:
+  - id: p95
+    kind: latency
+    metric: load.latency_p95_ms
+    operator: lte
+    threshold: 250
+    criticality: blocking
+  - id: avail
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.995
+```
+
+Raw probe samples from the during and post phases are kept in the journal (`probe_samples`) and in the lake table `probe_samples` (`experiment_id`, `probe_name`, `phase`, `ts_ns`, `value` in ms, `ok`), so later analysis works on the time series rather than only on the per-phase aggregates.
 
 ## Load
 

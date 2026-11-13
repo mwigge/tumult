@@ -83,6 +83,11 @@ async fn e2e_run_analyze_export() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
 
     // Run experiment
@@ -167,6 +172,9 @@ fn cmd_export_writes_arrow_ipc_readable_file() {
         method_results: vec![],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: Default::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,

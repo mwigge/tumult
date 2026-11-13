@@ -10,7 +10,7 @@ use crate::engine::determine_status;
 use crate::execution::all_succeeded;
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
-    HypothesisResult, Journal,
+    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -18,7 +18,10 @@ use opentelemetry::KeyValue;
 
 use super::activity::{evaluate_hypothesis, execute_activities, run_rollbacks};
 use super::guard::{finish_guard_monitor, spawn_guard_monitor};
-use super::phases::{build_post_result, collect_post_samples, compute_analysis};
+use super::nfr;
+use super::phases::{
+    build_post_result, collect_post_samples, compute_analysis, samples_for_journal,
+};
 use super::sampler::{finish_during_sampler, spawn_during_sampler};
 use super::telemetry::{epoch_nanos_now, make_interrupted_journal};
 use super::{load, ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
@@ -127,12 +130,15 @@ pub fn run_experiment_with_sampling(
     // -- Root span: resilience.experiment wraps the entire lifecycle.
     let tracer = opentelemetry::global::tracer(TRACER_NAME);
     let exp_span = {
+        let mut root_attrs = vec![
+            KeyValue::new("resilience.experiment.title", experiment.title.clone()),
+            KeyValue::new("resilience.experiment.id", experiment_id.clone()),
+            KeyValue::new("resilience.test.kind", experiment.kind.to_string()),
+        ];
+        root_attrs.extend(super::telemetry::experiment_target_attributes(experiment));
         let builder = tracer
             .span_builder("resilience.experiment")
-            .with_attributes(vec![
-                KeyValue::new("resilience.experiment.title", experiment.title.clone()),
-                KeyValue::new("resilience.experiment.id", experiment_id.clone()),
-            ]);
+            .with_attributes(root_attrs);
         // If a parent context was provided (e.g. from an MCP tool span), use it
         // so the experiment span is linked into the caller's trace.
         if let Some(ref parent_cx) = config.parent_context {
@@ -272,8 +278,9 @@ pub fn run_experiment_with_sampling(
 
     let actions_succeeded = all_succeeded(&method_results);
 
-    let during_result = during_sampler
-        .and_then(|sampler| finish_during_sampler(sampler, sampling.interval.as_secs_f64()));
+    let (during_result, mut probe_samples) = during_sampler
+        .map(|sampler| finish_during_sampler(sampler, sampling.interval.as_secs_f64()))
+        .unwrap_or_default();
 
     // Stop the guard monitor and learn whether a guard pulled the plug.
     let halt = guard_monitor.and_then(finish_guard_monitor);
@@ -345,6 +352,7 @@ pub fn run_experiment_with_sampling(
             analysis,
             halt: Some(halt),
             blast_radius,
+            probe_samples,
             ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
         });
     }
@@ -400,6 +408,7 @@ pub fn run_experiment_with_sampling(
             load_result,
             analysis,
             blast_radius,
+            probe_samples,
             ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
         });
     }
@@ -424,11 +433,28 @@ pub fn run_experiment_with_sampling(
                 config.cancellation_token.as_ref(),
             );
             let ended_at_ns = epoch_nanos_now();
+            probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples));
             build_post_result(started_at_ns, ended_at_ns, &samples)
         });
 
     // -- Stop load test, collect results, and enrich the span
     let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+
+    // -- Objectives: every declared NFR and recovery target gets a verdict
+    // from the measurements above. A breached *blocking* objective turns a
+    // completed run into a deviation below.
+    let objectives = nfr::evaluate(
+        experiment,
+        &nfr::Measurements {
+            during: during_result.as_ref(),
+            post: post_result.as_ref(),
+            load: load_result.as_ref(),
+            samples: &probe_samples,
+        },
+    );
+    let blocking_breach = objectives
+        .as_ref()
+        .is_some_and(ObjectiveOutcome::has_blocking_breach);
 
     // Drop the load span guard so the span is exported
     drop(load_span_guard);
@@ -451,11 +477,16 @@ pub fn run_experiment_with_sampling(
     let status = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
         ExperimentStatus::Interrupted
     } else {
-        determine_status(
+        let status = determine_status(
             hypothesis_before_met,
             hypothesis_after_met,
             actions_succeeded && (experiment.load.is_none() || load_result.is_some()),
-        )
+        );
+        if status == ExperimentStatus::Completed && blocking_breach {
+            ExperimentStatus::Deviated
+        } else {
+            status
+        }
     };
 
     // -- Rollbacks
@@ -536,6 +567,8 @@ pub fn run_experiment_with_sampling(
         load_result,
         analysis,
         blast_radius,
+        objectives,
+        probe_samples,
         ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
     })
 }

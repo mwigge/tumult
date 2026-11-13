@@ -1,0 +1,27 @@
+# Resilience gate for GitLab CI.
+#
+# include:
+#   - local: deploy/ci/gitlab-gate.yml
+# then give the deploy job `needs: [resilience-gate]`.
+# CI/CD variables: TUMULT_DAEMON_URL, TUMULT_DAEMON_TOKEN (masked, viewer
+# role), TUMULT_GATE_TARGET, optional TUMULT_GATE_ENV.
+
+resilience-gate:
+  stage: test
+  image: ghcr.io/mwigge/tumult:latest
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - >
+      tumult gate "$TUMULT_GATE_TARGET"
+      --min-score 70
+      --max-age-days 30
+      ${TUMULT_GATE_ENV:+--env "$TUMULT_GATE_ENV"}
+      --fail-on fail
+  after_script:
+    - tumult gate "$TUMULT_GATE_TARGET" --fail-on never --json > gate.json || true
+  artifacts:
+    when: always
+    paths:
+      - gate.json
+    expire_in: 30 days

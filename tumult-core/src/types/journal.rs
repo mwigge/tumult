@@ -3,9 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use super::definition::{Estimate, Experiment, RegulatoryMapping};
-use super::enums::{ActivityStatus, ActivityType, ExperimentStatus};
+use super::enums::{ActivityStatus, ActivityType, ExperimentStatus, TestKind};
 use super::ids::{SpanId, TraceId};
-use super::results::{AnalysisResult, BaselineResult, DuringResult, LoadResult, PostResult};
+use super::results::{
+    AnalysisResult, BaselineResult, DuringResult, LoadResult, ObjectiveOutcome, PostResult,
+    ProbeSample,
+};
 
 /// Recorded outcome of a single executed activity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -119,6 +122,17 @@ pub struct Journal {
     /// background faults ran.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blast_radius: Option<BlastRadiusRecord>,
+    /// Resilience discipline, copied from the definition.
+    #[serde(default)]
+    pub kind: TestKind,
+    /// Recovery targets, measurements and objective verdicts; `None` when
+    /// the definition declared no objectives or targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objectives: Option<ObjectiveOutcome>,
+    /// Raw probe samples from the during and post phases, in collection
+    /// order. Aggregates live in `during_result` / `post_result`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_samples: Vec<ProbeSample>,
 }
 
 impl Journal {
@@ -155,6 +169,9 @@ impl Journal {
             regulatory: experiment.regulatory.clone(),
             halt: None,
             blast_radius: None,
+            kind: experiment.kind,
+            objectives: None,
+            probe_samples: vec![],
         }
     }
 }
@@ -195,6 +212,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: Default::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: Some(Estimate {
                 expected_outcome: ExpectedOutcome::Recovered,
                 expected_recovery_s: Some(15.0),
@@ -231,6 +251,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: Default::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

@@ -26,6 +26,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/topology", Role::Viewer),
     ("GET", "/api/scores", Role::Viewer),
     ("GET", "/api/scores/tree", Role::Viewer),
+    ("GET", "/api/gate/{target}", Role::Viewer),
     ("GET", "/api/manual/experiments", Role::Viewer),
     ("GET", "/api/manual/experiments/{id}", Role::Viewer),
     ("GET", "/api/authoring/catalog", Role::Viewer),
@@ -209,6 +210,7 @@ mod tests {
     #[test]
     fn table_roles_match_the_design() {
         assert_eq!(required_role("GET", "/api/experiments"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/gate/payments-api"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/users"), Role::Admin);
         assert_eq!(required_role("POST", "/api/runs"), Role::Operator);
         assert_eq!(

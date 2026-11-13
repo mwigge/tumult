@@ -1,6 +1,10 @@
 //! Retention, export, and import maintenance operations.
 
 use std::path::Path;
+use std::sync::Arc;
+
+use arrow::array::ArrayRef;
+use arrow::record_batch::RecordBatch;
 
 use duckdb::params;
 
@@ -76,7 +80,9 @@ impl AnalyticsStore {
         let exp_batch = self.query_to_batch(
             "SELECT experiment_id, title, status, started_at_ns, ended_at_ns, \
              duration_ms, method_step_count, rollback_count, hypothesis_before_met, \
-             hypothesis_after_met, estimate_accuracy, resilience_score FROM experiments",
+             hypothesis_after_met, estimate_accuracy, resilience_score, \
+             test_kind, rto_target_s, rpo_target_s, rto_measured_s, rpo_measured_s \
+             FROM experiments",
         )?;
         let act_batch = self.query_to_batch(
             "SELECT experiment_id, name, activity_type, status, started_at_ns, \
@@ -137,7 +143,7 @@ impl AnalyticsStore {
     ) -> Result<(), AnalyticsError> {
         let exp_batches = import_parquet(experiments_path)?;
         for batch in &exp_batches {
-            self.insert_batch("experiments", batch)?;
+            self.insert_batch("experiments", &pad_experiment_batch(batch)?)?;
         }
         let act_batches = import_parquet(activities_path)?;
         for batch in &act_batches {
@@ -145,6 +151,22 @@ impl AnalyticsStore {
         }
         Ok(())
     }
+}
+
+/// Widen an `experiments` batch exported before schema v16 (12 columns) to
+/// the current layout by appending null columns, so old Parquet backups
+/// still import. Batches already at the current width pass through.
+fn pad_experiment_batch(batch: &RecordBatch) -> Result<RecordBatch, AnalyticsError> {
+    let schema = crate::arrow_convert::experiments_schema();
+    if batch.num_columns() >= schema.fields().len() {
+        return Ok(batch.clone());
+    }
+    let rows = batch.num_rows();
+    let mut columns: Vec<ArrayRef> = batch.columns().to_vec();
+    for field in schema.fields().iter().skip(batch.num_columns()) {
+        columns.push(arrow::array::new_null_array(field.data_type(), rows));
+    }
+    Ok(RecordBatch::try_new(Arc::new(schema), columns)?)
 }
 
 #[cfg(test)]
@@ -229,6 +251,67 @@ mod tests {
         assert!(act_path.exists());
         assert!(std::fs::metadata(&exp_path).unwrap().len() > 0);
         assert!(std::fs::metadata(&act_path).unwrap().len() > 0);
+    }
+
+    #[test]
+    fn import_accepts_pre_v16_experiments_parquet() {
+        use super::export_parquet;
+        use arrow::array::{
+            ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, UInt64Array,
+        };
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use std::sync::Arc;
+
+        let d = tempfile::TempDir::new().unwrap();
+        let exp_path = d.path().join("experiments.parquet");
+        let act_path = d.path().join("activities.parquet");
+
+        // A 12-column batch, the shape every export before v16 produced.
+        let legacy = Schema::new(vec![
+            Field::new("experiment_id", DataType::Utf8, false),
+            Field::new("title", DataType::Utf8, false),
+            Field::new("status", DataType::Utf8, false),
+            Field::new("started_at_ns", DataType::Int64, false),
+            Field::new("ended_at_ns", DataType::Int64, false),
+            Field::new("duration_ms", DataType::UInt64, false),
+            Field::new("method_step_count", DataType::Int64, false),
+            Field::new("rollback_count", DataType::Int64, false),
+            Field::new("hypothesis_before_met", DataType::Boolean, true),
+            Field::new("hypothesis_after_met", DataType::Boolean, true),
+            Field::new("estimate_accuracy", DataType::Float64, true),
+            Field::new("resilience_score", DataType::Float64, true),
+        ]);
+        let batch = RecordBatch::try_new(
+            Arc::new(legacy),
+            vec![
+                Arc::new(StringArray::from(vec!["old-1"])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["old"])),
+                Arc::new(StringArray::from(vec!["completed"])),
+                Arc::new(Int64Array::from(vec![1])),
+                Arc::new(Int64Array::from(vec![2])),
+                Arc::new(UInt64Array::from(vec![1u64])),
+                Arc::new(Int64Array::from(vec![1])),
+                Arc::new(Int64Array::from(vec![0])),
+                Arc::new(BooleanArray::from(vec![Some(true)])),
+                Arc::new(BooleanArray::from(vec![Some(true)])),
+                Arc::new(Float64Array::from(vec![None::<f64>])),
+                Arc::new(Float64Array::from(vec![None::<f64>])),
+            ],
+        )
+        .unwrap();
+        export_parquet(&batch, &exp_path).unwrap();
+        let empty =
+            RecordBatch::new_empty(Arc::new(crate::arrow_convert::activity_results_schema()));
+        export_parquet(&empty, &act_path).unwrap();
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_tables(&exp_path, &act_path).unwrap();
+        let rows = s
+            .query("SELECT experiment_id, test_kind IS NULL FROM experiments")
+            .unwrap();
+        assert_eq!(rows[0][0], "old-1");
+        assert_eq!(rows[0][1], "true");
     }
 
     #[test]

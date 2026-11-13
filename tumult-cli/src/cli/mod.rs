@@ -59,6 +59,16 @@ pub(crate) enum RollbackStrategy {
     Never,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GateFailOn {
+    /// Exit non-zero on a `fail` verdict only (default)
+    Fail,
+    /// Exit non-zero on `warn` or `fail`
+    Warn,
+    /// Always exit zero; print the verdict only
+    Never,
+}
+
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
     /// Print journal as JSON to stdout
@@ -318,6 +328,30 @@ pub(crate) enum Commands {
     Autopilot {
         #[command(subcommand)]
         action: AutopilotAction,
+    },
+    /// CI gate: ask the daemon for a target's resilience verdict and exit
+    /// non-zero when it does not pass (`GET /api/gate/{target}`)
+    Gate {
+        /// Target system as recorded on the experiments (e.g. `payments-api`)
+        target: String,
+        /// Minimum acceptable score, 0-100 (daemon default 70)
+        #[arg(long)]
+        min_score: Option<f64>,
+        /// Evidence older than this many days is stale (daemon default 30)
+        #[arg(long)]
+        max_age_days: Option<u32>,
+        /// Restrict the verdict to one environment
+        #[arg(long)]
+        env: Option<String>,
+        /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
+        #[arg(long)]
+        daemon_url: Option<String>,
+        /// Which verdicts make the command exit non-zero
+        #[arg(long, value_enum, default_value_t = GateFailOn::Fail)]
+        fail_on: GateFailOn,
+        /// Print the daemon's JSON answer instead of the summary
+        #[arg(long)]
+        json: bool,
     },
     /// Open the interactive analytics TUI over the store (read-only dashboard)
     #[command(alias = "dashboard")]

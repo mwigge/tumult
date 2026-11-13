@@ -8,7 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Experiment definitions can name their system under test (`target`: system, technology, environment, criticality), emitted as `resilience.target.*` on the root span so CLI runs score, scope and gate by target like daemon runs do.
+- Experiment definitions carry a resilience discipline (`kind`: chaos, load, performance, robustness, dr, security, nfr), non-functional objectives (`nfr`) and recovery targets (`rto_target_s`, `rpo_target_s`). Every objective gets a `met` / `breached` / `inconclusive` verdict from the run's measurements; a breached blocking objective turns a completed run into a deviation. `kind: dr` requires `rto_target_s`, measured against post-phase MTTR. The root span carries `resilience.test.kind`.
+- Raw probe samples from the during and post phases are kept in the journal (`probe_samples`) and in the lake (`probe_samples` table), alongside `nfr_verdicts` and the new `experiments.test_kind` / RTO / RPO columns (schema v16, additive). Parquet backups from before v16 still import.
+- CI gate: `GET /api/gate/{target}` returns the target's score as a `pass` / `warn` / `fail` verdict with reasons and evidence, honouring environment scopes; `tumult gate <target>` turns it into an exit code. Pipeline templates in `deploy/ci/`.
 - Browser-based Chaos Lab with four bounded fault simulations, measured recovery, downloadable Tumult evidence, a learning guide, and optional OpenAI/Claude/Ollama tutoring. Start from `chaos-lab/` with Docker Compose.
+
+### Changed
+
+- The ClickHouse backend keeps its pre-v16 `experiments` shape; objective verdicts and raw samples are DuckDB-lake only for now.
 
 ## [2.22.0] - 2026-10-09
 

@@ -80,6 +80,8 @@
 //!   retrospective manual-evidence draft as compliance debt.
 //! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
+//! * `GET /api/gate/{target}?min_score=&max_age_days=&env=` — CI gate: the
+//!   target's score as a `pass|warn|fail` verdict with reasons and evidence.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -303,6 +305,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/topology", get(topology))
         .route("/api/ask", post(ask::ask))
         .route("/api/scores/tree", get(scores_tree))
+        .route("/api/gate/{target}", get(handlers::gate::gate))
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

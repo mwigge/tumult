@@ -2,7 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::enums::{BaselineMethod, BaselineSource, LoadTool, Trend};
+use super::enums::{
+    BaselineMethod, BaselineSource, LoadTool, NfrCriticality, NfrKind, NfrOperator, NfrState,
+    SamplePhase, Trend,
+};
 
 // ── Baseline Result (Phase 1 output) ───────────────────────────
 
@@ -179,6 +182,72 @@ pub struct LoadResult {
     pub total_requests: u64,
     /// Whether all configured thresholds held.
     pub thresholds_met: bool,
+}
+
+// ── Raw probe samples and objective verdicts ──────────────────
+
+/// One raw probe observation, kept so the lake can analyse the time series
+/// rather than only the per-phase aggregates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProbeSample {
+    /// Probe name as declared in the hypothesis.
+    pub probe: String,
+    pub phase: SamplePhase,
+    /// Epoch-nanosecond timestamp at which the sample started.
+    pub ts_ns: i64,
+    /// Probe execution time in milliseconds (the measured value).
+    pub duration_ms: u64,
+    /// Whether the sample was within tolerance.
+    pub ok: bool,
+}
+
+/// Evaluation of one [`NfrObjective`](crate::types::NfrObjective) against
+/// the run's measurements.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NfrVerdict {
+    pub nfr_id: String,
+    pub kind: NfrKind,
+    pub metric: String,
+    pub operator: NfrOperator,
+    pub threshold: f64,
+    /// The measured value; `None` when the metric was not produced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed: Option<f64>,
+    pub state: NfrState,
+    /// Signed headroom: positive when met with margin, negative when
+    /// breached. For `lte` this is `threshold - observed`; for `gte` it is
+    /// `observed - threshold`; `None` when inconclusive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margin: Option<f64>,
+    pub criticality: NfrCriticality,
+}
+
+/// Objective outcome of a run: the declared recovery targets, what was
+/// measured, and every objective verdict.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ObjectiveOutcome {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rto_target_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rpo_target_s: Option<f64>,
+    /// Measured recovery time (post-phase MTTR), when observed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rto_measured_s: Option<f64>,
+    /// Measured data-loss window, when an `rpo` objective resolved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rpo_measured_s: Option<f64>,
+    #[serde(default)]
+    pub verdicts: Vec<NfrVerdict>,
+}
+
+impl ObjectiveOutcome {
+    /// Whether any blocking objective was breached.
+    #[must_use]
+    pub fn has_blocking_breach(&self) -> bool {
+        self.verdicts
+            .iter()
+            .any(|v| v.state == NfrState::Breached && v.criticality == NfrCriticality::Blocking)
+    }
 }
 
 // ── Analysis Result (Phase 4 output) ───────────────────────────

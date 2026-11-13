@@ -78,6 +78,11 @@ analysis, observability, GameDays, and MCP usage.
   analytics, SSH, Kubernetes, MCP, and agentic test paths.
 - Statistical baselines, cross-run trends, GameDay orchestration, compliance
   evidence mapping, ChaosGraph, service topology, and policy-gated autopilot.
+- Resilience disciplines (`kind`: chaos, load, performance, robustness, dr,
+  security, nfr), non-functional objectives with per-run verdicts, RTO/RPO
+  targets measured against recovery, raw probe time series in the lake, and
+  a CI gate (`tumult gate`, `GET /api/gate/{target}`) that turns a target's
+  evidence into a pass/warn/fail verdict.
 - Deterministic and live-proxy fault injection for AI agents, plus adapters for
   Claude Code and Codex.
 

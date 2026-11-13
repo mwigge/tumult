@@ -4,9 +4,11 @@
 
 use std::sync::{mpsc, Arc, Mutex, PoisonError};
 
-use crate::types::{DuringResult, Experiment};
+use crate::types::{DuringResult, Experiment, ProbeSample, SamplePhase};
 
-use super::phases::{build_during_result, collect_during_samples, ProbeSampleMap};
+use super::phases::{
+    build_during_result, collect_during_samples, samples_for_journal, ProbeSampleMap,
+};
 use super::telemetry::epoch_nanos_now;
 use super::{ActivityExecutor, SamplingConfig};
 
@@ -77,7 +79,7 @@ pub(super) fn spawn_during_sampler(
 pub(super) fn finish_during_sampler(
     sampler: DuringSampler,
     sample_interval_s: f64,
-) -> Option<DuringResult> {
+) -> (Option<DuringResult>, Vec<ProbeSample>) {
     let DuringSampler {
         stop_tx,
         handle,
@@ -106,5 +108,9 @@ pub(super) fn finish_during_sampler(
         .drain()
         .collect();
 
-    build_during_result(started_at_ns, ended_at_ns, sample_interval_s, &collected)
+    let raw = samples_for_journal(SamplePhase::During, &collected);
+    (
+        build_during_result(started_at_ns, ended_at_ns, sample_interval_s, &collected),
+        raw,
+    )
 }

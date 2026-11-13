@@ -25,6 +25,12 @@ pub fn experiments_schema() -> Schema {
         Field::new("hypothesis_after_met", DataType::Boolean, true),
         Field::new("estimate_accuracy", DataType::Float64, true),
         Field::new("resilience_score", DataType::Float64, true),
+        // v16: discipline and recovery targets/measurements.
+        Field::new("test_kind", DataType::Utf8, true),
+        Field::new("rto_target_s", DataType::Float64, true),
+        Field::new("rpo_target_s", DataType::Float64, true),
+        Field::new("rto_measured_s", DataType::Float64, true),
+        Field::new("rpo_measured_s", DataType::Float64, true),
     ])
 }
 
@@ -52,6 +58,7 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
     let hyp_after = journal.steady_state_after.as_ref().map(|h| h.met);
     let accuracy = journal.analysis.as_ref().and_then(|a| a.estimate_accuracy);
     let resilience = journal.analysis.as_ref().and_then(|a| a.resilience_score);
+    let objectives = journal.objectives.as_ref();
 
     Ok(RecordBatch::try_new(
         schema,
@@ -74,6 +81,19 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
             Arc::new(BooleanArray::from(vec![hyp_after])),
             Arc::new(Float64Array::from(vec![accuracy])),
             Arc::new(Float64Array::from(vec![resilience])),
+            Arc::new(StringArray::from(vec![Some(journal.kind.to_string())])),
+            Arc::new(Float64Array::from(vec![
+                objectives.and_then(|o| o.rto_target_s)
+            ])),
+            Arc::new(Float64Array::from(vec![
+                objectives.and_then(|o| o.rpo_target_s)
+            ])),
+            Arc::new(Float64Array::from(vec![
+                objectives.and_then(|o| o.rto_measured_s)
+            ])),
+            Arc::new(Float64Array::from(vec![
+                objectives.and_then(|o| o.rpo_measured_s)
+            ])),
         ],
     )?)
 }
@@ -206,6 +226,9 @@ mod tests {
             }],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: Default::default(),
+            objectives: None,
+            probe_samples: vec![],
             halt: None,
             blast_radius: None,
             estimate: None,
@@ -227,7 +250,7 @@ mod tests {
     fn experiment_batch_schema() {
         let batch = journal_to_experiment_batch(&sample_journal()).unwrap();
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 12);
+        assert_eq!(batch.num_columns(), 17);
     }
     #[test]
     fn experiment_batch_values() {

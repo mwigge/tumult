@@ -246,6 +246,24 @@ export interface Scorecard {
     experiments: ExperimentScore[];
 }
 
+/** `GET /api/gate/{target}`: the CI gate verdict for one target. */
+export interface GateVerdict {
+    target: string;
+    score: number;
+    band: string;
+    verdict: 'pass' | 'warn' | 'fail';
+    reasons: string[];
+    thresholds: { min_score: number; max_age_days: number };
+    as_of_ns: number;
+    evidence: {
+        runs: number;
+        last_run_id: string | null;
+        last_run_at_ns: number | null;
+        last_outcome: string | null;
+        experiments: ExperimentScore[];
+    };
+}
+
 export type ReportTemplate = 'executive-digest' | 'game-day' | 'evidence-pack';
 
 export interface ReportMetaV2 {

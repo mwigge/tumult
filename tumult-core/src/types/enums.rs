@@ -131,6 +131,93 @@ pub enum Trend {
     Degrading,
 }
 
+// ── Resilience disciplines and objectives ─────────────────────
+
+/// The resilience discipline an experiment belongs to. Drives coverage
+/// reporting per discipline and which measurements the run is expected to
+/// produce (a `dr` run measures RTO/RPO, a `load` run produces load results).
+/// Defaults to `chaos` so pre-existing definitions keep their meaning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TestKind {
+    /// Fault injection against a steady-state hypothesis.
+    #[default]
+    Chaos,
+    /// Traffic generation to measure behaviour under load.
+    Load,
+    /// Latency/throughput regression against a previous build.
+    Performance,
+    /// Soak, saturation and malformed-input profiles.
+    Robustness,
+    /// Disaster recovery: failover with RTO/RPO targets.
+    Dr,
+    /// Security testing (scans, pentest evidence, misuse cases).
+    Security,
+    /// Pure objective verification without faults.
+    Nfr,
+}
+
+/// What a non-functional objective constrains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrKind {
+    Latency,
+    Availability,
+    Throughput,
+    ErrorRate,
+    /// Recovery time objective (seconds).
+    Rto,
+    /// Recovery point objective (seconds of data loss).
+    Rpo,
+    Capacity,
+    Recovery,
+    DataIntegrity,
+}
+
+/// Comparison between the observed value and the threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrOperator {
+    /// Observed must be less than or equal to the threshold.
+    Lte,
+    /// Observed must be greater than or equal to the threshold.
+    Gte,
+    /// Observed must equal the threshold (within `f64::EPSILON`).
+    Eq,
+}
+
+/// How much a breached objective matters to the run verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrCriticality {
+    /// A breach fails the run outright.
+    Blocking,
+    /// A breach is reported as a deviation.
+    #[default]
+    Major,
+    /// A breach is informational.
+    Minor,
+}
+
+/// Outcome of evaluating one objective against a run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrState {
+    Met,
+    Breached,
+    /// The metric the objective names was not measured in this run.
+    Inconclusive,
+}
+
+/// Which phase a raw probe sample was taken in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SamplePhase {
+    Baseline,
+    During,
+    Post,
+}
+
 // ── Display impls ─────────────────────────────────────────────
 
 impl std::fmt::Display for ActivityType {
@@ -245,6 +332,82 @@ impl std::fmt::Display for Trend {
             Self::Stable => write!(f, "stable"),
             Self::Degrading => write!(f, "degrading"),
         }
+    }
+}
+
+impl std::fmt::Display for TestKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Chaos => "chaos",
+            Self::Load => "load",
+            Self::Performance => "performance",
+            Self::Robustness => "robustness",
+            Self::Dr => "dr",
+            Self::Security => "security",
+            Self::Nfr => "nfr",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Latency => "latency",
+            Self::Availability => "availability",
+            Self::Throughput => "throughput",
+            Self::ErrorRate => "error_rate",
+            Self::Rto => "rto",
+            Self::Rpo => "rpo",
+            Self::Capacity => "capacity",
+            Self::Recovery => "recovery",
+            Self::DataIntegrity => "data_integrity",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Lte => "lte",
+            Self::Gte => "gte",
+            Self::Eq => "eq",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrCriticality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Blocking => "blocking",
+            Self::Major => "major",
+            Self::Minor => "minor",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Met => "met",
+            Self::Breached => "breached",
+            Self::Inconclusive => "inconclusive",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for SamplePhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Baseline => "baseline",
+            Self::During => "during",
+            Self::Post => "post",
+        };
+        f.write_str(s)
     }
 }
 
@@ -445,5 +608,46 @@ mod tests {
         let method = BaselineMethod::MeanStddev;
         let json = serde_json::to_string(&method).expect("serialize");
         assert_eq!(json, format!("\"{method}\""));
+
+        for kind in [
+            TestKind::Chaos,
+            TestKind::Load,
+            TestKind::Performance,
+            TestKind::Robustness,
+            TestKind::Dr,
+            TestKind::Security,
+            TestKind::Nfr,
+        ] {
+            let json = serde_json::to_string(&kind).expect("serialize");
+            assert_eq!(json, format!("\"{kind}\""));
+        }
+        for nfr in [NfrKind::ErrorRate, NfrKind::Rto, NfrKind::DataIntegrity] {
+            let json = serde_json::to_string(&nfr).expect("serialize");
+            assert_eq!(json, format!("\"{nfr}\""));
+        }
+        for op in [NfrOperator::Lte, NfrOperator::Gte, NfrOperator::Eq] {
+            let json = serde_json::to_string(&op).expect("serialize");
+            assert_eq!(json, format!("\"{op}\""));
+        }
+        let state = NfrState::Inconclusive;
+        assert_eq!(
+            serde_json::to_string(&state).unwrap(),
+            format!("\"{state}\"")
+        );
+        let phase = SamplePhase::During;
+        assert_eq!(
+            serde_json::to_string(&phase).unwrap(),
+            format!("\"{phase}\"")
+        );
+    }
+
+    #[test]
+    fn test_kind_defaults_to_chaos_and_rejects_unknown() {
+        assert_eq!(TestKind::default(), TestKind::Chaos);
+        assert_eq!(
+            serde_json::from_str::<TestKind>("\"dr\"").unwrap(),
+            TestKind::Dr
+        );
+        assert!(serde_json::from_str::<TestKind>("\"smoke\"").is_err());
     }
 }

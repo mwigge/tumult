@@ -98,7 +98,10 @@ not being renamed.
    (spans grouped into traces, duration percentiles, per-trace detail),
    `/api/metrics/catalog` + `/api/metrics/query` (raw sums/gauges/histograms
    with optional attribute grouping; histogram p95 interpolated in Rust) and
-   `/api/topology` (service/target call graph). Mutating routes exist but
+   `/api/topology` (service/target call graph), and `/api/gate/{target}`
+   (the CI gate: a target's score as a `pass|warn|fail` verdict with
+   reasons and evidence, computed with the same freshness-decayed model as
+   `/api/scores` and confined to the principal's environment scopes). Mutating routes exist but
    stay read-only in spirit: they ride the single-writer channel (run
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with

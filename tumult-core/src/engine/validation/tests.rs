@@ -52,6 +52,11 @@ fn validate_rejects_empty_method() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     assert!(validate_experiment(&exp).is_err());
 }
@@ -92,6 +97,11 @@ fn validate_rejects_empty_hypothesis_probes() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let err = validate_experiment(&exp).unwrap_err();
     assert!(err.to_string().contains("no probes"));
@@ -130,6 +140,11 @@ fn validate_accepts_experiment_with_method() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     assert!(validate_experiment(&exp).is_ok());
 }
@@ -368,4 +383,97 @@ fn validate_checks_script_provider_in_rollbacks_and_hypothesis() {
     });
     let err = validate_experiment(&exp).unwrap_err();
     assert!(err.to_string().contains("must not be empty"), "{err}");
+}
+
+fn with_method(mut exp: Experiment) -> Experiment {
+    exp.method = vec![Activity {
+        name: "action".into(),
+        ..Default::default()
+    }];
+    exp
+}
+
+fn objective(id: &str) -> NfrObjective {
+    NfrObjective {
+        id: id.into(),
+        kind: NfrKind::Latency,
+        metric: "load.latency_p95_ms".into(),
+        operator: NfrOperator::Lte,
+        threshold: 200.0,
+        window_s: None,
+        criticality: NfrCriticality::Major,
+        description: None,
+    }
+}
+
+#[test]
+fn validate_accepts_well_formed_objectives_and_targets() {
+    let exp = with_method(Experiment {
+        kind: TestKind::Dr,
+        rto_target_s: Some(900.0),
+        rpo_target_s: Some(60.0),
+        nfr: vec![objective("a"), objective("b")],
+        ..Default::default()
+    });
+    validate_experiment(&exp).unwrap();
+}
+
+#[test]
+fn validate_rejects_duplicate_and_malformed_objectives() {
+    let dup = with_method(Experiment {
+        nfr: vec![objective("a"), objective("a")],
+        ..Default::default()
+    });
+    assert!(matches!(
+        validate_experiment(&dup),
+        Err(EngineError::NfrDuplicateId { .. })
+    ));
+
+    let mut bad = objective("nan");
+    bad.threshold = f64::NAN;
+    let exp = with_method(Experiment {
+        nfr: vec![bad],
+        ..Default::default()
+    });
+    assert!(matches!(
+        validate_experiment(&exp),
+        Err(EngineError::NfrInvalid { .. })
+    ));
+
+    let mut empty = objective("");
+    empty.metric = "x".into();
+    let exp = with_method(Experiment {
+        nfr: vec![empty],
+        ..Default::default()
+    });
+    assert!(validate_experiment(&exp).is_err());
+
+    let mut window = objective("w");
+    window.window_s = Some(0.0);
+    let exp = with_method(Experiment {
+        nfr: vec![window],
+        ..Default::default()
+    });
+    assert!(validate_experiment(&exp).is_err());
+}
+
+#[test]
+fn validate_rejects_bad_recovery_targets_and_dr_without_rto() {
+    let exp = with_method(Experiment {
+        rto_target_s: Some(-1.0),
+        ..Default::default()
+    });
+    assert!(matches!(
+        validate_experiment(&exp),
+        Err(EngineError::InvalidRecoveryTarget { .. })
+    ));
+
+    let exp = with_method(Experiment {
+        kind: TestKind::Dr,
+        ..Default::default()
+    });
+    assert!(matches!(
+        validate_experiment(&exp),
+        Err(EngineError::DrRequiresRto)
+    ));
 }

@@ -593,6 +593,27 @@ tumult autopilot <once|status|approve|deny|notify-change|export>
 
 See the [Autopilot guide](autopilot.md).
 
+## tumult gate
+
+Ask the daemon's CI gate (`GET /api/gate/{target}`) for a target's resilience verdict and exit non-zero when it does not pass. Meant for a pipeline step before promotion.
+
+```bash
+export TUMULT_DAEMON_URL=http://tumultd.internal:4318
+export TUMULT_DAEMON_TOKEN=kro_...   # viewer role is enough
+tumult gate payments-api --min-score 70 --max-age-days 30 --env prod
+```
+
+| Flag | Description |
+|------|-------------|
+| `--min-score <0-100>` | Score floor (daemon default 70, the `good` band) |
+| `--max-age-days <n>` | Evidence older than this is stale (daemon default 30) |
+| `--env <name>` | Restrict the verdict to one environment (403 outside a scoped token's environments) |
+| `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
+| `--fail-on fail\|warn\|never` | Which verdicts exit non-zero (default `fail`) |
+| `--json` | Print the daemon's JSON answer |
+
+Verdicts: `pass` (score at or above the floor, fresh evidence, no failing experiment), `warn` (stale evidence or a failed experiment on the latest run), `fail` (below the floor or no evidence). An unknown target is an error, never a silent pass. Pipeline templates for GitHub Actions and GitLab CI live in `deploy/ci/`.
+
 ## tumult tui
 
 Open the interactive analytics TUI over the store (read-only dashboard).

@@ -63,6 +63,19 @@ pub enum EngineError {
          background activity forever)"
     )]
     InvalidMaxConcurrentFaults,
+    /// Two objectives share an id.
+    #[error("nfr objective id '{id}' is declared more than once")]
+    NfrDuplicateId { id: String },
+    /// An objective is malformed (empty id/metric, non-finite threshold,
+    /// non-positive window).
+    #[error("nfr objective '{id}' is invalid: {reason}")]
+    NfrInvalid { id: String, reason: String },
+    /// `rto_target_s` / `rpo_target_s` must be finite and positive.
+    #[error("{field} must be a finite, positive number of seconds")]
+    InvalidRecoveryTarget { field: String },
+    /// A `dr` experiment declares no recovery time objective.
+    #[error("kind = dr requires rto_target_s (the recovery time objective the failover is measured against)")]
+    DrRequiresRto,
     /// The experiment template references variables that were never defined.
     #[error("experiment template references undefined variables: {names}")]
     UndefinedVars { names: String },

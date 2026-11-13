@@ -19,6 +19,28 @@ pub(crate) fn make_interrupted_journal(experiment: &Experiment, now_ns: i64) -> 
     )
 }
 
+/// `resilience.target.*` attributes for the experiment root span, from the
+/// definition's `target` block. Empty when the definition declares none.
+pub(crate) fn experiment_target_attributes(experiment: &Experiment) -> Vec<KeyValue> {
+    let Some(target) = &experiment.target else {
+        return Vec::new();
+    };
+    let mut attrs = vec![KeyValue::new(
+        "resilience.target.system",
+        target.system.clone(),
+    )];
+    if let Some(t) = &target.technology {
+        attrs.push(KeyValue::new("resilience.target.technology", t.clone()));
+    }
+    if let Some(e) = &target.environment {
+        attrs.push(KeyValue::new("resilience.target.environment", e.clone()));
+    }
+    if let Some(c) = &target.criticality {
+        attrs.push(KeyValue::new("resilience.target.criticality", c.clone()));
+    }
+    attrs
+}
+
 /// Extract target attributes from an activity's provider.
 pub(crate) fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
     match &activity.provider {

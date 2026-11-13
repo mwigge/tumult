@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::enums::{
     ActivityType, BaselineMethod, Confidence, DegradationLevel, ExpectedOutcome, LoadTool,
+    NfrCriticality, NfrKind, NfrOperator, TestKind,
 };
 use super::target::{ConfigValue, Provider, SecretValue, Tolerance};
 
@@ -201,6 +202,58 @@ pub struct RegulatoryMapping {
     pub requirements: Vec<RegulatoryRequirement>,
 }
 
+// ── Non-functional objectives ──────────────────────────────────
+
+/// One non-functional objective the run is verified against. `metric` names
+/// a measurement the runner produces (see `runner::nfr` for the catalogue:
+/// `load.latency_p95_ms`, `recovery.mttr_s`, `probe.<name>.error_rate`, …);
+/// an objective whose metric was not measured is reported `inconclusive`,
+/// never silently met.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NfrObjective {
+    /// Stable identifier, unique within the experiment (e.g. `nfr-p95`).
+    pub id: String,
+    /// What the objective constrains.
+    pub kind: NfrKind,
+    /// Measurement the objective is evaluated on.
+    pub metric: String,
+    /// Comparison against `threshold`.
+    pub operator: NfrOperator,
+    pub threshold: f64,
+    /// Evaluation window in seconds (documentation for now; the runner
+    /// evaluates over the phase that produced the metric).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_s: Option<f64>,
+    /// How much a breach matters; defaults to `major`.
+    #[serde(default)]
+    pub criticality: NfrCriticality,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+// ── Target ────────────────────────────────────────────────────
+
+/// The system under test, carried on the experiment root span as
+/// `resilience.target.*` so the lake can score, scope and gate by target.
+/// `system` is the name the scorecard, the gate and compliance reports
+/// group by; `environment` is what environment-scoped tokens see.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentTarget {
+    /// Target system or service name (e.g. `payments-api`).
+    pub system: String,
+    /// Technology behind it (e.g. `postgresql`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technology: Option<String>,
+    /// Environment the run executes in (e.g. `prod`, `staging`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    /// Business criticality tier (e.g. `critical`, `important`, `standard`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub criticality: Option<String>,
+}
+
 // ── Experiment (the top-level definition) ──────────────────────
 
 /// Top-level experiment definition: identity, configuration, steady-state
@@ -217,6 +270,21 @@ pub struct Experiment {
     pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Resilience discipline; defaults to `chaos`.
+    #[serde(default)]
+    pub kind: TestKind,
+    /// System under test, emitted as `resilience.target.*` on the root span.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<ExperimentTarget>,
+    /// Non-functional objectives verified against the run's measurements.
+    #[serde(default)]
+    pub nfr: Vec<NfrObjective>,
+    /// Recovery time objective in seconds (`dr` runs measure against it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rto_target_s: Option<f64>,
+    /// Recovery point objective in seconds of tolerated data loss.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rpo_target_s: Option<f64>,
     /// Configuration values resolved from the environment (or inlined) at
     /// load time and substituted into provider arguments.
     #[serde(default)]
@@ -272,6 +340,11 @@ impl Default for Experiment {
             title: String::new(),
             description: None,
             tags: vec![],
+            kind: Default::default(),
+            target: None,
+            nfr: vec![],
+            rto_target_s: None,
+            rpo_target_s: None,
             configuration: IndexMap::new(),
             secrets: IndexMap::new(),
             controls: vec![],
@@ -471,6 +544,11 @@ mod tests {
             guards: vec![],
             blast_radius: None,
             max_concurrent_faults: None,
+            kind: Default::default(),
+            target: None,
+            nfr: vec![],
+            rto_target_s: None,
+            rpo_target_s: None,
             method: vec![],
             rollbacks: vec![],
             estimate: None,
@@ -543,5 +621,48 @@ mod tests {
         };
         let decoded: Experiment = toon_round_trip(&exp);
         assert_eq!(decoded, exp);
+    }
+
+    #[test]
+    fn kind_defaults_to_chaos_when_omitted() {
+        let exp: Experiment = toon_format::decode_default("title: plain\n").expect("parse");
+        assert_eq!(exp.kind, TestKind::Chaos);
+        assert!(exp.nfr.is_empty());
+        assert_eq!(exp.rto_target_s, None);
+    }
+
+    #[test]
+    fn kind_nfr_and_recovery_targets_parse_and_round_trip() {
+        let toon = "title: failover\nkind: dr\nrto_target_s: 900\nrpo_target_s: 60\nnfr[2]:\n  - id: p95\n    kind: latency\n    metric: load.latency_p95_ms\n    operator: lte\n    threshold: 250\n    criticality: blocking\n  - id: avail\n    kind: availability\n    metric: during.availability\n    operator: gte\n    threshold: 0.999\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        assert_eq!(exp.kind, TestKind::Dr);
+        assert_eq!(exp.rto_target_s, Some(900.0));
+        assert_eq!(exp.rpo_target_s, Some(60.0));
+        assert_eq!(exp.nfr.len(), 2);
+        assert_eq!(exp.nfr[0].criticality, NfrCriticality::Blocking);
+        assert_eq!(exp.nfr[1].criticality, NfrCriticality::Major);
+        assert_eq!(exp.nfr[1].operator, NfrOperator::Gte);
+        let back = toon_round_trip(&exp);
+        assert_eq!(back, exp);
+    }
+
+    #[test]
+    fn target_block_parses_and_round_trips() {
+        let toon = "title: t\ntarget:\n  system: payments-api\n  technology: postgresql\n  environment: prod\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        let target = exp.target.as_ref().expect("target");
+        assert_eq!(target.system, "payments-api");
+        assert_eq!(target.environment.as_deref(), Some("prod"));
+        assert_eq!(target.criticality, None);
+        assert_eq!(toon_round_trip(&exp), exp);
+        assert!(
+            toon_format::decode_default::<Experiment>("title: t\ntarget:\n  name: x\n").is_err()
+        );
+    }
+
+    #[test]
+    fn unknown_nfr_field_is_rejected() {
+        let toon = "title: x\nnfr[1]:\n  - id: a\n    kind: latency\n    metric: m\n    operator: lte\n    threshold: 1\n    bogus: 2\n";
+        assert!(toon_format::decode_default::<Experiment>(toon).is_err());
     }
 }

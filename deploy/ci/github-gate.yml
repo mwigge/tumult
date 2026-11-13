@@ -1,0 +1,36 @@
+# Resilience gate for GitHub Actions.
+#
+# Add this job to a workflow and make the deploy job `needs: resilience-gate`.
+# Secrets: TUMULT_DAEMON_URL, TUMULT_DAEMON_TOKEN (viewer role).
+# Variables: TUMULT_GATE_TARGET (the target name recorded on experiments),
+#            TUMULT_GATE_ENV (optional environment restriction).
+# The job runs inside the published CLI image, so nothing is installed on
+# the runner.
+
+jobs:
+  resilience-gate:
+    name: Resilience gate
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/mwigge/tumult:latest
+    env:
+      TUMULT_DAEMON_URL: ${{ secrets.TUMULT_DAEMON_URL }}
+      TUMULT_DAEMON_TOKEN: ${{ secrets.TUMULT_DAEMON_TOKEN }}
+      TUMULT_GATE_ENV: ${{ vars.TUMULT_GATE_ENV }}
+    steps:
+      - name: Gate on resilience evidence
+        run: |
+          tumult gate "${{ vars.TUMULT_GATE_TARGET }}" \
+            --min-score 70 \
+            --max-age-days 30 \
+            ${TUMULT_GATE_ENV:+--env "$TUMULT_GATE_ENV"} \
+            --fail-on fail
+      - name: Record the verdict
+        if: always()
+        run: |
+          tumult gate "${{ vars.TUMULT_GATE_TARGET }}" --fail-on never --json > gate.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resilience-gate
+          path: gate.json

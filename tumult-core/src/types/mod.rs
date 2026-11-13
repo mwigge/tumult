@@ -134,6 +134,11 @@ mod tests {
             guards: vec![],
             blast_radius: None,
             max_concurrent_faults: None,
+            kind: Default::default(),
+            target: None,
+            nfr: vec![],
+            rto_target_s: None,
+            rpo_target_s: None,
         }
     }
 

@@ -42,6 +42,7 @@ import type {
     ScaffoldResponse,
     Schedule,
     Scorecard,
+    GateVerdict,
     ScoreTree,
     Timeseries,
     Topology,
@@ -132,6 +133,18 @@ export const api = {
     reports: () => get<{ reports: ReportFile[] }>('/api/reports'),
 
     scores: (range: string) => get<Scorecard>(`/api/scores?range=${range}`),
+
+    gate: (
+        target: string,
+        params: { min_score?: number; max_age_days?: number; env?: string } = {},
+    ) => {
+        const q = new URLSearchParams();
+        if (params.min_score !== undefined) q.set('min_score', String(params.min_score));
+        if (params.max_age_days !== undefined) q.set('max_age_days', String(params.max_age_days));
+        if (params.env) q.set('env', params.env);
+        const qs = q.toString();
+        return get<GateVerdict>(`/api/gate/${encodeURIComponent(target)}${qs ? `?${qs}` : ''}`);
+    },
 
     reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),
 

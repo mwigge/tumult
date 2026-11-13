@@ -119,6 +119,11 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     }
 }
 

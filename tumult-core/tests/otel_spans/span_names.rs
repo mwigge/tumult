@@ -154,3 +154,52 @@ fn runner_emits_resilience_rollback_span() {
 
     let _ = provider.shutdown();
 }
+
+/// The root span carries the discipline and the declared target, which is
+/// what the lake scores, scopes and gates by.
+#[test]
+fn runner_emits_test_kind_and_target_on_root_span() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let mut exp = simple_experiment();
+    exp.kind = TestKind::Dr;
+    exp.rto_target_s = Some(30.0);
+    exp.target = Some(ExperimentTarget {
+        system: "payments-api".into(),
+        technology: Some("postgresql".into()),
+        environment: Some("staging".into()),
+        criticality: None,
+    });
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let root = exporter
+        .get_finished_spans()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|s| s.name == "resilience.experiment")
+        .expect("root span");
+    let attr = |key: &str| -> Option<String> {
+        root.attributes
+            .iter()
+            .find(|kv| kv.key.as_str() == key)
+            .map(|kv| kv.value.as_str().into_owned())
+    };
+    assert_eq!(attr("resilience.test.kind").as_deref(), Some("dr"));
+    assert_eq!(
+        attr("resilience.target.system").as_deref(),
+        Some("payments-api")
+    );
+    assert_eq!(
+        attr("resilience.target.technology").as_deref(),
+        Some("postgresql")
+    );
+    assert_eq!(
+        attr("resilience.target.environment").as_deref(),
+        Some("staging")
+    );
+    assert_eq!(attr("resilience.target.criticality"), None);
+
+    let _ = provider.shutdown();
+}

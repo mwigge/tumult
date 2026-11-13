@@ -12,6 +12,7 @@ mod common;
 mod endpoints;
 mod events;
 mod gamedays;
+mod gate;
 mod manual;
 mod query;
 mod reports;

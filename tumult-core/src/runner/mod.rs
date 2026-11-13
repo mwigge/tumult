@@ -26,6 +26,7 @@ mod guard;
 /// K6 load executor — spawns k6 and parses its summary into a `LoadResult`.
 pub mod k6;
 mod load;
+mod nfr;
 mod phases;
 mod sampler;
 mod telemetry;

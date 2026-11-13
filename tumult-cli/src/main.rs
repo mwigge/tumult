@@ -5,8 +5,9 @@ use anyhow::Context;
 use clap::Parser;
 
 use cli::{
-    AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GraphFormat,
-    McpAction, McpTransport, OutputFormat, RollbackStrategy, StoreAction, TopologyAction,
+    AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GateFailOn,
+    GraphFormat, McpAction, McpTransport, OutputFormat, RollbackStrategy, StoreAction,
+    TopologyAction,
 };
 
 mod cli;
@@ -468,6 +469,34 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 commands::cmd_autopilot_export(store.as_deref(), &dir)?;
             }
         },
+        Commands::Gate {
+            target,
+            min_score,
+            max_age_days,
+            env,
+            daemon_url,
+            fail_on,
+            json,
+        } => {
+            let fail_on = match fail_on {
+                GateFailOn::Fail => commands::FailOn::Fail,
+                GateFailOn::Warn => commands::FailOn::Warn,
+                GateFailOn::Never => commands::FailOn::Never,
+            };
+            let ok = commands::cmd_gate(&commands::GateArgs {
+                target: target.clone(),
+                min_score,
+                max_age_days,
+                env,
+                daemon_url,
+                fail_on,
+                json,
+            })
+            .await?;
+            if !ok {
+                anyhow::bail!("gate did not pass for target {target}");
+            }
+        }
         Commands::Tui {
             store,
             refresh_secs,

@@ -83,6 +83,11 @@ pub(crate) fn write_valid_experiment(dir: &Path) -> std::path::PathBuf {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -133,6 +138,11 @@ pub(crate) fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -246,6 +256,11 @@ pub(crate) fn write_config_secrets_experiment(dir: &Path) -> std::path::PathBuf 
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -304,6 +319,11 @@ pub(crate) fn write_control_experiment(dir: &Path) -> (std::path::PathBuf, std::
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: Default::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -349,6 +369,9 @@ pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
         steady_state_after: None,
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: Default::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,

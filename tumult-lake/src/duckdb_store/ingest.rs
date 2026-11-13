@@ -6,6 +6,7 @@ use tumult_core::types::{Experiment, Journal};
 
 use crate::arrow_convert::{
     journal_to_activity_batch, journal_to_experiment_batch, journal_to_load_batch,
+    journal_to_nfr_verdicts_batch, journal_to_probe_samples_batch,
 };
 use crate::error::AnalyticsError;
 use crate::telemetry;
@@ -84,6 +85,18 @@ fn ingest_journal_inner(
     if let Some(ref load_result) = journal.load_result {
         let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
         insert_batch(conn, "load_results", &load_batch)?;
+    }
+    // v16: raw probe samples and objective verdicts.
+    if !journal.probe_samples.is_empty() {
+        insert_batch(
+            conn,
+            "probe_samples",
+            &journal_to_probe_samples_batch(journal)?,
+        )?;
+    }
+    let verdicts = journal_to_nfr_verdicts_batch(journal)?;
+    if verdicts.num_rows() > 0 {
+        insert_batch(conn, "nfr_verdicts", &verdicts)?;
     }
     // ChaosGraph: upsert this run's nodes/edges (schema v2).
     super::graph::populate_graph(conn, journal, experiment)?;
@@ -381,6 +394,96 @@ mod tests {
         assert_eq!(rows[0][0], "load-test-1");
         assert_eq!(rows[0][1], "k6");
         assert_eq!(rows[0][2], "5");
+    }
+
+    #[test]
+    fn probe_samples_and_verdicts_ingested_into_duckdb() {
+        use tumult_core::types::{
+            NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome,
+            ProbeSample, SamplePhase, TestKind,
+        };
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("dr-1", ExperimentStatus::Completed);
+        journal.kind = TestKind::Dr;
+        journal.probe_samples = vec![
+            ProbeSample {
+                probe: "health".into(),
+                phase: SamplePhase::During,
+                ts_ns: 1_000,
+                duration_ms: 120,
+                ok: true,
+            },
+            ProbeSample {
+                probe: "health".into(),
+                phase: SamplePhase::Post,
+                ts_ns: 2_000,
+                duration_ms: 900,
+                ok: false,
+            },
+        ];
+        journal.objectives = Some(ObjectiveOutcome {
+            rto_target_s: Some(900.0),
+            rpo_target_s: None,
+            rto_measured_s: Some(42.5),
+            rpo_measured_s: None,
+            verdicts: vec![NfrVerdict {
+                nfr_id: "rto".into(),
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                operator: NfrOperator::Lte,
+                threshold: 900.0,
+                observed: Some(42.5),
+                state: NfrState::Met,
+                margin: Some(857.5),
+                criticality: NfrCriticality::Blocking,
+            }],
+        });
+        s.ingest_journal(&journal).unwrap();
+
+        let rows = s
+            .query("SELECT test_kind, rto_target_s, rto_measured_s FROM experiments WHERE experiment_id = 'dr-1'")
+            .unwrap();
+        assert_eq!(rows[0][0], "dr");
+        assert_eq!(rows[0][1].parse::<f64>().unwrap(), 900.0);
+        assert_eq!(rows[0][2].parse::<f64>().unwrap(), 42.5);
+
+        let rows = s
+            .query("SELECT probe_name, phase, ts_ns, value, ok FROM probe_samples ORDER BY ts_ns")
+            .unwrap();
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[0][1], "during");
+        assert_eq!(rows[1][1], "post");
+        assert_eq!(rows[1][3].parse::<f64>().unwrap(), 900.0);
+        assert_eq!(rows[1][4], "false");
+
+        let rows = s
+            .query("SELECT nfr_id, kind, state, margin, criticality FROM nfr_verdicts")
+            .unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0][0], "rto");
+        assert_eq!(rows[0][1], "rto");
+        assert_eq!(rows[0][2], "met");
+        assert_eq!(rows[0][4], "blocking");
+    }
+
+    #[test]
+    fn plain_journal_writes_no_samples_or_verdicts() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("plain", ExperimentStatus::Completed))
+            .unwrap();
+        assert_eq!(
+            s.query("SELECT count(*) FROM probe_samples").unwrap()[0][0],
+            "0"
+        );
+        assert_eq!(
+            s.query("SELECT count(*) FROM nfr_verdicts").unwrap()[0][0],
+            "0"
+        );
+        let rows = s
+            .query("SELECT test_kind FROM experiments WHERE experiment_id = 'plain'")
+            .unwrap();
+        assert_eq!(rows[0][0], "chaos");
     }
 
     #[test]
