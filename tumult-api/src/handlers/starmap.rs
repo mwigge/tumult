@@ -25,7 +25,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Query, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH};
+use axum::http::header::{
+    CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH, RETRY_AFTER as RETRY_AFTER_HEADER,
+};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
@@ -43,7 +45,9 @@ use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, ApiError};
-use crate::handlers::starmap_cache::{CachedMap, StarMapCache, REFRESH_FLOOR, TTL};
+use crate::handlers::starmap_cache::{
+    CachedMap, Miss, StarMapCache, REFRESH_FLOOR, RETRY_AFTER, TTL,
+};
 use crate::handlers::{conformance, risks};
 use crate::sql_util::{
     and_pred, env_scope_where, invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS,
@@ -809,7 +813,21 @@ where
         let window = plan.window(now_ns());
         read(plan.query, window)
     };
-    cache.get_or_build(key, max_age, build).await
+    let answered = cache.get_or_build(key, max_age, build).await;
+    answered.map_err(|miss| match miss {
+        Miss::Busy => busy(),
+        Miss::Failed(error) => error,
+    })
+}
+
+/// `503` with `Retry-After`: more requests wait for the lake than the
+/// cache lets wait, or this one waited as long as one may.
+fn busy() -> ApiError {
+    let retry = [(RETRY_AFTER_HEADER, RETRY_AFTER.as_secs().to_string())];
+    let error = json!({"error": "too many star map requests are waiting; try again shortly"});
+    (StatusCode::SERVICE_UNAVAILABLE, retry, axum::Json(error))
+        .into_response()
+        .into()
 }
 
 pub(crate) async fn starmap(
@@ -870,6 +888,33 @@ mod tests {
             "the window ends {} ns before the write",
             cleared_ns - read_to_ns
         );
+    }
+
+    #[tokio::test]
+    async fn a_request_the_cache_refuses_is_told_when_to_come_back() {
+        let cache = StarMapCache::default();
+        let mut held = Vec::new();
+        // More requests than the cache lets wait, each for its own map
+        // and each stuck in its read.
+        for i in 0..80 {
+            let key = format!("k{i}");
+            let cache = &cache;
+            let mut ask = Box::pin(async move {
+                let stuck = |_, _| std::future::pending::<Result<CachedMap, ApiError>>();
+                cached(cache, &key, TTL, plan(), stuck).await
+            });
+            if let Some(answer) = futures_poll(&mut ask).await {
+                let Err(refused) = answer else {
+                    panic!("a stuck read answered");
+                };
+                let response = refused.into_response();
+                assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+                assert_eq!(response.headers()[RETRY_AFTER_HEADER], "2");
+                return;
+            }
+            held.push(ask);
+        }
+        panic!("eighty stuck requests and none was refused");
     }
 
     /// Poll `future` once: its output when it is ready already.

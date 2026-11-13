@@ -8,43 +8,109 @@
 //!
 //! Bounds: at most [`MAX_ENTRIES`] responses and [`MAX_BYTES`] of bodies,
 //! the oldest dropped first; expired entries go on every read and write.
-//! Concurrent misses of one key share a single build
-//! ([`StarMapCache::get_or_build`]).
+//!
+//! One build per key ([`StarMapCache::get_or_build`]): concurrent
+//! requests for one key queue, the first reads the lake and the others
+//! take what it stored. When that build could not be stored (a write
+//! overtook it, or the body is larger than the cache) the requests that
+//! waited for it are handed its result all the same, provided the build
+//! began no earlier than they arrived in terms of writes (its
+//! generation is at least theirs) and its age is one they accept. A
+//! request that arrived after a write is never handed a view from
+//! before it.
+//!
+//! Load limits, over all keys and callers: at most [`MAX_BUILDS`] lake
+//! reads run at once, at most [`MAX_WAITING`] requests wait for a
+//! build, and none waits longer than [`MAX_WAIT`]. A request beyond
+//! those limits is refused ([`Miss::Busy`], `503` with `Retry-After`),
+//! it does not queue without bound.
 //!
 //! Invalidation: every API write that changes what a map shows without
 //! new telemetry clears the cache: a risk suppression
 //! (`handlers::risks::suppress`), any manual record write (`manual`:
 //! create, edit, submit, attach, verify, reject, import), a journal
 //! import that stored a run (`import::import_journal`) and a stored
-//! performance verdict (`handlers::perf::store`). A build that such a write overtakes is answered
-//! to its own caller but never stored (the generation counter), so the
-//! write is visible to the next request. Telemetry arriving over OTLP
-//! does not clear anything; it shows after at most [`TTL`].
+//! performance verdict (`handlers::perf::store`). A build that such a
+//! write overtakes is answered to its own caller, and to those who
+//! asked before the write, but never stored (the generation counter),
+//! so the write is visible to the next request. Telemetry arriving over
+//! OTLP does not clear anything; it shows after at most [`TTL`].
 //!
 //! Forced refresh: a request carrying `Cache-Control: no-cache` is not
 //! allowed to read the lake without limit. It is answered from the cache
 //! when the entry is younger than [`REFRESH_FLOOR`], so any number of
-//! viewers forcing a refresh cost one lake read per key per floor.
+//! viewers forcing a refresh of one map cost one lake read per floor.
+//! That floor is per key, and a caller chooses its keys (`focus`,
+//! `budget`, ...), so what bounds forced reads of many maps is the
+//! limit above: never more than [`MAX_BUILDS`] reads at once, whoever
+//! asks and for whatever key.
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
 use sha2::{Digest, Sha256};
+use tokio::sync::{Semaphore, SemaphorePermit};
 
 /// How long a response is served without reading the lake again.
 pub(crate) const TTL: Duration = Duration::from_secs(30);
 /// The youngest entry a `Cache-Control: no-cache` request may replace.
 pub(crate) const REFRESH_FLOOR: Duration = Duration::from_secs(2);
+/// What a refused request is told to wait before it asks again.
+pub(crate) const RETRY_AFTER: Duration = Duration::from_secs(2);
 /// Most responses kept at once; the oldest goes first.
 const MAX_ENTRIES: usize = 64;
 /// Most body bytes kept at once. A response larger than this is served
 /// and not kept.
 const MAX_BYTES: usize = 64 * 1024 * 1024;
+/// Most lake reads for maps at once, over all keys and callers.
+const MAX_BUILDS: usize = 4;
+/// Most requests waiting for a build at once, over all keys.
+const MAX_WAITING: usize = 64;
+/// The longest a request waits for its turn to build.
+const MAX_WAIT: Duration = Duration::from_secs(10);
 /// Bytes of the body hash the validator carries.
 const ETAG_BYTES: usize = 16;
+
+/// Where the cache reads the time: the system's, unless a test moves it.
+pub(crate) type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
+
+/// What bounds the cache and the load it lets through.
+#[derive(Debug, Clone, Copy)]
+struct Limits {
+    max_entries: usize,
+    max_bytes: usize,
+    /// Builds running at once.
+    builds: usize,
+    /// Requests waiting for a build at once.
+    max_waiting: usize,
+    /// The longest one request waits.
+    max_wait: Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_entries: MAX_ENTRIES,
+            max_bytes: MAX_BYTES,
+            builds: MAX_BUILDS,
+            max_waiting: MAX_WAITING,
+            max_wait: MAX_WAIT,
+        }
+    }
+}
+
+/// Why a request got no map.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Miss<E> {
+    /// Too many requests wait for a build, or this one waited too long.
+    Busy,
+    /// Its build failed.
+    Failed(E),
+}
 
 /// One serialised Star Map with its validator.
 #[derive(Debug, PartialEq, Eq)]
@@ -126,51 +192,121 @@ impl Shelf {
     }
 }
 
-/// One build per key at a time: requests for the same key queue on its
-/// gate, and all but the first find the response stored.
-type Gate = Arc<tokio::sync::Mutex<()>>;
-
-/// A request's place at a key's gate. Dropping it, however the request
-/// ends, takes the gate off the table once nobody else waits on it.
-struct Flight<'a> {
-    cache: &'a StarMapCache,
-    key: &'a str,
-    gate: Gate,
+/// The last build at a key, kept for the requests that waited for it.
+struct Handed {
+    /// The cache's generation when the build began.
+    generation: u64,
+    finished: Instant,
+    map: Arc<CachedMap>,
 }
 
-impl Drop for Flight<'_> {
+/// The queue at one key: requests for it build one at a time, and the
+/// last build's result is passed down the queue.
+#[derive(Default)]
+struct Flight {
+    gate: tokio::sync::Mutex<()>,
+    last: Mutex<Option<Handed>>,
+}
+
+impl Flight {
+    fn last(&self) -> MutexGuard<'_, Option<Handed>> {
+        self.last.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn hand(&self, handed: Handed) {
+        *self.last() = Some(handed);
+    }
+
+    /// The last build, for a request that arrived under generation
+    /// `arrived` and accepts a response younger than `max_age`: only a
+    /// build that began under that generation or a later one, so that
+    /// no write the request could have seen is missing from it.
+    fn handed(&self, arrived: u64, max_age: Duration, now: Instant) -> Option<Arc<CachedMap>> {
+        let last = self.last();
+        let handed = last.as_ref()?;
+        let young = now.saturating_duration_since(handed.finished) < max_age;
+        (handed.generation >= arrived && young).then(|| Arc::clone(&handed.map))
+    }
+}
+
+/// A request's place in a key's queue. Dropping it, however the request
+/// ends, takes the queue off the table once nobody else is in it.
+struct Seat<'a> {
+    cache: &'a StarMapCache,
+    key: &'a str,
+    flight: Arc<Flight>,
+}
+
+impl Drop for Seat<'_> {
     fn drop(&mut self) {
         let mut flights = self.cache.flights_lock();
-        // Gates are only cloned under this lock; two holders are this
+        // Flights are only cloned under this lock; two holders are this
         // request and the table.
-        if Arc::strong_count(&self.gate) <= 2 {
+        if Arc::strong_count(&self.flight) <= 2 {
             flights.remove(self.key);
         }
     }
 }
 
+/// A request counted as waiting for a build, until this is dropped.
+struct Waiting<'a>(&'a AtomicUsize);
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// What a request's turn in the queue came to.
+enum Turn<'a> {
+    /// Somebody else's build answers it.
+    Served(Arc<CachedMap>),
+    /// It builds, holding its key's gate and one of the build permits.
+    Build(tokio::sync::MutexGuard<'a, ()>, SemaphorePermit<'a>),
+    /// The cache takes no more builds.
+    Closed,
+}
+
 /// Responses by request key. Cheap to share: handlers hold it in an `Arc`.
 pub(crate) struct StarMapCache {
     shelf: Mutex<Shelf>,
-    flights: Mutex<HashMap<String, Gate>>,
-    max_entries: usize,
-    max_bytes: usize,
+    flights: Mutex<HashMap<String, Arc<Flight>>>,
+    builds: Semaphore,
+    waiting: AtomicUsize,
+    limits: Limits,
+    clock: Clock,
 }
 
 impl Default for StarMapCache {
     fn default() -> Self {
-        Self::with_limits(MAX_ENTRIES, MAX_BYTES)
+        Self::with_clock(Arc::new(Instant::now))
     }
 }
 
 impl StarMapCache {
-    fn with_limits(max_entries: usize, max_bytes: usize) -> Self {
+    /// The cache with its production limits, reading the time from `clock`.
+    pub(crate) fn with_clock(clock: Clock) -> Self {
+        Self::new(Limits::default(), clock)
+    }
+
+    fn new(limits: Limits, clock: Clock) -> Self {
         Self {
             shelf: Mutex::default(),
             flights: Mutex::default(),
-            max_entries,
-            max_bytes,
+            builds: Semaphore::new(limits.builds),
+            waiting: AtomicUsize::new(0),
+            limits,
+            clock,
         }
+    }
+
+    #[cfg(test)]
+    fn with_limits(limits: Limits) -> Self {
+        Self::new(limits, Arc::new(Instant::now))
+    }
+
+    fn now(&self) -> Instant {
+        (self.clock)()
     }
 
     /// The shelf. No change to it can panic half-way, so a poisoned lock
@@ -179,7 +315,7 @@ impl StarMapCache {
         self.shelf.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn flights_lock(&self) -> MutexGuard<'_, HashMap<String, Gate>> {
+    fn flights_lock(&self) -> MutexGuard<'_, HashMap<String, Arc<Flight>>> {
         self.flights.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -211,10 +347,10 @@ impl StarMapCache {
         generation: u64,
     ) -> bool {
         let size = map.body.len();
-        if size > self.max_bytes {
+        if size > self.limits.max_bytes {
             tracing::warn!(
                 bytes = size,
-                cap = self.max_bytes,
+                cap = self.limits.max_bytes,
                 "star map response is larger than the cache; not kept"
             );
             return false;
@@ -225,7 +361,9 @@ impl StarMapCache {
         }
         shelf.drop_expired(now);
         shelf.remove(&key);
-        while shelf.entries.len() >= self.max_entries || shelf.bytes + size > self.max_bytes {
+        while shelf.entries.len() >= self.limits.max_entries
+            || shelf.bytes + size > self.limits.max_bytes
+        {
             if !shelf.drop_oldest() {
                 break;
             }
@@ -244,47 +382,96 @@ impl StarMapCache {
         shelf.generation = shelf.generation.wrapping_add(1);
     }
 
-    /// Join the queue at `key`'s gate.
-    fn flight_for<'a>(&'a self, key: &'a str) -> Flight<'a> {
+    /// Join the queue at `key`.
+    fn seat<'a>(&'a self, key: &'a str) -> Seat<'a> {
         let mut flights = self.flights_lock();
-        let gate = Arc::clone(flights.entry(key.to_string()).or_default());
-        Flight {
+        let flight = Arc::clone(flights.entry(key.to_string()).or_default());
+        Seat {
             cache: self,
             key,
-            gate,
+            flight,
+        }
+    }
+
+    /// Count one more request as waiting; `None` when the line is full.
+    fn wait_in_line(&self) -> Option<Waiting<'_>> {
+        let waiting = self.waiting.fetch_add(1, Ordering::SeqCst) + 1;
+        let line = Waiting(&self.waiting);
+        if waiting > self.limits.max_waiting {
+            tracing::warn!(
+                waiting,
+                cap = self.limits.max_waiting,
+                "star map request refused: too many wait for a build"
+            );
+            return None;
+        }
+        Some(line)
+    }
+
+    /// Wait at the key's gate, then take what the build before left for
+    /// this request, or else wait for a build permit.
+    async fn turn<'a>(&'a self, seat: &'a Seat<'_>, arrived: u64, max_age: Duration) -> Turn<'a> {
+        let gate = seat.flight.gate.lock().await;
+        let now = self.now();
+        if let Some(map) = self.get(seat.key, max_age, now) {
+            return Turn::Served(map);
+        }
+        if let Some(map) = seat.flight.handed(arrived, max_age, now) {
+            return Turn::Served(map);
+        }
+        match self.builds.acquire().await {
+            Ok(permit) => Turn::Build(gate, permit),
+            Err(_) => Turn::Closed,
         }
     }
 
     /// The response for `key`: the stored one while it is younger than
     /// `max_age`, else the one `build` returns, stored unless a clear
     /// overtook it. Concurrent callers for one key run `build` once; the
-    /// others wait and take what it stored.
+    /// others wait and take what it stored or, when it was not stored,
+    /// what it returned (see the module text for when). `build` is
+    /// called only once this request's turn has come, so what it reads
+    /// is as of then. [`Miss::Busy`] when too many requests wait or this
+    /// one waited [`MAX_WAIT`].
     pub(crate) async fn get_or_build<F, Fut, E>(
         &self,
         key: &str,
         max_age: Duration,
         build: F,
-    ) -> Result<Arc<CachedMap>, E>
+    ) -> Result<Arc<CachedMap>, Miss<E>>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<CachedMap, E>>,
     {
-        if let Some(map) = self.get(key, max_age, Instant::now()) {
+        if let Some(map) = self.get(key, max_age, self.now()) {
             return Ok(map);
         }
-        let flight = self.flight_for(key);
-        let _turn = flight.gate.lock().await;
-        if let Some(map) = self.get(key, max_age, Instant::now()) {
-            return Ok(map);
-        }
+        let arrived = self.generation();
+        let line = self.wait_in_line().ok_or(Miss::Busy)?;
+        let seat = self.seat(key);
+        let turn = self.turn(&seat, arrived, max_age);
+        let Ok(turn) = tokio::time::timeout(self.limits.max_wait, turn).await else {
+            tracing::warn!(
+                waited_ms = self.limits.max_wait.as_millis(),
+                "star map request refused: it waited too long for a build"
+            );
+            return Err(Miss::Busy);
+        };
+        let _held = match turn {
+            Turn::Served(map) => return Ok(map),
+            Turn::Closed => return Err(Miss::Busy),
+            Turn::Build(gate, permit) => (gate, permit),
+        };
+        drop(line);
         let generation = self.generation();
-        let map = Arc::new(build().await?);
-        self.put(
-            key.to_string(),
-            Arc::clone(&map),
-            Instant::now(),
+        let map = Arc::new(build().await.map_err(Miss::Failed)?);
+        let finished = self.now();
+        self.put(key.to_string(), Arc::clone(&map), finished, generation);
+        seat.flight.hand(Handed {
             generation,
-        );
+            finished,
+            map: Arc::clone(&map),
+        });
         Ok(map)
     }
 
@@ -302,13 +489,59 @@ impl StarMapCache {
     fn flights(&self) -> usize {
         self.flights_lock().len()
     }
+
+    #[cfg(test)]
+    fn waiting(&self) -> usize {
+        self.waiting.load(Ordering::SeqCst)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    use tokio::sync::Notify;
 
     use super::*;
+
+    /// A cache that keeps nothing: every body is larger than its cap.
+    fn keeps_nothing() -> Limits {
+        Limits {
+            max_bytes: 0,
+            ..Limits::default()
+        }
+    }
+
+    /// A clock the test moves: the cache's time is the real one plus
+    /// the milliseconds in the returned counter.
+    fn moved_clock() -> (Clock, Arc<AtomicU64>) {
+        let ahead = Arc::new(AtomicU64::new(0));
+        let read = Arc::clone(&ahead);
+        let clock: Clock =
+            Arc::new(move || Instant::now() + Duration::from_millis(read.load(Ordering::SeqCst)));
+        (clock, ahead)
+    }
+
+    fn body(text: &str) -> Result<CachedMap, String> {
+        Ok(CachedMap::new(text.as_bytes().to_vec()))
+    }
+
+    /// Poll `future` once: its output when it is ready already.
+    async fn poll_once<F: Future + Unpin>(future: &mut F) -> Option<F::Output> {
+        tokio::select! {
+            biased;
+            output = future => Some(output),
+            () = std::future::ready(()) => None,
+        }
+    }
+
+    /// Room for ten bytes of bodies.
+    fn small() -> Limits {
+        Limits {
+            max_bytes: 10,
+            ..Limits::default()
+        }
+    }
 
     fn map(body: &str) -> Arc<CachedMap> {
         Arc::new(CachedMap::new(body.as_bytes().to_vec()))
@@ -401,7 +634,7 @@ mod tests {
 
     #[test]
     fn the_bodies_held_never_exceed_the_byte_cap() {
-        let cache = StarMapCache::with_limits(MAX_ENTRIES, 10);
+        let cache = StarMapCache::with_limits(small());
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
         cache.put("a".into(), map("1234"), at(0), cache.generation());
@@ -423,7 +656,7 @@ mod tests {
 
     #[test]
     fn a_body_larger_than_the_cap_is_served_but_not_kept() {
-        let cache = StarMapCache::with_limits(MAX_ENTRIES, 10);
+        let cache = StarMapCache::with_limits(small());
         let start = Instant::now();
         cache.put("small".into(), map("1234"), start, cache.generation());
         let kept = cache.put("huge".into(), map("0123456789a"), start, cache.generation());
@@ -542,6 +775,218 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_forced_refresh_past_the_floor_reads_again() {
+        let (clock, ahead) = moved_clock();
+        let cache = StarMapCache::new(Limits::default(), clock);
+        let runs = AtomicUsize::new(0);
+        let first = cache.get_or_build("k", REFRESH_FLOOR, || counted(&runs, "a"));
+        assert_eq!(first.await.unwrap().body, "a");
+
+        ahead.store(1_900, Ordering::SeqCst);
+        let inside = cache.get_or_build("k", REFRESH_FLOOR, || counted(&runs, "b"));
+        assert_eq!(inside.await.unwrap().body, "a", "younger than the floor");
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+
+        ahead.store(2_100, Ordering::SeqCst);
+        let past = cache.get_or_build("k", REFRESH_FLOOR, || counted(&runs, "b"));
+        assert_eq!(past.await.unwrap().body, "b");
+        assert_eq!(runs.load(Ordering::SeqCst), 2);
+
+        // A plain request is then served what the forced one read.
+        let plain = cache.get_or_build("k", TTL, || counted(&runs, "c"));
+        assert_eq!(plain.await.unwrap().body, "b");
+        assert_eq!(runs.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_build_that_is_not_stored_is_handed_to_those_who_waited_for_it() {
+        let cache = Arc::new(StarMapCache::with_limits(keeps_nothing()));
+        let runs = Arc::new(AtomicUsize::new(0));
+        let answers = ask_at_once(&cache, &runs, TTL, "a").await;
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "one lake read, not sixteen");
+        assert!(answers.iter().all(|answer| answer.body == "a"));
+        assert_eq!(cache.len(), 0, "nothing was stored");
+        assert_eq!(cache.flights(), 0, "what was handed goes with the queue");
+
+        // A request that did not wait for that build gets its own.
+        let later = cache.get_or_build("k", TTL, || counted(&runs, "b"));
+        assert_eq!(later.await.unwrap().body, "b");
+        assert_eq!(runs.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_waiter_that_arrived_after_a_write_is_not_handed_the_view_before_it() {
+        let cache = StarMapCache::default();
+        let release = Notify::new();
+        let runs = AtomicUsize::new(0);
+        let leader = cache.get_or_build("k", TTL, || async {
+            release.notified().await;
+            body("before the write")
+        });
+        let early = cache.get_or_build("k", TTL, || counted(&runs, "early"));
+        tokio::pin!(leader, early);
+        assert!(poll_once(&mut leader).await.is_none());
+        assert!(poll_once(&mut early).await.is_none());
+
+        // The write lands while the leader reads; one more request
+        // arrives after it.
+        cache.clear();
+        let late = cache.get_or_build("k", TTL, || counted(&runs, "after the write"));
+        tokio::pin!(late);
+        assert!(poll_once(&mut late).await.is_none());
+
+        release.notify_one();
+        assert_eq!(leader.await.unwrap().body, "before the write");
+        // It asked before the write, and the leader began no earlier
+        // than it arrived: the leader's answer is its answer.
+        assert_eq!(early.await.unwrap().body, "before the write");
+        assert_eq!(runs.load(Ordering::SeqCst), 0);
+        assert_eq!(late.await.unwrap().body, "after the write");
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+
+        // Only the view after the write was stored.
+        let stored = cache.get("k", TTL, Instant::now()).expect("stored");
+        assert_eq!(stored.body, "after the write");
+    }
+
+    #[tokio::test]
+    async fn a_handed_result_is_no_older_than_the_caller_accepts() {
+        let (clock, ahead) = moved_clock();
+        let cache = StarMapCache::new(keeps_nothing(), clock);
+        let release = Notify::new();
+        let runs = AtomicUsize::new(0);
+        let leader = cache.get_or_build("k", TTL, || async {
+            release.notified().await;
+            body("old")
+        });
+        let patient = cache.get_or_build("k", TTL, || counted(&runs, "patient"));
+        let forcing = cache.get_or_build("k", REFRESH_FLOOR, || counted(&runs, "new"));
+        tokio::pin!(leader, patient, forcing);
+        assert!(poll_once(&mut leader).await.is_none());
+        assert!(poll_once(&mut patient).await.is_none());
+        assert!(poll_once(&mut forcing).await.is_none());
+
+        release.notify_one();
+        assert_eq!(leader.await.unwrap().body, "old");
+        ahead.store(3_000, Ordering::SeqCst);
+        assert_eq!(patient.await.unwrap().body, "old", "three seconds is fine");
+        assert_eq!(forcing.await.unwrap().body, "new", "older than its floor");
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_request_that_waited_too_long_is_refused_and_the_key_is_not_stuck() {
+        let cache = StarMapCache::with_limits(Limits {
+            max_wait: Duration::from_millis(20),
+            ..Limits::default()
+        });
+        let runs = AtomicUsize::new(0);
+        {
+            let leader = cache.get_or_build("k", TTL, || async {
+                std::future::pending::<Result<CachedMap, String>>().await
+            });
+            tokio::pin!(leader);
+            assert!(poll_once(&mut leader).await.is_none());
+
+            let refused = cache.get_or_build("k", TTL, || counted(&runs, "a")).await;
+            assert_eq!(refused.unwrap_err(), Miss::Busy);
+            assert_eq!(runs.load(Ordering::SeqCst), 0);
+            assert_eq!(cache.waiting(), 0, "the refused request left the line");
+        }
+        // The leader's caller went away.
+        assert_eq!(cache.flights(), 0);
+        let next = cache.get_or_build("k", TTL, || counted(&runs, "a"));
+        assert_eq!(next.await.unwrap().body, "a");
+    }
+
+    #[tokio::test]
+    async fn requests_beyond_the_waiter_cap_are_refused_at_once() {
+        let cache = StarMapCache::with_limits(Limits {
+            max_waiting: 2,
+            max_wait: Duration::from_secs(3_600),
+            ..Limits::default()
+        });
+        let release = Notify::new();
+        let runs = AtomicUsize::new(0);
+        let leader = cache.get_or_build("k", TTL, || async {
+            release.notified().await;
+            body("a")
+        });
+        let second = cache.get_or_build("k", TTL, || counted(&runs, "b"));
+        let third = cache.get_or_build("k", TTL, || counted(&runs, "b"));
+        tokio::pin!(leader, second, third);
+        assert!(poll_once(&mut leader).await.is_none());
+        assert_eq!(cache.waiting(), 0, "a request that builds does not wait");
+        assert!(poll_once(&mut second).await.is_none());
+        assert!(poll_once(&mut third).await.is_none());
+        assert_eq!(cache.waiting(), 2);
+
+        // The line is full, for this map and for any other.
+        for key in ["k", "other"] {
+            let refused = cache.get_or_build(key, TTL, || counted(&runs, "b"));
+            let refused = tokio::time::timeout(Duration::from_secs(5), refused).await;
+            assert_eq!(refused.expect("at once").unwrap_err(), Miss::Busy);
+        }
+        assert_eq!(cache.waiting(), 2);
+
+        // A stored map is still served to everybody.
+        release.notify_one();
+        assert_eq!(leader.await.unwrap().body, "a");
+        assert_eq!(second.await.unwrap().body, "a");
+        assert_eq!(third.await.unwrap().body, "a");
+        assert_eq!(runs.load(Ordering::SeqCst), 0);
+        assert_eq!(cache.waiting(), 0);
+    }
+
+    #[tokio::test]
+    async fn builds_of_different_maps_are_limited_together() {
+        let cache = Arc::new(StarMapCache::with_limits(Limits {
+            builds: 2,
+            ..Limits::default()
+        }));
+        let running = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let mut asks = tokio::task::JoinSet::new();
+        for i in 0..6 {
+            let (cache, running, peak) =
+                (Arc::clone(&cache), Arc::clone(&running), Arc::clone(&peak));
+            asks.spawn(async move {
+                let key = format!("k{i}");
+                let build = || async {
+                    let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    running.fetch_sub(1, Ordering::SeqCst);
+                    body("a")
+                };
+                cache.get_or_build(&key, TTL, build).await.unwrap()
+            });
+        }
+        assert_eq!(asks.join_all().await.len(), 6, "every request is answered");
+        assert_eq!(peak.load(Ordering::SeqCst), 2, "two lake reads at a time");
+        assert_eq!(cache.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn a_build_that_cannot_start_in_time_is_refused() {
+        let cache = StarMapCache::with_limits(Limits {
+            builds: 1,
+            max_wait: Duration::from_millis(20),
+            ..Limits::default()
+        });
+        let busy = cache.get_or_build("a", TTL, || async {
+            std::future::pending::<Result<CachedMap, String>>().await
+        });
+        tokio::pin!(busy);
+        assert!(poll_once(&mut busy).await.is_none());
+
+        let runs = AtomicUsize::new(0);
+        let refused = cache.get_or_build("b", TTL, || counted(&runs, "b")).await;
+        assert_eq!(refused.unwrap_err(), Miss::Busy);
+        assert_eq!(runs.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn a_failed_build_stores_nothing_and_frees_the_key() {
         let cache = StarMapCache::default();
         let failed = cache
@@ -549,7 +994,7 @@ mod tests {
                 Err::<CachedMap, _>("lake gone".to_string())
             })
             .await;
-        assert_eq!(failed.unwrap_err(), "lake gone");
+        assert_eq!(failed.unwrap_err(), Miss::Failed("lake gone".to_string()));
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.flights(), 0);
 
