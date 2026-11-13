@@ -7,7 +7,14 @@ import unittest
 
 import numpy as np
 
-from forecastd.model import TIMESTRAL_LEVELS, StubModel, hash_weights, load_model_from_env
+from forecastd.model import (
+    TIMESTRAL_LEVELS,
+    StubModel,
+    default_threads,
+    hash_weights,
+    load_model_from_env,
+    snapshot_revision,
+)
 from forecastd.service import BadRequest, handle_forecast, handle_healthz
 
 
@@ -145,6 +152,27 @@ class EnvironmentTests(unittest.TestCase):
             self.assertNotEqual(first, hash_weights(root))
         self.assertEqual(hash_weights(None), "unverified")
 
+
+    def test_the_stub_says_it_is_a_stub(self) -> None:
+        info = load_model_from_env({"FORECASTD_MODEL": "stub"}).info.as_dict()
+        self.assertEqual(info["model"], "stub")
+        self.assertEqual(info["revision"], "none")
+        self.assertEqual(info["weights_hash"], "none")
+
+    def test_revision_is_the_hub_snapshot_commit(self) -> None:
+        from pathlib import Path
+
+        hub = Path("/cache/hub/models--mistralai--Timestral-5M/snapshots/0123abc")
+        self.assertEqual(snapshot_revision(hub), "0123abc")
+        self.assertEqual(snapshot_revision(Path("/weights/Timestral-5M")), "local")
+
+    def test_thread_settings_are_validated_before_the_model_loads(self) -> None:
+        self.assertTrue(1 <= default_threads() <= 4)
+        for bad in ("many", "0", "-2"):
+            with self.assertRaises(ValueError):
+                load_model_from_env({"FORECASTD_MODEL": "timestral", "FORECASTD_THREADS": bad})
+        with self.assertRaises(ValueError):
+            load_model_from_env({"FORECASTD_MODEL": "prophet"})
 
 if __name__ == "__main__":
     unittest.main()

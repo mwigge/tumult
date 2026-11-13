@@ -6,12 +6,16 @@ that needs only numpy and makes the tests and the smoke deployment work;
 ``TimestralModel`` wraps Mistral's Timestral forecaster and imports it (and
 PyTorch) lazily, so nothing here needs torch until a Timestral model is
 actually selected.
+
+``timestral`` is the default; the stub is an explicit offline mode
+(``FORECASTD_MODEL=stub``) and says so in its provenance.
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import NormalDist
@@ -26,6 +30,10 @@ TIMESTRAL_LEVELS: tuple[float, ...] = tuple(
 assert len(TIMESTRAL_LEVELS) == 21
 
 MODEL_SIZES = ("5M", "28M", "123M", "209M")
+# The upstream release this service is tested against (not on PyPI).
+TIMESTRAL_SOURCE = (
+    "git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff"
+)
 DEFAULT_MODEL_SIZE = "5M"
 
 
@@ -38,6 +46,9 @@ class ModelInfo:
     size: str
     version: str
     weights_hash: str
+    # The weights revision: the hub commit of the snapshot, ``local`` for a
+    # directory that is not a hub snapshot, ``none`` for the stub.
+    revision: str = "none"
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -45,6 +56,7 @@ class ModelInfo:
             "model_id": self.model_id,
             "size": self.size,
             "version": self.version,
+            "revision": self.revision,
             "weights_hash": self.weights_hash,
         }
 
@@ -118,7 +130,7 @@ class StubModel:
 
 def hash_weights(path: str | os.PathLike[str] | None) -> str:
     """SHA-256 over every file under ``path`` (sorted by name), or
-    ``unverified`` when the weights come from the hub cache."""
+    ``unverified`` when there is no path to read."""
     if path is None:
         return "unverified"
     root = Path(path)
@@ -132,13 +144,22 @@ def hash_weights(path: str | os.PathLike[str] | None) -> str:
     return digest.hexdigest()
 
 
-class TimestralModel:
-    """Mistral's Timestral forecaster, loaded once.
+def snapshot_revision(checkpoint: Path) -> str:
+    """The hub commit a snapshot directory is named after, else ``local``."""
+    if checkpoint.parent.name == "snapshots":
+        return checkpoint.name
+    return "local"
 
-    ``weights_path`` points at a local snapshot (air-gapped deployments);
-    otherwise the model id is fetched through the Hugging Face hub cache.
-    The weights carry a modified-MIT licence; they are never bundled in the
-    container image — see the README.
+
+class TimestralModel:
+    """Mistral's Timestral forecaster, loaded once and run on CPU.
+
+    ``weights_path`` points at a local directory holding ``config.json``
+    and ``model.safetensors`` (air-gapped deployments); otherwise the model
+    id is fetched through the Hugging Face hub cache, at ``revision`` when
+    one is pinned. Either way the provenance carries the SHA-256 of the
+    files that were loaded. The weights carry a modified-MIT licence; they
+    are never bundled in the container image — see the README.
     """
 
     def __init__(
@@ -146,28 +167,35 @@ class TimestralModel:
         size: str = DEFAULT_MODEL_SIZE,
         model_id: str | None = None,
         weights_path: str | None = None,
+        revision: str | None = None,
+        threads: int | None = None,
     ) -> None:
         if size not in MODEL_SIZES:
             raise ValueError(f"unknown Timestral size {size!r}; expected one of {MODEL_SIZES}")
         try:
-            from timestral import TimestralForecaster  # noqa: PLC0415 (lazy on purpose)
+            import torch  # noqa: PLC0415 (lazy on purpose)
+            from timestral import TimestralForecaster  # noqa: PLC0415
+            from timestral.loading import resolve_checkpoint  # noqa: PLC0415
         except ImportError as error:  # pragma: no cover - depends on the environment
             raise RuntimeError(
-                "the timestral package is not installed; "
-                "pip install 'git+https://github.com/mistralai/timestral.git' "
-                "or run with FORECASTD_MODEL=stub"
+                "torch and the timestral package are required for FORECASTD_MODEL=timestral: "
+                f"pip install 'timestral @ {TIMESTRAL_SOURCE}' "
+                "(or set FORECASTD_MODEL=stub for the offline stand-in)"
             ) from error
+        if threads is not None:
+            torch.set_num_threads(threads)
         resolved_id = model_id or f"mistralai/Timestral-{size}"
-        source = weights_path or resolved_id
-        self._forecaster = TimestralForecaster.from_pretrained(source)
-        self.levels = TIMESTRAL_LEVELS
-        version = getattr(self._forecaster, "version", None) or _package_version("timestral")
+        checkpoint = Path(resolve_checkpoint(weights_path or resolved_id, revision=revision))
+        self._forecaster = TimestralForecaster.from_pretrained(checkpoint)
+        self._lock = threading.Lock()
+        self.levels = tuple(float(level) for level in self._forecaster.quantile_levels)
         self.info = ModelInfo(
             model="timestral",
             model_id=resolved_id,
             size=size,
-            version=str(version),
-            weights_hash=hash_weights(weights_path),
+            version=_package_version("timestral"),
+            weights_hash=hash_weights(checkpoint),
+            revision=snapshot_revision(checkpoint),
         )
 
     def forecast(
@@ -177,16 +205,16 @@ class TimestralModel:
         past_covariates: np.ndarray | None,
         known_covariates: np.ndarray | None,
     ) -> np.ndarray:
-        quantiles = self._forecaster.forecast(
-            context[None, :, :],
-            prediction_length=horizon,
-            past_covariates=None if past_covariates is None else past_covariates[None],
-            known_covariates=None if known_covariates is None else known_covariates[None],
-        )
-        array = np.asarray(quantiles, dtype=float)
-        if array.ndim == 4:
-            array = array[0]
-        return array
+        # One forecast at a time: torch already uses every CPU thread it was
+        # given, and concurrent calls would only contend.
+        with self._lock:
+            result = self._forecaster.forecast(
+                context[None, :, :],
+                prediction_length=horizon,
+                past_covariates=None if past_covariates is None else past_covariates[None],
+                known_covariates=None if known_covariates is None else known_covariates[None],
+            )
+        return result.quantiles[0].detach().cpu().numpy().astype(float)
 
 
 def _package_version(name: str) -> str:
@@ -198,10 +226,35 @@ def _package_version(name: str) -> str:
         return "unknown"
 
 
+DEFAULT_THREADS = 4
+
+
+def default_threads() -> int:
+    """Torch threads when ``FORECASTD_THREADS`` is unset: a few cores, not
+    all of them. The 5M model gains nothing past four, and claiming every
+    core makes each forecast slower on a host that is busy with other work."""
+    return max(1, min(DEFAULT_THREADS, os.cpu_count() or 1))
+
+
+def _optional_int(value: str | None, name: str) -> int | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        number = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a whole number, got {value!r}") from error
+    if number < 1:
+        raise ValueError(f"{name} must be at least 1, got {number}")
+    return number
+
+
 def load_model_from_env(environ: dict[str, str] | None = None) -> ForecastModel:
-    """Pick the model from ``FORECASTD_MODEL`` (``timestral`` by default,
-    ``stub`` for tests and smoke runs), ``FORECASTD_MODEL_SIZE`` (5M),
-    ``FORECASTD_MODEL_ID`` and ``FORECASTD_WEIGHTS_PATH``."""
+    """Pick the model from ``FORECASTD_MODEL``: ``timestral`` (the default,
+    the real model) or ``stub`` (the offline stand-in, no torch and no
+    weights). ``FORECASTD_MODEL_SIZE`` (5M), ``FORECASTD_MODEL_ID``,
+    ``FORECASTD_MODEL_REVISION``, ``FORECASTD_WEIGHTS_PATH`` and
+    ``FORECASTD_THREADS`` (4, or fewer on a smaller host) configure the
+    real one."""
     env = os.environ if environ is None else environ
     kind = env.get("FORECASTD_MODEL", "timestral").lower()
     if kind == "stub":
@@ -212,4 +265,7 @@ def load_model_from_env(environ: dict[str, str] | None = None) -> ForecastModel:
         size=env.get("FORECASTD_MODEL_SIZE", DEFAULT_MODEL_SIZE),
         model_id=env.get("FORECASTD_MODEL_ID") or None,
         weights_path=env.get("FORECASTD_WEIGHTS_PATH") or None,
+        revision=env.get("FORECASTD_MODEL_REVISION") or None,
+        threads=_optional_int(env.get("FORECASTD_THREADS"), "FORECASTD_THREADS")
+        or default_threads(),
     )
