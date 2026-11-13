@@ -39,7 +39,12 @@ async fn experiments_rejects_invalid_filters() {
 
     let (status, body) = get(&srv.base, &format!("/api/experiments?name={long_q}")).await;
     assert_eq!(status, 400);
-    assert!(body["error"].as_str().unwrap().contains("name too long"));
+    assert_eq!(body["error"], "name too long (max 200 chars)");
+
+    // An empty name is no filter the caller can have meant.
+    let (status, body) = get(&srv.base, "/api/experiments?name=").await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "name must not be empty");
 
     let (status, body) = get(&srv.base, "/api/experiments?range=3h").await;
     assert_eq!(status, 400);

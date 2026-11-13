@@ -33,6 +33,16 @@ pub(crate) struct ExperimentParams {
 /// Longest `q` or `name` accepted, in characters.
 const MAX_TEXT_FILTER: usize = 200;
 
+/// `400` when the text filter `field` is longer than [`MAX_TEXT_FILTER`].
+fn short_enough(field: &str, value: &str) -> Result<(), ApiError> {
+    if value.chars().count() <= MAX_TEXT_FILTER {
+        return Ok(());
+    }
+    Err(crate::error::bad_request(format!(
+        "{field} too long (max {MAX_TEXT_FILTER} chars)"
+    )))
+}
+
 /// The root-span ↔ completed-log join used by the list and detail queries.
 const EXPERIMENT_FROM: &str = "FROM spans s LEFT JOIN logs l \
      ON l.log_attrs['experiment_id'] = s.experiment_id \
@@ -98,9 +108,7 @@ pub(crate) async fn experiments(
         ));
     }
     if let Some(q) = &params.q {
-        if q.chars().count() > MAX_TEXT_FILTER {
-            return Err(bad("q too long (max 200 chars)".into()));
-        }
+        short_enough("q", q)?;
         let like = sql_contains(q);
         wheres.push(format!(
             "(s.experiment_name ILIKE {like} ESCAPE '\\' \
@@ -108,9 +116,10 @@ pub(crate) async fn experiments(
         ));
     }
     if let Some(name) = &params.name {
-        if name.chars().count() > MAX_TEXT_FILTER {
-            return Err(bad("name too long (max 200 chars)".into()));
+        if name.is_empty() {
+            return Err(bad("name must not be empty".into()));
         }
+        short_enough("name", name)?;
         wheres.push(format!("s.experiment_name = {}", sql_string(name)));
     }
     let origin = params.origin.as_deref();
