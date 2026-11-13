@@ -9,12 +9,18 @@
 //! score endpoints report which of the two is the case
 //! (`register_state`).
 //!
-//! Once per snapshot interval the evidence status of every requirement
-//! and function, and the level of every legal entity, are stored for the
-//! day. The 180-day operating rule and the maturity history read those
-//! stored days and nothing else: a day on which no snapshot was stored
-//! (the daemon was down, or the snapshot is disabled) is not an
-//! operating day, and no later run fills it in.
+//! Once per snapshot interval, and as soon as a new UTC day is noticed,
+//! the evidence status of every requirement and function, and the level
+//! of every legal entity, are stored for the day. The 180-day operating
+//! rule and the maturity history read those stored days and nothing
+//! else: a day on which no snapshot was stored (the daemon was down, or
+//! the snapshot is disabled) is not an operating day, and no later run
+//! fills it in.
+//!
+//! A day is not stored while the default parameters stand in for an org
+//! file that is refused and never was valid: that day would be scored
+//! with parameters the house did not choose. The skip is logged, counted
+//! and shown in every score response (`snapshot`).
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -41,6 +47,8 @@ const RELOAD_ENV: &str = "KRONIKA_REGISTER_RELOAD_INTERVAL";
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(86_400);
 /// A changed org file is in the lake within this time.
 const DEFAULT_RELOAD: Duration = Duration::from_secs(60);
+/// A new UTC day is noticed, and stored, within this time.
+pub(crate) const DAY_CHECK: Duration = Duration::from_secs(60);
 /// Most bytes of an error or a configured value in one log event.
 const LOG_VALUE_MAX_LEN: usize = 512;
 
@@ -89,9 +97,38 @@ pub(crate) struct ScoreJobs {
     pub interval: Option<Duration>,
     /// `None` reads the org file and the manifests at start only.
     pub reload: Option<Duration>,
+    /// How often the job looks whether a new UTC day has begun.
+    pub day_check: Duration,
+    /// The wall clock, in nanoseconds since the Unix epoch.
+    pub now: fn() -> i64,
 }
 
-fn now_ns() -> i64 {
+/// What became of one attempt to store the day.
+#[derive(Debug, PartialEq, Eq)]
+enum Attempt {
+    /// The day is stored, in this many status rows.
+    Stored(usize),
+    /// Nothing was stored; `total` attempts were skipped since start.
+    Skipped { total: u64 },
+}
+
+/// Store the day of `as_of_ns`, unless the score runtime says a day
+/// scored now must not be stored.
+async fn snapshot_unless_blocked(
+    jobs: &ScoreJobs,
+    ingest: &IngestWriter,
+    as_of_ns: i64,
+) -> Result<Attempt> {
+    if jobs.runtime.snapshot_block().is_some() {
+        let total = jobs.runtime.snapshot_skipped();
+        return Ok(Attempt::Skipped { total });
+    }
+    run_snapshot(jobs, ingest, as_of_ns)
+        .await
+        .map(Attempt::Stored)
+}
+
+pub(crate) fn now_ns() -> i64 {
     let since_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
@@ -136,7 +173,8 @@ async fn run_snapshot(jobs: &ScoreJobs, ingest: &IngestWriter, as_of_ns: i64) ->
     let snapshot = tokio::task::spawn_blocking(move || -> Result<_> {
         let workloads = runtime.workloads().map_err(anyhow::Error::msg)?;
         let reader = Store::at(&db).read_only().context("open store read-only")?;
-        report::snapshot_all(&reader, &runtime.params(), &workloads, as_of_ns)
+        let proof_days = runtime.proof_days();
+        report::snapshot_all(&reader, &runtime.params(), &workloads, as_of_ns, proof_days)
             .map_err(|e| anyhow::anyhow!("score the lake: {e}"))
     })
     .await??;
@@ -178,11 +216,23 @@ async fn sync_register_logged(jobs: &ScoreJobs, ingest: &IngestWriter) {
     }
 }
 
-async fn run_snapshot_logged(jobs: &ScoreJobs, ingest: &IngestWriter) {
-    match run_snapshot(jobs, ingest, now_ns()).await {
-        Ok(rows) => tracing::info!(
+/// Try to store the day of `as_of_ns`. `false` when the attempt failed
+/// and the day is still to be stored.
+async fn run_snapshot_logged(jobs: &ScoreJobs, ingest: &IngestWriter, as_of_ns: i64) -> bool {
+    match snapshot_unless_blocked(jobs, ingest, as_of_ns).await {
+        Ok(Attempt::Stored(rows)) => tracing::info!(
             "resilience.snapshot.rows" = rows,
             "requirement status snapshot stored"
+        ),
+        Ok(Attempt::Skipped { total }) => tracing::warn!(
+            "error.type" = "status_snapshot_skipped",
+            "error.message" = ?jobs
+                .runtime
+                .snapshot_block()
+                .as_deref()
+                .map(|reason| truncated(reason, LOG_VALUE_MAX_LEN)),
+            "resilience.snapshot.skipped_total" = total,
+            "requirement status snapshot not stored: the org file is refused and no valid one was read"
         ),
         Err(e) => {
             tracing::warn!(
@@ -190,8 +240,15 @@ async fn run_snapshot_logged(jobs: &ScoreJobs, ingest: &IngestWriter) {
                 "error.message" = ?truncated(&error_text(&e), LOG_VALUE_MAX_LEN),
                 "requirement status snapshot failed"
             );
+            return false;
         }
     }
+    true
+}
+
+/// Days since the Unix epoch (UTC) of a wall-clock reading.
+fn utc_day(now_ns: i64) -> i64 {
+    now_ns.div_euclid(86_400 * 1_000_000_000)
 }
 
 /// `job` to its end, or `None` as soon as `shutdown` is cancelled. A job
@@ -208,6 +265,23 @@ async fn until_cancelled<T>(
     }
 }
 
+/// One attempt at the day the clock shows. An attempt that ends, stored
+/// or skipped, is remembered in `tried_day`; a failed one is not, so the
+/// day check tries the day again. `None` when shutdown cut it short.
+async fn store_day(
+    jobs: &ScoreJobs,
+    ingest: &IngestWriter,
+    shutdown: &CancellationToken,
+    tried_day: &mut Option<i64>,
+) -> Option<()> {
+    let now = (jobs.now)();
+    let ended = until_cancelled(run_snapshot_logged(jobs, ingest, now), shutdown).await?;
+    if ended {
+        *tried_day = Some(utc_day(now));
+    }
+    Some(())
+}
+
 /// The next tick of `ticker`; never, when there is none.
 async fn tick(ticker: &mut Option<tokio::time::Interval>) {
     match ticker {
@@ -219,9 +293,12 @@ async fn tick(ticker: &mut Option<tokio::time::Interval>) {
 }
 
 /// Spawn the score jobs: the register sync at once and on every reload
-/// interval, one status snapshot at once and one per snapshot interval.
-/// Failures are logged; the snapshot is an upsert per day, so a retry is
-/// idempotent. The task holds an `IngestWriter` clone, so it stops on
+/// interval, one status snapshot at once, one per snapshot interval and
+/// one as soon as a UTC day begins that has not been tried (the interval
+/// counts from the start of the daemon, so alone it can step over a
+/// day). Failures are logged and the day is tried again on the next day
+/// check; the snapshot is an upsert per day, so a retry is idempotent.
+/// The task holds an `IngestWriter` clone, so it stops on
 /// `shutdown`, giving up a running snapshot, and the returned handle is
 /// awaited before the daemon drains the writer channel.
 pub(crate) fn spawn_score_jobs(
@@ -249,13 +326,24 @@ pub(crate) fn spawn_score_jobs(
             return;
         }
         let mut snapshot = jobs.interval.map(tokio::time::interval);
+        let mut day_watch = jobs.interval.map(|_| {
+            tokio::time::interval_at(tokio::time::Instant::now() + jobs.day_check, jobs.day_check)
+        });
+        // The last UTC day an attempt ended for, stored or skipped.
+        let mut tried_day: Option<i64> = None;
         let mut reload = jobs
             .reload
             .map(|every| tokio::time::interval_at(tokio::time::Instant::now() + every, every));
         loop {
             let finished = tokio::select! {
                 () = tick(&mut snapshot) => {
-                    until_cancelled(run_snapshot_logged(&jobs, &ingest), &shutdown).await
+                    store_day(&jobs, &ingest, &shutdown, &mut tried_day).await
+                }
+                () = tick(&mut day_watch) => {
+                    if tried_day == Some(utc_day((jobs.now)())) {
+                        continue;
+                    }
+                    store_day(&jobs, &ingest, &shutdown, &mut tried_day).await
                 }
                 () = tick(&mut reload) => {
                     until_cancelled(sync_register_logged(&jobs, &ingest), &shutdown).await
@@ -333,6 +421,8 @@ functions:
                 runtime: Arc::new(runtime),
                 interval,
                 reload: None,
+                day_check: DAY_CHECK,
+                now: now_ns,
             },
             ingest,
             writer_task,
@@ -490,6 +580,7 @@ functions:
             profile: None,
             as_of_ns,
             workloads: &[],
+            proof_days: false,
         };
         let params = d.params();
         let reader = d.store.read_only().unwrap();
@@ -557,6 +648,80 @@ functions:
         assert_eq!(again, rows);
         assert_eq!(count(&d.store, "requirement_status_daily"), rows as u64);
         assert_eq!(count(&d.store, "maturity_daily"), 1);
+        d.stop().await;
+    }
+
+    /// Defaults standing in for a file that was never valid are not the
+    /// house's parameters: the day is not stored, and the skip is
+    /// counted. Once a valid file was read, a later broken one keeps
+    /// its parameters and the days are stored again.
+    #[tokio::test]
+    async fn no_day_is_stored_while_defaults_stand_in_for_a_refused_file() {
+        const BROKEN: &str = "functions: [{id: NOT-AN-ID}]\n";
+        let d = daemon(Some(BROKEN), None);
+        assert_eq!(sync_register(&d.jobs, &d.ingest).await.unwrap(), None);
+        for total in 1..=2 {
+            let attempt = snapshot_unless_blocked(&d.jobs, &d.ingest, now_ns())
+                .await
+                .unwrap();
+            assert_eq!(attempt, Attempt::Skipped { total });
+        }
+        assert_eq!(count(&d.store, "requirement_status_daily"), 0);
+        assert_eq!(count(&d.store, "maturity_daily"), 0);
+
+        std::fs::write(&d.org_file, ORG).unwrap();
+        sync_register(&d.jobs, &d.ingest).await.unwrap();
+        let attempt = snapshot_unless_blocked(&d.jobs, &d.ingest, now_ns())
+            .await
+            .unwrap();
+        assert!(
+            matches!(attempt, Attempt::Stored(rows) if rows > 0),
+            "{attempt:?}"
+        );
+        assert_eq!(count(&d.store, "maturity_daily"), 1);
+
+        std::fs::write(&d.org_file, BROKEN).unwrap();
+        sync_register(&d.jobs, &d.ingest).await.unwrap();
+        assert_eq!(d.register_state(), RegisterState::Invalid);
+        let attempt = snapshot_unless_blocked(&d.jobs, &d.ingest, now_ns() + DAY_NS)
+            .await
+            .unwrap();
+        assert!(matches!(attempt, Attempt::Stored(_)), "{attempt:?}");
+        assert_eq!(count(&d.store, "maturity_daily"), 2);
+        d.stop().await;
+    }
+
+    static CLOCK: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(T0);
+
+    fn test_clock() -> i64 {
+        CLOCK.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// The snapshot follows the UTC day, not the time since the last
+    /// one: a day that begins is stored when it is noticed, long before
+    /// the interval has passed, and stored once.
+    #[tokio::test]
+    async fn a_new_utc_day_is_stored_without_waiting_for_the_interval() {
+        let mut d = daemon(Some(ORG), Some(Duration::from_secs(86_400)));
+        d.jobs.day_check = Duration::from_millis(20);
+        d.jobs.now = test_clock;
+        let shutdown = CancellationToken::new();
+        let task = spawn_score_jobs(d.jobs.clone(), d.ingest.clone(), shutdown.clone());
+        eventually("the first day is not stored", || {
+            count(&d.store, "maturity_daily") == 1
+        })
+        .await;
+        // 23:59:59.9 by the interval would be tomorrow at best; the day
+        // turns now.
+        CLOCK.store(T0 + DAY_NS, std::sync::atomic::Ordering::SeqCst);
+        eventually("the new day is not stored", || {
+            count(&d.store, "maturity_daily") == 2
+        })
+        .await;
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert_eq!(count(&d.store, "maturity_daily"), 2, "one row per day");
+        shutdown.cancel();
+        wait(task, "score jobs").await;
         d.stop().await;
     }
 

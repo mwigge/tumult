@@ -9,6 +9,11 @@
 //! and no endpoint does this: on a real lake a day that was not stored
 //! stays not stored.
 //!
+//! Every row it writes has the source `proof`, not `snapshot`. The score
+//! ignores such days unless the daemon is started with
+//! `KRONIKA_SCORE_PROOF_DAYS=1`, and then every score response and the
+//! page say that proof days are in use.
+//!
 //! ```text
 //! DORA_PROOF_PRIVATE_LAKE=<lake> dora_store_status_days <lake> <from> <to> [skip]
 //! ```
@@ -78,11 +83,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         let as_of_ns = now - ago * DAY_NS;
         let snapshot = {
             let reader = store.read_only()?;
-            report::snapshot_all(&reader, &params, &workloads, as_of_ns)?
+            // Each day is scored over the proof days stored before it.
+            report::snapshot_all(&reader, &params, &workloads, as_of_ns, true)?
         };
-        snapshot.store(&writer, as_of_ns)?;
+        snapshot.as_proof().store(&writer, as_of_ns)?;
         stored += 1;
     }
-    println!("stored {stored} days");
+    println!("stored {stored} days with source 'proof'");
     Ok(())
 }

@@ -421,6 +421,120 @@ async fn a_scoped_token_gets_only_its_functions_and_a_document_marked_partial() 
     assert_eq!(none["scoped"], true);
 }
 
+/// A scoped caller that names a legal entity it has no telemetry of
+/// gets what an unregistered LEI gets: no name, no profile, no feeds.
+#[tokio::test]
+async fn a_scoped_token_cannot_probe_the_register_by_lei() {
+    const OTHER: &str = "506700GE1G29325QX363";
+    const NOWHERE: &str = "5493001KJTIIGC8Y1R12";
+    let two = REGISTER.replace(
+        "functions:",
+        "  - {lei: 506700GE1G29325QX363, name: Hidden Bank, profile: full, feeds: [incident]}\n\
+         functions:",
+    ) + "  - {id: cif-0003, lei: 506700GE1G29325QX363, name: Custody, tier: critical}\n";
+    let two = two
+        .replace(
+            "tier: critical\n",
+            &format!("tier: critical\n    lei: {LEI}\n"),
+        )
+        .replace(
+            "tier: important\n",
+            &format!("tier: important\n    lei: {LEI}\n"),
+        );
+    let srv = spawn_server().await;
+    let declared = tumult_compliance::dora::register::parse(&two).unwrap();
+    assert_eq!(declared.ict.legal_entities.len(), 2);
+    let at = now_ns();
+    exec_write(&srv, move |w| {
+        w.sync_ict_register(&declared.ict, at)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    insert_spans(
+        &srv,
+        vec![spine_span("payments-api", "cif-0001", now_ns() - DAY)],
+    )
+    .await;
+    let (status, open) = get(&srv.base, &format!("/api/dora?lei={OTHER}")).await;
+    assert_eq!(status, 200, "{open}");
+    assert_eq!(open["entity_name"], "Hidden Bank");
+
+    let demo = add_scoped_token(&srv, "demo-viewer", "viewer", &["demo"]).await;
+    for path in ["/api/dora", "/api/dora/24", "/api/maturity"] {
+        for extra in ["", "&profile=full", "&profile=no-such"] {
+            let ask = |lei: &str| format!("{path}?lei={lei}{extra}");
+            let (hidden_status, hidden) = get_auth(&srv.base, &ask(OTHER), &demo).await;
+            let (unknown_status, unknown) = get_auth(&srv.base, &ask(NOWHERE), &demo).await;
+            assert_eq!(hidden_status, 400, "{path}{extra}: {hidden}");
+            assert_eq!(unknown_status, 400, "{path}{extra}: {unknown}");
+            let hidden = hidden.to_string();
+            assert_eq!(
+                hidden.replace(OTHER, "x"),
+                unknown.to_string().replace(NOWHERE, "x"),
+                "{path}{extra}"
+            );
+            for secret in ["Hidden Bank", "feeds", "incident", "profile_label"] {
+                assert!(!hidden.contains(secret), "{path}{extra}: {hidden}");
+            }
+        }
+    }
+    // Its own entity still answers by LEI.
+    let (status, own) = get_auth(&srv.base, &format!("/api/dora?lei={LEI}"), &demo).await;
+    assert_eq!(status, 200, "{own}");
+    assert_eq!(own["lei"], LEI);
+}
+
+/// A day the proof tool stored for a past date is no stored day on a
+/// daemon without the proof opt-in, and the response says it was left
+/// out.
+#[tokio::test]
+async fn proof_days_are_left_out_and_said_so_without_the_opt_in() {
+    let srv = spawn_server().await;
+    register(&srv).await;
+    let ends = tumult_compliance::dora::report::quarter_ends(now_ns(), 4);
+    let day = ends.last().unwrap().div_euclid(DAY);
+    let today = now_ns().div_euclid(DAY);
+    let level = tumult_lake::MaturityDailyRow {
+        as_of_day: day,
+        lei: LEI.into(),
+        level: 5,
+        index: 4.9,
+        unknown_share: 0.0,
+        source: "proof".into(),
+    };
+    let status = |day: i64| tumult_lake::RequirementStatusRow {
+        as_of_day: day,
+        function_id: "cif-0001".into(),
+        requirement_id: "dora.art24.1".into(),
+        status: "existing".into(),
+        value: Some(1.0),
+        source: "proof".into(),
+    };
+    let rows = vec![status(today - 1), status(today - 2)];
+    let at = now_ns();
+    exec_write(&srv, move |w| {
+        w.upsert_maturity_daily(&[level], at)
+            .and_then(|_| w.upsert_requirement_status(&rows, at))
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let (_, body) = get(&srv.base, "/api/maturity").await;
+    let history = list(&body["history"]);
+    assert_eq!(history[3]["state"], "no_data", "{body}");
+    assert_eq!(history[3]["level"], Value::Null);
+    assert_eq!(
+        body["proof_days"],
+        serde_json::json!({"enabled": false, "counted": 0, "ignored": 2, "note": null})
+    );
+    for path in ["/api/dora", "/api/dora/24"] {
+        let (_, body) = get(&srv.base, path).await;
+        assert_eq!(body["proof_days"]["enabled"], false, "{path}");
+        assert_eq!(body["proof_days"]["ignored"], 2, "{path}");
+    }
+}
+
 #[tokio::test]
 async fn a_scoped_principal_cannot_score_another_environment() {
     let srv = spawn_server().await;

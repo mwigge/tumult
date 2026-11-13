@@ -454,19 +454,33 @@ impl Default for HouseParams {
 /// exactly 0.75 in binary) and nothing else.
 pub const VALUE_EPS: f64 = 1e-9;
 
+/// The longest window or streak a parameter may ask for, in days: ten
+/// years. Past it a window is no window, and the arithmetic on
+/// nanoseconds has no room left.
+pub const MAX_DAYS: u32 = 3650;
+
+/// Whether a value reaches a threshold, within [`VALUE_EPS`]. Nothing
+/// reaches nothing: a value of zero holds at no threshold, so a zeroed
+/// threshold cannot turn the absence of evidence into a pass.
+#[must_use]
+pub fn reaches(value: f64, threshold: f64) -> bool {
+    value > 0.0 && value + VALUE_EPS >= threshold
+}
+
 impl HouseParams {
     /// Whether a cell value reaches the Existing threshold, within
     /// [`VALUE_EPS`].
     #[must_use]
     pub fn holds(&self, value: f64) -> bool {
-        value + VALUE_EPS >= self.existing_threshold
+        reaches(value, self.existing_threshold)
     }
 
     /// Check that the parameters describe a usable model: every share
-    /// and factor within 0..=1, every gate threshold a percentage and no
-    /// gate easier than the one below it, weights that sum to one where
-    /// the formula needs it, levels and day counts in range, and every
-    /// name one the model knows.
+    /// and factor within 0..=1, every threshold above zero, every gate
+    /// threshold a percentage above zero and no gate easier than the one
+    /// below it, weights that sum to one where the formula needs it,
+    /// levels and day counts in range, and every name one the model
+    /// knows.
     ///
     /// # Errors
     /// Names the first parameter that is out of range.
@@ -481,11 +495,23 @@ impl HouseParams {
 
     fn check_shares(&self) -> Result<(), String> {
         let (o, s, w) = (&self.outcome, &self.strength, &self.pillar_weights);
+        // A threshold of zero is reached by nothing at all.
+        for (name, value) in [
+            ("existing_threshold", self.existing_threshold),
+            ("operating_share", self.operating_share),
+            ("band_good", self.band_good),
+            ("band_fair", self.band_fair),
+        ] {
+            above_zero(name, value, 1.0)?;
+        }
+        // An unknown share of one lets a wholly unknown entity through.
+        let unknown = self.gates.l3_max_unknown_share;
+        if !(unknown.is_finite() && (0.0..1.0).contains(&unknown)) {
+            return Err(format!(
+                "score.gates.l3_max_unknown_share must be at least 0 and below 1, got {unknown}"
+            ));
+        }
         let mut shares = vec![
-            ("existing_threshold".to_string(), self.existing_threshold),
-            ("operating_share".to_string(), self.operating_share),
-            ("band_good".to_string(), self.band_good),
-            ("band_fair".to_string(), self.band_fair),
             ("outcome.passed".to_string(), o.passed),
             ("outcome.partial".to_string(), o.partial),
             ("outcome.failed".to_string(), o.failed),
@@ -502,10 +528,6 @@ impl HouseParams {
             (
                 "loop_previously_tested_weight".to_string(),
                 self.loop_previously_tested_weight,
-            ),
-            (
-                "gates.l3_max_unknown_share".to_string(),
-                self.gates.l3_max_unknown_share,
             ),
         ];
         for (set, weights) in [("full", &w.full), ("reduced", &w.reduced)] {
@@ -601,7 +623,7 @@ impl HouseParams {
         ];
         for chain in chains {
             for (name, value) in chain {
-                within(&format!("gates.{name}"), *value, 0.0, 100.0)?;
+                above_zero(&format!("gates.{name}"), *value, 100.0)?;
             }
         }
         for chain in chains {
@@ -628,8 +650,10 @@ impl HouseParams {
             ("gates.l3_slo_history_days", self.gates.l3_slo_history_days),
         ];
         for (name, value) in days {
-            if value == 0 {
-                return Err(format!("score.{name} must be at least 1"));
+            if !(1..=MAX_DAYS).contains(&value) {
+                return Err(format!(
+                    "score.{name} must be within 1..={MAX_DAYS}, got {value}"
+                ));
             }
         }
         let (t, c) = (&self.targets, &self.conformance_ceiling);
@@ -823,6 +847,15 @@ fn within(name: &str, value: f64, low: f64, high: f64) -> Result<(), String> {
     ))
 }
 
+fn above_zero(name: &str, value: f64, high: f64) -> Result<(), String> {
+    if value.is_finite() && value > 0.0 && value <= high {
+        return Ok(());
+    }
+    Err(format!(
+        "score.{name} must be above 0 and at most {high}, got {value}"
+    ))
+}
+
 fn node_kind(name: &str, kind: &str) -> Result<(), String> {
     if NODE_KINDS.contains(&kind) {
         return Ok(());
@@ -860,6 +893,18 @@ mod tests {
         assert!(!p.holds(0.75 - 2.0 * VALUE_EPS));
         assert!(!p.holds(0.7499));
         assert!(!p.holds(f64::NAN));
+    }
+
+    /// Validation refuses a zero threshold; should one get past it,
+    /// a cell with no evidence at all still does not hold.
+    #[test]
+    fn nothing_never_holds_whatever_the_threshold() {
+        let zeroed = HouseParams {
+            existing_threshold: 0.0,
+            ..HouseParams::default()
+        };
+        assert!(!zeroed.holds(0.0));
+        assert!(zeroed.holds(0.01));
     }
 
     #[test]
@@ -951,28 +996,29 @@ mod tests {
         ]);
     }
 
+    const GATE_NAMES: [&str; 17] = [
+        "l2_c1",
+        "l2_coverage",
+        "l3_c1",
+        "l3_c2",
+        "l3_coverage",
+        "l3_slo",
+        "l3_recovery",
+        "l4_c3",
+        "l4_coverage",
+        "l4_slo",
+        "l4_recovery",
+        "l4_loop",
+        "l5_c4",
+        "l5_coverage",
+        "l5_slo",
+        "l5_recovery",
+        "l5_loop",
+    ];
+
     #[test]
     fn every_gate_threshold_is_a_percentage() {
-        let names = [
-            "l2_c1",
-            "l2_coverage",
-            "l3_c1",
-            "l3_c2",
-            "l3_coverage",
-            "l3_slo",
-            "l3_recovery",
-            "l4_c3",
-            "l4_coverage",
-            "l4_slo",
-            "l4_recovery",
-            "l4_loop",
-            "l5_c4",
-            "l5_coverage",
-            "l5_slo",
-            "l5_recovery",
-            "l5_loop",
-        ];
-        for name in names {
+        for name in GATE_NAMES {
             for bad in ["-1", "100.5", ".nan"] {
                 let error = refused(&format!("gates: {{{name}: {bad}}}\n"));
                 assert!(
@@ -981,6 +1027,52 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A threshold of zero is reached by nothing at all, an unknown
+    /// share of one lets a wholly unknown entity through, and a window
+    /// of more than ten years is no window.
+    #[test]
+    fn a_zero_threshold_a_full_unknown_share_and_an_endless_window_are_refused() {
+        assert_refused(&[
+            ("existing_threshold: 0\n", "score.existing_threshold"),
+            ("operating_share: 0\n", "score.operating_share"),
+            ("band_good: 0\n", "score.band_good"),
+            ("band_fair: 0\n", "score.band_fair"),
+            (
+                "gates: {l3_max_unknown_share: 1}\n",
+                "score.gates.l3_max_unknown_share",
+            ),
+            ("operating_days: 3651\n", "score.operating_days"),
+            ("test_window_days: 3651\n", "score.test_window_days"),
+            (
+                "recovery_window_days: 4000000000\n",
+                "score.recovery_window_days",
+            ),
+            ("loop_window_days: 36500\n", "score.loop_window_days"),
+            (
+                "conformance: {window_days: 4294967295}\n",
+                "score.conformance.window_days",
+            ),
+            (
+                "gates: {l3_slo_history_days: 3651}\n",
+                "score.gates.l3_slo_history_days",
+            ),
+        ]);
+        for name in GATE_NAMES {
+            let error = refused(&format!("gates: {{{name}: 0}}\n"));
+            assert!(
+                error.contains(&format!("score.gates.{name} ")),
+                "{name}: 0 gave: {error}"
+            );
+        }
+        // The bounds themselves are valid.
+        let edge: HouseParams = serde_yaml::from_str(
+            "existing_threshold: 1\noperating_share: 1\noperating_days: 3650\n\
+             gates: {l3_max_unknown_share: 0, l3_slo_history_days: 3650}\n",
+        )
+        .unwrap();
+        assert_eq!(edge.validate(), Ok(()));
     }
 
     #[test]

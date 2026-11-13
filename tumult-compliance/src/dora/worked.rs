@@ -284,6 +284,9 @@ fn bank_manual() -> Vec<Evidence> {
         attestation("comms-plans", &["dora.art11.7"], 30),
         attestation("backup-policy", &["dora.art12.1", "dora.art12.3"], 30),
         attestation("third-party-strategy", &["dora.art28.2"], 30),
+        // The assessment date of the register is a declaration; this
+        // stored record is what the Art. 24(3) row scores.
+        attestation("criticality-assessment", &["dora.art24.3"], 60),
         drill,
         tabletop,
     ]

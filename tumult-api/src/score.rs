@@ -4,8 +4,11 @@
 //! and what must not be read again on each of them:
 //!
 //! * the house parameters of the org file's `score:` section, with where
-//!   they came from. An invalid file scores with the defaults, and every
-//!   response says so (`params.fallback` with the reason) and lists each
+//!   they came from. A file that turns invalid keeps the parameters of
+//!   the last valid one (`params.held`); a file that was never valid
+//!   scores with the defaults (`params.fallback`), and no day scored
+//!   that way is stored ([`ScoreRuntime::snapshot_block`]). Every
+//!   response says which is the case, with the reason, and lists each
 //!   parameter that differs from the default, so a lowered gate is in
 //!   front of the reader;
 //! * the state of the function register: `ok` (the file is valid and
@@ -13,9 +16,10 @@
 //!   (the lake keeps the previous register) or `none` (no org file);
 //! * the workloads of the manifests directory, read when the runtime is
 //!   built and on each reload, never per request;
-//! * a short response cache. An entry is served for at most the TTL and
-//!   only while the generation it was built under is current. A build
-//!   that started before a reload or a stored snapshot is not kept.
+//! * a short response cache. An entry is served for at most the TTL,
+//!   measured on a monotonic clock, and only while the generation it
+//!   was built under is current. A build that started before a reload
+//!   or a stored snapshot is not kept.
 //!
 //! The daemon's score job calls [`ScoreRuntime::check`] on an interval,
 //! writes the register it returns to the lake and reports back with
@@ -25,7 +29,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tumult_compliance::dora::model::Workload;
@@ -37,6 +41,9 @@ use tumult_lake::IctRegister;
 /// Environment variable setting how long a score response is reused, in
 /// seconds; `0` turns the cache off.
 pub const CACHE_TTL_ENV: &str = "KRONIKA_SCORE_CACHE_TTL";
+/// Environment variable of the proof opt-in: set to `1` or `true`, the
+/// days the proof tool stored for past dates count as stored days.
+pub const PROOF_DAYS_ENV: &str = "KRONIKA_SCORE_PROOF_DAYS";
 /// A score is at most this far behind the lake.
 pub const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(5);
 /// Most responses kept; past it the cache is emptied.
@@ -46,6 +53,8 @@ const LOG_VALUE_MAX_LEN: usize = 512;
 
 const SOURCE_DEFAULTS: &str = "defaults";
 const SOURCE_ORG_FILE: &str = "org_file";
+/// The file is refused; the parameters are those of the last valid one.
+const SOURCE_LAST_VALID: &str = "last_valid_org_file";
 const NOT_WRITTEN: &str = "the org file is valid and not yet written to the lake";
 
 /// Where the function register stands.
@@ -133,8 +142,15 @@ impl Org {
         self.pending = None;
     }
 
+    /// The file is refused. Parameters that came from a valid file stay
+    /// in force; with none to keep, the defaults stand in, flagged.
     fn refused(&mut self, content: Option<Vec<u8>>, reason: String) {
-        self.use_defaults(Some(reason.clone()));
+        if self.source == SOURCE_DEFAULTS {
+            self.use_defaults(Some(reason.clone()));
+        } else {
+            self.source = SOURCE_LAST_VALID;
+            self.reason = Some(reason.clone());
+        }
         self.register = RegisterState::Invalid;
         self.register_reason = Some(reason);
         self.seen = content;
@@ -170,7 +186,8 @@ struct Manifests {
 
 struct Entry {
     generation: u64,
-    stored_at_ns: i64,
+    /// Since the runtime was built, on its monotonic clock.
+    stored_at: Duration,
     value: Value,
 }
 
@@ -182,17 +199,20 @@ pub struct ScoreRuntime {
     manifests: RwLock<Manifests>,
     generation: AtomicU64,
     cache: Mutex<HashMap<String, Entry>>,
-    ttl_ns: i64,
+    ttl: Duration,
+    /// Where the cache clock starts. Monotonic: a step of the wall
+    /// clock neither ages an entry nor keeps it alive.
+    started: Instant,
+    /// Daily snapshots not stored because the parameters were a fallback.
+    snapshots_skipped: AtomicU64,
+    /// The proof opt-in: days of the proof tool count as stored days.
+    proof_days: bool,
 }
 
 impl Default for ScoreRuntime {
     fn default() -> Self {
         Self::build(None, None, Org::defaults(), DEFAULT_CACHE_TTL)
     }
-}
-
-fn ttl_ns(ttl: Duration) -> i64 {
-    i64::try_from(ttl.as_nanos()).unwrap_or(i64::MAX)
 }
 
 /// The cache TTL: `KRONIKA_SCORE_CACHE_TTL` in whole seconds, the default
@@ -213,13 +233,44 @@ pub fn cache_ttl_from_env() -> Duration {
     Duration::from_secs(seconds)
 }
 
+/// Whether a value of [`PROOF_DAYS_ENV`] is the opt-in. Only `1` and
+/// `true` are: anything else, a typo included, leaves proof days out.
+#[must_use]
+pub fn proof_days_opt_in(raw: Option<&str>) -> bool {
+    matches!(raw.map(str::trim), Some("1" | "true"))
+}
+
+/// The proof opt-in of this process, said in the log when it is set.
+#[must_use]
+pub fn proof_days_from_env() -> bool {
+    let on = proof_days_opt_in(std::env::var(PROOF_DAYS_ENV).ok().as_deref());
+    if on {
+        tracing::warn!(
+            "config.key" = PROOF_DAYS_ENV,
+            "resilience.score.proof_days" = true,
+            "proof days are in use: days stored by the proof tool count as stored days"
+        );
+    }
+    on
+}
+
 /// Said once per refused content, not on every reload.
-fn log_refused(reason: &str) {
+fn log_refused(reason: &str, org: &Org) {
     tracing::warn!(
         "error.type" = "org_file_refused",
         "error.message" = ?truncated(reason, LOG_VALUE_MAX_LEN),
-        "org file refused; scoring with the default house parameters, the lake keeps its register"
+        "resilience.score.params_source" = org.source,
+        "resilience.score.snapshot_skipping" = org.fallback,
+        "org file refused; the lake keeps its register"
     );
+}
+
+fn snapshot_block_reason(org: &Org) -> String {
+    format!(
+        "the daily snapshot is not stored while the default parameters stand in for a refused \
+         org file: {}",
+        org.reason.as_deref().unwrap_or("no reason recorded")
+    )
 }
 
 /// The notes of `current` that `previous` did not already have.
@@ -244,7 +295,10 @@ impl ScoreRuntime {
             manifests: RwLock::default(),
             generation: AtomicU64::new(0),
             cache: Mutex::default(),
-            ttl_ns: ttl_ns(ttl),
+            ttl,
+            started: Instant::now(),
+            snapshots_skipped: AtomicU64::new(0),
+            proof_days: false,
         }
     }
 
@@ -272,8 +326,21 @@ impl ScoreRuntime {
     /// The same runtime with another cache TTL.
     #[must_use]
     pub fn with_ttl(mut self, ttl: Duration) -> Self {
-        self.ttl_ns = ttl_ns(ttl);
+        self.ttl = ttl;
         self
+    }
+
+    /// The same runtime with the proof opt-in set or not.
+    #[must_use]
+    pub fn with_proof_days(mut self, proof_days: bool) -> Self {
+        self.proof_days = proof_days;
+        self
+    }
+
+    /// Whether days of the proof tool count as stored days.
+    #[must_use]
+    pub fn proof_days(&self) -> bool {
+        self.proof_days
     }
 
     /// The org file this runtime reads, when one is configured.
@@ -306,8 +373,9 @@ impl ScoreRuntime {
     /// when the file is valid and the lake does not hold it; the caller
     /// answers with [`Self::synced`] or [`Self::sync_failed`].
     ///
-    /// An invalid file leaves the lake alone, sets the state to `invalid`
-    /// and the parameters to the defaults, flagged as a fallback.
+    /// An invalid file leaves the lake alone and sets the state to
+    /// `invalid`. The parameters of the last valid file stay in force;
+    /// when there never was one, the defaults do, flagged as a fallback.
     pub fn check(&self, now_ns: i64) -> Option<IctRegister> {
         let path = self.org_file.as_deref()?;
         let read = std::fs::read(path);
@@ -328,8 +396,8 @@ impl ScoreRuntime {
                     && org.seen.is_none()
                     && org.register_reason.as_deref() == Some(reason.as_str());
                 if !known {
-                    log_refused(&reason);
-                    org.refused(None, reason);
+                    org.refused(None, reason.clone());
+                    log_refused(&reason, &org);
                     self.invalidate();
                 }
                 return None;
@@ -344,8 +412,8 @@ impl ScoreRuntime {
         match parsed {
             Ok(declared) => org.accepted(content, declared),
             Err(reason) => {
-                log_refused(&reason);
-                org.refused(Some(content), reason);
+                org.refused(Some(content), reason.clone());
+                log_refused(&reason, &org);
             }
         }
         self.invalidate();
@@ -377,6 +445,25 @@ impl ScoreRuntime {
         self.invalidate();
     }
 
+    /// Why the daily snapshot must not be stored now, when that is so:
+    /// the defaults stand in for an org file that is refused and never
+    /// was valid, so a day scored now is not scored with the house's
+    /// parameters. A stored day counts towards Operating for as long as
+    /// it is kept; one scored with stand-in parameters must not exist.
+    #[must_use]
+    pub fn snapshot_block(&self) -> Option<String> {
+        let org = self.org();
+        org.fallback.then(|| snapshot_block_reason(&org))
+    }
+
+    /// Count one snapshot that was not stored; returns the total since
+    /// start. Responses carry the count, so none built before is reused.
+    pub fn snapshot_skipped(&self) -> u64 {
+        let total = self.snapshots_skipped.fetch_add(1, Ordering::SeqCst) + 1;
+        self.invalidate();
+        total
+    }
+
     /// The parameters in force together with what a document built with
     /// them says about them, read in one step: a reload between the two
     /// can not make a document name parameters it was not computed with.
@@ -389,8 +476,14 @@ impl ScoreRuntime {
                 params: json!({
                     "source": org.source,
                     "fallback": org.fallback,
+                    "held": org.source == SOURCE_LAST_VALID,
                     "reason": org.reason,
                     "overridden": org.overridden,
+                }),
+                snapshot: json!({
+                    "skipping": org.fallback,
+                    "skipped": self.snapshots_skipped.load(Ordering::SeqCst),
+                    "reason": org.fallback.then(|| snapshot_block_reason(&org)),
                 }),
                 register_state: org.register.as_str(),
                 register_reason: org.register_reason.clone(),
@@ -478,18 +571,30 @@ impl ScoreRuntime {
 
     /// The response stored for `key`, while it is fresh and current.
     #[must_use]
-    pub fn cached(&self, key: &str, now_ns: i64) -> Option<Value> {
-        let cache = self.cache();
-        let entry = cache.get(key)?;
-        let fresh = now_ns.saturating_sub(entry.stored_at_ns) < self.ttl_ns;
-        (fresh && entry.generation == self.generation()).then(|| entry.value.clone())
+    pub fn cached(&self, key: &str) -> Option<Value> {
+        self.cached_at(key, self.started.elapsed())
     }
 
     /// Keep `value` for `key`, unless the generation moved on since the
     /// build read it: such a response may describe the state before the
     /// change and is dropped.
-    pub fn store(&self, key: String, generation: u64, value: &Value, now_ns: i64) {
-        if self.ttl_ns == 0 {
+    pub fn store(&self, key: String, generation: u64, value: &Value) {
+        self.store_at(key, generation, value, self.started.elapsed());
+    }
+
+    /// [`Self::cached`] at `at` on the runtime's clock. An entry is
+    /// fresh while its age is known and under the TTL.
+    fn cached_at(&self, key: &str, at: Duration) -> Option<Value> {
+        let cache = self.cache();
+        let entry = cache.get(key)?;
+        let fresh = at
+            .checked_sub(entry.stored_at)
+            .is_some_and(|age| age < self.ttl);
+        (fresh && entry.generation == self.generation()).then(|| entry.value.clone())
+    }
+
+    fn store_at(&self, key: String, generation: u64, value: &Value, at: Duration) {
+        if self.ttl.is_zero() {
             return;
         }
         let mut cache = self.cache();
@@ -503,7 +608,7 @@ impl ScoreRuntime {
             key,
             Entry {
                 generation,
-                stored_at_ns: now_ns,
+                stored_at: at,
                 value: value.clone(),
             },
         );
@@ -528,6 +633,7 @@ pub struct ScoreView {
 #[derive(Debug, Clone)]
 pub struct Stamp {
     params: Value,
+    snapshot: Value,
     register_state: &'static str,
     register_reason: Option<String>,
     checked_at_ns: Option<i64>,
@@ -541,6 +647,7 @@ impl Stamp {
             return;
         };
         map.insert("params".into(), self.params.clone());
+        map.insert("snapshot".into(), self.snapshot.clone());
         map.insert("register_state".into(), json!(self.register_state));
         map.insert("register_reason".into(), json!(self.register_reason));
         map.insert("register_checked_at_ns".into(), json!(self.checked_at_ns));
@@ -552,7 +659,7 @@ impl Stamp {
 mod tests {
     use super::*;
 
-    const SECOND: i64 = 1_000_000_000;
+    const SECOND: Duration = Duration::from_secs(1);
     const REGISTER: &str = "
 legal_entities:
   - {lei: 529900T8BM49AURSDO55, name: Demo Firm, profile: simplified}
@@ -658,6 +765,110 @@ spec:
         );
     }
 
+    /// A typo in the file of a running house must not move its
+    /// thresholds to the defaults: the last valid parameters stay in
+    /// force, and the response says the file is refused and why.
+    #[test]
+    fn a_file_that_turns_invalid_keeps_the_last_good_parameters() {
+        let files = Files::new();
+        files.write_org(&format!("{REGISTER}score:\n  operating_days: 30\n"));
+        let runtime = files.runtime();
+        files.write_org(&format!("{REGISTER}score:\n  band_good: 7\n"));
+        assert_eq!(runtime.check(2), None);
+        assert_eq!(runtime.params().operating_days, 30, "the last good value");
+        let doc = stamped(&runtime);
+        assert_eq!(doc["params"]["source"], "last_valid_org_file");
+        assert_eq!(doc["params"]["fallback"], false);
+        assert_eq!(doc["params"]["held"], true);
+        let reason = doc["params"]["reason"].as_str().expect("a reason");
+        assert!(reason.contains("band_good"), "{reason}");
+        assert_eq!(doc["params"]["overridden"][0]["key"], "operating_days");
+        assert_eq!(doc["register_state"], "invalid");
+        assert_eq!(runtime.snapshot_block(), None, "scored as before: stored");
+
+        // An unreadable file holds them as well.
+        std::fs::remove_file(files.org()).unwrap();
+        std::fs::create_dir(files.org()).unwrap();
+        runtime.check(3);
+        assert_eq!(runtime.params().operating_days, 30);
+        assert_eq!(stamped(&runtime)["params"]["held"], true);
+
+        // Taking the file away is a decision, not a typo: the defaults.
+        std::fs::remove_dir(files.org()).unwrap();
+        runtime.check(4);
+        assert_eq!(*runtime.params(), HouseParams::default());
+        let doc = stamped(&runtime);
+        assert_eq!(doc["params"]["source"], "defaults");
+        assert_eq!(doc["params"]["held"], false);
+        // And a refused file after that has nothing to hold.
+        files.write_org(&format!("{REGISTER}score:\n  band_good: 7\n"));
+        runtime.check(5);
+        let doc = stamped(&runtime);
+        assert_eq!(doc["params"]["fallback"], true);
+        assert_eq!(doc["params"]["held"], false);
+    }
+
+    /// Defaults that stand in for a file that was never valid are not
+    /// the house's parameters: a day scored with them is not stored.
+    #[test]
+    fn defaults_standing_in_for_a_refused_file_block_the_snapshot() {
+        let files = Files::new();
+        files.write_org(&format!("{REGISTER}score:\n  band_good: 7\n"));
+        let runtime = files.runtime();
+        let why = runtime.snapshot_block().expect("the snapshot is blocked");
+        assert!(why.contains("band_good"), "{why}");
+        let before = runtime.generation();
+        assert_eq!(runtime.snapshot_skipped(), 1);
+        assert_eq!(runtime.snapshot_skipped(), 2);
+        assert!(
+            runtime.generation() > before,
+            "the count is in the response"
+        );
+        let doc = stamped(&runtime);
+        assert_eq!(doc["snapshot"]["skipping"], true);
+        assert_eq!(doc["snapshot"]["skipped"], 2);
+        let reason = doc["snapshot"]["reason"].as_str().expect("a reason");
+        assert!(reason.contains("band_good"), "{reason}");
+
+        files.write_org(REGISTER);
+        runtime.check(2);
+        assert_eq!(runtime.snapshot_block(), None);
+        let doc = stamped(&runtime);
+        assert_eq!(doc["snapshot"]["skipping"], false);
+        assert_eq!(doc["snapshot"]["reason"], Value::Null);
+        assert_eq!(doc["snapshot"]["skipped"], 2, "what was missed stays said");
+
+        // No org file is a configuration, not a fallback.
+        assert_eq!(ScoreRuntime::default().snapshot_block(), None);
+        assert_eq!(
+            stamped(&ScoreRuntime::default())["snapshot"],
+            json!({"skipping": false, "skipped": 0, "reason": null})
+        );
+    }
+
+    /// The age of an entry is never negative: a clock reading before
+    /// the one it was stored at does not keep it alive.
+    #[test]
+    fn a_clock_that_steps_back_does_not_keep_a_response_alive() {
+        let runtime = ScoreRuntime::default();
+        runtime.store_at("k".into(), runtime.generation(), &json!(1), 10 * SECOND);
+        assert_eq!(runtime.cached_at("k", 4 * SECOND), None);
+    }
+
+    /// Proof days are off unless the variable says exactly on.
+    #[test]
+    fn proof_days_need_the_exact_opt_in() {
+        for on in ["1", "true", " 1 "] {
+            assert!(proof_days_opt_in(Some(on)), "{on:?}");
+        }
+        for off in ["", "0", "false", "yes", "on", "TRUE", "2", "1;"] {
+            assert!(!proof_days_opt_in(Some(off)), "{off:?}");
+        }
+        assert!(!proof_days_opt_in(None));
+        assert!(!ScoreRuntime::default().proof_days());
+        assert!(ScoreRuntime::default().with_proof_days(true).proof_days());
+    }
+
     #[test]
     fn no_org_file_means_the_defaults_and_no_register() {
         let files = Files::new();
@@ -703,11 +914,11 @@ spec:
         assert_eq!(runtime.register_state(), RegisterState::Stale);
         runtime.synced(7);
 
-        // The file breaks: invalid, nothing offered, defaults flagged.
+        // The file breaks: invalid, nothing offered, parameters held.
         files.write_org("functions: [{id: NOT-AN-ID}]\n");
         assert_eq!(runtime.check(8), None);
         assert_eq!(runtime.register_state(), RegisterState::Invalid);
-        assert_eq!(stamped(&runtime)["params"]["fallback"], true);
+        assert_eq!(stamped(&runtime)["params"]["held"], true);
 
         // Repaired to what the lake already holds: ok without a write.
         files.write_org(&two);
@@ -725,15 +936,18 @@ spec:
     fn a_response_is_reused_only_while_fresh() {
         let runtime = ScoreRuntime::default();
         let generation = runtime.generation();
-        assert_eq!(runtime.cached("k", 0), None);
-        runtime.store("k".into(), generation, &json!({"level": 2}), 10 * SECOND);
-        assert_eq!(runtime.cached("k", 10 * SECOND), Some(json!({"level": 2})));
+        assert_eq!(runtime.cached_at("k", Duration::ZERO), None);
+        runtime.store_at("k".into(), generation, &json!({"level": 2}), 10 * SECOND);
         assert_eq!(
-            runtime.cached("k", 15 * SECOND - 1),
+            runtime.cached_at("k", 10 * SECOND),
             Some(json!({"level": 2}))
         );
-        assert_eq!(runtime.cached("k", 15 * SECOND), None, "past the TTL");
-        assert_eq!(runtime.cached("other", 10 * SECOND), None);
+        assert_eq!(
+            runtime.cached_at("k", 15 * SECOND - Duration::from_nanos(1)),
+            Some(json!({"level": 2}))
+        );
+        assert_eq!(runtime.cached_at("k", 15 * SECOND), None, "past the TTL");
+        assert_eq!(runtime.cached_at("other", 10 * SECOND), None);
     }
 
     /// The race the generation exists for: a build reads the lake, the
@@ -744,15 +958,15 @@ spec:
         let runtime = ScoreRuntime::default();
         let started_under = runtime.generation();
         runtime.invalidate();
-        runtime.store("k".into(), started_under, &json!({"level": 5}), SECOND);
-        assert_eq!(runtime.cached("k", SECOND), None);
+        runtime.store_at("k".into(), started_under, &json!({"level": 5}), SECOND);
+        assert_eq!(runtime.cached_at("k", SECOND), None);
 
         // And one stored before the invalidation is no longer served.
         let generation = runtime.generation();
-        runtime.store("k".into(), generation, &json!({"level": 2}), SECOND);
-        assert!(runtime.cached("k", SECOND).is_some());
+        runtime.store_at("k".into(), generation, &json!({"level": 2}), SECOND);
+        assert!(runtime.cached_at("k", SECOND).is_some());
         runtime.invalidate();
-        assert_eq!(runtime.cached("k", SECOND), None);
+        assert_eq!(runtime.cached_at("k", SECOND), None);
     }
 
     #[test]
@@ -784,13 +998,13 @@ spec:
     #[test]
     fn the_cache_is_off_at_ttl_zero_and_never_grows_past_its_bound() {
         let off = ScoreRuntime::default().with_ttl(Duration::ZERO);
-        off.store("k".into(), off.generation(), &json!(1), SECOND);
-        assert_eq!(off.cached("k", SECOND), None);
+        off.store_at("k".into(), off.generation(), &json!(1), SECOND);
+        assert_eq!(off.cached_at("k", SECOND), None);
         assert_eq!(off.cache_len(), 0);
 
         let runtime = ScoreRuntime::default();
         for n in 0..(CACHE_MAX_ENTRIES * 2 + 10) {
-            runtime.store(format!("k{n}"), runtime.generation(), &json!(n), SECOND);
+            runtime.store_at(format!("k{n}"), runtime.generation(), &json!(n), SECOND);
             assert!(runtime.cache_len() <= CACHE_MAX_ENTRIES);
         }
     }

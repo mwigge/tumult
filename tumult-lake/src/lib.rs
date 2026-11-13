@@ -118,7 +118,7 @@ pub use schema::CURRENT_SCHEMA_VERSION;
 #[cfg(feature = "duckdb")]
 pub use store::Store;
 #[cfg(feature = "duckdb")]
-pub(crate) use store::{migrate, query_json_rows, with_tx};
+pub(crate) use store::{migrate, query_json_rows, query_json_rows_bound, with_tx};
 #[cfg(feature = "duckdb")]
 pub use webhooks::{WebhookDeadLetter, WebhookRow};
 #[cfg(feature = "duckdb")]

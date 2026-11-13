@@ -21,7 +21,9 @@ use tumult_core::compliance::{
 use tumult_lake::{MaturityDailyRow, Reader, RequirementStatusRow, StoreError, Writer};
 
 use super::coverage::{CellState, Matrix, MatrixCell, MatrixRow, RowState, Scored};
-use super::loader::{self, LoadError, Loaded, Request, SNAPSHOT_SOURCE};
+use super::loader::{
+    self, LoadError, Loaded, Request, PROOF_DAYS_NOTE, PROOF_SOURCE, SNAPSHOT_SOURCE,
+};
 use super::maturity::{self, Maturity, Pillar, Scope, CONFORMANCE_LABELS};
 use super::model::{day_of, days_from_civil, end_of_day, format_day, Function, Source, Workload};
 use super::params::{HouseParams, PillarWeights};
@@ -700,6 +702,15 @@ fn header(loaded: &Loaded) -> Map<String, Value> {
         Value::Array(legal_entities(loaded)),
     );
     map.insert("feeds".into(), Value::Array(feeds(loaded)));
+    map.insert(
+        "proof_days".into(),
+        json!({
+            "enabled": loaded.proof.enabled,
+            "counted": loaded.proof.counted,
+            "ignored": loaded.proof.ignored,
+            "note": loaded.proof.enabled.then_some(PROOF_DAYS_NOTE),
+        }),
+    );
     map
 }
 
@@ -1072,10 +1083,12 @@ pub fn cap_sentence(node: &NodeScore) -> Option<String> {
 
 /// One point of the maturity history: the quarter `day` lies in, with
 /// the level, index and unknown share shown on that day. `state` is
-/// `stored` for a day the daily job stored and `today` for the live one.
+/// `stored` for a stored day and `today` for the live one; `source` is
+/// who stored the day (the daily job, or the proof tool).
 #[must_use]
 pub fn history_point(
     state: &str,
+    source: Option<&str>,
     day: i64,
     level: u8,
     shown_index: f64,
@@ -1084,6 +1097,7 @@ pub fn history_point(
     json!({
         "quarter": quarter_label(day),
         "state": state,
+        "source": source,
         "as_of": format_day(day),
         "as_of_ns": end_of_day(day),
         "level": level,
@@ -1098,6 +1112,7 @@ fn no_data_point(quarter: &str, reason: Option<&str>) -> Value {
     json!({
         "quarter": quarter,
         "state": "no_data",
+        "source": null,
         "as_of": null,
         "as_of_ns": null,
         "level": null,
@@ -1147,7 +1162,8 @@ pub fn quarter_ends(as_of_ns: i64, count: usize) -> Vec<i64> {
 /// recomputed, so a later change of the register does not rewrite the
 /// past. A quarter with no stored day is `no_data`. Stored days are of
 /// every environment under the registered profile, so a scoped caller
-/// and a profile override get `no_data` for every past quarter.
+/// and a profile override get `no_data` for every past quarter. A day
+/// of the proof tool is shown only with the opt-in, marked by its source.
 ///
 /// # Errors
 /// `Store` when the stored days cannot be read.
@@ -1176,11 +1192,12 @@ pub fn history(
             let last = stored
                 .iter()
                 .rev()
-                .filter(|row| row.source == SNAPSHOT_SOURCE)
+                .filter(|row| loader::day_counts(&row.source, loaded.proof.enabled))
                 .find(|row| quarter_label(row.as_of_day) == quarter);
             match last {
                 Some(row) => history_point(
                     "stored",
+                    Some(&row.source),
                     row.as_of_day,
                     row.level,
                     row.index,
@@ -1192,6 +1209,7 @@ pub fn history(
         .collect();
     points.push(history_point(
         "today",
+        None,
         day_of(as_of_ns),
         today.level(),
         today.index(),
@@ -1306,6 +1324,19 @@ impl Snapshot {
         });
     }
 
+    /// The same day marked as stored by the proof tool, for a past date:
+    /// read back only by a daemon started with the proof opt-in.
+    #[must_use]
+    pub fn as_proof(mut self) -> Self {
+        for row in &mut self.status {
+            row.source = PROOF_SOURCE.to_string();
+        }
+        for row in &mut self.maturity {
+            row.source = PROOF_SOURCE.to_string();
+        }
+        self
+    }
+
     /// The day the snapshot describes.
     fn day(&self) -> Option<i64> {
         self.maturity.iter().map(|row| row.as_of_day).max()
@@ -1329,6 +1360,7 @@ impl Snapshot {
 
 /// Today's snapshot of every registered legal entity, over all
 /// environments under the registered profile: what the daily job stores.
+/// `proof_days` lets the days of the proof tool count towards it.
 ///
 /// # Errors
 /// As [`loader::load`].
@@ -1337,6 +1369,7 @@ pub fn snapshot_all(
     params: &HouseParams,
     workloads: &[Workload],
     as_of_ns: i64,
+    proof_days: bool,
 ) -> Result<Snapshot, LoadError> {
     let request = Request {
         envs: &[],
@@ -1344,6 +1377,7 @@ pub fn snapshot_all(
         profile: None,
         as_of_ns,
         workloads,
+        proof_days,
     };
     let first = loader::load(reader, request, params)?;
     let mut snapshot = Snapshot::default();
@@ -1381,6 +1415,7 @@ mod tests {
             register: Vec::new(),
             profile_overridden: false,
             scoped: false,
+            proof: loader::ProofDays::default(),
             inputs,
         }
     }
@@ -1949,7 +1984,7 @@ mod tests {
 
     #[test]
     fn a_history_point_carries_the_shown_level_index_and_unknown_share() {
-        let point = history_point("today", day_of(worked_ns()), 2, 3.4567, 0.123_45);
+        let point = history_point("today", None, day_of(worked_ns()), 2, 3.4567, 0.123_45);
         assert_eq!(point["level"], 2);
         assert_eq!(point["index"], 3.457);
         assert_eq!(point["unknown_share"], 0.1235);
@@ -2004,7 +2039,7 @@ functions:
         writer.sync_ict_register(&declared.ict, now).unwrap();
         let params = HouseParams::default();
 
-        let snapshot = snapshot_all(&store.read_only().unwrap(), &params, &[], now).unwrap();
+        let snapshot = snapshot_all(&store.read_only().unwrap(), &params, &[], now, false).unwrap();
         let levels: Vec<(&str, u8)> = snapshot
             .maturity
             .iter()
@@ -2054,9 +2089,74 @@ functions:
             profile: None,
             as_of_ns: now,
             workloads: &[],
+            proof_days: false,
         };
         let loaded = loader::load(&store.read_only().unwrap(), request, &params).unwrap();
         assert!(!loaded.inputs.snapshots.is_empty());
+
+        // The proof tool stores the same day under its own source, and
+        // only a load with the opt-in reads it back.
+        let proof = snapshot.clone().as_proof();
+        assert!(proof.status.iter().all(|r| r.source == PROOF_SOURCE));
+        assert!(proof.maturity.iter().all(|m| m.source == PROOF_SOURCE));
+        assert_eq!(proof.status.len(), snapshot.status.len());
+        proof.store(&writer, now).unwrap();
+        let loaded = loader::load(&store.read_only().unwrap(), request, &params).unwrap();
+        assert!(
+            loaded.inputs.snapshots.is_empty(),
+            "proof days are not read"
+        );
+        assert_eq!(loaded.proof.ignored, 1);
+    }
+
+    /// A proof day is no history without the opt-in; with it the point
+    /// names its source, and every document says proof days are in use.
+    #[test]
+    fn a_proof_day_is_history_only_with_the_opt_in_and_is_named() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+        let mut day = stored_level("2026-06-20", 2, 2.4);
+        day.source = PROOF_SOURCE.into();
+        let writer = store.writer().unwrap();
+        writer.upsert_maturity_daily(&[day], 1).unwrap();
+        drop(writer);
+        let reader = store.read_only().unwrap();
+        let mut inputs = firm_b();
+        inputs.as_of_ns = ns("2027-01-15");
+        let mut loaded = loaded(inputs);
+        let params = HouseParams::default();
+        let today = assess(&Matrix::build(&loaded.inputs, &params));
+
+        let points = history(&reader, &loaded, &today).unwrap();
+        assert_eq!(points[1]["quarter"], "2026-Q2");
+        assert_eq!(points[1]["state"], "no_data");
+        assert_eq!(points[1]["source"], Value::Null);
+        let doc = maturity(&loaded, &today, None, points);
+        assert_eq!(
+            doc["proof_days"],
+            json!({"enabled": false, "counted": 0, "ignored": 0, "note": null})
+        );
+
+        loaded.proof = loader::ProofDays {
+            enabled: true,
+            counted: 3,
+            ignored: 0,
+        };
+        let points = history(&reader, &loaded, &today).unwrap();
+        assert_eq!(points[1]["state"], "stored");
+        assert_eq!(points[1]["source"], "proof");
+        assert_eq!(points[1]["level"], 2);
+        assert_eq!(points[4]["source"], Value::Null, "today is live");
+        let doc = maturity(&loaded, &today, None, points);
+        assert_eq!(doc["proof_days"]["enabled"], true);
+        assert_eq!(doc["proof_days"]["counted"], 3);
+        assert_eq!(doc["proof_days"]["note"], PROOF_DAYS_NOTE);
+        let dora = dora(
+            &loaded,
+            &Matrix::build(&loaded.inputs, &params),
+            DoraBy::Entity,
+        );
+        assert_eq!(dora["proof_days"]["note"], PROOF_DAYS_NOTE);
     }
 
     #[test]

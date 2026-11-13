@@ -16,13 +16,33 @@ use tumult_core::compliance::{
 /// event per interval with the number it left out; the counter has all.
 pub const MALFORMED_WARN_INTERVAL_S: u64 = 60;
 
-static MALFORMED_ENTITY_IDS: AtomicU64 = AtomicU64::new(0);
-static MALFORMED_WARN: WarnLimit = WarnLimit::new();
+/// The count of malformed ids with the limit on the warning about them.
+pub(crate) struct MalformedIds {
+    total: AtomicU64,
+    warn: WarnLimit,
+}
 
-/// Resources received since start whose `ict.entity.id` was malformed.
+impl MalformedIds {
+    pub(crate) const fn new() -> Self {
+        Self {
+            total: AtomicU64::new(0),
+            warn: WarnLimit::new(),
+        }
+    }
+
+    pub(crate) fn total(&self) -> u64 {
+        self.total.load(Ordering::Relaxed)
+    }
+}
+
+/// What this process received.
+static MALFORMED: MalformedIds = MalformedIds::new();
+
+/// Resources and spans received since start whose `ict.entity.id` was
+/// malformed.
 #[must_use]
 pub fn malformed_entity_ids_total() -> u64 {
-    MALFORMED_ENTITY_IDS.load(Ordering::Relaxed)
+    MALFORMED.total()
 }
 
 /// Lets one event through per interval and counts the ones it holds back.
@@ -64,9 +84,9 @@ fn now_s() -> u64 {
 }
 
 /// Count a malformed id and, at most once per interval, say so.
-fn note_malformed(stored: &str) {
-    let total = MALFORMED_ENTITY_IDS.fetch_add(1, Ordering::Relaxed) + 1;
-    let Some(suppressed) = MALFORMED_WARN.allow(now_s(), MALFORMED_WARN_INTERVAL_S) else {
+fn note_malformed(stored: &str, tally: &MalformedIds) {
+    let total = tally.total.fetch_add(1, Ordering::Relaxed) + 1;
+    let Some(suppressed) = tally.warn.allow(now_s(), MALFORMED_WARN_INTERVAL_S) else {
         return;
     };
     // `stored` is already cut to the id length; `?` escapes what the
@@ -278,14 +298,24 @@ impl ResourceCtx {
     }
 }
 
-/// Mark a resource whose `ict.entity.id` is not in the canonical form
-/// with [`ENTITY_ID_MALFORMED_ATTR`]. The id itself is stored as
+/// Mark the attributes of a resource or of a span whose `ict.entity.id`
+/// is not in the canonical form with [`ENTITY_ID_MALFORMED_ATTR`]. The
+/// score reads the id of a span before the one of its resource, so both
+/// go through this check. The id itself is stored as
 /// received: lower-casing it here would hide the sender's mistake and
 /// could merge two different ids. Only its length is bounded (see
 /// [`bounded_entity_id`]). A flag the sender set is dropped, so the
 /// attribute always states this check's own verdict. Every malformed id
 /// is counted ([`malformed_entity_ids_total`]).
-fn flag_malformed_entity_id(mut attrs: Vec<(String, String)>) -> Vec<(String, String)> {
+pub(crate) fn flag_malformed_entity_id(attrs: Vec<(String, String)>) -> Vec<(String, String)> {
+    flag_malformed_in(attrs, &MALFORMED)
+}
+
+/// [`flag_malformed_entity_id`] counting into `tally`.
+pub(crate) fn flag_malformed_in(
+    mut attrs: Vec<(String, String)>,
+    tally: &MalformedIds,
+) -> Vec<(String, String)> {
     attrs.retain(|(key, _)| key != ENTITY_ID_MALFORMED_ATTR);
     let mut malformed = false;
     for (_, value) in attrs
@@ -296,7 +326,7 @@ fn flag_malformed_entity_id(mut attrs: Vec<(String, String)>) -> Vec<(String, St
         if let Some(cut) = bounded_entity_id(value) {
             *value = cut;
         }
-        note_malformed(value);
+        note_malformed(value, tally);
     }
     if malformed {
         attrs.push((ENTITY_ID_MALFORMED_ATTR.to_string(), "true".to_string()));
@@ -353,16 +383,30 @@ mod tests {
         }
     }
 
+    /// Each malformed id counts once, a canonical one never, and an
+    /// attribute list with no id not at all.
     #[test]
     fn every_malformed_entity_id_is_counted() {
+        let tally = MalformedIds::new();
+        let attrs = |id: &str| vec![(ENTITY_ID_ATTR.to_string(), id.to_string())];
+        let _ = flag_malformed_in(attrs("CF-0042"), &tally);
+        assert_eq!(tally.total(), 1);
+        let _ = flag_malformed_in(attrs("CF-0042"), &tally);
+        let _ = flag_malformed_in(attrs("cif-0042"), &tally);
+        let _ = flag_malformed_in(vec![("k".to_string(), "v".to_string())], &tally);
+        assert_eq!(tally.total(), 2);
+        let _ = flag_malformed_in(attrs(&"x".repeat(5_000)), &tally);
+        assert_eq!(tally.total(), 3);
+    }
+
+    /// The process counter is the one a resource counts into.
+    #[test]
+    fn a_malformed_resource_id_reaches_the_process_counter() {
         let before = malformed_entity_ids_total();
         let bad = resource_with(&[("ict.entity.id", "CF-0042")]);
-        let good = resource_with(&[("ict.entity.id", "cif-0042")]);
         let _ = ResourceCtx::from_resource(Some(&bad));
-        let _ = ResourceCtx::from_resource(Some(&bad));
-        let _ = ResourceCtx::from_resource(Some(&good));
-        // Other tests count too, so the total is a floor.
-        assert!(malformed_entity_ids_total() >= before + 2);
+        // Other tests of this binary count into it too: a floor.
+        assert!(malformed_entity_ids_total() > before);
     }
 
     #[test]

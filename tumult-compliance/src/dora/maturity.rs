@@ -30,7 +30,7 @@ use super::coverage::{recovery_met, CellState, Ctx, Matrix};
 use super::model::{
     day_of, format_day, Evidence, Function, IncidentFeed, Service, Slo, SloCriticality, SloFeed,
 };
-use super::params::{HouseParams, PillarWeights};
+use super::params::{reaches, HouseParams, PillarWeights, VALUE_EPS};
 use super::status::{self, Standing, Status};
 
 /// What the pillars and gates are evaluated on.
@@ -121,7 +121,7 @@ impl Pillar {
     /// unknown or excluded pillar never opens a gate.
     fn reaches(&self, threshold: f64) -> bool {
         match self {
-            Self::Value(v) => *v + 1e-9 >= threshold,
+            Self::Value(v) => reaches(*v, threshold),
             Self::Unknown(_) | Self::Excluded(_) => false,
         }
     }
@@ -589,7 +589,7 @@ impl Gate<'_, '_> {
             return;
         };
         let share = shares[k - 1];
-        if share + 1e-9 >= threshold {
+        if reaches(share, threshold) {
             return;
         }
         self.failing.push(format!(
@@ -678,7 +678,7 @@ impl Gate<'_, '_> {
         let Some((req, cell)) = waiting else {
             return;
         };
-        if total > 0.0 && operating / total + 1e-9 >= self.params().operating_share {
+        if total > 0.0 && reaches(operating / total, self.params().operating_share) {
             return;
         }
         self.failing.push(self.waiting_reason(req, &cell));
@@ -714,7 +714,7 @@ impl Gate<'_, '_> {
     fn unknown_share(&mut self) {
         let limit = self.params().gates.l3_max_unknown_share;
         let unknown = self.matrix.portfolio(self.scope.function()).unknown;
-        if unknown <= limit + 1e-9 {
+        if unknown <= limit + VALUE_EPS {
             return;
         }
         self.failing
@@ -1241,17 +1241,94 @@ mod tests {
         assert_eq!(m.index, 1.0);
     }
 
+    /// Worked example A passes the gates of levels 2 to 4. Take one
+    /// pillar away, as unknown or as left out, and the first gate that
+    /// reads it shuts and says which pillar it was.
     #[test]
-    fn an_excluded_pillar_never_passes_a_gate() {
-        for why in [
-            Excluded::NoEvents,
-            Excluded::NotDeclared,
-            Excluded::OutOfScope,
-        ] {
-            assert!(!Pillar::Excluded(why).reaches(0.0), "{why:?}");
+    fn a_pillar_that_is_unknown_or_left_out_shuts_the_first_gate_that_reads_it() {
+        let inputs = bank_a();
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&inputs, &params);
+        let whole = pillars(&matrix, Scope::Entity);
+        assert_eq!(gate_level(&gates(&matrix, Scope::Entity, &whole)), 4);
+        let absent = [
+            Pillar::Excluded(Excluded::NoEvents),
+            Pillar::Excluded(Excluded::NotDeclared),
+            Pillar::Excluded(Excluded::OutOfScope),
+            Pillar::Unknown("not connected".into()),
+        ];
+        type Set = fn(&mut Pillars, Pillar);
+        let cases: [(&str, u8, Set); 4] = [
+            ("test coverage (T)", 1, |p, x| p.coverage = x),
+            ("SLO attainment (S)", 2, |p, x| p.slo = x),
+            ("recovery (R)", 2, |p, x| p.recovery = x),
+            ("loop closure (L)", 3, |p, x| p.loop_ = x),
+        ];
+        for (name, level, set) in cases {
+            for gone in &absent {
+                let mut without = whole.clone();
+                set(&mut without, gone.clone());
+                let checks = gates(&matrix, Scope::Entity, &without);
+                assert_eq!(gate_level(&checks), level, "{name} as {gone:?}");
+                let shut = &checks[usize::from(level) - 1];
+                assert!(
+                    shut.failing.iter().any(|why| why.starts_with(name)),
+                    "{name} as {gone:?}: {:?}",
+                    shut.failing
+                );
+            }
         }
-        assert!(!Pillar::Unknown("x".into()).reaches(0.0));
-        assert!(Pillar::Value(50.0).reaches(50.0));
+    }
+
+    /// Validation refuses zero thresholds. Should a set of them reach
+    /// the model anyway, an entity with a registered function, a service
+    /// with no conformance and no evidence still passes no gate.
+    #[test]
+    fn zeroed_thresholds_do_not_open_a_gate_on_nothing() {
+        let mut inputs = Inputs::empty(ns("2026-11-13"), EntityProfile::full());
+        inputs.functions = vec![Function::new("cif-0001", Tier::Critical)];
+        inputs.services = vec![Service::observed(
+            "payments-api",
+            0,
+            &["cif-0001"],
+            ns("2026-11-12"),
+        )];
+        let mut params = HouseParams {
+            existing_threshold: 0.0,
+            operating_share: 0.0,
+            ..HouseParams::default()
+        };
+        let g = &mut params.gates;
+        for threshold in [
+            &mut g.l2_c1,
+            &mut g.l2_coverage,
+            &mut g.l3_c1,
+            &mut g.l3_c2,
+            &mut g.l3_coverage,
+            &mut g.l3_slo,
+            &mut g.l3_recovery,
+            &mut g.l4_c3,
+            &mut g.l4_coverage,
+            &mut g.l4_slo,
+            &mut g.l4_recovery,
+            &mut g.l4_loop,
+            &mut g.l5_c4,
+            &mut g.l5_coverage,
+            &mut g.l5_slo,
+            &mut g.l5_recovery,
+            &mut g.l5_loop,
+        ] {
+            *threshold = 0.0;
+        }
+        assert!(params.validate().is_err());
+        let matrix = Matrix::build(&inputs, &params);
+        let found = pillars(&matrix, Scope::Entity);
+        let checks = gates(&matrix, Scope::Entity, &found);
+        assert_eq!(gate_level(&checks), 1, "{checks:?}");
+        assert!(
+            checks.iter().all(|check| !check.passed),
+            "no gate opens on nothing: {checks:?}"
+        );
     }
 
     #[test]

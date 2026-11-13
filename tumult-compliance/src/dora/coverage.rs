@@ -351,12 +351,11 @@ impl<'a> Ctx<'a> {
             Selector::Exercise { types, cited } => {
                 self.exercise_rows(req, id, types, cited, as_of_ns)
             }
-            Selector::Attestation => self.attestation_rows(req, id, as_of_ns),
-            Selector::FunctionAssessed
-            | Selector::Programme
-            | Selector::Telemetry
-            | Selector::Topology
-            | Selector::Feed(_) => Vec::new(),
+            Selector::Attestation | Selector::FunctionAssessed => {
+                self.attestation_rows(req, id, as_of_ns)
+            }
+            Selector::Programme => self.programme_rows(req, function, as_of_ns),
+            Selector::Telemetry | Selector::Topology | Selector::Feed(_) => Vec::new(),
         };
         rows.sort_by(|a, b| {
             if better(a, b) {
@@ -389,7 +388,7 @@ impl<'a> Ctx<'a> {
             }
             Selector::Attestation => self.attestation(req, id, as_of_ns),
             Selector::FunctionAssessed => self.assessed(req, function, as_of_ns),
-            Selector::Programme => programme(function),
+            Selector::Programme => self.programme(req, function, as_of_ns),
             Selector::PlanExecuted => self.plan_executed(req, function, as_of_ns),
             Selector::Telemetry => self.telemetry(req, id, as_of_ns),
             Selector::Topology => self.topology(id, as_of_ns),
@@ -510,15 +509,59 @@ impl<'a> Ctx<'a> {
         Cell::best_of(self.attestation_rows(req, function, as_of_ns))
     }
 
+    /// The criticality assessment of a function, dated by the stored
+    /// record that cites the row. The date in the org file is a
+    /// declaration: it makes the row Designed and covers nothing.
     fn assessed(&self, req: &Requirement, function: &Function, as_of_ns: i64) -> Cell<'a> {
         if !function.registered {
             return Cell::zero("function not registered");
         }
-        let Some(assessed) = function.last_assessed_ns.filter(|at| *at <= as_of_ns) else {
-            return Cell::zero("no criticality assessment date");
-        };
-        let age = day_of(as_of_ns) - day_of(assessed);
-        Cell::value(freshness(age, req.window_days, self.params))
+        let rows = self.attestation_rows(req, &function.id, as_of_ns);
+        if !rows.is_empty() {
+            return Cell::best_of(rows);
+        }
+        if function.last_assessed_ns.is_some() {
+            return Cell::zero(format!(
+                "assessment date declared in the org file only: no record citing {} is stored",
+                req.id
+            ));
+        }
+        Cell::zero("no criticality assessment declared or on record")
+    }
+
+    /// What the lake holds of a declared testing programme: every stored
+    /// test of the function and every record citing the row. A stored
+    /// test shows the programme exists whatever its age or outcome (the
+    /// rows on execution and findings score those), so it counts in full.
+    fn programme_rows(
+        &self,
+        req: &Requirement,
+        function: &Function,
+        as_of_ns: i64,
+    ) -> Vec<Scored<'a>> {
+        let mut rows = self.attestation_rows(req, &function.id, as_of_ns);
+        if function.test_plan.is_empty() && !function.scheduled {
+            return rows;
+        }
+        let tests = self
+            .evidence_for(&function.id, as_of_ns)
+            .filter(|e| e.kind.is_some())
+            .map(|e| self.score(e, as_of_ns, u32::MAX, 1.0, 1.0));
+        rows.extend(tests);
+        rows
+    }
+
+    /// A plan or a schedule is a declaration: the row is Designed and
+    /// covers nothing until a run or a record of it is stored.
+    fn programme(&self, req: &Requirement, function: &Function, as_of_ns: i64) -> Cell<'a> {
+        let rows = self.programme_rows(req, function, as_of_ns);
+        if !rows.is_empty() {
+            return Cell::best_of(rows);
+        }
+        if function.test_plan.is_empty() && !function.scheduled {
+            return Cell::zero("no test plan or schedule declared");
+        }
+        Cell::zero("test plan or schedule declared only: no run or record of it is stored")
     }
 
     fn plan_executed(&self, _req: &Requirement, function: &Function, as_of_ns: i64) -> Cell<'a> {
@@ -668,13 +711,6 @@ impl<'a> Ctx<'a> {
             | Selector::Feed(_) => false,
         }
     }
-}
-
-fn programme<'a>(function: &Function) -> Cell<'a> {
-    if function.test_plan.is_empty() && !function.scheduled {
-        return Cell::zero("no test plan or schedule declared");
-    }
-    Cell::value(1.0)
 }
 
 fn within(measured: Option<f64>, target: Option<f64>) -> Option<bool> {
@@ -1038,9 +1074,14 @@ mod tests {
         inputs.functions = vec![checkout, ledger, Function::new("cif-0090", Tier::Other)];
         let mut failed = Evidence::run("run-ledger-dr", "cif-0017", "dr", ns("2025-06-20"));
         failed.outcome = Outcome::Failed;
+        // The stored record of the criticality assessment: the date in
+        // the register alone covers nothing.
+        let mut assessed = Evidence::manual("man-assessed", &[], "other", ns("2026-09-01"));
+        assessed.cited = vec!["dora.art24.3".into()];
         inputs.evidence = vec![
             Evidence::run("run-checkout-chaos", "cif-0042", "chaos", ns("2026-10-02")),
             failed,
+            assessed,
         ];
         inputs
     }
@@ -1097,6 +1138,116 @@ mod tests {
         let art24 = matrix.article("24", None);
         assert!((art24.coverage.unwrap() - 0.78).abs() < 0.005, "{art24:?}");
         assert!((art24.unknown - 2.0 / 13.0).abs() < 1e-9, "{art24:?}");
+    }
+
+    /// The Art. 24 inputs with nothing in the lake: a plan, a schedule
+    /// and an assessment date, all of them declarations.
+    fn declared_only() -> Inputs {
+        let mut inputs = art24_inputs();
+        inputs.evidence.clear();
+        for function in &mut inputs.functions[..2] {
+            function.scheduled = true;
+        }
+        inputs
+    }
+
+    #[test]
+    fn an_org_file_alone_never_covers_the_programme_or_the_assessment() {
+        let inputs = declared_only();
+        let params = HouseParams::default();
+        let mut matrix = Matrix::build(&inputs, &params);
+        // Even with every day of the Operating window stored.
+        for row in &mut matrix.rows {
+            for cell in &mut row.cells {
+                cell.streak_days = params.operating_days;
+            }
+        }
+        let report = status::report(&matrix, None);
+        for id in ["dora.art24.1", "dora.art24.3"] {
+            let row = matrix.row(id).unwrap();
+            assert_eq!(row.cells.len(), 2, "{id}");
+            for cell in &row.cells {
+                assert_eq!(cell.cell.state, CellState::Scored, "{id}");
+                assert_eq!(cell.cell.v, 0.0, "{id}: a declaration covers nothing");
+                let reason = cell.cell.reason.as_deref().unwrap_or_default();
+                assert!(reason.contains("declared"), "{id}: {reason}");
+                assert!(cell.declared, "{id}");
+                assert_eq!(
+                    status::cell_status(cell, &params),
+                    status::Status::Designed,
+                    "{id}"
+                );
+            }
+            let stands = report.row(id).unwrap();
+            assert_eq!(stands.status, status::Status::Designed, "{id}");
+            assert_eq!(
+                stands.standing,
+                status::Standing::Gap,
+                "{id}: the no-gap gate reads this"
+            );
+        }
+    }
+
+    #[test]
+    fn the_programme_row_scores_once_a_run_or_an_attestation_is_stored() {
+        let mut inputs = declared_only();
+        let params = HouseParams::default();
+        let req = requirement("dora.art24.1").unwrap();
+        inputs.evidence.push(Evidence::run(
+            "run-checkout-chaos",
+            "cif-0042",
+            "chaos",
+            ns("2026-10-02"),
+        ));
+        let mut record = Evidence::manual("man-prog", &["cif-0017"], "other", ns("2026-07-01"));
+        record.cited = vec!["dora.art24.1".into()];
+        inputs.evidence.push(record);
+        let ctx = Ctx::new(&inputs, &params);
+        for function in &inputs.functions[..2] {
+            let cell = ctx.evaluate(req, function, inputs.as_of_ns);
+            assert_eq!(cell.v, 1.0, "{}", function.id);
+            assert!(
+                cell.best.is_some(),
+                "{}: the stored record is named",
+                function.id
+            );
+        }
+        let before = ctx.evaluate(req, &inputs.functions[0], ns("2026-10-01"));
+        assert_eq!(before.v, 0.0, "nothing was stored yet on that day");
+
+        let mut undeclared = inputs.clone();
+        undeclared.functions[0].test_plan.clear();
+        undeclared.functions[0].scheduled = false;
+        let ctx = Ctx::new(&undeclared, &params);
+        let cell = ctx.evaluate(req, &undeclared.functions[0], undeclared.as_of_ns);
+        assert_eq!(cell.v, 0.0, "a run without a declared programme is not one");
+    }
+
+    #[test]
+    fn the_assessment_row_takes_its_date_from_a_stored_attestation_only() {
+        let mut inputs = declared_only();
+        let params = HouseParams::default();
+        let req = requirement("dora.art24.3").unwrap();
+        // The org file says it was assessed yesterday; the stored record
+        // is two windows old.
+        inputs.functions[0].last_assessed_ns = Some(ns("2026-11-12"));
+        let old = inputs.as_of_ns - 2 * i64::from(req.window_days) * DAY_NS;
+        let mut record = Evidence::manual("man-assess", &["cif-0042"], "other", old);
+        record.cited = vec!["dora.art24.3".into()];
+        inputs.evidence.push(record);
+        let ctx = Ctx::new(&inputs, &params);
+        let stale = ctx.evaluate(req, &inputs.functions[0], inputs.as_of_ns);
+        assert!(stale.v > 0.0 && stale.v < 0.1, "{}", stale.v);
+        assert_eq!(stale.best.unwrap().evidence.id, "man-assess");
+        let unrecorded = ctx.evaluate(req, &inputs.functions[1], inputs.as_of_ns);
+        assert_eq!(unrecorded.v, 0.0);
+
+        let mut fresh = Evidence::manual("man-assess-2", &["cif-0042"], "other", ns("2026-09-01"));
+        fresh.cited = vec!["dora.art24.3".into()];
+        inputs.evidence.push(fresh);
+        let ctx = Ctx::new(&inputs, &params);
+        let cell = ctx.evaluate(req, &inputs.functions[0], inputs.as_of_ns);
+        assert_eq!(cell.v, 1.0);
     }
 
     #[test]

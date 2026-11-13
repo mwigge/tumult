@@ -49,6 +49,33 @@ use crate::scoring::{and_env, env_in};
 
 /// Source of a status row computed on its own day.
 pub const SNAPSHOT_SOURCE: &str = "snapshot";
+/// Source of a day the proof tool stored for a past date. Such a day was
+/// not scored on its own day, so it counts for nothing unless the daemon
+/// was started with the proof opt-in, and then every response says so.
+pub const PROOF_SOURCE: &str = "proof";
+/// Shown with every document while proof days are in use.
+pub const PROOF_DAYS_NOTE: &str =
+    "proof days are in use: days the proof tool stored for past dates (source 'proof') count \
+     as stored days. This is a test setting; the Operating status and the history shown here \
+     are not evidence of operation.";
+
+/// Whether a stored day of `source` counts: one the daily job stored on
+/// its own day always, one of the proof tool only with the opt-in.
+#[must_use]
+pub fn day_counts(source: &str, proof_days: bool) -> bool {
+    source == SNAPSHOT_SOURCE || (proof_days && source == PROOF_SOURCE)
+}
+
+/// What a load did with the days of the proof tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ProofDays {
+    /// The opt-in is set: proof days count as stored days.
+    pub enabled: bool,
+    /// Proof days of the Operating window that were counted.
+    pub counted: usize,
+    /// Proof days of the window left out because the opt-in is not set.
+    pub ignored: usize,
+}
 /// Days of stored snapshots that count as "two quarters" of posture
 /// history for the level-5 gate.
 pub const TWO_QUARTERS_DAYS: i64 = 182;
@@ -110,6 +137,9 @@ pub struct Request<'a> {
     pub as_of_ns: i64,
     /// Workloads from the deployment manifests.
     pub workloads: &'a [Workload],
+    /// Count the days of the proof tool ([`PROOF_SOURCE`]) as stored
+    /// days. Off unless the daemon was started with the opt-in.
+    pub proof_days: bool,
 }
 
 /// The inputs of one legal entity with the register rows behind them.
@@ -129,7 +159,18 @@ pub struct Loaded {
     /// its telemetry binds to are loaded, and no register data beyond
     /// the entity scored.
     pub scoped: bool,
+    /// What became of the days the proof tool stored.
+    pub proof: ProofDays,
     pub inputs: Inputs,
+}
+
+/// The stored days one load read.
+#[derive(Default)]
+struct StoredDays {
+    values: Snapshots,
+    /// The first counted day inside the two-quarter look-back.
+    since: Option<i64>,
+    proof: ProofDays,
 }
 
 /// One evidence feed as the score reads it. `declared` is what the
@@ -174,8 +215,11 @@ fn num(row: &Value, key: &str) -> Option<f64> {
     row.get(key).and_then(Value::as_f64)
 }
 
-fn quoted(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+/// A statement with the values bound to its `?`, in order.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct Sql {
+    text: String,
+    binds: Vec<String>,
 }
 
 fn stand_in_entity() -> IctLegalEntity {
@@ -382,8 +426,9 @@ fn manual_sql(as_of_ns: i64, envs: &[String]) -> String {
     )
 }
 
-/// SQL predicate: the span carries the contract key.
-fn carries(key: &str) -> String {
+/// SQL predicate: the span carries the contract key. The key comes from
+/// the org file, so it is bound: pushed onto `binds` once per `?`.
+fn carries(key: &str, binds: &mut Vec<String>) -> String {
     let promoted = match key {
         "resilience.target.system" => Some("target_system"),
         "resilience.target.technology" => Some("target_technology"),
@@ -394,17 +439,15 @@ fn carries(key: &str) -> String {
     if let Some(column) = promoted {
         return format!("{column} IS NOT NULL");
     }
-    let key = quoted(key);
-    format!(
-        "(list_contains(map_keys(resource_attrs), {key}) \
-         OR list_contains(map_keys(span_attrs), {key}))"
-    )
+    binds.extend([key.to_string(), key.to_string()]);
+    "(list_contains(map_keys(resource_attrs), ?) OR list_contains(map_keys(span_attrs), ?))"
+        .to_string()
 }
 
 /// SQL expression: the attribute `key`, from the resource or the span.
 /// The key is written into the statement, so it is a compile-time name
 /// of letters, digits, dots and underscores and nothing else; a value
-/// that comes from a file or a request goes through [`quoted`] instead.
+/// that comes from a file or a request is bound instead ([`Sql`]).
 fn attr(key: &'static str) -> String {
     let plain = !key.is_empty()
         && key
@@ -414,8 +457,18 @@ fn attr(key: &'static str) -> String {
     format!("COALESCE(resource_attrs['{key}'], span_attrs['{key}'])")
 }
 
-fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String {
-    let from_ns = as_of_ns - i64::from(params.conformance.window_days) * DAY_NS;
+/// The first nanosecond of a window of `days` ending at `as_of_ns`.
+/// A window too long to count in nanoseconds opens at the start of time.
+fn window_start(as_of_ns: i64, days: u32) -> i64 {
+    i64::from(days)
+        .checked_mul(DAY_NS)
+        .and_then(|span| as_of_ns.checked_sub(span))
+        .unwrap_or(i64::MIN)
+}
+
+fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> Sql {
+    let mut binds = Vec::new();
+    let from_ns = window_start(as_of_ns, params.conformance.window_days);
     let scope = and_env(env_in("target_environment", envs));
     let levels: Vec<String> = params
         .conformance
@@ -423,7 +476,7 @@ fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String 
         .iter()
         .enumerate()
         .map(|(i, keys)| {
-            let all: Vec<String> = keys.iter().map(|key| carries(key)).collect();
+            let all: Vec<String> = keys.iter().map(|key| carries(key, &mut binds)).collect();
             let all = if all.is_empty() {
                 "TRUE".to_string()
             } else {
@@ -435,7 +488,8 @@ fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String 
             )
         })
         .collect();
-    format!(
+    // The level filters are the only placeholders, in the order pushed.
+    let text = format!(
         "SELECT service_name AS name, MIN(ts_ns) AS first_seen, MAX(ts_ns) AS last_seen, \
          COUNT(*) FILTER (WHERE ts_ns >= {from_ns}) AS spans, {levels}, \
          arg_max(target_system, ts_ns) AS system, \
@@ -451,11 +505,12 @@ fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String 
         component = attr("resilience.target.component"),
         entity = attr("ict.entity.id"),
         tier = attr("ict.entity.tier"),
-    )
+    );
+    Sql { text, binds }
 }
 
 fn topology_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String {
-    let from_ns = as_of_ns - i64::from(params.conformance.window_days) * DAY_NS;
+    let from_ns = window_start(as_of_ns, params.conformance.window_days);
     let scope = and_env(env_in("c.target_environment", envs));
     format!(
         "SELECT COUNT(*) AS edges FROM ( \
@@ -690,36 +745,89 @@ impl Loader<'_> {
     }
 
     /// Stored snapshot values of the Operating window, and the first day
-    /// a snapshot was stored inside the two-quarter look-back.
-    fn snapshots(&self) -> Result<(Snapshots, Option<i64>), LoadError> {
+    /// a snapshot was stored inside the two-quarter look-back. A day of
+    /// the proof tool is read only with the opt-in, and counted either
+    /// way so the response can say what was done with it.
+    fn snapshots(&self) -> Result<StoredDays, LoadError> {
         let today = day_of(self.request.as_of_ns);
         let back = i64::from(self.params.operating_days).max(TWO_QUARTERS_DAYS);
         let rows = self
             .reader
             .requirement_status_between(today - back - 1, today, STATUS_ROW_LIMIT)
             .map_err(store)?;
-        let mut snapshots = Snapshots::new();
-        let mut first = None;
+        let enabled = self.request.proof_days;
+        let mut stored = StoredDays::default();
+        let mut proof_days = BTreeSet::new();
         for row in rows {
-            if row.source != SNAPSHOT_SOURCE || row.as_of_day > today {
+            if row.as_of_day > today {
                 continue;
             }
-            first = Some(first.map_or(row.as_of_day, |day: i64| day.min(row.as_of_day)));
-            snapshots
+            if row.source == PROOF_SOURCE {
+                proof_days.insert(row.as_of_day);
+            }
+            if !day_counts(&row.source, enabled) {
+                continue;
+            }
+            let first = stored
+                .since
+                .map_or(row.as_of_day, |day| day.min(row.as_of_day));
+            stored.since = Some(first);
+            stored
+                .values
                 .entry((row.function_id, row.requirement_id))
                 .or_default()
                 .insert(row.as_of_day, row.value);
         }
-        Ok((snapshots, first))
+        stored.proof = ProofDays {
+            enabled,
+            counted: if enabled { proof_days.len() } else { 0 },
+            ignored: if enabled { 0 } else { proof_days.len() },
+        };
+        Ok(stored)
     }
 }
 
 /// Read the inputs of one legal entity.
 ///
+/// A caller limited to some environments that names a legal entity it
+/// has no function of gets `UnknownLei`, the answer an unregistered LEI
+/// gets, whatever profile it asks for: the register is not its to probe.
+///
 /// # Errors
 /// `UnknownLei` and `Profile` for a request that names something that
 /// does not exist, `Store` when a lake query fails.
 pub fn load(
+    reader: &Reader,
+    request: Request<'_>,
+    params: &HouseParams,
+) -> Result<Loaded, LoadError> {
+    let loaded = load_entity(reader, request, params);
+    let (false, Some(lei)) = (request.envs.is_empty(), request.lei) else {
+        return loaded;
+    };
+    let hidden = || LoadError::UnknownLei(lei.to_string());
+    let in_scope = |loaded: &Loaded| !loaded.inputs.functions.is_empty();
+    match loaded {
+        Ok(loaded) if in_scope(&loaded) => Ok(loaded),
+        Ok(_) => Err(hidden()),
+        Err(LoadError::Profile(refused)) => {
+            // A refused profile is said only for an entity in scope,
+            // which is judged under the registered profile.
+            let registered = Request {
+                profile: None,
+                ..request
+            };
+            match load_entity(reader, registered, params) {
+                Ok(loaded) if in_scope(&loaded) => Err(LoadError::Profile(refused)),
+                Err(LoadError::Store(e)) => Err(LoadError::Store(e)),
+                _ => Err(hidden()),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn load_entity(
     reader: &Reader,
     request: Request<'_>,
     params: &HouseParams,
@@ -735,7 +843,11 @@ pub fn load(
         .collect();
     let query = |sql: &str| reader.query_json_rows(sql).map_err(store);
     let run_rows = query(&runs_sql(request.as_of_ns, request.envs))?;
-    let service_rows = query(&services_sql(request.as_of_ns, request.envs, params))?;
+    let services = services_sql(request.as_of_ns, request.envs, params);
+    let binds: Vec<&str> = services.binds.iter().map(String::as_str).collect();
+    let service_rows = reader
+        .query_json_rows_bound(&services.text, &binds)
+        .map_err(store)?;
     let mut functions = registered_functions(&rows);
     if register.functions.is_empty() {
         let seen: Vec<&Value> = run_rows.iter().chain(service_rows.iter()).collect();
@@ -755,10 +867,16 @@ pub fn load(
         foreign: Mapper::new(foreign_ids, &register.services),
     };
     loader.scheduled(&mut functions)?;
-    let (snapshots, stored_since) = if request.envs.is_empty() {
+    let stored = if request.envs.is_empty() {
         loader.snapshots()?
     } else {
-        (Snapshots::new(), None)
+        StoredDays {
+            proof: ProofDays {
+                enabled: request.proof_days,
+                ..ProofDays::default()
+            },
+            ..StoredDays::default()
+        }
     };
     let mut evidence = loader.runs(&run_rows);
     evidence.extend(loader.manual()?);
@@ -769,8 +887,8 @@ pub fn load(
         workloads: request.workloads.to_vec(),
         slos: SloFeed::NotConnected,
         incidents: IncidentFeed::NotConnected,
-        facts: loader.facts(stored_since)?,
-        snapshots,
+        facts: loader.facts(stored.since)?,
+        snapshots: stored.values,
         ..Inputs::empty(request.as_of_ns, profile)
     };
     let profile_overridden = request.profile.is_some()
@@ -782,6 +900,7 @@ pub fn load(
         register: rows,
         profile_overridden,
         scoped: false,
+        proof: stored.proof,
         inputs,
     };
     if request.envs.is_empty() {
@@ -925,6 +1044,7 @@ functions:
             profile: None,
             as_of_ns: NOW,
             workloads: &[],
+            proof_days: false,
         }
     }
 
@@ -1159,6 +1279,100 @@ functions:
             .all(|f| f.reason == Some(FEED_NO_INGEST)));
     }
 
+    /// A window no validated file can ask for still gives a statement
+    /// and not an overflow: the window opens at the start of time.
+    #[test]
+    fn a_window_longer_than_time_opens_at_the_start_of_time() {
+        let mut params = HouseParams::default();
+        params.conformance.window_days = u32::MAX;
+        let sql = services_sql(NOW, &[], &params).text;
+        assert!(sql.contains(&format!("ts_ns >= {}", i64::MIN)), "{sql}");
+        let sql = topology_sql(NOW, &[], &params);
+        assert!(sql.contains(&format!("c.ts_ns >= {}", i64::MIN)), "{sql}");
+        params.conformance.window_days = 90;
+        let sql = services_sql(NOW, &[], &params).text;
+        assert!(
+            sql.contains(&format!("ts_ns >= {}", NOW - 90 * DAY_NS)),
+            "{sql}"
+        );
+    }
+
+    /// A conformance key comes from the org file. It is bound to the
+    /// statement, never written into it, and is matched as it stands.
+    #[test]
+    fn a_conformance_key_from_the_org_file_is_bound_not_written() {
+        const KEY: &str = "it's.a') OR TRUE --";
+        let mut params = HouseParams::default();
+        params.conformance.level1 = vec![KEY.to_string(), "service.version".to_string()];
+        let sql = services_sql(NOW, &[], &params);
+        assert!(!sql.text.contains("it's"), "{}", sql.text);
+        assert!(!sql.text.contains("it''s"), "{}", sql.text);
+        assert_eq!(sql.binds.iter().filter(|b| *b == KEY).count(), 2, "{sql:?}");
+        assert_eq!(
+            sql.text.matches('?').count(),
+            sql.binds.len(),
+            "one value per placeholder"
+        );
+
+        let (_dir, store) = store_with(ORG);
+        let mut with = app_span("payments-api", NOW - DAY_NS, &[(KEY, "1")]);
+        with.service_version = Some("1.0".into());
+        let mut without = app_span("ledger", NOW - DAY_NS, &[]);
+        without.service_version = Some("1.0".into());
+        seed(&store, &[with, without], &[]);
+        let reader = store.read_only().unwrap();
+        let loaded = load(&reader, request(&[]), &params).unwrap();
+        let level = |name: &str| {
+            let service = loaded.inputs.services.iter().find(|s| s.name == name);
+            service.unwrap_or_else(|| panic!("{name} is loaded")).level
+        };
+        assert_eq!(level("payments-api"), 1);
+        assert_eq!(level("ledger"), 0);
+    }
+
+    /// A caller limited to some environments learns nothing of a legal
+    /// entity it has no telemetry of: naming its LEI gives the answer an
+    /// unregistered one gives, whatever else the request asks for.
+    #[test]
+    fn a_scoped_request_for_an_entity_out_of_scope_is_an_unknown_lei() {
+        let (_dir, store) = store_with(TWO_FIRMS);
+        let mut staging = spine_span("payments-api", NOW - DAY_NS);
+        staging.target_environment = Some("staging".into());
+        seed(&store, &[staging], &[]);
+        let reader = store.read_only().unwrap();
+        let params = HouseParams::default();
+        let envs = vec!["staging".to_string()];
+        const OTHER: &str = "506700GE1G29325QX363";
+        const NOWHERE: &str = "5493001KJTIIGC8Y1R12";
+        let ask = |lei: &'static str, profile: Option<&'static str>| {
+            let request = Request {
+                lei: Some(lei),
+                profile,
+                ..request(&envs)
+            };
+            load(&reader, request, &params).map(|loaded| loaded.entity.lei)
+        };
+        for profile in [None, Some("full"), Some("no-such-profile")] {
+            let unknown = ask(NOWHERE, profile).unwrap_err();
+            assert_eq!(unknown, LoadError::UnknownLei(NOWHERE.into()));
+            let hidden = ask(OTHER, profile).unwrap_err();
+            assert_eq!(hidden, LoadError::UnknownLei(OTHER.into()), "{profile:?}");
+            assert_eq!(
+                hidden.to_string().replace(OTHER, "x"),
+                unknown.to_string().replace(NOWHERE, "x")
+            );
+        }
+        // Its own entity answers, and a bad profile is still said there.
+        assert_eq!(ask(LEI, None), Ok(LEI.to_string()));
+        assert!(matches!(ask(LEI, Some("lite")), Err(LoadError::Profile(_))));
+        // An unscoped caller may ask for any registered entity.
+        let open = Request {
+            lei: Some(OTHER),
+            ..request(&[])
+        };
+        assert_eq!(load(&reader, open, &params).unwrap().entity.lei, OTHER);
+    }
+
     #[test]
     fn a_cross_service_call_is_an_observed_topology() {
         let (_dir, store) = store_with(ORG);
@@ -1210,6 +1424,68 @@ functions:
         .unwrap();
         assert!(scoped.inputs.snapshots.is_empty());
         assert!(!scoped.inputs.facts.posture_delta_two_quarters);
+    }
+
+    /// A day the proof tool stored for a past date was not scored on
+    /// that date. It is no stored day, for the Operating window or the
+    /// two-quarter fact, unless the opt-in is set; either way the load
+    /// says what it did with it.
+    #[test]
+    fn proof_days_never_count_without_the_opt_in() {
+        let (_dir, store) = store_with(ORG);
+        let today = day_of(NOW);
+        let row = |day: i64, source: &str| tumult_lake::RequirementStatusRow {
+            as_of_day: day,
+            function_id: "cif-0001".into(),
+            requirement_id: "dora.art12.2".into(),
+            status: "existing".into(),
+            value: Some(0.9),
+            source: source.into(),
+        };
+        let rows = [
+            row(today - 1, PROOF_SOURCE),
+            row(today - 2, SNAPSHOT_SOURCE),
+            row(today - TWO_QUARTERS_DAYS, PROOF_SOURCE),
+        ];
+        let writer = store.writer().unwrap();
+        writer.upsert_requirement_status(&rows, NOW).unwrap();
+        drop(writer);
+        let key = ("cif-0001".to_string(), "dora.art12.2".to_string());
+        let days = |loaded: &Loaded| -> Vec<i64> {
+            loaded.inputs.snapshots[&key].keys().copied().collect()
+        };
+
+        let plain = loaded(&store, request(&[]));
+        assert_eq!(days(&plain), [today - 2]);
+        assert!(!plain.inputs.facts.posture_delta_two_quarters);
+        let ignored = ProofDays {
+            enabled: false,
+            counted: 0,
+            ignored: 2,
+        };
+        assert_eq!(plain.proof, ignored);
+
+        let opted = Request {
+            proof_days: true,
+            ..request(&[])
+        };
+        let opted = loaded(&store, opted);
+        assert_eq!(
+            days(&opted),
+            [today - TWO_QUARTERS_DAYS, today - 2, today - 1]
+        );
+        assert!(opted.inputs.facts.posture_delta_two_quarters);
+        let counted = ProofDays {
+            enabled: true,
+            counted: 2,
+            ignored: 0,
+        };
+        assert_eq!(opted.proof, counted);
+
+        // No other source is let in by the opt-in.
+        assert!(!day_counts("imported", true));
+        assert!(!day_counts("", true));
+        assert!(day_counts(SNAPSHOT_SOURCE, false));
     }
 
     #[test]
@@ -1284,11 +1560,7 @@ functions:
         assert_eq!(ids, ["cif-0001"]);
     }
 
-    /// A caller scoped to some environments sees the functions its own
-    /// telemetry binds to and nothing of the register beyond them.
-    #[test]
-    fn a_scoped_caller_gets_only_the_functions_it_can_see_and_no_register_data() {
-        const TWO_FIRMS: &str = "
+    const TWO_FIRMS: &str = "
 legal_entities:
   - lei: 529900T8BM49AURSDO55
     name: Demo Firm
@@ -1305,6 +1577,11 @@ functions:
   - {id: cif-0002, lei: 529900T8BM49AURSDO55, name: Reporting, tier: important}
   - {id: cif-0003, lei: 506700GE1G29325QX363, name: Custody, tier: critical}
 ";
+
+    /// A caller scoped to some environments sees the functions its own
+    /// telemetry binds to and nothing of the register beyond them.
+    #[test]
+    fn a_scoped_caller_gets_only_the_functions_it_can_see_and_no_register_data() {
         let (_dir, store) = store_with(TWO_FIRMS);
         let mut staging = spine_span("payments-api", NOW - DAY_NS);
         staging.target_environment = Some("staging".into());
@@ -1362,13 +1639,7 @@ functions:
 
         // Nothing in the environment: no function at all, not the register.
         let none = vec!["dev".to_string()];
-        let empty = loaded(
-            &store,
-            Request {
-                lei: Some(LEI),
-                ..request(&none)
-            },
-        );
+        let empty = loaded(&store, request(&none));
         assert!(empty.inputs.functions.is_empty());
         assert!(empty.inputs.services.is_empty());
     }
@@ -1424,7 +1695,7 @@ functions:
             let target = if target.is_empty() {
                 "NULL".to_string()
             } else {
-                quoted(target)
+                format!("'{target}'")
             };
             format!(
                 "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \

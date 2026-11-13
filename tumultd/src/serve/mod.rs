@@ -348,6 +348,8 @@ pub(crate) async fn serve() -> Result<()> {
             runtime: std::sync::Arc::clone(api_state.score_runtime()),
             interval: crate::score_jobs::snapshot_interval_from_env(),
             reload: crate::score_jobs::reload_interval_from_env(),
+            day_check: crate::score_jobs::DAY_CHECK,
+            now: crate::score_jobs::now_ns,
         },
         ingest.clone(),
         background_shutdown.clone(),

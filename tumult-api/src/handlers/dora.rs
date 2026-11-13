@@ -72,6 +72,8 @@ struct Scope {
     profile: Option<String>,
     as_of_ns: i64,
     workloads: Arc<Vec<Workload>>,
+    /// The daemon was started with the proof opt-in.
+    proof_days: bool,
     params: Arc<HouseParams>,
     /// What the document says about those parameters and the register.
     stamp: Stamp,
@@ -89,6 +91,7 @@ impl Scope {
             profile: self.profile.as_deref(),
             as_of_ns: self.as_of_ns,
             workloads: &self.workloads,
+            proof_days: self.proof_days,
         }
     }
 }
@@ -171,6 +174,7 @@ fn scope(
         profile: q.profile.clone(),
         as_of_ns: now_ns(),
         workloads,
+        proof_days: runtime.proof_days(),
         params: view.params,
         stamp: view.stamp,
     })
@@ -196,11 +200,9 @@ async fn document(
         + 'static,
 ) -> Result<Json<Value>, ApiError> {
     let runtime = Arc::clone(state.score_runtime());
-    let (key, generation, asked_at_ns) = (scope.key.clone(), scope.generation, scope.as_of_ns);
+    let (key, generation) = (scope.key.clone(), scope.generation);
     let stamp = scope.stamp.clone();
-    let hit = key
-        .as_deref()
-        .and_then(|key| runtime.cached(key, asked_at_ns));
+    let hit = key.as_deref().and_then(|key| runtime.cached(key));
     if let Some(doc) = hit {
         return Ok(Json(doc));
     }
@@ -216,7 +218,7 @@ async fn document(
     let mut doc = outcome?;
     stamp.apply(&mut doc);
     if let Some(key) = key {
-        runtime.store(key, generation, &doc, asked_at_ns);
+        runtime.store(key, generation, &doc);
     }
     Ok(Json(doc))
 }

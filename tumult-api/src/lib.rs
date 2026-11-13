@@ -257,7 +257,6 @@ impl ApiState {
         &self.score
     }
 
-
     /// Read the Star Map cache's time from `clock` instead of the
     /// system's. For tests, which move the clock rather than sleep.
     #[doc(hidden)]
@@ -341,12 +340,15 @@ impl ApiState {
             secure_cookies,
         )
         .with_manifests_dir(manifests_dir.clone())
-        .with_score_runtime(Arc::new(score::ScoreRuntime::open(
-            score_org_file,
-            manifests_dir,
-            score::cache_ttl_from_env(),
-            sql_util::now_ns(),
-        )))
+        .with_score_runtime(Arc::new(
+            score::ScoreRuntime::open(
+                score_org_file,
+                manifests_dir,
+                score::cache_ttl_from_env(),
+                sql_util::now_ns(),
+            )
+            .with_proof_days(score::proof_days_from_env()),
+        ))
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.

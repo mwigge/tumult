@@ -349,6 +349,15 @@ fn maturity_snapshots_upsert_per_day_and_legal_entity() {
         .maturity_daily_between(LEI, 20_002, 30_000)
         .unwrap()
         .is_empty());
+    // The LEI of a request is compared, never parsed.
+    for hostile in ["x' OR '1'='1", "'; DROP TABLE maturity_daily; --", "?"] {
+        let rows = reader.maturity_daily_between(hostile, 0, 30_000).unwrap();
+        assert!(rows.is_empty(), "{hostile}: {rows:?}");
+    }
+    assert_eq!(
+        reader.maturity_daily_between(LEI, 0, 30_000).unwrap().len(),
+        2
+    );
 }
 
 #[test]

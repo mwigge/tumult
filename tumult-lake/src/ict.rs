@@ -313,12 +313,11 @@ fn read_maturity(
 ) -> Result<Vec<MaturityDailyRow>, StoreError> {
     let sql = format!(
         "SELECT {DAY_NUMBER}, lei, level, index_value, unknown_share, source \
-         FROM maturity_daily WHERE lei = '{}' AND as_of BETWEEN {} AND {} ORDER BY as_of",
-        lei.replace('\'', "''"),
+         FROM maturity_daily WHERE lei = ? AND as_of BETWEEN {} AND {} ORDER BY as_of",
         day_sql(from_day),
         day_sql(to_day)
     );
-    Ok(query_json_rows(conn, &sql)?
+    Ok(crate::query_json_rows_bound(conn, &sql, &[lei])?
         .iter()
         .map(|row| MaturityDailyRow {
             as_of_day: row.get("as_of_day").and_then(Value::as_i64).unwrap_or(0),

@@ -19,7 +19,7 @@
 use tumult_core::compliance::{Requirement, ARTICLES};
 
 use super::coverage::{CellState, Matrix, MatrixCell, MatrixRow, RowState};
-use super::params::HouseParams;
+use super::params::{reaches, HouseParams};
 
 /// Evidence status of a cell or of a row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +147,7 @@ pub fn row_status(matrix: &Matrix<'_>, row: &MatrixRow<'_>, scope: Option<usize>
             operating += weight;
         }
     }
-    if weakest == 2 && total > 0.0 && operating / total >= params.operating_share {
+    if weakest == 2 && total > 0.0 && reaches(operating / total, params.operating_share) {
         return Status::Operating;
     }
     Status::from_rank(weakest)
@@ -620,6 +620,50 @@ mod tests {
         let matrix = Matrix::build(&inputs, &strict);
         let row = matrix.row("dora.art12.2").unwrap();
         assert_eq!(row_status(&matrix, row, None), Status::Existing);
+    }
+
+    /// The row and the level-3 gate compare the same share with the
+    /// same tolerance: 3 of 10 is the share `0.1 + 0.2` asks for, though
+    /// the two are not the same binary number. And a share of zero is
+    /// not reached by a row with nothing Operating.
+    #[test]
+    fn the_operating_share_of_a_row_is_compared_within_the_stated_tolerance() {
+        let today = day("2026-11-13");
+        let mut inputs = restore_tested(today, 200);
+        for (id, tier) in [
+            ("cif-0043", Tier::Critical),
+            ("cif-0017", Tier::Important),
+            ("cif-0018", Tier::Important),
+        ] {
+            inputs.functions.push(Function::new(id, tier));
+            inputs.evidence.push(Evidence::run(
+                &format!("run-{id}"),
+                id,
+                "dr",
+                noon(today - 100),
+            ));
+        }
+        let inputs = with_stored_days(inputs, 200);
+        let three_tenths = HouseParams {
+            operating_share: 0.1 + 0.2,
+            ..HouseParams::default()
+        };
+        assert!(3.0 / 10.0 < three_tenths.operating_share);
+        let matrix = Matrix::build(&inputs, &three_tenths);
+        let row = matrix.row("dora.art12.2").unwrap();
+        assert_eq!(row_status(&matrix, row, None), Status::Operating);
+
+        let zero = HouseParams {
+            operating_share: 0.0,
+            ..HouseParams::default()
+        };
+        let matrix = Matrix::build(&inputs, &zero);
+        let row = matrix.row("dora.art12.2").unwrap();
+        assert_eq!(
+            row_status(&matrix, row, Some(1)),
+            Status::Existing,
+            "nothing Operating is not Operating at any share"
+        );
     }
 
     #[test]
