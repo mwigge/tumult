@@ -185,6 +185,131 @@ fn one_id(buffer: (i64, i64)) -> BatchHeader {
     }
 }
 
+/// A batch of `rows` ids whose values buffer is `frame`, declared to
+/// decompress to `declared` bytes.
+fn compressed_ids(rows: i64, declared: i64, frame: &[u8]) -> Vec<u8> {
+    let mut body = declared.to_le_bytes().to_vec();
+    body.extend_from_slice(frame);
+    let stored = i64::try_from(body.len()).unwrap();
+    body.resize(body.len().next_multiple_of(8), 0);
+    let header = BatchHeader {
+        rows,
+        nodes: vec![(rows, 0)],
+        buffers: vec![(0, 0), (0, stored)],
+        zstd: true,
+        ..BatchHeader::default()
+    };
+    crafted(&ids_schema(), &header, &body)
+}
+
+/// Decode `record`; returns the result and the largest buffer that was
+/// allocated to decompress into.
+fn inflated(record: Vec<u8>) -> (Result<OtapBatch, OtapError>, usize) {
+    super::ipc::LARGEST_INFLATED.set(0);
+    let result = consume(record);
+    (result, super::ipc::LARGEST_INFLATED.get())
+}
+
+/// 2000 ids, 4000 bytes, as zstd without and with the content size in
+/// the frame header.
+fn id_frames() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let ids: Vec<u8> = (0..2000u16).flat_map(u16::to_le_bytes).collect();
+    let mut streamed = zstd::stream::Encoder::new(Vec::new(), 3).unwrap();
+    std::io::Write::write_all(&mut streamed, &ids).unwrap();
+    let streamed = streamed.finish().unwrap();
+    let sized = zstd::bulk::compress(&ids, 3).unwrap();
+    let content_size = |frame: &[u8]| zstd::zstd_safe::get_frame_content_size(frame).ok();
+    assert_eq!(
+        content_size(&streamed),
+        Some(None),
+        "not known when streaming"
+    );
+    assert_eq!(content_size(&sized), Some(Some(4000)));
+    (ids, streamed, sized)
+}
+
+#[test]
+fn honest_zstd_buffers_decode_with_and_without_a_content_size() {
+    let (ids, streamed, sized) = id_frames();
+    let (first, second) = ids.split_at(1000);
+    let mut two_frames = zstd::bulk::compress(first, 3).unwrap();
+    two_frames.extend(zstd::bulk::compress(second, 3).unwrap());
+    for (what, frame) in [
+        ("no content size", &streamed),
+        ("content size", &sized),
+        ("two frames", &two_frames),
+    ] {
+        let (result, allocated) = inflated(compressed_ids(2000, 4000, frame));
+        let batch = result.unwrap_or_else(|e| panic!("{what}: {e}"));
+        let column = batch.get(Ty::Spans).unwrap().column(0).clone();
+        let column = column.as_primitive::<arrow::datatypes::UInt16Type>();
+        assert!(column.values().iter().copied().eq(0..2000), "{what}");
+        assert_eq!(allocated, 4000, "{what}");
+    }
+}
+
+/// The declared size of a compressed buffer costs the sender eight bytes.
+/// Nothing is allocated for it before the compressed bytes have been
+/// asked what they can hold.
+#[test]
+fn a_declared_size_the_frame_cannot_hold_is_refused_before_it_is_allocated() {
+    const MIB: i64 = 1024 * 1024;
+    let (_, streamed, sized) = id_frames();
+
+    // The frame says how much it holds, and it is not what is declared.
+    for declared in [4002, 32 * MIB] {
+        let (result, allocated) = inflated(compressed_ids(2000, declared, &sized));
+        malformed(result, "decompressed size differs from the declared size")
+            .unwrap_or_else(|e| panic!("declared {declared}: {e}"));
+        assert_eq!(allocated, 0, "declared {declared}");
+    }
+    let (result, allocated) = inflated(compressed_ids(1000, 2000, &sized));
+    malformed(result, "decompressed size differs from the declared size")
+        .unwrap_or_else(|e| panic!("declared less: {e}"));
+    assert_eq!(allocated, 0, "declared less");
+
+    // The frame does not say, but its few bytes cannot be 32 MiB: every
+    // 128 KiB of output takes a block, and a block at least three bytes.
+    let mut zeros = zstd::stream::Encoder::new(Vec::new(), 3).unwrap();
+    std::io::Write::write_all(&mut zeros, &[0; 4000]).unwrap();
+    let zeros = zeros.finish().unwrap();
+    assert!(zeros.len() < 64, "{} bytes", zeros.len());
+    let (result, allocated) = inflated(compressed_ids(2000, 4000, &zeros));
+    assert_eq!(
+        (result.map(|b| b.payloads()).ok(), allocated),
+        (Some(1), 4000)
+    );
+    let (result, allocated) = inflated(compressed_ids(2000, 32 * MIB, &zeros));
+    malformed(
+        result,
+        "declared size is more than the compressed bytes can hold",
+    )
+    .unwrap_or_else(|e| panic!("no content size: {e}"));
+    assert_eq!(allocated, 0, "no content size");
+
+    // Not a zstd frame at all, or not all of one.
+    let cut = &sized[..sized.len() - 3];
+    for garbage in [&b"zstd?"[..], &[0u8; 64][..], cut] {
+        let (result, allocated) = inflated(compressed_ids(2000, 4000, garbage));
+        malformed(result, "invalid zstd buffer")
+            .unwrap_or_else(|e| panic!("{} bytes of garbage: {e}", garbage.len()));
+        assert_eq!(allocated, 0, "{} bytes of garbage", garbage.len());
+    }
+
+    // No frame holds nothing.
+    let (result, allocated) = inflated(compressed_ids(2000, 4000, &[]));
+    malformed(result, "decompressed size differs from the declared size")
+        .unwrap_or_else(|e| panic!("no frame: {e}"));
+    assert_eq!(allocated, 0, "no frame");
+
+    // A size the bytes could hold, but do not: refused after decompressing,
+    // and what was allocated is what the sender paid for in blocks.
+    let (result, allocated) = inflated(compressed_ids(2000, 4002, &streamed));
+    malformed(result, "decompressed size differs from the declared size")
+        .unwrap_or_else(|e| panic!("two bytes more: {e}"));
+    assert_eq!(allocated, 4002);
+}
+
 #[test]
 fn uncompressed_buffer_outside_the_body_is_refused() {
     let body = [7u8, 0, 0, 0, 0, 0, 0, 0];

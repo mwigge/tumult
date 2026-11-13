@@ -474,6 +474,62 @@ impl Planner {
     }
 }
 
+/// The most one zstd block decompresses to (RFC 8878, 3.1.1.2.4).
+const ZSTD_BLOCK_MAX: usize = 128 * 1024;
+
+/// The least one zstd block takes of the compressed bytes: its header.
+const ZSTD_BLOCK_MIN: usize = 3;
+
+/// Whether `data` can be a zstd buffer of `declared` decompressed bytes,
+/// asked before anything is allocated for it: the declared size costs the
+/// sender eight bytes, whatever it says.
+///
+/// The frames of `data` are walked by their headers, nothing is
+/// decompressed:
+///
+/// - When every frame header carries its content size, the sizes must
+///   add up to `declared`.
+/// - When one does not (a streaming encoder), the sizes that are known
+///   must not be more than `declared`, and `declared` not more than the
+///   bytes can hold: every [`ZSTD_BLOCK_MAX`] bytes of output take a
+///   block, and a block at least [`ZSTD_BLOCK_MIN`] bytes of `data`. So
+///   a sender pays for the memory it makes the receiver allocate with
+///   bytes on the wire (at the format's best ratio) as well as with its
+///   decoded-bytes budget.
+fn could_inflate_to(data: &[u8], declared: usize) -> Result<(), &'static str> {
+    const INVALID: &str = "invalid zstd buffer";
+    const DIFFERS: &str = "decompressed size differs from the declared size";
+    let declared_wide = u64::try_from(declared).unwrap_or(u64::MAX);
+    let (mut known, mut all_known) = (0u64, true);
+    let mut rest = data;
+    while !rest.is_empty() {
+        match zstd::zstd_safe::get_frame_content_size(rest) {
+            Ok(Some(size)) => known = known.saturating_add(size),
+            Ok(None) => all_known = false,
+            Err(_) => return Err(INVALID),
+        }
+        let frame = zstd::zstd_safe::find_frame_compressed_size(rest).map_err(|_| INVALID)?;
+        rest = match rest.get(frame..) {
+            Some(rest) if frame > 0 => rest,
+            _ => return Err(INVALID),
+        };
+    }
+    if known > declared_wide || (all_known && known != declared_wide) {
+        return Err(DIFFERS);
+    }
+    if declared > (data.len() / ZSTD_BLOCK_MIN).saturating_mul(ZSTD_BLOCK_MAX) {
+        return Err("declared size is more than the compressed bytes can hold");
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The largest buffer this thread has allocated to decompress into.
+    pub(super) static LARGEST_INFLATED: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
 /// Reads the nodes and buffers of one record (or dictionary) batch in
 /// schema order.
 struct Reader<'a> {
@@ -649,9 +705,13 @@ impl<'a> Reader<'a> {
         if declared < need {
             return Err(self.fail("buffer shorter than its array"));
         }
-        // Charged before the memory is asked for; zstd never writes past
-        // the slice it is given.
+        // Charged, and held against what the compressed bytes can be,
+        // before the memory is asked for; zstd never writes past the
+        // slice it is given.
         self.budget.charge_bytes(declared)?;
+        could_inflate_to(data, declared).map_err(|why| self.fail(why))?;
+        #[cfg(test)]
+        LARGEST_INFLATED.set(LARGEST_INFLATED.get().max(declared));
         let mut out = MutableBuffer::from_len_zeroed(declared);
         let payload = self.payload;
         let zstd = match &mut self.zstd {
