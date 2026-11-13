@@ -59,7 +59,7 @@ fn scope(name: &str, version: &str, attrs: Vec<KeyValue>) -> Option<Instrumentat
 /// Two resources, two scopes, three spans: promoted attributes on spans and
 /// resources, every attribute value type, events with attributes, both
 /// status shapes.
-fn traces_fixture() -> ExportTraceServiceRequest {
+pub(super) fn traces_fixture() -> ExportTraceServiceRequest {
     let experiment = Span {
         trace_id: vec![0xab; 16],
         span_id: vec![0x01; 8],
@@ -369,7 +369,7 @@ fn unknown_payload_types_and_garbage_are_rejected() {
     ));
 }
 
-fn logs_fixture() -> ExportLogsServiceRequest {
+pub(super) fn logs_fixture() -> ExportLogsServiceRequest {
     ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
             resource: resource(vec![
@@ -444,7 +444,7 @@ fn logs_round_trip_matches_the_otlp_rows() {
     assert_eq!(rows[2].body, "");
 }
 
-fn metrics_fixture() -> ExportMetricsServiceRequest {
+pub(super) fn metrics_fixture() -> ExportMetricsServiceRequest {
     let point = |t: u64, value: number_data_point::Value, attrs: Vec<KeyValue>| NumberDataPoint {
         attributes: attrs,
         start_time_unix_nano: 1_785_000_000_000_000_000,
@@ -992,6 +992,8 @@ fn context(limits: super::OtapLimits, convert: Convert) -> StreamContext {
         decodes: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
         signal: "traces",
         convert,
+        guards: super::service::Guards::new(&limits),
+        connection: None,
     }
 }
 
@@ -1057,7 +1059,10 @@ async fn serve_with(limits: super::OtapLimits) -> Served {
     let router = tonic::transport::Server::builder().add_service(otap.traces());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let incoming = tonic::codegen::tokio_stream::wrappers::TcpListenerStream::new(listener);
+    // The daemon's listener: the per-connection share needs the peer
+    // address to come through it.
+    let incoming =
+        crate::listener::incoming(listener, crate::listener::ConnectionLimits::default());
     let server = tokio::spawn(async move {
         router.serve_with_incoming(incoming).await.unwrap();
     });
@@ -1163,4 +1168,178 @@ fn batch_reports_how_many_tables_continued_an_earlier_schema() {
     let second = consumer.consume(encoder.traces(&traces_fixture())).unwrap();
     assert_eq!(second.continued_payloads(), second.payloads());
     assert_eq!(second.payloads(), first.payloads());
+}
+
+// ---------------------------------------------------------------------------
+// Streams that misbehave over time rather than in one batch.
+// ---------------------------------------------------------------------------
+
+fn rejected(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+    Err(OtapError::Unsupported("TEST_ONLY"))
+}
+
+fn batches(n: usize) -> Vec<Result<BatchArrowRecords, tonic::Status>> {
+    let mut encoder = Encoder::new(false);
+    (0..n)
+        .map(|_| Ok(encoder.traces(&traces_fixture())))
+        .collect()
+}
+
+#[tokio::test]
+async fn stream_closes_after_too_many_rejected_batches() {
+    let limits = super::OtapLimits {
+        max_rejected_batches: 2,
+        ..super::OtapLimits::default()
+    };
+    let mut out = respond(
+        tokio_stream::iter(batches(5)),
+        context(limits, rejected),
+        None,
+    );
+    for _ in 0..2 {
+        let ack = out.next().await.unwrap().unwrap();
+        assert_eq!(ack.status_code, StatusCode::InvalidArgument as i32);
+    }
+    let closed = out.next().await.unwrap().unwrap_err();
+    assert_eq!(closed.code(), tonic::Code::InvalidArgument, "{closed}");
+    assert!(closed.message().contains("rejected batches"), "{closed}");
+    assert!(out.next().await.is_none(), "nothing after the close");
+}
+
+#[tokio::test]
+async fn rejected_batch_warnings_are_rate_limited() {
+    let limits = super::OtapLimits {
+        max_rejected_batches: 1000,
+        ..super::OtapLimits::default()
+    };
+    let (logs, _guard) = crate::test_logs::capture();
+    let mut out = respond(
+        tokio_stream::iter(batches(200)),
+        context(limits, rejected),
+        None,
+    );
+    let mut acks = 0;
+    while let Some(item) = out.next().await {
+        item.unwrap();
+        acks += 1;
+    }
+    assert_eq!(acks, 200, "every batch is still answered");
+    let text = logs.text();
+    let warned = text.matches("OTAP batch rejected").count();
+    assert!(
+        (1..=20).contains(&warned),
+        "{warned} warnings for 200 rejected batches"
+    );
+}
+
+#[tokio::test]
+async fn acks_nobody_reads_end_the_stream() {
+    let limits = super::OtapLimits {
+        ack_timeout: std::time::Duration::from_millis(50),
+        ..super::OtapLimits::default()
+    };
+    let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+    let permit = slots.clone().try_acquire_owned().unwrap();
+    // Ten batches, then silence; the client never reads a status.
+    let inbound = tokio_stream::iter(batches(10)).chain(tokio_stream::pending());
+    let out = respond(inbound, context(limits, no_rows), Some(permit));
+    let freed = tokio::time::timeout(std::time::Duration::from_secs(5), slots.acquire()).await;
+    assert!(
+        freed.is_ok(),
+        "the stream still holds its slot although nobody reads its acks"
+    );
+    drop(out);
+}
+
+#[tokio::test]
+async fn stream_is_closed_at_its_maximum_lifetime() {
+    let limits = super::OtapLimits {
+        stream_lifetime: std::time::Duration::from_millis(100),
+        ..super::OtapLimits::default()
+    };
+    let inbound = tokio_stream::pending::<Result<BatchArrowRecords, tonic::Status>>();
+    let mut out = respond(inbound, context(limits, no_rows), None);
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(5), out.next())
+        .await
+        .expect("the stream outlived its lifetime");
+    let status = closed.unwrap().unwrap_err();
+    assert_eq!(status.code(), tonic::Code::Unavailable);
+    assert!(status.message().contains("lifetime"), "{status}");
+}
+
+#[tokio::test]
+async fn one_connection_gets_only_its_share_of_the_streams() {
+    let served = serve_with(super::OtapLimits {
+        max_streams: 4,
+        max_streams_per_connection: 1,
+        ..super::OtapLimits::default()
+    })
+    .await;
+    let open = |client: &ArrowTracesServiceClient<tonic::transport::Channel>| {
+        let (tx, rx) = tokio::sync::mpsc::channel::<BatchArrowRecords>(1);
+        let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut client = client.clone();
+        async move { (tx, client.arrow_traces(tonic::Request::new(outbound)).await) }
+    };
+    let first_connection = connect(served.addr).await;
+    let (_first_tx, first) = open(&first_connection).await;
+    first.unwrap();
+    let (_tx, second) = open(&first_connection).await;
+    let refused = second.unwrap_err();
+    assert_eq!(refused.code(), tonic::Code::ResourceExhausted, "{refused}");
+    assert!(refused.message().contains("connection"), "{refused}");
+
+    // Another connection still gets a stream.
+    let second_connection = connect(served.addr).await;
+    let (_second_tx, other) = open(&second_connection).await;
+    other.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn decode_permit_is_held_until_the_batch_is_written() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+    // Stall the writer inside a batch of its own.
+    let (release, stalled) = std::sync::mpsc::channel::<()>();
+    let (entered, running) = tokio::sync::oneshot::channel::<()>();
+    let blocker = ingest.clone();
+    let blocked = tokio::spawn(async move {
+        blocker
+            .write(crate::writer::Batch::Exec(Box::new(move |_| {
+                let _ = entered.send(());
+                let _ = stalled.recv();
+                Ok(())
+            })))
+            .await
+    });
+    running.await.unwrap();
+    assert_eq!(ingest.queued(), 0, "the writer took the stalling batch");
+
+    let mut shared = context(super::OtapLimits::default(), no_rows);
+    shared.ingest = ingest.clone();
+    let decodes = shared.decodes.clone();
+    let mut out = respond(tokio_stream::iter(batches(1)), shared, None);
+
+    // The batch is decoded, converted and handed to the stalled writer.
+    let handed_over = async {
+        while ingest.queued() != 1 {
+            tokio::task::yield_now().await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(30), handed_over)
+        .await
+        .expect("the converted batch reaches the writer queue");
+    assert_eq!(
+        decodes.available_permits(),
+        0,
+        "the decode permit was given back while the batch still waits for the writer"
+    );
+
+    release.send(()).unwrap();
+    blocked.await.unwrap().unwrap();
+    let ack = out.next().await.unwrap().unwrap();
+    assert_eq!(ack.status_code, StatusCode::Ok as i32);
+    assert!(out.next().await.is_none());
+    assert_eq!(decodes.available_permits(), 1, "stored: the permit is back");
 }

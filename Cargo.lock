@@ -8242,6 +8242,7 @@ dependencies = [
  "ciborium",
  "csv",
  "dirs-next",
+ "flatbuffers",
  "hmac 0.12.1",
  "opentelemetry-proto",
  "prost",
@@ -8264,6 +8265,7 @@ dependencies = [
  "tumult-lake",
  "tumult-otlp",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

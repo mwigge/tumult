@@ -187,6 +187,11 @@ prost = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
 ciborium = "0.2"
+# OTel-Arrow: IPC buffers are decompressed by the receiver itself; flatbuffers
+# builds hostile IPC messages in tests and the proof probe (same versions as
+# arrow-ipc).
+zstd = "0.13"
+flatbuffers = "25.12"
 
 # Analytics reports, manual import, embedded web UI
 serde_yaml = "0.9"

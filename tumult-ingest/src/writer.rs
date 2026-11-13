@@ -64,6 +64,12 @@ impl IngestWriter {
         )
     }
 
+    /// Batches waiting in the channel for the writer task.
+    #[cfg(test)]
+    pub(crate) fn queued(&self) -> usize {
+        self.tx.max_capacity() - self.tx.capacity()
+    }
+
     /// Enqueue a batch and wait until it has been persisted (or failed).
     /// Awaiting the channel send is the backpressure mechanism.
     ///
@@ -174,9 +180,7 @@ fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
         Batch::Spans(rows) => writer.insert_spans(&rows)?,
         Batch::Logs(rows) => writer.insert_logs(&rows)?,
         Batch::Metrics(rows) => {
-            writer.insert_metric_sums(&rows.sums)?;
-            writer.insert_metric_gauges(&rows.gauges)?;
-            writer.insert_metric_histograms(&rows.histograms)?;
+            writer.insert_metrics(&rows.sums, &rows.gauges, &rows.histograms)?;
         }
         Batch::Exec(f) => f(writer).map_err(IngestError::Channel)?,
     }
@@ -342,5 +346,58 @@ mod tests {
             .query_json_rows("SELECT count FROM metric_histograms")
             .unwrap();
         assert_eq!(hists[0]["count"], serde_json::json!(2));
+    }
+
+    #[tokio::test]
+    async fn metrics_batch_is_stored_whole_or_not_at_all() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("k.duckdb")).unwrap();
+        let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 4);
+        // Make the last of the three inserts fail.
+        ingest
+            .write(Batch::Exec(Box::new(|writer| {
+                writer
+                    .execute("DROP TABLE metric_histograms", [])
+                    .map(drop)
+                    .map_err(|e| e.to_string())
+            })))
+            .await
+            .unwrap();
+        let rows = tumult_otlp::MetricRows {
+            rejected_data_points: 0,
+            sums: vec![tumult_lake::MetricSumRow {
+                ts_ns: 1,
+                metric_name: "demo.sum".into(),
+                value: 3.0,
+                ..Default::default()
+            }],
+            gauges: vec![tumult_lake::MetricGaugeRow {
+                ts_ns: 2,
+                metric_name: "demo.gauge".into(),
+                value: 0.5,
+                ..Default::default()
+            }],
+            histograms: vec![tumult_lake::MetricHistogramRow {
+                ts_ns: 3,
+                metric_name: "demo.hist".into(),
+                count: 2,
+                sum: 10.0,
+                bucket_counts: vec![1, 1],
+                explicit_bounds: vec![5.0],
+                ..Default::default()
+            }],
+        };
+        ingest.write(Batch::Metrics(rows)).await.unwrap_err();
+        // The sender retries the whole batch: nothing of it may be stored.
+        let stored = store
+            .read_only()
+            .unwrap()
+            .query_json_rows(
+                "SELECT (SELECT count(*) FROM metric_sums) AS sums, \
+                 (SELECT count(*) FROM metric_gauges) AS gauges",
+            )
+            .unwrap();
+        assert_eq!(stored[0]["sums"], 0, "{stored:?}");
+        assert_eq!(stored[0]["gauges"], 0, "{stored:?}");
     }
 }

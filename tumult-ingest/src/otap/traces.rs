@@ -21,6 +21,30 @@ use super::OtapError;
 
 const SPAN_EVENTS: &str = "SPAN_EVENTS";
 
+/// Columns the exporter always writes; a table without them is not spans.
+const REQUIRED: [&str; 5] = [
+    "start_time_unix_nano",
+    "duration_time_unix_nano",
+    "trace_id",
+    "span_id",
+    "name",
+];
+
+const TRACE_ID_BYTES: usize = 16;
+const SPAN_ID_BYTES: usize = 8;
+
+/// The tables of a traces batch. Link tables are accepted and not stored.
+const TABLES: [ArrowPayloadType; 8] = [
+    ArrowPayloadType::ResourceAttrs,
+    ArrowPayloadType::ScopeAttrs,
+    ArrowPayloadType::Spans,
+    ArrowPayloadType::SpanAttrs,
+    ArrowPayloadType::SpanEvents,
+    ArrowPayloadType::SpanLinks,
+    ArrowPayloadType::SpanEventAttrs,
+    ArrowPayloadType::SpanLinkAttrs,
+];
+
 /// Decode one OTAP traces batch into the OTLP request the gRPC/HTTP paths
 /// receive.
 ///
@@ -28,10 +52,11 @@ const SPAN_EVENTS: &str = "SPAN_EVENTS";
 /// Any missing root table, malformed column, unknown value type, duplicate
 /// id, child row without a parent row, or exceeded limit.
 pub fn to_trace_request(batch: &OtapBatch) -> Result<ExportTraceServiceRequest, OtapError> {
+    batch.only("traces", &TABLES)?;
     let spans_rb = batch
         .get(ArrowPayloadType::Spans)
         .ok_or(OtapError::MissingTable("SPANS"))?;
-    let mut root = Root::new("SPANS", spans_rb, batch)?;
+    let mut root = Root::new("SPANS", spans_rb, batch, &REQUIRED)?;
     let status = root.table.struct_table("status")?;
     let mut span_attrs = Attrs::decode(batch, ArrowPayloadType::SpanAttrs, "SPAN_ATTRS")?;
     let mut events = span_events(batch)?;
@@ -39,6 +64,7 @@ pub fn to_trace_request(batch: &OtapBatch) -> Result<ExportTraceServiceRequest, 
     let mut out = ExportTraceServiceRequest::default();
     let mut groups = Groups::default();
     for i in 0..root.len() {
+        root.table.tick()?;
         let (r, new_resource) = groups.resource(root.resource_id(i), out.resource_spans.len());
         if new_resource {
             out.resource_spans.push(ResourceSpans {
@@ -86,10 +112,10 @@ fn span_at(
         _ => None,
     };
     Ok(Span {
-        trace_id: t.vec_at("trace_id", i)?,
-        span_id: t.vec_at("span_id", i)?,
+        trace_id: t.id_at("trace_id", i, TRACE_ID_BYTES)?,
+        span_id: t.id_at("span_id", i, SPAN_ID_BYTES)?,
         trace_state: t.string_at("trace_state", i)?,
-        parent_span_id: t.vec_at("parent_span_id", i)?,
+        parent_span_id: t.optional_id_at("parent_span_id", i, SPAN_ID_BYTES)?,
         flags: t.u32_at("flags", i)?.unwrap_or(0),
         name: t.string_at("name", i)?,
         kind: t.i32_at("kind", i)?.unwrap_or(0),
@@ -126,6 +152,7 @@ fn span_events(batch: &OtapBatch) -> Result<HashMap<u32, Vec<Event>>, OtapError>
     }
     let mut previous: Option<(String, u32)> = None;
     for (i, (raw, event_id)) in parents.values.iter().flatten().zip(&event_ids).enumerate() {
+        t.tick()?;
         let name = t.string_at("name", i)?;
         let parent = match &previous {
             Some((prev_name, prev_parent)) if parents.encoded && *prev_name == name => {

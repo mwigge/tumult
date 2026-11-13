@@ -12,6 +12,14 @@ use super::decode::OtapBatch;
 use super::proto::ArrowPayloadType;
 use super::OtapError;
 
+/// The tables of a logs batch.
+const TABLES: [ArrowPayloadType; 4] = [
+    ArrowPayloadType::ResourceAttrs,
+    ArrowPayloadType::ScopeAttrs,
+    ArrowPayloadType::Logs,
+    ArrowPayloadType::LogAttrs,
+];
+
 /// Decode one OTAP logs batch into the OTLP request the gRPC/HTTP paths
 /// receive.
 ///
@@ -19,16 +27,18 @@ use super::OtapError;
 /// Any missing root table, malformed column, unknown value type, duplicate
 /// id, attribute row without a parent row, or exceeded limit.
 pub fn to_logs_request(batch: &OtapBatch) -> Result<ExportLogsServiceRequest, OtapError> {
+    batch.only("logs", &TABLES)?;
     let logs_rb = batch
         .get(ArrowPayloadType::Logs)
         .ok_or(OtapError::MissingTable("LOGS"))?;
-    let mut root = Root::new("LOGS", logs_rb, batch)?;
+    let mut root = Root::new("LOGS", logs_rb, batch, &[])?;
     let body = root.table.struct_table("body")?;
     let mut log_attrs = Attrs::decode(batch, ArrowPayloadType::LogAttrs, "LOG_ATTRS")?;
 
     let mut out = ExportLogsServiceRequest::default();
     let mut groups = Groups::default();
     for i in 0..root.len() {
+        root.table.tick()?;
         let (r, new_resource) = groups.resource(root.resource_id(i), out.resource_logs.len());
         if new_resource {
             out.resource_logs.push(ResourceLogs {
@@ -74,8 +84,8 @@ fn record_at(
         attributes: log_attrs.take(root.ids[i]),
         dropped_attributes_count: t.u32_at("dropped_attributes_count", i)?.unwrap_or(0),
         flags: t.u32_at("flags", i)?.unwrap_or(0),
-        trace_id: t.vec_at("trace_id", i)?,
-        span_id: t.vec_at("span_id", i)?,
+        trace_id: t.optional_id_at("trace_id", i, 16)?,
+        span_id: t.optional_id_at("span_id", i, 8)?,
         event_name: t.string_at("event_name", i)?,
     })
 }

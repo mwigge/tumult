@@ -48,8 +48,10 @@ impl Root {
         name: &'static str,
         root: &RecordBatch,
         batch: &OtapBatch,
+        required: &[&str],
     ) -> Result<Self, OtapError> {
         let table = Table::new(name, root, batch.budget())?;
+        table.require(required)?;
         let ids = table.unique_ids("id")?;
         let resource = table.struct_table("resource")?;
         let scope = table.struct_table("scope")?;

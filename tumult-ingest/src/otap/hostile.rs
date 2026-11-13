@@ -16,6 +16,8 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::writer::{DictionaryHandling, IpcWriteOptions, StreamWriter};
 use arrow::ipc::CompressionType;
 
+use super::craft::{batch_message, schema_message, BatchHeader};
+use super::hostile_ipc::{span_columns, spans_from};
 use super::limits::OtapLimits;
 use super::proto::{ArrowPayload, ArrowPayloadType, BatchArrowRecords};
 use super::{to_logs_request, to_metrics_request, to_trace_request, OtapError, StreamConsumer};
@@ -130,9 +132,19 @@ fn attrs(parent: Field, parents: ArrayRef, key: &str, value: &str) -> RecordBatc
     ])
 }
 
-/// A SPANS table of only plain ids.
+/// A SPANS table with the given plain ids and every required column.
 fn spans(ids: impl IntoIterator<Item = u16>) -> RecordBatch {
-    table(vec![(plain("id", DataType::UInt16), u16s(ids))])
+    spans_with(ids, Vec::new())
+}
+
+fn spans_with(ids: impl IntoIterator<Item = u16>, extra: Vec<(Field, ArrayRef)>) -> RecordBatch {
+    let ids = u16s(ids);
+    let mut columns = span_columns(ids.len());
+    columns.extra = extra;
+    let full = spans_from(ids.len(), columns);
+    let mut arrays = full.columns().to_vec();
+    arrays[0] = ids;
+    RecordBatch::try_new(full.schema(), arrays).unwrap()
 }
 
 fn limit_named(err: &OtapError, expected: &str) -> bool {
@@ -169,44 +181,56 @@ fn first_record_batch(bytes: &[u8]) -> (usize, usize, i64) {
 // 1. Declared row counts
 // ---------------------------------------------------------------------------
 
-fn zero_columns(rows: usize) -> RecordBatch {
-    RecordBatch::try_new_with_options(
-        Arc::new(Schema::empty()),
-        vec![],
-        &RecordBatchOptions::new().with_row_count(Some(rows)),
-    )
-    .unwrap()
+/// One `UInt16` column whose record batch header declares `rows` rows and
+/// no data at all.
+fn declared_rows(rows: i64) -> Vec<u8> {
+    let schema = Schema::new(vec![plain("id", DataType::UInt16)]);
+    let header = BatchHeader {
+        rows,
+        nodes: vec![(rows, 0)],
+        buffers: vec![(0, 0), (0, 0)],
+        ..BatchHeader::default()
+    };
+    let mut out = schema_message(&schema);
+    out.extend(batch_message(&header, &[]));
+    out
 }
 
 #[test]
 fn declared_row_count_without_backing_data_is_refused() {
     // ~200 bytes on the wire, 2^36 rows declared: 512 GB of `Option<u32>`.
-    let bomb = ipc(&zero_columns(1 << 36));
+    let bomb = declared_rows(1 << 36);
     assert!(bomb.len() < 400, "{} bytes", bomb.len());
     let err = traces(records(vec![payload(Ty::Spans, bomb)])).unwrap_err();
     assert!(limit_named(&err, "rows per table"), "{err}");
 
-    let max = usize::try_from(i64::MAX).unwrap();
-    let err = traces(records(vec![payload(Ty::Spans, ipc(&zero_columns(max)))])).unwrap_err();
+    let err = traces(records(vec![payload(Ty::Spans, declared_rows(i64::MAX))])).unwrap_err();
     assert!(limit_named(&err, "rows per table"), "{err}");
 
     // A negative length is malformed, not a limit.
-    let mut negative = ipc(&zero_columns(max));
-    patch(
-        &mut negative,
-        &i64::MAX.to_le_bytes(),
-        &(-1i64).to_le_bytes(),
-    );
-    let err = traces(records(vec![payload(Ty::Spans, negative)])).unwrap_err();
+    let err = traces(records(vec![payload(Ty::Spans, declared_rows(-1))])).unwrap_err();
     assert!(matches!(err, OtapError::Malformed { .. }), "{err}");
 
-    // A Null-typed column has no buffers either.
+    // Rows within the limit still need their data.
+    let err = traces(records(vec![payload(Ty::Spans, declared_rows(250_000))])).unwrap_err();
+    assert!(matches!(err, OtapError::Malformed { .. }), "{err}");
+
+    // Tables that need no buffers for their rows are not decoded at all: no
+    // columns, or a Null-typed column.
+    let empty = RecordBatch::try_new_with_options(
+        Arc::new(Schema::empty()),
+        vec![],
+        &RecordBatchOptions::new().with_row_count(Some(1 << 36)),
+    )
+    .unwrap();
+    let err = traces(records(vec![payload(Ty::Spans, ipc(&empty))])).unwrap_err();
+    assert!(matches!(err, OtapError::Malformed { .. }), "{err}");
     let nulls = table(vec![(
         Field::new("id", DataType::Null, true),
         Arc::new(NullArray::new(1 << 36)) as ArrayRef,
     )]);
     let err = traces(records(vec![payload(Ty::Spans, ipc(&nulls))])).unwrap_err();
-    assert!(limit_named(&err, "rows per table"), "{err}");
+    assert!(matches!(err, OtapError::Malformed { .. }), "{err}");
 
     // The limit is the configured one, and one row below it passes.
     let limits = OtapLimits {
@@ -257,10 +281,13 @@ fn body_length_beyond_the_payload_is_refused() {
 
 #[test]
 fn declared_decompressed_size_is_budgeted_before_decompression() {
-    let blob = table(vec![(
-        Field::new("trace_id", DataType::Binary, true),
-        Arc::new(BinaryArray::from_iter_values([&[7u8; 4099][..]])) as ArrayRef,
-    )]);
+    let blob = spans_with(
+        [1],
+        vec![(
+            Field::new("blob", DataType::Binary, true),
+            Arc::new(BinaryArray::from_iter_values([&[7u8; 4099][..]])) as ArrayRef,
+        )],
+    );
     let good = ipc_with(&[&blob], zstd());
     assert_eq!(
         traces(records(vec![payload(Ty::Spans, good.clone())])).unwrap(),
@@ -468,13 +495,13 @@ fn attribute_count_is_capped_per_batch() {
     let with_resource = |mut records: BatchArrowRecords| {
         let resource =
             StructArray::from(vec![(Arc::new(plain("id", DataType::UInt16)), u16s([0]))]);
-        let spans = table(vec![
-            (plain("id", DataType::UInt16), u16s([1])),
-            (
+        let spans = spans_with(
+            [1],
+            vec![(
                 Field::new("resource", resource.data_type().clone(), true),
                 Arc::new(resource) as ArrayRef,
-            ),
-        ]);
+            )],
+        );
         records.arrow_payloads[0] = payload(Ty::Spans, ipc(&spans));
         records
     };
@@ -494,17 +521,19 @@ fn spans_in(groups: &[(u16, u16)]) -> RecordBatch {
         Arc::new(plain("id", DataType::UInt16)),
         u16s(groups.iter().map(|g| g.1)),
     )]);
-    table(vec![
-        (plain("id", DataType::UInt16), u16s(0..n)),
-        (
-            Field::new("resource", resource.data_type().clone(), true),
-            Arc::new(resource) as ArrayRef,
-        ),
-        (
-            Field::new("scope", scope.data_type().clone(), true),
-            Arc::new(scope) as ArrayRef,
-        ),
-    ])
+    spans_with(
+        0..n,
+        vec![
+            (
+                Field::new("resource", resource.data_type().clone(), true),
+                Arc::new(resource) as ArrayRef,
+            ),
+            (
+                Field::new("scope", scope.data_type().clone(), true),
+                Arc::new(scope) as ArrayRef,
+            ),
+        ],
+    )
 }
 
 #[test]
@@ -945,7 +974,7 @@ fn value_errors_name_the_real_table_and_ipc_errors_carry_no_arrow_text() {
         "{err}"
     );
 
-    // A body arrow refuses after the pre-scan: offsets that run backwards.
+    // Offsets that run backwards are refused before an array is built.
     let good = ipc(&table(vec![(
         Field::new("name", DataType::Utf8, true),
         strs(["abcdefgh", "ijklmnop"]),
@@ -957,6 +986,15 @@ fn value_errors_name_the_real_table_and_ipc_errors_carry_no_arrow_text() {
         &[8, 0, 0, 0, 2, 0, 0, 0],
     );
     let err = traces(records(vec![payload(Ty::Spans, bad)])).unwrap_err();
-    assert!(matches!(err, OtapError::Ipc { .. }), "{err}");
+    assert!(
+        matches!(&err, OtapError::Malformed { reason, .. } if reason.contains("offsets")),
+        "{err}"
+    );
+
+    // What arrow says about a refused array stays out of the message.
+    let err = OtapError::Ipc {
+        payload: "SPANS",
+        source: arrow::error::ArrowError::InvalidArgumentError("sender text".into()),
+    };
     assert_eq!(err.to_string(), "arrow IPC decode failed for SPANS");
 }

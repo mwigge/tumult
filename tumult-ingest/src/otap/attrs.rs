@@ -19,7 +19,7 @@ use opentelemetry_proto::tonic::common::v1::{
 
 use super::arrays::{orphans, Table};
 use super::decode::OtapBatch;
-use super::limits::Budget;
+use super::limits::{Budget, MAX_CBOR_DEPTH};
 use super::proto::ArrowPayloadType;
 use super::OtapError;
 
@@ -32,6 +32,9 @@ pub(super) struct Attrs {
     shared: HashSet<u32>,
     budget: Arc<Budget>,
 }
+
+/// Columns the exporter always writes in an attribute table.
+const REQUIRED: [&str; 3] = ["parent_id", "key", "type"];
 
 /// Value type codes of the OTAP `type` column.
 mod value_type {
@@ -62,6 +65,7 @@ impl Attrs {
             return Ok(out);
         };
         let t = Table::new(table, rb, batch.budget())?;
+        t.require(&REQUIRED)?;
         let parents = t.parents()?;
         out.budget.charge_attributes(t.len())?;
         let missing = parents.values.iter().filter(|p| p.is_none()).count();
@@ -70,6 +74,7 @@ impl Attrs {
         }
         let mut previous: Option<(String, Option<any_value::Value>, u32)> = None;
         for (i, raw) in parents.values.iter().flatten().enumerate() {
+            t.tick()?;
             let key = t.string_at("key", i)?;
             let value = any_value_at(&t, i)?;
             let parent = match &previous {
@@ -157,7 +162,8 @@ pub(super) fn any_value_at(t: &Table, i: usize) -> Result<Option<any_value::Valu
 fn cbor_value(
     bytes: &[u8],
 ) -> Result<Option<any_value::Value>, ciborium::de::Error<std::io::Error>> {
-    let value: ciborium::Value = ciborium::from_reader(bytes)?;
+    let value: ciborium::Value =
+        ciborium::de::from_reader_with_recursion_limit(bytes, MAX_CBOR_DEPTH)?;
     Ok(convert(value))
 }
 
@@ -195,5 +201,50 @@ fn convert(value: ciborium::Value) -> Option<any_value::Value> {
         })),
         C::Tag(_, inner) => convert(*inner),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `depth` arrays inside each other around the integer 1.
+    fn nested(depth: usize) -> Vec<u8> {
+        let mut bytes = vec![0x81; depth];
+        bytes.push(0x01);
+        bytes
+    }
+
+    #[test]
+    fn shallow_cbor_decodes_and_deep_cbor_is_refused() {
+        assert!(matches!(
+            cbor_value(&nested(4)),
+            Ok(Some(any_value::Value::ArrayValue(_)))
+        ));
+        // Attribute values are a few levels deep; nothing needs forty.
+        assert!(cbor_value(&nested(40)).is_err(), "depth 40 decoded");
+    }
+
+    #[tokio::test]
+    async fn very_deep_cbor_does_not_overflow_the_blocking_pool_stack() {
+        // Where the service decodes: a blocking-pool thread.
+        let refused = tokio::task::spawn_blocking(|| {
+            [1_000, 100_000, 3_000_000]
+                .into_iter()
+                .all(|depth| cbor_value(&nested(depth)).is_err())
+        })
+        .await
+        .unwrap();
+        assert!(refused);
+        // Maps nest the same way.
+        let mut maps = Vec::new();
+        for _ in 0..100_000 {
+            maps.extend_from_slice(&[0xa1, 0x61, b'k']);
+        }
+        maps.push(0x01);
+        let refused = tokio::task::spawn_blocking(move || cbor_value(&maps).is_err())
+            .await
+            .unwrap();
+        assert!(refused);
     }
 }

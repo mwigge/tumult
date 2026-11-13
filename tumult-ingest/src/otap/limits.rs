@@ -2,11 +2,18 @@
 //!
 //! Everything a peer declares (row counts, message body lengths,
 //! decompressed sizes, attribute counts) is checked against these limits
-//! before memory is allocated for it. Each limit has a named default and an
-//! environment variable; an unparsable or zero value is logged and ignored.
+//! before memory is allocated for it, and what a stream makes the receiver
+//! keep between batches (schemas, dictionaries) is bounded per stream and
+//! across all streams. Each configurable limit has a named default, a
+//! maximum and an environment variable; an unparsable or zero value is
+//! logged and ignored, a value above the maximum is logged and clamped.
+//!
+//! The structural caps ([`MAX_FIELDS_PER_SCHEMA`] and friends) are not
+//! configurable: the OTAP tables are far below them.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use super::OtapError;
 
@@ -31,8 +38,14 @@ pub const DEFAULT_MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// are refused with `RESOURCE_EXHAUSTED`. `KRONIKA_OTAP_MAX_STREAMS`.
 pub const DEFAULT_MAX_STREAMS: usize = 64;
 
-/// Batches decoded at once on the blocking pool; further batches wait, which
-/// is the backpressure the exporter sees.
+/// Arrow streams one connection may hold of [`DEFAULT_MAX_STREAMS`], so a
+/// single connection cannot take every slot.
+/// `KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION`.
+pub const DEFAULT_MAX_STREAMS_PER_CONNECTION: usize = 32;
+
+/// Batches decoded, converted and written at once; further batches wait,
+/// which is the backpressure the exporter sees. The permit is held until the
+/// batch is stored, so this also bounds the converted batches in memory.
 /// `KRONIKA_OTAP_MAX_CONCURRENT_DECODES`.
 pub const DEFAULT_MAX_CONCURRENT_DECODES: usize = 4;
 
@@ -40,6 +53,56 @@ pub const DEFAULT_MAX_CONCURRENT_DECODES: usize = 4;
 /// `UNAVAILABLE`. The exporter recycles its streams every 30 s by default.
 /// `KRONIKA_OTAP_STREAM_IDLE_SECS`.
 pub const DEFAULT_STREAM_IDLE: Duration = Duration::from_secs(300);
+
+/// How long a stream may live at all before it is closed with
+/// `UNAVAILABLE` between two batches. `KRONIKA_OTAP_STREAM_LIFETIME_SECS`.
+pub const DEFAULT_STREAM_LIFETIME: Duration = Duration::from_secs(600);
+
+/// How long a `BatchStatus` may wait for the client to read it before the
+/// stream is dropped. `KRONIKA_OTAP_ACK_TIMEOUT_SECS`.
+pub const DEFAULT_ACK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Wall-clock time one batch may spend being decoded and converted.
+/// `KRONIKA_OTAP_BATCH_DEADLINE_MS`.
+pub const DEFAULT_BATCH_DEADLINE: Duration = Duration::from_secs(10);
+
+/// Bytes of schemas and dictionaries one stream may make the receiver keep
+/// between batches. `KRONIKA_OTAP_MAX_STREAM_RETAINED_BYTES`.
+pub const DEFAULT_MAX_STREAM_RETAINED_BYTES: usize = 32 * 1024 * 1024;
+
+/// The same, summed over every open stream.
+/// `KRONIKA_OTAP_MAX_RETAINED_BYTES`.
+pub const DEFAULT_MAX_RETAINED_BYTES: usize = 256 * 1024 * 1024;
+
+/// Delta dictionary batches one schema of a stream may apply; each one
+/// copies the dictionary it extends. `KRONIKA_OTAP_MAX_DICTIONARY_DELTAS`.
+pub const DEFAULT_MAX_DICTIONARY_DELTAS: usize = 65_536;
+
+/// Batches a stream may have rejected before it is closed.
+/// `KRONIKA_OTAP_MAX_REJECTED_BATCHES`.
+pub const DEFAULT_MAX_REJECTED_BATCHES: usize = 8;
+
+/// Fields (columns, struct members and list items together) one Arrow schema
+/// may declare. The widest OTAP table has under 40.
+pub const MAX_FIELDS_PER_SCHEMA: usize = 256;
+
+/// Dictionary-encoded fields one Arrow schema may declare.
+pub const MAX_DICTIONARIES_PER_SCHEMA: usize = 64;
+
+/// Bytes of a payload's `schema_id`.
+pub const MAX_SCHEMA_ID_BYTES: usize = 256;
+
+/// Bytes of one Arrow field name.
+pub const MAX_FIELD_NAME_BYTES: usize = 128;
+
+/// How deep struct and list fields may nest.
+pub const MAX_SCHEMA_DEPTH: usize = 4;
+
+/// Nesting depth of a CBOR-encoded map or array attribute value.
+pub const MAX_CBOR_DEPTH: usize = 16;
+
+/// Rows between two looks at the clock in the decoding loops.
+const DEADLINE_STRIDE: usize = 256;
 
 /// The limits one receiver runs with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,8 +112,16 @@ pub struct OtapLimits {
     pub max_decoded_bytes_per_batch: usize,
     pub max_message_bytes: usize,
     pub max_streams: usize,
+    pub max_streams_per_connection: usize,
     pub max_concurrent_decodes: usize,
     pub stream_idle: Duration,
+    pub stream_lifetime: Duration,
+    pub ack_timeout: Duration,
+    pub batch_deadline: Duration,
+    pub max_stream_retained_bytes: usize,
+    pub max_retained_bytes: usize,
+    pub max_dictionary_deltas: usize,
+    pub max_rejected_batches: usize,
 }
 
 impl Default for OtapLimits {
@@ -61,10 +132,50 @@ impl Default for OtapLimits {
             max_decoded_bytes_per_batch: DEFAULT_MAX_DECODED_BYTES_PER_BATCH,
             max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
             max_streams: DEFAULT_MAX_STREAMS,
+            max_streams_per_connection: DEFAULT_MAX_STREAMS_PER_CONNECTION,
             max_concurrent_decodes: DEFAULT_MAX_CONCURRENT_DECODES,
             stream_idle: DEFAULT_STREAM_IDLE,
+            stream_lifetime: DEFAULT_STREAM_LIFETIME,
+            ack_timeout: DEFAULT_ACK_TIMEOUT,
+            batch_deadline: DEFAULT_BATCH_DEADLINE,
+            max_stream_retained_bytes: DEFAULT_MAX_STREAM_RETAINED_BYTES,
+            max_retained_bytes: DEFAULT_MAX_RETAINED_BYTES,
+            max_dictionary_deltas: DEFAULT_MAX_DICTIONARY_DELTAS,
+            max_rejected_batches: DEFAULT_MAX_REJECTED_BATCHES,
         }
     }
+}
+
+/// The largest value each variable accepts. Far above any sensible setting,
+/// low enough that no limit overflows what it is used for (semaphore
+/// permits, timer durations, byte counts).
+mod ceiling {
+    pub const ROWS: usize = 10_000_000;
+    pub const ATTRIBUTES: usize = 100_000_000;
+    pub const DECODED_BYTES: usize = 4 << 30;
+    pub const MESSAGE_BYTES: usize = 256 << 20;
+    pub const STREAMS: usize = 4096;
+    pub const CONCURRENT_DECODES: usize = 256;
+    pub const IDLE_SECS: usize = 86_400;
+    pub const LIFETIME_SECS: usize = 604_800;
+    pub const ACK_TIMEOUT_SECS: usize = 3600;
+    pub const DEADLINE_MS: usize = 600_000;
+    pub const STREAM_RETAINED_BYTES: usize = 1 << 30;
+    pub const RETAINED_BYTES: usize = 16 << 30;
+    pub const DICTIONARY_DELTAS: usize = 16_777_216;
+    pub const REJECTED_BATCHES: usize = 1_000_000;
+}
+
+fn whole(units: u128) -> usize {
+    usize::try_from(units).unwrap_or(usize::MAX)
+}
+
+fn secs(n: usize) -> Duration {
+    Duration::from_secs(u64::try_from(n).unwrap_or(u64::MAX))
+}
+
+fn millis(n: usize) -> Duration {
+    Duration::from_millis(u64::try_from(n).unwrap_or(u64::MAX))
 }
 
 impl OtapLimits {
@@ -76,11 +187,19 @@ impl OtapLimits {
 
     /// [`Self::from_env`] with the variable lookup injected.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Self {
-        let positive = |name: &str, default: usize| -> usize {
+        let bounded = |name: &str, default: usize, max: usize| -> usize {
             let Some(raw) = lookup(name) else {
                 return default;
             };
             match raw.trim().parse::<usize>() {
+                Ok(v) if v > max => {
+                    tracing::warn!(
+                        variable = name,
+                        max,
+                        "OTAP limit above its maximum, using the maximum"
+                    );
+                    max
+                }
                 Ok(v) if v > 0 => v,
                 _ => {
                     tracing::warn!(
@@ -92,42 +211,138 @@ impl OtapLimits {
                 }
             }
         };
-        let defaults = Self::default();
-        let idle_secs = positive(
-            "KRONIKA_OTAP_STREAM_IDLE_SECS",
-            usize::try_from(defaults.stream_idle.as_secs()).unwrap_or(usize::MAX),
-        );
+        let d = Self::default();
+        let max_streams = bounded("KRONIKA_OTAP_MAX_STREAMS", d.max_streams, ceiling::STREAMS);
         Self {
-            max_rows_per_table: positive("KRONIKA_OTAP_MAX_ROWS", defaults.max_rows_per_table),
-            max_attributes_per_batch: positive(
+            max_rows_per_table: bounded(
+                "KRONIKA_OTAP_MAX_ROWS",
+                d.max_rows_per_table,
+                ceiling::ROWS,
+            ),
+            max_attributes_per_batch: bounded(
                 "KRONIKA_OTAP_MAX_ATTRIBUTES",
-                defaults.max_attributes_per_batch,
+                d.max_attributes_per_batch,
+                ceiling::ATTRIBUTES,
             ),
-            max_decoded_bytes_per_batch: positive(
+            max_decoded_bytes_per_batch: bounded(
                 "KRONIKA_OTAP_MAX_DECODED_BYTES",
-                defaults.max_decoded_bytes_per_batch,
+                d.max_decoded_bytes_per_batch,
+                ceiling::DECODED_BYTES,
             ),
-            max_message_bytes: positive(
+            max_message_bytes: bounded(
                 "KRONIKA_OTAP_MAX_MESSAGE_BYTES",
-                defaults.max_message_bytes,
+                d.max_message_bytes,
+                ceiling::MESSAGE_BYTES,
             ),
-            max_streams: positive("KRONIKA_OTAP_MAX_STREAMS", defaults.max_streams),
-            max_concurrent_decodes: positive(
+            max_streams,
+            max_streams_per_connection: bounded(
+                "KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION",
+                d.max_streams_per_connection.min(max_streams),
+                max_streams,
+            ),
+            max_concurrent_decodes: bounded(
                 "KRONIKA_OTAP_MAX_CONCURRENT_DECODES",
-                defaults.max_concurrent_decodes,
+                d.max_concurrent_decodes,
+                ceiling::CONCURRENT_DECODES,
             ),
-            stream_idle: Duration::from_secs(u64::try_from(idle_secs).unwrap_or(u64::MAX)),
+            stream_idle: secs(bounded(
+                "KRONIKA_OTAP_STREAM_IDLE_SECS",
+                whole(d.stream_idle.as_secs().into()),
+                ceiling::IDLE_SECS,
+            )),
+            stream_lifetime: secs(bounded(
+                "KRONIKA_OTAP_STREAM_LIFETIME_SECS",
+                whole(d.stream_lifetime.as_secs().into()),
+                ceiling::LIFETIME_SECS,
+            )),
+            ack_timeout: secs(bounded(
+                "KRONIKA_OTAP_ACK_TIMEOUT_SECS",
+                whole(d.ack_timeout.as_secs().into()),
+                ceiling::ACK_TIMEOUT_SECS,
+            )),
+            batch_deadline: millis(bounded(
+                "KRONIKA_OTAP_BATCH_DEADLINE_MS",
+                whole(d.batch_deadline.as_millis()),
+                ceiling::DEADLINE_MS,
+            )),
+            max_stream_retained_bytes: bounded(
+                "KRONIKA_OTAP_MAX_STREAM_RETAINED_BYTES",
+                d.max_stream_retained_bytes,
+                ceiling::STREAM_RETAINED_BYTES,
+            ),
+            max_retained_bytes: bounded(
+                "KRONIKA_OTAP_MAX_RETAINED_BYTES",
+                d.max_retained_bytes,
+                ceiling::RETAINED_BYTES,
+            ),
+            max_dictionary_deltas: bounded(
+                "KRONIKA_OTAP_MAX_DICTIONARY_DELTAS",
+                d.max_dictionary_deltas,
+                ceiling::DICTIONARY_DELTAS,
+            ),
+            max_rejected_batches: bounded(
+                "KRONIKA_OTAP_MAX_REJECTED_BATCHES",
+                d.max_rejected_batches,
+                ceiling::REJECTED_BATCHES,
+            ),
         }
     }
 }
 
+/// Bytes every open stream together may make the receiver keep between
+/// batches. One pool is shared by all streams of a receiver.
+#[derive(Debug)]
+pub struct RetainedPool {
+    limit: usize,
+    used: AtomicUsize,
+}
+
+impl RetainedPool {
+    #[must_use]
+    pub fn new(limit: usize) -> Arc<Self> {
+        Arc::new(Self {
+            limit,
+            used: AtomicUsize::new(0),
+        })
+    }
+
+    /// Bytes streams hold right now.
+    #[must_use]
+    pub fn used(&self) -> usize {
+        self.used.load(Ordering::Relaxed)
+    }
+
+    /// Change one stream's share from `held` to `wanted` bytes.
+    pub(super) fn resize(&self, held: &mut usize, wanted: usize) -> Result<(), OtapError> {
+        if wanted <= *held {
+            self.used.fetch_sub(*held - wanted, Ordering::Relaxed);
+            *held = wanted;
+            return Ok(());
+        }
+        let extra = wanted - *held;
+        let fits = |used: usize| used.checked_add(extra).filter(|total| *total <= self.limit);
+        self.used
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, fits)
+            .map_err(|_| OtapError::StreamState {
+                what: "retained bytes across streams",
+                limit: self.limit,
+                shared: true,
+            })?;
+        *held = wanted;
+        Ok(())
+    }
+}
+
 /// What one batch has left of its per-batch limits. Shared by the IPC
-/// pre-scan and the table decoders of that batch.
+/// decoder and the table decoders of that batch.
 #[derive(Debug)]
 pub(super) struct Budget {
     limits: OtapLimits,
     bytes: AtomicUsize,
     attributes: AtomicUsize,
+    /// When the batch must be done (`None`: too far away to represent).
+    deadline: Option<Instant>,
+    ticks: AtomicUsize,
 }
 
 impl Budget {
@@ -136,6 +351,8 @@ impl Budget {
             limits,
             bytes: AtomicUsize::new(limits.max_decoded_bytes_per_batch),
             attributes: AtomicUsize::new(limits.max_attributes_per_batch),
+            deadline: Instant::now().checked_add(limits.batch_deadline),
+            ticks: AtomicUsize::new(0),
         }
     }
 
@@ -158,12 +375,32 @@ impl Budget {
             limit: self.limits.max_attributes_per_batch,
         })
     }
+
+    /// Fail once the batch has used up its wall-clock time.
+    pub fn check_deadline(&self) -> Result<(), OtapError> {
+        match self.deadline {
+            Some(deadline) if Instant::now() >= deadline => Err(OtapError::Deadline {
+                limit_ms: u64::try_from(self.limits.batch_deadline.as_millis()).unwrap_or(u64::MAX),
+            }),
+            _ => Ok(()),
+        }
+    }
+
+    /// [`Self::check_deadline`] for row loops: looks at the clock on the
+    /// first call and then once every [`DEADLINE_STRIDE`] calls.
+    pub fn tick(&self) -> Result<(), OtapError> {
+        let tick = self.ticks.fetch_add(1, Ordering::Relaxed);
+        if !tick.is_multiple_of(DEADLINE_STRIDE) {
+            return Ok(());
+        }
+        self.check_deadline()
+    }
 }
 
 fn charge(left: &AtomicUsize, n: usize) -> Option<()> {
-    let remaining = left.load(Ordering::Relaxed).checked_sub(n)?;
-    left.store(remaining, Ordering::Relaxed);
-    Some(())
+    left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_sub(n))
+        .ok()
+        .map(drop)
 }
 
 #[cfg(test)]
@@ -176,6 +413,7 @@ mod tests {
             "KRONIKA_OTAP_MAX_ROWS" => Some("1000".into()),
             "KRONIKA_OTAP_MAX_MESSAGE_BYTES" => Some(" 8388608 ".into()),
             "KRONIKA_OTAP_STREAM_IDLE_SECS" => Some("45".into()),
+            "KRONIKA_OTAP_BATCH_DEADLINE_MS" => Some("250".into()),
             "KRONIKA_OTAP_MAX_STREAMS" => Some("0".into()),
             "KRONIKA_OTAP_MAX_ATTRIBUTES" => Some("many".into()),
             _ => None,
@@ -183,6 +421,7 @@ mod tests {
         assert_eq!(limits.max_rows_per_table, 1000);
         assert_eq!(limits.max_message_bytes, 8 * 1024 * 1024);
         assert_eq!(limits.stream_idle, Duration::from_secs(45));
+        assert_eq!(limits.batch_deadline, Duration::from_millis(250));
         assert_eq!(limits.max_streams, DEFAULT_MAX_STREAMS);
         assert_eq!(
             limits.max_attributes_per_batch,
@@ -193,6 +432,47 @@ mod tests {
             OtapLimits::default(),
             "no variables, no change"
         );
+    }
+
+    #[test]
+    fn every_limit_is_clamped_to_its_maximum() {
+        // usize::MAX permits would panic in Semaphore::new at startup.
+        let limits = OtapLimits::from_lookup(|_| Some(usize::MAX.to_string()));
+        assert_eq!(limits.max_streams, ceiling::STREAMS);
+        assert_eq!(limits.max_streams_per_connection, ceiling::STREAMS);
+        assert_eq!(limits.max_concurrent_decodes, ceiling::CONCURRENT_DECODES);
+        assert_eq!(limits.max_rows_per_table, ceiling::ROWS);
+        assert_eq!(limits.max_attributes_per_batch, ceiling::ATTRIBUTES);
+        assert_eq!(limits.max_decoded_bytes_per_batch, ceiling::DECODED_BYTES);
+        assert_eq!(limits.max_message_bytes, ceiling::MESSAGE_BYTES);
+        assert_eq!(limits.stream_idle, secs(ceiling::IDLE_SECS));
+        assert_eq!(limits.stream_lifetime, secs(ceiling::LIFETIME_SECS));
+        assert_eq!(limits.ack_timeout, secs(ceiling::ACK_TIMEOUT_SECS));
+        assert_eq!(limits.batch_deadline, millis(ceiling::DEADLINE_MS));
+        assert_eq!(
+            limits.max_stream_retained_bytes,
+            ceiling::STREAM_RETAINED_BYTES
+        );
+        assert_eq!(limits.max_retained_bytes, ceiling::RETAINED_BYTES);
+        assert_eq!(limits.max_dictionary_deltas, ceiling::DICTIONARY_DELTAS);
+        assert_eq!(limits.max_rejected_batches, ceiling::REJECTED_BATCHES);
+        // What the limits feed must accept them.
+        let _streams = tokio::sync::Semaphore::new(limits.max_streams);
+        let _decodes = tokio::sync::Semaphore::new(limits.max_concurrent_decodes);
+        let _budget = Budget::new(limits);
+
+        // A connection's share never exceeds the total.
+        let limits = OtapLimits::from_lookup(|name| match name {
+            "KRONIKA_OTAP_MAX_STREAMS" => Some("8".into()),
+            "KRONIKA_OTAP_MAX_STREAMS_PER_CONNECTION" => Some("100".into()),
+            _ => None,
+        });
+        assert_eq!(limits.max_streams_per_connection, 8);
+        let limits = OtapLimits::from_lookup(|name| match name {
+            "KRONIKA_OTAP_MAX_STREAMS" => Some("8".into()),
+            _ => None,
+        });
+        assert_eq!(limits.max_streams_per_connection, 8);
     }
 
     #[test]
@@ -212,5 +492,41 @@ mod tests {
         budget.charge_attributes(2).unwrap();
         let err = budget.charge_attributes(1).unwrap_err().to_string();
         assert!(err.contains("attributes per batch"), "{err}");
+    }
+
+    #[test]
+    fn budget_deadline_is_checked_on_the_first_tick_and_every_stride() {
+        let expired = Budget::new(OtapLimits {
+            batch_deadline: Duration::ZERO,
+            ..OtapLimits::default()
+        });
+        let err = expired.tick().unwrap_err();
+        assert!(matches!(err, OtapError::Deadline { limit_ms: 0 }), "{err}");
+        // Between strides the clock is not consulted.
+        for _ in 1..DEADLINE_STRIDE {
+            expired.tick().unwrap();
+        }
+        expired.tick().unwrap_err();
+        let fresh = Budget::new(OtapLimits::default());
+        for _ in 0..3 * DEADLINE_STRIDE {
+            fresh.tick().unwrap();
+        }
+    }
+
+    #[test]
+    fn retained_pool_is_shared_and_gives_back_what_a_stream_drops() {
+        let pool = RetainedPool::new(100);
+        let (mut a, mut b) = (0, 0);
+        pool.resize(&mut a, 60).unwrap();
+        pool.resize(&mut b, 40).unwrap();
+        let err = pool.resize(&mut b, 41).unwrap_err();
+        assert!(
+            matches!(err, OtapError::StreamState { shared: true, .. }),
+            "{err}"
+        );
+        assert_eq!((b, pool.used()), (40, 100), "a refused resize holds on");
+        pool.resize(&mut a, 0).unwrap();
+        pool.resize(&mut b, 100).unwrap();
+        assert_eq!(pool.used(), 100);
     }
 }

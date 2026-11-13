@@ -25,6 +25,32 @@ use super::proto::ArrowPayloadType;
 use super::OtapError;
 
 const PARENT_ID: &str = "parent_id";
+
+/// Columns the exporter always writes; a table without them is not metrics.
+const REQUIRED: [&str; 3] = ["id", "metric_type", "name"];
+
+/// The tables of a metrics batch. Exemplar tables are accepted and not
+/// stored.
+const TABLES: [ArrowPayloadType; 18] = [
+    ArrowPayloadType::ResourceAttrs,
+    ArrowPayloadType::ScopeAttrs,
+    ArrowPayloadType::UnivariateMetrics,
+    ArrowPayloadType::NumberDataPoints,
+    ArrowPayloadType::SummaryDataPoints,
+    ArrowPayloadType::HistogramDataPoints,
+    ArrowPayloadType::ExpHistogramDataPoints,
+    ArrowPayloadType::NumberDpAttrs,
+    ArrowPayloadType::SummaryDpAttrs,
+    ArrowPayloadType::HistogramDpAttrs,
+    ArrowPayloadType::ExpHistogramDpAttrs,
+    ArrowPayloadType::NumberDpExemplars,
+    ArrowPayloadType::HistogramDpExemplars,
+    ArrowPayloadType::ExpHistogramDpExemplars,
+    ArrowPayloadType::NumberDpExemplarAttrs,
+    ArrowPayloadType::HistogramDpExemplarAttrs,
+    ArrowPayloadType::ExpHistogramDpExemplarAttrs,
+    ArrowPayloadType::MetricAttrs,
+];
 const NUMBER_DATA_POINTS: &str = "NUMBER_DATA_POINTS";
 const HISTOGRAM_DATA_POINTS: &str = "HISTOGRAM_DATA_POINTS";
 const SUMMARY_DATA_POINTS: &str = "SUMMARY_DATA_POINTS";
@@ -49,15 +75,17 @@ pub fn to_metrics_request(batch: &OtapBatch) -> Result<ExportMetricsServiceReque
     if batch.get(ArrowPayloadType::MultivariateMetrics).is_some() {
         return Err(OtapError::Unsupported("MULTIVARIATE_METRICS"));
     }
+    batch.only("metrics", &TABLES)?;
     let metrics_rb = batch
         .get(ArrowPayloadType::UnivariateMetrics)
         .ok_or(OtapError::MissingTable("UNIVARIATE_METRICS"))?;
-    let mut root = Root::new("UNIVARIATE_METRICS", metrics_rb, batch)?;
+    let mut root = Root::new("UNIVARIATE_METRICS", metrics_rb, batch, &REQUIRED)?;
     let mut points = DataPoints::decode(batch)?;
 
     let mut out = ExportMetricsServiceRequest::default();
     let mut groups = Groups::default();
     for i in 0..root.len() {
+        root.table.tick()?;
         let (r, new_resource) = groups.resource(root.resource_id(i), out.resource_metrics.len());
         if new_resource {
             out.resource_metrics.push(ResourceMetrics {
@@ -172,6 +200,7 @@ impl DataPoints {
         )? {
             let t = &points.table;
             for (i, parent) in points.parents.iter().enumerate() {
+                t.tick()?;
                 let value = match (t.i64_at("int_value", i)?, t.f64_at("double_value", i)?) {
                     (Some(_), Some(_)) => {
                         return Err(t.row_error(
@@ -210,6 +239,7 @@ impl DataPoints {
         )? {
             let t = &points.table;
             for (i, parent) in points.parents.iter().enumerate() {
+                t.tick()?;
                 out.histograms
                     .entry(*parent)
                     .or_default()

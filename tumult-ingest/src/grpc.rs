@@ -114,8 +114,9 @@ pub fn router_with_token_tls(
 
 /// Bearer-token check for one incoming call: `None` token accepts
 /// everything; otherwise the `authorization` metadata must be exactly
-/// `Bearer <token>` (constant-time compare). A rejection is logged at WARN,
-/// saying only whether a credential was presented, never what it was.
+/// `Bearer <token>` (constant-time compare). A rejection is logged at WARN
+/// (rate-limited, with a count of what was left out), saying only whether
+/// a credential was presented, never what it was.
 pub(crate) fn authorize<T>(
     ingest_token: Option<&std::sync::Arc<String>>,
     request: &Request<T>,
@@ -131,10 +132,7 @@ pub(crate) fn authorize<T>(
     match presented {
         Some(v) if tumult_auth::constant_time_eq(v, &expected) => Ok(()),
         _ => {
-            tracing::warn!(
-                presented = presented.is_some(),
-                "ingest bearer token rejected"
-            );
+            crate::log_guard::warn_rejected("grpc", presented.is_some());
             Err(Status::unauthenticated("missing or invalid bearer token"))
         }
     }
@@ -287,6 +285,16 @@ mod tests {
         );
         authorize(token("kro_secret").as_ref(), &right).unwrap();
         assert_eq!(logs.text(), "");
+    }
+
+    #[test]
+    fn a_flood_of_rejected_tokens_does_not_flood_the_log() {
+        let (logs, _guard) = crate::test_logs::capture();
+        for _ in 0..500 {
+            authorize(token("kro_secret").as_ref(), &Request::new(())).unwrap_err();
+        }
+        let lines = logs.text().lines().count();
+        assert!(lines <= 20, "{lines} log lines for 500 rejected calls");
     }
 
     fn test_ingest() -> (tempfile::TempDir, tumult_lake::Store, IngestWriter) {

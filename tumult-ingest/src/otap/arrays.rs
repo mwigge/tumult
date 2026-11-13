@@ -8,7 +8,7 @@
 //! absent or `delta` means cumulative-sum decoding, `plain` means values as
 //! sent.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arrow::array::{Array, ArrayRef, AsArray, OffsetSizeTrait, RecordBatch};
@@ -20,6 +20,7 @@ use arrow::datatypes::{
 
 use super::limits::Budget;
 use super::OtapError;
+use crate::log_guard;
 
 /// Name of the column linking a child row to its parent.
 const PARENT_ID: &str = "parent_id";
@@ -36,6 +37,8 @@ pub(super) struct Table {
     prefix: String,
     fields: Fields,
     columns: Vec<ArrayRef>,
+    /// Column position by name, resolved once: accessors run per cell.
+    index: HashMap<String, usize>,
     len: usize,
     validity: Option<NullBuffer>,
     budget: Arc<Budget>,
@@ -104,7 +107,10 @@ fn expanded_bytes(array: &ArrayRef, value_type: &DataType) -> Result<usize, Stri
         DataType::Boolean => fixed(1),
         other => match other.primitive_width() {
             Some(width) => fixed(width),
-            None => Err(format!("unsupported dictionary value type {other}")),
+            None => Err(format!(
+                "unsupported dictionary value type {}",
+                log_guard::kind(other)
+            )),
         },
     }
 }
@@ -155,8 +161,11 @@ impl Table {
         validity: Option<NullBuffer>,
         budget: Arc<Budget>,
     ) -> Result<Self, OtapError> {
+        budget.check_deadline()?;
         let mut columns = Vec::with_capacity(source.len());
-        for (field, column) in fields.iter().zip(source) {
+        let mut index = HashMap::with_capacity(source.len());
+        for (position, (field, column)) in fields.iter().zip(source).enumerate() {
+            index.entry(field.name().clone()).or_insert(position);
             let DataType::Dictionary(_, value_type) = column.data_type() else {
                 columns.push(column.clone());
                 continue;
@@ -167,16 +176,19 @@ impl Table {
                 reason,
             };
             budget.charge_bytes(expanded_bytes(column, value_type).map_err(failed)?)?;
-            columns.push(
-                arrow::compute::cast(column, value_type)
-                    .map_err(|e| failed(format!("cannot materialise dictionary: {e}")))?,
-            );
+            columns.push(arrow::compute::cast(column, value_type).map_err(|e| {
+                failed(format!(
+                    "cannot materialise dictionary: {}",
+                    log_guard::clean_display(&e)
+                ))
+            })?);
         }
         Ok(Self {
             name,
             prefix,
             fields,
             columns,
+            index,
             len,
             validity,
             budget,
@@ -205,14 +217,53 @@ impl Table {
     }
 
     fn mismatch(&self, column: &str, expected: &str, found: &DataType) -> OtapError {
+        // The kind only: the full type repeats the peer's field names,
+        // timezone and metadata.
+        let found = log_guard::kind(found);
         self.err(column, format!("expected {expected}, found {found}"))
     }
 
     fn column(&self, name: &str) -> Option<(&FieldRef, &ArrayRef)> {
-        self.fields
-            .iter()
-            .position(|f| f.name() == name)
-            .map(|i| (&self.fields[i], &self.columns[i]))
+        let i = *self.index.get(name)?;
+        Some((self.fields.get(i)?, self.columns.get(i)?))
+    }
+
+    /// Fail unless every one of `columns` is present.
+    pub fn require(&self, columns: &[&str]) -> Result<(), OtapError> {
+        match columns.iter().find(|name| !self.index.contains_key(**name)) {
+            Some(missing) => Err(self.err(missing, "column is required".into())),
+            None => Ok(()),
+        }
+    }
+
+    /// Called once per row by the decoding loops: fails the batch when it
+    /// has used up its time.
+    pub fn tick(&self) -> Result<(), OtapError> {
+        self.budget.tick()
+    }
+
+    /// An id of exactly `width` bytes that must be present and not all
+    /// zero (a span's trace and span id).
+    pub fn id_at(&self, name: &str, i: usize, width: usize) -> Result<Vec<u8>, OtapError> {
+        let Some(id) = self.bytes_at(name, i)? else {
+            return Err(self.row_error(name, i, "id is null"));
+        };
+        if id.len() != width {
+            return Err(self.row_error(name, i, &format!("id is not {width} bytes long")));
+        }
+        if id.iter().all(|byte| *byte == 0) {
+            return Err(self.row_error(name, i, "id is all zero"));
+        }
+        Ok(id.to_vec())
+    }
+
+    /// An id that is either absent (null or empty) or `width` bytes long.
+    pub fn optional_id_at(&self, name: &str, i: usize, width: usize) -> Result<Vec<u8>, OtapError> {
+        let id = self.vec_at(name, i)?;
+        if !id.is_empty() && id.len() != width {
+            return Err(self.row_error(name, i, &format!("id is not {width} bytes long")));
+        }
+        Ok(id)
     }
 
     /// A struct column as a table of its own (`None` when absent).
@@ -409,6 +460,7 @@ impl Table {
         let Some((field, col)) = self.column(name) else {
             return Ok(None);
         };
+        self.budget.check_deadline()?;
         let encoded = field.metadata().get(ENCODING).map(String::as_str) != Some(PLAIN);
         let (values, mask): (Vec<Option<u32>>, u32) = match col.data_type() {
             DataType::UInt16 => (

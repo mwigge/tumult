@@ -38,6 +38,7 @@ mod arrays;
 mod attrs;
 mod common;
 mod decode;
+mod ipc;
 pub mod limits;
 mod logs;
 mod metrics;
@@ -47,8 +48,14 @@ pub mod proto;
 pub mod service;
 mod traces;
 
+#[cfg(any(test, feature = "otap-client"))]
+pub mod craft;
+#[cfg(test)]
+mod fuzz;
 #[cfg(test)]
 mod hostile;
+#[cfg(test)]
+mod hostile_ipc;
 #[cfg(test)]
 mod test_encoder;
 #[cfg(test)]
@@ -109,6 +116,25 @@ pub enum OtapError {
 
     #[error("an earlier batch on this stream failed to decode")]
     Poisoned,
+
+    /// What the stream makes the receiver keep between batches is over a
+    /// limit. `shared` when the limit is the one all streams share, so the
+    /// same batch may well fit later or on another stream.
+    #[error("{what} exceeds the limit of {limit}")]
+    StreamState {
+        what: &'static str,
+        limit: usize,
+        shared: bool,
+    },
+
+    #[error("batch not decoded within {limit_ms} ms")]
+    Deadline { limit_ms: u64 },
+
+    #[error("{payload} payload does not belong on a {signal} stream")]
+    Misplaced {
+        payload: &'static str,
+        signal: &'static str,
+    },
 }
 
 impl OtapError {
@@ -116,6 +142,9 @@ impl OtapError {
     /// batch.
     #[must_use]
     pub fn is_limit(&self) -> bool {
-        matches!(self, Self::Limit { .. })
+        matches!(
+            self,
+            Self::Limit { .. } | Self::StreamState { .. } | Self::Deadline { .. }
+        )
     }
 }
