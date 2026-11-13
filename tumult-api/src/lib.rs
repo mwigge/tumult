@@ -40,9 +40,14 @@
 //! * `GET /api/metrics/query?name=&group_by=&range=&interval=` — bucketed
 //!   series for one raw metric (sums → SUM, gauges → AVG, histograms →
 //!   avg plus an interpolated p95), optionally split by an attribute key.
-//! * `GET /api/topology?range=` — service/target call graph: nodes from
-//!   `service_name` and tumult's `resilience.target.name` span attribute,
+//! * `GET /api/topology?range=` — service/target call graph, kept as a
+//!   compatibility view of the Star Map: nodes from `service_name` and the
+//!   target system of the naming contract (ids as on the Star Map),
 //!   edges from parent→child span joins and service→target calls.
+//! * `GET /api/starmap?range=&env=&focus=&depth=&kinds=&budget=&include=` —
+//!   the Star Map: organisation, ICT entities, systems, components,
+//!   services, workloads and the evidence against them as one graph,
+//!   assembled per request by `tumult_graph::starmap`.
 //! * `POST /api/ask` — natural-language → SQL → rows, guarded by
 //!   `tumult_intelligence::sql_guard`; degrades to `{configured:false}` when no LLM
 //!   is reachable.
@@ -340,6 +345,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics/catalog", get(metrics_catalog))
         .route("/api/metrics/query", get(metrics_query))
         .route("/api/topology", get(topology))
+        .route("/api/starmap", get(handlers::starmap::starmap))
         .route("/api/ask", post(ask::ask))
         .route("/api/scores/tree", get(scores_tree))
         .route("/api/gate/{target}", get(handlers::gate::gate))

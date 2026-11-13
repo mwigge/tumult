@@ -46,6 +46,17 @@ pub(crate) enum Level {
     Spine,
 }
 
+impl Level {
+    /// Wire token, the same one the level serialises to.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Target => "target",
+            Self::Spine => "spine",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct KeyPresence {
     key: String,
@@ -148,6 +159,24 @@ fn sql(from_ns: i64, scope: &str) -> String {
          GROUP BY 1 ORDER BY 1",
         selected.join(", ")
     )
+}
+
+/// Conformance level per service since `from_ns`, confined to `envs`
+/// (empty = every environment). The Star Map colours services by it.
+pub(crate) fn levels(
+    reader: &tumult_lake::Reader,
+    from_ns: i64,
+    envs: &[String],
+) -> Result<std::collections::BTreeMap<String, &'static str>, String> {
+    let scope = and_pred(env_scope_where("target_environment", envs));
+    let rows = reader
+        .query_json_rows(&sql(from_ns, &scope))
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter_map(service_from)
+        .map(|s| (s.service, s.level.as_str()))
+        .collect())
 }
 
 pub(crate) async fn conformance(
@@ -262,6 +291,11 @@ mod tests {
             ("checkout", 3, Some(99))
         );
         assert_eq!(s.level, Level::Spine);
+        assert_eq!(
+            serde_json::json!(s.level),
+            s.level.as_str(),
+            "token and serialised form agree"
+        );
         assert_eq!(s.keys.len(), 9);
         assert_eq!(s.keys[8].key, "service.version");
     }

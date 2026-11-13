@@ -304,7 +304,7 @@ fn suppressions(reader: &Reader) -> Result<Vec<Suppression>, String> {
 }
 
 /// Assemble the scanner inputs from the lake and the manifests directory.
-fn gather(
+pub(crate) fn gather(
     reader: &Reader,
     as_of_ns: i64,
     envs: &[String],

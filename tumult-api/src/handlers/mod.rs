@@ -10,5 +10,6 @@ pub mod perf;
 pub mod recommend;
 pub mod reports;
 pub mod risks;
+pub mod starmap;
 pub mod topology;
 pub mod traces;
