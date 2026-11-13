@@ -562,7 +562,8 @@ async fn starmap_answers_from_a_short_cache_with_an_etag() {
 
     // Past that floor it reads the lake again, and the result is what
     // plain requests are then served.
-    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+    srv.starmap_ahead_ms
+        .store(2_100, std::sync::atomic::Ordering::SeqCst);
     let (status, _, fresh) = get_with(&srv.base, "/api/starmap", &refresh).await;
     assert_eq!(status, 200);
     let as_of = |raw: &str| serde_json::from_str::<Value>(raw).unwrap()["as_of_ns"].clone();

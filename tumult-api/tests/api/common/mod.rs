@@ -418,6 +418,9 @@ pub struct TestServer {
     pub pass_log_ts: i64,
     pub db_path: PathBuf,
     pub ingest: tumult_ingest::IngestWriter,
+    /// Milliseconds the Star Map cache's clock runs ahead of the real
+    /// one: a test stores a larger value instead of sleeping.
+    pub starmap_ahead_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// Run one write on the test store through the harness's single-writer
@@ -516,6 +519,12 @@ async fn spawn(factory: tumult_ingest::runs::ExecutorFactory, org_yaml: &str) ->
         None,
         false,
     );
+    let starmap_ahead_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let ahead = Arc::clone(&starmap_ahead_ms);
+    let state = state.with_starmap_clock(Arc::new(move || {
+        let ahead = ahead.load(std::sync::atomic::Ordering::SeqCst);
+        std::time::Instant::now() + std::time::Duration::from_millis(ahead)
+    }));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -530,6 +539,7 @@ async fn spawn(factory: tumult_ingest::runs::ExecutorFactory, org_yaml: &str) ->
         pass_log_ts,
         db_path,
         ingest,
+        starmap_ahead_ms,
     }
 }
 

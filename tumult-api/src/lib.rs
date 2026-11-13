@@ -228,6 +228,19 @@ impl ApiState {
         }
     }
 
+    /// Read the Star Map cache's time from `clock` instead of the
+    /// system's. For tests, which move the clock rather than sleep.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_starmap_clock(
+        mut self,
+        clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
+    ) -> Self {
+        let cache = handlers::starmap_cache::StarMapCache::with_clock(clock);
+        self.starmap_cache = Arc::new(cache);
+        self
+    }
+
     /// Point the passive risk scanner at a directory of Kubernetes manifests.
     #[must_use]
     pub fn with_manifests_dir(mut self, dir: Option<PathBuf>) -> Self {
