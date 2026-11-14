@@ -17,6 +17,8 @@ pub mod coverage;
 pub mod loader;
 pub mod maturity;
 pub mod model;
+#[cfg(test)]
+mod no_evidence;
 pub mod params;
 pub mod register;
 pub mod report;

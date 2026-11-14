@@ -217,11 +217,11 @@ score:
 | `criticality` | critical 3, important 2, other 1.5 | Weight of a function |
 | `outcome` | passed 1, partial 0.75, failed 0.5 | Outcome factor |
 | `strength` | direct 1, supporting 0.75, indirect 0.25, manual_test 0.75 | Strength factor |
-| `freshness_decay_fraction` | 0.25 | Decay period after the window, as a share of the window |
+| `freshness_decay_fraction` | 0.25 | Decay period after the window, as a share of the window. Above 0, at most 1 |
 | `existing_threshold` | 0.75 | `v` needed for Existing |
 | `operating_days` | 180 | Unbroken days needed for Operating |
 | `operating_share` | 0.8 | Share of gating cells that must be Operating for level 3 |
-| `kind_weights` | chaos 3, dr 3, load 2, performance 1, robustness 1, security 1, nfr 1 | Discipline weights in T |
+| `kind_weights` | chaos 3, dr 3, load 2, performance 1, robustness 1, security 1, nfr 1 | Discipline weights in T. Every weight (criticality, discipline, SLO, unassigned) is at most 1000 |
 | `manual_kinds` | failover → dr, drill → dr, gameday → chaos, pentest → security, tlpt → security | Discipline of a manual exercise type |
 | `test_window_days`, `recovery_window_days`, `loop_window_days` | 365 each | Windows of T, R and L |
 | `loop_closure_weight`, `loop_previously_tested_weight` | 0.75, 0.25 | The two parts of L |
@@ -236,7 +236,7 @@ score:
 | `rollup.unknown_floor` | 1.0 | Index of an unknown node. Fixed: any other value is refused, and an unknown node is level 1 |
 | `rollup.unassigned_weight` | 1.0 | Weight of a service with no function, and of an org unit with no function |
 | `rollup.critical_inheritance` | true | A node that supports a critical function is critical |
-| `conformance` | window_days 90; level1 … level4 key lists | Attribute keys each conformance level needs on every span |
+| `conformance` | window_days 90; level1 … level4 key lists | Attribute keys each conformance level needs on every span. Each level names at least one key |
 | `expected_status` | empty | Per-row override of the expected status: 2 (existing) or 3 (operating). A row that is only designed never meets an expectation |
 | `simplified_test_row` | `rts1774.art40` | The row T reads under the simplified profile |
 | `management_report_rows` | Art. 13(5), 6(5) and 16(2) rows | Records that satisfy the level-4 management report condition |

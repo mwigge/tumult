@@ -457,6 +457,11 @@ impl Default for HouseParams {
 /// exactly 0.75 in binary) and nothing else.
 pub const VALUE_EPS: f64 = 1e-9;
 
+/// The largest weight a parameter may give. Weights only matter
+/// relative to each other, and the sums they enter stay far from the
+/// end of the floating-point range.
+pub const MAX_WEIGHT: f64 = 1000.0;
+
 /// The longest window or streak a parameter may ask for, in days: ten
 /// years. Past it a window is no window, and the arithmetic on
 /// nanoseconds has no room left.
@@ -549,14 +554,21 @@ impl HouseParams {
 
     fn check_weights(&self) -> Result<(), String> {
         let c = &self.criticality;
-        for (name, value) in [
-            ("criticality.critical", c.critical),
-            ("criticality.important", c.important),
-            ("criticality.other", c.other),
-            ("freshness_decay_fraction", self.freshness_decay_fraction),
+        for (name, value, top) in [
+            ("criticality.critical", c.critical, MAX_WEIGHT),
+            ("criticality.important", c.important, MAX_WEIGHT),
+            ("criticality.other", c.other, MAX_WEIGHT),
+            // Above 1 the fade outlasts the window it is a fraction of.
+            (
+                "freshness_decay_fraction",
+                self.freshness_decay_fraction,
+                1.0,
+            ),
         ] {
-            if !(value.is_finite() && value > 0.0) {
-                return Err(format!("score.{name} must be positive, got {value}"));
+            if !(value.is_finite() && value > 0.0 && value <= top) {
+                return Err(format!(
+                    "score.{name} must be above 0 and at most {top}, got {value}"
+                ));
             }
         }
         let mut weights = vec![
@@ -572,9 +584,7 @@ impl HouseParams {
             weights.push((format!("kind_weights.{kind}"), *weight));
         }
         for (name, value) in weights {
-            if !(value.is_finite() && value >= 0.0) {
-                return Err(format!("score.{name} must be zero or more, got {value}"));
-            }
+            within(&name, value, 0.0, MAX_WEIGHT)?;
         }
         if !self.kind_weights.values().any(|weight| *weight > 0.0) {
             return Err("score.kind_weights must weigh at least one discipline".into());
@@ -780,6 +790,13 @@ impl HouseParams {
             }
         }
         for (level, keys) in self.conformance.levels().iter().enumerate() {
+            // A level with no key is reached by anything that was seen.
+            if keys.is_empty() {
+                return Err(format!(
+                    "score.conformance.level{} must name at least one attribute key",
+                    level + 1
+                ));
+            }
             if keys.iter().any(|key| key.trim().is_empty()) {
                 return Err(format!(
                     "score.conformance.level{}: an attribute key is empty",
@@ -1063,6 +1080,74 @@ mod tests {
             assert!(
                 error.contains("score.expected_status.dora.art12.2 must be 2 (existing) or 3"),
                 "{value} gave: {error}"
+            );
+        }
+    }
+
+    /// A weight is a ratio between things of one kind. Past the cap the
+    /// sums it enters overflow, and the index is no number at all.
+    #[test]
+    fn every_weight_is_capped_and_finite() {
+        let mut params = HouseParams::default();
+        params.criticality.critical = MAX_WEIGHT;
+        params.slo.blocking_weight = MAX_WEIGHT;
+        params.rollup.unassigned_weight = MAX_WEIGHT;
+        for weight in params.kind_weights.values_mut() {
+            *weight = MAX_WEIGHT;
+        }
+        params.validate().unwrap();
+        let names = [
+            (
+                "criticality: {critical: VALUE}",
+                "score.criticality.critical",
+            ),
+            (
+                "criticality: {important: VALUE}",
+                "score.criticality.important",
+            ),
+            ("criticality: {other: VALUE}", "score.criticality.other"),
+            ("kind_weights: {dr: VALUE}", "score.kind_weights.dr"),
+            ("kind_weights: {chaos: VALUE}", "score.kind_weights.chaos"),
+            ("slo: {blocking_weight: VALUE}", "score.slo.blocking_weight"),
+            ("slo: {major_weight: VALUE}", "score.slo.major_weight"),
+            ("slo: {minor_weight: VALUE}", "score.slo.minor_weight"),
+            (
+                "rollup: {unassigned_weight: VALUE}",
+                "score.rollup.unassigned_weight",
+            ),
+        ];
+        for (yaml, name) in names {
+            for value in ["1e308", "1000.5", ".inf", "-.inf", ".nan"] {
+                let error = refused(&format!("{}\n", yaml.replace("VALUE", value)));
+                assert!(error.contains(name), "{yaml} {value} gave: {error}");
+            }
+        }
+    }
+
+    /// Evidence past its window fades: a decay fraction above 1 would
+    /// keep it for good.
+    #[test]
+    fn the_decay_fraction_is_at_most_1() {
+        for value in ["1.5", "1e308", ".inf"] {
+            let error = refused(&format!("freshness_decay_fraction: {value}\n"));
+            assert!(
+                error.contains("score.freshness_decay_fraction"),
+                "{value} gave: {error}"
+            );
+        }
+        let top: HouseParams = serde_yaml::from_str("freshness_decay_fraction: 1.0\n").unwrap();
+        top.validate().unwrap();
+    }
+
+    /// A level with no key of its own is reached by every service that
+    /// was seen at all: a conformance level nothing was ingested for.
+    #[test]
+    fn every_conformance_level_names_a_key() {
+        for level in 1..=4 {
+            let error = refused(&format!("conformance: {{level{level}: []}}\n"));
+            assert!(
+                error.contains(&format!("score.conformance.level{level} must name")),
+                "level {level} gave: {error}"
             );
         }
     }
