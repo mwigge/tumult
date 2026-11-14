@@ -18,15 +18,60 @@ const REDACTED: &str = "[redacted]";
 /// every `1` in an error text would leave nothing to read.
 const MIN_PARAMETER_SECRET_BYTES: usize = 3;
 
+/// A user name shorter than this is redacted only where it stands as a
+/// word of its own: `ab` in `user ab` and `ab@host`, not in `tab`.
+const MIN_USER_NAME_BYTES: usize = 3;
+
+/// The longest secret that is searched for. The search costs text length
+/// times secret length, so a text is not searched for a longer one: it is
+/// replaced as a whole.
+const MAX_SECRET_BYTES: usize = 4096;
+
+/// The schemes a URL is read with. Anything else before `://` may be a
+/// user name (`alice://password@host`), so such a value is not shown.
+const KNOWN_SCHEMES: [&str; 30] = [
+    "amqp",
+    "amqps",
+    "clickhouse",
+    "file",
+    "ftp",
+    "ftps",
+    "grpc",
+    "grpcs",
+    "h2c",
+    "http",
+    "https",
+    "kafka",
+    "mongodb",
+    "mqtt",
+    "mysql",
+    "nats",
+    "otlp",
+    "postgres",
+    "postgresql",
+    "redis",
+    "rediss",
+    "s3",
+    "sftp",
+    "ssh",
+    "tcp",
+    "tls",
+    "tumult",
+    "udp",
+    "ws",
+    "wss",
+];
+
 /// The URL without the parts that can carry credentials — the userinfo
 /// (`user:password@`), the query string, the fragment and path parameters
 /// (`;key=value`) — so the result is safe to log as `url.full`.
 ///
-/// Accepts `[scheme://][userinfo@]host[:port][/path]` and nothing else.
-/// The answer is [`REDACTED_URL`] when the value is not of that form, and
-/// when an `@` stands after the first `/`, `?` or `#`: that is either a
-/// path with an `@` in it or a password with an unescaped delimiter, and
-/// nothing in the value says which.
+/// Accepts `[scheme://][userinfo@]host[:port][/path]` and nothing else,
+/// with a scheme this module knows (`http`, `https`, `grpc`,
+/// `clickhouse`, ...). The answer is [`REDACTED_URL`] when the value is
+/// not of that form, and when an `@` stands after the first `/`, `?` or
+/// `#`: that is either a path with an `@` in it or a password with an
+/// unescaped delimiter, and nothing in the value says which.
 #[must_use]
 pub fn sanitize_url(raw: &str) -> String {
     if raw.is_empty() {
@@ -72,21 +117,32 @@ pub fn server_address(url: &str) -> ServerAddress {
 /// Error messages for a bad endpoint usually quote the endpoint, and not as
 /// it was configured: with another case, port, path, parameter order or
 /// percent-encoding, or only a part of it. So this does not look for the
-/// URL. It takes the secret values out of `url` — the password (the whole
-/// userinfo when it has no `:`), and every query, fragment and path
-/// parameter value of at least three bytes — and replaces each occurrence
-/// of one with `[redacted]`, whether the text spells it raw, percent-encoded
-/// or a mix of both. A `user:[redacted]@` that is left is removed.
+/// URL. It takes the credentials out of `url` — the user name, the password
+/// (the whole userinfo when it has no `:`), and every query, fragment and
+/// path parameter value of at least three bytes — and replaces each
+/// occurrence of one with `[redacted]`, whether the text spells it raw,
+/// percent-encoded or a mix of both. A userinfo that is redacted in full
+/// (`[redacted]:[redacted]@`) is then removed.
+///
+/// A user name under three bytes is replaced only where it is a word of
+/// its own. When a credential is longer than 4096 bytes the text is not
+/// searched: the answer is `[redacted]` alone.
 #[must_use]
 pub fn redact_url(text: &str, url: &str) -> String {
-    let secrets = Secrets::of(url);
-    if secrets.values.is_empty() {
-        return text.to_string();
-    }
-    let redacted = replace_values(text, &secrets.values);
-    secrets.users.iter().fold(redacted, |text, user| {
-        text.replace(&format!("{user}:{REDACTED}@"), "")
-    })
+    let mut secrets = Secrets::default();
+    secrets.add_url(url);
+    secrets.redact(text)
+}
+
+/// [`redact_url`], with a user name and a password that are configured
+/// beside the URL redacted in the same way. Empty ones are ignored.
+#[must_use]
+pub fn redact_credentials(text: &str, url: &str, user: &str, password: &str) -> String {
+    let mut secrets = Secrets::default();
+    secrets.add_url(url);
+    secrets.add_user(user);
+    secrets.add_value(password, 1);
+    secrets.redact(text)
 }
 
 /// A URL that was read in full, with nothing left over.
@@ -138,21 +194,18 @@ fn end_of_authority(rest: &str) -> usize {
 }
 
 /// Splits `scheme://` off the front. A value without `://` has no scheme;
-/// one with something other than a scheme before it is not a URL.
+/// one with something other than a known scheme before it is not shown.
 fn split_scheme(raw: &str) -> Option<(Option<&str>, &str)> {
     let Some((scheme, rest)) = raw.split_once("://") else {
         return Some((None, raw));
     };
-    is_scheme(scheme).then_some((Some(scheme), rest))
+    is_known_scheme(scheme).then_some((Some(scheme), rest))
 }
 
-/// RFC 3986: a letter, then letters, digits, `+`, `-` and `.`.
-fn is_scheme(candidate: &str) -> bool {
-    let mut bytes = candidate.bytes();
-    bytes
-        .next()
-        .is_some_and(|first| first.is_ascii_alphabetic())
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+fn is_known_scheme(candidate: &str) -> bool {
+    KNOWN_SCHEMES
+        .iter()
+        .any(|scheme| scheme.eq_ignore_ascii_case(candidate))
 }
 
 /// Splits `host[:port]`; `None` unless the host is a name or address and
@@ -200,37 +253,61 @@ fn without_parameters(path: &str) -> String {
     segments.join("/")
 }
 
-/// What must not be quoted from a URL.
+/// One value that must not be quoted.
+struct Secret {
+    /// Percent-decoded.
+    bytes: Vec<u8>,
+    /// Replaced only where no letter or digit stands next to it.
+    whole_word: bool,
+}
+
+impl Secret {
+    /// Where this secret ends when `rest` starts with it. `previous` is
+    /// the character before `rest`.
+    fn end_at_start(&self, rest: &str, previous: Option<char>) -> Option<usize> {
+        let end = spelled_at_start(rest, &self.bytes)?;
+        if !rest.is_char_boundary(end) {
+            return None;
+        }
+        if !self.whole_word {
+            return Some(end);
+        }
+        let next = rest[end..].chars().next();
+        let inside_a_word = [previous, next]
+            .into_iter()
+            .flatten()
+            .any(char::is_alphanumeric);
+        (!inside_a_word).then_some(end)
+    }
+}
+
+/// What must not be quoted from a URL and the credentials beside it.
+#[derive(Default)]
 struct Secrets {
-    /// Percent-decoded, longest first, without duplicates.
-    values: Vec<Vec<u8>>,
-    /// The user names that stand before a password.
-    users: Vec<String>,
+    values: Vec<Secret>,
+    /// A value was longer than [`MAX_SECRET_BYTES`].
+    too_long: bool,
 }
 
 impl Secrets {
     /// Reads `url` generously: every reading of it that yields a userinfo
     /// counts, since a library may have quoted it under any of them.
-    fn of(url: &str) -> Self {
-        let rest = url.split_once("://").map_or(url, |(_scheme, rest)| rest);
-        let mut secrets = Self {
-            values: Vec::new(),
-            users: Vec::new(),
-        };
+    fn add_url(&mut self, url: &str) {
+        let (scheme, rest) = url
+            .split_once("://")
+            .map_or((None, url), |(scheme, rest)| (Some(scheme), rest));
+        if let Some(scheme) = scheme.filter(|scheme| !is_known_scheme(scheme)) {
+            // `alice://password@host`.
+            self.add_user(scheme);
+        }
         let strict = rest[..end_of_authority(rest)].rfind('@');
         let generous = rest.rfind('@');
         for at in [strict, generous].into_iter().flatten() {
-            secrets.add_userinfo(&rest[..at]);
+            self.add_userinfo(&rest[..at]);
         }
         for value in parameter_values(rest) {
-            secrets.add_value(value, MIN_PARAMETER_SECRET_BYTES);
+            self.add_value(value, MIN_PARAMETER_SECRET_BYTES);
         }
-        secrets
-            .values
-            .sort_by_key(|value| std::cmp::Reverse(value.len()));
-        secrets.values.dedup();
-        secrets.users.dedup();
-        secrets
     }
 
     fn add_userinfo(&mut self, userinfo: &str) {
@@ -240,16 +317,43 @@ impl Secrets {
             return;
         };
         self.add_value(password, 1);
-        if !user.is_empty() {
-            self.users.push(user.to_string());
-        }
+        self.add_user(user);
+    }
+
+    fn add_user(&mut self, user: &str) {
+        let bytes = percent_decode(user.as_bytes());
+        let whole_word = bytes.len() < MIN_USER_NAME_BYTES;
+        self.add(bytes, 1, whole_word);
     }
 
     fn add_value(&mut self, value: &str, min_bytes: usize) {
-        let decoded = percent_decode(value.as_bytes());
-        if decoded.len() >= min_bytes {
-            self.values.push(decoded);
+        self.add(percent_decode(value.as_bytes()), min_bytes, false);
+    }
+
+    fn add(&mut self, bytes: Vec<u8>, min_bytes: usize, whole_word: bool) {
+        if bytes.len() > MAX_SECRET_BYTES {
+            self.too_long = true;
+            return;
         }
+        if bytes.len() >= min_bytes {
+            self.values.push(Secret { bytes, whole_word });
+        }
+    }
+
+    /// `text` without the secrets. Fails closed: a secret too long to
+    /// search for leaves nothing of the text.
+    fn redact(mut self, text: &str) -> String {
+        if self.too_long {
+            return REDACTED.to_string();
+        }
+        // Longest first, so a secret is not cut short by one it contains.
+        self.values
+            .sort_by_key(|secret| (std::cmp::Reverse(secret.bytes.len()), secret.whole_word));
+        self.values
+            .dedup_by(|later, kept| later.bytes == kept.bytes);
+        replace_values(text, &self.values)
+            .replace(&format!("{REDACTED}:{REDACTED}@"), "")
+            .replace(&format!("{REDACTED}:@"), "")
     }
 }
 
@@ -272,22 +376,23 @@ fn parameter_values(rest: &str) -> impl Iterator<Item = &str> {
 }
 
 /// `text` with every occurrence of one of `values` replaced by
-/// [`REDACTED`]. `values` are percent-decoded and tried in order.
-fn replace_values(text: &str, values: &[Vec<u8>]) -> String {
+/// [`REDACTED`]. `values` are tried in order.
+fn replace_values(text: &str, values: &[Secret]) -> String {
     let mut redacted = String::with_capacity(text.len());
     let mut rest = text;
+    let mut previous = None;
     while let Some(character) = rest.chars().next() {
         let matched = values
             .iter()
-            .filter_map(|value| spelled_at_start(rest, value))
-            .find(|&end| rest.is_char_boundary(end));
-        if let Some(end) = matched {
+            .find_map(|secret| secret.end_at_start(rest, previous));
+        let end = matched.unwrap_or(character.len_utf8());
+        if matched.is_some() {
             redacted.push_str(REDACTED);
-            rest = &rest[end..];
-            continue;
+        } else {
+            redacted.push(character);
         }
-        redacted.push(character);
-        rest = &rest[character.len_utf8()..];
+        previous = rest[..end].chars().next_back();
+        rest = &rest[end..];
     }
     redacted
 }
@@ -340,7 +445,7 @@ fn percent_decode(raw: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{redact_url, sanitize_url, server_address, ServerAddress};
+    use super::{redact_credentials, redact_url, sanitize_url, server_address, ServerAddress};
 
     /// What stands in for a URL that cannot be shown to be clean.
     const PLACEHOLDER: &str = "[redacted-url]";
@@ -437,7 +542,37 @@ mod tests {
             None,
             &["hunter2"],
         ),
+        // What stands before `://` is a user name unless it is a scheme
+        // this code knows.
+        (
+            "alice://hunter2@ch:9000",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["alice", "hunter2"],
+        ),
+        (
+            "alice://ch:9000",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["alice"],
+        ),
         // Clean readings.
+        (
+            "clickhouse://bob:hunter2@ch:9000/db",
+            "clickhouse://ch:9000/db",
+            "ch",
+            Some(9000),
+            &["bob", "hunter2"],
+        ),
+        (
+            "GRPCS://collector:4317",
+            "GRPCS://collector:4317",
+            "collector",
+            Some(4317),
+            &[],
+        ),
         (
             "http://h:8123/db?password=hunter2",
             "http://h:8123/db",
@@ -659,6 +794,54 @@ mod tests {
             "dns error for [redacted]@host.",
             &["tok3n77"],
         ),
+        // The user name is a credential too: with an empty password, in
+        // another percent-encoding than configured, or without the
+        // password.
+        (
+            "http://alice:@host",
+            "bad url http://alice:@host",
+            "bad url http://host",
+            &["alice"],
+        ),
+        (
+            "http://al%69ce:hunter2@host",
+            "bad url http://alice:hunter2@host",
+            "bad url http://host",
+            &["alice", "hunter2"],
+        ),
+        (
+            "http://alice:hunter2@host",
+            "bad url http://al%69ce:hunter2@host",
+            "bad url http://host",
+            &["alice", "al%69ce", "hunter2"],
+        ),
+        (
+            "http://alice:hunter2@host",
+            "no user alice@host (alice is unknown)",
+            "no user [redacted]@host ([redacted] is unknown)",
+            &["alice", "hunter2"],
+        ),
+        // A user name under three bytes is redacted where it stands as a
+        // word of its own, not inside other words.
+        (
+            "http://ab:hunter2@host",
+            "tab ab@host (user ab, db=ab, %61b) cab",
+            "tab [redacted]@host (user [redacted], db=[redacted], [redacted]) cab",
+            &["hunter2"],
+        ),
+        (
+            "http://ab:@host",
+            "bad url http://ab:@host",
+            "bad url http://host",
+            &[],
+        ),
+        // A scheme that is not known may be a user name.
+        (
+            "alice://hunter2@ch:9000",
+            "cannot reach alice://hunter2@ch:9000",
+            "cannot reach [redacted]://[redacted]@ch:9000",
+            &["alice", "hunter2"],
+        ),
         // Nothing to redact.
         (
             "http://u:hunter2@host",
@@ -692,6 +875,38 @@ mod tests {
                 assert!(!leaks(&redacted, secret), "{configured}: {redacted}");
             }
         }
+    }
+
+    #[test]
+    fn a_secret_too_long_to_search_for_hides_the_whole_text() {
+        let url = |bytes: usize| format!("http://host/?token={}", "x".repeat(bytes));
+
+        assert_eq!(
+            redact_url("connection refused", &url(4096)),
+            "connection refused"
+        );
+        assert_eq!(redact_url("connection refused", &url(4097)), "[redacted]");
+        let user = format!("http://{}:pw@host", "u".repeat(4097));
+        assert_eq!(redact_url("connection refused", &user), "[redacted]");
+    }
+
+    #[test]
+    fn credentials_configured_beside_the_url_are_redacted_like_its_own() {
+        let url = "http://admin:url-pw@ch:8123";
+        let text = "http://admin:url-pw@ch:8123: user svc-tumult (svc%2Dtumult) key pw-secret";
+        assert_eq!(
+            redact_credentials(text, url, "svc-tumult", "pw-secret"),
+            "http://ch:8123: user [redacted] ([redacted]) key [redacted]"
+        );
+        // A short user name is a word of its own or nothing.
+        assert_eq!(
+            redact_credentials("tab ab", "http://ch:8123", "ab", ""),
+            "tab [redacted]"
+        );
+        // Nothing configured: the text of `redact_url`.
+        assert_eq!(redact_credentials(text, "", "", ""), text);
+        let long = "p".repeat(4097);
+        assert_eq!(redact_credentials(text, url, "svc", &long), "[redacted]");
     }
 
     #[test]
