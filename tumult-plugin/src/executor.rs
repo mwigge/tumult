@@ -87,8 +87,15 @@ impl ScriptExitStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptResult {
     pub exit_status: ScriptExitStatus,
+    /// What the script wrote to stdout, up to the capture limit. Nothing is
+    /// ever added to it: output that was cut is flagged in
+    /// [`stdout_truncated`](Self::stdout_truncated).
     pub stdout: String,
     pub stderr: String,
+    /// Whether stdout held more than the capture limit and was cut.
+    pub stdout_truncated: bool,
+    /// Whether stderr held more than the capture limit and was cut.
+    pub stderr_truncated: bool,
 }
 
 impl ScriptResult {
@@ -282,17 +289,17 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
         None => ScriptExitStatus::Signal,
     };
     let exit_code_for_telemetry = exit_status.code().unwrap_or(-1);
+    // Sizes are what the script wrote, not what was kept of it.
+    let (stdout_bytes, stderr_bytes) = (stdout.total, stderr.total);
     let result = ScriptResult {
         exit_status,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
         stdout: stdout.into_text(),
         stderr: stderr.into_text(),
     };
-    log_if_failed(&path_str, &result);
-    crate::telemetry::event_script_completed(
-        exit_code_for_telemetry,
-        result.stdout.len(),
-        result.stderr.len(),
-    );
+    log_non_zero_exit(&path_str, &result, stdout_bytes, stderr_bytes);
+    crate::telemetry::event_script_completed(exit_code_for_telemetry, stdout_bytes, stderr_bytes);
     crate::telemetry::record_execution(result.succeeded());
     Ok(result)
 }
@@ -321,10 +328,6 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
 #[cfg(not(windows))]
 const OUTPUT_CAP: usize = 8 * 1024 * 1024;
 
-/// Appended to captured output that was cut at [`OUTPUT_CAP`].
-#[cfg(not(windows))]
-const TRUNCATION_NOTE: &str = "\n[output truncated at 8 MiB]";
-
 /// Size of one read from a script's output pipe.
 #[cfg(not(windows))]
 const READ_CHUNK_BYTES: usize = 8192;
@@ -335,6 +338,8 @@ const READ_CHUNK_BYTES: usize = 8192;
 struct Captured {
     /// At most [`OUTPUT_CAP`] bytes, from the start of the stream.
     bytes: Vec<u8>,
+    /// How many bytes the stream held, kept or not.
+    total: usize,
     /// Whether the stream held more than was kept.
     truncated: bool,
 }
@@ -343,6 +348,7 @@ struct Captured {
 impl Captured {
     /// Keeps as much of `chunk` as still fits under [`OUTPUT_CAP`].
     fn keep(&mut self, chunk: &[u8]) {
+        self.total += chunk.len();
         let room = OUTPUT_CAP - self.bytes.len();
         let kept = chunk.len().min(room);
         self.bytes.extend_from_slice(&chunk[..kept]);
@@ -351,13 +357,51 @@ impl Captured {
         }
     }
 
-    /// The captured bytes as text, with a note when output was cut.
-    fn into_text(self) -> String {
-        let mut text = String::from_utf8_lossy(&self.bytes).into_owned();
+    /// The captured bytes as text. Nothing is added to them: output that was
+    /// cut ends at the last complete character, so the cut itself never
+    /// shows up as a replacement character.
+    fn into_text(mut self) -> String {
         if self.truncated {
-            text.push_str(TRUNCATION_NOTE);
+            let complete = complete_utf8_prefix(&self.bytes);
+            self.bytes.truncate(complete);
         }
-        text
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+}
+
+/// Length of `bytes` without a UTF-8 character cut short at its very end.
+///
+/// Only the last three bytes are looked at, which is as far back as the lead
+/// byte of an unfinished character can be; invalid bytes anywhere else are
+/// the script's own and are left for the lossy conversion.
+#[cfg(not(windows))]
+fn complete_utf8_prefix(bytes: &[u8]) -> usize {
+    let tail_start = bytes.len().saturating_sub(3);
+    for index in (tail_start..bytes.len()).rev() {
+        let byte = bytes[index];
+        if is_utf8_continuation(byte) {
+            continue;
+        }
+        let ends_inside = index + utf8_width(byte) > bytes.len();
+        return if ends_inside { index } else { bytes.len() };
+    }
+    bytes.len()
+}
+
+#[cfg(not(windows))]
+fn is_utf8_continuation(byte: u8) -> bool {
+    byte & 0b1100_0000 == 0b1000_0000
+}
+
+/// How many bytes the character led by `lead` takes; 1 for a byte that leads
+/// nothing.
+#[cfg(not(windows))]
+fn utf8_width(lead: u8) -> usize {
+    match lead {
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF7 => 4,
+        _ => 1,
     }
 }
 
@@ -385,7 +429,7 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin>(
         }
     }
     if captured.truncated {
-        log_truncated(stream);
+        log_truncated(stream, captured.total);
     }
     captured
 }
@@ -424,10 +468,10 @@ fn log_read_failed(stream: &'static str, bytes_read: usize, error: &std::io::Err
 }
 
 #[cfg(not(windows))]
-fn log_truncated(stream: &'static str) {
+fn log_truncated(stream: &'static str, bytes_total: usize) {
     tracing::warn!(
         name: "plugin.script.output.truncated",
-        { process.stream = stream, max_bytes = OUTPUT_CAP },
+        { process.stream = stream, max_bytes = OUTPUT_CAP, bytes_total },
         "script output exceeded the capture limit and was truncated"
     );
 }
@@ -454,22 +498,33 @@ fn log_timed_out(script_path: &str, timeout: Duration) {
     );
 }
 
-/// Logs a script that did not exit with code 0. Its output is the caller's
-/// to handle and is never logged: only the sizes are.
+/// Notes a script that did not exit with code 0.
+///
+/// That is an observation, not a failure of ours: a probe reports a broken
+/// steady state this way, and the caller decides what it means. Hence debug.
+/// The output is the caller's to handle and is never logged: only its sizes
+/// are, counted as written by the script rather than as kept.
 #[cfg(not(windows))]
-fn log_if_failed(script_path: &str, result: &ScriptResult) {
+fn log_non_zero_exit(
+    script_path: &str,
+    result: &ScriptResult,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+) {
     if result.succeeded() {
         return;
     }
-    tracing::warn!(
-        name: "plugin.script.failed",
+    tracing::debug!(
+        name: "plugin.script.exited",
         {
             file.path = script_path,
             process.exit.code = result.exit_status.code(),
-            stdout_bytes = result.stdout.len(),
-            stderr_bytes = result.stderr.len(),
+            stdout_bytes,
+            stderr_bytes,
+            stdout_truncated = result.stdout_truncated,
+            stderr_truncated = result.stderr_truncated,
         },
-        "script exited unsuccessfully"
+        "script exited with a non-zero status"
     );
 }
 
@@ -695,26 +750,16 @@ mod tests {
 
     #[test]
     fn script_result_succeeded_checks_exit_code() {
-        let success = ScriptResult {
-            exit_status: ScriptExitStatus::Code(0),
+        let exited = |exit_status| ScriptResult {
+            exit_status,
             stdout: String::new(),
             stderr: String::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
         };
-        assert!(success.succeeded());
-
-        let failure = ScriptResult {
-            exit_status: ScriptExitStatus::Code(1),
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-        assert!(!failure.succeeded());
-
-        let signalled = ScriptResult {
-            exit_status: ScriptExitStatus::Signal,
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-        assert!(!signalled.succeeded());
+        assert!(exited(ScriptExitStatus::Code(0)).succeeded());
+        assert!(!exited(ScriptExitStatus::Code(1)).succeeded());
+        assert!(!exited(ScriptExitStatus::Signal).succeeded());
     }
 
     #[tokio::test]
@@ -881,7 +926,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn output_beyond_the_cap_is_dropped_noted_and_logged() {
+    async fn output_beyond_the_cap_is_dropped_flagged_and_logged() {
         use tokio::io::AsyncReadExt as _;
 
         let source = tokio::io::repeat(b'x').take(OUTPUT_CAP as u64 + 4096);
@@ -890,13 +935,85 @@ mod tests {
         let logs = logs.snapshot();
 
         assert_eq!(captured.bytes.len(), OUTPUT_CAP);
+        assert_eq!(captured.total, OUTPUT_CAP + 4096);
         assert!(captured.truncated);
         let event = &logs.named("plugin.script.output.truncated")[0];
         assert_eq!(event["level"], "WARN");
         assert_eq!(event["process.stream"], "stdout");
-        assert!(captured
-            .into_text()
-            .ends_with("\n[output truncated at 8 MiB]"));
+        assert_eq!(event["max_bytes"], OUTPUT_CAP);
+        assert_eq!(event["bytes_total"], OUTPUT_CAP + 4096);
+        // Nothing is added to what the script wrote.
+        let text = captured.into_text();
+        assert_eq!(text.len(), OUTPUT_CAP);
+        assert!(text.bytes().all(|byte| byte == b'x'));
+    }
+
+    #[tokio::test]
+    async fn output_is_cut_between_characters_not_inside_one() {
+        // One ASCII byte, then two-byte characters: the cap, an even number
+        // of bytes in, falls inside a character.
+        let mut source = String::from("x");
+        source.push_str(&"\u{e9}".repeat(OUTPUT_CAP / 2 + 8));
+        let _logs = capture(tracing::Level::DEBUG);
+
+        let captured = read_capped(source.as_bytes(), "stdout").await;
+
+        assert!(captured.truncated);
+        assert_eq!(captured.total, source.len());
+        let text = captured.into_text();
+        assert_eq!(
+            text.len(),
+            OUTPUT_CAP - 1,
+            "the split character is left out"
+        );
+        assert!(source.starts_with(&text), "only what the script wrote");
+    }
+
+    #[test]
+    fn a_cut_keeps_complete_characters_of_every_width() {
+        let cut = |bytes: &[u8]| {
+            let captured = Captured {
+                bytes: bytes.to_vec(),
+                total: bytes.len() + 1,
+                truncated: true,
+            };
+            captured.into_text()
+        };
+        assert_eq!(cut(b"ab"), "ab");
+        assert_eq!(cut("a\u{e9}".as_bytes()), "a\u{e9}");
+        assert_eq!(cut(&"a\u{e9}".as_bytes()[..2]), "a");
+        assert_eq!(cut("a\u{20ac}".as_bytes()), "a\u{20ac}");
+        assert_eq!(cut(&"a\u{20ac}".as_bytes()[..3]), "a");
+        assert_eq!(cut("a\u{1f600}".as_bytes()), "a\u{1f600}");
+        assert_eq!(cut(&"a\u{1f600}".as_bytes()[..4]), "a");
+        assert_eq!(cut(b""), "");
+    }
+
+    #[tokio::test]
+    async fn a_script_with_too_much_output_says_so_beside_the_output() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(
+            dir.path(),
+            "loud.sh",
+            "#!/bin/sh\nprintf '{\"rows\":\"'\nhead -c 9000000 /dev/zero | tr '\\0' 'x'\necho quiet >&2\nexit 2\n",
+        );
+        let logs = capture(tracing::Level::DEBUG);
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let logs = logs.snapshot();
+
+        assert!(result.stdout_truncated);
+        assert!(!result.stderr_truncated);
+        assert_eq!(result.stdout.len(), OUTPUT_CAP);
+        assert!(result.stdout.starts_with("{\"rows\":\"xxx"));
+        assert!(result.stdout.ends_with("xxx"), "no note inside the output");
+        assert_eq!(result.stderr, "quiet\n");
+        let event = &logs.named("plugin.script.exited")[0];
+        assert_eq!(event["stdout_bytes"], 9_000_009);
+        assert_eq!(event["stderr_bytes"], 6);
+        assert_eq!(event["stdout_truncated"], true);
+        assert_eq!(event["stderr_truncated"], false);
     }
 
     #[tokio::test]
@@ -926,48 +1043,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_script_that_exits_non_zero_is_a_named_warning() {
+    async fn a_non_zero_exit_is_a_debug_observation_and_a_zero_exit_is_silent() {
         let dir = TempDir::new().unwrap();
-        let script = create_test_script(
+        let failing = create_test_script(
             dir.path(),
             "fail.sh",
             "#!/bin/sh\necho out\necho problem >&2\nexit 3\n",
         );
-        let logs = capture(tracing::Level::INFO);
-        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+        let passing = create_test_script(dir.path(), "ok.sh", "#!/bin/sh\necho out\nexit 0\n");
+        let logs = capture(tracing::Level::DEBUG);
+
+        let result = execute_script(&failing, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
-        let logs = logs.snapshot();
+        let after_the_failing_script = logs.snapshot();
+        execute_script(&passing, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let after_both = logs.snapshot();
 
         assert_eq!(result.exit_status, ScriptExitStatus::Code(3));
-        let event = &logs.named("plugin.script.failed")[0];
-        assert_eq!(event["level"], "WARN");
-        assert_eq!(event["file.path"], script.to_str().unwrap());
+        let exits = after_the_failing_script.named("plugin.script.exited");
+        assert_eq!(exits.len(), 1, "{}", after_the_failing_script.raw);
+        let event = exits[0];
+        assert_eq!(event["level"], "DEBUG");
+        assert_eq!(event["file.path"], failing.to_str().unwrap());
         assert_eq!(event["process.exit.code"], 3);
         assert_eq!(event["stdout_bytes"], 4);
         assert_eq!(event["stderr_bytes"], 8);
+        assert_eq!(event["stdout_truncated"], false);
         assert!(
-            !logs.raw.contains("problem"),
+            !after_both.raw.contains("problem"),
             "output is not logged: {}",
-            logs.raw
+            after_both.raw
         );
-    }
-
-    #[tokio::test]
-    async fn a_script_that_succeeds_logs_no_failure() {
-        let dir = TempDir::new().unwrap();
-        let script = create_test_script(dir.path(), "ok.sh", "#!/bin/sh\nexit 0\n");
-        let logs = capture(tracing::Level::INFO);
-        execute_script(&script, dir.path(), &HashMap::new(), None)
-            .await
-            .unwrap();
-        let logs = logs.snapshot();
-
-        assert!(
-            logs.named("plugin.script.failed").is_empty(),
-            "{}",
-            logs.raw
-        );
+        // The passing script added no exit event, and neither raised a warning.
+        assert_eq!(after_both.named("plugin.script.exited").len(), 1);
+        let warnings = after_both
+            .events
+            .iter()
+            .filter(|event| event["level"] == "WARN" || event["level"] == "ERROR")
+            .count();
+        assert_eq!(warnings, 0, "{}", after_both.raw);
     }
 
     #[tokio::test]
