@@ -34,13 +34,46 @@ where
         .context(name)
 }
 
+/// Something that pushes pending telemetry out, to a listener that must
+/// still be serving when it is asked to.
+trait Flush: Send + Sync + 'static {
+    fn flush(&self);
+}
+
+/// Flushes `telemetry` off the async workers: the exporters block on
+/// network I/O.
+async fn flush_telemetry<F: Flush>(telemetry: Arc<F>) {
+    let flushed = tokio::task::spawn_blocking(move || telemetry.flush()).await;
+    let Err(error) = flushed else {
+        return;
+    };
+    tracing::warn!(
+        name: "daemon.telemetry.flush.failed",
+        { error.message = %tumult_otel::logging::err(&error), error.type = "task_join" },
+        "telemetry flush task failed; pending telemetry is lost"
+    );
+}
+
 /// Waits until both listeners have stopped. A listener that fails ends
 /// the wait at once and stops the other one: a daemon that could not
 /// bind its HTTP address must not stay up answering gRPC only.
-async fn until_both_stop<G, H>(mut grpc: Listener<G>, mut http: Listener<H>) -> Result<()>
+///
+/// The failure ends the process, so it is logged as `process.fatal` here
+/// and `telemetry` is flushed before any listener is stopped: stopped
+/// first, the listener that receives the daemon's own telemetry would be
+/// gone, the failure would never reach the store, and the export would sit
+/// out its timeouts against a closed port. When the listener that failed is
+/// that very one, there is nobody to flush to and the events reach stderr
+/// only.
+async fn until_both_stop<G, H, F>(
+    mut grpc: Listener<G>,
+    mut http: Listener<H>,
+    telemetry: &Arc<F>,
+) -> Result<()>
 where
     G: std::error::Error + Send + Sync + 'static,
     H: std::error::Error + Send + Sync + 'static,
+    F: Flush,
 {
     let outcome = tokio::try_join!(
         stopped(&mut grpc, "gRPC server"),
@@ -54,6 +87,8 @@ where
         { error.message = %tumult_otel::logging::err(&error) },
         "a listener failed; stopping the daemon"
     );
+    let error = crate::events::report_fatal(error);
+    flush_telemetry(Arc::clone(telemetry)).await;
     grpc.abort();
     http.abort();
     Err(error)
@@ -203,22 +238,19 @@ impl Drop for TelemetryShutdown {
     }
 }
 
+impl Flush for TelemetryShutdown {
+    fn flush(&self) {
+        self.finish();
+    }
+}
+
 /// Shutdown trigger for the gRPC listener that receives the daemon's own
 /// telemetry. It resolves only after the pending spans, metrics and log
 /// events have been exported, so the listener is still there to take them.
 /// Events logged later in the shutdown reach stderr only.
 async fn shutdown_after_telemetry_flush(name: &'static str, telemetry: Arc<TelemetryShutdown>) {
     shutdown_signal(name).await;
-    // The exporters block on network I/O; keep that off the async workers.
-    let flushed = tokio::task::spawn_blocking(move || telemetry.finish()).await;
-    let Err(error) = flushed else {
-        return;
-    };
-    tracing::warn!(
-        name: "daemon.telemetry.flush.failed",
-        { error.message = %tumult_otel::logging::err(&error), error.type = "task_join" },
-        "telemetry flush task failed; pending telemetry is lost"
-    );
+    flush_telemetry(telemetry).await;
 }
 
 /// Shutdown trigger for a gRPC listener: the one carrying the daemon's own
@@ -521,7 +553,7 @@ pub(crate) async fn serve() -> Result<()> {
     };
     // Both servers are down once this returns; their channel clones
     // (moved into the tasks) are dropped.
-    let served = until_both_stop(grpc_server, http_server).await;
+    let served = until_both_stop(grpc_server, http_server, &telemetry).await;
     finish(served, internal_grpc_server, workers, FAILED_DRAIN_LIMIT).await?;
     tracing::info!(name: "daemon.stopped", "tumultd stopped cleanly");
     Ok(())

@@ -239,12 +239,174 @@ fn failing(why: &'static str) -> Listener {
     tokio::spawn(async move { Err(std::io::Error::other(why)) })
 }
 
+/// What was true at the moment the telemetry was flushed.
+#[derive(Debug, PartialEq, Eq)]
+struct Flushed {
+    /// The listener that did not fail was still serving.
+    survivor_serving: bool,
+    /// The `process.fatal` event had been logged.
+    fatal_logged: bool,
+}
+
+/// Stands in for the daemon's telemetry and records each flush.
+#[derive(Default)]
+struct FlushProbe {
+    /// Resolves once the listener that did not fail is gone.
+    survivor_gone: std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// What the test thread has logged.
+    log: tumult_otel::logging::testing::Sink,
+    flushes: std::sync::Mutex<Vec<Flushed>>,
+}
+
+impl FlushProbe {
+    fn watching(
+        survivor_gone: tokio::sync::oneshot::Receiver<()>,
+        capture: &tumult_otel::logging::testing::LogCapture,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            survivor_gone: std::sync::Mutex::new(Some(survivor_gone)),
+            log: capture.sink(),
+            flushes: std::sync::Mutex::default(),
+        })
+    }
+}
+
+impl super::Flush for FlushProbe {
+    fn flush(&self) {
+        let survivor_serving = self
+            .survivor_gone
+            .lock()
+            .unwrap()
+            .as_mut()
+            .is_some_and(|gone| {
+                gone.try_recv() == Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+            });
+        let fatal_logged = self.log.text().contains("\"process.fatal\"");
+        self.flushes.lock().unwrap().push(Flushed {
+            survivor_serving,
+            fatal_logged,
+        });
+    }
+}
+
+/// Telemetry nobody looks at.
+fn unwatched() -> std::sync::Arc<FlushProbe> {
+    std::sync::Arc::default()
+}
+
+#[tokio::test]
+async fn a_failed_listener_is_reported_and_flushed_while_the_other_still_serves() {
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+    let (grpc, grpc_gone) = serving();
+    let telemetry = FlushProbe::watching(grpc_gone, &capture);
+
+    let outcome = until_both_stop(grpc, failing("address in use"), &telemetry).await;
+
+    assert_eq!(
+        *telemetry.flushes.lock().unwrap(),
+        [Flushed {
+            survivor_serving: true,
+            fatal_logged: true,
+        }]
+    );
+    // Stopped all the same, once the flush is done.
+    let grpc_gone = telemetry.survivor_gone.lock().unwrap().take().unwrap();
+    assert!(grpc_gone.await.is_err());
+    let logs = capture.snapshot();
+    let fatal = logs.named("process.fatal");
+    assert_eq!(fatal.len(), 1, "{}", logs.raw);
+    let message = fatal[0]["error.message"].as_str().unwrap();
+    assert!(message.contains("HTTP server"), "{message}");
+    assert!(message.contains("address in use"), "{message}");
+    let error = outcome.expect_err("a failed listener is an error");
+    assert!(crate::events::fatal_was_reported(&error));
+}
+
+#[tokio::test]
+async fn a_clean_stop_leaves_the_flush_to_the_shutdown_signal() {
+    let stopped = || -> Listener { tokio::spawn(async { Ok(()) }) };
+    let telemetry = unwatched();
+
+    until_both_stop(stopped(), stopped(), &telemetry)
+        .await
+        .expect("clean stop");
+
+    assert!(telemetry.flushes.lock().unwrap().is_empty());
+}
+
+/// A batch the store refuses.
+fn refused_batch() -> tumult_ingest::Batch {
+    tumult_ingest::Batch::Exec(Box::new(|_| Err("disk full".to_string())))
+}
+
+/// How many records from the ingest path the daemon has exported.
+fn exported_from_the_ingest_path(capture: &tumult_otel::logging::testing::ExportCapture) -> usize {
+    capture
+        .exported()
+        .iter()
+        .filter(|event| {
+            crate::events::INGEST_PATH
+                .iter()
+                .any(|module| event.target.starts_with(module))
+        })
+        .count()
+}
+
+/// The daemon exports its own log events to its own ingest. With a store
+/// that refuses every write, each record exported from the ingest path
+/// would come back as one more refused write, and one more record.
+#[tokio::test]
+async fn a_failing_store_never_feeds_the_daemons_own_export() {
+    let capture =
+        tumult_otel::logging::testing::ExportCapture::start(&crate::events::log_options("tumultd"));
+    let Daemon {
+        _dir,
+        ingest,
+        workers: _workers,
+        ..
+    } = daemon();
+
+    let mut refused_writes = 0;
+    // The first refused write comes from outside; later ones are whatever
+    // the previous flush exported.
+    let mut arriving = 1;
+    for _flush in 0..5 {
+        let exported_before = exported_from_the_ingest_path(&capture);
+        for _ in 0..arriving {
+            ingest
+                .write(refused_batch())
+                .await
+                .expect_err("the store refuses the batch");
+            refused_writes += 1;
+        }
+        arriving = (exported_from_the_ingest_path(&capture) - exported_before).max(1);
+    }
+
+    let local = capture.local();
+    let logged = local
+        .events
+        .iter()
+        .filter(|event| event["message"] == "failed to persist ingest batch")
+        .count();
+    assert_eq!(refused_writes, 5, "one refused write per flush, no echo");
+    assert_eq!(logged, refused_writes, "every refusal is on stderr");
+    assert_eq!(exported_from_the_ingest_path(&capture), 0);
+    // The daemon's other events are still exported.
+    crate::events::server_stopped("grpc", &Ok::<(), std::io::Error>(()));
+    let exported = capture.exported();
+    assert_eq!(exported.len(), 1, "{exported:?}");
+    assert_eq!(
+        exported[0].event_name.as_deref(),
+        Some("daemon.server.stopped")
+    );
+}
+
 #[tokio::test]
 async fn a_failed_http_listener_stops_the_grpc_one() {
     let (grpc, grpc_gone) = serving();
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        until_both_stop(grpc, failing("address in use")),
+        until_both_stop(grpc, failing("address in use"), &unwatched()),
     )
     .await
     .expect("the wait ends with the first failure");
@@ -260,7 +422,7 @@ async fn a_failed_grpc_listener_stops_the_http_one() {
     let (http, http_gone) = serving();
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        until_both_stop(failing("no certificate"), http),
+        until_both_stop(failing("no certificate"), http, &unwatched()),
     )
     .await
     .expect("the wait ends with the first failure");
@@ -272,7 +434,7 @@ async fn a_failed_grpc_listener_stops_the_http_one() {
 #[tokio::test]
 async fn two_listeners_that_stop_cleanly_are_a_clean_stop() {
     let stopped = || -> Listener { tokio::spawn(async { Ok(()) }) };
-    until_both_stop(stopped(), stopped())
+    until_both_stop(stopped(), stopped(), &unwatched())
         .await
         .expect("clean stop");
 }

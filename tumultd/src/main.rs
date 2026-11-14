@@ -64,7 +64,7 @@ use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tumult_otel::logging::{self, LogOptions};
+use tumult_otel::logging;
 
 #[derive(Parser)]
 #[command(
@@ -119,14 +119,14 @@ enum Command {
 async fn main() -> ExitCode {
     let cli = Cli::parse();
     let service_name = events::service_name();
-    if let Err(error) = logging::init(LogOptions::new(service_name.as_str())) {
+    if let Err(error) = logging::init(events::log_options(&service_name)) {
         logging::report_init_failure(&service_name, &error);
         return ExitCode::FAILURE;
     }
     // A returned error would be printed unstructured by the runtime; log it
     // as an event instead.
     if let Err(error) = run(cli).await {
-        logging::log_fatal(&error);
+        events::fatal(&error);
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS

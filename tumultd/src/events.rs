@@ -3,7 +3,7 @@
 use std::error::Error;
 
 use tumult_ingest::Config;
-use tumult_otel::logging::{err_sources, error_type};
+use tumult_otel::logging::{self, err_sources, error_type, LogOptions};
 
 /// The daemon's `service.name` unless `OTEL_SERVICE_NAME` overrides it.
 pub(crate) const SERVICE_NAME: &str = "tumultd";
@@ -17,6 +17,68 @@ fn service_name_from(configured: Option<String>) -> String {
     configured
         .filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| SERVICE_NAME.to_string())
+}
+
+/// The modules that receive and store OTLP records. The daemon exports its
+/// own log events to its own ingest, so an error logged here while a record
+/// is being stored would be exported, received, fail the same way and be
+/// logged again, without end. Their events stay on stderr.
+pub(crate) const INGEST_PATH: [&str; 5] = [
+    "tumult_ingest::writer",
+    "tumult_ingest::grpc",
+    "tumult_ingest::http",
+    "tumult_ingest::otap",
+    "tumult_lake::writer",
+];
+
+/// How the daemon logs: at `info`, with the [`INGEST_PATH`] kept out of
+/// its own export.
+pub(crate) fn log_options(service_name: &str) -> LogOptions {
+    LogOptions::new(service_name).with_local_only_targets(INGEST_PATH)
+}
+
+/// A fatal error that has already been logged as `process.fatal`. It reads
+/// exactly like the error it wraps.
+#[derive(Debug)]
+struct Reported(anyhow::Error);
+
+impl std::fmt::Display for Reported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Error for Reported {
+    // The wrapped error's causes stay this error's causes, so `{:#}` and
+    // `chain()` on the wrapper walk the same chain.
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.0.source()
+    }
+}
+
+/// Logs `error` as the `process.fatal` event now, and marks it so that
+/// [`fatal`] does not log it a second time.
+///
+/// For the failure that is detected while the daemon still exports its
+/// telemetry: logged here, before the telemetry is flushed and shut down,
+/// the event reaches the store as well as stderr.
+pub(crate) fn report_fatal(error: anyhow::Error) -> anyhow::Error {
+    logging::log_fatal(&error);
+    anyhow::Error::new(Reported(error))
+}
+
+/// Whether `error` went through [`report_fatal`].
+pub(crate) fn fatal_was_reported(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<Reported>().is_some()
+}
+
+/// Logs the error that ends the process as `process.fatal`, unless
+/// [`report_fatal`] already did.
+pub(crate) fn fatal(error: &anyhow::Error) {
+    if fatal_was_reported(error) {
+        return;
+    }
+    logging::log_fatal(error);
 }
 
 /// Announces the daemon's store and listeners before anything binds.
@@ -62,7 +124,63 @@ mod tests {
     use tracing::Level;
     use tumult_otel::logging::testing::capture_json;
 
-    use super::{server_stopped, service_name_from, starting, SERVICE_NAME};
+    use super::{
+        fatal, fatal_was_reported, log_options, report_fatal, server_stopped, service_name_from,
+        starting, INGEST_PATH, SERVICE_NAME,
+    };
+
+    fn store_locked() -> anyhow::Error {
+        anyhow::anyhow!("locked by pid 7").context("open store")
+    }
+
+    #[test]
+    fn the_daemon_logs_at_info_and_names_itself() {
+        let options = log_options("tumultd-eu");
+        assert_eq!(options.service_name, "tumultd-eu");
+        assert_eq!(options.default_level, Level::INFO);
+        assert_eq!(options.format, None);
+    }
+
+    #[test]
+    fn the_ingest_path_is_kept_out_of_the_daemons_own_export() {
+        assert_eq!(log_options("tumultd").local_only_targets, INGEST_PATH);
+        for module in ["writer", "grpc", "http", "otap"] {
+            let target = format!("tumult_ingest::{module}");
+            assert!(INGEST_PATH.contains(&target.as_str()), "{target}");
+        }
+        assert!(INGEST_PATH.contains(&"tumult_lake::writer"));
+    }
+
+    #[test]
+    fn a_fatal_error_is_logged_once_with_its_cause_chain() {
+        let logs = capture_json(Level::INFO, || fatal(&store_locked()));
+        let events = logs.named("process.fatal");
+        assert_eq!(events.len(), 1, "{}", logs.raw);
+        assert_eq!(events[0]["error.message"], "open store: locked by pid 7");
+    }
+
+    #[test]
+    fn a_fatal_error_reported_early_is_not_logged_again() {
+        let logs = capture_json(Level::INFO, || {
+            let reported = report_fatal(store_locked());
+            assert!(fatal_was_reported(&reported));
+            fatal(&reported);
+        });
+        let events = logs.named("process.fatal");
+        assert_eq!(events.len(), 1, "{}", logs.raw);
+        assert_eq!(events[0]["error.message"], "open store: locked by pid 7");
+    }
+
+    #[test]
+    fn a_reported_fatal_error_reads_like_the_error_it_wraps() {
+        let reported = capture_json(Level::INFO, || {
+            let reported = report_fatal(store_locked());
+            assert_eq!(format!("{reported:#}"), "open store: locked by pid 7");
+            assert_eq!(reported.to_string(), "open store");
+        });
+        assert_eq!(reported.events.len(), 1);
+        assert!(!fatal_was_reported(&store_locked()));
+    }
 
     #[test]
     fn service_name_defaults_to_the_binary_name() {

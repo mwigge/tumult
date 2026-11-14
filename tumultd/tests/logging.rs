@@ -160,6 +160,10 @@ impl Drop for Daemon {
     }
 }
 
+/// A loopback port that was free a moment ago. The daemon derives the
+/// endpoint it exports its own telemetry to from the configured port before
+/// it binds, and has no way to report a port the OS chose, so it can be
+/// handed neither port 0 nor an already bound listener.
 #[cfg(unix)]
 fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0))
@@ -221,4 +225,27 @@ fn clean_shutdown_reports_no_failed_telemetry_export() {
         .collect();
     assert!(unexpected.is_empty(), "{unexpected:#?}");
     assert_eq!(events.last().unwrap()["event.name"], "daemon.stopped");
+    // No export error is only half of it: the events must have arrived.
+    let ingested = ingested_log_bodies(&dir.path().join("lake.duckdb"));
+    assert!(
+        ingested
+            .iter()
+            .any(|body| body == "shutdown signal received"),
+        "the daemon's last exported event is in its own store: {ingested:?}"
+    );
+}
+
+/// The bodies of the log events the daemon ingested from itself, read from
+/// its store once it has exited and released it.
+#[cfg(unix)]
+fn ingested_log_bodies(store: &Path) -> Vec<String> {
+    let rows = tumult_lake::Store::open(store)
+        .expect("open the stopped daemon's store")
+        .read_only()
+        .expect("read the store")
+        .query_json_rows("SELECT body FROM logs WHERE service_name = 'tumultd'")
+        .expect("query the ingested logs");
+    rows.iter()
+        .filter_map(|row| row["body"].as_str().map(str::to_owned))
+        .collect()
 }
