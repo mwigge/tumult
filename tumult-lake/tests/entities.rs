@@ -534,39 +534,44 @@ fn an_out_of_order_delete_is_ignored() {
     assert_eq!(versions(&store)[0]["deleted_at_ns"], Value::Null);
 }
 
+/// The observer says how the event that opened a row came in. It is a
+/// record and decides nothing: the daemon has one ingest token, so it
+/// cannot tell one sender from another, and a rule that compared observers
+/// refused only the deletes that followed a change of the token setting.
 #[test]
-fn a_delete_from_another_observer_is_ignored() {
-    let (_d, store) = fixture();
-    apply(&store, &[state(PAST, json!({}))]);
-    let forged = EntityEventRow {
-        observer: "tok:b".into(),
-        ..delete(PAST + SECOND)
-    };
-    assert_eq!(
-        apply(&store, &[forged]),
-        vec![EntityOutcome::DeleteForeignObserver]
-    );
-    assert_eq!(versions(&store)[0]["deleted_at_ns"], Value::Null);
-}
-
-#[test]
-fn a_heartbeat_from_another_observer_does_not_take_over_the_row() {
+fn a_delete_is_accepted_whatever_observer_opened_the_row() {
     let (_d, store) = fixture();
     apply(&store, &[state(PAST, json!({}))]);
     let other = EntityEventRow {
         observer: "tok:b".into(),
-        ..state(PAST + SECOND, json!({}))
+        ..delete(PAST + SECOND)
     };
-    assert_eq!(apply(&store, &[other]), vec![EntityOutcome::Refreshed]);
-    assert_eq!(versions(&store)[0]["observer"], "tok:a");
-    let forged = EntityEventRow {
+    assert_eq!(apply(&store, &[other]), vec![EntityOutcome::Tombstoned]);
+    let rows = versions(&store);
+    assert_eq!(rows[0]["deleted_at_ns"], PAST + SECOND);
+    assert_eq!(rows[0]["observer"], "tok:a");
+}
+
+#[test]
+fn a_row_keeps_the_observer_that_opened_it() {
+    let (_d, store) = fixture();
+    apply(&store, &[state(PAST, json!({}))]);
+    let other = |ts_ns: i64, description: Value| EntityEventRow {
         observer: "tok:b".into(),
-        ..delete(PAST + 2 * SECOND)
+        ..state(ts_ns, description)
     };
     assert_eq!(
-        apply(&store, &[forged]),
-        vec![EntityOutcome::DeleteForeignObserver]
+        apply(&store, &[other(PAST + SECOND, json!({}))]),
+        vec![EntityOutcome::Refreshed]
     );
+    assert_eq!(versions(&store)[0]["observer"], "tok:a");
+    assert_eq!(
+        apply(&store, &[other(PAST + 2 * SECOND, json!({"v": 2}))]),
+        vec![EntityOutcome::Opened]
+    );
+    let rows = versions(&store);
+    assert_eq!(rows[0]["observer"], "tok:a");
+    assert_eq!(rows[1]["observer"], "tok:b");
 }
 
 #[test]

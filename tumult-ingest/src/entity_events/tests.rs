@@ -412,17 +412,43 @@ async fn a_written_batch_stores_the_entity_and_the_log_together() {
     }
 }
 
+/// The observer of a row changes when an ingest token is introduced or
+/// removed. A delete that arrives after such a change is a delete like any
+/// other.
+#[tokio::test]
+async fn a_delete_is_accepted_after_the_token_setting_changed() {
+    let (_dir, store, ingest) = ingest_with(enabled());
+    let reported = ingest.logs_batch(&host_export(false), RECEIVED);
+    ingest.write(reported).await.unwrap();
+
+    let with_token = EntityEvents::from_settings(&EntitySettings {
+        ingest_token: Some("kro_secret"),
+        ..on()
+    });
+    let mut export = host_export(false);
+    let record = &mut export.resource_logs[0].scope_logs[0].log_records[0];
+    record.event_name = "entity.delete".into();
+    record.time_unix_nano = TS + 1;
+    let deleted = logs_batch(with_token.as_ref(), &export, RECEIVED + 1);
+    ingest.write(deleted).await.unwrap();
+
+    let entity = rows(&store, "SELECT observer, liveness FROM entities_current");
+    assert_eq!(entity.len(), 1);
+    assert_eq!(entity[0]["liveness"], "gone");
+    assert_eq!(entity[0]["observer"], "anonymous");
+}
+
 #[test]
 fn every_outcome_is_counted_under_its_own_name() {
-    let before = outcome_count(EntityOutcome::DeleteForeignObserver);
+    let before = outcome_count(EntityOutcome::DeleteOutOfOrder);
     let opened = outcome_count(EntityOutcome::Opened);
     note_outcomes(&[
         EntityOutcome::Opened,
-        EntityOutcome::DeleteForeignObserver,
-        EntityOutcome::DeleteForeignObserver,
+        EntityOutcome::DeleteOutOfOrder,
+        EntityOutcome::DeleteOutOfOrder,
     ]);
     // Other tests of this binary store entities too: floors.
-    assert!(outcome_count(EntityOutcome::DeleteForeignObserver) >= before + 2);
+    assert!(outcome_count(EntityOutcome::DeleteOutOfOrder) >= before + 2);
     assert!(outcome_count(EntityOutcome::Opened) > opened);
 
     let mut text = String::new();
@@ -443,12 +469,15 @@ fn every_outcome_is_counted_under_its_own_name() {
         "tumultd_entity_events_total{outcome=\"delete_unknown\"} ",
         "tumultd_entity_events_total{outcome=\"delete_repeated\"} ",
         "tumultd_entity_events_total{outcome=\"delete_out_of_order\"} ",
-        "tumultd_entity_events_total{outcome=\"delete_foreign_observer\"} ",
         "tumultd_entity_events_dropped_total{reason=\"no_identity\"} ",
         "tumultd_entity_events_dropped_total{reason=\"malformed\"} ",
     ] {
         assert!(text.contains(line), "{line}: {text}");
     }
+    assert!(
+        !text.contains("observer"),
+        "no outcome is decided by the observer: {text}"
+    );
 }
 
 #[tokio::test]

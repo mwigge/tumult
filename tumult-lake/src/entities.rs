@@ -16,8 +16,8 @@
 //!   the state because liveness is derived from it: were a heartbeat to
 //!   rewrite it in place, a sender could turn an entity expired or
 //!   never-expiring and leave no row that shows what held before;
-//! * a delete sets the tombstone on the latest row when it comes from the
-//!   observer that opened the row and is not older than `last_seen_ns`;
+//! * a delete sets the tombstone on the latest row when it is not older
+//!   than `last_seen_ns`;
 //! * a state newer than the tombstone opens a new row: the entity is back.
 //!
 //! "Newer" is decided by the event time. Events that carry none, or one
@@ -99,7 +99,10 @@ pub struct EntityEventRow {
     pub interval_s: i64,
     pub delete_reason: Option<String>,
     pub wire_form: WireForm,
-    /// Who asserted the event: the id of the ingest token that carried it.
+    /// How the event came in: a name for the ingest token that carried it,
+    /// or for the lack of one. Stored with the row the event opens. It is a
+    /// record only; no rule of this module reads it, because the daemon has
+    /// one ingest token and cannot tell senders apart.
     pub observer: String,
     pub schema_url: Option<String>,
     /// The environment the sending resource names; empty when it names none.
@@ -123,8 +126,6 @@ pub enum EntityOutcome {
     DeleteRepeated,
     /// A delete older than the last state seen.
     DeleteOutOfOrder,
-    /// A delete from an observer that did not report the entity.
-    DeleteForeignObserver,
 }
 
 impl EntityOutcome {
@@ -375,9 +376,6 @@ fn apply_delete(latest: Option<&mut Latest>, event: &EntityEventRow) -> EntityOu
     if latest.deleted_at_ns.is_some() {
         return EntityOutcome::DeleteRepeated;
     }
-    if latest.observer != event.observer {
-        return EntityOutcome::DeleteForeignObserver;
-    }
     if event.ts_ns < latest.last_seen_ns && !latest.set_earlier_in_batch(event.ts_ns) {
         return EntityOutcome::DeleteOutOfOrder;
     }
@@ -622,7 +620,6 @@ mod tests {
             EntityOutcome::DeleteUnknown,
             EntityOutcome::DeleteRepeated,
             EntityOutcome::DeleteOutOfOrder,
-            EntityOutcome::DeleteForeignObserver,
         ] {
             assert!(ignored.is_ignored());
         }

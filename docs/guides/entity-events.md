@@ -147,7 +147,7 @@ row per report.
 | `interval_s` | seconds between reports; `0` means the sender reports once |
 | `deleted_at_ns`, `delete_reason` | set by a delete event |
 | `wire_form` | `spec` or `legacy` |
-| `observer` | who reported it (section 5) |
+| `observer` | how the event that opened the row came in (section 5); a record, not a permission |
 | `schema_url` | the schema URL of the log scope, when sent |
 
 The rules:
@@ -160,9 +160,8 @@ The rules:
   sender that changes it leaves the row with the earlier interval behind,
   and a copy that is not newer than the stored row cannot change it.
 - A delete event marks the latest row as deleted. It is ignored when it is
-  older than the last report, when the entity has no row, when the entity
-  is already deleted, or when it comes from another observer than the one
-  that reported the entity.
+  older than the last report, when the entity has no row or when the
+  entity is already deleted. Who sent it plays no part (section 5).
 - A state event newer than the deletion opens a new row: the entity is
   back.
 - Newer means a later event time. An event without a time, or with one
@@ -196,24 +195,37 @@ that is dropped (section 6) is not written to `logs` either.
 
 ## 5. Trust
 
-Anything in an entity event is a statement by whoever holds the ingest
-token. A sender can report an entity it does not run, and it can put any
-value in the description, including `ict.entity.owner`, `ict.entity.tier`
-or a criticality.
+Nothing in an entity event is verified. The daemon has exactly one ingest
+token (`KRONIKA_INGEST_TOKEN`): there is no token per sender and no token
+id, so the daemon cannot tell one sender from another.
 
-For that reason:
+- **Any holder of the ingest token can assert, change, suppress or delete
+  any entity in any environment it names.** When no token is set, any
+  local process that can reach the ingest port can do the same.
+- **`environment` is chosen by the sender.** It is a resource attribute of
+  the export, not something the daemon derives from the token or the
+  connection. The environment scopes of the read API confine who may read
+  an entity; they do not confine who may write one.
+- **Liveness is a claim.** The sender chooses the event times, the report
+  interval and whether a delete is sent. It can keep an entity `live` that
+  does not exist, let a running one show as `expired`, or mark it `gone`.
+- **Ownership and tier are claims.** `ict.entity.owner`, `ict.entity.tier`,
+  a criticality and every other description value are stored and returned
+  as sent. `org.yaml` and the register stay the source of truth, and
+  nothing in this release overrides them from entity data.
+- **Whatever reads entities next must not treat any of this as verified.**
+  That holds for the graph, the Star Map and the maturity roll-up of the
+  next phase: an entity, its environment, its liveness, its owner and its
+  tier are what a token holder said.
 
-- Ownership and tier carried by an entity event are **claims**. They are
-  stored and returned as sent. `org.yaml` and the register stay the source
-  of truth, and nothing in this release overrides them from entity data.
-- Every row records its `observer`. The daemon has one ingest token today,
-  so the value is `token:default` when a token is configured and
-  `anonymous` when ingest runs without one. The token itself, or a hash of
-  it, is never stored.
-- A delete is accepted only from the observer that reported the entity,
-  and a deleted entity is shown as `gone` rather than removed. With a
-  single ingest token every sender is the same observer, so this rule only
-  separates senders once the daemon has more than one token.
+Every row records its `observer`: `token:default` when the event that
+opened the row arrived with the ingest token and `anonymous` when ingest
+runs without one. The token itself, or a hash of it, is never stored. The
+observer is a record and decides nothing. In particular a delete is
+accepted whatever the observer of the row is: with one token a rule that
+compared observers would refuse no sender, and it would refuse every
+delete sent after a token was introduced or removed. A deleted entity is
+shown as `gone` rather than removed.
 
 ### What of a description is stored
 
@@ -293,10 +305,8 @@ bytes.
 
 `tumultd_entity_events_total` counts what the store did with the events it
 accepted, by `outcome`: `opened`, `refreshed`, `tombstoned`,
-`stale_state`, `delete_unknown`, `delete_repeated`, `delete_out_of_order`
-and `delete_foreign_observer`. A refused delete from another observer is
-also logged as `ingest.entity_event.delete_refused`. Both counters are on
-`GET /metrics`.
+`stale_state`, `delete_unknown`, `delete_repeated` and
+`delete_out_of_order`. Both counters are on `GET /metrics`.
 
 ## 7. Reading entities
 

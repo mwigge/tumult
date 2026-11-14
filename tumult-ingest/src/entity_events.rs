@@ -14,7 +14,6 @@ use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use tumult_lake::EntityOutcome;
 use tumult_otlp::{EntityDrop, EntityOptions};
 
-use crate::log_guard::LogLimiter;
 use crate::writer::Batch;
 
 /// Set to `1`, `true`, `yes` or `on` (in any case) to store entity events
@@ -29,8 +28,10 @@ pub const LABEL_ALLOW_ENV: &str = "KRONIKA_ENTITY_LABEL_ALLOW";
 pub const ATTRIBUTE_ALLOW_ENV: &str = "KRONIKA_ENTITY_ATTRIBUTE_ALLOW";
 
 /// The observer recorded for events that arrived with the ingest token.
-/// The daemon has one shared token, so it is one observer; the name says
-/// nothing about the token's value and stays the same when it is rotated.
+/// The daemon has exactly one ingest token (`KRONIKA_INGEST_TOKEN`), with
+/// no id and no per-sender variant, so every sender is this one observer
+/// and nothing can be decided by it. The name says nothing about the
+/// token's value and stays the same when it is rotated.
 const TOKEN_OBSERVER: &str = "token:default";
 /// The observer recorded when ingest runs without a token (loopback).
 const ANONYMOUS_OBSERVER: &str = "anonymous";
@@ -174,7 +175,7 @@ pub(crate) fn logs_batch(
 }
 
 /// Every outcome, in the order of the counters.
-const OUTCOMES: [EntityOutcome; 8] = [
+const OUTCOMES: [EntityOutcome; 7] = [
     EntityOutcome::Opened,
     EntityOutcome::Refreshed,
     EntityOutcome::Tombstoned,
@@ -182,11 +183,9 @@ const OUTCOMES: [EntityOutcome; 8] = [
     EntityOutcome::DeleteUnknown,
     EntityOutcome::DeleteRepeated,
     EntityOutcome::DeleteOutOfOrder,
-    EntityOutcome::DeleteForeignObserver,
 ];
 
-static OUTCOME_COUNTS: [AtomicU64; 8] = [
-    AtomicU64::new(0),
+static OUTCOME_COUNTS: [AtomicU64; 7] = [
     AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
@@ -195,10 +194,6 @@ static OUTCOME_COUNTS: [AtomicU64; 8] = [
     AtomicU64::new(0),
     AtomicU64::new(0),
 ];
-
-/// Limits the warning about deletes from another observer: whoever holds
-/// a way in can cause it at will.
-static FOREIGN_DELETES: LogLimiter = LogLimiter::warnings();
 
 fn outcome_name(outcome: EntityOutcome) -> &'static str {
     match outcome {
@@ -209,7 +204,6 @@ fn outcome_name(outcome: EntityOutcome) -> &'static str {
         EntityOutcome::DeleteUnknown => "delete_unknown",
         EntityOutcome::DeleteRepeated => "delete_repeated",
         EntityOutcome::DeleteOutOfOrder => "delete_out_of_order",
-        EntityOutcome::DeleteForeignObserver => "delete_foreign_observer",
     }
 }
 
@@ -222,7 +216,6 @@ fn outcome_counter(outcome: EntityOutcome) -> &'static AtomicU64 {
         EntityOutcome::DeleteUnknown => 4,
         EntityOutcome::DeleteRepeated => 5,
         EntityOutcome::DeleteOutOfOrder => 6,
-        EntityOutcome::DeleteForeignObserver => 7,
     };
     &OUTCOME_COUNTS[index]
 }
@@ -233,32 +226,11 @@ pub fn outcome_count(outcome: EntityOutcome) -> u64 {
     outcome_counter(outcome).load(Ordering::Relaxed)
 }
 
-/// Count what the store did with a batch of entity events. A delete from
-/// an observer that did not report the entity is also logged: it is either
-/// a misconfigured sender or an attempt to remove someone else's entity.
+/// Count what the store did with a batch of entity events.
 pub(crate) fn note_outcomes(outcomes: &[EntityOutcome]) {
-    let mut foreign_deletes = 0_u64;
     for outcome in outcomes {
         outcome_counter(*outcome).fetch_add(1, Ordering::Relaxed);
-        if *outcome == EntityOutcome::DeleteForeignObserver {
-            foreign_deletes += 1;
-        }
     }
-    if foreign_deletes == 0 {
-        return;
-    }
-    let Some(suppressed) = FOREIGN_DELETES.allow("foreign_delete") else {
-        return;
-    };
-    tracing::warn!(
-        name: "ingest.entity_event.delete_refused",
-        {
-            entity.event.refused_in_batch = foreign_deletes,
-            entity.event.refused_total = outcome_count(EntityOutcome::DeleteForeignObserver),
-            log.suppressed = suppressed,
-        },
-        "entity delete from another observer ignored"
-    );
 }
 
 fn push_labelled(out: &mut String, name: &str, help: &str, label: &str, values: &[(&str, u64)]) {
