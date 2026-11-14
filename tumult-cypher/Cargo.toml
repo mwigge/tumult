@@ -24,6 +24,7 @@ grafeo = { version = "0.5", default-features = false, features = ["edge", "cyphe
 [dev-dependencies]
 # Log capture for the tests of this crate's log events.
 tumult-otel = { path = "../tumult-otel" }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
 
 [lints]
 workspace = true

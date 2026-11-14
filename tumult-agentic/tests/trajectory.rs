@@ -183,28 +183,45 @@ fn recovers_within_fails_when_no_later_step_is_healthy() {
     );
 }
 
-#[test]
-fn fault_gating_is_deterministic_for_a_seed() {
-    let steps = vec![TrajectoryStep {
-        label: "call".to_string(),
-        kind: StepKind::Model,
-        consumes_retrieval: false,
-        baseline: base(r#"{"ok":true}"#),
-        contracts: vec![ContractSpec::ValidJson {
-            severity: Some(1.0),
-        }],
-    }];
-    let faults = vec![StepFault {
-        step_index: 0,
-        fault: FaultSpec::MalformedOutput { probability: 1.0 },
-    }];
-    let contracts = vec![TrajectoryContractSpec::TerminatesHealthy {
-        severity: Some(1.0),
-    }];
+/// Which of sixteen steps, each carrying one fault at probability 0.5, had
+/// the fault injected for `seed`.
+fn injected_steps(seed: u64) -> Vec<bool> {
+    let steps: Vec<TrajectoryStep> = (0..16)
+        .map(|index| TrajectoryStep {
+            label: format!("call-{index}"),
+            kind: StepKind::Model,
+            consumes_retrieval: false,
+            baseline: base(r#"{"ok":true}"#),
+            contracts: Vec::new(),
+        })
+        .collect();
+    let faults: Vec<StepFault> = (0..16)
+        .map(|step_index| StepFault {
+            step_index,
+            fault: FaultSpec::MalformedOutput { probability: 0.5 },
+        })
+        .collect();
 
-    let a = execute_trajectory("det", &steps, &faults, &contracts, 42).expect("runs");
-    let b = execute_trajectory("det", &steps, &faults, &contracts, 42).expect("runs");
-    assert_eq!(a, b);
+    execute_trajectory("gating", &steps, &faults, &[], seed)
+        .expect("runs")
+        .steps
+        .iter()
+        .map(|step| step.injected_fault.is_some())
+        .collect()
+}
+
+#[test]
+fn fault_gating_follows_the_seed() {
+    let first = injected_steps(42);
+
+    assert_eq!(first, injected_steps(42), "same seed, same decisions");
+    assert_ne!(
+        first,
+        injected_steps(43),
+        "another seed decides differently"
+    );
+    // At probability 0.5 the seed decides: some faults fire and some do not.
+    assert!(first.contains(&true) && first.contains(&false), "{first:?}");
 }
 
 #[test]

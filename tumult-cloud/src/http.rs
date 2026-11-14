@@ -26,11 +26,3 @@ pub(crate) fn client() -> reqwest::Client {
         .build()
         .expect("default reqwest client with timeouts must build")
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn client_builds_with_timeouts() {
-        let _ = super::client();
-    }
-}

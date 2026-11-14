@@ -41,6 +41,7 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Execution bindings](execution-bindings.md) | Authoritative environment and target bindings for daemon execution |
 | [Functional hardening review](hardening-review.md) | 2.22.0 finding coverage, acceptance scenarios and remaining limits |
 | [Quality and release checks](quality-and-release.md) | Source gates, dependency policy and release-artifact verification |
+| [Testing policy](testing.md) | What a test must assert, where fakes are allowed, isolation rules and the CI hygiene guard |
 | [Production Deployment](production-deployment.md) | Deploy Tumult in production: binaries, containers, hardening |
 | [Platform Walkthrough](platform-walkthrough.md) | Click-through of the Tumult web UI on the seeded demo: login → register → approve → run → e-stop → evidence pack, with screenshots |
 | [Windows Faults](windows-faults.md) | `tumult-windows`: native process-kill, CPU-stress, and firewall-blackhole faults, validated live against a Windows 11 guest |

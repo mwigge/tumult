@@ -9,6 +9,7 @@ phase-4 proof does it. Prints the number of spans sent.
 
     seed_spans.py <daemon-url>
 """
+
 import math
 import os
 import struct
@@ -83,7 +84,9 @@ def request_body(spans):
 
 def post(url, body):
     request = urllib.request.Request(
-        f"{url}/v1/traces", data=body, headers={"content-type": "application/x-protobuf"}
+        f"{url}/v1/traces",
+        data=body,
+        headers={"content-type": "application/x-protobuf"},
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         if response.status != 200:
@@ -99,7 +102,9 @@ def main():
         for minute in range(chunk, min(chunk + CHUNK_MINUTES, MINUTES)):
             count = runs_in_minute(minute)
             start = first + minute * MINUTE_NS
-            spans.extend(span(start + i * MINUTE_NS // (count + 1)) for i in range(count))
+            spans.extend(
+                span(start + i * MINUTE_NS // (count + 1)) for i in range(count)
+            )
         post(url, request_body(spans))
         sent += len(spans)
     print(sent)

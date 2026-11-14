@@ -42,6 +42,7 @@ indexmap = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 # The k6 executor's tempfile use moved to tumult-core; the CLI now only
 # needs tempfile in tests.
 tempfile = { workspace = true }

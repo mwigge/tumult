@@ -86,10 +86,16 @@ fn read_only_reader_coexists_with_open_writer() {
 }
 
 #[test]
-fn default_path_returns_valid_path() {
+fn default_path_is_the_lake_file_under_the_home_directory() {
+    let home = tempfile::TempDir::new().unwrap();
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH")
+        .remove("TUMULT_ANALYTICS_PATH")
+        .set("HOME", home.path());
+
     let path = AnalyticsStore::default_path().unwrap();
-    assert!(path.ends_with("lake.duckdb"));
-    assert!(path.to_str().unwrap().contains(".tumult"));
+
+    assert_eq!(path, home.path().join(".tumult").join("lake.duckdb"));
 }
 
 #[test]

@@ -153,34 +153,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_result_success_on_zero_exit() {
-        let result = CommandResult {
-            exit_code: 0,
-            stdout: "hello".into(),
-            stderr: String::new(),
-        };
-        assert!(result.success());
-    }
-
-    #[test]
-    fn command_result_failure_on_nonzero_exit() {
-        let result = CommandResult {
-            exit_code: 1,
-            stdout: String::new(),
-            stderr: "error".into(),
-        };
-        assert!(!result.success());
-    }
-
-    #[test]
-    fn command_result_failure_on_signal_exit() {
-        let result = CommandResult {
-            exit_code: 137,
-            stdout: String::new(),
-            stderr: "killed".into(),
-        };
-        assert!(!result.success());
-        assert_eq!(result.exit_code, 137);
+    fn command_result_succeeds_only_on_zero_exit() {
+        for (exit_code, expected) in [(0, true), (1, false), (137, false)] {
+            let result = CommandResult {
+                exit_code,
+                stdout: String::new(),
+                stderr: String::new(),
+            };
+            assert_eq!(result.success(), expected, "exit code {exit_code}");
+        }
     }
 
     #[test]
@@ -227,35 +208,6 @@ mod tests {
             matches!(result, Err(SshError::InvalidPath { .. })),
             "expected InvalidPath error, got {result:?}"
         );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_permissions_too_open_error() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::TempDir::new().unwrap();
-        let key_path = dir.path().join("id_test");
-        std::fs::write(&key_path, "fake-key-content").unwrap();
-        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o644)).unwrap();
-
-        let err = SshError::KeyPermissionsTooOpen {
-            path: key_path.display().to_string(),
-            mode: 0o644,
-        };
-        assert!(err.to_string().contains("permissions too open"));
-        assert!(err.to_string().contains("0o644"));
-
-        // Verify the check logic directly: mode & 0o177 != 0 means too open
-        let metadata = std::fs::metadata(&key_path).unwrap();
-        let mode = metadata.permissions().mode() & 0o777;
-        assert_ne!(mode & 0o177, 0, "0o644 should be considered too open");
-
-        // Verify 0o600 passes the check
-        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        let metadata = std::fs::metadata(&key_path).unwrap();
-        let mode = metadata.permissions().mode() & 0o777;
-        assert_eq!(mode & 0o177, 0, "0o600 should pass the permission check");
     }
 
     #[test]

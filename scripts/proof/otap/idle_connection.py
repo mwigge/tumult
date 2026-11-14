@@ -5,6 +5,7 @@ an empty SETTINGS frame, then only read. Prints the whole seconds until
 the server closed the connection, or "open" when it is still there
 after a minute.
 """
+
 import socket
 import sys
 import time

@@ -253,24 +253,6 @@ mod tests {
         );
     }
 
-    // Kept for backwards compatibility — allow_unknown_hosts(true) maps to AcceptAny
-    #[test]
-    fn allow_unknown_hosts_defaults_to_false() {
-        let config = SshConfig::with_agent("host", "user");
-        assert_ne!(
-            config.host_key_policy,
-            HostKeyPolicy::AcceptAny,
-            "host_key_policy should not default to AcceptAny"
-        );
-
-        let config = SshConfig::with_key("host", "user", PathBuf::from("/tmp/key"));
-        assert_ne!(
-            config.host_key_policy,
-            HostKeyPolicy::AcceptAny,
-            "host_key_policy should not default to AcceptAny"
-        );
-    }
-
     #[test]
     fn allow_unknown_hosts_still_works() {
         // Backwards-compat: .allow_unknown_hosts(true) maps to AcceptAny

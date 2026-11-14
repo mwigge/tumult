@@ -177,7 +177,9 @@ pub fn apply_fault(
             response.body = "{malformed-json".to_string();
         }
         FaultSpec::OutputTruncation { max_bytes, .. } => {
-            response.body.truncate(*max_bytes);
+            // A cut inside a multi-byte character backs off to its start.
+            let end = response.body.floor_char_boundary(*max_bytes);
+            response.body.truncate(end);
         }
         FaultSpec::HallucinatedToolCall { tool_name, .. } => {
             response.tool_name = Some(tool_name.clone());

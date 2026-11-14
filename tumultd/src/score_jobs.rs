@@ -484,6 +484,7 @@ functions:
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !done() {
             assert!(std::time::Instant::now() < deadline, "{what}");
+            // sleep: the interval of this bounded poll
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
     }
@@ -839,8 +840,9 @@ functions:
         d.stop().await;
     }
 
-    /// Shutdown does not wait for a snapshot that is still running.
-    #[tokio::test]
+    /// Shutdown does not wait for a snapshot that is still running. The clock
+    /// is paused, so the delay before the cancel costs no real time.
+    #[tokio::test(start_paused = true)]
     async fn a_running_job_is_given_up_on_shutdown() {
         let shutdown = CancellationToken::new();
         assert_eq!(until_cancelled(async { 7 }, &shutdown).await, Some(7));
@@ -865,23 +867,24 @@ functions:
         let _guard = crate::test_support::ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        // Restores both variables when the test ends, also on a failure.
+        let mut env = tumult_test_utils::EnvGuard::lock();
         type Read = fn() -> Option<Duration>;
         let cases: [(&str, Read, Duration); 2] = [
             (INTERVAL_ENV, snapshot_interval_from_env, DEFAULT_INTERVAL),
             (RELOAD_ENV, reload_interval_from_env, DEFAULT_RELOAD),
         ];
         for (key, read, default) in cases {
-            std::env::remove_var(key);
+            env.remove(key);
             assert_eq!(read(), Some(default), "{key}");
             for off in ["", "0", "off", "OFF"] {
-                std::env::set_var(key, off);
+                env.set(key, off);
                 assert_eq!(read(), None, "{key}={off:?} must disable");
             }
-            std::env::set_var(key, "6h");
+            env.set(key, "6h");
             assert_eq!(read(), Some(Duration::from_secs(21_600)), "{key}");
-            std::env::set_var(key, "bogus");
+            env.set(key, "bogus");
             assert_eq!(read(), Some(default), "{key}");
-            std::env::remove_var(key);
         }
         assert_eq!(DEFAULT_RELOAD, Duration::from_secs(60));
     }

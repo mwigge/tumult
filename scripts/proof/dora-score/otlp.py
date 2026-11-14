@@ -11,6 +11,7 @@ OTLP/HTTP endpoint takes protobuf, so the message is encoded here by hand
 `--days-ago` backdates the span; `--num` adds a numeric span attribute;
 `--count` repeats the span on that many consecutive earlier days.
 """
+
 import argparse
 import os
 import struct
@@ -95,7 +96,9 @@ def main():
     attributes += [double_value(k, float(v)) for k, v in pairs(args.num)]
     first_ns = time.time_ns() - int(args.days_ago * DAY_NS)
     spans = b"".join(
-        field_bytes(2, span(args.name, first_ns - day * DAY_NS, attributes))  # ScopeSpans.spans
+        field_bytes(
+            2, span(args.name, first_ns - day * DAY_NS, attributes)
+        )  # ScopeSpans.spans
         for day in range(args.count)
     )
     resource_spans = field_bytes(1, resource) + field_bytes(2, spans)

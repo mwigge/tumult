@@ -562,18 +562,11 @@ fn kill_process_group(pid: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     fn create_test_script(dir: &Path, name: &str, content: &str) -> std::path::PathBuf {
-        use std::io::Write;
         let script_path = dir.join(name);
-        let mut file = fs::File::create(&script_path).unwrap();
-        file.write_all(content.as_bytes()).unwrap();
-        file.sync_all().unwrap();
-        drop(file); // Ensure file handle is closed before chmod + exec
-        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+        tumult_test_utils::write_executable(&script_path, content);
         script_path
     }
 
@@ -740,7 +733,8 @@ mod tests {
         .await;
         assert!(matches!(result, Err(ExecutorError::Timeout(_))));
 
-        // Wait past the grandchild's would-be write time.
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the grandchild would have written it.
         tokio::time::sleep(Duration::from_millis(800)).await;
         assert!(
             !marker.exists(),
@@ -763,25 +757,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_script_injects_traceparent_env_var() {
-        // Verify that TRACEPARENT is injected into the child environment.
-        // When no active span exists the W3C propagator may produce an empty
-        // value; the key presence (or absence with empty value) depends on
-        // the global propagator configuration.  We assert the script can read
-        // the variable without crashing the executor.
+    async fn execute_script_hands_the_script_span_to_the_child_as_traceparent() {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(
             dir.path(),
             "test.sh",
             "#!/bin/bash\necho \"traceparent=${TRACEPARENT}\"",
         );
-        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
-            .await
-            .unwrap();
-        // The script must succeed regardless of whether a span is active.
-        assert_eq!(result.exit_status, ScriptExitStatus::Code(0));
-        // Output always contains the "traceparent=" line (value may be empty).
-        assert!(result.stdout.contains("traceparent="));
+
+        let (result, spans) = tumult_test_utils::capture_spans_async(execute_script(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            None,
+        ))
+        .await;
+
+        let span = spans
+            .iter()
+            .find(|span| span.name == "script.execute")
+            .expect("script.execute span is recorded");
+        let context = &span.span_context;
+        assert_eq!(
+            result.unwrap().stdout.trim(),
+            format!(
+                "traceparent=00-{}-{}-01",
+                context.trace_id(),
+                context.span_id()
+            )
+        );
     }
 
     #[test]

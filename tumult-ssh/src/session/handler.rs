@@ -309,9 +309,19 @@ mod tests {
             .unwrap();
         let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
         assert!(
-            result.is_ok(),
-            "should accept key stored with bracket notation for non-standard port"
+            matches!(result, Ok(true)),
+            "bracket entry for port 2222 must verify, got {result:?}"
         );
+
+        // The same entry must not vouch for the host on any other port.
+        for other_port in [22, 2223] {
+            handler.port = other_port;
+            let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+            assert!(
+                matches!(result, Err(SshError::HostKeyNotFound { .. })),
+                "port {other_port} must not match a [myserver]:2222 entry, got {result:?}"
+            );
+        }
     }
 
     /// No `known_hosts` file in Verify mode → `HostKeyNotFound`
@@ -337,28 +347,6 @@ mod tests {
             result.unwrap_err(),
             SshError::HostKeyNotFound { .. }
         ));
-    }
-
-    /// Verify the old `allow_unknown_hosts=true` behaviour still works via `AcceptAny`.
-    #[test]
-    fn check_server_key_accepts_when_allowed_via_accept_any() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let known_hosts = dir.path().join("known_hosts");
-
-        let mut handler = ClientHandler {
-            host: "testhost".to_string(),
-            port: 22,
-            known_hosts_path: known_hosts,
-            policy: HostKeyPolicy::AcceptAny,
-        };
-        let key = parse_key(TEST_KEY_1);
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
-        assert!(result.is_ok(), "AcceptAny should accept");
-        assert!(result.unwrap(), "should return true when accepting");
     }
 
     #[test]

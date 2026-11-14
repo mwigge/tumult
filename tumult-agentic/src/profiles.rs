@@ -97,47 +97,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn claude_code_nests_both_surfaces() {
-        let profile = profile_for(TumultClient::ClaudeCode);
-        assert_eq!(profile.model_surface, TraceTier::Nest);
-        assert_eq!(profile.tool_surface, TraceTier::Nest);
-        assert_eq!(profile.base_url_env, Some("ANTHROPIC_BASE_URL"));
-        assert!(profile.native_otel);
-    }
+    fn each_client_resolves_to_its_row_of_the_profile_table() {
+        use TraceTier::{Correlate, Nest};
+        // (client, base URL variable, native OTel, model surface, tool surface)
+        let table = [
+            (
+                TumultClient::ClaudeCode,
+                Some("ANTHROPIC_BASE_URL"),
+                true,
+                Nest,
+                Nest,
+            ),
+            (
+                TumultClient::Codex,
+                Some("OPENAI_BASE_URL"),
+                true,
+                Correlate,
+                Correlate,
+            ),
+            (
+                TumultClient::OpenCode,
+                Some("OPENAI_BASE_URL"),
+                true,
+                Correlate,
+                Nest,
+            ),
+            (TumultClient::Copilot, None, true, Correlate, Correlate),
+            (TumultClient::Unknown, None, false, Correlate, Correlate),
+        ];
 
-    #[test]
-    fn codex_correlates_both_surfaces() {
-        let profile = profile_for(TumultClient::Codex);
-        assert_eq!(profile.model_surface, TraceTier::Correlate);
-        assert_eq!(profile.tool_surface, TraceTier::Correlate);
-        assert_eq!(profile.base_url_env, Some("OPENAI_BASE_URL"));
-        assert!(profile.native_otel);
-    }
-
-    #[test]
-    fn opencode_nests_tools_but_correlates_model() {
-        let profile = profile_for(TumultClient::OpenCode);
-        assert_eq!(profile.model_surface, TraceTier::Correlate);
-        assert_eq!(profile.tool_surface, TraceTier::Nest);
-        assert_eq!(profile.base_url_env, Some("OPENAI_BASE_URL"));
-    }
-
-    #[test]
-    fn copilot_has_no_base_url_env() {
-        let profile = profile_for(TumultClient::Copilot);
-        assert_eq!(profile.base_url_env, None);
-        assert_eq!(profile.model_surface, TraceTier::Correlate);
-        assert_eq!(profile.tool_surface, TraceTier::Correlate);
-        assert!(profile.native_otel);
-    }
-
-    #[test]
-    fn unknown_has_no_native_otel() {
-        let profile = profile_for(TumultClient::Unknown);
-        assert_eq!(profile.base_url_env, None);
-        assert!(!profile.native_otel);
-        assert_eq!(profile.model_surface, TraceTier::Correlate);
-        assert_eq!(profile.tool_surface, TraceTier::Correlate);
+        for (client, base_url_env, native_otel, model_surface, tool_surface) in table {
+            let profile = profile_for(client);
+            assert_eq!(
+                (
+                    profile.client,
+                    profile.base_url_env,
+                    profile.native_otel,
+                    profile.model_surface,
+                    profile.tool_surface,
+                ),
+                (
+                    client,
+                    base_url_env,
+                    native_otel,
+                    model_surface,
+                    tool_surface
+                )
+            );
+        }
     }
 
     #[test]

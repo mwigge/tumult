@@ -139,17 +139,42 @@ impl Llm for OpenAiCompatClient {
 
 #[cfg(test)]
 mod tests {
+    use tumult_test_utils::EnvGuard;
+
     use super::*;
 
     #[test]
     fn env_defaults_target_local_ollama() {
-        std::env::remove_var("KRONIKA_LLM_BASE_URL");
-        std::env::remove_var("KRONIKA_LLM_API_KEY");
-        std::env::remove_var("KRONIKA_LLM_MODEL");
+        let mut env = EnvGuard::lock();
+        env.remove("KRONIKA_LLM_BASE_URL")
+            .remove("KRONIKA_LLM_API_KEY")
+            .remove("KRONIKA_LLM_MODEL");
+
         let client = OpenAiCompatClient::from_env();
+
         assert_eq!(client.base_url, "http://localhost:11434/v1");
         assert_eq!(client.api_key, None);
         assert_eq!(client.model(), "qwen2.5:7b");
+    }
+
+    #[test]
+    fn env_overrides_are_read_and_an_empty_key_means_no_key() {
+        let mut env = EnvGuard::lock();
+        env.set("KRONIKA_LLM_BASE_URL", "https://llm.example/v1/")
+            .set("KRONIKA_LLM_API_KEY", "")
+            .set("KRONIKA_LLM_MODEL", "small");
+
+        let client = OpenAiCompatClient::from_env();
+
+        assert_eq!(client.base_url, "https://llm.example/v1");
+        assert_eq!(client.api_key, None);
+        assert_eq!(client.model(), "small");
+
+        env.set("KRONIKA_LLM_API_KEY", "sk-test");
+        assert_eq!(
+            OpenAiCompatClient::from_env().api_key.as_deref(),
+            Some("sk-test")
+        );
     }
 
     #[test]

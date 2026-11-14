@@ -41,6 +41,7 @@ uuid.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 serde_json.workspace = true
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 # The paused clock, for tests that only wait on tasks.
 tokio = { workspace = true, features = ["test-util"] }
 async-trait.workspace = true

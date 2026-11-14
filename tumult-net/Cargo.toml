@@ -36,3 +36,5 @@ opentelemetry = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["fs", "process"] }
 
+[dev-dependencies]
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

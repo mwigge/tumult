@@ -2,60 +2,15 @@
 //! envelopes, and runner error propagation — no real CLIs, no network.
 #![cfg(unix)]
 
-use std::env;
-use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::path::Path;
 use std::time::Duration;
 
 use tumult_agent_cli::{
     resolver, run, run_prompt, AdapterRegistry, AgentCliAdapter, AgentCliError, ClaudeCodeAdapter,
     CliInvocation, CliProbe, CodexAdapter, PromptRequest, RawOutput,
 };
-
-/// Serializes tests that mutate process-global env vars.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Restores an env var to its previous state on drop.
-struct EnvGuard {
-    key: &'static str,
-    prev: Option<OsString>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let prev = env::var_os(key);
-        env::set_var(key, value);
-        Self { key, prev }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match self.prev.take() {
-            Some(prev) => env::set_var(self.key, prev),
-            None => env::remove_var(self.key),
-        }
-    }
-}
-
-/// Write an executable `#!/bin/sh` script into `dir`.
-fn fake_bin(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake binary");
-    let mut perms = fs::metadata(&path).expect("stat fake binary").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&path, perms).expect("chmod fake binary");
-    path
-}
+use tumult_test_utils::{fake_bin, EnvGuard};
 
 fn request(prompt: &str, workspace: &Path) -> PromptRequest {
     let mut req = PromptRequest::new(prompt, workspace);
@@ -114,11 +69,11 @@ fn claude_parse_output_error_envelope_without_result_text() {
 
 #[test]
 fn build_invocation_requires_resolvable_binary() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let _claude = EnvGuard::set("CLAUDE_CODE_BIN", dir.path().join("no-claude"));
-    let _codex = EnvGuard::set("CODEX_BIN", dir.path().join("no-codex"));
-    let _path = EnvGuard::set("PATH", dir.path()); // empty dir: PATH lookup fails
+    env.set("CLAUDE_CODE_BIN", dir.path().join("no-claude"));
+    env.set("CODEX_BIN", dir.path().join("no-codex"));
+    env.set("PATH", dir.path()); // empty dir: PATH lookup fails
 
     let err = ClaudeCodeAdapter::new()
         .build_invocation(&request("hi", dir.path()))
@@ -151,12 +106,12 @@ fn build_invocation_requires_resolvable_binary() {
 
 #[test]
 fn whitespace_only_model_is_dropped() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let claude = fake_bin(dir.path(), "claude", "exit 0");
     let codex = fake_bin(dir.path(), "codex", "exit 0");
-    let _claude = EnvGuard::set("CLAUDE_CODE_BIN", &claude);
-    let _codex = EnvGuard::set("CODEX_BIN", &codex);
+    env.set("CLAUDE_CODE_BIN", &claude);
+    env.set("CODEX_BIN", &codex);
 
     let mut req = request("hi", dir.path());
     req.model = Some("   ".to_string());
@@ -181,10 +136,10 @@ fn whitespace_only_model_is_dropped() {
 
 #[test]
 fn codex_detect_reports_missing_binary() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let _bin = EnvGuard::set("CODEX_BIN", dir.path().join("does-not-exist"));
-    let _path = EnvGuard::set("PATH", dir.path());
+    env.set("CODEX_BIN", dir.path().join("does-not-exist"));
+    env.set("PATH", dir.path());
 
     let probe = CodexAdapter::new().detect();
     assert!(!probe.installed);
@@ -198,15 +153,15 @@ fn codex_detect_reports_missing_binary() {
 
 #[test]
 fn codex_detect_reports_api_key_auth() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(
         dir.path(),
         "codex",
         r#"if [ "$1" = "--version" ]; then echo "codex-cli 0.46.0"; exit 0; fi"#,
     );
-    let _bin = EnvGuard::set("CODEX_BIN", &bin);
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+    env.set("CODEX_BIN", &bin);
+    env.set("OPENAI_API_KEY", "sk-test");
 
     let probe = CodexAdapter::new().detect();
     assert!(probe.installed);
@@ -216,14 +171,14 @@ fn codex_detect_reports_api_key_auth() {
 
 #[test]
 fn detect_reports_broken_version_probe() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let body = r#"echo "not a real cli" >&2
 exit 1"#;
     let claude = fake_bin(dir.path(), "claude", body);
     let codex = fake_bin(dir.path(), "codex", body);
-    let _claude = EnvGuard::set("CLAUDE_CODE_BIN", &claude);
-    let _codex = EnvGuard::set("CODEX_BIN", &codex);
+    env.set("CLAUDE_CODE_BIN", &claude);
+    env.set("CODEX_BIN", &codex);
 
     let claude_probe = ClaudeCodeAdapter::new().detect();
     let codex_probe = CodexAdapter::new().detect();
@@ -246,10 +201,10 @@ exit 1"#;
 
 #[test]
 fn run_prompt_reports_missing_binary() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", dir.path().join("does-not-exist"));
-    let _path = EnvGuard::set("PATH", dir.path());
+    env.set("CLAUDE_CODE_BIN", dir.path().join("does-not-exist"));
+    env.set("PATH", dir.path());
 
     let adapter = ClaudeCodeAdapter::new();
     let err = run_prompt(&adapter, &request("hi", dir.path())).expect_err("no binary");
@@ -397,14 +352,14 @@ fn codex_explain_failure_describes_exit() {
 
 #[test]
 fn resolver_ignores_non_executable_override() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // A plain (non-executable) file as the override must be ignored.
     let stale = dir.path().join("stale-override");
     fs::write(&stale, "not a script").expect("write stale override");
     let real = fake_bin(dir.path(), "mycmd", "exit 0");
-    let _override = EnvGuard::set("TEST_OVERRIDE_BIN", &stale);
-    let _path = EnvGuard::set("PATH", dir.path());
+    env.set("TEST_OVERRIDE_BIN", &stale);
+    env.set("PATH", dir.path());
 
     let resolved = resolver::resolve_binary("TEST_OVERRIDE_BIN", "mycmd")
         .expect("PATH lookup finds the real binary");
@@ -416,11 +371,11 @@ fn resolver_ignores_non_executable_override() {
 
 #[test]
 fn resolver_ignores_empty_override() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let real = fake_bin(dir.path(), "mycmd", "exit 0");
-    let _override = EnvGuard::set("TEST_OVERRIDE_BIN", "");
-    let _path = EnvGuard::set("PATH", dir.path());
+    env.set("TEST_OVERRIDE_BIN", "");
+    env.set("PATH", dir.path());
 
     let resolved = resolver::resolve_binary("TEST_OVERRIDE_BIN", "mycmd")
         .expect("PATH lookup finds the real binary");
