@@ -737,8 +737,23 @@ functions:
 
     static CLOCK: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(T0);
 
+    /// How often the job has read the clock: once per attempt and once
+    /// per day check.
+    static CLOCK_READS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     fn test_clock() -> i64 {
+        CLOCK_READS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         CLOCK.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Wait until the job has read the clock `more` times from now on.
+    async fn clock_reads(more: u64) {
+        let reads = || CLOCK_READS.load(std::sync::atomic::Ordering::SeqCst);
+        let from = reads();
+        eventually("the job stopped checking the day", || {
+            reads() >= from + more
+        })
+        .await;
     }
 
     /// The snapshot follows the UTC day, not the time since the last
@@ -762,7 +777,13 @@ functions:
             count(&d.store, "maturity_daily") == 2
         })
         .await;
-        tokio::time::sleep(Duration::from_millis(120)).await;
+        // The next read of the clock is a day check after the attempt
+        // ended. Three more day checks then store nothing: each stored
+        // snapshot would move the generation on.
+        clock_reads(1).await;
+        let stored = d.jobs.runtime.generation();
+        clock_reads(3).await;
+        assert_eq!(d.jobs.runtime.generation(), stored, "stored once");
         assert_eq!(count(&d.store, "maturity_daily"), 2, "one row per day");
         shutdown.cancel();
         wait(task, "score jobs").await;
