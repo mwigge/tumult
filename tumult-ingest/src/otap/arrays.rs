@@ -79,32 +79,23 @@ impl IdColumn {
     }
 }
 
-/// Bytes a dictionary array occupies once every row holds its own value.
-fn expanded_bytes(array: &ArrayRef, value_type: &DataType) -> Result<usize, String> {
-    let dictionary = array.as_any_dictionary();
-    let values = dictionary.values();
+/// Bytes a dictionary array occupies once every row holds its own value;
+/// `keys` are its keys as [`widened`].
+fn expanded_bytes(
+    array: &ArrayRef,
+    value_type: &DataType,
+    keys: &[usize],
+) -> Result<usize, String> {
+    let values = array.as_any_dictionary().values();
     if values.is_empty() {
         return Ok(0);
     }
     let fixed = |width: usize| Ok(array.len().saturating_mul(width));
-    let keys = || dictionary.normalized_keys();
     match value_type {
-        DataType::Utf8 => Ok(referenced(
-            &keys(),
-            values.as_string::<i32>().value_offsets(),
-        )),
-        DataType::LargeUtf8 => Ok(referenced(
-            &keys(),
-            values.as_string::<i64>().value_offsets(),
-        )),
-        DataType::Binary => Ok(referenced(
-            &keys(),
-            values.as_binary::<i32>().value_offsets(),
-        )),
-        DataType::LargeBinary => Ok(referenced(
-            &keys(),
-            values.as_binary::<i64>().value_offsets(),
-        )),
+        DataType::Utf8 => Ok(referenced(keys, values.as_string::<i32>().value_offsets())),
+        DataType::LargeUtf8 => Ok(referenced(keys, values.as_string::<i64>().value_offsets())),
+        DataType::Binary => Ok(referenced(keys, values.as_binary::<i32>().value_offsets())),
+        DataType::LargeBinary => Ok(referenced(keys, values.as_binary::<i64>().value_offsets())),
         DataType::FixedSizeBinary(width) => fixed(usize::try_from(*width).unwrap_or(0)),
         DataType::Boolean => fixed(1),
         other => match other.primitive_width() {
@@ -121,25 +112,39 @@ fn expanded_bytes(array: &ArrayRef, value_type: &DataType) -> Result<usize, Stri
 ///
 /// Done row by row rather than with one `cast`, so the batch's deadline
 /// ends it part-way: every row is a [`Budget::tick`]. A row whose key is
-/// null is null; `normalized_keys` keeps every key inside the values (the
-/// IPC reader lets none through that is not).
-fn materialised(column: &ArrayRef, budget: &Budget) -> Result<ArrayRef, OtapError> {
+/// null is null; the [`widened`] `keys` are all inside the values (the IPC
+/// reader lets none through that is not). The rows fit the offsets of the
+/// column's type: [`fits_offsets`] has refused the column otherwise, and
+/// `MutableArrayData` panics on one that does not.
+fn materialised(column: &ArrayRef, keys: &[usize], budget: &Budget) -> Result<ArrayRef, OtapError> {
     let dictionary = column.as_any_dictionary();
     let values = dictionary.values().to_data();
     if values.is_empty() {
         return Ok(new_null_array(values.data_type(), column.len()));
     }
-    let keys = dictionary.keys();
+    let nulls = dictionary.keys();
     let mut rows = MutableArrayData::new(vec![&values], true, column.len());
-    for (row, key) in dictionary.normalized_keys().into_iter().enumerate() {
+    for (row, &key) in keys.iter().enumerate() {
         budget.tick()?;
-        if keys.is_null(row) {
+        if nulls.is_null(row) {
             rows.extend_nulls(1);
             continue;
         }
         rows.extend(0, key, key + 1);
     }
     Ok(make_array(rows.freeze()))
+}
+
+/// The keys of the dictionary column `column` as indices into its values,
+/// one `usize` a row whatever the width they arrived in. That allocation
+/// is charged to the budget before it is made.
+fn widened(column: &ArrayRef, budget: &Budget) -> Result<Vec<usize>, OtapError> {
+    // Keys with nothing to point at are all null, and are not looked at.
+    if column.as_any_dictionary().values().is_empty() {
+        return Ok(Vec::new());
+    }
+    budget.charge_bytes(column.len().saturating_mul(std::mem::size_of::<usize>()))?;
+    Ok(column.as_any_dictionary().normalized_keys())
 }
 
 /// Total length of the variable-size values the keys refer to.
@@ -150,6 +155,19 @@ fn referenced<O: OffsetSizeTrait>(keys: &[usize], offsets: &[O]) -> usize {
             _ => 0,
         })
         .fold(0, usize::saturating_add)
+}
+
+/// Refuse an expansion to `bytes` that a column of `value_type` cannot
+/// hold: a `Utf8` or `Binary` column has 32-bit offsets and ends at
+/// `i32::MAX` bytes, however large the budget is set.
+fn fits_offsets(value_type: &DataType, bytes: usize) -> Result<(), String> {
+    let small = matches!(value_type, DataType::Utf8 | DataType::Binary);
+    if !small || i32::try_from(bytes).is_ok() {
+        return Ok(());
+    }
+    Err(format!(
+        "dictionary expands to {bytes} bytes, more than a column with 32-bit offsets holds"
+    ))
 }
 
 /// The error for `count` rows of `table` whose parent row is not in the
@@ -202,8 +220,11 @@ impl Table {
                 column: log_guard::clean(&format!("{prefix}{}", field.name())),
                 reason,
             };
-            budget.charge_bytes(expanded_bytes(column, value_type).map_err(failed)?)?;
-            columns.push(materialised(column, &budget)?);
+            let keys = widened(column, &budget)?;
+            let bytes = expanded_bytes(column, value_type, &keys).map_err(failed)?;
+            budget.charge_bytes(bytes)?;
+            fits_offsets(value_type, bytes).map_err(failed)?;
+            columns.push(materialised(column, &keys, &budget)?);
         }
         Ok(Self {
             name,
@@ -669,6 +690,64 @@ mod tests {
         let t = Table::new("T", &batch, &budget()).unwrap();
         assert_eq!(t.str_at("c", 0).unwrap(), None);
         assert_eq!(t.str_at("c", 1).unwrap(), None);
+    }
+
+    /// The largest total a column with 32-bit offsets holds.
+    const SMALL_MAX: usize = i32::MAX as usize;
+
+    #[test]
+    fn an_expansion_past_32_bit_offsets_is_refused_at_the_boundary() {
+        // Two values: one byte, and the rest of what 32-bit offsets hold.
+        // Only the offsets exist here: nothing of the size is allocated.
+        let offsets = [0i32, 1, i32::MAX];
+        let most = referenced(&[0, 1], &offsets);
+        let over = referenced(&[0, 1, 0], &offsets);
+        assert_eq!((most, over), (SMALL_MAX, SMALL_MAX + 1));
+        for small in [DataType::Utf8, DataType::Binary] {
+            assert_eq!(fits_offsets(&small, most), Ok(()));
+            let refused = fits_offsets(&small, over).unwrap_err();
+            assert!(refused.contains("32-bit offsets"), "{refused}");
+        }
+        // A gigabyte value named three times is far past the boundary.
+        let thrice = referenced(&[0, 0, 0], &[0i32, 1 << 30]);
+        assert!(fits_offsets(&DataType::Utf8, thrice).is_err());
+    }
+
+    #[test]
+    fn an_expansion_past_32_bit_offsets_is_fine_with_64_bit_offsets() {
+        let over = referenced(&[0, 1, 0], &[0i64, 1, i64::from(i32::MAX)]);
+        assert_eq!(over, SMALL_MAX + 1);
+        for large in [DataType::LargeUtf8, DataType::LargeBinary] {
+            assert_eq!(fits_offsets(&large, over), Ok(()));
+        }
+    }
+
+    /// 100 rows keyed into two one-byte values.
+    fn hundred_rows() -> RecordBatch {
+        let keys = UInt8Array::from_iter_values((0..100).map(|row| row % 2));
+        let values: ArrayRef = Arc::new(UInt8Array::from(vec![7, 9]));
+        let column: ArrayRef = Arc::new(DictionaryArray::new(keys, values));
+        let schema = Schema::new(vec![Field::new("c", column.data_type().clone(), true)]);
+        RecordBatch::try_new(Arc::new(schema), vec![column]).unwrap()
+    }
+
+    fn budget_of(bytes: usize) -> Arc<Budget> {
+        Arc::new(Budget::new(crate::otap::limits::OtapLimits {
+            max_decoded_bytes_per_batch: bytes,
+            ..Default::default()
+        }))
+    }
+
+    #[test]
+    fn the_keys_of_an_expansion_are_charged_to_the_budget() {
+        // A row costs its value (1 byte) and its widened key.
+        let row = 1 + std::mem::size_of::<usize>();
+        let Err(err) = Table::new("T", &hundred_rows(), &budget_of(100 * row - 1)) else {
+            panic!("the widened keys are not charged");
+        };
+        assert!(matches!(err, OtapError::Limit { .. }), "{err}");
+        let t = Table::new("T", &hundred_rows(), &budget_of(100 * row)).unwrap();
+        assert_eq!(t.u8_at("c", 99).unwrap(), Some(9));
     }
 
     #[test]
