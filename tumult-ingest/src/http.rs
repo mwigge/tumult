@@ -16,9 +16,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::Router;
-use opentelemetry_proto::tonic::collector::logs::v1::{
-    ExportLogsServiceRequest, ExportLogsServiceResponse,
-};
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::{
     ExportMetricsPartialSuccess, ExportMetricsServiceRequest, ExportMetricsServiceResponse,
 };
@@ -108,13 +106,10 @@ async fn metrics(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoRe
 
 async fn logs(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
     match decode::<ExportLogsServiceRequest>(&body).await {
-        Ok(request) => {
-            let batch = ingest.logs_batch(&request, crate::now_ns());
-            match ingest.write(batch).await {
-                Ok(()) => protobuf(ExportLogsServiceResponse::default()),
-                Err(e) => server_error(e),
-            }
-        }
+        Ok(request) => match ingest.export_logs(&request).await {
+            Ok(answer) => protobuf(answer),
+            Err(e) => server_error(e),
+        },
         Err(e) => client_error(e),
     }
 }

@@ -2,7 +2,9 @@
 //! what the daemon stores with `KRONIKA_ENTITY_EVENTS` set and what it
 //! stores without.
 
-use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+use opentelemetry_proto::tonic::collector::logs::v1::{
+    ExportLogsServiceRequest, ExportLogsServiceResponse,
+};
 use opentelemetry_proto::tonic::common::v1::any_value::Value;
 use opentelemetry_proto::tonic::common::v1::{
     AnyValue, InstrumentationScope, KeyValue, KeyValueList,
@@ -108,14 +110,19 @@ struct Served {
 /// The OTLP/HTTP listener of a daemon whose `KRONIKA_ENTITY_EVENTS` is
 /// `flag`, with the ingest token set.
 async fn serve(flag: Option<&str>) -> Served {
-    let dir = tempfile::TempDir::new().unwrap();
-    let store = Store::open(&dir.path().join("k.duckdb")).unwrap();
-    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
-    let ingest = ingest.with_entity_events(EntityEvents::from_settings(&EntitySettings {
+    serve_with(EntitySettings {
         flag,
         ingest_token: Some(TOKEN),
         ..EntitySettings::default()
-    }));
+    })
+    .await
+}
+
+async fn serve_with(settings: EntitySettings<'_>) -> Served {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+    let ingest = ingest.with_entity_events(EntityEvents::from_settings(&settings));
     let app = http::router_with_token(ingest, Some(TOKEN.into()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -131,7 +138,8 @@ async fn serve(flag: Option<&str>) -> Served {
 }
 
 impl Served {
-    async fn post(&self, records: Vec<LogRecord>) {
+    /// Send `records` as one export; the answer of the daemon.
+    async fn post(&self, records: Vec<LogRecord>) -> ExportLogsServiceResponse {
         let response = reqwest::Client::new()
             .post(format!("http://{}/v1/logs", self.addr))
             .header("content-type", "application/x-protobuf")
@@ -141,6 +149,7 @@ impl Served {
             .await
             .unwrap();
         assert_eq!(response.status(), 200);
+        ExportLogsServiceResponse::decode(response.bytes().await.unwrap()).unwrap()
     }
 
     fn rows(&self, sql: &str) -> Vec<serde_json::Value> {
@@ -248,4 +257,114 @@ async fn ordinary_logs_are_stored_the_same_with_and_without_the_flag() {
     assert_eq!(off.logs().len(), 2);
     assert_eq!(off.logs(), on.logs());
     assert!(on.entities().is_empty());
+}
+
+/// A legacy state event that names no id; a pod has nothing to fall back
+/// on, so it cannot become a row.
+fn without_identity() -> LogRecord {
+    LogRecord {
+        time_unix_nano: TS,
+        attributes: vec![
+            text("otel.entity.event.type", "entity_state"),
+            text("otel.entity.type", "k8s.pod"),
+        ],
+        ..LogRecord::default()
+    }
+}
+
+fn of_unknown_kind() -> LogRecord {
+    LogRecord {
+        time_unix_nano: TS,
+        attributes: vec![
+            text("otel.entity.event.type", "entity_renamed"),
+            text("otel.entity.type", "k8s.pod"),
+            kv("otel.entity.id", pod_id()),
+        ],
+        ..LogRecord::default()
+    }
+}
+
+/// An export is accepted whatever its entity events are, so the answer is
+/// where a sender learns that some were not stored: how many, and why.
+#[tokio::test]
+async fn entity_events_that_are_not_stored_are_reported_to_the_sender() {
+    let served = serve(Some("1")).await;
+    let clean = served.post(vec![legacy_state(TS), ordinary()]).await;
+    assert_eq!(clean.partial_success, None, "nothing was left out");
+
+    let answer = served
+        .post(vec![
+            legacy_state(TS + 1),
+            without_identity(),
+            ordinary(),
+            of_unknown_kind(),
+            without_identity(),
+        ])
+        .await;
+    let partial = answer.partial_success.expect("three events were dropped");
+    assert_eq!(partial.rejected_log_records, 3);
+    assert_eq!(
+        partial.error_message,
+        "entity events not stored: unknown_kind=1, no_identity=2"
+    );
+    assert_eq!(
+        served.entities().len(),
+        1,
+        "the rest of the export is stored"
+    );
+    assert_eq!(served.logs().len(), 2);
+}
+
+/// An entity refused for lack of room is not stored either, and the
+/// sender is told the same way.
+#[tokio::test]
+async fn an_entity_refused_at_the_limit_is_reported_to_the_sender() {
+    let served = serve_with(EntitySettings {
+        flag: Some("1"),
+        ingest_token: Some(TOKEN),
+        max_per_environment: Some("1"),
+        ..EntitySettings::default()
+    })
+    .await;
+    // Received now, so the first entity is live and cannot make room.
+    let now = u64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+    )
+    .unwrap();
+    assert_eq!(
+        served.post(vec![legacy_state(now)]).await.partial_success,
+        None
+    );
+
+    let mut second = legacy_state(now);
+    second.attributes.retain(|kv| kv.key != "otel.entity.id");
+    second.attributes.push(kv(
+        "otel.entity.id",
+        Value::KvlistValue(KeyValueList {
+            values: vec![text("k8s.pod.uid", "u-2")],
+        }),
+    ));
+    let answer = served.post(vec![second, without_identity()]).await;
+    let partial = answer.partial_success.expect("one refused, one dropped");
+    assert_eq!(partial.rejected_log_records, 2);
+    assert_eq!(
+        partial.error_message,
+        "entity events not stored: no_identity=1, entity_limit=1"
+    );
+    assert_eq!(served.entities().len(), 1);
+}
+
+/// With the flag off every record is stored as a log record: nothing is
+/// left out and nothing is reported.
+#[tokio::test]
+async fn without_the_flag_nothing_is_reported_as_rejected() {
+    let served = serve(None).await;
+    let answer = served
+        .post(vec![without_identity(), of_unknown_kind(), ordinary()])
+        .await;
+    assert_eq!(answer.partial_success, None);
+    assert_eq!(served.logs().len(), 3);
 }

@@ -10,7 +10,9 @@
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+use opentelemetry_proto::tonic::collector::logs::v1::{
+    ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse,
+};
 use tumult_lake::{
     EntityApplied, EntityEvictions, EntityLimits, EntityOutcome, EntityPurge, EvictionReason,
     Writer,
@@ -244,24 +246,56 @@ fn comma_separated(list: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-/// The batch a logs export becomes. Without entity events, and for an
-/// export that carries none, that is the logs batch it always was.
-pub(crate) fn logs_batch(
+/// The batch a logs export becomes, and the entity events of it that the
+/// conversion dropped. Without entity events, and for an export that
+/// carries none, that is the logs batch it always was and nothing dropped.
+pub(crate) fn logs_export(
     entities: Option<&EntityEvents>,
     request: &ExportLogsServiceRequest,
     received_at_ns: i64,
-) -> Batch {
+) -> (Batch, Vec<EntityDrop>) {
     let Some(entities) = entities else {
-        return Batch::Logs(tumult_otlp::logs_request_to_rows(request, received_at_ns));
+        let rows = tumult_otlp::logs_request_to_rows(request, received_at_ns);
+        return (Batch::Logs(rows), Vec::new());
     };
     let split = tumult_otlp::split_entity_events(request, received_at_ns, entities.options());
     if split.entities.is_empty() {
-        return Batch::Logs(split.logs);
+        return (Batch::Logs(split.logs), split.dropped);
     }
-    Batch::LogsAndEntities {
+    let batch = Batch::LogsAndEntities {
         logs: split.logs,
         entities: split.entities,
         limits: entities.limits(),
+    };
+    (batch, split.dropped)
+}
+
+/// The answer to a logs export: empty when every entity event of it was
+/// stored, otherwise how many were not and why. Every reason counts, the
+/// drops of the conversion and the entities refused for lack of room
+/// alike: to the sender they are all records that were accepted and are
+/// not in the store. The message lists the reasons in a fixed order.
+pub(crate) fn logs_response(dropped: &[EntityDrop], refused: usize) -> ExportLogsServiceResponse {
+    let mut reasons: Vec<String> = EntityDrop::ALL
+        .iter()
+        .filter_map(|reason| {
+            let events = dropped.iter().filter(|drop| *drop == reason).count();
+            (events > 0).then(|| format!("{}={events}", reason.as_str()))
+        })
+        .collect();
+    if refused > 0 {
+        let limit = outcome_name(EntityOutcome::EntityLimit);
+        reasons.push(format!("{limit}={refused}"));
+    }
+    if reasons.is_empty() {
+        return ExportLogsServiceResponse::default();
+    }
+    let rejected = dropped.len().saturating_add(refused);
+    ExportLogsServiceResponse {
+        partial_success: Some(ExportLogsPartialSuccess {
+            rejected_log_records: i64::try_from(rejected).unwrap_or(i64::MAX),
+            error_message: format!("entity events not stored: {}", reasons.join(", ")),
+        }),
     }
 }
 
@@ -413,8 +447,9 @@ fn add_pruned(reason: Pruned, rows: usize) {
 
 /// What follows a stored batch of entity events: the counters, the warning
 /// for refused entities and the upkeep of the table. The batch is stored
-/// by now, so nothing here fails it.
-pub(crate) fn after_write(writer: &Writer, applied: &EntityApplied) {
+/// by now, so nothing here fails it. Answers how many entities were
+/// refused for lack of room, for the sender.
+pub(crate) fn after_write(writer: &Writer, applied: &EntityApplied) -> usize {
     note_outcomes(&applied.outcomes);
     add_pruned(Pruned::VersionCap, applied.versions_pruned);
     add_evicted(&applied.evicted);
@@ -426,6 +461,7 @@ pub(crate) fn after_write(writer: &Writer, applied: &EntityApplied) {
         .count();
     warn_refused(&REFUSALS, refused);
     housekeeping(writer, &LAST_PRUNE_NS, crate::now_ns());
+    refused
 }
 
 /// Remove what an operator asked for and write it to the log: who, which

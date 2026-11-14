@@ -493,7 +493,7 @@ async fn a_delete_is_accepted_after_the_token_setting_changed() {
     let record = &mut export.resource_logs[0].scope_logs[0].log_records[0];
     record.event_name = "entity.delete".into();
     record.time_unix_nano = TS + 1;
-    let deleted = logs_batch(with_token.as_ref(), &export, RECEIVED + 1);
+    let deleted = logs_export(with_token.as_ref(), &export, RECEIVED + 1).0;
     ingest.write(deleted).await.unwrap();
 
     let entity = rows(&store, "SELECT observer, liveness FROM entities_current");

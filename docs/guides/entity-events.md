@@ -308,6 +308,22 @@ with the number left out.
 | `export_limit` | the export already gave 10 000 entity events; the first 10 000 are stored and the rest dropped |
 | `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, an environment over 256 bytes, a schema URL over 2048 bytes, more than 64 relationships, more than 4096 values in description and relationships (every entry of a map or a list counts, a removed key too), or description and relationships over 64 KiB together |
 
+An export that carries entity events is answered `200` (OTLP/HTTP) or
+`OK` (OTLP/gRPC) whatever becomes of them, so that a Collector does not
+retry records that would be dropped again. What was not stored is in the
+answer: `partial_success.rejected_log_records` is the number of entity
+events of that export that are not in the store, and
+`partial_success.error_message` says why, for example
+`entity events not stored: no_identity=2, export_limit=3, entity_limit=1`.
+Every reason of the table above counts, and so does `entity_limit`
+(section 6: the entity would have been one too many). Events that were
+stored without changing anything (a stale state, a repeated delete) are
+not rejected and do not count. With nothing left out the answer carries
+no `partial_success`; with the flag off it never does, since every record
+is stored as a log record. The Collector logs a partial success as a
+warning and does not retry. OTAP has no such field: there the drops show
+in the metric and in the daemon's log only.
+
 One export stores at most 10 000 entity events. The daemon has a single
 writer for all telemetry and folds the entity events of an export in one
 transaction; the limit keeps that transaction short. Events beyond it are

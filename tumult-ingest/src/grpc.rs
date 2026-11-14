@@ -234,11 +234,8 @@ impl LogsService for OtlpGrpc {
         request: Request<ExportLogsServiceRequest>,
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
         authorize(self.ingest_token.as_ref(), &request)?;
-        let batch = self.ingest.logs_batch(request.get_ref(), crate::now_ns());
-        self.ingest.write(batch).await.map_err(to_status)?;
-        Ok(Response::new(ExportLogsServiceResponse {
-            partial_success: None,
-        }))
+        let answer = self.ingest.export_logs(request.get_ref()).await;
+        answer.map(Response::new).map_err(to_status)
     }
 }
 
@@ -575,6 +572,40 @@ mod tests {
             .await
             .unwrap();
         fixtures::assert_two_logs_and_no_entity(&store);
+    }
+
+    /// What the export limit leaves out is in the answer over gRPC as it
+    /// is over HTTP: the count and the reason.
+    #[tokio::test]
+    async fn events_beyond_the_export_limit_are_reported_to_the_sender() {
+        use crate::entity_events::tests as fixtures;
+
+        let (_d, store, ingest) = fixtures::ingest_with(fixtures::enabled());
+        let svc = OtlpGrpc {
+            ingest,
+            ingest_token: None,
+        };
+        let clean = LogsService::export(&svc, Request::new(fixtures::host_export(false)))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(clean.partial_success, None);
+
+        let mut export = fixtures::host_export(false);
+        let state = export.resource_logs[0].scope_logs[0].log_records[0].clone();
+        export.resource_logs[0].scope_logs[0].log_records =
+            vec![state; tumult_otlp::MAX_EVENTS_PER_EXPORT + 3];
+        let answer = LogsService::export(&svc, Request::new(export))
+            .await
+            .unwrap()
+            .into_inner();
+        let partial = answer.partial_success.expect("three events were dropped");
+        assert_eq!(partial.rejected_log_records, 3);
+        assert_eq!(
+            partial.error_message,
+            "entity events not stored: export_limit=3"
+        );
+        assert_eq!(fixtures::rows(&store, fixtures::ENTITIES).len(), 1);
     }
 
     #[tokio::test]

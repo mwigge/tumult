@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+use opentelemetry_proto::tonic::collector::logs::v1::{
+    ExportLogsServiceRequest, ExportLogsServiceResponse,
+};
 use tokio::sync::{mpsc, oneshot};
 use tumult_lake::{EntityEventRow, EntityLimits, EntityPurge, LogRow, SpanRow, Store, Writer};
 use tumult_otlp::MetricRows;
@@ -47,9 +49,17 @@ pub struct EntityPurgeRequest {
     pub by: String,
 }
 
+/// What the writer task says about a batch it stored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Written {
+    /// Entity events of the batch that were not stored because their
+    /// entity would have been one too many.
+    entities_refused: usize,
+}
+
 struct Envelope {
     batch: Batch,
-    ack: oneshot::Sender<Result<(), String>>,
+    ack: oneshot::Sender<Result<Written, String>>,
 }
 
 /// Cheaply-cloneable handle to the background writer task.
@@ -105,7 +115,27 @@ impl IngestWriter {
         request: &ExportLogsServiceRequest,
         received_at_ns: i64,
     ) -> Batch {
-        entity_events::logs_batch(self.entities.as_ref(), request, received_at_ns)
+        entity_events::logs_export(self.entities.as_ref(), request, received_at_ns).0
+    }
+
+    /// Store a logs export and answer it as OTLP does: with the number of
+    /// entity events that were accepted and not stored, and why, when
+    /// there are any (`partial_success`).
+    ///
+    /// # Errors
+    /// Returns [`IngestError::Channel`] if the writer task is gone or the
+    /// store write failed; nothing of the export is stored then.
+    pub(crate) async fn export_logs(
+        &self,
+        request: &ExportLogsServiceRequest,
+    ) -> Result<ExportLogsServiceResponse, IngestError> {
+        let (batch, dropped) =
+            entity_events::logs_export(self.entities.as_ref(), request, crate::now_ns());
+        let written = self.submit(batch).await?;
+        Ok(entity_events::logs_response(
+            &dropped,
+            written.entities_refused,
+        ))
     }
 
     /// Batches waiting in the channel for the writer task.
@@ -121,6 +151,10 @@ impl IngestWriter {
     /// Returns [`IngestError::Channel`] if the writer task is gone or the
     /// store write failed.
     pub async fn write(&self, batch: Batch) -> Result<(), IngestError> {
+        self.submit(batch).await.map(|_| ())
+    }
+
+    async fn submit(&self, batch: Batch) -> Result<Written, IngestError> {
         let (ack_tx, ack_rx) = oneshot::channel();
         self.tx
             .send(Envelope { batch, ack: ack_tx })
@@ -242,7 +276,8 @@ async fn reconnect_with(
     Err(last_err)
 }
 
-fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
+fn apply(writer: &Writer, batch: Batch) -> Result<Written, IngestError> {
+    let mut written = Written::default();
     match batch {
         Batch::Spans(rows) => writer.insert_spans(&rows)?,
         Batch::Logs(rows) => writer.insert_logs(&rows)?,
@@ -252,14 +287,14 @@ fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
             limits,
         } => {
             let applied = writer.insert_logs_and_entity_events(&logs, &entities, &limits)?;
-            entity_events::after_write(writer, &applied);
+            written.entities_refused = entity_events::after_write(writer, &applied);
         }
         Batch::Metrics(rows) => {
             writer.insert_metrics(&rows.sums, &rows.gauges, &rows.histograms)?;
         }
         Batch::Exec(f) => f(writer).map_err(IngestError::Channel)?,
     }
-    Ok(())
+    Ok(written)
 }
 
 #[cfg(test)]
