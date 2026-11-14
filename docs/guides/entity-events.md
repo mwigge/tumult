@@ -99,7 +99,9 @@ The `otlphttp` exporter needs none either: the daemon's OTLP/HTTP routes
 (`/v1/traces`, `/v1/metrics`, `/v1/logs`) take its default,
 `Content-Encoding: gzip`, and a body sent as it is (`compression: none`).
 A gzip body may expand to 4 MiB; one that expands to more is answered
-`413` and nothing of it is stored. Any other encoding (`zstd`, `snappy`,
+`413` and nothing of it is stored. A body of several gzip members is read
+whole and bounded as one; anything after a member that is not a member is
+`400`. Any other encoding (`zstd`, `snappy`,
 `deflate`, several at once) is answered `415 Unsupported Media Type` with
 `Accept-Encoding: gzip`, never accepted and never called malformed; a
 body that says gzip and is not is `400`. The body on the wire is bounded

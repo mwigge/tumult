@@ -230,3 +230,46 @@ async fn a_body_that_is_not_gzip_is_a_client_error() {
         assert_eq!(daemon.count(table), 0, "{route}");
     }
 }
+
+/// A gzip body may be several members one after the other (RFC 1952); it
+/// is what they expand to together, so nothing of it is left unread.
+#[tokio::test]
+async fn a_gzip_body_of_two_members_is_stored_whole() {
+    let daemon = Daemon::start().await;
+    for (route, table) in ROUTES {
+        let body = [gzip(&export(route, "one")), gzip(&export(route, "two"))].concat();
+        let status = daemon.post(route, Some("gzip"), body).await;
+        assert_eq!(status, 200, "{route}");
+        assert_eq!(daemon.count(table), 2, "{route}");
+    }
+}
+
+/// The members are bounded together: two of three mebibytes each are
+/// inside the bound one by one and too large as a body.
+#[tokio::test]
+async fn the_members_of_a_gzip_body_are_measured_together() {
+    let daemon = Daemon::start().await;
+    let large = "x".repeat(3 * 1024 * 1024);
+    for (route, table) in ROUTES {
+        let member = gzip(&export(route, &large));
+        let status = daemon.post(route, Some("gzip"), member.clone()).await;
+        assert_eq!(status, 200, "{route}: one member");
+        let status = daemon.post(route, Some("gzip"), member.repeat(2)).await;
+        assert_eq!(status, 413, "{route}: two members");
+        assert_eq!(daemon.count(table), 1, "{route}");
+    }
+}
+
+/// What follows a member and is not one makes the body malformed; the
+/// member before it is not stored.
+#[tokio::test]
+async fn a_gzip_member_followed_by_something_else_is_a_client_error() {
+    let daemon = Daemon::start().await;
+    for (route, table) in ROUTES {
+        let mut body = gzip(&export(route, "one"));
+        body.extend_from_slice(b"not a gzip member");
+        let status = daemon.post(route, Some("gzip"), body).await;
+        assert_eq!(status, 400, "{route}");
+        assert_eq!(daemon.count(table), 0, "{route}");
+    }
+}

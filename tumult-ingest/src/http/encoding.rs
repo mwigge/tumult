@@ -10,7 +10,7 @@ use std::io::Read;
 
 use axum::body::Bytes;
 use axum::http::{header, HeaderMap};
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use prost::Message;
 
 /// The most a compressed body may expand to: what tonic takes as one
@@ -60,11 +60,14 @@ fn encoding(headers: &HeaderMap) -> Result<Encoding, Refusal> {
     }
 }
 
-/// Expand a gzip `body`, reading no more than one byte past `max`.
+/// Expand a gzip `body`, reading no more than one byte past `max`. A body
+/// of several members (RFC 1952) is what they expand to one after the
+/// other, bounded together; what follows a member is a member or an error,
+/// so no part of a body goes unread.
 fn inflate(body: &[u8], max: usize) -> Result<Vec<u8>, Refusal> {
     let limit = u64::try_from(max).unwrap_or(u64::MAX).saturating_add(1);
     let mut plain = Vec::new();
-    GzDecoder::new(body)
+    MultiGzDecoder::new(body)
         .take(limit)
         .read_to_end(&mut plain)
         .map_err(|error| Refusal::Malformed(format!("failed to decode the gzip body: {error}")))?;
@@ -137,6 +140,25 @@ mod tests {
         assert_eq!(inflate(&gzip(&at_the_bound), 1024), Ok(at_the_bound));
         let one_more = vec![b'x'; 1025];
         assert_eq!(inflate(&gzip(&one_more), 1024), Err(Refusal::TooLarge));
+    }
+
+    #[test]
+    fn the_members_of_a_gzip_body_are_read_as_one() {
+        let body = [gzip(b"one, "), gzip(b"two")].concat();
+        assert_eq!(inflate(&body, 1024), Ok(b"one, two".to_vec()));
+    }
+
+    #[test]
+    fn the_members_of_a_gzip_body_are_bounded_together() {
+        let body = [gzip(&[b'x'; 600]), gzip(&[b'x'; 600])].concat();
+        assert_eq!(inflate(&body, 1024), Err(Refusal::TooLarge));
+    }
+
+    #[test]
+    fn what_follows_a_member_and_is_not_one_is_malformed() {
+        let mut body = gzip(b"one");
+        body.extend_from_slice(b"not a gzip member");
+        assert!(matches!(inflate(&body, 1024), Err(Refusal::Malformed(_))));
     }
 
     #[test]
