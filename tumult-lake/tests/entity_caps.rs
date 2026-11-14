@@ -381,10 +381,11 @@ fn an_entity_the_batch_names_is_not_evicted_for_that_batch() {
     assert_eq!(host_ids(&store, "prod"), vec!["a"]);
 }
 
-/// At the bound of the lake, room is made in whatever environment has a
-/// silent entity.
+/// At the bound of the lake, when the environment of the new entity holds
+/// nothing to evict, room is made in whatever environment has a silent
+/// entity.
 #[test]
-fn at_the_bound_of_the_lake_room_is_made_in_any_environment() {
+fn at_the_bound_of_the_lake_room_is_made_in_any_environment_when_its_own_has_none() {
     let (_d, store) = fixture();
     let writer = store.writer().unwrap();
     let limits = EntityLimits {
@@ -406,6 +407,37 @@ fn at_the_bound_of_the_lake_room_is_made_in_any_environment() {
     );
     let held = held_is_stored(&writer, &store, "an eviction for the lake");
     assert_eq!(held.keys().collect::<Vec<_>>(), vec!["three", "two"]);
+}
+
+/// At the bound of the lake a new entity makes room in its own environment
+/// when that holds a silent entity, also when another environment holds
+/// one that was silent for longer: what a sender adds in one environment
+/// does not push out the history of another.
+#[test]
+fn at_the_bound_of_the_lake_room_is_made_in_the_environment_of_the_new_entity_first() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    let limits = EntityLimits {
+        entities_per_environment: 10,
+        entities_total: 4,
+        ..EntityLimits::default()
+    };
+    apply(
+        &writer,
+        &[
+            within(host("silent", PAST), "b"),
+            within(live("live"), "b"),
+            within(host("silent", PAST + SECOND), "a"),
+            within(live("live"), "a"),
+        ],
+        &limits,
+    );
+    let applied = apply(&writer, &[within(live("new"), "a")], &limits);
+    assert_eq!(applied.outcomes, vec![EntityOutcome::Opened]);
+    assert_eq!(applied.evicted.expired, 1);
+    assert_eq!(host_ids(&store, "a"), vec!["live", "new"]);
+    assert_eq!(host_ids(&store, "b"), vec!["live", "silent"]);
+    held_is_stored(&writer, &store, "an eviction in the environment itself");
 }
 
 /// The writer remembers for a while that a bound held nothing to evict,

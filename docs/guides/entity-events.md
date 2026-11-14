@@ -398,11 +398,12 @@ bounded on every side:
 |---|---|---|
 | Rows per entity and environment | 100 | When a new row takes an entity past the bound its oldest rows are removed. The latest row always stays. Counted in `tumultd_entity_versions_pruned_total{reason="version_cap"}`. |
 | Entities per environment | 50 000, or `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` | A state event for an entity that has no row first makes room (below). Only when nothing can make room is it refused: outcome `entity_limit`, and the warning `ingest.entity_events.limit_reached` at a bounded rate. The rest of the export, its log records included, is stored. Events for entities that have a row are applied as usual. |
-| Entities in the lake | four times the bound per environment | The same, with room made in any environment. The environment is named by the sender, so a bound per environment alone would bound nothing. |
+| Entities in the lake | four times the bound per environment | The same, with room made in the environment of the new entity first and in the others only when that holds nothing to evict. The environment is named by the sender, so a bound per environment alone would bound nothing. |
 | Retention of entities that are not live | 30 days since the daemon last received anything for them | The entity is removed with all its rows. Counted in `tumultd_entity_versions_pruned_total{reason="retention"}`. |
 
 **Making room.** At either entity bound the daemon evicts before it
-refuses. Entities are removed, with all their rows, in this order:
+refuses. Exactly these entities can be removed, with all their rows, in
+this order:
 
 1. entities that are `gone` or `expired`, the one the daemon heard of
    longest ago first;
@@ -411,6 +412,12 @@ refuses. Entities are removed, with all their rows, in this order:
    and is `live` for the API however old it is; for the bounds it ages
    out after a day, so that an environment cannot be filled for good with
    entities that were reported once.
+
+Where they are taken from depends on the bound. At the bound of an
+environment only entities of that environment go. At the bound of the
+lake the entities of the environment of the new entity go first, in the
+order above; only when that environment holds none are they taken from
+all environments, again the one the daemon heard of longest ago first.
 
 One eviction removes up to a hundredth of the bound per environment (500
 with the default, never more than 5 000), so that the next new entities
@@ -440,8 +447,19 @@ ingest token can be one (section 5):
   The daemon cannot tell its events from honest ones; the remedy is the
   operator's: rotate the token, then purge.
 - **It can push out history.** New entities at a full bound evict the
-  entities that are gone or expired, with their history, long before the
-  30 days of retention.
+  entities that are gone or expired, and those with `interval_s = 0`
+  that were silent for 24 hours although the API shows them as `live`,
+  with their history, long before the 30 days of retention. At the bound
+  of an environment that is the history of that environment only. At the
+  bound of the lake it is the history of the environment the sender
+  names, for as long as that holds anything to evict; a sender that names
+  an environment with nothing to evict (a new name will do) reaches the
+  other environments, at most 500 entities (a hundredth of the bound per
+  environment) per search and one search per five seconds. In the worst
+  case every entity in the lake that is gone, expired or reported once
+  and silent for a day is evicted, 200 000 at the default bounds in a
+  little over half an hour. Entities that are live and report are out
+  of its reach.
 - **It can roll out the history of one entity.** Every change of state
   opens a row and an entity keeps 100. An entity that flaps between two
   states at each report loses its oldest row with the 101st change: at a
@@ -540,7 +558,8 @@ What still costs a pass over the table, since it has no index:
   one, which reads the table once per export: the difference between a
   heartbeat (38 ms) and an export that opens a row (48 ms) above.
 - **Eviction** reads the latest row of every entity of the environment
-  (of the lake, at the lake bound) to find the ones to remove, and then
+  (at the lake bound, and again of the lake when the environment holds
+  nothing to evict) to find the ones to remove, and then
   removes them: 124 ms for 500 entities out of 50 000 above. A sender
   that keeps a bound full of entities it lets expire can cause one such
   search per 500 new entities, not one per export, and one that deletes

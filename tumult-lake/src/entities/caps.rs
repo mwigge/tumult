@@ -10,8 +10,8 @@
 //!   [`EntityLimits::entities_per_environment`] entities and the lake at
 //!   most [`EntityLimits::entities_total`]. A state for an entity that has
 //!   no row first makes room at either bound by evicting entities nobody
-//!   reports any more (see [`Writer::admit`]) and is refused only when
-//!   there are none;
+//!   reports any more, those of its own environment before any other
+//!   (see [`Writer::admit`]), and is refused only when there are none;
 //! * [`Writer::prune_entities`] removes, with all their rows, the entities
 //!   that are not live and were last heard of before a cutoff;
 //! * [`Writer::purge_entities`] removes what an operator names.
@@ -180,17 +180,9 @@ impl EntityEvictions {
 enum Full {
     /// The bound of this environment: room is made in it.
     Environment(String),
-    /// The bound of the lake only: room is made wherever it can be.
+    /// The bound of the lake only: room is made in the environment of the
+    /// new entity, and elsewhere only when that holds nothing to evict.
     Lake,
-}
-
-impl Full {
-    fn environment(&self) -> Option<&str> {
-        match self {
-            Self::Environment(environment) => Some(environment),
-            Self::Lake => None,
-        }
-    }
 }
 
 /// How many entities the lake holds, per environment and in all. An
@@ -474,12 +466,28 @@ impl Writer {
     }
 
     /// Whether there is room for one more entity in `environment`,
-    /// counting it when there is. At a bound, room is made first: entities
-    /// that are gone or expired go, longest silent first, then entities
-    /// that send no periodic reports and were not heard of for
-    /// [`EntityLimits::unreported_after_s`]. An entity that is live and
-    /// reports is never evicted, so the answer is `false` when the bound
-    /// is full of those.
+    /// counting it when there is. At a bound, room is made first, by
+    /// evicting up to [`EntityLimits::eviction_chunk`] entities with all
+    /// their rows. Exactly these can go, in this order:
+    ///
+    /// 1. an entity that is gone (deleted) or expired (three report
+    ///    intervals missed), the one the daemon heard of longest ago
+    ///    first;
+    /// 2. an entity with `interval_s = 0` of which the daemon received
+    ///    nothing for [`EntityLimits::unreported_after_s`] (24 hours
+    ///    unless set). The view shows such an entity as live, since it
+    ///    never expires; it is evicted all the same.
+    ///
+    /// Never evicted: an entity with a report interval that is neither
+    /// gone nor expired, an entity with `interval_s = 0` heard of within
+    /// that time, and an entity that the batch being applied names.
+    ///
+    /// Where they are taken from: at the bound of `environment`, from
+    /// `environment` only. At the bound of the lake, from `environment`
+    /// too; only when it holds none of the above are they taken from all
+    /// environments, in the same order. The answer is `false` when
+    /// nothing could be evicted, or when the bound was searched less than
+    /// [`EVICTION_SEARCH_SPACING_NS`] ago.
     pub(super) fn admit(
         &self,
         environment: &str,
@@ -490,7 +498,7 @@ impl Writer {
         if let Some(full) = full {
             // Room in the environment is room in the lake too, and the
             // lake is only looked at when the environment has room.
-            if !self.evict(&full, limits, evicted)? {
+            if !self.evict(&full, environment, limits, evicted)? {
                 return Ok(false);
             }
         }
@@ -498,12 +506,14 @@ impl Writer {
         Ok(true)
     }
 
-    /// Evict up to [`EntityLimits::eviction_chunk`] entities from what is
-    /// `full`; whether any went. None goes without a search, and `full` is
-    /// searched at most once in [`EVICTION_SEARCH_SPACING_NS`].
+    /// Evict up to [`EntityLimits::eviction_chunk`] entities to make room
+    /// at `full` for an entity of `environment`; whether any went. None
+    /// goes without a search, and `full` is searched at most once in
+    /// [`EVICTION_SEARCH_SPACING_NS`].
     fn evict(
         &self,
         full: &Full,
+        environment: &str,
         limits: &EntityLimits,
         evicted: &mut EntityEvictions,
     ) -> Result<bool, StoreError> {
@@ -513,8 +523,30 @@ impl Writer {
             return Ok(false);
         }
         self.entities.note_search(full.clone(), now_ns);
+        let mut removed = self.evict_from(Some(environment), now_ns, limits)?;
+        if removed.rows == 0 && *full == Full::Lake {
+            removed = self.evict_from(None, now_ns, limits)?;
+        }
+        if removed.rows == 0 {
+            self.entities.note_nothing(full.clone(), now_ns);
+            return Ok(false);
+        }
+        for (_, reason, entities) in &removed.entities {
+            if let Some(reason) = EvictionReason::named(reason) {
+                evicted.add(reason, *entities);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Remove what may be evicted from `environment`, or from all of them.
+    fn evict_from(
+        &self,
+        environment: Option<&str>,
+        now_ns: i64,
+        limits: &EntityLimits,
+    ) -> Result<Removed, StoreError> {
         let silence_ns = limits.unreported_after_s.saturating_mul(1_000_000_000);
-        let environment = full.environment();
         self.prepare_victims()?;
         self.entities.ran();
         self.conn.execute(
@@ -526,17 +558,7 @@ impl Writer {
                 as_param(limits.eviction_chunk())
             ],
         )?;
-        let removed = self.remove_victims()?;
-        if removed.rows == 0 {
-            self.entities.note_nothing(full.clone(), now_ns);
-            return Ok(false);
-        }
-        for (_, reason, entities) in &removed.entities {
-            if let Some(reason) = EvictionReason::named(reason) {
-                evicted.add(reason, *entities);
-            }
-        }
-        Ok(true)
+        self.remove_victims()
     }
 
     fn prepare_victims(&self) -> Result<(), StoreError> {
