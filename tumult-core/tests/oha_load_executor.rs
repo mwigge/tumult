@@ -1,6 +1,7 @@
 //! Behavior tests for the oha load adapter: the start/stop lifecycle
 //! against a fake `oha` binary, including windowed sampling for a soak
-//! profile, the normal stop, the immediate abort, the kill-after-grace
+//! profile, the plan clock, planned against completed windows, the
+//! normal stop, the abort with its partial evidence, the kill-after-grace
 //! path and the no-evidence outcomes.
 
 use std::collections::HashMap;
@@ -25,6 +26,22 @@ fn config(profile: Option<LoadProfile>, duration_s: f64) -> LoadConfig {
         thresholds: HashMap::new(),
         profile,
     }
+}
+
+fn soak(duration_s: f64) -> LoadConfig {
+    config(
+        Some(LoadProfile::Soak {
+            sample_interval_s: 1.0,
+        }),
+        duration_s,
+    )
+}
+
+/// The lines a fake wrote to `name` next to itself, one per window.
+fn recorded(dir: &tempfile::TempDir, name: &str) -> Vec<String> {
+    std::fs::read_to_string(dir.path().join(name))
+        .map(|text| text.lines().map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 /// Write an executable fake-oha script and point `TUMULT_OHA_BINARY` at it.
@@ -67,8 +84,10 @@ conc=0
 format=text
 wait=no
 timeout=
+length=
 while [ $# -gt 0 ]; do
   if [ "$1" = "-c" ]; then shift; conc="$1"; fi
+  if [ "$1" = "-z" ]; then shift; length="$1"; fi
   if [ "$1" = "-t" ]; then shift; timeout="$1"; fi
   if [ "$1" = "-w" ]; then wait=yes; fi
   if [ "$1" = "--output-format" ]; then shift; format="$1"; fi
@@ -79,6 +98,8 @@ done
 if [ "$format" != "json" ]; then echo "text output" ; exit 0; fi
 if [ "$wait" != "yes" ] || [ -z "$timeout" ]; then echo "missing -w or -t" >&2; exit 2; fi
 echo x >> "$(dirname "$0")/calls"
+echo "$length" >> "$(dirname "$0")/lengths"
+echo "$timeout" >> "$(dirname "$0")/timeouts"
 #BEFORE_SUMMARY
 printf '%s' "{\"summary\":{\"successRate\":1.0,\"total\":0.1,\"slowest\":0.2,\"fastest\":0.01,\"average\":0.05,\"requestsPerSec\":50.0,\"totalData\":1,\"sizePerRequest\":1,\"sizePerSec\":1},\"responseTimeHistogram\":{},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"rps\":{},\"details\":{},\"statusCodeDistribution\":{\"200\":$conc,\"503\":1},\"errorDistribution\":{}}"
 exit 0
@@ -137,6 +158,112 @@ fn flat_config_is_one_window_and_one_sample() {
     assert!((result.error_rate - 0.2).abs() < 1e-9);
     assert!(result.thresholds_met);
     assert!(result.ended_at_ns >= result.started_at_ns);
+    // The sample is as long as the window really ran (`summary.total`),
+    // not as long as it was planned.
+    assert!((result.samples[0].duration_s - 0.1).abs() < 1e-9);
+    assert_eq!(result.execution.planned_windows, Some(1));
+    assert_eq!(result.execution.completed_windows, Some(1));
+    assert!(!result.execution.aborted);
+    assert!(result.execution.reasons.is_empty());
+    // A one-second window gives up on an answer before its slot is over.
+    assert_eq!(recorded(&dir, "timeouts"), vec!["750ms"]);
+}
+
+#[test]
+fn the_request_timeout_follows_the_window_up_to_thirty_seconds() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, FAKE_OHA_JSON);
+
+    let executor = OhaLoadExecutor::default();
+    for duration_s in [10.0, 600.0] {
+        let handle = executor.start(&config(None, duration_s)).expect("starts");
+        executor.stop(handle).expect("stops");
+    }
+    assert_eq!(recorded(&dir, "timeouts"), vec!["10s", "30s"]);
+
+    // An explicit timeout is used as given.
+    let executor = OhaLoadExecutor::default().with_request_timeout(Duration::from_secs(45));
+    let handle = executor.start(&config(None, 1.0)).expect("starts");
+    executor.stop(handle).expect("stops");
+    assert_eq!(
+        recorded(&dir, "timeouts").last().map(String::as_str),
+        Some("45s")
+    );
+}
+
+/// What oha 1.16 prints against a target that never answers (`-w -t`),
+/// after outliving its one-second slot by half a second while its last
+/// requests time out.
+fn fake_blacked_out() -> String {
+    "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\nsleep 1.5\ncat <<'JSON'\n\
+     {\"summary\":{\"successRate\":0.0,\"total\":1.5,\"slowest\":null,\"requestsPerSec\":2.6},\
+     \"latencyPercentiles\":{\"p50\":null,\"p95\":null,\"p99\":null},\
+     \"statusCodeDistribution\":{},\"errorDistribution\":{\"timeout\":4}}\nJSON\nexit 0\n"
+        .to_string()
+}
+
+/// Run a four-window soak of one-second windows to the end of its plan.
+/// The stop comes three seconds after the plan's last slot has closed, so
+/// a loaded machine cannot turn the wait into windows left unstarted.
+fn run_soak_to_its_end(config: &LoadConfig) -> tumult_core::types::LoadResult {
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(config).expect("starts");
+    // sleep: the plan runs on the wall clock and no event marks its end
+    std::thread::sleep(Duration::from_secs(7));
+    executor.stop(handle).expect("stops")
+}
+
+#[test]
+fn a_blacked_out_soak_of_one_second_windows_is_recorded_not_truncated() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, &fake_blacked_out());
+
+    // Every started window ends half a second into the next one's slot,
+    // so the plan clock shortens or drops the windows behind it. Which
+    // of the two depends on scheduling; neither is a truncation.
+    let result = run_soak_to_its_end(&soak(4.0));
+
+    assert_eq!(result.execution.planned_windows, Some(4));
+    assert!(
+        !result.execution.truncated(),
+        "{:?}",
+        result.execution.reasons
+    );
+    assert_eq!(result.execution.unanswered_windows, 4);
+    assert!(result.samples.is_empty());
+    assert!((result.error_rate - 1.0).abs() < 1e-9);
+    assert!(
+        result.thresholds_met,
+        "no threshold declared: {:?}",
+        result.execution.reasons
+    );
+}
+
+#[test]
+fn a_blacked_out_soak_misses_a_declared_threshold() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, &fake_blacked_out());
+
+    let mut bounded = soak(4.0);
+    bounded.thresholds.insert("error_rate".into(), 0.5);
+    let result = run_soak_to_its_end(&bounded);
+
+    assert!(!result.thresholds_met);
+    assert!(
+        !result.execution.truncated(),
+        "the miss is the threshold's, not a truncation: {:?}",
+        result.execution.reasons
+    );
+    assert_eq!(result.execution.unanswered_windows, 4);
 }
 
 #[test]
@@ -204,8 +331,17 @@ fn stop_finishes_the_current_window_and_skips_the_rest() {
     // Exactly the in-flight window completed; the other 59 never started,
     // and stop did not sit out the plan's remaining 60 s.
     assert_eq!(result.samples.len(), 1, "{:?}", result.samples);
-    assert!(result.thresholds_met);
     assert!(elapsed < Duration::from_secs(5), "stop took {elapsed:?}");
+    // One window of sixty is not the plan: recorded, and never a pass.
+    assert_eq!(result.execution.planned_windows, Some(60));
+    assert_eq!(result.execution.completed_windows, Some(1));
+    assert!(!result.execution.aborted);
+    assert!(!result.thresholds_met, "a truncated plan must not pass");
+    let reasons = result.execution.reasons.join("; ");
+    assert!(
+        reasons.contains("the method ended before 59 of 60 windows started"),
+        "{reasons}"
+    );
 }
 
 #[test]
@@ -273,6 +409,10 @@ fn failed_window_is_reported_not_hidden() {
     assert!(result.samples.is_empty());
     assert!(!result.thresholds_met);
     assert_eq!(result.total_requests, 0);
+    assert_eq!(result.execution.completed_windows, Some(0));
+    let reasons = result.execution.reasons.join("; ");
+    assert!(reasons.contains("1 of 1 windows failed"), "{reasons}");
+    assert!(reasons.contains("broken"), "{reasons}");
 }
 
 #[test]
@@ -313,12 +453,59 @@ fn abort_kills_the_in_flight_window_at_once() {
         elapsed < Duration::from_secs(2),
         "abort blocked for {elapsed:?}"
     );
-    let Err(error) = outcome else {
-        panic!("an aborted first window is no evidence");
-    };
-    assert!(error.contains("cut before any window completed"), "{error}");
+    // The cut window printed nothing, so there is no evidence — but the
+    // abort itself is a result, marked as such, never an error.
+    let result = outcome.expect("an aborted flat load is still a result");
+    assert!(result.execution.aborted);
+    assert_eq!(result.execution.planned_windows, Some(1));
+    assert_eq!(result.execution.completed_windows, Some(0));
+    assert_eq!(result.total_requests, 0);
+    assert!(!result.thresholds_met);
     #[cfg(target_os = "linux")]
     assert!(!hanging_fake_is_alive(&dir), "abort left an oha running");
+}
+
+/// A fake oha that, like the real one, prints what it had measured when
+/// it is interrupted, and otherwise runs far longer than any test allows.
+const FAKE_OHA_PARTIAL_ON_SIGINT: &str = r#"#!/bin/sh
+[ "$1" = "--version" ] && exit 0
+trap 'printf "%s" "{\"summary\":{\"total\":3.2},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"statusCodeDistribution\":{\"200\":64},\"errorDistribution\":{}}"; exit 0' INT
+echo x >> "$(dirname "$0")/calls"
+sleep 30 &
+wait $!
+"#;
+
+#[test]
+fn abort_of_a_flat_load_keeps_the_partial_evidence_and_marks_it() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&dir, FAKE_OHA_PARTIAL_ON_SIGINT);
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&config(None, 600.0)).expect("starts");
+    wait_for_calls(&dir, 1);
+    // Let the shell reach its `wait` with the trap installed.
+    // sleep: the fake cannot say when its trap is installed
+    std::thread::sleep(Duration::from_millis(200));
+    let started = Instant::now();
+    let result = executor.abort(handle).expect("an aborted load is a result");
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(3),
+        "abort blocked for {elapsed:?}"
+    );
+    assert!(result.execution.aborted, "the abort must be marked");
+    assert_eq!(result.execution.planned_windows, Some(1));
+    assert_eq!(
+        result.execution.completed_windows,
+        Some(0),
+        "a cut window is evidence, not a completed window"
+    );
+    assert_eq!(result.total_requests, 64);
+    assert_eq!(result.samples.len(), 1);
+    assert!((result.samples[0].duration_s - 3.2).abs() < 1e-9);
+    assert!(!result.thresholds_met, "an aborted load never passes");
 }
 
 #[test]
@@ -349,6 +536,10 @@ fn abort_keeps_the_windows_that_completed() {
     );
     assert_eq!(result.samples.len(), 2, "{:?}", result.samples);
     assert_eq!(result.total_requests, 10);
+    assert!(result.execution.aborted);
+    assert_eq!(result.execution.planned_windows, Some(60));
+    assert_eq!(result.execution.completed_windows, Some(2));
+    assert!(!result.thresholds_met);
 }
 
 #[test]
@@ -391,6 +582,16 @@ fn a_window_where_every_request_timed_out_is_all_errors() {
     assert_eq!(result.total_requests, 4);
     assert!((result.error_rate - 1.0).abs() < 1e-9);
     assert!(result.samples.is_empty(), "no answer, no latency sample");
+    assert_eq!(result.execution.unanswered_windows, 1);
+    // No threshold was declared: the blackout is recorded, and it is for
+    // the hypothesis and the objectives to judge, as with k6.
+    assert!(result.thresholds_met);
+
+    // Against a declared bound the same window is a miss.
+    let mut bounded = config(None, 1.0);
+    bounded.thresholds.insert("error_rate".into(), 0.05);
+    let handle = executor.start(&bounded).expect("starts");
+    let result = executor.stop(handle).expect("stops");
     assert!(!result.thresholds_met);
 }
 

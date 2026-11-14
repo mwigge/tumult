@@ -391,22 +391,132 @@ export interface PerfSide {
     p50: number | null;
     p95: number | null;
     p99: number | null;
+    /** How each run's version is known; `inferred` comes from span timing. */
+    attribution: { declared: number; observed: number; inferred: number };
+    run_details: {
+        experiment_id: string;
+        attribution: PerfAttribution;
+        status: string | null;
+        truncated: boolean;
+        aborted: boolean;
+        included: boolean;
+    }[];
+    /** Counts of runs; `excluded` = left out of the samples. */
+    partial: {
+        truncated: number;
+        aborted: number;
+        halted: number;
+        deviated: number;
+        excluded: number;
+    };
+    windows: {
+        planned: number;
+        completed: number;
+        unanswered: number;
+        /** Windows skipped behind an unanswered one. */
+        lost: number;
+        /** Fraction of the windows the load reached (0..1). */
+        unanswered_share: number | null;
+        /** Windows whose sample is a request given up on at its timeout. */
+        censored: number;
+    };
+    /** The requests of all the side's runs, the partial ones too. */
+    requests: {
+        sent: number;
+        failed: number;
+        /** `null` when no requests were counted. */
+        failure_share: number | null;
+        runs_without_counts: number;
+    };
+    /** Percentiles of the samples (`p` 0..100), empty when there are none. */
+    distribution: { p: number; value: number }[];
+}
+
+export type PerfAttribution = 'declared' | 'observed' | 'inferred';
+export type PerfQuantile = 'p50' | 'p95' | 'p99';
+export type PerfVerdictKind = 'improved' | 'unchanged' | 'regressed' | 'inconclusive';
+
+/** `GET /api/perf`: the targets that have load evidence in the range. */
+export interface PerfTargets {
+    targets: {
+        target: string;
+        /** `null` = telemetry that names no environment. */
+        environments: (string | null)[];
+        runs: number;
+        last_run_ns: number;
+    }[];
+    range: string;
+    as_of_ns: number;
+}
+
+/** One stored row of the verdict history. */
+export interface PerfStoredVerdict {
+    target: string;
+    probe: string;
+    baseline_version: string;
+    candidate_version: string;
+    quantile: PerfQuantile;
+    baseline_n: number;
+    candidate_n: number;
+    baseline_p50: number | null;
+    baseline_p95: number | null;
+    baseline_p99: number | null;
+    candidate_p50: number | null;
+    candidate_p95: number | null;
+    candidate_p99: number | null;
+    delta: number | null;
+    delta_pct: number | null;
+    ci_low: number | null;
+    ci_high: number | null;
+    confidence: number;
+    margin: number;
+    verdict: PerfVerdictKind;
+    reasons: string[];
+    computed_at_ns: number;
+    envs: string[] | null;
+}
+
+/** The query of the perf read and of the store, which takes the same one. */
+export interface PerfParams {
+    probe?: string;
+    quantile?: PerfQuantile;
+    env?: string;
+    baseline?: string;
+    candidate?: string;
+    range?: string;
+    include?: 'partial';
 }
 
 /**
- * `GET /api/perf/{target}`: the regression verdict between the latest two
- * versions. `POST /api/perf/{target}/verdicts` answers the same shape with
- * `stored: true`.
+ * `GET /api/perf/{target}`: the regression verdict between the target's
+ * candidate and baseline versions (`versions_seen` is in that order, newest
+ * first) in ONE environment. `POST /api/perf/{target}/verdicts` with the same
+ * query stores it and answers the same shape with `stored: true`;
+ * `duplicate` says the latest stored row already held this evidence.
  */
 export interface PerfVerdict {
     target: string;
     probe: string;
-    verdict: 'improved' | 'unchanged' | 'regressed' | 'inconclusive';
+    /** The one environment the answer is for; `null` = untagged. */
+    environment: string | null;
+    environments_seen: (string | null)[];
+    range: string;
+    since_ns: number;
+    selection: 'latest_deployment' | 'explicit';
+    /** Which rule chose the pair, in words. */
+    selection_rule: string;
+    /** `running` while an old lake's version history is read back. */
+    backfill: 'running' | 'done';
+    include_partial: boolean;
+    verdict: PerfVerdictKind;
+    /** The code that decided, first of `reason_codes`. */
+    reason: string | null;
+    reason_codes: string[];
     reasons: string[];
     baseline: PerfSide | null;
     candidate: PerfSide;
     comparison: {
-        quantile: 'p50' | 'p95' | 'p99';
+        quantile: PerfQuantile;
         delta: number | null;
         delta_pct: number | null;
         ci_low: number | null;
@@ -416,10 +526,35 @@ export interface PerfVerdict {
         iterations: number;
         seed: number;
         min_samples: number;
+        min_runs: number;
+        /** The interval rests on fewer than five runs on a side. */
+        low_run_count?: boolean;
+        /** Shares of failed requests (0..1); `null` when a side counted none. */
+        failure_share: {
+            baseline: number;
+            candidate: number;
+            delta: number;
+            margin: number;
+        } | null;
     };
-    versions_seen: { version: string; first_seen_ns: number; last_seen_ns: number }[];
+    versions_seen: {
+        version: string;
+        first_seen_ns: number;
+        last_seen_ns: number;
+        last_deployed_ns: number;
+        /** Deployed again after a later version. */
+        redeployed: boolean;
+    }[];
+    unattributed_runs: {
+        count: number;
+        reasons: Record<string, number>;
+        runs: { experiment_id: string; environment: string | null; reason: string }[];
+    };
+    runs_on_other_versions: number;
     stored: boolean;
-    history: Record<string, unknown>[];
+    duplicate: boolean;
+    /** Newest first, at most 10. */
+    history: PerfStoredVerdict[];
     as_of_ns: number;
 }
 

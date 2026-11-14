@@ -125,8 +125,14 @@ not being renamed.
    view of its service/system call graph, ids `svc:` and
    `sys:<environment>/<system>`, `7d` unless `range` says otherwise),
    `/api/perf/{target}`
-   (performance regression verdict between a target's latest two
-   `service.version`s, bootstrap interval, appended to `perf_verdicts`),
+   (performance regression verdict between two of a target's
+   `service.version`s inside one environment — the version each run
+   recorded, in deployment order unless named — with a bootstrap
+   interval; `POST /api/perf/{target}/verdicts` appends it to
+   `perf_verdicts`; `/api/perf` lists the targets and
+   `/api/perf/{target}/version` tells a runner which version served a
+   window; the `/performance` page shows both sides, the verdict and its
+   stored history),
    and `/api/gate/{target}`
    (the CI gate: a target's score as a `pass|warn|fail` verdict with
    reasons and evidence, computed with the same freshness-decayed model as

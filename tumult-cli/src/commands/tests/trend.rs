@@ -10,6 +10,7 @@ use tumult_core::types::{
 
 fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
     Journal {
+        target_version: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,

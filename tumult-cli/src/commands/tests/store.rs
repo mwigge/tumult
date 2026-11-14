@@ -85,6 +85,7 @@ fn store_backup_creates_parquet_files() {
     let store = AnalyticsStore::open(&db_path).unwrap();
     store
         .ingest_journal(&Journal {
+            target_version: None,
             experiment_title: "test".into(),
             experiment_id: "e1".into(),
             status: ExperimentStatus::Completed,
@@ -138,6 +139,7 @@ fn store_purge_removes_old_data() {
     // Old experiment (2020)
     store
         .ingest_journal(&Journal {
+            target_version: None,
             experiment_title: "old".into(),
             experiment_id: "old-1".into(),
             status: ExperimentStatus::Completed,
@@ -170,6 +172,7 @@ fn store_purge_removes_old_data() {
         .unwrap_or(i64::MAX - 60_000_000_000);
     store
         .ingest_journal(&Journal {
+            target_version: None,
             experiment_title: "new".into(),
             experiment_id: "new-1".into(),
             status: ExperimentStatus::Completed,
@@ -214,6 +217,7 @@ fn store_stats_reports_counts() {
 
     store
         .ingest_journal(&Journal {
+            target_version: None,
             experiment_title: "test".into(),
             experiment_id: "e1".into(),
             status: ExperimentStatus::Completed,

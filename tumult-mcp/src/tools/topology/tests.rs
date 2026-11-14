@@ -59,6 +59,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
         ..Default::default()
     };
     let journal = Journal {
+        target_version: None,
         experiment_title: "DB failover drill".into(),
         experiment_id: "run-broken-1".into(),
         status: ExperimentStatus::Deviated,

@@ -31,6 +31,12 @@ pub fn experiments_schema() -> Schema {
         Field::new("rpo_target_s", DataType::Float64, true),
         Field::new("rto_measured_s", DataType::Float64, true),
         Field::new("rpo_measured_s", DataType::Float64, true),
+        // The version the run recorded for its target, and where from.
+        Field::new("target_version", DataType::Utf8, true),
+        Field::new("version_source", DataType::Utf8, true),
+        // What the telemetry said when it named more than one version:
+        // a JSON array of `{version, requests}`, most served first.
+        Field::new("version_shares", DataType::Utf8, true),
     ])
 }
 
@@ -59,6 +65,12 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
     let accuracy = journal.analysis.as_ref().and_then(|a| a.estimate_accuracy);
     let resilience = journal.analysis.as_ref().and_then(|a| a.resilience_score);
     let objectives = journal.objectives.as_ref();
+    let recorded = journal.target_version.as_ref();
+    let shares = recorded
+        .filter(|v| !v.shares.is_empty())
+        .map(|v| serde_json::to_string(&v.shares))
+        .transpose()
+        .map_err(|e| AnalyticsError::Internal(format!("version shares: {e}")))?;
 
     Ok(RecordBatch::try_new(
         schema,
@@ -94,6 +106,13 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
             Arc::new(Float64Array::from(vec![
                 objectives.and_then(|o| o.rpo_measured_s)
             ])),
+            Arc::new(StringArray::from(
+                vec![recorded.map(|v| v.version.as_str())],
+            )),
+            Arc::new(StringArray::from(vec![
+                recorded.map(|v| v.version_source.to_string())
+            ])),
+            Arc::new(StringArray::from(vec![shares])),
         ],
     )?)
 }
@@ -205,6 +224,7 @@ mod tests {
 
     fn sample_journal() -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "DB failover test".into(),
             experiment_id: "test-001".into(),
             status: ExperimentStatus::Completed,
@@ -250,7 +270,7 @@ mod tests {
     fn experiment_batch_schema() {
         let batch = journal_to_experiment_batch(&sample_journal()).unwrap();
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 17);
+        assert_eq!(batch.num_columns(), 20);
     }
     #[test]
     fn experiment_batch_values() {

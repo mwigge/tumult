@@ -406,7 +406,7 @@ pub(super) fn is_cancelled(token: Option<&CancellationToken>) -> bool {
     token.is_some_and(CancellationToken::is_cancelled)
 }
 
-fn wait_pause(seconds: Option<f64>, token: Option<&CancellationToken>) -> bool {
+pub(super) fn wait_pause(seconds: Option<f64>, token: Option<&CancellationToken>) -> bool {
     let Some(seconds) = seconds.filter(|s| *s > 0.0 && s.is_finite()) else {
         return !is_cancelled(token);
     };

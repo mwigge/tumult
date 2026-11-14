@@ -118,6 +118,7 @@ mod tests {
 
     fn minimal_journal() -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "test experiment".into(),
             experiment_id: "test-id-001".into(),
             status: ExperimentStatus::Completed,

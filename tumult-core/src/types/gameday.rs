@@ -280,6 +280,7 @@ mod tests {
                 total_requests: 7_230,
                 thresholds_met: true,
                 samples: vec![],
+                execution: crate::types::LoadExecution::default(),
             }),
             resilience_score: ResilienceScore::compute(1.0, 1.0, 0.9, 1.0),
             compliance_status: "COMPLIANT".into(),

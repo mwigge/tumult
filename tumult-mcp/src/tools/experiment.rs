@@ -183,6 +183,7 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
     }
     let controls = Arc::new(controls_registry);
     let config = RunConfig {
+        version_resolver: None,
         baseline_mode: tumult_core::runner::BaselineMode::default(),
         rollback_strategy: strategy,
         cancellation_token: None,

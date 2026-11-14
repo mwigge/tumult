@@ -75,5 +75,7 @@ web/test-results/
 .build.log
 .clippy.log
 .test.log
+
+# Python bytecode
 __pycache__/
 *.pyc

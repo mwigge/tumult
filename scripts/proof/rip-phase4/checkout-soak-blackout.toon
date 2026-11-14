@@ -1,0 +1,29 @@
+title: RIP phase-4 proof — the checkout soak against a build that answers nothing
+description: The soak's shape, twenty-four one-second windows, against the proof's hung service, with no thresholds declared. Every window is a blackout. A request may not wait longer than its window, so each window ends on its clock, none is skipped, the plan is not truncated and the run completes, with every window recorded as unanswered. The verdict for the build must then say it cannot be compared rather than call it unchanged.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout
+  technology: http
+  environment: demo
+
+load:
+  tool: oha
+  script: http://127.0.0.1:44381/
+  vus: 2
+  duration_s: 24
+  profile:
+    type: soak
+    sample_interval_s: 1
+
+method[1]:
+  - name: hold-for-the-soak
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 25"
+      timeout_s: 90.0
+
+rollbacks[0]:

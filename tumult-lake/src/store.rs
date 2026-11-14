@@ -118,7 +118,10 @@ impl Store {
     /// exactly one `Writer` by construction — one channel, one task.)
     pub fn writer(&self) -> Result<Writer, StoreError> {
         let conn = open_with_retry(&self.path, || Connection::open(&self.path))?;
-        Ok(Writer { conn })
+        Ok(Writer {
+            conn,
+            clock: crate::lake::now_ns,
+        })
     }
 
     /// Open a read-only connection (`access_mode = READ_ONLY`). Multiple
@@ -173,6 +176,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     for ddl in schema::CREATE_TABLES {
         conn.execute_batch(ddl)?;
     }
+    crate::sightings::backfill(conn, crate::lake::now_ns())?;
     // v4 → v5: rebuild the run tables index-free (crash-robustness — see
     // schema.rs). Conditional on the stored version actually being 4: older
     // databases have no run tables to rebuild, and fresh ones got the v5
@@ -252,20 +256,50 @@ pub(crate) fn query_json_rows(
     conn: &Connection,
     sql: &str,
 ) -> Result<Vec<serde_json::Value>, StoreError> {
-    query_json_rows_bound(conn, sql, &[])
+    query_json_rows_bound(conn, sql, &[] as &[&str])
 }
 
-/// [`query_json_rows`] with one text value bound to each `?` of `sql`,
-/// in order. A value from a request or a file goes here, never into the
-/// statement text.
-pub(crate) fn query_json_rows_bound(
+/// A value bound to a `$n` placeholder of a query: it reaches the engine
+/// as data and is never part of the statement's text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SqlParam {
+    Null,
+    Int(i64),
+    Text(String),
+}
+
+impl SqlParam {
+    /// A list of texts as one parameter: a JSON array, read back in the
+    /// statement with `from_json(CAST($n AS VARCHAR), '["VARCHAR"]')`.
+    #[must_use]
+    pub fn text_list(items: &[String]) -> Self {
+        Self::Text(serde_json::Value::from(items).to_string())
+    }
+}
+
+impl duckdb::ToSql for SqlParam {
+    fn to_sql(&self) -> duckdb::Result<duckdb::types::ToSqlOutput<'_>> {
+        use duckdb::types::{ToSqlOutput, Value};
+        Ok(match self {
+            Self::Null => ToSqlOutput::Owned(Value::Null),
+            Self::Int(n) => ToSqlOutput::Owned(Value::BigInt(*n)),
+            Self::Text(text) => ToSqlOutput::from(text.as_str()),
+        })
+    }
+}
+
+/// [`query_json_rows`] with `params` bound to the statement's
+/// placeholders, in order: `?`, or `$1`, `$2`, …, every one of which the
+/// statement must use. A value from a request or a file goes here, never
+/// into the statement text.
+pub(crate) fn query_json_rows_bound<P: duckdb::ToSql>(
     conn: &Connection,
     sql: &str,
-    binds: &[&str],
+    params: &[P],
 ) -> Result<Vec<serde_json::Value>, StoreError> {
     let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
     let mut stmt = conn.prepare(&wrapped)?;
-    let rows = stmt.query_map(duckdb::params_from_iter(binds.iter()), |r| {
+    let rows = stmt.query_map(duckdb::params_from_iter(params.iter()), |r| {
         r.get::<usize, String>(0)
     })?;
     let mut out = Vec::new();
@@ -347,6 +381,42 @@ mod tests {
         )
         .unwrap();
         assert_eq!(both.len(), 2);
+    }
+
+    #[test]
+    fn a_bound_parameter_is_a_value_and_never_part_of_the_statement() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE t (name VARCHAR, n BIGINT);
+             INSERT INTO t VALUES ('a', 1), ('b', 2), ('it''s', 3);",
+        )
+        .unwrap();
+        let hostile = "a' OR '1'='1";
+        let rows = query_json_rows_bound(
+            &conn,
+            "SELECT name, n FROM t WHERE name = $1 OR n = $2 ORDER BY n",
+            &[SqlParam::Text(hostile.into()), SqlParam::Int(2)],
+        )
+        .unwrap();
+        assert_eq!(rows, vec![serde_json::json!({"name": "b", "n": 2})]);
+        // The text comes back as it went in, quote and all.
+        let rows = query_json_rows_bound(
+            &conn,
+            "SELECT $1 AS s, $1 = 'it''s' AS same",
+            &[SqlParam::Text("it's".into())],
+        )
+        .unwrap();
+        assert_eq!(rows, vec![serde_json::json!({"s": "it's", "same": true})]);
+        // A null parameter switches a filter off; a JSON list of texts is
+        // a list to match against.
+        let listed = "SELECT name FROM t WHERE $1 IS NULL \
+                      OR list_contains(from_json(CAST($1 AS VARCHAR), '[\"VARCHAR\"]'), name) \
+                      ORDER BY n";
+        let all = query_json_rows_bound(&conn, listed, &[SqlParam::Null]).unwrap();
+        assert_eq!(all.len(), 3);
+        let some =
+            query_json_rows_bound(&conn, listed, &[SqlParam::text_list(&["it's".into()])]).unwrap();
+        assert_eq!(some, vec![serde_json::json!({"name": "it's"})]);
     }
 
     #[test]

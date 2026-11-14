@@ -290,8 +290,8 @@ abort in the release profile: the run would end before its journal is
 ingested. The `output` macros give up on a stream that fails (a
 `cli.output.closed` debug event for a closed pipe, a
 `cli.output.write_failed` warning for anything else) and the command
-finishes its work. `tumult analyze` and `tumult perf` still use `println!`
-and `eprintln!` and are to be converted.
+finishes its work. `tumult analyze` still uses `println!` and `eprintln!`
+and is to be converted.
 
 ### Human diagnostics that stay text
 

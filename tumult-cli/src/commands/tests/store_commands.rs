@@ -9,6 +9,7 @@ use tumult_core::types::{ExperimentStatus, Journal};
 
 fn journal(id: &str, started_at_ns: i64) -> Journal {
     Journal {
+        target_version: None,
         experiment_title: format!("store test {id}"),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,
@@ -231,6 +232,241 @@ fn import_loads_backup_into_fresh_store() {
 
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 2);
+}
+
+/// A run with a load result of two windows.
+fn load_run(id: &str) -> Journal {
+    use tumult_core::types::{LoadExecution, LoadResult, LoadSample, LoadTool};
+    let started = 1_774_980_000_000_000_000;
+    let window = |ts_ns: i64| LoadSample {
+        ts_ns,
+        duration_s: 5.0,
+        vus: 4,
+        throughput_rps: 40.0,
+        latency_p50_ms: 20.0,
+        latency_p95_ms: 70.0,
+        latency_p99_ms: 90.0,
+        error_rate: 0.0,
+        requests: 200,
+        counts: None,
+        request_timeout_ms: Some(2000.0),
+    };
+    let mut run = journal(id, started);
+    run.load_result = Some(LoadResult {
+        tool: LoadTool::Oha,
+        started_at_ns: started,
+        ended_at_ns: started + 10_000_000_000,
+        duration_s: 10.0,
+        vus: 4,
+        throughput_rps: 40.0,
+        latency_p50_ms: 20.0,
+        latency_p95_ms: 70.0,
+        latency_p99_ms: 90.0,
+        error_rate: 0.0,
+        total_requests: 400,
+        thresholds_met: true,
+        samples: vec![window(started), window(started + 5_000_000_000)],
+        execution: LoadExecution::default(),
+    });
+    run
+}
+
+/// Export `tables` of a store holding one load run into `dir`.
+fn exported_load_run(dir: &std::path::Path, with_loads: bool, with_samples: bool) {
+    let src_db = dir.join("src.duckdb");
+    let store = tumult_lake::AnalyticsStore::open(&src_db).unwrap();
+    store.ingest_journal(&load_run("imp-load")).unwrap();
+    let export_dir = dir.join("export");
+    std::fs::create_dir_all(&export_dir).unwrap();
+    let file = |name: &str| export_dir.join(name);
+    store
+        .export_tables(&file("experiments.parquet"), &file("activities.parquet"))
+        .unwrap();
+    store
+        .export_load_tables(
+            &file("load_results.parquet"),
+            &file("probe_samples.parquet"),
+        )
+        .unwrap();
+    if !with_loads {
+        std::fs::remove_file(file("load_results.parquet")).unwrap();
+    }
+    if !with_samples {
+        std::fs::remove_file(file("probe_samples.parquet")).unwrap();
+    }
+}
+
+fn count(store: &tumult_lake::AnalyticsStore, table: &str) -> String {
+    let rows = store
+        .query(&format!("SELECT count(*) FROM {table}"))
+        .unwrap();
+    rows[0].join("|")
+}
+
+#[test]
+fn import_takes_the_load_evidence_a_backup_holds() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    // Taken before the store is pointed anywhere, so the drop puts back
+    // what the variable was and not the temporary path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH");
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), true, true);
+
+    let db = use_temp_store(dir.path());
+    cmd_import(&dir.path().join("export")).unwrap();
+    env.remove("TUMULT_LAKE_PATH");
+
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(store.experiment_count().unwrap(), 1);
+    assert_eq!(count(&store, "load_results"), "1");
+    // Three series for each of the two windows, at the least.
+    let samples: u64 = count(&store, "probe_samples").parse().unwrap();
+    assert!(samples >= 6, "{samples}");
+}
+
+#[test]
+fn import_refuses_a_backup_with_half_of_the_load_evidence() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    // Taken before the store is pointed anywhere, so the drop puts back
+    // what the variable was and not the temporary path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH");
+    for (with_loads, with_samples, missing) in [
+        (true, false, "probe_samples.parquet"),
+        (false, true, "load_results.parquet"),
+    ] {
+        let dir = TempDir::new().unwrap();
+        exported_load_run(dir.path(), with_loads, with_samples);
+        let db = use_temp_store(dir.path());
+        let err = cmd_import(&dir.path().join("export")).unwrap_err();
+        env.remove("TUMULT_LAKE_PATH");
+        assert!(err.to_string().contains(missing), "{err}");
+        assert!(!db.exists(), "nothing was imported");
+    }
+}
+
+#[test]
+fn import_of_a_backup_without_load_evidence_still_works() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    // Taken before the store is pointed anywhere, so the drop puts back
+    // what the variable was and not the temporary path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH");
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), false, false);
+    let db = use_temp_store(dir.path());
+    cmd_import(&dir.path().join("export")).unwrap();
+    env.remove("TUMULT_LAKE_PATH");
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(store.experiment_count().unwrap(), 1);
+    assert_eq!(count(&store, "load_results"), "0");
+}
+
+/// A span of `service`: the root of run `id` when it names one.
+fn span(service: &str, version: Option<&str>, id: Option<&str>) -> tumult_lake::SpanRow {
+    tumult_lake::SpanRow {
+        ts_ns: 1_774_980_000_000_000_000,
+        trace_id: format!("trace-{service}"),
+        span_id: format!("span-{service}"),
+        span_name: id.map_or("GET /cart", |_| "resilience.experiment").into(),
+        span_kind: id.map_or("Server", |_| "Internal").into(),
+        duration_ns: 1_000_000,
+        status_code: "Unset".into(),
+        service_name: service.into(),
+        service_version: version.map(Into::into),
+        experiment_id: id.map(Into::into),
+        target_system: id.map(|_| "checkout".into()),
+        events: "[]".into(),
+        ..tumult_lake::SpanRow::default()
+    }
+}
+
+#[test]
+fn store_export_writes_the_backup_import_reads() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    // Taken before the store is pointed anywhere, so the drop puts back
+    // what the variable was and not the temporary path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH");
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().join("source.duckdb");
+    {
+        let writer = tumult_lake::Store::open(&source).unwrap().writer().unwrap();
+        writer
+            .insert_spans(&[
+                span("tumult", None, Some("exp-load")),
+                span("checkout", Some("1.5.0"), None),
+            ])
+            .unwrap();
+        writer.ingest_journal(&load_run("exp-load"), None).unwrap();
+    }
+    let backup = dir.path().join("backup");
+    env.set("TUMULT_LAKE_PATH", &source);
+    cmd_store_export(&backup).unwrap();
+    // A backup is not written over another.
+    let again = cmd_store_export(&backup).unwrap_err();
+    for file in [
+        "experiments.parquet",
+        "activities.parquet",
+        "load_results.parquet",
+        "probe_samples.parquet",
+        "run_roots.parquet",
+        "version_sightings.parquet",
+    ] {
+        assert!(backup.join(file).is_file(), "{file}");
+    }
+
+    let db = use_temp_store(dir.path());
+    cmd_import(&backup).unwrap();
+    cmd_import(&backup).unwrap();
+    env.remove("TUMULT_LAKE_PATH");
+    assert!(again.to_string().contains("already holds"), "{again}");
+
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(count(&store, "experiments"), "1");
+    assert_eq!(count(&store, "load_results"), "1");
+    // The run's root and no other span; the target's version history.
+    assert_eq!(count(&store, "spans"), "1");
+    let versions = store
+        .query("SELECT service_name, service_version FROM service_version_sightings")
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].join("|"), "checkout|1.5.0");
+}
+
+#[test]
+fn store_export_without_a_store_says_so() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    // Taken before the store is pointed anywhere, so the drop puts back
+    // what the variable was and not the temporary path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH");
+    let dir = TempDir::new().unwrap();
+    use_temp_store(dir.path());
+    let err = cmd_store_export(&dir.path().join("backup")).unwrap_err();
+    env.remove("TUMULT_LAKE_PATH");
+    assert!(err.to_string().contains("no persistent store"), "{err}");
+}
+
+#[test]
+fn import_refuses_a_backup_with_half_of_the_version_history() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    // Taken before the store is pointed anywhere, so the drop puts back
+    // what the variable was and not the temporary path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_LAKE_PATH");
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), true, true);
+    std::fs::write(dir.path().join("export/run_roots.parquet"), b"").unwrap();
+    let db = use_temp_store(dir.path());
+    let err = cmd_import(&dir.path().join("export")).unwrap_err();
+    env.remove("TUMULT_LAKE_PATH");
+    assert!(
+        err.to_string().contains("version_sightings.parquet"),
+        "{err}"
+    );
+    assert!(!db.exists(), "nothing was imported");
 }
 
 // ── import-legacy ────────────────────────────────────────────

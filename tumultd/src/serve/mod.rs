@@ -14,7 +14,9 @@ use tumult_ingest::{Config, IngestWriter};
 use tumult_lake::Store;
 
 use crate::admin::enforce_bind_guard;
-use crate::lake_jobs::{lake_interval_from_env, spawn_lake_scheduler};
+use crate::lake_jobs::{
+    lake_interval_from_env, spawn_lake_scheduler, spawn_version_backfill, BACKFILL_PAUSE,
+};
 use crate::reports::{
     report_interval_from_env, report_router, spawn_report_scheduler, ReportState,
 };
@@ -477,6 +479,10 @@ pub(crate) async fn serve() -> Result<()> {
             background_shutdown.clone(),
         )
     });
+    // The open gave the backfill of the version rollup a short budget;
+    // the rest is done here, a turn at a time, beside the telemetry.
+    let backfill_task =
+        spawn_version_backfill(ingest.clone(), BACKFILL_PAUSE, background_shutdown.clone());
     // Score jobs: sync the function register from the org file, then
     // store the daily requirement status. Same shutdown-drain contract.
     let score_task = crate::score_jobs::spawn_score_jobs(
@@ -588,6 +594,7 @@ pub(crate) async fn serve() -> Result<()> {
         ("webhook dispatcher", webhook_task),
         ("gameday supervisor", gameday_task),
         ("run retention", retention_task),
+        ("version backfill", backfill_task),
         ("score jobs", score_task),
     ];
     tasks.extend(lake_task.map(|task| ("lake scheduler", task)));

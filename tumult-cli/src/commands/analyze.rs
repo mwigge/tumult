@@ -508,6 +508,7 @@ mod tests {
 
     fn sample_journal() -> tumult_core::types::Journal {
         tumult_core::types::Journal {
+            target_version: None,
             experiment_title: "analyze test".into(),
             experiment_id: "exp-analyze-1".into(),
             status: tumult_core::types::ExperimentStatus::Completed,
@@ -603,6 +604,7 @@ mod tests {
     /// phase, and a load result block.
     fn rich_journal(id: &str, started_at_ns: i64) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: format!("rich {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Deviated,
@@ -667,6 +669,7 @@ mod tests {
                 total_requests: 3000,
                 thresholds_met: true,
                 samples: vec![],
+                execution: tumult_core::types::LoadExecution::default(),
             }),
             analysis: None,
             regulatory: None,

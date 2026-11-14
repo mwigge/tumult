@@ -50,18 +50,20 @@ impl Reader {
         query_json_rows(&self.conn, sql)
     }
 
-    /// [`Self::query_json_rows`] with one text value bound to each `?`
-    /// of `sql`, in order. Values from a request or a file are bound,
-    /// not written into the statement.
+    /// [`Reader::query_json_rows`] with `params` bound to the statement's
+    /// placeholders, in order (`?`, or `$1`, `$2`, …): texts, or
+    /// [`crate::SqlParam`]s. Whatever a request or a file supplied goes
+    /// here, never into the statement's text.
     ///
     /// # Errors
-    /// Returns an error if the query fails to prepare or execute.
-    pub fn query_json_rows_bound(
+    /// Returns an error if the query fails to prepare or execute, or does
+    /// not use exactly the parameters given.
+    pub fn query_json_rows_bound<P: duckdb::ToSql>(
         &self,
         sql: &str,
-        binds: &[&str],
+        params: &[P],
     ) -> Result<Vec<serde_json::Value>, StoreError> {
-        query_json_rows_bound(&self.conn, sql, binds)
+        query_json_rows_bound(&self.conn, sql, params)
     }
 
     /// Raw batch execution on the read connection — crate-internal, used by

@@ -51,9 +51,17 @@ async fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             logging::log_fatal(&error);
-            ExitCode::FAILURE
+            exit_code_for(&error)
         }
     }
+}
+
+/// The exit code of a failed command: that of its verdict for a gate that
+/// did not pass, the general failure otherwise.
+fn exit_code_for(error: &anyhow::Error) -> ExitCode {
+    commands::exit_code_of(error)
+        .and_then(|code| u8::try_from(code).ok())
+        .map_or(ExitCode::FAILURE, ExitCode::from)
 }
 
 /// Prints the journal at `path` to stdout as pretty JSON
@@ -85,6 +93,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             no_ingest,
             output_format,
             vars,
+            target_version,
             load,
             load_script,
             load_vus,
@@ -113,6 +122,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                     cli::BaselineMode::Skip => tumult_core::runner::BaselineMode::Skip,
                     cli::BaselineMode::Only => tumult_core::runner::BaselineMode::Only,
                 },
+                target_version.as_deref(),
             )
             .await?;
             // If --output-format json was specified, print the journal as JSON to stdout
@@ -180,6 +190,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
         Commands::Store { action } => match action {
             StoreAction::Stats => commands::cmd_store_stats()?,
             StoreAction::Backup { output } => commands::cmd_store_backup(&output)?,
+            StoreAction::Export { output } => commands::cmd_store_export(&output)?,
             StoreAction::Restore { input, output } => commands::cmd_store_restore(&input, &output)?,
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,
@@ -510,34 +521,47 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             probe,
             quantile,
             min_samples,
+            min_runs,
+            seed,
             margin_pct,
             env,
+            baseline,
+            candidate,
+            range,
+            include,
             store,
             daemon_url,
             fail_on,
             json,
         } => {
-            let fail_on = match fail_on {
-                PerfFailOnArg::Regressed => commands::PerfFailOn::Regressed,
-                PerfFailOnArg::Inconclusive => commands::PerfFailOn::Inconclusive,
-                PerfFailOnArg::Never => commands::PerfFailOn::Never,
-            };
-            let ok = commands::cmd_perf(&commands::PerfArgs {
-                target: target.clone(),
+            let listed: Vec<_> = fail_on
+                .iter()
+                .map(|one| match one {
+                    PerfFailOnArg::Regressed => commands::PerfFailOn::Regressed,
+                    PerfFailOnArg::Inconclusive => commands::PerfFailOn::Inconclusive,
+                    PerfFailOnArg::Never => commands::PerfFailOn::Never,
+                })
+                .collect();
+            let fail_on = commands::PerfFailOn::of(&listed).map_err(|e| anyhow::anyhow!(e))?;
+            commands::cmd_perf(&commands::PerfArgs {
+                target,
                 probe,
                 quantile: quantile.map(|q| q.as_str().to_string()),
                 min_samples,
+                min_runs,
+                seed,
                 margin_pct,
                 env,
+                baseline,
+                candidate,
+                range,
+                include_partial: include.is_some(),
                 store,
                 daemon_url,
                 fail_on,
                 json,
             })
             .await?;
-            if !ok {
-                anyhow::bail!("performance verdict did not pass for target {target}");
-            }
         }
         Commands::Tui {
             store,

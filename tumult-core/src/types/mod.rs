@@ -8,16 +8,20 @@ mod enums;
 mod gameday;
 mod ids;
 mod journal;
+mod log_text;
 mod results;
 mod target;
+mod version_text;
 
 pub use definition::*;
 pub use enums::*;
 pub use gameday::*;
 pub use ids::*;
 pub use journal::*;
+pub use log_text::*;
 pub use results::*;
 pub use target::*;
+pub use version_text::*;
 
 #[cfg(test)]
 pub(crate) mod test_support {

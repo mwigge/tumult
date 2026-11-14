@@ -191,6 +191,7 @@ impl LoadExecutor for RecordingLoadExecutor {
             total_requests: 10,
             thresholds_met: true,
             samples: vec![],
+            execution: crate::types::LoadExecution::default(),
         })
     }
 }

@@ -605,3 +605,36 @@ fn validate_rejects_zero_users_anywhere() {
     };
     assert!(load_error(&with_load(Some(spike), None, Some(60.0))).contains("peak_vus"));
 }
+
+#[test]
+fn a_target_version_beyond_the_bounds_is_refused() {
+    let with_version = |version: &str| Experiment {
+        title: "versioned".into(),
+        method: vec![Activity {
+            name: "action".into(),
+            ..Default::default()
+        }],
+        target: Some(ExperimentTarget {
+            system: "checkout".into(),
+            technology: None,
+            environment: Some("demo".into()),
+            criticality: None,
+            namespace: None,
+            version: Some(version.into()),
+        }),
+        ..Default::default()
+    };
+    assert!(validate_experiment(&with_version("1.5.0")).is_ok());
+    assert!(validate_experiment(&with_version("  ")).is_ok());
+    let long = validate_experiment(&with_version(&"9".repeat(MAX_VERSION_LEN + 1))).unwrap_err();
+    assert!(
+        long.to_string()
+            .contains("target.version is invalid: a version is at most 128 bytes"),
+        "{long}"
+    );
+    let control = validate_experiment(&with_version("1.5.0\u{1b}[2J")).unwrap_err();
+    assert!(
+        control.to_string().contains("no control characters"),
+        "{control}"
+    );
+}

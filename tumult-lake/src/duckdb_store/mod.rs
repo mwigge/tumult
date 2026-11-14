@@ -288,6 +288,7 @@ pub fn sample_journal(
 ) -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
+        target_version: None,
         experiment_title: format!("Test {id}"),
         experiment_id: id.into(),
         status,

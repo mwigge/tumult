@@ -53,11 +53,12 @@ impl LoadExecutor for MockLoadExecutor {
             total_requests: 100,
             thresholds_met: true,
             samples: vec![],
+            execution: crate::types::LoadExecution::default(),
         })
     }
 }
 
-fn experiment_with_load() -> Experiment {
+pub(super) fn experiment_with_load() -> Experiment {
     let mut exp = experiment_with_hypothesis();
     exp.load = Some(LoadConfig {
         tool: LoadTool::K6,
@@ -146,7 +147,7 @@ fn load_not_started_when_hypothesis_fails() {
 
 // -- How the load is ended, and what its outcome does to the run
 
-fn load_result(total_requests: u64, thresholds_met: bool) -> LoadResult {
+pub(super) fn load_result(total_requests: u64, thresholds_met: bool) -> LoadResult {
     LoadResult {
         tool: LoadTool::Oha,
         started_at_ns: 1_000_000_000,
@@ -161,6 +162,7 @@ fn load_result(total_requests: u64, thresholds_met: bool) -> LoadResult {
         total_requests,
         thresholds_met,
         samples: vec![],
+        execution: crate::types::LoadExecution::default(),
     }
 }
 
@@ -176,7 +178,7 @@ impl ScriptedLoad {
         Self::answering(Ok(load_result(100, true)))
     }
 
-    fn answering(
+    pub(super) fn answering(
         outcome: Result<LoadResult, String>,
     ) -> (Self, Arc<std::sync::Mutex<Vec<String>>>) {
         let events = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -255,6 +257,159 @@ fn a_load_that_missed_its_thresholds_is_a_deviation() {
     assert_eq!(journal.status, ExperimentStatus::Deviated);
 }
 
+/// A load result whose plan fell short: 35 of 60 windows.
+fn truncated_load() -> LoadResult {
+    LoadResult {
+        execution: crate::types::LoadExecution {
+            planned_windows: Some(60),
+            completed_windows: Some(35),
+            reasons: vec!["the method ended before 25 of 60 windows started".into()],
+            ..crate::types::LoadExecution::default()
+        },
+        ..load_result(3500, false)
+    }
+}
+
+#[test]
+fn a_truncated_plan_is_a_deviation_and_is_journaled() {
+    let (journal, _) = run_with_load(Ok(truncated_load()));
+    assert_eq!(journal.status, ExperimentStatus::Deviated);
+    let execution = &journal.load_result.as_ref().expect("load result").execution;
+    assert_eq!(execution.planned_windows, Some(60));
+    assert_eq!(execution.completed_windows, Some(35));
+    assert!(execution.truncated());
+}
+
+/// Runs a probe-only method (no fault is ever started) against a load
+/// with the scripted outcome, and reports whether the rollbacks ran.
+fn probe_only_run(outcome: Result<LoadResult, String>) -> (Journal, bool) {
+    struct Recording(Arc<std::sync::Mutex<Vec<String>>>);
+    impl ActivityExecutor for Recording {
+        fn execute(&self, activity: &Activity) -> ActivityOutcome {
+            self.0.lock().expect("lock").push(activity.name.clone());
+            ActivityOutcome {
+                success: true,
+                output: Some("200".into()),
+                error: None,
+                duration_ms: 0,
+            }
+        }
+    }
+    let mut exp = experiment_with_load();
+    exp.method = vec![test_probe("watch")];
+    exp.rollbacks = vec![test_action("cleanup")];
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(Recording(calls.clone()));
+    let (load, _) = ScriptedLoad::answering(outcome);
+    let config = RunConfig {
+        load_executor: Some(Arc::new(load)),
+        ..RunConfig::default()
+    };
+    let journal =
+        run_experiment(&exp, &executor, &Arc::new(ControlRegistry::new()), &config).unwrap();
+    let rolled_back = calls.lock().expect("lock").iter().any(|n| n == "cleanup");
+    (journal, rolled_back)
+}
+
+#[test]
+fn a_load_without_evidence_fails_the_run_and_still_rolls_back() {
+    // `Failed` outranks `Deviated`, but a probe-only method must not lose
+    // the rollbacks the deviation would have run.
+    let (journal, rolled_back) = probe_only_run(Ok(load_result(0, false)));
+    assert_eq!(journal.status, ExperimentStatus::Failed);
+    assert!(rolled_back, "the failed status hid the rollbacks");
+
+    let (journal, rolled_back) = probe_only_run(Err("no summary".into()));
+    assert_eq!(journal.status, ExperimentStatus::Failed);
+    assert!(rolled_back);
+}
+
+#[test]
+fn a_missed_threshold_rolls_back_and_a_clean_run_does_not() {
+    let (journal, rolled_back) = probe_only_run(Ok(load_result(100, false)));
+    assert_eq!(journal.status, ExperimentStatus::Deviated);
+    assert!(rolled_back);
+
+    let (journal, rolled_back) = probe_only_run(Ok(load_result(100, true)));
+    assert_eq!(journal.status, ExperimentStatus::Completed);
+    assert!(!rolled_back);
+}
+
+/// A load result as an aborted flat load leaves it: marked, with the
+/// partial evidence of the window that was cut.
+pub(super) fn aborted_load() -> LoadResult {
+    LoadResult {
+        execution: crate::types::LoadExecution {
+            planned_windows: Some(1),
+            completed_windows: Some(0),
+            aborted: true,
+            reasons: vec!["load aborted after 0 of 1 windows completed".into()],
+            ..crate::types::LoadExecution::default()
+        },
+        ..load_result(64, false)
+    }
+}
+
+#[test]
+fn the_load_span_says_when_a_load_was_aborted_or_truncated() {
+    let value = |attributes: &[opentelemetry::KeyValue], key: &str| {
+        attributes
+            .iter()
+            .find(|kv| kv.key.as_str() == key)
+            .map(|kv| kv.value.to_string())
+    };
+    let aborted = load::result_attributes(&aborted_load());
+    assert_eq!(
+        value(&aborted, "resilience.load.aborted").as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        value(&aborted, "resilience.load.planned_windows").as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        value(&aborted, "resilience.load.completed_windows").as_deref(),
+        Some("0")
+    );
+    assert_eq!(
+        value(&aborted, "resilience.load.reason").as_deref(),
+        Some("load aborted after 0 of 1 windows completed")
+    );
+
+    let truncated = load::result_attributes(&truncated_load());
+    assert_eq!(
+        value(&truncated, "resilience.load.truncated").as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        value(&truncated, "resilience.load.aborted").as_deref(),
+        Some("false")
+    );
+
+    let clean = load::result_attributes(&load_result(100, true));
+    assert_eq!(
+        value(&clean, "resilience.load.truncated").as_deref(),
+        Some("false")
+    );
+    assert!(value(&clean, "resilience.load.reason").is_none());
+    assert!(value(&clean, "resilience.load.planned_windows").is_none());
+
+    // The path with no result at all is on the span too.
+    let failed = load::failure_attributes(load::LoadEnd::Abort, "oha worker thread panicked");
+    assert_eq!(
+        value(&failed, "resilience.load.error").as_deref(),
+        Some("oha worker thread panicked")
+    );
+    assert_eq!(
+        value(&failed, "resilience.load.aborted").as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        value(&failed, "resilience.load.thresholds_met").as_deref(),
+        Some("false")
+    );
+}
+
 #[test]
 fn an_interrupted_method_aborts_the_load_before_the_rollbacks() {
     /// Cancels the run from inside the first method action and logs the
@@ -304,4 +459,5 @@ fn an_interrupted_method_aborts_the_load_before_the_rollbacks() {
         vec!["load.abort", "rollback"],
         "an interrupt must end the load at once, never wait out the plan"
     );
+    assert!(journal.load_result.is_some(), "the load's evidence is kept");
 }
