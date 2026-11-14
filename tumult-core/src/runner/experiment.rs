@@ -637,12 +637,48 @@ fn seal(
     journal
 }
 
-/// Ask the target's telemetry which version served the run, about the
-/// run's window padded for clock skew and until the answer has settled
-/// ([`super::settled_versions`]). `None` when the definition names no
-/// target, no resolver is configured, or the telemetry does not say; a
-/// resolver that fails costs the version, never the run. A window no one
-/// version served nearly alone is recorded as mixed.
+/// The requests the run's load sent, as far as its tool counted them;
+/// 0 for a run without a load.
+fn load_sent(journal: &Journal) -> u64 {
+    let Some(load) = journal.load_result.as_ref() else {
+        return 0;
+    };
+    let counted = load.execution.requests.as_ref().map(|counts| counts.sent);
+    counted.unwrap_or(load.total_requests)
+}
+
+/// What the target's telemetry says of the run's own window, each answer
+/// settled ([`super::settled_versions`]); when it names no version there,
+/// what it says of the window padded for clock skew. The padding is the
+/// fallback and not the rule: read always, it lets one request of the
+/// build before, a second ahead of the run, share the run's window.
+fn seen_in_window(
+    resolver: &dyn super::TargetVersionResolver,
+    target: &crate::types::ExperimentTarget,
+    journal: &Journal,
+) -> Result<Vec<crate::types::VersionShare>, String> {
+    let window = |pad_ns: i64| super::RunWindow {
+        system: target.system.clone(),
+        environment: target.environment.clone(),
+        namespace: target.namespace.clone(),
+        started_at_ns: journal.started_at_ns.saturating_sub(pad_ns),
+        ended_at_ns: journal.ended_at_ns.saturating_add(pad_ns),
+    };
+    let own = super::settled_versions(resolver, &window(0))?;
+    if TargetVersion::versioned_requests(&own) > 0 {
+        return Ok(own);
+    }
+    let skew_ns = i64::try_from(super::VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
+    super::settled_versions(resolver, &window(skew_ns))
+}
+
+/// Ask the target's telemetry which version served the run
+/// ([`seen_in_window`]). `None` when the definition names no target, no
+/// resolver is configured, the telemetry does not say, or it counted too
+/// few requests beside what the run's load sent
+/// ([`TargetVersion::observed_under_load`]); a resolver that fails costs
+/// the version, never the run. A window no one version served nearly
+/// alone is recorded as mixed.
 fn observed_target_version(
     experiment: &Experiment,
     config: &RunConfig,
@@ -650,16 +686,8 @@ fn observed_target_version(
 ) -> Option<TargetVersion> {
     let target = experiment.target.as_ref()?;
     let resolver = config.version_resolver.as_ref()?;
-    let skew_ns = i64::try_from(super::VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
-    let window = super::RunWindow {
-        system: target.system.clone(),
-        environment: target.environment.clone(),
-        namespace: target.namespace.clone(),
-        started_at_ns: journal.started_at_ns.saturating_sub(skew_ns),
-        ended_at_ns: journal.ended_at_ns.saturating_add(skew_ns),
-    };
-    match super::settled_versions(resolver.as_ref(), &window) {
-        Ok(seen) => TargetVersion::observed(seen),
+    let seen = match seen_in_window(resolver.as_ref(), target, journal) {
+        Ok(seen) => seen,
         Err(error) => {
             tracing::warn!(
                 experiment_id = %journal.experiment_id,
@@ -667,9 +695,22 @@ fn observed_target_version(
                 error = %error,
                 "experiment.target_version_unresolved"
             );
-            None
+            return None;
         }
+    };
+    let counted = TargetVersion::versioned_requests(&seen);
+    let sent = load_sent(journal);
+    let observed = TargetVersion::observed_under_load(seen, sent);
+    if observed.is_none() && counted > 0 {
+        tracing::warn!(
+            experiment_id = %journal.experiment_id,
+            target = %target.system,
+            requests_seen = counted,
+            requests_sent = sent,
+            "experiment.target_version_thin"
+        );
     }
+    observed
 }
 
 /// Put an observed version on the current (root) span. A declared one is

@@ -58,7 +58,7 @@ impl LoadExecutor for MockLoadExecutor {
     }
 }
 
-fn experiment_with_load() -> Experiment {
+pub(super) fn experiment_with_load() -> Experiment {
     let mut exp = experiment_with_hypothesis();
     exp.load = Some(LoadConfig {
         tool: LoadTool::K6,

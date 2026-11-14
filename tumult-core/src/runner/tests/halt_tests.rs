@@ -350,9 +350,8 @@ fn a_halted_run_observes_its_version_when_it_ends() {
     assert_eq!(journal.status, ExperimentStatus::Halted);
     let questions = resolver.questions();
     assert_eq!(
-        questions[0].ended_at_ns,
-        journal.ended_at_ns + 2_000_000_000,
-        "the end of the run, padded for clock skew"
+        questions[0].ended_at_ns, journal.ended_at_ns,
+        "the end of the run"
     );
     assert_eq!(questions.len(), 1, "{questions:?}");
     assert_eq!(

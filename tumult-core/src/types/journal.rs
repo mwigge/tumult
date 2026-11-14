@@ -87,6 +87,14 @@ pub enum VersionSource {
 /// run to be recorded as observed on that version.
 pub const OBSERVED_VERSION_MIN_SHARE: f64 = 0.95;
 
+/// The fewest requests the target's telemetry must have counted inside a
+/// run's window, as a share of the requests the run's load sent, for the
+/// run to record a version from it. Low, because telemetry may be
+/// sampled; not zero, because one request of an old build in a window
+/// whose other telemetry has not arrived says nothing of what served the
+/// load.
+pub const OBSERVED_MIN_LOAD_SHARE: f64 = 0.01;
+
 /// How many of the requests inside a run's window one version served.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionShare {
@@ -151,6 +159,31 @@ impl TargetVersion {
             version_source,
             shares: if seen.len() > 1 { seen } else { Vec::new() },
         })
+    }
+
+    /// The requests of `seen` that name a version.
+    #[must_use]
+    pub fn versioned_requests(seen: &[VersionShare]) -> u64 {
+        seen.iter()
+            .filter(|share| !share.version.trim().is_empty())
+            .map(|share| share.requests)
+            .sum()
+    }
+
+    /// [`TargetVersion::observed`] for a run whose load sent `sent`
+    /// requests: `None` also when the telemetry counted fewer than
+    /// [`OBSERVED_MIN_LOAD_SHARE`] of them. A load that counted nothing
+    /// asks for nothing.
+    #[must_use]
+    pub fn observed_under_load(seen: Vec<VersionShare>, sent: u64) -> Option<Self> {
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        let enough =
+            Self::versioned_requests(&seen) as f64 >= OBSERVED_MIN_LOAD_SHARE * sent as f64;
+        if !enough {
+            return None;
+        }
+        Self::observed(seen)
     }
 
     /// The share of the window's requests the recorded version served;
@@ -302,6 +335,22 @@ mod tests {
             version: version.into(),
             requests,
         }
+    }
+
+    #[test]
+    fn a_load_s_version_needs_a_share_of_the_requests_it_sent() {
+        let seen = |requests| vec![share("1.4.0", requests), share(" ", 500)];
+        // One request in 4000 says nothing of what served the other 3999.
+        assert_eq!(TargetVersion::observed_under_load(seen(1), 4000), None);
+        assert_eq!(TargetVersion::observed_under_load(seen(39), 4000), None);
+        // 1 % is enough: telemetry may be sampled.
+        let enough = TargetVersion::observed_under_load(seen(40), 4000).unwrap();
+        assert_eq!(enough.version_source, VersionSource::Observed);
+        assert_eq!(
+            TargetVersion::observed_under_load(seen(1), 0),
+            TargetVersion::observed(seen(1))
+        );
+        assert_eq!(TargetVersion::observed_under_load(vec![], 0), None);
     }
 
     #[test]

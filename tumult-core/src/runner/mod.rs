@@ -186,15 +186,17 @@ pub struct RunWindow {
     pub environment: Option<String>,
     /// The definition's `target.namespace` (`service.namespace`).
     pub namespace: Option<String>,
-    /// The run's start and end, each moved outwards by
-    /// [`VERSION_WINDOW_SKEW`].
+    /// The run's start and end; each moved outwards by
+    /// [`VERSION_WINDOW_SKEW`] when the telemetry named no version
+    /// between them.
     pub started_at_ns: i64,
     pub ended_at_ns: i64,
 }
 
 /// How far the window a resolver is asked about reaches beyond the run on
-/// either side: the tolerance for the runner's clock and the target's
-/// disagreeing about when a request happened.
+/// either side when the run's own window is silent: the tolerance for the
+/// runner's clock and the target's disagreeing about when a request
+/// happened.
 pub const VERSION_WINDOW_SKEW: Duration = Duration::from_secs(2);
 
 /// How a run waits for its target's telemetry to arrive before it reads

@@ -195,19 +195,125 @@ fn an_undeclared_version_is_observed_once_when_the_run_ends() {
         })
     );
     // Asked once, about this run's own window, environment and
-    // namespace, the window padded for clock skew.
-    let skew_ns = i64::try_from(VERSION_WINDOW_SKEW.as_nanos()).unwrap();
-    assert_eq!(skew_ns, 2_000_000_000);
+    // namespace: telemetry that speaks inside the run is not padded.
     assert_eq!(
         resolver.questions(),
         vec![RunWindow {
             system: "checkout".into(),
             environment: Some("demo".into()),
             namespace: Some("shop".into()),
-            started_at_ns: journal.started_at_ns - skew_ns,
-            ended_at_ns: journal.ended_at_ns + skew_ns,
+            started_at_ns: journal.started_at_ns,
+            ended_at_ns: journal.ended_at_ns,
         }]
     );
+}
+
+/// Answers `inside` about a window that begins at or after `not_before`
+/// (a run's own window) and `around` about one that begins earlier (the
+/// window padded for clock skew).
+struct ByWindow {
+    not_before: i64,
+    inside: Vec<VersionShare>,
+    around: Vec<VersionShare>,
+    asked: Mutex<Vec<RunWindow>>,
+}
+
+impl TargetVersionResolver for ByWindow {
+    fn resolve(&self, window: &RunWindow) -> Result<Vec<VersionShare>, String> {
+        self.asked.lock().unwrap().push(window.clone());
+        if window.started_at_ns >= self.not_before {
+            return Ok(self.inside.clone());
+        }
+        Ok(self.around.clone())
+    }
+
+    fn settle(&self) -> VersionSettle {
+        VersionSettle::ONCE
+    }
+}
+
+fn observed_by(inside: Vec<VersionShare>, around: Vec<VersionShare>) -> (Journal, Vec<RunWindow>) {
+    let mut exp = minimal_experiment();
+    exp.target = Some(checkout(None));
+    let resolver = Arc::new(ByWindow {
+        not_before: chrono::Utc::now().timestamp_nanos_opt().unwrap(),
+        inside,
+        around,
+        asked: Mutex::new(Vec::new()),
+    });
+    let config = RunConfig {
+        version_resolver: Some(resolver.clone()),
+        ..RunConfig::default()
+    };
+    let journal = run(&exp, &config);
+    let asked = resolver.asked.lock().unwrap().clone();
+    (journal, asked)
+}
+
+#[test]
+fn a_request_of_the_old_build_in_the_padding_does_not_mix_the_run() {
+    // Ten requests of 1.5.1 inside the run; one of 1.5.0 a second before.
+    let (journal, asked) = observed_by(
+        vec![share("1.5.1", 10)],
+        vec![share("1.5.1", 10), share("1.5.0", 1)],
+    );
+    assert_eq!(
+        journal.target_version,
+        Some(TargetVersion {
+            version: "1.5.1".into(),
+            version_source: VersionSource::Observed,
+            shares: Vec::new(),
+        })
+    );
+    assert_eq!(asked.len(), 1, "{asked:?}");
+}
+
+#[test]
+fn the_padding_is_read_when_the_run_s_own_window_is_silent() {
+    let skew_ns = i64::try_from(VERSION_WINDOW_SKEW.as_nanos()).unwrap();
+    assert_eq!(skew_ns, 2_000_000_000);
+    // A blank version and a version without requests name nothing.
+    let nothing = vec![share(" ", 4), share("1.4.0", 0)];
+    let (journal, asked) = observed_by(nothing, vec![share("1.5.0", 3)]);
+    assert_eq!(
+        journal
+            .target_version
+            .map(|v| (v.version, v.version_source)),
+        Some(("1.5.0".into(), VersionSource::Observed))
+    );
+    let windows: Vec<(i64, i64)> = asked
+        .iter()
+        .map(|w| (w.started_at_ns, w.ended_at_ns))
+        .collect();
+    assert_eq!(
+        windows,
+        [
+            (journal.started_at_ns, journal.ended_at_ns),
+            (
+                journal.started_at_ns - skew_ns,
+                journal.ended_at_ns + skew_ns
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_version_seen_in_a_sliver_of_the_load_s_requests_is_not_recorded() {
+    use super::load_tests::{load_result, ScriptedLoad};
+    // The telemetry counted ten requests (see `answering`).
+    for (sent, recorded) in [(4000, false), (1000, true), (100, true)] {
+        let mut exp = super::load_tests::experiment_with_load();
+        exp.target = Some(checkout(None));
+        let resolver = ScriptedResolver::answering(Some("1.4.0"));
+        let (load, _events) = ScriptedLoad::answering(Ok(load_result(sent, true)));
+        let config = RunConfig {
+            load_executor: Some(Arc::new(load)),
+            ..config_with(&resolver)
+        };
+        let journal = run(&exp, &config);
+        assert_eq!(journal.load_result.as_ref().unwrap().total_requests, sent);
+        assert_eq!(journal.target_version.is_some(), recorded, "{sent} sent");
+    }
 }
 
 #[test]
@@ -218,7 +324,8 @@ fn a_run_records_no_version_when_nothing_knows_it() {
     // Silent telemetry.
     let silent = ScriptedResolver::answering(None);
     assert_eq!(run(&exp, &config_with(&silent)).target_version, None);
-    assert_eq!(silent.questions().len(), 1);
+    // The run's own window, then the padded one.
+    assert_eq!(silent.questions().len(), 2);
 
     // A blank answer is no answer.
     let blank = ScriptedResolver::answering(Some("  "));
