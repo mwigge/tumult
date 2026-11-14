@@ -180,6 +180,16 @@ Names the vocabulary replaced (`error`, `e`, `err`, `run_id`,
 `status`, `method`, `tool`, `user`, ...) are rejected by
 `scripts/check-log-messages.py`, which names the replacement.
 
+The checker reads spans as well as events: a span macro (`info_span!`,
+`span!`, ...) or an `#[instrument(name = "..")]` with a name that is not
+lowercase dotted is a `bad-span-name`, and span fields follow the same
+vocabulary. An `#[instrument]` without a name is named after its function
+and is not reported. A macro imported under another name
+(`use tracing::info as i;`) is checked under that name. An `error.message`
+put together with `format!`, `format_args!` or `concat!` is a
+`computed-error-message`: pass the error itself (`%e`, or `format!("{e:#}")`
+for another rendering) and put what varies in fields of its own.
+
 `tracing` needs field names to be literals in the macro call, so the names
 are not Rust constants; the checker and this table are the source of truth.
 

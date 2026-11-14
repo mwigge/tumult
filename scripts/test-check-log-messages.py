@@ -108,7 +108,6 @@ class InterpolationTests(unittest.TestCase):
         source = """
         compile_error!("not a log {}");
         my_error!("{}", x);
-        tracing::info_span!("span {}", x);
         println!("{}", x);
         anyhow::bail!("bad {thing}");
         """
@@ -163,8 +162,13 @@ class MacroFormTests(unittest.TestCase):
         )
 
     def test_other_fields_may_be_computed(self):
-        source = 'tracing::info!(name: "a.b", error.message = %format!("{e:#}"), "failed");'
-        self.assertEqual(rules(source), [])
+        for field in (
+            'error.message = %format!("{e:#}")',
+            'db.query.summary = %format!("select from {table}")',
+        ):
+            source = f'tracing::info!(name: "a.b", {field}, "failed");'
+            with self.subTest(field=field):
+                self.assertEqual(rules(source), [])
 
 
 class StrictTests(unittest.TestCase):
@@ -207,6 +211,161 @@ class StrictTests(unittest.TestCase):
         source = 'tracing::info!(error = %e, "failed {x}");'
         found = [f.rule for f in checker.check_source(source, strict=False)]
         self.assertEqual(found, ["interpolated-message"])
+
+
+class AliasTests(unittest.TestCase):
+    def test_an_aliased_event_macro_is_checked(self):
+        source = 'use tracing::info as i;\nfn f() { i!("started {}", n); }'
+        self.assertEqual(rules(source), ["interpolated-message", "missing-event-name"])
+
+    def test_aliases_in_a_use_group_are_checked(self):
+        source = """
+        use tracing::{debug, warn as w, Level};
+        fn f() { w!(name: "a.b", error = %e, "failed"); }
+        """
+        self.assertEqual(rules(source), ["legacy-field"])
+
+    def test_an_aliased_span_macro_is_checked(self):
+        source = 'use tracing::info_span as sp;\nfn f() { let s = sp!("Bad Name"); }'
+        self.assertEqual(rules(source), ["bad-span-name"])
+
+    def test_an_alias_of_something_that_is_no_macro_is_ignored(self):
+        source = """
+        use tracing::{field::debug as d, Level as lvl};
+        use std::format as info2;
+        fn f() { let a = d!("x {}", 1); let b = lvl!("x {}", 1); info2!("x {}", 1); }
+        """
+        self.assertEqual(rules(source), [])
+
+    def test_an_alias_does_not_reach_into_longer_names(self):
+        source = 'use tracing::info as i;\nfn f() { hi!("x {}", 1); vec_i![1]; }'
+        self.assertEqual(rules(source), [])
+
+
+class SpanTests(unittest.TestCase):
+    def test_span_names_must_be_lowercase_dotted(self):
+        for source in (
+            'let s = tracing::info_span!("db query", order.id = id);',
+            'let s = tracing::span!(tracing::Level::INFO, "DbQuery");',
+            'let s = debug_span!(parent: &cx, "gameday", round = 2_u64);',
+            'let s = error_span! { target: "x", "Lake Read" };',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(rules(source), ["bad-span-name"])
+
+    def test_dotted_span_names_pass(self):
+        for source in (
+            'let s = tracing::info_span!("ssh.exec", server.address = %host);',
+            'let s = tracing::span!(Level::DEBUG, "lake.read");',
+            'let s = trace_span!(parent: None, "starmap.assemble", nodes = 3);',
+            'let s = warn_span!(target: "x", "a.b_c.d");',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(rules(source), [])
+
+    def test_span_fields_use_the_vocabulary(self):
+        source = 'let s = tracing::info_span!("a.b", run_id = %id, error = %e, rows = 3);'
+        self.assertEqual(rules(source), ["legacy-field", "legacy-field"])
+
+    def test_a_span_macro_is_not_an_event(self):
+        # No message, no `name:` argument: neither is missing.
+        source = 'let s = tracing::info_span!("a.b");'
+        self.assertEqual(rules(source), [])
+
+    def test_instrumenting_a_future_is_not_a_span_macro(self):
+        source = "let r = lookup.instrument(span).await; let x = Instrument::instrument(f, s);"
+        self.assertEqual(rules(source), [])
+
+
+class InstrumentTests(unittest.TestCase):
+    def test_an_instrument_name_must_be_lowercase_dotted(self):
+        for source in (
+            '#[tracing::instrument(name = "inventory check")]\nfn f() {}',
+            '#[instrument(skip(self), name = "Payment")]\nfn f() {}',
+            '#[cfg_attr(feature = "otel", tracing::instrument(name = "Bad"))]\nfn f() {}',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(rules(source), ["bad-span-name"])
+
+    def test_a_dotted_instrument_name_passes(self):
+        source = '#[tracing::instrument(name = "db.ping", skip(self), level = "debug")]\nfn f() {}'
+        self.assertEqual(rules(source), [])
+
+    def test_an_unnamed_instrument_is_named_after_its_function_and_passes(self):
+        for source in (
+            "#[tracing::instrument]\nfn start_proxy() {}",
+            "#[tracing::instrument(skip(client))]\nfn f() {}",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(rules(source), [])
+
+    def test_instrument_fields_use_the_vocabulary(self):
+        source = """
+        #[tracing::instrument(skip(self), fields(remote_path = %remote, path = %p, url))]
+        fn f() {}
+        """
+        self.assertEqual(rules(source), ["legacy-field", "legacy-field"])
+
+    def test_the_finding_is_on_the_line_of_the_attribute(self):
+        source = '\n\n#[tracing::instrument(\n    name = "Bad"\n)]\nfn f() {}'
+        self.assertEqual(checker.check_source(source)[0].line, 3)
+
+    def test_findings_are_in_source_order(self):
+        source = """
+        #[instrument(name = "Bad")]
+        fn f() {
+            tracing::info!("x");
+            let s = info_span!("Worse");
+        }
+        """
+        self.assertEqual(
+            rules(source), ["bad-span-name", "missing-event-name", "bad-span-name"]
+        )
+
+
+class ErrorMessageTests(unittest.TestCase):
+    def test_a_formatted_error_message_is_reported(self):
+        for value in (
+            '%format!("{name} tick failed: {e}")',
+            'format!("failed: {e}")',
+            '%format_args!("{} failed", name)',
+            'concat!("a", "b")',
+            '%format!("{}: {}", name, e).as_str()',
+            '%format!("{e}{cause}")',
+            "%format!(TEMPLATE, e)",
+        ):
+            source = f'tracing::warn!(name: "a.b", {{ error.message = {value} }}, "failed");'
+            with self.subTest(value=value):
+                self.assertEqual(rules(source), ["computed-error-message"])
+
+    def test_a_quoted_field_name_is_the_same_field(self):
+        source = 'tracing::warn!(name: "a.b", "error.message" = %format!("x {y}"), "failed");'
+        self.assertEqual(rules(source), ["computed-error-message"])
+
+    def test_the_error_itself_passes(self):
+        for value in (
+            "%err(&error)",
+            "%e",
+            "reason",
+            "%logging::redact_url(&error.to_string(), url)",
+            "&error as &(dyn std::error::Error + 'static)",
+            '"chat timed out"',
+            # One placeholder and nothing else is the error, rendered.
+            '%format!("{e:#}")',
+            '%format!("{:#}", e)',
+            '%format_args!("{e}")',
+        ):
+            source = f'tracing::warn!(name: "a.b", {{ error.message = {value} }}, "failed");'
+            with self.subTest(value=value):
+                self.assertEqual(rules(source), [])
+
+    def test_span_and_instrument_fields_are_checked_too(self):
+        span = 'let s = info_span!("a.b", error.message = %format!("x {y}"));'
+        self.assertEqual(rules(span), ["computed-error-message"])
+        attribute = (
+            '#[instrument(fields(error.message = %format!("x {y}")))]\nfn f() {}'
+        )
+        self.assertEqual(rules(attribute), ["computed-error-message"])
 
 
 class TestCodeTests(unittest.TestCase):

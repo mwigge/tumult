@@ -13,7 +13,22 @@ with any of the three delimiters: `info!(..)`, `info! {..}`, `info![..]`):
 * bad-event-name        has a name that is not lowercase dotted;
 * legacy-field          uses a field name the vocabulary replaced
                         (`error` -> `error.message`, `run_id` ->
-                        `resilience.run.id`, ...).
+                        `resilience.run.id`, ...);
+* computed-error-message  builds `error.message` with `format!`,
+                        `format_args!` or `concat!`: that is a message
+                        with interpolation under another name.
+
+Spans are checked too: the span macros (`span!`, `info_span!`, ...) and
+`#[instrument(..)]` attributes, also inside `cfg_attr`:
+
+* bad-span-name         has a name that is not lowercase dotted. A span
+                        without a literal name is not reported: an
+                        `#[instrument]` without `name = ".."` is named
+                        after its function;
+* legacy-field and computed-error-message, for the fields of the span.
+
+A macro imported under another name (`use tracing::info as i;`, also in a
+`use tracing::{..}` group) is checked under that name in the same file.
 
 Test code is not checked: `tests/` and `benches/` directories, `tests.rs`
 files, and items behind `#[cfg(test)]`.
@@ -49,9 +64,22 @@ DEFERRED = {
 # Directories that never hold checked sources.
 SKIPPED_DIRS = {"target", "node_modules", ".git", ".claude", ".quality-venv"}
 
-EVENT_MACRO = re.compile(
-    r"(?<![A-Za-z0-9_])(?:tracing\s*::\s*)?(trace|debug|info|warn|error|event)\s*!\s*[(\[{]"
+EVENT_MACROS = frozenset({"trace", "debug", "info", "warn", "error", "event"})
+SPAN_MACROS = frozenset(
+    {"span", "trace_span", "debug_span", "info_span", "warn_span", "error_span"}
 )
+MACRO_CALL = re.compile(
+    r"(?<![A-Za-z0-9_])(?:tracing\s*::\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*!\s*[(\[{]"
+)
+TRACING_USE = re.compile(r"(?<![A-Za-z0-9_])use\s+(?:::\s*)?tracing\s*::\s*([^;]*);")
+ALIASED = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)")
+ATTRIBUTE = re.compile(r"#\s*!?\s*\[")
+INSTRUMENT = re.compile(r"(?<![A-Za-z0-9_])instrument\s*\(")
+ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)")
+TEXT_MACRO = re.compile(
+    r"(?<![A-Za-z0-9_])(?:format|format_args|concat)\s*!\s*[(\[{]\s*"
+)
+PLACEHOLDER = re.compile(r"\{[^{}]*\}")
 EVENT_NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
 STRING_ARGUMENT = re.compile(r'b?r?#*"[S\n]*"#*')
 PREFIX_ARGUMENT = re.compile(r"(name|target|parent)\s*:(?!:)")
@@ -303,7 +331,7 @@ def _field_arguments(arguments):
 def _field_name(argument):
     """The field name of `name = value`, `%name`, `?name` or `name`."""
     masked = argument.masked
-    equals = re.search(r"(?<![=!<>])=(?!=)", masked)
+    equals = ASSIGNMENT.search(masked)
     end = equals.start() if equals else len(masked)
     name_masked, name_text = masked[:end].strip(), argument.text[:end].strip()
     if STRING_ARGUMENT.fullmatch(name_masked):
@@ -319,11 +347,59 @@ def _is_computed_message(argument):
     """
     if _field_name(argument) != "message":
         return False
-    equals = re.search(r"(?<![=!<>])=(?!=)", argument.masked)
-    if equals is None:
-        return True
-    value = argument.masked[equals.end() :].strip()
-    return not STRING_ARGUMENT.fullmatch(value)
+    value = _field_value(argument)
+    return value is None or not STRING_ARGUMENT.fullmatch(value)
+
+
+def _field_value(argument):
+    """The masked value of `name = value`, or None for a shorthand field."""
+    equals = ASSIGNMENT.search(argument.masked)
+    return None if equals is None else argument.masked[equals.end() :].strip()
+
+
+def _is_computed_error_message(argument):
+    """Whether a field argument is an `error.message` put together from text.
+
+    `error.message = %format!("{name} failed: {e}")` is an interpolated
+    message that moved into a field: the constant part belongs in the
+    message, the name in a field of its own, and the error is passed as is.
+    """
+    if _field_name(argument) != "error.message":
+        return False
+    macro = TEXT_MACRO.search(argument.masked)
+    return macro is not None and not _renders_one_value(argument, macro)
+
+
+def _renders_one_value(argument, macro):
+    """Whether a formatting macro call is one placeholder and nothing else.
+
+    `format!("{e:#}")` is the error in another rendering, not a sentence.
+    """
+    if "concat" in macro.group(0):
+        return False
+    template = STRING_ARGUMENT.match(argument.masked, macro.end())
+    if template is None:
+        return False
+    literal = _literal_content(argument.text[template.start() : template.end()])
+    return len(PLACEHOLDER.findall(literal)) == 1 and not PLACEHOLDER.sub("", literal)
+
+
+def _field_findings(fields):
+    """`(rule, detail)` pairs for the fields of an event or a span."""
+    found = []
+    for field in fields:
+        name = _field_name(field)
+        if name in LEGACY_FIELDS:
+            found.append(("legacy-field", f"field `{name}`: use {LEGACY_FIELDS[name]}"))
+        if _is_computed_error_message(field):
+            found.append(
+                (
+                    "computed-error-message",
+                    "`error.message` is formatted text; pass the error itself"
+                    " and put what varies in fields of its own",
+                )
+            )
+    return found
 
 
 def _looks_like_level(argument):
@@ -388,29 +464,131 @@ def _event_findings(event, strict):
         found.append(
             ("bad-event-name", f"{event.name!r} is not lowercase dotted (a.b.c)")
         )
-    for field in event.fields:
-        name = _field_name(field)
-        if name in LEGACY_FIELDS:
-            found.append(("legacy-field", f"field `{name}`: use {LEGACY_FIELDS[name]}"))
-    return found
+    return found + _field_findings(event.fields)
+
+
+@dataclass(frozen=True)
+class Span:
+    """A parsed span macro call or `#[instrument(..)]` attribute."""
+
+    name: str | None
+    fields: list
+
+
+def parse_span(masked, text):
+    """Parse the argument list of a span macro (without the parentheses)."""
+    name, rest = None, []
+    for argument in _split_arguments(masked, text):
+        stripped = argument.masked.strip()
+        if PREFIX_ARGUMENT.match(stripped) or _looks_like_level(argument):
+            continue
+        if name is None and not rest and STRING_ARGUMENT.fullmatch(stripped):
+            name = _literal_content(argument.text)
+            continue
+        rest.append(argument)
+    return Span(name, _field_arguments(rest))
+
+
+def parse_instrument(masked, text):
+    """Parse the argument list of `#[instrument(..)]`."""
+    name, fields = None, []
+    for argument in _split_arguments(masked, text):
+        stripped = argument.masked.strip()
+        value = _field_value(argument)
+        if re.match(r"name\s*=", stripped) and STRING_ARGUMENT.fullmatch(value or ""):
+            name = _literal_content(argument.text)
+        elif re.match(r"fields\s*\(", stripped):
+            start = argument.masked.index("(") + 1
+            end = argument.masked.rindex(")")
+            fields.extend(
+                _split_arguments(argument.masked[start:end], argument.text[start:end])
+            )
+    return Span(name, fields)
+
+
+def _span_findings(span):
+    """`(rule, detail)` pairs for one span."""
+    found = []
+    if span.name is not None and not EVENT_NAME.fullmatch(span.name):
+        found.append(
+            ("bad-span-name", f"{span.name!r} is not lowercase dotted (a.b.c)")
+        )
+    return found + _field_findings(span.fields)
+
+
+def _use_items(body):
+    """The items of the path after `use tracing::`, one per imported name."""
+    body = body.strip()
+    if not (body.startswith("{") and body.endswith("}")):
+        return [body]
+    return [item.masked.strip() for item in _split_arguments(body[1:-1], body[1:-1])]
+
+
+def macro_names(masked):
+    """Every name a tracing macro goes by in this source, to its own name.
+
+    `use tracing::info as i;` makes `i!` an `info!`. Only macros imported
+    straight from `tracing` count: `tracing::field::debug as d` is a
+    function, and `std::format as info2` is not ours.
+    """
+    macros = EVENT_MACROS | SPAN_MACROS
+    names = {name: name for name in macros}
+    for use in TRACING_USE.finditer(masked):
+        for item in _use_items(use.group(1)):
+            aliased = ALIASED.fullmatch(item)
+            if aliased and aliased.group(1) in macros:
+                names[aliased.group(2)] = aliased.group(1)
+    return names
+
+
+def _macro_findings(masked, source, strict):
+    """`(offset, (rule, detail))` for every event and span macro call."""
+    names, located = macro_names(masked), []
+    for match in MACRO_CALL.finditer(masked):
+        macro = names.get(match.group(1))
+        if macro is None:
+            continue
+        open_index = match.end() - 1
+        close_index = _matching_close(masked, open_index)
+        arguments = (
+            masked[open_index + 1 : close_index],
+            source[open_index + 1 : close_index],
+        )
+        if macro in EVENT_MACROS:
+            found = _event_findings(parse_event(*arguments), strict)
+        else:
+            found = _span_findings(parse_span(*arguments)) if strict else []
+        located.extend((match.start(), finding) for finding in found)
+    return located
+
+
+def _instrument_findings(masked, source):
+    """`(offset, (rule, detail))` for every `instrument(..)` in an attribute."""
+    located = []
+    for attribute in ATTRIBUTE.finditer(masked):
+        attribute_end = _matching_close(masked, attribute.end() - 1)
+        for call in INSTRUMENT.finditer(masked, attribute.end(), attribute_end):
+            close_index = _matching_close(masked, call.end() - 1)
+            span = parse_instrument(
+                masked[call.end() : close_index], source[call.end() : close_index]
+            )
+            located.extend(
+                (attribute.start(), finding) for finding in _span_findings(span)
+            )
+    return located
 
 
 def check_source(source, path=Path("<source>"), strict=True):
-    """All findings for one Rust source text."""
+    """All findings for one Rust source text, in source order."""
     masked = _blank_test_items(mask_source(source))
-    findings = []
-    for match in EVENT_MACRO.finditer(masked):
-        open_index = match.end() - 1
-        close_index = _matching_close(masked, open_index)
-        event = parse_event(
-            masked[open_index + 1 : close_index], source[open_index + 1 : close_index]
-        )
-        line = masked.count("\n", 0, match.start()) + 1
-        findings.extend(
-            Finding(path, line, rule, detail)
-            for rule, detail in _event_findings(event, strict)
-        )
-    return findings
+    located = _macro_findings(masked, source, strict)
+    if strict:
+        located.extend(_instrument_findings(masked, source))
+    located.sort(key=lambda item: item[0])
+    return [
+        Finding(path, masked.count("\n", 0, offset) + 1, rule, detail)
+        for offset, (rule, detail) in located
+    ]
 
 
 def is_test_path(path):
@@ -461,6 +639,18 @@ SELF_TEST_CASES = [
         'tracing::info!(name: "a.b", message = %format!("done {n}"));',
         ["interpolated-message"],
     ),
+    ('use tracing::info as i;\nfn f() { i!("started"); }', ["missing-event-name"]),
+    ('use tracing::{warn as w};\nfn f() { w!(name: "a.b", "x {}", n); }', ["interpolated-message"]),
+    ('let s = tracing::info_span!("db query");', ["bad-span-name"]),
+    ('let s = tracing::info_span!("db.query", run_id = %id);', ["legacy-field"]),
+    ('#[tracing::instrument(name = "Query", skip(self))]\nfn f() {}', ["bad-span-name"]),
+    ('#[tracing::instrument(skip(self))]\nfn f() {}', []),
+    (
+        'tracing::warn!(name: "a.b", { error.message = %format!("{n}: {e}") }, "failed");',
+        ["computed-error-message"],
+    ),
+    ('tracing::warn!(name: "a.b", { error.message = %err(&e) }, "failed");', []),
+    ('tracing::warn!(name: "a.b", error.message = %format!("{e:#}"), "failed");', []),
 ]
 
 
