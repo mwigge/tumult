@@ -63,6 +63,7 @@ mod perf;
 pub mod query_row;
 #[cfg(feature = "duckdb")]
 mod reader;
+#[cfg(feature = "duckdb")]
 mod risk;
 #[cfg(feature = "duckdb")]
 mod rows;
@@ -118,6 +119,7 @@ pub use schema::CURRENT_SCHEMA_VERSION;
 pub use store::Store;
 #[cfg(feature = "duckdb")]
 pub(crate) use store::{migrate, query_json_rows, with_tx};
+#[cfg(feature = "duckdb")]
 pub use webhooks::{WebhookDeadLetter, WebhookRow};
 #[cfg(feature = "duckdb")]
 pub use writer::Writer;
